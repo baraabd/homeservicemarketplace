@@ -1,0 +1,11 @@
+node_modules
+.git
+.turbo
+dist
+build
+.next
+coverage
+.env
+.env.local
+.env.production
+.env.staging

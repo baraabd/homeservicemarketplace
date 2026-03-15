@@ -22,11 +22,13 @@ coverage
 npm-debug.log*
 pnpm-debug.log*
 
-# OS
+# cache
+.cache
+.vite
+
+# OS / editor
 .DS_Store
 Thumbs.db
-
-# editors
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
