@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useState} from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  Map, Briefcase, Wallet, User, ChevronRight, ChevronLeft,
+  Map, Briefcase, Wallet, User, ChevronRight,
   ChevronUp, X, Clock, DollarSign, Star,
-  CheckCircle2, ArrowLeft, TrendingUp, Zap, Bell, WifiOff,
+  CheckCircle2, ArrowLeft, TrendingUp, Bell, WifiOff,
   MapPin, Navigation, Send, Award, BarChart2, LogOut,
 } from "lucide-react";
 import {

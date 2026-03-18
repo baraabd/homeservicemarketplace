@@ -1,3 +1,5 @@
 {
-  "name": "homeservicemarketplace"
+  "name": "@homeservicemarketplace/database",
+  "version": "0.1.0",
+  "private": true
 }
