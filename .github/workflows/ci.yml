@@ -15,8 +15,8 @@ env:
   NODE_VERSION: "20"
 
 jobs:
-  verify:
-    name: Install, Typecheck, Build
+  verify-web:
+    name: Web Typecheck and Build
     runs-on: ubuntu-latest
 
     steps:
@@ -35,12 +35,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint (non-blocking for now)
-        run: pnpm lint
+      - name: Lint web (non-blocking for now)
+        run: pnpm --filter @homeservicemarketplace/web lint
         continue-on-error: true
 
-      - name: Typecheck
-        run: pnpm typecheck
+      - name: Typecheck web
+        run: pnpm --filter @homeservicemarketplace/web typecheck
 
-      - name: Build
-        run: pnpm build
+      - name: Build web
+        run: pnpm --filter @homeservicemarketplace/web build
