@@ -2,20 +2,19 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   LayoutDashboard, Users, ShieldCheck, DollarSign, AlertTriangle,
-  Bell, Globe, ChevronRight, Check, X, Eye, TrendingUp, TrendingDown,
+  Bell, ChevronRight, Check, X, Eye, TrendingUp, TrendingDown,
   RefreshCw, Search, Filter, Download, Activity, MapPin, Zap,
-  Clock, Star, BarChart2, ArrowUpRight, CheckCircle2, XCircle,
-  LogOut, Menu, ChevronDown, Flame, Settings, Save, Info,
+  Clock, Star, CheckCircle2,
+  LogOut, Menu, Flame, Settings, Save, Info,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  BarChart, Bar, CartesianGrid, PieChart, Pie, Cell, Legend,
+  BarChart, Bar, CartesianGrid, Legend,
 } from "recharts";
 import { useLang, LangToggle } from "../../i18n/LanguageContext";
 import {
-  useEcosystem, PRO_VERIFICATIONS, WALLET_TRANSACTIONS, EARNINGS_CHART_DATA,
+  useEcosystem, PRO_VERIFICATIONS, WALLET_TRANSACTIONS,
 } from "../../context/EcosystemContext";
-import type { CrossAppNotif } from "../../context/EcosystemContext";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type Section = "dashboard" | "users" | "verification" | "financials" | "disputes" | "settings";
