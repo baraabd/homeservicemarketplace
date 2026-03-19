@@ -255,7 +255,11 @@ importers:
 
   packages/contracts: {}
 
-  packages/database: {}
+  packages/database:
+    devDependencies:
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
 
   packages/ui: {}
 
