@@ -69,3 +69,29 @@ jobs:
 
       - name: Typecheck api
         run: pnpm --filter @homeservicemarketplace/api typecheck
+
+  verify-database:
+    name: Verify Database Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint database package
+        run: pnpm --filter @homeservicemarketplace/database lint
+
+      - name: Typecheck database package
+        run: pnpm --filter @homeservicemarketplace/database typecheck
