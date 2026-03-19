@@ -117,7 +117,7 @@ interface HelpSupportPageProps {
 export function HelpSupportPage({ onBack }: HelpSupportPageProps) {
   const { lang, dir } = useLang();
   // تعديل تمرير القيمة الابتدائية لكي لا تسبب أي مشكلة Cascading Render
-  const [messages, setMessages] = useState<Message[]>(() => lang === 'ar' ? SEED_AR : SEED_EN);
+  const [messages, setMessages] = useState<Message[]>(() => (lang === 'ar' ? SEED_AR : SEED_EN));
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const [rating, setRating] = useState(0);

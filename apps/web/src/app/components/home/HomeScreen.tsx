@@ -324,7 +324,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
 
   // ── Lead tap ────────────────────────────────────────────────────────────────
   const handleLeadTap = (lead: LeadCardProps) => {
-    if (lead.status === "pending") {
+    if (lead.status === 'pending') {
       setBidsLead(lead);
     } else {
       setJobDetail(leadToJobData(lead));

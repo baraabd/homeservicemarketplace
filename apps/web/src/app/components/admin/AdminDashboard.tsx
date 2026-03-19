@@ -585,10 +585,7 @@ function FinancialsSection({ lang }: { lang: string }) {
           </button>
         </div>
         {WALLET_TRANSACTIONS.slice(0, 5).map((tx) => (
-          <div
-            key={tx.id}
-            className={`flex items-center justify-between px-5 py-3.5`}
-          >
+          <div key={tx.id} className={`flex items-center justify-between px-5 py-3.5`}>
             <div className="flex items-center gap-3">
               <div
                 className={`w-8 h-8 rounded-xl flex items-center justify-center ${tx.type === 'earning' ? 'bg-green-100 dark:bg-green-900/30' : tx.type === 'pending' ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}
