@@ -1,4 +1,4 @@
-name: Deploy Staging
+name: Verify Staging
 
 on:
   push:
@@ -6,15 +6,16 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-staging
+  group: verify-staging
+  
   cancel-in-progress: true
 
 env:
   NODE_VERSION: '20'
 
 jobs:
-  deploy-staging:
-    name: Deploy to Staging
+  verify-staging:
+    name: Verify Staging
     runs-on: ubuntu-latest
     environment:
       name: staging
@@ -35,8 +36,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify web
+      - name: Build web
         run: pnpm --filter @homeservicemarketplace/web build
 
-      - name: Placeholder deploy step
-        run: echo "Staging deployment workflow is ready."
+      - name: Staging gate
+        run: echo "Staging verification passed. Vercel handles preview deployment."
