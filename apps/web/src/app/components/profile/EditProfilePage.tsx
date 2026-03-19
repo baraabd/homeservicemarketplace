@@ -23,7 +23,7 @@ export function EditProfilePage({ onBack }: EditProfilePageProps) {
 
   const [name, setName] = useState(lang === 'ar' ? 'أحمد الخالد' : 'Ahmed Al-Khalid');
   const [phone, setPhone] = useState('+966 50 123 4567');
-  const [email, setEmail] = useState('ahmed@fixnow.app');
+  const [email] = useState('ahmed@fixnow.app');
   const [city, setCity] = useState(lang === 'ar' ? 'الرياض' : 'Riyadh');
   const [bio, setBio] = useState('');
   const [saving, setSaving] = useState(false);

@@ -5,7 +5,6 @@ import {
   MapPin,
   Calendar,
   Clock,
-  Star,
   MessageCircle,
   Phone,
   Navigation,
@@ -19,7 +18,6 @@ import {
   PaintBucket,
   Shield,
   ThumbsUp,
-  AlertCircle,
   XCircle,
 } from 'lucide-react';
 import { LeadCardProps, LeadStatus } from './LeadCard';
@@ -140,7 +138,6 @@ function StatusTimeline({ status, lang }: { status: LeadStatus; lang: string }) 
         {steps.map((step, i) => {
           const isDone = step.doneFills.includes(status);
           const isCurrent = i === activeIndex;
-          const isFuture = !isDone && !isCurrent;
 
           return (
             <div key={i} className="relative flex items-start gap-4 mb-4 last:mb-0 z-10">
@@ -246,7 +243,7 @@ interface JobDetailViewProps {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export function JobDetailView({ job, isVisible, onBack, onOpenChat }: JobDetailViewProps) {
-  const { lang, dir, t } = useLang();
+  const { lang, dir } = useLang();
   const { showHourlyRate } = useEcosystem();
   const [showRateModal, setShowRateModal] = useState(false);
   const [selectedRating, setSelectedRating] = useState(0);

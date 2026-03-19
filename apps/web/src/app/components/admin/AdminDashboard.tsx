@@ -147,16 +147,6 @@ const DISTRICTS = [
 
 function HeatMapWidget({ lang }: { lang: string }) {
   const maxVal = 10;
-  const AR_DISTRICTS = [
-    'العليا',
-    'الملقا',
-    'الدبلوماسي',
-    'طريق الملك فهد',
-    'النخيل',
-    'السليمانية',
-    'الياسمين',
-    'حطين',
-  ];
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-5 h-full flex flex-col">
@@ -594,10 +584,10 @@ function FinancialsSection({ lang }: { lang: string }) {
             <ChevronRight size={14} className="rtl:rotate-180" />
           </button>
         </div>
-        {WALLET_TRANSACTIONS.slice(0, 5).map((tx, i) => (
+        {WALLET_TRANSACTIONS.slice(0, 5).map((tx) => (
           <div
             key={tx.id}
-            className={`flex items-center justify-between px-5 py-3.5 ${i > 0 ? 'border-t border-slate-50 dark:border-slate-700' : ''}`}
+            className={`flex items-center justify-between px-5 py-3.5`}
           >
             <div className="flex items-center gap-3">
               <div
@@ -782,7 +772,7 @@ function DisputeSection({ lang }: { lang: string }) {
             ),
           )}
         </div>
-        {disputes.map((d, i) => {
+        {disputes.map((d) => {
           const ss = DISPUTE_STATUS[d.status as keyof typeof DISPUTE_STATUS];
           return (
             <div
@@ -1423,7 +1413,7 @@ const SIDEBAR_ITEMS: { id: Section; icon: React.ReactNode; en: string; ar: strin
 
 // ─── Admin Dashboard shell ────────────────────────────────────────────────────
 export function AdminDashboard() {
-  const { lang, dir, darkMode, toggleLang, toggleDarkMode } = useLang();
+  const { lang, dir, darkMode, toggleDarkMode } = useLang();
   const { adminNotifs } = useEcosystem();
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);

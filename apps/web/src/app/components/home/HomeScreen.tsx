@@ -272,6 +272,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
     setNotifications((p) => p.map((n) => (n.id === id ? { ...n, read: true } : n)));
 
   // ── Tab skeleton loader ────────────────────────────────────────────────────
+  // تم تصحيح الخطأ هنا بإزالة التعبير غير المستخدم وتنظيم الـ effect
   useEffect(() => {
     if (prevTab.current !== activeTab) {
       setTabLoading(true);
@@ -323,7 +324,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
 
   // ── Lead tap ────────────────────────────────────────────────────────────────
   const handleLeadTap = (lead: LeadCardProps) => {
-    lead.status === 'pending' ? setBidsLead(lead) : setJobDetail(leadToJobData(lead));
+    if (lead.status === "pending") {
+      setBidsLead(lead);
+    } else {
+      setJobDetail(leadToJobData(lead));
+    }
   };
 
   // ── Booking tap ─────────────────────────────────────────────────────────────

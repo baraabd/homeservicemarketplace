@@ -55,7 +55,7 @@ function BiddingModal({
   onClose: () => void;
   onSubmit: (price: number, time: string, note: string) => void;
 }) {
-  const { lang, dir } = useLang();
+  const { lang } = useLang();
   const [price, setPrice] = useState('');
   const [time, setTime] = useState('');
   const [note, setNote] = useState('');
@@ -342,7 +342,7 @@ function JobPin({
 
 // ─── Live Jobs Screen (Map) ───────────────────────────────────────────────────
 function LiveJobsScreen() {
-  const { lang, dir } = useLang();
+  const { lang } = useLang();
   const { requests, submitBid } = useEcosystem();
   const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);

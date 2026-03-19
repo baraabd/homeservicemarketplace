@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
-  Clock,
   TrendingDown,
   Star,
   Zap,

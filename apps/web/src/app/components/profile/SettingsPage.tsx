@@ -77,7 +77,7 @@ interface SettingsPageProps {
 }
 
 export function SettingsPage({ onBack }: SettingsPageProps) {
-  const { lang, dir, darkMode, toggleDarkMode, toggleLang } = useLang();
+  const { lang, dir, darkMode, toggleDarkMode } = useLang();
   const navigate = useNavigate();
 
   const [pushNotifs, setPushNotifs] = useState(true);

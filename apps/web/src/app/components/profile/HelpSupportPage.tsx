@@ -10,7 +10,6 @@ import {
   CreditCard,
   Clock,
   Star,
-  X,
 } from 'lucide-react';
 import { useLang } from '../../i18n/LanguageContext';
 
@@ -73,6 +72,11 @@ function now() {
   return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
+// دالة خارجية للحصول على الوقت لمنع خطأ Impure Function داخل الـ Component
+function getTimestamp() {
+  return Date.now();
+}
+
 const SEED_EN: Message[] = [
   {
     id: 'b0',
@@ -112,7 +116,8 @@ interface HelpSupportPageProps {
 
 export function HelpSupportPage({ onBack }: HelpSupportPageProps) {
   const { lang, dir } = useLang();
-  const [messages, setMessages] = useState<Message[]>(lang === 'ar' ? SEED_AR : SEED_EN);
+  // تعديل تمرير القيمة الابتدائية لكي لا تسبب أي مشكلة Cascading Render
+  const [messages, setMessages] = useState<Message[]>(() => lang === 'ar' ? SEED_AR : SEED_EN);
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const [rating, setRating] = useState(0);
@@ -124,30 +129,41 @@ export function HelpSupportPage({ onBack }: HelpSupportPageProps) {
   }, [lang]);
 
   useEffect(() => {
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 60);
+    const timer = setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 60);
+    return () => clearTimeout(timer);
   }, [messages, typing]);
 
   const sendMessage = (text: string) => {
     if (!text.trim()) return;
+
+    // استخدام الدالة الخارجية بدلاً من Date.now() مباشرة
+    const currentTimestamp = getTimestamp();
+    const currentTime = now();
+
     const userMsg: Message = {
-      id: `u${Date.now()}`,
+      id: `u${currentTimestamp}`,
       from: 'user',
       text: text.trim(),
-      time: now(),
+      time: currentTime,
       read: false,
     };
+
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setTyping(true);
+
     setTimeout(() => {
       setTyping(false);
+      const botTimestamp = getTimestamp();
+      const botTime = now();
+
       setMessages((prev) => [
         ...prev,
         {
-          id: `b${Date.now()}`,
+          id: `b${botTimestamp}`,
           from: 'bot',
           text: getBotReply(text, lang),
-          time: now(),
+          time: botTime,
           read: false,
         },
       ]);

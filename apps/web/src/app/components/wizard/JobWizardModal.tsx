@@ -46,6 +46,14 @@ const SERVICE_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg:
   دهانات: { icon: <PaintBucket size={20} />, color: 'text-purple-600', bg: 'bg-purple-100' },
 };
 
+// ─── Extracted Components (Moved outside to prevent re-creation during render) ─
+const BackChevron = ({ dir }: { dir: string }) =>
+  dir === 'rtl' ? (
+    <ChevronRight size={20} className="text-slate-700" />
+  ) : (
+    <ChevronLeft size={20} className="text-slate-700" />
+  );
+
 // ─── Mock Map ─────────────────────────────────────────────────────────────────
 function MapPlaceholder({ label }: { label: string }) {
   return (
@@ -249,13 +257,6 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
 
   const stepLabels = [t('mediaAndBrief'), t('locationAndTime'), t('confirm')];
 
-  const BackChevron = () =>
-    dir === 'rtl' ? (
-      <ChevronRight size={20} className="text-slate-700" />
-    ) : (
-      <ChevronLeft size={20} className="text-slate-700" />
-    );
-
   return (
     <div
       className={`absolute inset-0 z-50 flex flex-col justify-end transition-all duration-300 ${
@@ -423,7 +424,7 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
                 onClick={() => setStep(1)}
                 className="w-9 h-9 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center active:scale-90"
               >
-                <BackChevron />
+                <BackChevron dir={dir} />
               </button>
               <p className="text-slate-900" style={{ fontSize: '16px', fontWeight: 800 }}>
                 {t('locationAndTime')}
