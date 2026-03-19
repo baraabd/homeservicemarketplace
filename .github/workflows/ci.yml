@@ -16,7 +16,7 @@ env:
 
 jobs:
   verify-web:
-    name: Web Typecheck and Build
+    name: Verify Web
     runs-on: ubuntu-latest
 
     steps:
@@ -35,9 +35,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint web (non-blocking for now)
+      - name: Lint web
         run: pnpm --filter @homeservicemarketplace/web lint
-        continue-on-error: true
 
       - name: Typecheck web
         run: pnpm --filter @homeservicemarketplace/web typecheck
