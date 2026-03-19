@@ -1,56 +1,56 @@
-import { motion } from "motion/react";
-import { useNavigate } from "react-router";
-import { Smartphone, Monitor, Wrench, ArrowRight, Zap, Shield, Globe } from "lucide-react";
+import { motion } from 'motion/react';
+import { useNavigate } from 'react-router';
+import { Smartphone, Monitor, Wrench, ArrowRight, Zap, Shield, Globe } from 'lucide-react';
 
 interface AppCard {
-  id:       string;
-  label:    string;
-  sub:      string;
-  path:     string;
+  id: string;
+  label: string;
+  sub: string;
+  path: string;
   gradient: string;
-  border:   string;
-  icon:     React.ReactNode;
-  badge?:   string;
+  border: string;
+  icon: React.ReactNode;
+  badge?: string;
   badgeBg?: string;
-  tags:     string[];
+  tags: string[];
 }
 
 const APPS: AppCard[] = [
   {
-    id: "seeker",
-    label: "Seeker App",
-    sub: "Client · Home Services Platform",
-    path: "/home",
-    gradient: "from-amber-500 via-orange-500 to-red-500",
-    border: "border-amber-400/30",
+    id: 'seeker',
+    label: 'Seeker App',
+    sub: 'Client · Home Services Platform',
+    path: '/home',
+    gradient: 'from-amber-500 via-orange-500 to-red-500',
+    border: 'border-amber-400/30',
     icon: <Smartphone size={28} className="text-white" />,
-    badge: "Mobile PWA",
-    badgeBg: "bg-amber-400/20 text-amber-200",
-    tags: ["Post Jobs", "Compare Bids", "Track Pro", "Payments"],
+    badge: 'Mobile PWA',
+    badgeBg: 'bg-amber-400/20 text-amber-200',
+    tags: ['Post Jobs', 'Compare Bids', 'Track Pro', 'Payments'],
   },
   {
-    id: "provider",
-    label: "Provider App",
-    sub: "Professional · Earnings Platform",
-    path: "/provider",
-    gradient: "from-blue-600 via-indigo-600 to-purple-700",
-    border: "border-blue-400/30",
+    id: 'provider',
+    label: 'Provider App',
+    sub: 'Professional · Earnings Platform',
+    path: '/provider',
+    gradient: 'from-blue-600 via-indigo-600 to-purple-700',
+    border: 'border-blue-400/30',
     icon: <Wrench size={28} className="text-white" />,
-    badge: "Map-Centric",
-    badgeBg: "bg-blue-400/20 text-blue-200",
-    tags: ["Live Job Map", "Bid Engine", "Wallet", "Analytics"],
+    badge: 'Map-Centric',
+    badgeBg: 'bg-blue-400/20 text-blue-200',
+    tags: ['Live Job Map', 'Bid Engine', 'Wallet', 'Analytics'],
   },
   {
-    id: "admin",
-    label: "Admin Dashboard",
-    sub: "Platform Control · Maharah",
-    path: "/admin",
-    gradient: "from-slate-700 via-slate-800 to-slate-900",
-    border: "border-slate-400/20",
+    id: 'admin',
+    label: 'Admin Dashboard',
+    sub: 'Platform Control · Maharah',
+    path: '/admin',
+    gradient: 'from-slate-700 via-slate-800 to-slate-900',
+    border: 'border-slate-400/20',
     icon: <Monitor size={28} className="text-white" />,
-    badge: "Desktop 1440px",
-    badgeBg: "bg-slate-400/20 text-slate-300",
-    tags: ["KPIs", "Pro Verification", "Financials", "Disputes"],
+    badge: 'Desktop 1440px',
+    badgeBg: 'bg-slate-400/20 text-slate-300',
+    tags: ['KPIs', 'Pro Verification', 'Financials', 'Disputes'],
   },
 ];
 
@@ -60,12 +60,18 @@ export function AppSelector() {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-6 py-12"
-      style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)" }}
+      style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)' }}
     >
       {/* BG decoration */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/3 w-96 h-96 rounded-full blur-3xl opacity-10" style={{ background: "#F59E0B" }} />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full blur-3xl opacity-10" style={{ background: "#6366f1" }} />
+        <div
+          className="absolute top-1/4 left-1/3 w-96 h-96 rounded-full blur-3xl opacity-10"
+          style={{ background: '#F59E0B' }}
+        />
+        <div
+          className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full blur-3xl opacity-10"
+          style={{ background: '#6366f1' }}
+        />
       </div>
 
       <div className="relative w-full max-w-5xl">
@@ -81,26 +87,46 @@ export function AppSelector() {
               <Zap size={26} className="text-white" />
             </div>
             <div className="text-start">
-              <h1 className="text-white" style={{ fontSize: "28px", fontWeight: 900, letterSpacing: "-0.02em" }}>FixNow</h1>
-              <p className="text-slate-400" style={{ fontSize: "13px" }}>Maharah · Full Ecosystem Platform</p>
+              <h1
+                className="text-white"
+                style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.02em' }}
+              >
+                FixNow
+              </h1>
+              <p className="text-slate-400" style={{ fontSize: '13px' }}>
+                Maharah · Full Ecosystem Platform
+              </p>
             </div>
           </div>
 
-          <h2 className="text-white mb-3" style={{ fontSize: "36px", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.2 }}>
-            Choose your <span className="text-transparent bg-clip-text" style={{ backgroundImage: "linear-gradient(135deg, #F59E0B, #f97316)" }}>experience</span>
+          <h2
+            className="text-white mb-3"
+            style={{ fontSize: '36px', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}
+          >
+            Choose your{' '}
+            <span
+              className="text-transparent bg-clip-text"
+              style={{ backgroundImage: 'linear-gradient(135deg, #F59E0B, #f97316)' }}
+            >
+              experience
+            </span>
           </h2>
-          <p className="text-slate-400" style={{ fontSize: "15px" }}>
+          <p className="text-slate-400" style={{ fontSize: '15px' }}>
             Three interconnected apps — one seamless marketplace ecosystem
           </p>
 
           {/* Global badges */}
           <div className="flex items-center justify-center gap-3 mt-5">
             {[
-              { icon: <Globe size={13}/>,   label: "Bilingual AR/EN + RTL" },
-              { icon: <Zap size={13}/>,     label: "Real-time Ecosystem Flow" },
-              { icon: <Shield size={13}/>,  label: "Connected State" },
+              { icon: <Globe size={13} />, label: 'Bilingual AR/EN + RTL' },
+              { icon: <Zap size={13} />, label: 'Real-time Ecosystem Flow' },
+              { icon: <Shield size={13} />, label: 'Connected State' },
             ].map((b) => (
-              <div key={b.label} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-300" style={{ fontSize: "11px" }}>
+              <div
+                key={b.label}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-300"
+                style={{ fontSize: '11px' }}
+              >
                 <span className="text-amber-400">{b.icon}</span>
                 {b.label}
               </div>
@@ -121,25 +147,30 @@ export function AppSelector() {
                 whileHover={{ scale: 1.02, y: -4 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => {
-                  if (app.id === "admin") {
-                    navigate("/admin");
-                  } else if (app.id === "provider") {
-                    localStorage.setItem("fixnow_authed", "1");
-                    navigate("/provider");
+                  if (app.id === 'admin') {
+                    navigate('/admin');
+                  } else if (app.id === 'provider') {
+                    localStorage.setItem('fixnow_authed', '1');
+                    navigate('/provider');
                   } else {
                     // Seeker: always clear auth so login flow runs properly
-                    localStorage.removeItem("fixnow_authed");
-                    navigate("/login");
+                    localStorage.removeItem('fixnow_authed');
+                    navigate('/login');
                   }
                 }}
                 className={`w-full group flex flex-col rounded-3xl border ${app.border} overflow-hidden cursor-pointer text-start relative`}
-                style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(10px)" }}
+                style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(10px)' }}
               >
                 {/* Card gradient header */}
-                <div className={`bg-gradient-to-br ${app.gradient} p-6 pb-8 relative overflow-hidden`}>
+                <div
+                  className={`bg-gradient-to-br ${app.gradient} p-6 pb-8 relative overflow-hidden`}
+                >
                   <div className="absolute -top-8 -end-8 w-32 h-32 rounded-full bg-white/10" />
                   <div className="absolute top-2 end-2">
-                    <span className={`px-2.5 py-1 rounded-full ${app.badgeBg} backdrop-blur-sm`} style={{ fontSize: "10px", fontWeight: 700 }}>
+                    <span
+                      className={`px-2.5 py-1 rounded-full ${app.badgeBg} backdrop-blur-sm`}
+                      style={{ fontSize: '10px', fontWeight: 700 }}
+                    >
                       {app.badge}
                     </span>
                   </div>
@@ -147,8 +178,12 @@ export function AppSelector() {
                     <div className="w-14 h-14 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center mb-4 shadow-lg">
                       {app.icon}
                     </div>
-                    <h3 className="text-white mb-1" style={{ fontSize: "20px", fontWeight: 800 }}>{app.label}</h3>
-                    <p className="text-white/60" style={{ fontSize: "12px" }}>{app.sub}</p>
+                    <h3 className="text-white mb-1" style={{ fontSize: '20px', fontWeight: 800 }}>
+                      {app.label}
+                    </h3>
+                    <p className="text-white/60" style={{ fontSize: '12px' }}>
+                      {app.sub}
+                    </p>
                   </div>
                 </div>
 
@@ -160,7 +195,7 @@ export function AppSelector() {
                       <span
                         key={tag}
                         className="px-2.5 py-1 rounded-lg bg-white/8 border border-white/8 text-slate-300"
-                        style={{ fontSize: "11px", fontWeight: 500 }}
+                        style={{ fontSize: '11px', fontWeight: 500 }}
                       >
                         {tag}
                       </span>
@@ -169,14 +204,14 @@ export function AppSelector() {
 
                   {/* CTA */}
                   <div className="flex items-center justify-between mt-auto pt-2">
-                    <span className="text-slate-400" style={{ fontSize: "12px" }}>
-                      {app.id === "admin" ? "Full-width desktop view" : "430px mobile PWA"}
+                    <span className="text-slate-400" style={{ fontSize: '12px' }}>
+                      {app.id === 'admin' ? 'Full-width desktop view' : '430px mobile PWA'}
                     </span>
                     <motion.div
                       className="flex items-center gap-1.5 text-amber-400 group-hover:text-amber-300"
                       animate={{ x: 0 }}
                       whileHover={{ x: 3 }}
-                      style={{ fontSize: "13px", fontWeight: 700 }}
+                      style={{ fontSize: '13px', fontWeight: 700 }}
                     >
                       Launch <ArrowRight size={14} />
                     </motion.div>
@@ -190,12 +225,13 @@ export function AppSelector() {
         {/* Footer note */}
         <motion.p
           className="text-center text-slate-500 mt-10"
-          style={{ fontSize: "12px" }}
+          style={{ fontSize: '12px' }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8 }}
         >
-          Cross-app state is shared in real-time — actions in one app reflect instantly in all others
+          Cross-app state is shared in real-time — actions in one app reflect instantly in all
+          others
         </motion.p>
       </div>
     </div>

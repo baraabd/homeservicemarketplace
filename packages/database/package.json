@@ -1,5 +1,13 @@
 {
   "name": "@homeservicemarketplace/database",
   "version": "0.1.0",
-  "private": true
+  "private": true,
+  "scripts": {
+    "lint": "echo \"No lint configured for database package yet\"",
+    "typecheck": "tsc --noEmit",
+    "prisma:validate": "prisma validate"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
 }

@@ -1,7 +1,10 @@
 // ─── Base pulse block ──────────────────────────────────────────────────────────
 function Pulse({ className, style }: { className: string; style?: Record<string, string> }) {
   return (
-    <div className={`rounded-xl animate-pulse bg-slate-200 dark:bg-slate-700 ${className}`} style={style} />
+    <div
+      className={`rounded-xl animate-pulse bg-slate-200 dark:bg-slate-700 ${className}`}
+      style={style}
+    />
   );
 }
 
@@ -35,8 +38,8 @@ function HomeSkeleton() {
       </div>
       {/* Lead cards row */}
       <div className="flex gap-3 overflow-hidden">
-        <Pulse className="h-44 rounded-3xl flex-shrink-0" style={{ width: "168px" }} />
-        <Pulse className="h-44 rounded-3xl flex-shrink-0" style={{ width: "168px" }} />
+        <Pulse className="h-44 rounded-3xl flex-shrink-0" style={{ width: '168px' }} />
+        <Pulse className="h-44 rounded-3xl flex-shrink-0" style={{ width: '168px' }} />
       </div>
     </div>
   );
@@ -47,7 +50,10 @@ function BookingsSkeleton() {
     <div className="px-4 pt-4 flex flex-col gap-3">
       <Pulse className="h-6 w-32 mb-1" />
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 p-4 flex flex-col gap-2.5">
+        <div
+          key={i}
+          className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 p-4 flex flex-col gap-2.5"
+        >
           <div className="flex justify-between">
             <Pulse className="h-4 w-28" />
             <Pulse className="h-6 w-20 rounded-full" />
@@ -96,7 +102,10 @@ function ProfileSkeleton() {
       {/* Menu list */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl overflow-hidden">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? "border-t border-slate-50 dark:border-slate-700" : ""}`}>
+          <div
+            key={i}
+            className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? 'border-t border-slate-50 dark:border-slate-700' : ''}`}
+          >
             <Pulse className="w-8 h-8 rounded-xl flex-shrink-0" />
             <Pulse className="flex-1 h-4" />
             <Pulse className="w-4 h-4 rounded flex-shrink-0" />
@@ -110,10 +119,15 @@ function ProfileSkeleton() {
 // ─── Public component ──────────────────────────────────────────────────────────
 export function TabSkeleton({ tab }: { tab: string }) {
   switch (tab) {
-    case "home":     return <HomeSkeleton />;
-    case "bookings": return <BookingsSkeleton />;
-    case "messages": return <MessagesSkeleton />;
-    case "profile":  return <ProfileSkeleton />;
-    default:         return <HomeSkeleton />;
+    case 'home':
+      return <HomeSkeleton />;
+    case 'bookings':
+      return <BookingsSkeleton />;
+    case 'messages':
+      return <MessagesSkeleton />;
+    case 'profile':
+      return <ProfileSkeleton />;
+    default:
+      return <HomeSkeleton />;
   }
 }

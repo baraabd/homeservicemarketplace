@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: ["main"]
+    branches: ['main']
   push:
-    branches: ["main"]
+    branches: ['main']
   workflow_dispatch:
 
 concurrency:
@@ -12,11 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: '20'
 
 jobs:
   verify-web:
-    name: Web Typecheck and Build
+    name: Verify Web
     runs-on: ubuntu-latest
 
     steps:
@@ -30,17 +30,68 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint web (non-blocking for now)
+      - name: Lint web
         run: pnpm --filter @homeservicemarketplace/web lint
-        continue-on-error: true
 
       - name: Typecheck web
         run: pnpm --filter @homeservicemarketplace/web typecheck
 
       - name: Build web
         run: pnpm --filter @homeservicemarketplace/web build
+
+  verify-api:
+    name: Verify API
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint api
+        run: pnpm --filter @homeservicemarketplace/api lint
+
+      - name: Typecheck api
+        run: pnpm --filter @homeservicemarketplace/api typecheck
+
+  verify-database:
+    name: Verify Database Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint database package
+        run: pnpm --filter @homeservicemarketplace/database lint
+
+      - name: Typecheck database package
+        run: pnpm --filter @homeservicemarketplace/database typecheck
