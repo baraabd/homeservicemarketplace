@@ -2,6 +2,9 @@
   "name": "homeservicemarketplace",
   "private": true,
   "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
