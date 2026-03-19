@@ -1,14 +1,10 @@
-import { useNavigate } from "react-router";
-import {
-  LoginScreen,
-  SignUpScreen,
-  ForgotPasswordScreen,
-} from "../components/auth/AuthScreens";
+import { useNavigate } from 'react-router';
+import { LoginScreen, SignUpScreen, ForgotPasswordScreen } from '../components/auth/AuthScreens';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 /** Mark the session as authenticated and store it in localStorage */
 function setAuthed() {
-  localStorage.setItem("fixnow_authed", "true");
+  localStorage.setItem('fixnow_authed', 'true');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -21,10 +17,10 @@ export function LoginPage() {
     <LoginScreen
       onLogin={() => {
         setAuthed();
-        navigate("/home");
+        navigate('/home');
       }}
-      onSignUp={() => navigate("/signup")}
-      onForgotPassword={() => navigate("/forgot-password")}
+      onSignUp={() => navigate('/signup')}
+      onForgotPassword={() => navigate('/forgot-password')}
     />
   );
 }
@@ -37,10 +33,10 @@ export function SignUpPage() {
 
   return (
     <SignUpScreen
-      onBack={() => navigate("/login")}
+      onBack={() => navigate('/login')}
       onSuccess={() => {
         setAuthed();
-        navigate("/home");
+        navigate('/home');
       }}
     />
   );
@@ -52,9 +48,5 @@ export function SignUpPage() {
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
 
-  return (
-    <ForgotPasswordScreen
-      onBack={() => navigate("/login")}
-    />
-  );
+  return <ForgotPasswordScreen onBack={() => navigate('/login')} />;
 }

@@ -1,5 +1,5 @@
-import { useRootContext } from "../Root";
-import { HomeScreen }     from "../components/home/HomeScreen";
+import { useRootContext } from '../Root';
+import { HomeScreen } from '../components/home/HomeScreen';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HOME PAGE  /home  /home/bookings  /home/messages  /home/profile

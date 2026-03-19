@@ -1,5 +1,5 @@
 interface TopBarProps {
-  lang: "EN" | "AR";
+  lang: 'EN' | 'AR';
   onToggleLang: () => void;
   avatarUrl: string;
 }
@@ -25,10 +25,16 @@ export function TopBar({ lang, onToggleLang, avatarUrl }: TopBarProps) {
             </svg>
           </div>
           <div className="flex flex-col leading-none">
-            <span className="text-blue-600 tracking-tight" style={{ fontSize: "15px", fontWeight: 700 }}>
+            <span
+              className="text-blue-600 tracking-tight"
+              style={{ fontSize: '15px', fontWeight: 700 }}
+            >
               FixNow
             </span>
-            <span className="text-slate-400" style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.04em" }}>
+            <span
+              className="text-slate-400"
+              style={{ fontSize: '10px', fontWeight: 500, letterSpacing: '0.04em' }}
+            >
               Home Services
             </span>
           </div>
@@ -40,13 +46,21 @@ export function TopBar({ lang, onToggleLang, avatarUrl }: TopBarProps) {
           <button
             onClick={onToggleLang}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 transition-all active:scale-95"
-            style={{ fontSize: "12px", fontWeight: 600 }}
+            style={{ fontSize: '12px', fontWeight: 600 }}
           >
             <span
-              className={`w-1.5 h-1.5 rounded-full ${lang === "EN" ? "bg-blue-600" : "bg-orange-500"}`}
+              className={`w-1.5 h-1.5 rounded-full ${lang === 'EN' ? 'bg-blue-600' : 'bg-orange-500'}`}
             />
-            {lang === "EN" ? "EN" : "AR"}
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            {lang === 'EN' ? 'EN' : 'AR'}
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
               <path d="M7 16V4m0 0L3 8m4-4 4 4" />
               <path d="M17 8v12m0 0 4-4m-4 4-4-4" />
             </svg>
@@ -54,7 +68,16 @@ export function TopBar({ lang, onToggleLang, avatarUrl }: TopBarProps) {
 
           {/* Notification Bell */}
           <button className="relative w-9 h-9 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center active:scale-95">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#475569"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
               <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
             </svg>
@@ -63,11 +86,7 @@ export function TopBar({ lang, onToggleLang, avatarUrl }: TopBarProps) {
 
           {/* Avatar */}
           <button className="w-9 h-9 rounded-full overflow-hidden border-2 border-blue-200 shadow-sm active:scale-95">
-            <img
-              src={avatarUrl}
-              alt="User avatar"
-              className="w-full h-full object-cover"
-            />
+            <img src={avatarUrl} alt="User avatar" className="w-full h-full object-cover" />
           </button>
         </div>
       </div>

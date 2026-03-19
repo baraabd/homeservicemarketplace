@@ -34,9 +34,9 @@ Create a toggle / switch called:
 
 #### Behavior:
 
-* **If ON:**
+- **If ON:**
   The client app should show each handyman’s hourly rate next to their profile / card / offer.
-* **If OFF:**
+- **If OFF:**
   The client app should hide the hourly rate completely, and handyman data should appear without any hourly pricing information.
 
 ---
@@ -47,24 +47,24 @@ Create a toggle / switch called:
 
 Show provider data like:
 
-* Profile image
-* Name
-* Rating
-* Distance / location
-* Category / profession
-* **Hourly price** (example: 15 USD/hour or 50 SAR/hour)
+- Profile image
+- Name
+- Rating
+- Distance / location
+- Category / profession
+- **Hourly price** (example: 15 USD/hour or 50 SAR/hour)
 
 ### When the setting is OFF:
 
 Show provider data like:
 
-* Profile image
-* Name
-* Rating
-* Distance / location
-* Category / profession
-* **Do not show hourly price**
-* Layout should automatically rebalance and remain visually clean without empty gaps
+- Profile image
+- Name
+- Rating
+- Distance / location
+- Category / profession
+- **Do not show hourly price**
+- Layout should automatically rebalance and remain visually clean without empty gaps
 
 ---
 
@@ -74,18 +74,18 @@ Show provider data like:
 
 Design a settings card with:
 
-* Section title: **Pricing Settings**
-* Toggle label: **Show Handyman Hourly Rate**
-* Helper text under the toggle:
+- Section title: **Pricing Settings**
+- Toggle label: **Show Handyman Hourly Rate**
+- Helper text under the toggle:
 
 **Enable this option if you want customers to see the handyman’s hourly rate in the client app. Disable it if pricing should not be shown by hour.**
 
 Also show:
 
-* default state
-* active state
-* disabled state
-* success feedback after saving changes
+- default state
+- active state
+- disabled state
+- success feedback after saving changes
 
 ---
 
@@ -93,11 +93,11 @@ Also show:
 
 Update all relevant UI screens/components where handyman information appears, such as:
 
-* provider cards
-* bid cards
-* search results
-* job matching screens
-* provider detail page
+- provider cards
+- bid cards
+- search results
+- job matching screens
+- provider detail page
 
 Design both states:
 
@@ -106,10 +106,10 @@ Design both states:
 
 Ensure:
 
-* No broken spacing
-* No empty placeholders
-* Consistent alignment in both Arabic (RTL) and English (LTR)
-* Responsive layout for mobile-first web app
+- No broken spacing
+- No empty placeholders
+- Consistent alignment in both Arabic (RTL) and English (LTR)
+- Responsive layout for mobile-first web app
 
 ---
 
@@ -117,9 +117,9 @@ Ensure:
 
 The setting should act as a **global platform configuration**:
 
-* controlled only by admin
-* read by client app at runtime
-* affects all places where handyman pricing is displayed
+- controlled only by admin
+- read by client app at runtime
+- affects all places where handyman pricing is displayed
 
 This is not a provider-level setting.
 It is a **system-wide visibility setting**.
@@ -134,9 +134,9 @@ Generate:
 2. Updated **Client provider card**
 3. Updated **Bid / Offer card**
 4. Two UI states for client app:
+   - Hourly pricing ON
+   - Hourly pricing OFF
 
-   * Hourly pricing ON
-   * Hourly pricing OFF
 5. Clear UX notes explaining behavior
 6. Component behavior rules for developers
 
@@ -144,16 +144,15 @@ Generate:
 
 ## 6. Design Notes
 
-* Mobile-first layout
-* Arabic + English support
-* RTL / LTR compatible
-* Clean enterprise style
-* Similar to modern marketplace apps
-* Keep design scalable for future pricing modes such as:
-
-  * fixed price
-  * starting from price
-  * price on request
+- Mobile-first layout
+- Arabic + English support
+- RTL / LTR compatible
+- Clean enterprise style
+- Similar to modern marketplace apps
+- Keep design scalable for future pricing modes such as:
+  - fixed price
+  - starting from price
+  - price on request
 
 ---
 
@@ -166,10 +165,10 @@ Only introduce this feature in a way that fits naturally into the current platfo
 
 إذا أردت، أستطيع الآن أن أكتب لك أيضًا **نسخة أقوى وموجهة للـ backend + frontend logic** بحيث لا تكون فقط للتصميم، بل تشمل:
 
-* اسم الحقل في قاعدة البيانات
-* API response
-* admin settings schema
-* client rendering logic
-* conditional UI rules
+- اسم الحقل في قاعدة البيانات
+- API response
+- admin settings schema
+- client rendering logic
+- conditional UI rules
 
 هذه النسخة ستكون جاهزة لتعطيها لـ Cursor أو Claude ليبنيها لك كنظام كامل.

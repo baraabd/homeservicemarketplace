@@ -1,24 +1,30 @@
 interface ActiveJobsProps {
-  lang: "EN" | "AR";
+  lang: 'EN' | 'AR';
 }
 
 export function ActiveJobs({ lang }: ActiveJobsProps) {
-  const isAr = lang === "AR";
+  const isAr = lang === 'AR';
 
   return (
     <div className="px-4 mt-5 mb-2">
       {/* Section Header */}
       <div className="flex items-center justify-between mb-3.5">
         <div className="flex items-center gap-2">
-          <h2 className="text-slate-800" style={{ fontSize: "16px", fontWeight: 700 }}>
-            {isAr ? "الطلبات النشطة" : "Active Requests"}
+          <h2 className="text-slate-800" style={{ fontSize: '16px', fontWeight: 700 }}>
+            {isAr ? 'الطلبات النشطة' : 'Active Requests'}
           </h2>
-          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 text-slate-500" style={{ fontSize: "11px", fontWeight: 700 }}>
+          <span
+            className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 text-slate-500"
+            style={{ fontSize: '11px', fontWeight: 700 }}
+          >
             0
           </span>
         </div>
-        <button className="text-blue-600 flex items-center gap-1 active:opacity-70" style={{ fontSize: "13px", fontWeight: 600 }}>
-          {isAr ? "السجل" : "History"}
+        <button
+          className="text-blue-600 flex items-center gap-1 active:opacity-70"
+          style={{ fontSize: '13px', fontWeight: 600 }}
+        >
+          {isAr ? 'السجل' : 'History'}
           <svg
             width="14"
             height="14"
@@ -28,7 +34,7 @@ export function ActiveJobs({ lang }: ActiveJobsProps) {
             strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
-            style={{ transform: isAr ? "scaleX(-1)" : "none" }}
+            style={{ transform: isAr ? 'scaleX(-1)' : 'none' }}
           >
             <path d="m9 18 6-6-6-6" />
           </svg>
@@ -63,7 +69,16 @@ export function ActiveJobs({ lang }: ActiveJobsProps) {
             </div>
             {/* Floating badge */}
             <div className="absolute -top-1 -end-1 w-7 h-7 rounded-full bg-orange-100 border-2 border-white flex items-center justify-center">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#f97316"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" x2="12" y1="8" y2="12" />
                 <line x1="12" x2="12.01" y1="16" y2="16" />
@@ -71,12 +86,15 @@ export function ActiveJobs({ lang }: ActiveJobsProps) {
             </div>
           </div>
 
-          <p className="text-slate-800 mb-1.5" style={{ fontSize: "15px", fontWeight: 700 }}>
-            {isAr ? "لا توجد طلبات نشطة" : "No active requests"}
+          <p className="text-slate-800 mb-1.5" style={{ fontSize: '15px', fontWeight: 700 }}>
+            {isAr ? 'لا توجد طلبات نشطة' : 'No active requests'}
           </p>
-          <p className="text-slate-400 mb-6 max-w-[200px]" style={{ fontSize: "13px", lineHeight: "1.5" }}>
+          <p
+            className="text-slate-400 mb-6 max-w-[200px]"
+            style={{ fontSize: '13px', lineHeight: '1.5' }}
+          >
             {isAr
-              ? "انشر وظيفة وسنوصلك بالمحترفين الموثوقين"
+              ? 'انشر وظيفة وسنوصلك بالمحترفين الموثوقين'
               : "Post a job and we'll connect you with trusted professionals"}
           </p>
 
@@ -96,30 +114,45 @@ export function ActiveJobs({ lang }: ActiveJobsProps) {
               <line x1="12" x2="12" y1="8" y2="16" />
               <line x1="8" x2="16" y1="12" y2="12" />
             </svg>
-            <span style={{ fontSize: "15px", fontWeight: 700 }}>
-              {isAr ? "انشر وظيفة" : "Post a Job"}
+            <span style={{ fontSize: '15px', fontWeight: 700 }}>
+              {isAr ? 'انشر وظيفة' : 'Post a Job'}
             </span>
           </button>
 
           {/* How it works */}
           <div className="flex items-center gap-4 mt-5 w-full justify-center">
             {[
-              { step: "1", label: isAr ? "انشر" : "Post" },
-              { step: "2", label: isAr ? "احصل على عروض" : "Get Offers" },
-              { step: "3", label: isAr ? "احجز" : "Book" },
+              { step: '1', label: isAr ? 'انشر' : 'Post' },
+              { step: '2', label: isAr ? 'احصل على عروض' : 'Get Offers' },
+              { step: '3', label: isAr ? 'احجز' : 'Book' },
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-2">
                 <div className="flex flex-col items-center gap-0.5">
-                  <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center" style={{ fontSize: "11px", fontWeight: 700 }}>
+                  <div
+                    className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"
+                    style={{ fontSize: '11px', fontWeight: 700 }}
+                  >
                     {item.step}
                   </div>
-                  <span className="text-slate-500" style={{ fontSize: "10px", fontWeight: 500 }}>
+                  <span className="text-slate-500" style={{ fontSize: '10px', fontWeight: 500 }}>
                     {item.label}
                   </span>
                 </div>
                 {i < 2 && (
-                  <svg width="16" height="8" viewBox="0 0 16 8" fill="none" style={{ marginBottom: "10px", transform: isAr ? "scaleX(-1)" : "none" }}>
-                    <path d="M0 4h14M10 1l4 3-4 3" stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg
+                    width="16"
+                    height="8"
+                    viewBox="0 0 16 8"
+                    fill="none"
+                    style={{ marginBottom: '10px', transform: isAr ? 'scaleX(-1)' : 'none' }}
+                  >
+                    <path
+                      d="M0 4h14M10 1l4 3-4 3"
+                      stroke="#cbd5e1"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                 )}
               </div>
