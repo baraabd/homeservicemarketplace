@@ -43,3 +43,29 @@ jobs:
 
       - name: Build web
         run: pnpm --filter @homeservicemarketplace/web build
+
+  verify-api:
+    name: Verify API
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint api
+        run: pnpm --filter @homeservicemarketplace/api lint
+
+      - name: Typecheck api
+        run: pnpm --filter @homeservicemarketplace/api typecheck
