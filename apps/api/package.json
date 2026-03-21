@@ -12,7 +12,9 @@
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.16",
+    "@types/bcrypt": "^6.0.0",
     "@types/node": "^25.5.0",
+    "@types/passport-jwt": "^4.0.1",
     "typescript": "^5.9.3"
   },
   "dependencies": {
@@ -20,12 +22,17 @@
     "@nestjs/common": "^11.1.17",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.1.17",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.17",
     "@nestjs/throttler": "^6.5.0",
+    "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "helmet": "^8.1.0",
     "nestjs-pino": "^4.6.1",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "pino-pretty": "^13.1.3",
