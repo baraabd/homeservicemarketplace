@@ -47,6 +47,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@homeservicemarketplace/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@nestjs/common':
         specifier: ^11.1.17
         version: 11.1.17(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
