@@ -1,7 +1,8 @@
-// IAM-only baseline schema. Business domain entities (Provider, Service,
-// Booking, Category, etc.) intentionally not modeled here — they belong to
-// later phase modules and will be added as additive migrations alongside
-// their owning bounded contexts.
+// IAM baseline schema.
+// Additive to the prior IAM-only migration. Extends User with account-state
+// and MFA-readiness fields, adds sessions/tokens/audit/oauth tables. Business
+// domain tables (Provider, Booking, Service, etc.) are NOT modeled here —
+// they belong to later phase modules.
 
 generator client {
   provider = "prisma-client-js"
@@ -12,50 +13,107 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum AccountStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  LOCKED
+  SUSPENDED
+  DELETED
+}
+
+enum ClientKind {
+  WEB
+  MOBILE
+}
+
+enum TokenPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum AuditEventType {
+  USER_REGISTERED
+  EMAIL_VERIFIED
+  EMAIL_VERIFICATION_RESENT
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  LOGIN_LOCKED
+  LOGOUT
+  LOGOUT_ALL
+  PASSWORD_CHANGED
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_RESET_COMPLETED
+  REFRESH_ROTATED
+  REFRESH_REPLAY
+  SESSION_REVOKED
+  MFA_ENROLLED
+  MFA_DISABLED
+  MFA_CHALLENGE_FAILED
+  MFA_BACKUP_USED
+  OAUTH_LINKED
+  ROLE_ASSIGNED
+  ROLE_REVOKED
+}
+
 model User {
-  id           String     @id @default(cuid())
-  email        String     @unique
-  passwordHash String?
-  firstName    String
-  lastName     String
-  isActive     Boolean    @default(true)
+  id                String        @id @default(cuid())
+  email             String        @unique
+  passwordHash      String?
+  firstName         String
+  lastName          String
+  isActive          Boolean       @default(true)
+  status            AccountStatus @default(PENDING_VERIFICATION)
+  emailVerifiedAt   DateTime?
+  passwordUpdatedAt DateTime?
+  failedLoginCount  Int           @default(0)
+  lockedUntil       DateTime?
+  mfaEnabled        Boolean       @default(false)
+  mfaSecret         Bytes?
+  mfaEnrolledAt     DateTime?
 
-  userRoles    UserRole[]
+  userRoles          UserRole[]
+  sessions           Session[]
+  verificationTokens VerificationToken[]
+  oauthAccounts      OauthAccount[]
+  mfaBackupCodes     MfaBackupCode[]
+  auditEvents        AuditEvent[]
 
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  deletedAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   @@index([deletedAt])
+  @@index([status])
+  @@index([lockedUntil])
   @@map("users")
 }
 
 model Role {
-  id              String           @id @default(cuid())
-  name            String           @unique
-  description     String?
-  isSystem        Boolean          @default(false)
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+  isSystem    Boolean @default(false)
 
   userRoles       UserRole[]
   rolePermissions RolePermission[]
 
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  deletedAt       DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   @@index([deletedAt])
   @@map("roles")
 }
 
 model Permission {
-  id              String           @id @default(cuid())
-  key             String           @unique
-  description     String?
+  id          String  @id @default(cuid())
+  key         String  @unique
+  description String?
 
   rolePermissions RolePermission[]
 
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("permissions")
 }
@@ -65,8 +123,8 @@ model UserRole {
   roleId     String
   assignedAt DateTime @default(now())
 
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
   @@index([roleId])
@@ -77,10 +135,104 @@ model RolePermission {
   roleId       String
   permissionId String
 
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
   @@index([permissionId])
   @@map("role_permissions")
+}
+
+// Session row = one login = one device. Refresh tokens rotate within a
+// familyId; a rotation issues a new row sharing the familyId and chains
+// parentJti to the previous currentJti. Replay of a revoked refresh token
+// is detected by tokenHash lookup hitting a row with revokedAt != null,
+// which triggers family-wide revoke.
+model Session {
+  id         String     @id @default(cuid())
+  userId     String
+  familyId   String
+  parentJti  String?
+  currentJti String     @unique
+  tokenHash  String     @unique
+  ipAddress  String
+  userAgent  String
+  clientKind ClientKind
+  createdAt  DateTime   @default(now())
+  lastUsedAt DateTime   @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// Single table for email-verification AND password-reset flows.
+// `purpose` enum discriminates. `tokenHash` is sha256 of the random secret
+// sent to the user; plaintext is never stored.
+model VerificationToken {
+  id        String       @id @default(cuid())
+  userId    String
+  tokenHash String       @unique
+  purpose   TokenPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, usedAt])
+  @@index([expiresAt])
+  @@map("verification_tokens")
+}
+
+model OauthAccount {
+  id             String   @id @default(cuid())
+  userId         String
+  provider       String
+  providerUserId String
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+model MfaBackupCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@map("mfa_backup_codes")
+}
+
+// Audit rows are append-only. `metadata` is a JSON blob limited to an
+// allowlist of fields by the writer (AuditService) — never raw request
+// bodies or driver errors.
+model AuditEvent {
+  id        String         @id @default(cuid())
+  userId    String?
+  type      AuditEventType
+  metadata  Json
+  ipAddress String?
+  userAgent String?
+  requestId String?
+  createdAt DateTime       @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+  @@map("audit_events")
 }

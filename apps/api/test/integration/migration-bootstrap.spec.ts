@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
+export {}; // module marker — keeps `shouldRun` / `d` out of global scope (collides with sibling integration specs otherwise).
 // Integration scaffold: verifies the IAM tables actually exist after running
 // `prisma migrate deploy` against the configured DATABASE_URL.
 //

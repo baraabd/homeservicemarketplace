@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
+export {}; // module marker — see migration-bootstrap.spec.ts.
 // Verifies that running seed() twice does not duplicate critical entities.
 // Skipped unless RUN_DB_INTEGRATION=1 — same gate as migration-bootstrap.
 

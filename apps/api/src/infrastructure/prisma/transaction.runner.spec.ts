@@ -3,13 +3,15 @@ import type { PrismaService } from './prisma.service';
 
 describe('TransactionRunner', () => {
   it('delegates to PrismaClient.$transaction with the function and options', async () => {
-    const $transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+    const $transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>, _opts?: unknown) =>
       fn({ tag: 'tx' }),
     );
     const prisma = { client: { $transaction } } as unknown as PrismaService;
     const runner = new TransactionRunner(prisma);
 
-    const result = await runner.run(async (tx) => `ok:${(tx as { tag: string }).tag}`, {
+    // tx is typed as Prisma.TransactionClient; route through unknown to
+    // assert against our test-only `{ tag }` shape without TS narrowing.
+    const result = await runner.run(async (tx) => `ok:${(tx as unknown as { tag: string }).tag}`, {
       timeout: 1234,
     });
 
@@ -19,7 +21,11 @@ describe('TransactionRunner', () => {
   });
 
   it('propagates errors thrown inside the transaction callback', async () => {
-    const $transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({}));
+    // Two-arg signature so `$transaction.mock.calls[0][1]` is well-typed
+    // (Prisma's $transaction takes options as its second argument).
+    const $transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>, _opts?: unknown) =>
+      fn({}),
+    );
     const prisma = { client: { $transaction } } as unknown as PrismaService;
     const runner = new TransactionRunner(prisma);
 
@@ -39,7 +45,11 @@ describe('TransactionRunner', () => {
   });
 
   it('forwards every option (isolationLevel, maxWait, timeout) to $transaction', async () => {
-    const $transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({}));
+    // Two-arg signature so `$transaction.mock.calls[0][1]` is well-typed
+    // (Prisma's $transaction takes options as its second argument).
+    const $transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>, _opts?: unknown) =>
+      fn({}),
+    );
     const prisma = { client: { $transaction } } as unknown as PrismaService;
     const runner = new TransactionRunner(prisma);
 
@@ -57,7 +67,11 @@ describe('TransactionRunner', () => {
   });
 
   it('passes undefined options through rather than substituting defaults', async () => {
-    const $transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({}));
+    // Two-arg signature so `$transaction.mock.calls[0][1]` is well-typed
+    // (Prisma's $transaction takes options as its second argument).
+    const $transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>, _opts?: unknown) =>
+      fn({}),
+    );
     const prisma = { client: { $transaction } } as unknown as PrismaService;
     const runner = new TransactionRunner(prisma);
 

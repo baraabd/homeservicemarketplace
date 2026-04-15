@@ -5,3 +5,4 @@ allowBuilds:
   '@nestjs/core': false
   '@tailwindcss/oxide': false
   esbuild: false
+  argon2: true

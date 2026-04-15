@@ -81,15 +81,28 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const resp = exception.getResponse();
-      const msg =
-        typeof resp === 'string'
-          ? resp
-          : ((resp as { message?: string | string[] }).message ?? exception.message);
+      // Honor a structured `code` in the response body. IAM throws
+      // `new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' })` etc.;
+      // the status-derived code ('UNAUTHORIZED') would erase that stable
+      // domain code. Falls back to the status-derived code for plain
+      // `new BadRequestException('bad body')` callers.
+      if (typeof resp === 'object' && resp !== null) {
+        const structured = resp as { code?: unknown; message?: string | string[] };
+        const code =
+          typeof structured.code === 'string' ? structured.code : this.mapHttpStatusToCode(status);
+        const msg = structured.message ?? exception.message;
+        return {
+          status,
+          code,
+          message: Array.isArray(msg) ? msg.join('; ') : msg,
+          details: resp,
+        };
+      }
       return {
         status,
         code: this.mapHttpStatusToCode(status),
-        message: Array.isArray(msg) ? msg.join('; ') : msg,
-        details: typeof resp === 'object' ? resp : undefined,
+        message: resp,
+        details: undefined,
       };
     }
 

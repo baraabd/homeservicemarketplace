@@ -1,4 +1,8 @@
 {
   "extends": "./tsconfig.json",
+  // Production build: source-only. Tests are NEVER emitted into dist/, even
+  // though the base tsconfig now includes them so the editor TS server can
+  // type-check them with Jest globals.
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
 }

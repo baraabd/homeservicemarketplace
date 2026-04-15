@@ -181,8 +181,10 @@ describe('RedisService', () => {
       await svc.onModuleInit();
       expect(ctorArgs?.tls).toEqual({});
 
-      // Second round — fresh mock, new instance
-      ctorArgs = undefined;
+      // Second round — fresh mock, new instance.
+      // Cast resets the narrowed type so subsequent assignments inside the
+      // mock callback don't get inferred as `undefined`.
+      ctorArgs = undefined as Record<string, unknown> | undefined;
       ioredisCtor.mockImplementationOnce((opts: Record<string, unknown>) => {
         ctorArgs = opts;
         const inst = new FakeRedis();
@@ -192,7 +194,7 @@ describe('RedisService', () => {
       connectQueue.push('resolve');
       svc = new RedisService(mkConfig({ REDIS_TLS: false }));
       await svc.onModuleInit();
-      expect(ctorArgs?.tls).toBeUndefined();
+      expect((ctorArgs as Record<string, unknown> | undefined)?.tls).toBeUndefined();
     });
 
     it('sets the hardened defaults: maxRetriesPerRequest=3, enableReadyCheck, enableAutoPipelining, lazyConnect', async () => {

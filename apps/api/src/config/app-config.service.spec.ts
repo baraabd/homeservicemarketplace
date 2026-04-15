@@ -1,11 +1,15 @@
 import type { ConfigService } from '@nestjs/config';
 
 import { AppConfigService } from './app-config.service';
+import type { AppEnv } from './env.schema';
 
-function mkNestConfig(values: Record<string, unknown>): ConfigService {
+// AppConfigService expects ConfigService<AppEnv, true> (the strict
+// `infer: true` variant). Cast through `unknown` to satisfy the generic
+// without rebuilding the full Nest config type in tests.
+function mkNestConfig(values: Record<string, unknown>): ConfigService<AppEnv, true> {
   return {
     get: (key: string) => values[key],
-  } as unknown as ConfigService;
+  } as unknown as ConfigService<AppEnv, true>;
 }
 
 describe('AppConfigService', () => {

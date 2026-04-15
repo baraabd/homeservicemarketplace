@@ -50,8 +50,32 @@ export const envSchema = z.object({
   STARTUP_RETRY_BASE_MS: z.coerce.number().int().positive().default(200),
   STARTUP_RETRY_CAP_MS: z.coerce.number().int().positive().default(5_000),
 
-  // Auth env vars are intentionally NOT part of the infrastructure baseline.
-  // They will be added when the auth module is reintroduced in a later phase.
+  // --- IAM / Auth ---------------------------------------------------------
+  // HS256 symmetric secret. 32+ bytes enforced. Production should migrate to
+  // RS256 with an external KMS; see docs/iam.md.
+  JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be >= 32 chars'),
+  JWT_ISSUER: z.string().min(1).default('hsm-api'),
+  JWT_AUDIENCE: z.string().min(1).default('hsm-clients'),
+  JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(600),
+  JWT_REFRESH_TTL_DAYS: z.coerce.number().int().positive().default(30),
+
+  EMAIL_VERIFICATION_TTL_HOURS: z.coerce.number().int().positive().default(24),
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(15),
+
+  AUTH_LOCKOUT_THRESHOLD: z.coerce.number().int().positive().default(5),
+  AUTH_LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
+
+  // Lower bound on response time for anti-enumeration endpoints
+  // (register / forgot-password / resend-verification). Must exceed the
+  // upper envelope of the existing-user code path or timing leaks the answer.
+  // Set to 0 in test environments to keep tests fast.
+  AUTH_ANTI_ENUM_DELAY_MS: z.coerce.number().int().nonnegative().default(200),
+
+  COOKIE_DOMAIN: z.string().optional(),
+  COOKIE_SECURE: trueish.default(true),
+  COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
+
+  PERMISSION_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

@@ -7,11 +7,13 @@ import { HealthModule } from './infrastructure/health/health.module';
 import { AllExceptionsFilter } from './infrastructure/http/all-exceptions.filter';
 import { RequestIdMiddleware } from './infrastructure/http/request-id.middleware';
 import { LoggerModule } from './infrastructure/logger/logger.module';
+import { MailModule } from './infrastructure/mail/mail.module';
 import { MongoModule } from './infrastructure/mongo/mongo.module';
 import { PrismaModule } from './infrastructure/prisma/prisma.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
 import { MetricsModule } from './infrastructure/telemetry/metrics.module';
 import { PersistenceModule } from './infrastructure/persistence/persistence.module';
+import { IamModule } from './modules/iam/iam.module';
 
 // Infrastructure & data-foundation bootstrap. No business modules are wired
 // at this stage; repositories/transaction helpers are exposed for later
@@ -24,9 +26,11 @@ import { PersistenceModule } from './infrastructure/persistence/persistence.modu
     MongoModule,
     RedisModule,
     PersistenceModule,
+    MailModule,
     MetricsModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     HealthModule,
+    IamModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -11,12 +11,21 @@ const REDACT_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
   'req.headers["x-api-key"]',
+  'req.headers["x-csrf-token"]',
+  'req.headers["x-refresh-token"]',
   'req.body.password',
   'req.body.currentPassword',
   'req.body.newPassword',
   'req.body.token',
   'req.body.refreshToken',
   'req.body.otp',
+  // GDPR PII: emails and names must not appear in request-body logs even
+  // on validation failures or unhandled exceptions. Audit rows are written
+  // through AuditService which already strips these — pino is the gap.
+  'req.body.email',
+  'req.body.newEmail',
+  'req.body.firstName',
+  'req.body.lastName',
   'res.headers["set-cookie"]',
 ];
 

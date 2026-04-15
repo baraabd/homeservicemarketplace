@@ -12,12 +12,26 @@
     "esModuleInterop": true,
     "sourceMap": true,
     "outDir": "./dist",
+    "rootDir": "./",
     "baseUrl": "./",
     "incremental": true,
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    // `node` here is the legacy alias for `node10`. NestJS works with both;
+    // moving to `node16`/`nodenext` would require .js extensions on every
+    // local import, which conflicts with Nest's source layout. Silence the
+    // TS 5.x deprecation warning rather than rewrite every import site.
+    "ignoreDeprecations": "5.0",
+    // `jest` enables the global describe/it/expect/jest typings in spec
+    // files, so the editor stops flagging them as undefined. The
+    // production build (tsconfig.build.json) excludes specs, so this has
+    // no effect on emitted output.
+    "types": ["node", "jest"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
+  // Specs under src/ are picked up by the existing `src/**/*.ts` glob;
+  // e2e + integration specs live under `test/` and need their own glob.
+  // Excluding them here would hide them from the editor TS server and
+  // leave Jest globals (describe/it/expect) undefined in those files.
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

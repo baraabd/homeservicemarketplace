@@ -2,6 +2,7 @@ import 'reflect-metadata';
 
 import { Logger as NestLogger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 
@@ -22,6 +23,7 @@ async function bootstrap(): Promise<void> {
     const origins = [...(frontendUrl ? [frontendUrl] : []), ...extraOrigins];
 
     app.use(helmet());
+    app.use(cookieParser());
     app.enableCors({
       origin: origins.length > 0 ? origins : config.isProduction ? false : true,
       credentials: true,

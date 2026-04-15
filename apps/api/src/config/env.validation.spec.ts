@@ -6,6 +6,8 @@ const baseEnv = {
   MONGODB_URI: 'mongodb://localhost:27017',
   REDIS_HOST: 'localhost',
   REDIS_PORT: '6379',
+  // IAM baseline: the env schema enforces JWT_ACCESS_SECRET >= 32 chars.
+  JWT_ACCESS_SECRET: 'test_test_test_test_test_test_test_1234',
 };
 
 describe('validateEnv', () => {
@@ -26,6 +28,7 @@ describe('validateEnv', () => {
     expect(env.DATABASE_CONNECT_TIMEOUT_MS).toBe(10_000);
     expect(env.MONGODB_SERVER_SELECTION_TIMEOUT_MS).toBe(5_000);
     expect(env.MONGODB_MAX_POOL_SIZE).toBe(20);
+    expect(env.AUTH_ANTI_ENUM_DELAY_MS).toBe(200);
   });
 
   describe('required vars', () => {
@@ -135,9 +138,15 @@ describe('validateEnv', () => {
     });
   });
 
-  it('strips unknown env vars (auth secrets are not part of the infra baseline)', () => {
-    const env = validateEnv({ ...baseEnv, JWT_ACCESS_SECRET: 'short' });
-    expect((env as Record<string, unknown>).JWT_ACCESS_SECRET).toBeUndefined();
+  it('strips genuinely unknown env vars', () => {
+    const env = validateEnv({ ...baseEnv, NOT_A_REAL_VAR: 'x' });
+    expect((env as Record<string, unknown>).NOT_A_REAL_VAR).toBeUndefined();
+  });
+
+  it('rejects JWT_ACCESS_SECRET shorter than 32 characters', () => {
+    expect(() => validateEnv({ ...baseEnv, JWT_ACCESS_SECRET: 'too-short' })).toThrow(
+      /JWT_ACCESS_SECRET/,
+    );
   });
 
   describe('mongo-specific validation', () => {
