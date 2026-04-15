@@ -74,4 +74,15 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-expressions': 'error',
     },
   },
+
+  // CommonJS config files (jest.config.cjs, etc.) — Node globals,
+  // no TS type-checking rules apply.
+  {
+    files: ['**/*.{js,cjs,mjs}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
 );

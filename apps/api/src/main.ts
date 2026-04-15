@@ -1,47 +1,46 @@
 import 'reflect-metadata';
 
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { Logger as NestLogger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
+import { AppConfigService } from './config/app-config.service';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+async function bootstrap(): Promise<void> {
+  const bootstrapLogger = new NestLogger('Bootstrap');
+  try {
+    const app = await NestFactory.create(AppModule, { bufferLogs: true });
+    app.useLogger(app.get(Logger));
+    app.enableShutdownHooks();
 
-  app.useLogger(app.get(Logger));
-  app.enableShutdownHooks();
+    const config = app.get(AppConfigService);
+    const port = config.get('PORT');
+    const frontendUrl = config.get('FRONTEND_URL');
+    const extraOrigins = config.get('CORS_ORIGINS');
+    const origins = [...(frontendUrl ? [frontendUrl] : []), ...extraOrigins];
 
-  const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT') ?? 4000;
-  const frontendUrl = configService.get<string>('FRONTEND_URL');
+    app.use(helmet());
+    app.enableCors({
+      origin: origins.length > 0 ? origins : config.isProduction ? false : true,
+      credentials: true,
+    });
+    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
+    );
 
-  app.use(helmet());
+    for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+      process.on(sig, () => bootstrapLogger.log(`Received ${sig}, shutting down gracefully`));
+    }
 
-  app.enableCors({
-    origin: frontendUrl ? [frontendUrl] : true,
-    credentials: true,
-  });
-
-  app.enableVersioning({
-    type: VersioningType.URI,
-    defaultVersion: '1',
-  });
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
-
-  await app.listen(port);
-
-  const logger = app.get(Logger);
-  logger.log(`API is running on http://localhost:${port}/v1/health`);
+    await app.listen(port);
+    bootstrapLogger.log(`API listening on :${port} (env=${config.get('NODE_ENV')})`);
+  } catch (err) {
+    bootstrapLogger.error(`Fatal bootstrap error: ${(err as Error).message}`, (err as Error).stack);
+    process.exit(1);
+  }
 }
 
 void bootstrap();

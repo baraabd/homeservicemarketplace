@@ -1,3 +1,8 @@
+// IAM-only baseline schema. Business domain entities (Provider, Service,
+// Booking, Category, etc.) intentionally not modeled here — they belong to
+// later phase modules and will be added as additive migrations alongside
+// their owning bounded contexts.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,22 +12,75 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  CUSTOMER
-  PROVIDER
-  ADMIN
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String?
+  firstName    String
+  lastName     String
+  isActive     Boolean    @default(true)
+
+  userRoles    UserRole[]
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  @@index([deletedAt])
+  @@map("users")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  firstName String
-  lastName  String
-  role      Role     @default(CUSTOMER)
+model Role {
+  id              String           @id @default(cuid())
+  name            String           @unique
+  description     String?
+  isSystem        Boolean          @default(false)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
 
-  @@map("users")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+
+  @@index([deletedAt])
+  @@map("roles")
+}
+
+model Permission {
+  id              String           @id @default(cuid())
+  key             String           @unique
+  description     String?
+
+  rolePermissions RolePermission[]
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
 }
