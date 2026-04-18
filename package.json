@@ -21,7 +21,7 @@
   },
   "lint-staged": {
     "*.{js,mjs,cjs,ts,tsx}": [
-      "eslint --fix",
+      "eslint --fix --no-warn-ignored",
       "prettier --write"
     ],
     "*.{json,md,yml,yaml}": [
@@ -30,6 +30,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.6.0",
     "dotenv-cli": "^11.0.0",
     "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",

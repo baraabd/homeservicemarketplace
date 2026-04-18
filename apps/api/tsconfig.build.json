@@ -1,4 +1,23 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Base tsconfig sets rootDir=./ so the editor can include test/ alongside
+    // src/. For the production build we must restore src/ as the root so the
+    // emitted layout is dist/main.js (not dist/src/main.js), which is what
+    // the "start" script ("node dist/main") and the Dockerfile expect.
+    "rootDir": "./src",
+    // Pin the incremental cache file INSIDE dist/. Default location is
+    // alongside the tsconfig (apps/api/tsconfig.build.tsbuildinfo), which
+    // survives `nest build`'s deleteOutDir step. With a stale cache and an
+    // empty dist/, tsc decides "all outputs already exist" and emits NOTHING
+    // while exiting 0 — a silent broken build. Living inside dist/ means
+    // deleteOutDir clears the cache too, restoring the "wipe dist → clean
+    // build" invariant.
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  // Production build: source-only. Tests are NEVER emitted into dist/, even
+  // though the base tsconfig now includes them so the editor TS server can
+  // type-check them with Jest globals.
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
 }

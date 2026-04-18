@@ -6,9 +6,17 @@ dist
 build
 .next
 coverage
+*.tsbuildinfo
+
+# compiled vite config (source of truth is vite.config.ts)
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
 
 # turbo
 .turbo
+
+# local agent/harness state
+.claude/
 
 # env
 .env
@@ -31,4 +39,4 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
-!.vscode/settings.json
+!.vscode/settings.jsonpackage-lock.json

@@ -1,5 +1,26 @@
 {
   "name": "@homeservicemarketplace/contracts",
   "version": "0.1.0",
-  "private": true
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"No lint configured for contracts package yet\""
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
 }

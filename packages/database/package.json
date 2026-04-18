@@ -4,6 +4,14 @@
   "private": true,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "prisma"
@@ -13,10 +21,12 @@
     "generate": "dotenv -e ../../.env -- prisma generate",
     "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
     "migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
+    "migrate:reset": "dotenv -e ../../.env -- prisma migrate reset --skip-seed",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "lint": "echo \"No lint configured for database package yet\"",
     "typecheck": "tsc --noEmit",
-    "prisma:validate": "dotenv -e ../../.env -- prisma validate"
+    "prisma:validate": "dotenv -e ../../.env -- prisma validate",
+    "seed": "dotenv -e ../../.env -- node dist/seed.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"
