@@ -71,6 +71,11 @@ export const envSchema = z.object({
   // Set to 0 in test environments to keep tests fast.
   AUTH_ANTI_ENUM_DELAY_MS: z.coerce.number().int().nonnegative().default(200),
 
+  // When false, registration auto-verifies the user (sets emailVerifiedAt +
+  // status=ACTIVE) so login works immediately without real mail delivery.
+  // Must be true in production. Safe to set false for local dev and QA.
+  AUTH_REQUIRE_EMAIL_VERIFICATION: trueish.default(true),
+
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: trueish.default(true),
   COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),

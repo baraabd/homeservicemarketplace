@@ -1,0 +1,496 @@
+{
+  "info": {
+    "name": "HSM Backend — IAM & Infrastructure",
+    "description": "Covers every endpoint currently implemented: /health/live, /health/ready, /metrics, and the /v1/auth/* surface. Variables are populated automatically by tests in the Register → Login → Refresh flow.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "hsm-backend-iam-2026-04"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" },
+    {
+      "key": "clientKind",
+      "value": "mobile",
+      "description": "'mobile' → tokens in response body; 'web' → HttpOnly cookies"
+    },
+    { "key": "email", "value": "ada+{{$timestamp}}@example.com" },
+    { "key": "password", "value": "a-reasonable-passphrase" },
+    { "key": "firstName", "value": "Ada" },
+    { "key": "lastName", "value": "Lovelace" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    {
+      "key": "oldRefreshToken",
+      "value": "",
+      "description": "Captured automatically before each refresh-rotation; used by the replay test that follows"
+    },
+    { "key": "userId", "value": "" },
+    { "key": "verificationToken", "value": "" },
+    { "key": "resetToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "00 — Smoke tests (boot health)",
+      "item": [
+        {
+          "name": "GET /health/live",
+          "request": { "method": "GET", "url": "{{baseUrl}}/health/live" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('status=ok', () => pm.expect(b.status).to.eql('ok'));",
+                  "pm.test('uptimeSeconds is a number', () => pm.expect(b.uptimeSeconds).to.be.a('number'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /health/ready",
+          "request": { "method": "GET", "url": "{{baseUrl}}/health/ready" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 when all deps up', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('ready=true', () => pm.expect(b.ready).to.eql(true));",
+                  "const names = b.dependencies.map(d => d.name).sort();",
+                  "pm.test('contains postgres, mongo, redis', () => pm.expect(names).to.eql(['mongo','postgres','redis']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /metrics",
+          "request": { "method": "GET", "url": "{{baseUrl}}/metrics" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Prometheus content-type', () => pm.expect(pm.response.headers.get('Content-Type')).to.match(/text\\/plain/));",
+                  "pm.test('has http_requests_total', () => pm.expect(pm.response.text()).to.include('http_requests_total'));",
+                  "pm.test('Cache-Control no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.match(/no-store/));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 — Registration & verification",
+      "item": [
+        {
+          "name": "POST /v1/auth/register (new account)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"firstName\": \"{{firstName}}\",\n  \"lastName\": \"{{lastName}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted (generic anti-enum envelope)', () => pm.response.to.have.status(202));",
+                  "pm.test('body is {success:true}', () => pm.expect(pm.response.json()).to.eql({ success: true }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/register (duplicate email — must still return 202)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"firstName\": \"{{firstName}}\",\n  \"lastName\": \"{{lastName}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 on duplicate (anti-enum)', () => pm.response.to.have.status(202));",
+                  "pm.test('identical body as new registration', () => pm.expect(pm.response.json()).to.eql({ success: true }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/register (invalid — password too short)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"not-an-email\",\n  \"password\": \"short\",\n  \"firstName\": \"\",\n  \"lastName\": \"\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('code=VALIDATION_ERROR', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/resend-verification",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/resend-verification",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted (generic)', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/verify-email (with token from DB)",
+          "description": "Fetch the raw token from the verification_tokens table. In dev, the InMemoryMailAdapter logs a masked 'to' and the token sits in memory. To retrieve programmatically, hit the DB directly with psql or use the integration test helper. Set {{verificationToken}} in the environment before running this request.",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/verify-email",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{verificationToken}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('success=true', () => pm.expect(pm.response.json().success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "20 — Login, refresh, logout",
+      "item": [
+        {
+          "name": "POST /v1/auth/login (mobile — tokens in body)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "{{clientKind}}" }
+            ],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('tokens present for mobile', () => pm.expect(b.tokens).to.be.an('object'));",
+                  "pm.test('accessToken is a JWT', () => pm.expect(b.tokens.accessToken.split('.').length).to.eql(3));",
+                  "pm.collectionVariables.set('accessToken', b.tokens.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', b.tokens.refreshToken);",
+                  "pm.collectionVariables.set('userId', b.userId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/login (wrong password — generic error)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"wrong-password\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('code=AUTH_INVALID_CREDENTIALS', () => pm.expect(pm.response.json().error.code).to.eql('AUTH_INVALID_CREDENTIALS'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/refresh (mobile — via X-Refresh-Token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Client-Kind", "value": "mobile" },
+              { "key": "X-Refresh-Token", "value": "{{refreshToken}}" }
+            ],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/refresh"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Snapshot the soon-to-be-rotated refresh token so the next request",
+                  "// (the REPLAY test) can present it without manual copy/paste.",
+                  "pm.collectionVariables.set('oldRefreshToken', pm.collectionVariables.get('refreshToken'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('new tokens issued', () => pm.expect(b.tokens).to.be.an('object'));",
+                  "pm.collectionVariables.set('accessToken', b.tokens.accessToken);",
+                  "pm.test('refresh rotated', () => pm.expect(b.tokens.refreshToken).to.not.eql(pm.collectionVariables.get('oldRefreshToken')));",
+                  "pm.collectionVariables.set('refreshToken', b.tokens.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/refresh — REPLAY (old token must be rejected + family revoked)",
+          "description": "Runs immediately after the rotation request. {{oldRefreshToken}} was captured in that request's pre-script, so this replay test runs end-to-end without manual editing. Per the family-rotation contract, the entire session family is revoked on replay; subsequent refreshes with the NEW token will also fail.",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Client-Kind", "value": "mobile" },
+              { "key": "X-Refresh-Token", "value": "{{oldRefreshToken}}" }
+            ],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/refresh"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 on replay', () => pm.response.to.have.status(401));",
+                  "pm.test('code=AUTH_REFRESH_INVALID', () => pm.expect(pm.response.json().error.code).to.eql('AUTH_REFRESH_INVALID'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/auth/me (authenticated)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('id matches', () => pm.expect(b.id).to.eql(pm.collectionVariables.get('userId')));",
+                  "pm.test('no passwordHash leak', () => pm.expect(JSON.stringify(b)).to.not.match(/argon2|passwordHash/));",
+                  "pm.test('no mfaSecret leak', () => pm.expect(JSON.stringify(b)).to.not.include('mfaSecret'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/auth/me (no token — 401)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/{{apiVersion}}/auth/me" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('code=AUTH_INVALID_CREDENTIALS', () => pm.expect(pm.response.json().error.code).to.eql('AUTH_INVALID_CREDENTIALS'));",
+                  "pm.test('no stack trace leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.match(/at Function|at Object|node_modules/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/logout (current session)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('204 No Content', () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/logout-all",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/logout-all"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('204 No Content', () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "30 — Password reset",
+      "item": [
+        {
+          "name": "POST /v1/auth/forgot-password (generic anti-enum)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/forgot-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.test('generic body', () => pm.expect(pm.response.json()).to.eql({ success: true }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/forgot-password (unknown email — same response)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/forgot-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ghost@example.com\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 (no existence leak)', () => pm.response.to.have.status(202));",
+                  "pm.test('identical body', () => pm.expect(pm.response.json()).to.eql({ success: true }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/reset-password (token from DB)",
+          "description": "Set {{resetToken}} in the environment after extracting it from the verification_tokens table (purpose=PASSWORD_RESET, usedAt=NULL). See the Manual Testing Guide for the SQL snippet.",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/reset-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"a-brand-new-passphrase\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK on valid token', () => pm.response.to.have.status(200));",
+                  "pm.test('success=true', () => pm.expect(pm.response.json().success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

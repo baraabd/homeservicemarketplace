@@ -99,9 +99,14 @@ function makeHarness() {
   } as unknown as jest.Mocked<AuditService>;
 
   // AUTH_ANTI_ENUM_DELAY_MS=0 keeps the timing-floor padding from slowing
-  // unit tests; the floor itself is exercised by a dedicated timing test.
+  // unit tests. AUTH_REQUIRE_EMAIL_VERIFICATION=true so verification.issue
+  // fires as expected in the register tests.
   const config: AppConfigService = {
-    get: (k: string) => (k === 'AUTH_ANTI_ENUM_DELAY_MS' ? 0 : undefined),
+    get: (k: string) => {
+      if (k === 'AUTH_ANTI_ENUM_DELAY_MS') return 0;
+      if (k === 'AUTH_REQUIRE_EMAIL_VERIFICATION') return true;
+      return undefined;
+    },
   } as unknown as AppConfigService;
 
   const mail = { send: jest.fn().mockResolvedValue(undefined) } as unknown as jest.Mocked<MailPort>;

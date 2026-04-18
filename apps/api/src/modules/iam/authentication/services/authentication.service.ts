@@ -102,8 +102,18 @@ export class AuthenticationService {
           await this.users.assignRole(user.id, customer.id, trx);
         }
 
-        const token = await this.verification.issue(user.id, 'EMAIL_VERIFICATION', trx);
-        await this.sendVerificationEmail(user.email, token.raw);
+        const requireVerification = this.config.get('AUTH_REQUIRE_EMAIL_VERIFICATION');
+        if (requireVerification) {
+          const token = await this.verification.issue(user.id, 'EMAIL_VERIFICATION', trx);
+          await this.sendVerificationEmail(user.email, token.raw);
+        } else {
+          // Dev/QA shortcut: auto-verify so login works immediately without a
+          // mail provider. The flag MUST be true in production.
+          await trx.user.update({
+            where: { id: user.id },
+            data: { emailVerifiedAt: new Date(), status: 'ACTIVE' },
+          });
+        }
 
         await this.audit.record(
           {

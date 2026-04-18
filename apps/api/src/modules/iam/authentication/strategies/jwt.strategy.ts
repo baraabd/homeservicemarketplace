@@ -6,7 +6,12 @@ import type { Request } from 'express';
 import { AppConfigService } from '../../../../config/app-config.service';
 import { ACCESS_COOKIE } from '../helpers/cookies';
 import type { AuthenticatedUser } from '../types/authenticated-user';
-import '../types/express';
+// The global Express.Request augmentation in ../types/express.d.ts is
+// picked up automatically because the .d.ts file is inside the tsconfig
+// `include` glob. Do NOT re-add `import '../types/express'` — under
+// module=commonjs, a side-effect import of a pure declaration file is
+// preserved as `require("../types/express")` at runtime, and since no
+// .js is emitted for a .d.ts, Node throws "Cannot find module" at boot.
 
 interface JwtPayload {
   sub: string;

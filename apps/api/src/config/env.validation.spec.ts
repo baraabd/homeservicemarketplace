@@ -29,6 +29,7 @@ describe('validateEnv', () => {
     expect(env.MONGODB_SERVER_SELECTION_TIMEOUT_MS).toBe(5_000);
     expect(env.MONGODB_MAX_POOL_SIZE).toBe(20);
     expect(env.AUTH_ANTI_ENUM_DELAY_MS).toBe(200);
+    expect(env.AUTH_REQUIRE_EMAIL_VERIFICATION).toBe(true);
   });
 
   describe('required vars', () => {
