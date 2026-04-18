@@ -81,6 +81,15 @@ export const envSchema = z.object({
   COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
 
   PERMISSION_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
+
+  // --- SMTP / Mail ---------------------------------------------------------
+  // When SMTP_HOST is set the API uses Nodemailer; otherwise InMemoryMailAdapter.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65_535).default(1025),
+  SMTP_SECURE: trueish.default(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().default('noreply@homeservicemarketplace.local'),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
