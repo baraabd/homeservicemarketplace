@@ -5,49 +5,44 @@ import { HomePage } from './pages/HomePage';
 import { AppSelector } from './pages/AppSelector';
 import { ProviderPage } from './pages/ProviderPage';
 import { AdminPage } from './pages/AdminPage';
-
-// ─── Auth guards ──────────────────────────────────────────────────────────────
-const guestOnly = () => {
-  if (localStorage.getItem('fixnow_authed')) return redirect('/home');
-  return null;
-};
-
-const requireAuth = () => {
-  if (!localStorage.getItem('fixnow_authed')) return redirect('/login');
-  return null;
-};
+import { RequireAuth, GuestOnly } from '../lib/route-guards';
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 export const router = createBrowserRouter([
   // ── Admin (full-width, no phone container) ───────────────────────────────
   { path: 'admin', Component: AdminPage },
 
-  // ── Provider (phone container via Root) ─────────────────────────────────
   {
     path: '/',
     Component: Root,
     children: [
-      // Root redirect → app selector
       { index: true, loader: () => redirect('/select') },
 
-      // Selector
+      // ── Public ──────────────────────────────────────────────────────
       { path: 'select', Component: AppSelector },
 
-      // ── Auth ──────────────────────────────────────────────────────────
-      { path: 'login', Component: LoginPage, loader: guestOnly },
-      { path: 'signup', Component: SignUpPage, loader: guestOnly },
-      { path: 'forgot-password', Component: ForgotPasswordPage, loader: guestOnly },
+      // ── Guest-only (redirect to /home if already authed) ────────────
+      {
+        Component: GuestOnly,
+        children: [
+          { path: 'login', Component: LoginPage },
+          { path: 'signup', Component: SignUpPage },
+          { path: 'forgot-password', Component: ForgotPasswordPage },
+        ],
+      },
 
-      // ── Seeker App ────────────────────────────────────────────────────
-      { path: 'home', Component: HomePage, loader: requireAuth },
-      { path: 'home/bookings', Component: HomePage, loader: requireAuth },
-      { path: 'home/messages', Component: HomePage, loader: requireAuth },
-      { path: 'home/profile', Component: HomePage, loader: requireAuth },
+      // ── Authenticated ───────────────────────────────────────────────
+      {
+        Component: RequireAuth,
+        children: [
+          { path: 'home', Component: HomePage },
+          { path: 'home/bookings', Component: HomePage },
+          { path: 'home/messages', Component: HomePage },
+          { path: 'home/profile', Component: HomePage },
+          { path: 'provider', Component: ProviderPage },
+        ],
+      },
 
-      // ── Provider App ──────────────────────────────────────────────────
-      { path: 'provider', Component: ProviderPage, loader: requireAuth },
-
-      // ── Catch-all ─────────────────────────────────────────────────────
       { path: '*', loader: () => redirect('/select') },
     ],
   },

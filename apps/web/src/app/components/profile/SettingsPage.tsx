@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useAuth } from '../../../lib/auth-provider';
 // @ts-ignore – motion/react is the correct package path
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Info, LogOut, AlertTriangle } from 'lucide-react';
@@ -79,6 +80,7 @@ interface SettingsPageProps {
 export function SettingsPage({ onBack }: SettingsPageProps) {
   const { lang, dir, darkMode, toggleDarkMode } = useLang();
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const [pushNotifs, setPushNotifs] = useState(true);
   const [emailNotifs, setEmailNotifs] = useState(false);
@@ -311,10 +313,10 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                   {L.cancel}
                 </button>
                 <button
-                  onClick={() => {
-                    localStorage.removeItem('fixnow_authed');
+                  onClick={async () => {
+                    await logout();
                     setSignOutModal(false);
-                    navigate('/select');
+                    navigate('/login');
                   }}
                   className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white active:bg-red-600 transition-all shadow-md shadow-red-200 dark:shadow-none"
                   style={{ fontSize: '15px', fontWeight: 700 }}

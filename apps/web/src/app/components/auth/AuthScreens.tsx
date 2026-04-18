@@ -120,35 +120,38 @@ function SwipeableScreen({ onBack, children }: { onBack: () => void; children: R
 // LOGIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 interface LoginProps {
-  onLogin: () => void;
+  onLogin: (email: string, password: string) => Promise<void>;
   onSignUp: () => void;
   onForgotPassword: () => void;
+  banner?: string;
 }
 
-export function LoginScreen({ onLogin, onSignUp, onForgotPassword }: LoginProps) {
+export function LoginScreen({ onLogin, onSignUp, onForgotPassword, banner }: LoginProps) {
   const { t } = useLang();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('ahmed@fixnow.app');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [emailError, setEmailError] = useState<string | undefined>();
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!email || !password) {
       setEmailError(t('emailAddress') + ' / ' + t('password'));
       return;
     }
     setEmailError(undefined);
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      await onLogin(email.trim(), password);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
+          ?.message ?? 'Invalid credentials';
+      setEmailError(msg);
+    } finally {
       setIsLoading(false);
-      if (email.trim() === 'ahmed@fixnow.app' && password === 'password') {
-        onLogin();
-      } else {
-        setEmailError('Invalid credentials. Hint: "ahmed@fixnow.app" / "password"');
-      }
-    }, 1600);
+    }
   };
 
   return (
@@ -201,6 +204,13 @@ export function LoginScreen({ onLogin, onSignUp, onForgotPassword }: LoginProps)
 
       {/* ── Card ── */}
       <div className="flex-1 bg-white rounded-t-3xl -mt-6 px-6 pt-8 pb-6">
+        {banner && (
+          <div className="mb-4 rounded-xl bg-green-50 border border-green-200 px-4 py-3">
+            <p className="text-green-800" style={{ fontSize: '13px', fontWeight: 500 }}>
+              {banner}
+            </p>
+          </div>
+        )}
         <h2 className="text-slate-900 mb-1" style={{ fontSize: '22px', fontWeight: 800 }}>
           {t('welcomeBack')}
         </h2>
@@ -326,7 +336,7 @@ export function LoginScreen({ onLogin, onSignUp, onForgotPassword }: LoginProps)
 // ─────────────────────────────────────────────────────────────────────────────
 interface SignUpProps {
   onBack: () => void;
-  onSuccess: () => void;
+  onSuccess: (data: { name: string; email: string; password: string }) => Promise<void>;
 }
 
 export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
@@ -340,19 +350,28 @@ export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
   const [agreed, setAgreed] = useState(false);
   const [otp, setOtp] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [signUpError, setSignUpError] = useState<string | undefined>();
 
   const canStep1 = name.length > 2 && phone.length > 7;
   const canStep2 = email.includes('@') && password.length >= 8 && agreed;
   const canStep3 = otp.length === 4;
 
-  const goNext = () => {
-    if (step < 3) setStep((s) => s + 1);
-    else {
+  const goNext = async () => {
+    if (step < 3) {
+      setStep((s) => s + 1);
+    } else {
       setIsLoading(true);
-      setTimeout(() => {
+      setSignUpError(undefined);
+      try {
+        await onSuccess({ name, email, password });
+      } catch (err: unknown) {
+        const msg =
+          (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
+            ?.message ?? 'Registration failed';
+        setSignUpError(msg);
+      } finally {
         setIsLoading(false);
-        onSuccess();
-      }, 1500);
+      }
     }
   };
 
@@ -587,6 +606,11 @@ export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
 
         {/* Sticky bottom CTA */}
         <div className="bg-white border-t border-slate-100 px-6 py-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+          {signUpError && (
+            <p className="text-red-500 text-center mb-2" style={{ fontSize: '13px' }}>
+              {signUpError}
+            </p>
+          )}
           <Button
             variant="primary"
             state={
