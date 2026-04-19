@@ -102,23 +102,26 @@ cat /tmp/r.json
 
 Duplicate email returns the **same** 202 body — anti-enumeration.
 
-### 7b. Retrieve the verification token
+### 7b. Retrieve the verification token (via Mailpit)
 
-The mail adapter is in-memory, so production email delivery isn't wired. Grab the token directly from Postgres:
+With `SMTP_HOST` set in `.env` (the default — `pnpm docker:up` starts Mailpit on :1025 / :8025) the API uses the `NodemailerMailAdapter`. Registration triggers a real SMTP send captured by Mailpit; nothing is logged server-side beyond envelope metadata.
 
-```bash
-docker exec hsm-postgres psql -U postgres -d homeservicemarketplace -c \
-  "SELECT \"tokenHash\", \"purpose\", \"usedAt\" FROM verification_tokens ORDER BY \"createdAt\" DESC LIMIT 1;"
-```
-
-⚠️ Only the **hash** is stored. To exercise the verify endpoint you need the raw token, which the test suite captures via `InMemoryMailAdapter.lastSentTo(email)`. For manual flows, skip the verify step and flip the user to `ACTIVE` directly:
+1. Open **http://localhost:8025** in your browser.
+2. Find the most recent email addressed to `ada@example.com` with subject **"Verify your email"**.
+3. Copy the token from the link body (the `?token=...` query parameter).
+4. POST it to `/v1/auth/verify-email`:
 
 ```bash
-docker exec hsm-postgres psql -U postgres -d homeservicemarketplace -c \
-  "UPDATE users SET status='ACTIVE', \"emailVerifiedAt\"=NOW() WHERE email='ada@example.com';"
+curl -s -o /tmp/v.json -w "%{http_code}\n" \
+  -X POST http://localhost:4000/v1/auth/verify-email \
+  -H "Content-Type: application/json" \
+  -d '{"token":"<paste-raw-token-from-mailpit>"}'
+# → 200 {"success":true}
 ```
 
-(Once a real mail adapter lands, this hack goes away and you use the link from the actual email.)
+The `verification_tokens` table only stores the sha256 hash of the raw token; Mailpit (or your real SMTP provider later) is the only place the raw value appears.
+
+**Fallback for CI / headless runs** — if you're running without Mailpit (`SMTP_HOST` unset → `InMemoryMailAdapter` selected), the integration test helper captures the raw token via `InMemoryMailAdapter.lastSentTo(email)`. If you truly cannot use either channel, a dev-only shortcut is to set `AUTH_REQUIRE_EMAIL_VERIFICATION=false` before boot, which auto-verifies on registration and skips the email entirely. **Never** flip this flag in staging/production.
 
 ### 7c. Login (mobile — tokens in body)
 
@@ -198,7 +201,16 @@ curl -s -o /tmp/fp2.json -w "%{http_code}\n" \
 diff /tmp/fp1.json /tmp/fp2.json  # → empty diff confirms anti-enum
 ```
 
-To complete the reset you need the raw token from the outbound mail. For automated testing, see `apps/api/test/integration/auth-flow.integration.spec.ts` which captures it via `InMemoryMailAdapter.lastSentTo()`.
+To complete the reset you need the raw token from the outbound mail. With Mailpit running (`SMTP_HOST` set), open **http://localhost:8025**, find the "Reset your password" email, copy the token from the link, and POST it to `/v1/auth/reset-password`:
+
+```bash
+curl -s -X POST http://localhost:4000/v1/auth/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{"token":"<paste-raw-token-from-mailpit>","newPassword":"a-brand-new-passphrase"}'
+# → 200 {"success":true}
+```
+
+Then re-login with the new password via `/v1/auth/login`. For automated testing, `apps/api/test/integration/auth-flow.integration.spec.ts` captures the token through `InMemoryMailAdapter.lastSentTo()` instead.
 
 ### 7h. Logout
 
@@ -217,7 +229,7 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 | `Error: Invalid environment configuration: JWT_ACCESS_SECRET: Required` on boot | Missing IAM block in `.env`                                                   | Append the block from `.env.example`, generate a random secret                                |
 | `Cannot find module '../types/express'` on boot                                 | Someone re-added the forbidden runtime import of the `.d.ts` declaration file | Remove the `import '../types/express';` line; global augmentations don't need runtime imports |
 | `/health/ready` → 503 with one dep `down`                                       | Docker container not running or unhealthy                                     | `pnpm docker:up`; if persistent, `docker logs hsm-<svc>`                                      |
-| Login returns 401 `AUTH_ACCOUNT_UNVERIFIED`                                     | `users.status` still `PENDING_VERIFICATION`                                   | Consume the verification token OR manually UPDATE the row in dev                              |
+| Login returns 403 `AUTH_ACCOUNT_UNVERIFIED`                                     | `users.emailVerifiedAt` is still null                                         | Open Mailpit, grab the token from the verification email, POST to `/v1/auth/verify-email`     |
 | Login returns 401 `AUTH_ACCOUNT_LOCKED`                                         | 5 consecutive failed logins within 15 min                                     | Wait 15 min or `UPDATE users SET "failedLoginCount"=0, "lockedUntil"=NULL WHERE email=...`    |
 | Web cookie set but refresh still fails                                          | Cookie `Path=/v1/auth/refresh` mismatch was re-introduced                     | Check `helpers/cookies.ts` `REFRESH_PATH` — must match the versioned URL                      |
 | `/v1/auth/refresh` with cookie returns 403 `AUTH_CSRF_FAILED`                   | Missing `X-CSRF-Token` header on a cookie-authed refresh                      | Read `hsm_csrf` cookie value and echo it in `X-CSRF-Token`                                    |

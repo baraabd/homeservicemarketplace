@@ -577,7 +577,7 @@ function LiveJobsScreen() {
                     {req.status !== 'assigned' && req.status !== 'completed' && (
                       <motion.button
                         whileTap={{ scale: 0.95 }}
-                        onClick={(e) => {
+                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                           e.stopPropagation();
                           setBiddingReq(req);
                           setSheetOpen(false);

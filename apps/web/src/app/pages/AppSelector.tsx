@@ -150,11 +150,8 @@ export function AppSelector() {
                   if (app.id === 'admin') {
                     navigate('/admin');
                   } else if (app.id === 'provider') {
-                    localStorage.setItem('fixnow_authed', '1');
                     navigate('/provider');
                   } else {
-                    // Seeker: always clear auth so login flow runs properly
-                    localStorage.removeItem('fixnow_authed');
                     navigate('/login');
                   }
                 }}
