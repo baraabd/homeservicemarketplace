@@ -20,14 +20,22 @@ async function bootstrap(): Promise<void> {
     const port = config.get('PORT');
     const frontendUrl = config.get('FRONTEND_URL');
     const extraOrigins = config.get('CORS_ORIGINS');
-    const origins = [...(frontendUrl ? [frontendUrl] : []), ...extraOrigins];
+    const origins = Array.from(
+      new Set([...(frontendUrl ? [frontendUrl] : []), ...extraOrigins].filter(Boolean)),
+    );
 
     app.use(helmet());
     app.use(cookieParser());
-    app.enableCors({
-      origin: origins.length > 0 ? origins : config.isProduction ? false : true,
-      credentials: true,
-    });
+
+    // Production with no explicit allowlist → block all cross-origin requests.
+    // Dev with no allowlist → reflect the request origin (local convenience).
+    // `credentials: true` is required for the HttpOnly cookie flow; never
+    // combine it with origin: '*'.
+    const corsOrigin = origins.length > 0 ? origins : config.isProduction ? false : true;
+    app.enableCors({ origin: corsOrigin, credentials: true });
+    bootstrapLogger.log(
+      `CORS: ${origins.length > 0 ? `allowlist=[${origins.join(', ')}]` : corsOrigin === false ? 'blocked (production, no allowlist)' : 'reflect-any (dev fallback)'}`,
+    );
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),

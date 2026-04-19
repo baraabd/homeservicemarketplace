@@ -10,26 +10,41 @@ function AuthLoadingScreen() {
   );
 }
 
+// Preserve the full target path (pathname + search + hash) so deep-link
+// query params and anchors survive the login round-trip.
+function fullTarget(pathname: string, search: string, hash: string): string {
+  return `${pathname}${search}${hash}`;
+}
+
 // ─── RequireAuth ─────────────────────────────────────────────────────────────
-// Wraps routes that need authentication. While /me is loading, shows a spinner.
-// When not authenticated, redirects to /login preserving the intended URL.
+// Wraps routes that need authentication. Behavior:
+//   - isLoading (no cached user yet) → spinner.
+//   - isAuthenticated → render children. isDegraded may still be true; consumer
+//     UI can surface a banner without forcing a logout round-trip.
+//   - !isAuthenticated → redirect to /login preserving the intended URL.
 export function RequireAuth() {
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
   if (isLoading) return <AuthLoadingScreen />;
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ returnTo: location.pathname }} replace />;
+    const returnTo = fullTarget(location.pathname, location.search, location.hash);
+    return <Navigate to="/login" state={{ returnTo }} replace />;
   }
   return <Outlet />;
 }
 
 // ─── GuestOnly ───────────────────────────────────────────────────────────────
-// Wraps auth pages (login, signup). If already authenticated, redirect to home.
+// Wraps auth pages (login, signup). If already authenticated, redirect to home
+// (or back to a pending returnTo if the router passed one forward).
 export function GuestOnly() {
   const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
 
   if (isLoading) return <AuthLoadingScreen />;
-  if (isAuthenticated) return <Navigate to="/home" replace />;
+  if (isAuthenticated) {
+    const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
+    return <Navigate to={returnTo && returnTo !== '/login' ? returnTo : '/home'} replace />;
+  }
   return <Outlet />;
 }

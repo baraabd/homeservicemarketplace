@@ -9,13 +9,24 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
-  const justRegistered = (location.state as { registered?: boolean } | null)?.registered;
+  const state = location.state as { registered?: boolean; returnTo?: string } | null;
+  const justRegistered = state?.registered;
+  // Guard against open-redirect: only honor in-app paths. Reject absolute URLs
+  // and protocol-relative values; reject /login itself (would loop).
+  const rawReturnTo = state?.returnTo;
+  const returnTo =
+    rawReturnTo &&
+    rawReturnTo.startsWith('/') &&
+    !rawReturnTo.startsWith('//') &&
+    rawReturnTo !== '/login'
+      ? rawReturnTo
+      : '/home';
 
   return (
     <LoginScreen
       onLogin={async (email: string, password: string) => {
         await login({ email, password });
-        navigate('/home');
+        navigate(returnTo, { replace: true });
       }}
       onSignUp={() => navigate('/signup')}
       onForgotPassword={() => navigate('/forgot-password')}

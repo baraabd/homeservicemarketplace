@@ -188,8 +188,8 @@
           ]
         },
         {
-          "name": "POST /v1/auth/verify-email (with token from DB)",
-          "description": "Fetch the raw token from the verification_tokens table. In dev, the InMemoryMailAdapter logs a masked 'to' and the token sits in memory. To retrieve programmatically, hit the DB directly with psql or use the integration test helper. Set {{verificationToken}} in the environment before running this request.",
+          "name": "POST /v1/auth/verify-email (token from Mailpit)",
+          "description": "When SMTP_HOST is set (the default with `pnpm docker:up`), the API sends real SMTP via Mailpit. Open http://localhost:8025, find the 'Verify your email' message, copy the token from the link body, and set {{verificationToken}} in the environment before running this request. Only the sha256 hash of the token lives in the verification_tokens table; the raw value is only retrievable from the email itself (or InMemoryMailAdapter.lastSentTo() in tests).",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -466,8 +466,8 @@
           ]
         },
         {
-          "name": "POST /v1/auth/reset-password (token from DB)",
-          "description": "Set {{resetToken}} in the environment after extracting it from the verification_tokens table (purpose=PASSWORD_RESET, usedAt=NULL). See the Manual Testing Guide for the SQL snippet.",
+          "name": "POST /v1/auth/reset-password (token from Mailpit)",
+          "description": "Open http://localhost:8025, find the 'Reset your password' message, copy the token from the link body, and set {{resetToken}} in the environment before running this request. Only the sha256 hash is stored server-side (verification_tokens.purpose=PASSWORD_RESET); the raw token is only retrievable from the outbound email.",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],

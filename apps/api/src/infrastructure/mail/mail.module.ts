@@ -16,14 +16,16 @@ import { NodemailerMailAdapter } from './nodemailer-mail.adapter';
       provide: MAIL_PORT,
       inject: [AppConfigService, InMemoryMailAdapter],
       useFactory: (config: AppConfigService, inMemory: InMemoryMailAdapter): MailPort => {
+        const log = new Logger('MailModule');
         if (config.get('SMTP_HOST')) {
           const adapter = new NodemailerMailAdapter(config);
           // Factory-created instances don't receive NestJS lifecycle hooks,
           // so we call init eagerly here. The transporter setup is synchronous.
           adapter.onModuleInit();
+          log.log('Using NodemailerMailAdapter (SMTP)');
           return adapter;
         }
-        new Logger('MailModule').log('Using InMemoryMailAdapter (no SMTP_HOST)');
+        log.log('Using InMemoryMailAdapter (no SMTP_HOST)');
         // Return the NestJS-managed instance so that injecting by class token
         // (e.g. in tests accessing .outbox) gets the same object as MAIL_PORT.
         return inMemory;
