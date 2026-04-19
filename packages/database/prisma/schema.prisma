@@ -77,6 +77,8 @@ model User {
   oauthAccounts      OauthAccount[]
   mfaBackupCodes     MfaBackupCode[]
   auditEvents        AuditEvent[]
+  profile            UserProfile?
+  addresses          Address[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -215,6 +217,51 @@ model MfaBackupCode {
 
   @@index([userId, usedAt])
   @@map("mfa_backup_codes")
+}
+
+// One-to-one profile extension for a User. Holds purely optional cosmetic
+// fields today; provider-only data (portfolio, skills) will live in a
+// dedicated ProviderProfile model when the provider domain lands. Keeping
+// this table thin avoids a wide row with many nulls for customer accounts.
+model UserProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  avatarUrl   String?
+  phoneNumber String?
+  bio         String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+// A user-owned postal address. `isDefault` is enforced at the service layer
+// (at most one true per userId, first address auto-becomes default) inside a
+// transaction. A partial-unique index in Postgres (`WHERE isDefault`) would
+// be stricter still, but is deferred until we see real concurrency concerns.
+// Latitude/longitude are optional geocoding hints; no geospatial search yet.
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  label     String?
+  street    String
+  city      String
+  state     String?
+  zipCode   String?
+  country   String
+  latitude  Float?
+  longitude Float?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isDefault])
+  @@map("addresses")
 }
 
 // Audit rows are append-only. `metadata` is a JSON blob limited to an

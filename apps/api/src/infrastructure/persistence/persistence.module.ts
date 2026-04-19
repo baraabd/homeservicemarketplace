@@ -6,6 +6,8 @@ import { RoleRepository } from './iam/role.repository';
 import { SessionRepository } from './iam/session.repository';
 import { UserRepository } from './iam/user.repository';
 import { VerificationTokenRepository } from './iam/verification-token.repository';
+import { AddressRepository } from './user/address.repository';
+import { UserProfileRepository } from './user/user-profile.repository';
 
 @Global()
 @Module({
@@ -16,6 +18,8 @@ import { VerificationTokenRepository } from './iam/verification-token.repository
     SessionRepository,
     VerificationTokenRepository,
     AuditEventRepository,
+    UserProfileRepository,
+    AddressRepository,
   ],
   exports: [
     UserRepository,
@@ -24,6 +28,8 @@ import { VerificationTokenRepository } from './iam/verification-token.repository
     SessionRepository,
     VerificationTokenRepository,
     AuditEventRepository,
+    UserProfileRepository,
+    AddressRepository,
   ],
 })
 export class PersistenceModule {}

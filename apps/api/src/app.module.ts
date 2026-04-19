@@ -13,7 +13,9 @@ import { PrismaModule } from './infrastructure/prisma/prisma.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
 import { MetricsModule } from './infrastructure/telemetry/metrics.module';
 import { PersistenceModule } from './infrastructure/persistence/persistence.module';
+import { AddressModule } from './modules/address/address.module';
 import { IamModule } from './modules/iam/iam.module';
+import { ProfileModule } from './modules/profile/profile.module';
 
 // Infrastructure & data-foundation bootstrap. No business modules are wired
 // at this stage; repositories/transaction helpers are exposed for later
@@ -31,6 +33,8 @@ import { IamModule } from './modules/iam/iam.module';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     HealthModule,
     IamModule,
+    ProfileModule,
+    AddressModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
