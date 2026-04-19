@@ -1,6 +1,13 @@
 import { createBrowserRouter, redirect } from 'react-router';
 import { Root } from './Root';
-import { LoginPage, SignUpPage, ForgotPasswordPage } from './pages/AuthPages';
+import {
+  LoginPage,
+  SignUpPage,
+  ForgotPasswordPage,
+  CheckEmailPage,
+  VerifyEmailPage,
+  ResetPasswordPage,
+} from './pages/AuthPages';
 import { HomePage } from './pages/HomePage';
 import { AppSelector } from './pages/AppSelector';
 import { ProviderPage } from './pages/ProviderPage';
@@ -20,6 +27,10 @@ export const router = createBrowserRouter([
 
       // ── Public ──────────────────────────────────────────────────────
       { path: 'select', Component: AppSelector },
+      // Email-link landing pages — must be reachable whether the user is
+      // logged in or not (e.g. opening the link on a different device).
+      { path: 'verify-email', Component: VerifyEmailPage },
+      { path: 'reset-password', Component: ResetPasswordPage },
 
       // ── Guest-only (redirect to /home if already authed) ────────────
       {
@@ -28,6 +39,7 @@ export const router = createBrowserRouter([
           { path: 'login', Component: LoginPage },
           { path: 'signup', Component: SignUpPage },
           { path: 'forgot-password', Component: ForgotPasswordPage },
+          { path: 'check-email', Component: CheckEmailPage },
         ],
       },
 

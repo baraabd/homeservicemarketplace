@@ -19,5 +19,15 @@
     }
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**", "src/test-setup.ts"]
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/__tests__/**",
+    "src/test-setup.ts",
+    // Orphan shadcn/ui templates — never imported by the app. Their pinned
+    // recharts / input-otp types are stale. Excluded so the build isn't
+    // blocked by dead code. Safe to delete in a housekeeping pass.
+    "src/app/components/ui/chart.tsx",
+    "src/app/components/ui/input-otp.tsx"
+  ]
 }

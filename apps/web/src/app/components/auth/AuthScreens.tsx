@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ChevronLeft,
@@ -11,6 +11,7 @@ import {
   Phone,
   AlertCircle,
   CheckCircle2,
+  MapPin,
   Send,
   ArrowRight,
   ArrowLeft,
@@ -19,6 +20,8 @@ import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
+import { COUNTRY_DIAL_CODES, dialForCountry } from '../../../lib/country-dial-codes';
+import { useGeoBootstrap } from '../../../lib/geo-bootstrap';
 
 // ─── Back chevron (flips in RTL) ──────────────────────────────────────────────
 function BackChevron() {
@@ -264,56 +267,9 @@ export function LoginScreen({ onLogin, onSignUp, onForgotPassword, banner }: Log
             {t('login')}
           </Button>
 
-          <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-2xl px-3.5 py-3">
-            <AlertCircle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
-            <p className="text-amber-700" style={{ fontSize: '12px', lineHeight: '1.5' }}>
-              <strong>{t('demoLogin')}:</strong> ahmed@fixnow.app &nbsp;/&nbsp; password
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-slate-200" />
-            <span className="text-slate-400" style={{ fontSize: '11px' }}>
-              {t('orContinueWith')}
-            </span>
-            <div className="flex-1 h-px bg-slate-200" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              className="h-12 rounded-2xl border-2 border-slate-200 flex items-center justify-center gap-2 text-slate-700 active:bg-slate-50 transition-all"
-              style={{ fontSize: '13px', fontWeight: 600 }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                />
-              </svg>
-              Google
-            </button>
-            <button
-              className="h-12 rounded-2xl border-2 border-slate-200 flex items-center justify-center gap-2 text-slate-700 active:bg-slate-50 transition-all"
-              style={{ fontSize: '13px', fontWeight: 600 }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701" />
-              </svg>
-              Apple
-            </button>
-          </div>
+          {/* OAuth providers (Google/Apple) and the local "demo login" hint
+              were removed here in the auth-ux-alignment pass — neither had
+              a real backend. Reintroduce only when OAuth is actually wired. */}
 
           <p className="text-center text-slate-500 pb-2" style={{ fontSize: '14px' }}>
             {t('noAccount')}{' '}
@@ -332,7 +288,17 @@ export function LoginScreen({ onLogin, onSignUp, onForgotPassword, banner }: Log
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SIGN UP SCREEN
+// SIGN UP SCREEN — email-based (aligned with backend IAM).
+//
+// Backend truth: POST /v1/auth/register returns 202 and emails a single-use
+// verification LINK. There is no OTP anywhere in the stack. This screen is a
+// two-step wizard:
+//   Step 1 — Personal info (name + phone with auto-selected dial code,
+//            best-effort country badge). Phone is onboarding-only today and
+//            is NOT sent to the backend (no phone column yet).
+//   Step 2 — Email + password + terms. On "Create account", we POST the real
+//            register endpoint and let the parent page navigate to the
+//            /check-email landing page.
 // ─────────────────────────────────────────────────────────────────────────────
 interface SignUpProps {
   onBack: () => void;
@@ -341,41 +307,56 @@ interface SignUpProps {
 
 export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
   const { t } = useLang();
-  const [step, setStep] = useState(1); // wizard step 1-3
+  const geo = useGeoBootstrap();
+  const dialEntry = dialForCountry(geo.countryCode);
+
+  const [step, setStep] = useState(1); // 2-step wizard now; Step 3 OTP removed
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  // Phone is split into a dial code the user can override + the local number.
+  const [dialCode, setDialCode] = useState<string>(dialEntry.dialCode);
+  const [localNumber, setLocalNumber] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [otp, setOtp] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [signUpError, setSignUpError] = useState<string | undefined>();
+  const [dialCodeTouched, setDialCodeTouched] = useState(false);
 
-  const canStep1 = name.length > 2 && phone.length > 7;
-  const canStep2 = email.includes('@') && password.length >= 8 && agreed;
-  const canStep3 = otp.length === 4;
+  // If the geo fallback resolves AFTER mount (rare; `useGeoBootstrap`
+  // resolves synchronously on initial render), keep the dial code in sync
+  // until the user edits it.
+  useEffect(() => {
+    if (dialCodeTouched) return;
+    if (dialEntry.dialCode !== dialCode) setDialCode(dialEntry.dialCode);
+  }, [dialEntry.dialCode, dialCode, dialCodeTouched]);
+
+  // Phone is onboarding UI state ONLY — not POSTed. See the PR notes.
+  // The step-1 gate still requires a local number so the UX feels complete.
+  const canStep1 =
+    name.trim().length > 2 && /^[0-9 ()-]{6,}$/.test(localNumber) && dialCode.startsWith('+');
+  const canStep2 = email.includes('@') && password.length >= 12 && agreed;
 
   const goNext = async () => {
-    if (step < 3) {
+    if (step < 2) {
       setStep((s) => s + 1);
-    } else {
-      setIsLoading(true);
-      setSignUpError(undefined);
-      try {
-        await onSuccess({ name, email, password });
-      } catch (err: unknown) {
-        const msg =
-          (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
-            ?.message ?? 'Registration failed';
-        setSignUpError(msg);
-      } finally {
-        setIsLoading(false);
-      }
+      return;
+    }
+    setIsLoading(true);
+    setSignUpError(undefined);
+    try {
+      await onSuccess({ name, email: email.trim(), password });
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
+          ?.message ?? 'Registration failed';
+      setSignUpError(msg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const stepLabels = [t('accountInfo'), t('verification'), t('allSet')];
+  const stepLabels = [t('accountInfo'), t('createAccount')];
 
   return (
     <SwipeableScreen onBack={step > 1 ? () => setStep((s) => s - 1) : onBack}>
@@ -435,7 +416,7 @@ export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
                 >
                   {label}
                 </span>
-                {i < 2 && (
+                {i < stepLabels.length - 1 && (
                   <div
                     className={`flex-1 h-0.5 rounded-full ${i + 1 < step ? 'bg-amber-300' : 'bg-slate-100'}`}
                   />
@@ -454,27 +435,69 @@ export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
                 leadingIcon={<User size={16} />}
                 hint={t('nameOnId')}
               />
-              <TextField
-                label={t('phoneNumber')}
-                type="tel"
-                value={phone}
-                onChange={setPhone}
-                leadingIcon={<Phone size={16} />}
-                hint={t('phoneHint')}
-              />
-              {/* Location row */}
+
+              {/* Phone number: country dial code + local number. Dial code is
+                  editable; we pre-select from best-effort geo/locale. Phone
+                  is onboarding-only and not persisted yet (see PR notes). */}
+              <div>
+                <label
+                  className="text-slate-600 mb-1.5 block"
+                  style={{ fontSize: '12px', fontWeight: 600 }}
+                >
+                  {t('phoneNumber')}
+                </label>
+                <div className="flex items-stretch gap-2">
+                  <div className="relative">
+                    <select
+                      data-testid="dial-code-select"
+                      value={dialCode}
+                      onChange={(e) => {
+                        setDialCode(e.target.value);
+                        setDialCodeTouched(true);
+                      }}
+                      className="appearance-none h-12 rounded-2xl border-2 border-slate-200 bg-white pl-3 pr-7 text-slate-700"
+                      style={{ fontSize: '13px', fontWeight: 600 }}
+                    >
+                      {COUNTRY_DIAL_CODES.map((c) => (
+                        <option key={c.iso2} value={c.dialCode}>
+                          {c.iso2} {c.dialCode}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <TextField
+                      label=""
+                      type="tel"
+                      value={localNumber}
+                      onChange={setLocalNumber}
+                      leadingIcon={<Phone size={16} />}
+                      hint={t('phoneHint')}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Location badge — reflects what we actually resolved.
+                  Only claims a real fix when the browser gave one. */}
               <div className="bg-slate-50 rounded-2xl border border-slate-200 px-4 py-3 flex items-center gap-3">
                 <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                  <span className="text-amber-600" style={{ fontSize: '16px' }}>
-                    📍
-                  </span>
+                  <MapPin size={14} className="text-amber-600" />
                 </div>
                 <div>
                   <p className="text-slate-700" style={{ fontSize: '13px', fontWeight: 600 }}>
-                    Riyadh, Saudi Arabia
+                    {geo.countryCode
+                      ? `${dialEntry.name} (${geo.countryCode})`
+                      : 'Country not detected'}
                   </p>
                   <p className="text-slate-400" style={{ fontSize: '11px' }}>
-                    Auto-detected location
+                    {geo.source === 'geo'
+                      ? 'Detected from device location'
+                      : geo.source === 'locale'
+                        ? 'Inferred from browser locale'
+                        : geo.source === 'timezone'
+                          ? 'Inferred from timezone'
+                          : 'Select your country dial code above'}
                   </p>
                 </div>
               </div>
@@ -546,60 +569,8 @@ export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
             </div>
           )}
 
-          {/* ── Step 3: OTP Verification ── */}
-          {step === 3 && (
-            <div className="flex flex-col items-center text-center gap-4">
-              <div className="w-20 h-20 rounded-2xl bg-amber-100 flex items-center justify-center">
-                <Phone size={32} className="text-amber-500" />
-              </div>
-              <div>
-                <h3 className="text-slate-900" style={{ fontSize: '18px', fontWeight: 800 }}>
-                  Verify Your Number
-                </h3>
-                <p className="text-slate-400 mt-1" style={{ fontSize: '13px' }}>
-                  {phone ? `Code sent to ${phone}` : 'Enter the 4-digit OTP'}
-                </p>
-              </div>
-              {/* OTP boxes */}
-              <div className="flex gap-3 mt-2">
-                {[0, 1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center transition-all ${
-                      otp.length > i
-                        ? 'border-amber-500 bg-amber-50'
-                        : 'border-slate-200 bg-slate-50'
-                    }`}
-                    style={{ fontSize: '24px', fontWeight: 700, color: '#F59E0B' }}
-                  >
-                    {otp[i] ?? ''}
-                  </div>
-                ))}
-              </div>
-              {/* Hidden number input driving OTP */}
-              <input
-                type="number"
-                maxLength={4}
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.slice(0, 4))}
-                className="sr-only"
-                autoFocus
-              />
-              <button
-                onClick={() => setOtp('1234')}
-                className="text-amber-600 active:opacity-70"
-                style={{ fontSize: '13px', fontWeight: 600 }}
-              >
-                Use Demo OTP: 1234
-              </button>
-              <div className="flex items-start gap-2 bg-green-50 border border-green-100 rounded-2xl px-4 py-3 w-full text-start">
-                <CheckCircle2 size={14} className="text-green-500 flex-shrink-0 mt-0.5" />
-                <p className="text-green-700" style={{ fontSize: '12px' }}>
-                  Your account is almost ready! Tap confirm to get started.
-                </p>
-              </div>
-            </div>
-          )}
+          {/* Step 3 (phone OTP) was removed in the auth-ux-alignment pass.
+              Verification is email-link based — handled by /verify-email. */}
 
           <div className="h-4" />
         </div>
@@ -616,17 +587,15 @@ export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
             state={
               isLoading
                 ? 'loading'
-                : (step === 1 && !canStep1) ||
-                    (step === 2 && !canStep2) ||
-                    (step === 3 && !canStep3)
+                : (step === 1 && !canStep1) || (step === 2 && !canStep2)
                   ? 'disabled'
                   : 'default'
             }
             fullWidth
             onClick={goNext}
-            leadingIcon={step < 3 ? <ArrowRight size={16} /> : <CheckCircle2 size={16} />}
+            leadingIcon={step < 2 ? <ArrowRight size={16} /> : <CheckCircle2 size={16} />}
           >
-            {step === 3 ? t('register') : t('next')}
+            {step === 2 ? t('register') : t('next')}
           </Button>
           <p className="text-center text-slate-400 mt-3" style={{ fontSize: '12px' }}>
             {t('alreadyHaveAccount')}{' '}
@@ -641,25 +610,40 @@ export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FORGOT PASSWORD SCREEN
+// FORGOT PASSWORD SCREEN — wired to POST /v1/auth/forgot-password.
+//
+// The backend returns 202 for both existing and unknown emails
+// (anti-enumeration). We always show the "check inbox" success state on a
+// 2xx response, and keep the user on the form with an error hint on a
+// network/5xx failure.
 // ─────────────────────────────────────────────────────────────────────────────
 interface ForgotPwProps {
   onBack: () => void;
+  onSubmit: (email: string) => Promise<void>;
 }
 
-export function ForgotPasswordScreen({ onBack }: ForgotPwProps) {
+export function ForgotPasswordScreen({ onBack, onSubmit }: ForgotPwProps) {
   const { t } = useLang();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | undefined>();
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!email) return;
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+    setError(undefined);
+    try {
+      await onSubmit(email.trim());
       setSubmitted(true);
-    }, 1500);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
+          ?.message ?? 'Could not request a reset link. Please try again.';
+      setError(msg);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -697,7 +681,15 @@ export function ForgotPasswordScreen({ onBack }: ForgotPwProps) {
                 {t('backToLogin')}
               </Button>
               <div className="mt-4">
-                <Button variant="text" onClick={() => setSubmitted(false)}>
+                <Button
+                  variant="text"
+                  onClick={() => {
+                    // Take the user back to the form so they can re-submit
+                    // against the real endpoint (we don't auto-resend here).
+                    setSubmitted(false);
+                    setError(undefined);
+                  }}
+                >
                   {t('resendEmail')}
                 </Button>
               </div>
@@ -740,6 +732,12 @@ export function ForgotPasswordScreen({ onBack }: ForgotPwProps) {
                 >
                   {t('sendResetLink')}
                 </Button>
+
+                {error && (
+                  <p className="text-red-500 text-center" style={{ fontSize: '13px' }}>
+                    {error}
+                  </p>
+                )}
 
                 <div className="flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
                   <AlertCircle size={14} className="text-slate-400 flex-shrink-0 mt-0.5" />
