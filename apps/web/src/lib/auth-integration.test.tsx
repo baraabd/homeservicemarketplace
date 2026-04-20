@@ -17,15 +17,19 @@ function LocationProbe() {
 }
 
 function LoginStub() {
-  const { login } = useAuth();
+  const { login, verifyOtp } = useAuth();
+  // Stub that simulates the two-step login the real UI does: credentials →
+  // OTP challenge → verify-otp → authenticated. The test suite mocks both
+  // endpoints so this single click exercises the whole contract.
   return (
     <div>
       <div data-testid="login-page">login-page</div>
       <LocationProbe />
       <button
         data-testid="do-login"
-        onClick={() => {
-          void login({ email: 'ada@example.com', password: 'a-reasonable-passphrase' });
+        onClick={async () => {
+          const c = await login({ email: 'ada@example.com', password: 'a-reasonable-passphrase' });
+          await verifyOtp(c.challengeId, '123456');
         }}
       >
         login
@@ -130,7 +134,14 @@ describe('deep-link → login → returnTo', () => {
       return [200, MOCK_ME];
     });
     mock.onPost('/v1/auth/refresh').reply(401, {});
-    mock.onPost('/v1/auth/login').reply(200, {});
+    // Real login now returns an OTP challenge; verify-otp issues the session.
+    mock.onPost('/v1/auth/login').reply(200, {
+      otpRequired: true,
+      challengeId: 'chal-int-test',
+      codeLength: 6,
+      expiresInSeconds: 300,
+    });
+    mock.onPost('/v1/auth/verify-otp').reply(200, {});
 
     renderApp(['/home/bookings']);
 

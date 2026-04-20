@@ -1,9 +1,14 @@
-import type { MeResponse } from '@homeservicemarketplace/contracts';
+import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import { api } from './api';
 
 // ─── Auth API functions ──────────────────────────────────────────────────────
 // Every function is a thin typed wrapper around the Axios client.
 // Auth state is cookie-managed; we never read tokens from response bodies.
+//
+// OTP flow (email-otp phase): both register() and login() return an OTP
+// challenge envelope instead of a session. The session cookies are only
+// issued by verifyOtp(), which is why that's the function the consumer
+// must await before treating the user as authenticated.
 
 export interface RegisterInput {
   email: string;
@@ -17,12 +22,22 @@ export interface LoginInput {
   password: string;
 }
 
-export async function register(data: RegisterInput): Promise<void> {
-  await api.post('/v1/auth/register', data);
+export async function register(data: RegisterInput): Promise<OtpChallengeResponse> {
+  const { data: body } = await api.post<OtpChallengeResponse>('/v1/auth/register', data);
+  return body;
 }
 
-export async function login(data: LoginInput): Promise<void> {
-  await api.post('/v1/auth/login', data);
+export async function login(data: LoginInput): Promise<OtpChallengeResponse> {
+  const { data: body } = await api.post<OtpChallengeResponse>('/v1/auth/login', data);
+  return body;
+}
+
+export async function verifyOtp(challengeId: string, code: string): Promise<void> {
+  await api.post('/v1/auth/verify-otp', { challengeId, code });
+}
+
+export async function resendOtp(challengeId: string): Promise<void> {
+  await api.post('/v1/auth/resend-otp', { challengeId });
 }
 
 export async function getMe(): Promise<MeResponse> {

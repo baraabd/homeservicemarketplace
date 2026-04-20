@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
-import type { MeResponse } from '@homeservicemarketplace/contracts';
+import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import * as authApi from './auth-api';
 
 // ─── Query client (singleton) ────────────────────────────────────────────────
@@ -25,8 +25,13 @@ interface AuthContextValue {
   // True when /me last resolved with a non-auth error (network, 5xx). The
   // cached user (if any) is still rendered; UI can surface a degraded banner.
   isDegraded: boolean;
-  login: (data: authApi.LoginInput) => Promise<void>;
-  register: (data: authApi.RegisterInput) => Promise<void>;
+  // Login and register no longer produce a session directly — they return
+  // an OTP challenge envelope and the UI must route to the OTP entry step.
+  // The session is only issued by verifyOtp() below.
+  login: (data: authApi.LoginInput) => Promise<OtpChallengeResponse>;
+  register: (data: authApi.RegisterInput) => Promise<OtpChallengeResponse>;
+  verifyOtp: (challengeId: string, code: string) => Promise<void>;
+  resendOtp: (challengeId: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -89,17 +94,30 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('auth:session-expired', handler);
   }, [qc]);
 
-  const login = useCallback(
-    async (data: authApi.LoginInput) => {
-      await authApi.login(data);
-      // Cookies are now set; re-fetch /me to populate the context
+  const login = useCallback(async (data: authApi.LoginInput): Promise<OtpChallengeResponse> => {
+    // NB: cookies are NOT set yet — the backend responds with an OTP
+    // challenge and the caller is expected to navigate to the OTP step.
+    return authApi.login(data);
+  }, []);
+
+  const register = useCallback(
+    async (data: authApi.RegisterInput): Promise<OtpChallengeResponse> => {
+      return authApi.register(data);
+    },
+    [],
+  );
+
+  const verifyOtp = useCallback(
+    async (challengeId: string, code: string) => {
+      await authApi.verifyOtp(challengeId, code);
+      // Session cookies are now set; re-fetch /me to populate the context.
       await qc.invalidateQueries({ queryKey: ['auth', 'me'] });
     },
     [qc],
   );
 
-  const register = useCallback(async (data: authApi.RegisterInput) => {
-    await authApi.register(data);
+  const resendOtp = useCallback(async (challengeId: string) => {
+    await authApi.resendOtp(challengeId);
   }, []);
 
   const doLogout = useCallback(async () => {
@@ -124,6 +142,8 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
         isDegraded: isError && !!user,
         login,
         register,
+        verifyOtp,
+        resendOtp,
         logout: doLogout,
       }}
     >

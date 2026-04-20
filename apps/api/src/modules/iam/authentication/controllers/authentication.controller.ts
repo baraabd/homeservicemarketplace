@@ -13,7 +13,12 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
-import type { AuthResponse, MeResponse, RoleName } from '@homeservicemarketplace/contracts';
+import type {
+  AuthResponse,
+  MeResponse,
+  OtpChallengeResponse,
+  RoleName,
+} from '@homeservicemarketplace/contracts';
 
 import { AppConfigService } from '../../../../config/app-config.service';
 import { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
@@ -22,9 +27,11 @@ import { Public } from '../decorators/public.decorator';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterDto } from '../dto/register.dto';
+import { ResendOtpDto } from '../dto/resend-otp.dto';
 import { ResendVerificationDto } from '../dto/resend-verification.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { VerifyEmailDto } from '../dto/verify-email.dto';
+import { VerifyOtpDto } from '../dto/verify-otp.dto';
 import { CsrfGuard } from '../guards/csrf.guard';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import {
@@ -61,9 +68,14 @@ export class AuthenticationController {
   @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
   @Post('register')
   @HttpCode(HttpStatus.ACCEPTED)
-  async register(@Body() body: RegisterDto, @Req() req: Request): Promise<{ success: true }> {
-    await this.auth.register(body, buildContext(req));
-    return { success: true };
+  async register(@Body() body: RegisterDto, @Req() req: Request): Promise<OtpChallengeResponse> {
+    const challenge = await this.auth.register(body, buildContext(req));
+    return {
+      otpRequired: true,
+      challengeId: challenge.challengeId,
+      expiresInSeconds: challenge.expiresInSeconds,
+      codeLength: challenge.codeLength,
+    };
   }
 
   @Public()
@@ -86,18 +98,46 @@ export class AuthenticationController {
     return { success: true };
   }
 
-  // --- Login --------------------------------------------------------------
+  // --- Login (OTP challenge — no cookies issued yet) --------------------
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60 * 1000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(
-    @Body() body: LoginDto,
+  async login(@Body() body: LoginDto, @Req() req: Request): Promise<OtpChallengeResponse> {
+    const challenge = await this.auth.login(body, buildContext(req));
+    return {
+      otpRequired: true,
+      challengeId: challenge.challengeId,
+      expiresInSeconds: challenge.expiresInSeconds,
+      codeLength: challenge.codeLength,
+    };
+  }
+
+  // --- Verify OTP + issue session ---------------------------------------
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
+  @Post('verify-otp')
+  @HttpCode(HttpStatus.OK)
+  async verifyOtp(
+    @Body() body: VerifyOtpDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
-    const result = await this.auth.login(body, buildContext(req));
+    const result = await this.auth.verifyOtp(body.challengeId, body.code, buildContext(req));
     return this.shapeAuthResponse(req, res, result);
+  }
+
+  // --- Resend OTP (same challengeId, new code) --------------------------
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
+  @Post('resend-otp')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async resendOtp(
+    @Body() body: ResendOtpDto,
+    @Req() req: Request,
+  ): Promise<{ success: true; expiresInSeconds: number }> {
+    const { expiresInSeconds } = await this.auth.resendOtp(body.challengeId, buildContext(req));
+    return { success: true, expiresInSeconds };
   }
 
   // --- Refresh ------------------------------------------------------------

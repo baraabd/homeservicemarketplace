@@ -53,6 +53,129 @@ function AuthTopBar({ title, onBack }: { title: string; onBack: () => void }) {
   );
 }
 
+// ─── Email OTP panel (shared between Login and SignUp) ────────────────────
+// Reuses the boxed OTP aesthetic from the project's design history: six
+// amber-bordered squares that light up as digits arrive. Only the behavior
+// is new — it consumes the real challengeId the backend returned and POSTs
+// /v1/auth/verify-otp through the parent callback.
+interface EmailOtpPanelProps {
+  email: string;
+  codeLength: number;
+  onVerify: (code: string) => Promise<void>;
+  onResend: () => Promise<void>;
+  isVerifying?: boolean;
+  isResending?: boolean;
+  verifyError?: string;
+  resendNotice?: string;
+}
+
+export function EmailOtpPanel({
+  email,
+  codeLength,
+  onVerify,
+  onResend,
+  isVerifying,
+  isResending,
+  verifyError,
+  resendNotice,
+}: EmailOtpPanelProps) {
+  const [code, setCode] = useState('');
+  const canSubmit = code.length === codeLength && !isVerifying;
+
+  return (
+    <div className="flex flex-col items-center text-center gap-4">
+      <div className="w-20 h-20 rounded-2xl bg-amber-100 flex items-center justify-center">
+        <Mail size={32} className="text-amber-500" />
+      </div>
+      <div>
+        <h3 className="text-slate-900" style={{ fontSize: '18px', fontWeight: 800 }}>
+          Verify your email
+        </h3>
+        <p className="text-slate-400 mt-1" style={{ fontSize: '13px' }}>
+          Enter the {codeLength}-digit code we sent
+          {email ? (
+            <>
+              {' '}
+              to{' '}
+              <span className="text-slate-700" style={{ fontWeight: 600 }}>
+                {email}
+              </span>
+              .
+            </>
+          ) : (
+            '.'
+          )}
+        </p>
+      </div>
+
+      {/* Code boxes — identical aesthetic to the previous 4-box design,
+          just wider to fit a 6-digit code. */}
+      <div className="flex gap-3 mt-2">
+        {Array.from({ length: codeLength }).map((_, i) => (
+          <div
+            key={i}
+            data-testid={`otp-box-${i}`}
+            className={`w-12 h-14 rounded-2xl border-2 flex items-center justify-center transition-all ${
+              code.length > i ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-slate-50'
+            }`}
+            style={{ fontSize: '24px', fontWeight: 700, color: '#F59E0B' }}
+          >
+            {code[i] ?? ''}
+          </div>
+        ))}
+      </div>
+
+      {/* Real text input, visually hidden but keyboard-accessible. inputMode
+          hints numeric keyboards on mobile; autoComplete lets modern browsers
+          pull the code from SMS/email app-clips if the device supports it. */}
+      <input
+        data-testid="otp-input"
+        type="text"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={codeLength}
+        value={code}
+        onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, codeLength))}
+        className="sr-only"
+        autoFocus
+      />
+
+      {verifyError && (
+        <p className="text-red-500" style={{ fontSize: '13px' }}>
+          {verifyError}
+        </p>
+      )}
+
+      <Button
+        variant="primary"
+        fullWidth
+        state={isVerifying ? 'loading' : !canSubmit ? 'disabled' : 'default'}
+        onClick={() => {
+          if (canSubmit) void onVerify(code);
+        }}
+        leadingIcon={<CheckCircle2 size={16} />}
+      >
+        {isVerifying ? 'Verifying…' : 'Confirm'}
+      </Button>
+
+      <button
+        type="button"
+        onClick={() => void onResend()}
+        disabled={isResending}
+        className="text-amber-600 active:opacity-70 disabled:opacity-50"
+        style={{ fontSize: '13px', fontWeight: 600 }}
+      >
+        {isResending ? 'Sending…' : 'Resend code'}
+      </button>
+      {resendNotice && (
+        <p className="text-slate-500" style={{ fontSize: '12px' }}>
+          {resendNotice}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Password Strength ────────────────────────────────────────────────────────
 function PasswordStrength({ password }: { password: string }) {
   const score =
@@ -120,16 +243,36 @@ function SwipeableScreen({ onBack, children }: { onBack: () => void; children: R
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LOGIN SCREEN
+// LOGIN SCREEN — credentials (step 1) + OTP (step 2)
+//
+// onLogin returns the OTP challenge issued by the backend. When the login
+// response resolves, this screen transitions to the OTP panel in the same
+// card layout (no visual redesign). The session is only produced after
+// onOtpVerify resolves successfully.
 // ─────────────────────────────────────────────────────────────────────────────
+export interface LoginOtpChallenge {
+  challengeId: string;
+  codeLength: number;
+  expiresInSeconds: number;
+}
+
 interface LoginProps {
-  onLogin: (email: string, password: string) => Promise<void>;
+  onLogin: (email: string, password: string) => Promise<LoginOtpChallenge>;
+  onOtpVerify: (challengeId: string, code: string) => Promise<void>;
+  onOtpResend: (challengeId: string) => Promise<void>;
   onSignUp: () => void;
   onForgotPassword: () => void;
   banner?: string;
 }
 
-export function LoginScreen({ onLogin, onSignUp, onForgotPassword, banner }: LoginProps) {
+export function LoginScreen({
+  onLogin,
+  onOtpVerify,
+  onOtpResend,
+  onSignUp,
+  onForgotPassword,
+  banner,
+}: LoginProps) {
   const { t } = useLang();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -137,6 +280,11 @@ export function LoginScreen({ onLogin, onSignUp, onForgotPassword, banner }: Log
   const [showPw, setShowPw] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [emailError, setEmailError] = useState<string | undefined>();
+  const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [otpError, setOtpError] = useState<string | undefined>();
+  const [resendNotice, setResendNotice] = useState<string | undefined>();
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -146,7 +294,8 @@ export function LoginScreen({ onLogin, onSignUp, onForgotPassword, banner }: Log
     setEmailError(undefined);
     setIsLoading(true);
     try {
-      await onLogin(email.trim(), password);
+      const out = await onLogin(email.trim(), password);
+      setChallenge(out);
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
@@ -154,6 +303,50 @@ export function LoginScreen({ onLogin, onSignUp, onForgotPassword, banner }: Log
       setEmailError(msg);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleOtpVerify = async (code: string) => {
+    if (!challenge) return;
+    setIsVerifying(true);
+    setOtpError(undefined);
+    try {
+      await onOtpVerify(challenge.challengeId, code);
+      // Success is surfaced by the parent (which navigates to /home or
+      // the saved returnTo path). No further UI change needed here.
+    } catch (err: unknown) {
+      const code = (err as { response?: { data?: { error?: { code?: string } } } })?.response?.data
+        ?.error?.code;
+      setOtpError(
+        code === 'AUTH_OTP_LOCKED'
+          ? 'Too many attempts. Please sign in again to get a new code.'
+          : code === 'AUTH_OTP_EXPIRED'
+            ? 'This code has expired. Please request a new one.'
+            : 'Incorrect code. Please try again.',
+      );
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleOtpResend = async () => {
+    if (!challenge) return;
+    setIsResending(true);
+    setResendNotice(undefined);
+    setOtpError(undefined);
+    try {
+      await onOtpResend(challenge.challengeId);
+      setResendNotice('A new code has been sent.');
+    } catch (err: unknown) {
+      const code = (err as { response?: { data?: { error?: { code?: string } } } })?.response?.data
+        ?.error?.code;
+      setOtpError(
+        code === 'AUTH_OTP_RESEND_EXCEEDED'
+          ? 'Resend limit reached. Please sign in again.'
+          : 'Could not resend the code. Please try again.',
+      );
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -221,96 +414,124 @@ export function LoginScreen({ onLogin, onSignUp, onForgotPassword, banner }: Log
           {t('signInContinue')}
         </p>
 
-        <div className="flex flex-col gap-4">
-          <TextField
-            label={t('emailAddress')}
-            type="email"
-            value={email}
-            onChange={setEmail}
-            error={emailError}
-            leadingIcon={<Mail size={16} />}
+        {challenge ? (
+          <EmailOtpPanel
+            email={email.trim()}
+            codeLength={challenge.codeLength}
+            onVerify={handleOtpVerify}
+            onResend={handleOtpResend}
+            isVerifying={isVerifying}
+            isResending={isResending}
+            verifyError={otpError}
+            resendNotice={resendNotice}
           />
+        ) : (
+          <div className="flex flex-col gap-4">
+            <TextField
+              label={t('emailAddress')}
+              type="email"
+              value={email}
+              onChange={setEmail}
+              error={emailError}
+              leadingIcon={<Mail size={16} />}
+            />
 
-          <TextField
-            label={t('password')}
-            type={showPw ? 'text' : 'password'}
-            value={password}
-            onChange={setPassword}
-            leadingIcon={<Lock size={16} />}
-            trailingIcon={
+            <TextField
+              label={t('password')}
+              type={showPw ? 'text' : 'password'}
+              value={password}
+              onChange={setPassword}
+              leadingIcon={<Lock size={16} />}
+              trailingIcon={
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  className="flex items-center justify-center w-5 h-5"
+                >
+                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              }
+            />
+
+            <div className="flex justify-end -mt-2">
               <button
-                type="button"
-                onClick={() => setShowPw((v) => !v)}
-                className="flex items-center justify-center w-5 h-5"
+                onClick={onForgotPassword}
+                className="text-amber-600 active:opacity-70 transition-opacity"
+                style={{ fontSize: '13px', fontWeight: 600 }}
               >
-                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                {t('forgotPassword')}
               </button>
-            }
-          />
+            </div>
 
-          <div className="flex justify-end -mt-2">
-            <button
-              onClick={onForgotPassword}
-              className="text-amber-600 active:opacity-70 transition-opacity"
-              style={{ fontSize: '13px', fontWeight: 600 }}
+            <Button
+              variant="primary"
+              state={isLoading ? 'loading' : 'default'}
+              fullWidth
+              onClick={handleLogin}
             >
-              {t('forgotPassword')}
-            </button>
-          </div>
+              {t('login')}
+            </Button>
 
-          <Button
-            variant="primary"
-            state={isLoading ? 'loading' : 'default'}
-            fullWidth
-            onClick={handleLogin}
-          >
-            {t('login')}
-          </Button>
-
-          {/* OAuth providers (Google/Apple) and the local "demo login" hint
+            {/* OAuth providers (Google/Apple) and the local "demo login" hint
               were removed here in the auth-ux-alignment pass — neither had
               a real backend. Reintroduce only when OAuth is actually wired. */}
 
-          <p className="text-center text-slate-500 pb-2" style={{ fontSize: '14px' }}>
-            {t('noAccount')}{' '}
-            <button
-              onClick={onSignUp}
-              className="text-amber-600 active:opacity-70"
-              style={{ fontWeight: 700 }}
-            >
-              {t('signUp')}
-            </button>
-          </p>
-        </div>
+            <p className="text-center text-slate-500 pb-2" style={{ fontSize: '14px' }}>
+              {t('noAccount')}{' '}
+              <button
+                onClick={onSignUp}
+                className="text-amber-600 active:opacity-70"
+                style={{ fontWeight: 700 }}
+              >
+                {t('signUp')}
+              </button>
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SIGN UP SCREEN — email-based (aligned with backend IAM).
+// SIGN UP SCREEN — email OTP flow (aligned with backend IAM).
 //
-// Backend truth: POST /v1/auth/register returns 202 and emails a single-use
-// verification LINK. There is no OTP anywhere in the stack. This screen is a
-// two-step wizard:
+// Backend truth: POST /v1/auth/register returns 202 + an OTP challenge
+// envelope, and emails a 6-digit code. The session is issued only when
+// /v1/auth/verify-otp succeeds. This screen is a three-step wizard:
 //   Step 1 — Personal info (name + phone with auto-selected dial code,
 //            best-effort country badge). Phone is onboarding-only today and
 //            is NOT sent to the backend (no phone column yet).
-//   Step 2 — Email + password + terms. On "Create account", we POST the real
-//            register endpoint and let the parent page navigate to the
-//            /check-email landing page.
+//   Step 2 — Email + password + terms. On "Create account" we POST the
+//            real register endpoint and receive the OTP challenge.
+//   Step 3 — Enter the emailed code. On success the parent navigates to
+//            the authenticated home.
 // ─────────────────────────────────────────────────────────────────────────────
 interface SignUpProps {
   onBack: () => void;
-  onSuccess: (data: { name: string; email: string; password: string }) => Promise<void>;
+  // Parent POSTs the credentials, receives the OTP challenge, and returns
+  // it so this screen can drive Step 3. Session issuance happens via the
+  // OTP callbacks below, NOT here.
+  onCredentialsSubmit: (data: {
+    name: string;
+    email: string;
+    password: string;
+  }) => Promise<LoginOtpChallenge>;
+  onOtpVerify: (challengeId: string, code: string) => Promise<void>;
+  onOtpResend: (challengeId: string) => Promise<void>;
 }
 
-export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
+export function SignUpScreen({
+  onBack,
+  onCredentialsSubmit,
+  onOtpVerify,
+  onOtpResend,
+}: SignUpProps) {
   const { t } = useLang();
   const geo = useGeoBootstrap();
   const dialEntry = dialForCountry(geo.countryCode);
 
-  const [step, setStep] = useState(1); // 2-step wizard now; Step 3 OTP removed
+  const [step, setStep] = useState(1); // 1 = info, 2 = credentials, 3 = OTP
   const [name, setName] = useState('');
   // Phone is split into a dial code the user can override + the local number.
   const [dialCode, setDialCode] = useState<string>(dialEntry.dialCode);
@@ -322,6 +543,11 @@ export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [signUpError, setSignUpError] = useState<string | undefined>();
   const [dialCodeTouched, setDialCodeTouched] = useState(false);
+  const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [otpError, setOtpError] = useState<string | undefined>();
+  const [resendNotice, setResendNotice] = useState<string | undefined>();
 
   // If the geo fallback resolves AFTER mount (rare; `useGeoBootstrap`
   // resolves synchronously on initial render), keep the dial code in sync
@@ -338,25 +564,75 @@ export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
   const canStep2 = email.includes('@') && password.length >= 12 && agreed;
 
   const goNext = async () => {
-    if (step < 2) {
-      setStep((s) => s + 1);
+    if (step === 1) {
+      setStep(2);
       return;
     }
-    setIsLoading(true);
-    setSignUpError(undefined);
+    if (step === 2) {
+      setIsLoading(true);
+      setSignUpError(undefined);
+      try {
+        const issued = await onCredentialsSubmit({ name, email: email.trim(), password });
+        setChallenge(issued);
+        setStep(3);
+      } catch (err: unknown) {
+        const msg =
+          (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
+            ?.message ?? 'Registration failed';
+        setSignUpError(msg);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+    // Step 3 has its own primary CTA inside EmailOtpPanel — the sticky
+    // bottom CTA is hidden in that step (see render below).
+  };
+
+  const handleOtpVerify = async (code: string) => {
+    if (!challenge) return;
+    setIsVerifying(true);
+    setOtpError(undefined);
     try {
-      await onSuccess({ name, email: email.trim(), password });
+      await onOtpVerify(challenge.challengeId, code);
+      // Parent takes over (navigation to /home / returnTo).
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
-          ?.message ?? 'Registration failed';
-      setSignUpError(msg);
+      const errCode = (err as { response?: { data?: { error?: { code?: string } } } })?.response
+        ?.data?.error?.code;
+      setOtpError(
+        errCode === 'AUTH_OTP_LOCKED'
+          ? 'Too many attempts. Please restart sign-up to get a new code.'
+          : errCode === 'AUTH_OTP_EXPIRED'
+            ? 'This code has expired. Please request a new one.'
+            : 'Incorrect code. Please try again.',
+      );
     } finally {
-      setIsLoading(false);
+      setIsVerifying(false);
     }
   };
 
-  const stepLabels = [t('accountInfo'), t('createAccount')];
+  const handleOtpResend = async () => {
+    if (!challenge) return;
+    setIsResending(true);
+    setResendNotice(undefined);
+    setOtpError(undefined);
+    try {
+      await onOtpResend(challenge.challengeId);
+      setResendNotice('A new code has been sent.');
+    } catch (err: unknown) {
+      const errCode = (err as { response?: { data?: { error?: { code?: string } } } })?.response
+        ?.data?.error?.code;
+      setOtpError(
+        errCode === 'AUTH_OTP_RESEND_EXCEEDED'
+          ? 'Resend limit reached. Please restart sign-up.'
+          : 'Could not resend the code. Please try again.',
+      );
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const stepLabels = [t('accountInfo'), t('createAccount'), t('verification')];
 
   return (
     <SwipeableScreen onBack={step > 1 ? () => setStep((s) => s - 1) : onBack}>
@@ -569,41 +845,55 @@ export function SignUpScreen({ onBack, onSuccess }: SignUpProps) {
             </div>
           )}
 
-          {/* Step 3 (phone OTP) was removed in the auth-ux-alignment pass.
-              Verification is email-link based — handled by /verify-email. */}
+          {/* ── Step 3: Email OTP verification ── */}
+          {step === 3 && challenge && (
+            <EmailOtpPanel
+              email={email.trim()}
+              codeLength={challenge.codeLength}
+              onVerify={handleOtpVerify}
+              onResend={handleOtpResend}
+              isVerifying={isVerifying}
+              isResending={isResending}
+              verifyError={otpError}
+              resendNotice={resendNotice}
+            />
+          )}
 
           <div className="h-4" />
         </div>
 
-        {/* Sticky bottom CTA */}
-        <div className="bg-white border-t border-slate-100 px-6 py-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-          {signUpError && (
-            <p className="text-red-500 text-center mb-2" style={{ fontSize: '13px' }}>
-              {signUpError}
+        {/* Sticky bottom CTA — hidden on Step 3 because the OTP panel
+            ships its own primary action. */}
+        {step !== 3 && (
+          <div className="bg-white border-t border-slate-100 px-6 py-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+            {signUpError && (
+              <p className="text-red-500 text-center mb-2" style={{ fontSize: '13px' }}>
+                {signUpError}
+              </p>
+            )}
+            <Button
+              variant="primary"
+              state={
+                isLoading
+                  ? 'loading'
+                  : (step === 1 && !canStep1) || (step === 2 && !canStep2)
+                    ? 'disabled'
+                    : 'default'
+              }
+              fullWidth
+              onClick={goNext}
+              leadingIcon={step < 2 ? <ArrowRight size={16} /> : <CheckCircle2 size={16} />}
+            >
+              {step === 2 ? t('register') : t('next')}
+            </Button>
+            <p className="text-center text-slate-400 mt-3" style={{ fontSize: '12px' }}>
+              {t('alreadyHaveAccount')}{' '}
+              <button onClick={onBack} className="text-amber-600 font-semibold">
+                {t('login')}
+              </button>
             </p>
-          )}
-          <Button
-            variant="primary"
-            state={
-              isLoading
-                ? 'loading'
-                : (step === 1 && !canStep1) || (step === 2 && !canStep2)
-                  ? 'disabled'
-                  : 'default'
-            }
-            fullWidth
-            onClick={goNext}
-            leadingIcon={step < 2 ? <ArrowRight size={16} /> : <CheckCircle2 size={16} />}
-          >
-            {step === 2 ? t('register') : t('next')}
-          </Button>
-          <p className="text-center text-slate-400 mt-3" style={{ fontSize: '12px' }}>
-            {t('alreadyHaveAccount')}{' '}
-            <button onClick={onBack} className="text-amber-600 font-semibold">
-              {t('login')}
-            </button>
-          </p>
-        </div>
+          </div>
+        )}
       </div>
     </SwipeableScreen>
   );

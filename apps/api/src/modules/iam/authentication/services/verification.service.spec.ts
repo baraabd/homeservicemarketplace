@@ -35,6 +35,11 @@ function makeRow(overrides: Partial<VerificationToken> = {}): VerificationToken 
     expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     usedAt: null,
     createdAt: new Date(),
+    // OTP-specific columns added in the email-otp phase. Default to
+    // null / 0 to keep existing link-token tests semantically unchanged.
+    challengeId: null,
+    attemptCount: 0,
+    resendCount: 0,
     ...overrides,
   };
 }
