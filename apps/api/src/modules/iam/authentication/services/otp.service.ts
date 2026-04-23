@@ -72,16 +72,18 @@ export class OtpService {
     const consumed = await this.repo.consumeByChallenge(challengeId, supplied, tx);
 
     if (!consumed) {
-      const after = await this.repo.incrementAttempt(challengeId, tx);
+      // Wrong code. Rate-limit bookkeeping MUST NOT live in the caller's
+      // transaction: we're about to throw, which rolls that tx back and
+      // would silently revert the attempt counter — effectively disabling
+      // the 5-strike lockout and enabling unthrottled brute-force of the
+      // 6-digit code space. Do both writes OUTSIDE the outer tx so they
+      // commit before we throw.
+      const after = await this.repo.incrementAttempt(challengeId);
       if (after.attemptCount >= OTP_MAX_ATTEMPTS) {
-        // Out of attempts: burn the challenge so a passer-by can't keep
-        // grinding the remaining window. The user must request a fresh one
-        // via /resend-otp (which itself is rate-limited) or re-login.
-        await this.repo.rotateChallenge(
-          challengeId,
-          { tokenHash: 'locked:' + randomBytes(8).toString('hex'), expiresAt: new Date(0) },
-          tx,
-        );
+        await this.repo.rotateChallenge(challengeId, {
+          tokenHash: 'locked:' + randomBytes(8).toString('hex'),
+          expiresAt: new Date(0),
+        });
         throw new ForbiddenException({ code: 'AUTH_OTP_LOCKED' });
       }
       throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });

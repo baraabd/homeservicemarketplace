@@ -157,6 +157,34 @@ describe('OtpService', () => {
       expect(rows()[0]!.usedAt).toBeNull();
     });
 
+    it('bumps the attempt counter EVEN WHEN the caller wraps verify in a tx that rolls back', async () => {
+      // Regression test: AuthenticationService.verifyOtp runs verify inside
+      // its own $transaction. If incrementAttempt were tx-scoped to that
+      // outer tx, the throw would roll the counter back and the 5-strike
+      // lockout would never fire — unthrottled brute-force of the 6-digit
+      // space. The fix does the increment outside the caller's tx.
+      const { repo, rows } = makeRepo();
+      const svc = new OtpService(repo, cfg);
+      const issued = await svc.issue('u-1', 'LOGIN_OTP');
+
+      // Pass an opaque "outer tx" handle. Our fake repo ignores it, but
+      // the contract under test is that verify MUST NOT thread it into
+      // incrementAttempt / rotateChallenge on the miss path. We prove it
+      // by spying on the repo mocks and asserting they were called with
+      // no tx argument.
+      const fakeTx = { $marker: 'outer' } as unknown as Parameters<typeof svc.verify>[2];
+      await expect(svc.verify(issued.challengeId, '000000', fakeTx)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_OTP_INVALID' }),
+      });
+
+      expect(rows()[0]!.attemptCount).toBe(1);
+      // The read path (findByChallengeId) legitimately uses the outer tx so
+      // reads see concurrent writes within the same transaction. The write
+      // path (incrementAttempt) must NOT — that's the regression surface.
+      const incrementCall = (repo.incrementAttempt as jest.Mock).mock.calls[0];
+      expect(incrementCall?.[1]).toBeUndefined();
+    });
+
     it('locks the challenge after OTP_MAX_ATTEMPTS consecutive misses (AUTH_OTP_LOCKED)', async () => {
       const { repo, rows } = makeRepo();
       const svc = new OtpService(repo, cfg);
