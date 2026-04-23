@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useLocation } from 'react-router';
+import { Navigate, Outlet, useLocation, useOutletContext } from 'react-router';
 import { useAuth } from './auth-provider';
 
 // ─── Loading spinner ─────────────────────────────────────────────────────────
@@ -16,6 +16,19 @@ function fullTarget(pathname: string, search: string, hash: string): string {
   return `${pathname}${search}${hash}`;
 }
 
+// react-router's outlet context is scoped to the nearest <Outlet>, so a bare
+// <Outlet /> inside an intermediate layout route (like these guards) silently
+// drops the parent's context. Grandchildren calling useOutletContext() then
+// receive undefined — which is how HomePage used to crash with "Cannot
+// destructure property 'isOffline' of 'useRootContext(...)' as it is
+// undefined". Forward whatever the parent passed us so guards behave as
+// transparent wrappers, not context sinks. Typed as unknown because guards
+// are generic and must not couple to any particular parent's context shape.
+function ForwardingOutlet() {
+  const parentCtx = useOutletContext<unknown>();
+  return <Outlet context={parentCtx} />;
+}
+
 // ─── RequireAuth ─────────────────────────────────────────────────────────────
 // Wraps routes that need authentication. Behavior:
 //   - isLoading (no cached user yet) → spinner.
@@ -31,7 +44,7 @@ export function RequireAuth() {
     const returnTo = fullTarget(location.pathname, location.search, location.hash);
     return <Navigate to="/login" state={{ returnTo }} replace />;
   }
-  return <Outlet />;
+  return <ForwardingOutlet />;
 }
 
 // ─── GuestOnly ───────────────────────────────────────────────────────────────
@@ -46,5 +59,5 @@ export function GuestOnly() {
     const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
     return <Navigate to={returnTo && returnTo !== '/login' ? returnTo : '/home'} replace />;
   }
-  return <Outlet />;
+  return <ForwardingOutlet />;
 }
