@@ -1,4 +1,5 @@
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
+import type { AxiosError } from 'axios';
 import { api } from './api';
 
 // ─── Auth API functions ──────────────────────────────────────────────────────
@@ -22,14 +23,46 @@ export interface LoginInput {
   password: string;
 }
 
+interface ApiErrorBody {
+  error?: {
+    code?: string;
+    message?: string;
+  };
+}
+
+function rewriteLoginErrorMessage(err: unknown): void {
+  const error = err as AxiosError<ApiErrorBody> | undefined;
+  const code = error?.response?.data?.error?.code;
+
+  const friendlyMessage =
+    code === 'AUTH_INVALID_CREDENTIALS'
+      ? 'Invalid email or password.'
+      : code === 'AUTH_ACCOUNT_UNVERIFIED'
+        ? 'Your account is not verified yet. Please check your email for the latest code.'
+        : code === 'AUTH_ACCOUNT_LOCKED'
+          ? 'Too many failed attempts. Please wait a little and try again.'
+          : code === 'AUTH_ACCOUNT_SUSPENDED'
+            ? 'This account is suspended. Please contact support.'
+            : null;
+
+  if (friendlyMessage && error?.response?.data?.error) {
+    error.response.data.error.message = friendlyMessage;
+  }
+}
+
 export async function register(data: RegisterInput): Promise<OtpChallengeResponse> {
   const { data: body } = await api.post<OtpChallengeResponse>('/v1/auth/register', data);
   return body;
 }
 
 export async function login(data: LoginInput): Promise<OtpChallengeResponse> {
-  const { data: body } = await api.post<OtpChallengeResponse>('/v1/auth/login', data);
-  return body;
+  try {
+    const { data: body } = await api.post<OtpChallengeResponse>('/v1/auth/login', data);
+    return body;
+  } catch (err) {
+    rewriteLoginErrorMessage(err);
+    throw err;
+  }
 }
 
 export async function verifyOtp(challengeId: string, code: string): Promise<void> {
