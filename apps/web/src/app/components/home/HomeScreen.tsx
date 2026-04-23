@@ -31,6 +31,7 @@ import { ProfileTab } from '../profile/ProfileTab';
 import { TabSkeleton } from '../ui/SkeletonLoader';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { useEcosystem } from '../../context/EcosystemContext';
+import { useAuthIdentity } from '../../../lib/use-auth-identity';
 
 // ─── Tab routing ──────────────────────────────────────────────────────────────
 const TAB_PATHS: Record<string, string> = {
@@ -240,6 +241,10 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const navigate = useNavigate();
   const { t, lang } = useLang();
   const { showHourlyRate } = useEcosystem();
+  // Read the authenticated identity from the existing auth source of truth.
+  // Do not duplicate auth state here and do not fall back to hardcoded
+  // placeholder copy — we'd rather render nothing than a fake identity.
+  const identity = useAuthIdentity();
   const activeTab = tabFromPath(location.pathname);
   const prevTab = useRef(activeTab);
   const micTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -939,9 +944,12 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
         <div className="flex items-center justify-between px-5 py-3.5">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-sm shadow-amber-200">
+              <div
+                className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-sm shadow-amber-200"
+                data-testid="home-header-avatar"
+              >
                 <span className="text-white" style={{ fontSize: '13px', fontWeight: 800 }}>
-                  AK
+                  {identity.initials ?? ''}
                 </span>
               </div>
               <div className="absolute -bottom-0.5 -end-0.5 w-3.5 h-3.5 rounded-full bg-green-400 border-2 border-white dark:border-slate-800" />
@@ -952,9 +960,10 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
               </p>
               <p
                 className="text-slate-900 dark:text-white"
-                style={{ fontSize: '14px', fontWeight: 700 }}
+                style={{ fontSize: '14px', fontWeight: 700, minWidth: '1ch' }}
+                data-testid="home-header-name"
               >
-                {lang === 'ar' ? 'أحمد الخالد' : 'Ahmed Al-Khalid'}
+                {identity.displayName ?? ''}
               </p>
             </div>
           </div>
