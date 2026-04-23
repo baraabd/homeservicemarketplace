@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ChevronLeft,
@@ -81,6 +81,12 @@ export function EmailOtpPanel({
 }: EmailOtpPanelProps) {
   const [code, setCode] = useState('');
   const canSubmit = code.length === codeLength && !isVerifying;
+  // Ref so any tap/click on the visual boxes can programmatically focus the
+  // visually-hidden <input>. Without this, mobile users literally cannot
+  // bring up the numeric keyboard (the input is sr-only — offscreen), and
+  // desktop users lose focus after the initial autoFocus fires.
+  const inputRef = useRef<HTMLInputElement>(null);
+  const focusInput = () => inputRef.current?.focus();
 
   return (
     <div className="flex flex-col items-center text-center gap-4">
@@ -109,8 +115,17 @@ export function EmailOtpPanel({
       </div>
 
       {/* Code boxes — identical aesthetic to the previous 4-box design,
-          just wider to fit a 6-digit code. */}
-      <div className="flex gap-3 mt-2">
+          just wider to fit a 6-digit code. The container is a click-capture
+          target that routes every tap to the real input; cursor: text
+          signals "this is a text field" to users. Individual boxes pick up
+          the click via event bubbling. */}
+      <div
+        className="flex gap-3 mt-2 cursor-text"
+        onClick={focusInput}
+        onTouchStart={focusInput}
+        role="group"
+        aria-label={`${codeLength}-digit verification code`}
+      >
         {Array.from({ length: codeLength }).map((_, i) => (
           <div
             key={i}
@@ -127,8 +142,10 @@ export function EmailOtpPanel({
 
       {/* Real text input, visually hidden but keyboard-accessible. inputMode
           hints numeric keyboards on mobile; autoComplete lets modern browsers
-          pull the code from SMS/email app-clips if the device supports it. */}
+          pull the code from SMS/email app-clips if the device supports it.
+          The ref lets the boxes above route clicks/taps to focus this. */}
       <input
+        ref={inputRef}
         data-testid="otp-input"
         type="text"
         inputMode="numeric"
@@ -136,6 +153,7 @@ export function EmailOtpPanel({
         maxLength={codeLength}
         value={code}
         onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, codeLength))}
+        aria-label={`${codeLength}-digit verification code`}
         className="sr-only"
         autoFocus
       />

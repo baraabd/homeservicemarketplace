@@ -103,6 +103,42 @@ describe('Login → OTP → authenticated', () => {
     expect(screen.queryByTestId('home-ok')).toBeNull();
   });
 
+  it('tapping the visual OTP boxes focuses the (sr-only) input so mobile keyboards appear', async () => {
+    // Regression: before the fix, the 6 boxes were plain <div>s with no
+    // click handler and the real <input> was sr-only. Users could not tap
+    // the boxes to bring up the numeric keyboard on mobile. The fix wires
+    // an onClick on the boxes' container that calls input.focus().
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+    mock.onPost('/v1/auth/login').reply(200, OTP_CHALLENGE);
+
+    renderAuth('/login');
+    await submitLoginCredentials();
+    await waitFor(() => expect(screen.getByTestId('otp-input')).toBeInTheDocument());
+
+    const input = screen.getByTestId('otp-input') as HTMLInputElement;
+    const box3 = screen.getByTestId('otp-box-3');
+
+    // Move focus off the input so we can observe the re-focus from a box tap.
+    await act(async () => {
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    });
+    expect(document.activeElement).not.toBe(input);
+
+    // Tap box 3 — the container's onClick must route focus back to the input.
+    await act(async () => {
+      box3.click();
+    });
+    expect(document.activeElement).toBe(input);
+
+    // Typing now types into the real input (proves the focus is functional,
+    // not just asserting activeElement).
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '123456' } });
+    });
+    expect(input.value).toBe('123456');
+  });
+
   it('correct OTP → POST /verify-otp → /me resolves → home rendered', async () => {
     let meCalls = 0;
     mock.onGet('/v1/auth/me').reply(() => {
