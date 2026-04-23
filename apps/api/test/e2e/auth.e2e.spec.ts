@@ -66,6 +66,9 @@ const authService = {
   logoutAll: jest.fn(),
   forgotPassword: jest.fn(),
   resetPassword: jest.fn(),
+  // Added in the email-otp phase.
+  verifyOtp: jest.fn(),
+  resendOtp: jest.fn(),
 };
 
 const userRepo = { findById: jest.fn(), listRoles: jest.fn() };
@@ -148,19 +151,32 @@ describe('Authentication controller (e2e)', () => {
 
   // --- Registration -------------------------------------------------------
   describe('POST /v1/auth/register', () => {
-    it('returns 202 on success and the generic envelope (no user id leaked)', async () => {
+    const issuedChallenge = (overrides: Record<string, unknown> = {}) => ({
+      challengeId: 'chal-reg-xyz',
+      expiresInSeconds: 300,
+      codeLength: 6,
+      ...overrides,
+    });
+
+    it('returns 202 with an opaque OTP challenge envelope (no user id leaked)', async () => {
       app = await bootApp();
-      authService.register.mockResolvedValueOnce(undefined);
-      const res = await request(app.getHttpServer())
-        .post('/v1/auth/register')
-        .send({
-          email: 'ada@example.com',
-          password: 'strong-password',
-          firstName: 'Ada',
-          lastName: 'Lovelace',
-        });
+      authService.register.mockResolvedValueOnce(issuedChallenge());
+      const res = await request(app.getHttpServer()).post('/v1/auth/register').send({
+        email: 'ada@example.com',
+        password: 'strong-password',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+      });
       expect(res.status).toBe(202);
-      expect(res.body).toEqual({ success: true });
+      expect(res.body).toEqual({
+        otpRequired: true,
+        challengeId: 'chal-reg-xyz',
+        expiresInSeconds: 300,
+        codeLength: 6,
+      });
+      // No session cookies issued by register.
+      const setCookie = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+      expect(setCookie.join('\n')).not.toMatch(/hsm_at|hsm_rt|hsm_csrf/);
     });
 
     it('returns 400 via ValidationPipe when payload is invalid', async () => {
@@ -187,29 +203,29 @@ describe('Authentication controller (e2e)', () => {
 
     it('rejects passwords below the policy minimum (12 chars), accepts at the boundary', async () => {
       app = await bootApp();
-      authService.register.mockResolvedValue(undefined);
+      authService.register.mockResolvedValue({
+        challengeId: 'chal-reg-xyz',
+        expiresInSeconds: 300,
+        codeLength: 6,
+      });
       // 11 characters → policy violation (DTO @Length(12, 128))
-      const tooShort = await request(app.getHttpServer())
-        .post('/v1/auth/register')
-        .send({
-          email: 'ada@example.com',
-          password: 'short-pass1',
-          firstName: 'Ada',
-          lastName: 'X',
-        });
+      const tooShort = await request(app.getHttpServer()).post('/v1/auth/register').send({
+        email: 'ada@example.com',
+        password: 'short-pass1',
+        firstName: 'Ada',
+        lastName: 'X',
+      });
       expect(tooShort.status).toBe(400);
       expect(tooShort.body.error.code).toBe('VALIDATION_ERROR');
       expect(authService.register).not.toHaveBeenCalled();
 
       // 12 characters → accepted
-      const atBoundary = await request(app.getHttpServer())
-        .post('/v1/auth/register')
-        .send({
-          email: 'ada@example.com',
-          password: 'twelve-chars',
-          firstName: 'Ada',
-          lastName: 'X',
-        });
+      const atBoundary = await request(app.getHttpServer()).post('/v1/auth/register').send({
+        email: 'ada@example.com',
+        password: 'twelve-chars',
+        firstName: 'Ada',
+        lastName: 'X',
+      });
       expect(atBoundary.status).toBe(202);
     });
 
@@ -226,15 +242,64 @@ describe('Authentication controller (e2e)', () => {
     });
   });
 
-  // --- Login: hybrid transport -------------------------------------------
-  describe('POST /v1/auth/login — hybrid transport', () => {
-    it('WEB client: sets hsm_at, hsm_rt, hsm_csrf cookies with correct flags; body contains NO tokens', async () => {
+  // --- Login: OTP challenge (no session yet) ----------------------------
+  // Behavior changed in the email-otp phase: /login no longer issues a
+  // session on success. It returns an OTP challenge and sets NO cookies
+  // regardless of client kind. Session cookies/tokens are issued ONLY by
+  // /verify-otp after the user proves possession of the emailed code.
+  describe('POST /v1/auth/login — OTP challenge', () => {
+    const issuedChallenge = (overrides: Record<string, unknown> = {}) => ({
+      challengeId: 'chal-abc',
+      expiresInSeconds: 300,
+      codeLength: 6,
+      ...overrides,
+    });
+
+    it('WEB client: returns { otpRequired, challengeId, ... } and sets NO auth cookies', async () => {
       app = await bootApp();
-      authService.login.mockResolvedValueOnce(issuedSession());
+      authService.login.mockResolvedValueOnce(issuedChallenge());
       const res = await request(app.getHttpServer())
         .post('/v1/auth/login')
         .set('X-Client-Kind', 'web')
         .send({ email: 'ada@example.com', password: 'pw' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        otpRequired: true,
+        challengeId: 'chal-abc',
+        expiresInSeconds: 300,
+        codeLength: 6,
+      });
+      const setCookie = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+      expect(setCookie.join('\n')).not.toMatch(/hsm_at|hsm_rt|hsm_csrf/);
+    });
+
+    it('MOBILE client: identical response shape, no cookies, no tokens leaked yet', async () => {
+      app = await bootApp();
+      authService.login.mockResolvedValueOnce(issuedChallenge());
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/login')
+        .set('X-Client-Kind', 'mobile')
+        .send({ email: 'ada@example.com', password: 'pw' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.otpRequired).toBe(true);
+      expect(res.body.challengeId).toBe('chal-abc');
+      expect(res.body.tokens).toBeUndefined();
+      const setCookie = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+      expect(setCookie.join('\n')).not.toMatch(/hsm_at|hsm_rt|hsm_csrf/);
+    });
+  });
+
+  // --- Verify OTP: THIS is where sessions are now issued -----------------
+  describe('POST /v1/auth/verify-otp', () => {
+    it('WEB client: sets hsm_at, hsm_rt, hsm_csrf cookies with correct flags; body contains NO tokens', async () => {
+      app = await bootApp();
+      authService.verifyOtp.mockResolvedValueOnce(issuedSession());
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/verify-otp')
+        .set('X-Client-Kind', 'web')
+        .send({ challengeId: 'chal-16-plus-chars', code: '123456' });
 
       expect(res.status).toBe(200);
       expect(res.body.tokens).toBeNull();
@@ -243,17 +308,11 @@ describe('Authentication controller (e2e)', () => {
 
       const setCookie = (res.headers['set-cookie'] as unknown as string[]) ?? [];
       const joined = setCookie.join('\n');
-      // Access cookie: HttpOnly, Path=/, SameSite tracks config (lax)
       expect(joined).toMatch(/hsm_at=.*HttpOnly/i);
       expect(joined).toMatch(/hsm_at=.*SameSite=Lax/i);
-      // Refresh cookie: HttpOnly, Path=/auth/refresh, SameSite=Strict
       expect(joined).toMatch(/hsm_rt=.*HttpOnly/i);
-      // Path must match the versioned route — see helpers/cookies.ts REFRESH_PATH.
-      // Without /v1 prefix, the browser would never send the cookie back on
-      // /v1/auth/refresh and refresh would silently break for web clients.
       expect(joined).toMatch(/hsm_rt=.*Path=\/v1\/auth\/refresh/i);
       expect(joined).toMatch(/hsm_rt=.*SameSite=Strict/i);
-      // CSRF cookie: NOT HttpOnly, SameSite=Strict
       expect(joined).toMatch(/hsm_csrf=/);
       expect(joined).not.toMatch(/hsm_csrf=.*HttpOnly/i);
       expect(joined).toMatch(/hsm_csrf=.*SameSite=Strict/i);
@@ -261,11 +320,11 @@ describe('Authentication controller (e2e)', () => {
 
     it('MOBILE client: returns tokens in body and sets NO auth cookies', async () => {
       app = await bootApp();
-      authService.login.mockResolvedValueOnce(issuedSession());
+      authService.verifyOtp.mockResolvedValueOnce(issuedSession());
       const res = await request(app.getHttpServer())
-        .post('/v1/auth/login')
+        .post('/v1/auth/verify-otp')
         .set('X-Client-Kind', 'mobile')
-        .send({ email: 'ada@example.com', password: 'pw' });
+        .send({ challengeId: 'chal-16-plus-chars', code: '123456' });
 
       expect(res.status).toBe(200);
       expect(res.body.tokens).toEqual({
@@ -275,6 +334,16 @@ describe('Authentication controller (e2e)', () => {
       });
       const setCookie = (res.headers['set-cookie'] as unknown as string[]) ?? [];
       expect(setCookie.join('\n')).not.toMatch(/hsm_at|hsm_rt|hsm_csrf/);
+    });
+
+    it('rejects malformed codes before calling the service (ValidationPipe)', async () => {
+      app = await bootApp();
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/verify-otp')
+        .send({ challengeId: 'chal-16-plus-chars', code: 'abcde6' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(authService.verifyOtp).not.toHaveBeenCalled();
     });
   });
 

@@ -8,6 +8,7 @@ import { AuditModule } from '../audit/audit.module';
 import { AuthenticationController } from './controllers/authentication.controller';
 import { AuthenticationService } from './services/authentication.service';
 import { LoginAttemptService } from './services/login-attempt.service';
+import { OtpService } from './services/otp.service';
 import { PasswordService } from './services/password.service';
 import { SessionService } from './services/session.service';
 import { TokenService } from './services/token.service';
@@ -45,6 +46,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     TokenService,
     SessionService,
     VerificationService,
+    OtpService,
     LoginAttemptService,
     JwtStrategy,
     JwtAuthGuard,

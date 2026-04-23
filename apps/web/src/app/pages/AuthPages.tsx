@@ -31,45 +31,68 @@ export function LoginPage() {
   const justRegistered = state?.registered;
   const returnTo = sanitizeReturnTo(state?.returnTo);
 
+  const { verifyOtp, resendOtp } = useAuth();
+
   return (
     <LoginScreen
       onLogin={async (email: string, password: string) => {
-        await login({ email, password });
+        const challenge = await login({ email, password });
+        return {
+          challengeId: challenge.challengeId,
+          codeLength: challenge.codeLength,
+          expiresInSeconds: challenge.expiresInSeconds,
+        };
+      }}
+      onOtpVerify={async (challengeId: string, code: string) => {
+        await verifyOtp(challengeId, code);
         navigate(returnTo, { replace: true });
+      }}
+      onOtpResend={async (challengeId: string) => {
+        await resendOtp(challengeId);
       }}
       onSignUp={() => navigate('/signup')}
       onForgotPassword={() => navigate('/forgot-password')}
-      banner={justRegistered ? 'Check your email to verify your account, then sign in.' : undefined}
+      banner={justRegistered ? 'Your account is ready. Sign in to continue.' : undefined}
     />
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SIGN-UP PAGE  /signup
+// Credentials (step 1+2) are submitted to /v1/auth/register which returns
+// an OTP challenge; step 3 (inside SignUpScreen) verifies that OTP against
+// /v1/auth/verify-otp and — on success — the session cookies are issued.
 // ─────────────────────────────────────────────────────────────────────────────
 export function SignUpPage() {
   const navigate = useNavigate();
-  const { register: doRegister } = useAuth();
+  const { register: doRegister, verifyOtp, resendOtp } = useAuth();
 
   return (
     <SignUpScreen
       onBack={() => navigate('/login')}
-      onSuccess={async (data: { name: string; email: string; password: string }) => {
+      onCredentialsSubmit={async (data: { name: string; email: string; password: string }) => {
         const [firstName, ...rest] = data.name.trim().split(' ');
         const lastName = rest.join(' ') || firstName;
-        await doRegister({
+        const challenge = await doRegister({
           email: data.email,
           password: data.password,
           firstName,
           lastName,
         });
-        // Register returns 202 for anti-enumeration — do NOT auto-login.
-        // Send the user to /check-email so we surface the email-link flow
-        // honestly (not via a one-line toast that's easy to miss).
-        navigate('/check-email', {
-          state: { email: data.email },
-          replace: true,
-        });
+        return {
+          challengeId: challenge.challengeId,
+          codeLength: challenge.codeLength,
+          expiresInSeconds: challenge.expiresInSeconds,
+        };
+      }}
+      onOtpVerify={async (challengeId: string, code: string) => {
+        await verifyOtp(challengeId, code);
+        // Registration OTP success also issues the session, so we drop
+        // straight into the authed area rather than bouncing to /login.
+        navigate('/home', { replace: true });
+      }}
+      onOtpResend={async (challengeId: string) => {
+        await resendOtp(challengeId);
       }}
     />
   );

@@ -75,6 +75,19 @@ function makeHarness() {
     consume: jest.fn(),
   } as unknown as jest.Mocked<VerificationService>;
 
+  // OTP service double. The per-test expectations override these
+  // mockResolvedValue defaults where needed (e.g. REGISTRATION_OTP path).
+  const otp = {
+    issue: jest.fn().mockResolvedValue({
+      challengeId: 'chal-fake',
+      rawCode: '123456',
+      expiresAt: new Date(Date.now() + 5 * 60_000),
+      expiresInSeconds: 300,
+    }),
+    verify: jest.fn(),
+    resend: jest.fn(),
+  } as unknown as jest.Mocked<import('./otp.service').OtpService>;
+
   const sessions = {
     createForLogin: jest.fn(),
     revokeById: jest.fn().mockResolvedValue(undefined),
@@ -116,6 +129,7 @@ function makeHarness() {
     roles,
     passwords,
     verification,
+    otp,
     sessions,
     attempts,
     tx,
@@ -130,6 +144,7 @@ function makeHarness() {
     roles,
     passwords,
     verification,
+    otp,
     sessions,
     attempts,
     tx,
@@ -168,11 +183,11 @@ describe('AuthenticationService', () => {
       expect(createArgs.email).toBe('ada@example.com');
       expect(createArgs.firstName).toBe('Ada'); // trimmed
       expect(h.users.assignRole).toHaveBeenCalledWith('new-u', 'role-customer', expect.anything());
-      expect(h.verification.issue).toHaveBeenCalledWith(
-        'new-u',
-        'EMAIL_VERIFICATION',
-        expect.anything(),
-      );
+      // Registration pivoted from a link token (EMAIL_VERIFICATION) to a
+      // short-form OTP challenge (REGISTRATION_OTP) — see otp.service.ts.
+      // No session is issued here; the session is issued only on verify-otp.
+      expect(h.otp.issue).toHaveBeenCalledWith('new-u', 'REGISTRATION_OTP', expect.anything());
+      expect(h.verification.issue).not.toHaveBeenCalled();
       expect(h.mail.send).toHaveBeenCalled();
       expect(h.audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'USER_REGISTERED', metadata: { outcome: 'created' } }),
@@ -191,6 +206,7 @@ describe('AuthenticationService', () => {
         local.roles,
         local.passwords,
         local.verification,
+        local.otp,
         local.sessions,
         local.attempts,
         local.tx,
@@ -327,34 +343,105 @@ describe('AuthenticationService', () => {
       ).rejects.toThrow();
     });
 
-    it('on success: clears counters, resolves roles, creates a session, audits LOGIN_SUCCESS', async () => {
+    it('on valid credentials: clears counters, issues a LOGIN_OTP challenge, sends email, does NOT create a session', async () => {
       const h = makeHarness();
       h.users.findByEmail.mockResolvedValueOnce(makeUser());
       h.passwords.verify.mockResolvedValueOnce(true);
-      h.users.listRoles.mockResolvedValueOnce([
-        {
-          userId: 'u-1',
-          roleId: 'r',
-          assignedAt: new Date(),
-          role: { name: 'customer' },
-        } as UserRole & { role: Role },
-      ] as never);
-      h.sessions.createForLogin.mockResolvedValueOnce({
-        session: { id: 'sess-1' },
-        access: { token: 'a', jti: 'j', ttlSeconds: 600, expiresAt: new Date() },
-        refresh: { raw: 'r', hash: 'h', expiresAt: new Date() },
-      } as never);
+      (h.otp.issue as jest.Mock).mockResolvedValueOnce({
+        challengeId: 'chal-1',
+        rawCode: '123456',
+        expiresAt: new Date(Date.now() + 5 * 60_000),
+        expiresInSeconds: 300,
+      });
 
       const result = await h.svc.login({ email: 'ada@example.com', password: 'pw' }, ctx);
 
       expect(h.attempts.recordSuccess).toHaveBeenCalled();
-      expect(h.sessions.createForLogin).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'u-1', roles: ['customer'] }),
+      expect(h.otp.issue).toHaveBeenCalledWith('u-1', 'LOGIN_OTP', expect.anything());
+      expect(result.challengeId).toBe('chal-1');
+      expect(result.codeLength).toBeGreaterThanOrEqual(4);
+      // Session creation is NOT called here — that happens in verifyOtp.
+      expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+      // Email send envelope (masked logs) is exercised via the mail mock.
+      expect(h.mail.send).toHaveBeenCalledWith(
+        expect.objectContaining({ subject: expect.stringMatching(/sign-in code/i) }),
       );
-      expect(result.roles).toEqual(['customer']);
+    });
+  });
+
+  describe('verifyOtp', () => {
+    it('REGISTRATION_OTP success: marks user ACTIVE, issues session, audits LOGIN_SUCCESS via otp', async () => {
+      const h = makeHarness();
+      const user = makeUser({ id: 'u-9', email: 'ada@example.com' });
+      // First call: otp.verify resolves with userId + purpose.
+      (h.otp.verify as jest.Mock).mockResolvedValueOnce({
+        userId: 'u-9',
+        purpose: 'REGISTRATION_OTP',
+      });
+      // trx.user.update for the ACTIVE flip in the fake tx — the harness's
+      // fakeTx.user.update is already a jest.fn resolving undefined.
+      (h.fakeTx.user.update as jest.Mock).mockResolvedValueOnce(user);
+      h.users.findById.mockResolvedValueOnce(user);
+      h.users.listRoles.mockResolvedValueOnce([
+        {
+          userId: user.id,
+          roleId: 'r',
+          assignedAt: new Date(),
+          role: { name: 'customer' },
+        } as UserRole & {
+          role: Role;
+        },
+      ] as never);
+      h.sessions.createForLogin.mockResolvedValueOnce({
+        session: { id: 'sess-v' },
+        access: { token: 'a', jti: 'j', ttlSeconds: 600, expiresAt: new Date() },
+        refresh: { raw: 'r', hash: 'h', expiresAt: new Date() },
+      } as never);
+
+      const out = await h.svc.verifyOtp('chal-1', '123456', ctx);
+
+      expect(out.user.id).toBe('u-9');
+      expect(h.fakeTx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'ACTIVE' }) }),
+      );
+      expect(h.sessions.createForLogin).toHaveBeenCalled();
       expect(h.audit.record).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'LOGIN_SUCCESS' }),
+        expect.objectContaining({
+          type: 'LOGIN_SUCCESS',
+          metadata: expect.objectContaining({ via: 'otp' }),
+        }),
       );
+    });
+
+    it('LOGIN_OTP success: issues session without touching the user row', async () => {
+      const h = makeHarness();
+      const user = makeUser({ id: 'u-10' });
+      (h.otp.verify as jest.Mock).mockResolvedValueOnce({ userId: 'u-10', purpose: 'LOGIN_OTP' });
+      h.users.findById.mockResolvedValueOnce(user);
+      h.users.listRoles.mockResolvedValueOnce([] as never);
+      h.sessions.createForLogin.mockResolvedValueOnce({
+        session: { id: 'sess-x' },
+        access: { token: 'a', jti: 'j', ttlSeconds: 600, expiresAt: new Date() },
+        refresh: { raw: 'r', hash: 'h', expiresAt: new Date() },
+      } as never);
+
+      await h.svc.verifyOtp('chal-2', '999999', ctx);
+
+      expect(h.fakeTx.user.update).not.toHaveBeenCalled();
+      expect(h.sessions.createForLogin).toHaveBeenCalled();
+    });
+
+    it('propagates AUTH_OTP_INVALID from the OtpService (no session issued)', async () => {
+      const h = makeHarness();
+      const { BadRequestException } = await import('@nestjs/common');
+      (h.otp.verify as jest.Mock).mockRejectedValueOnce(
+        new BadRequestException({ code: 'AUTH_OTP_INVALID' }),
+      );
+
+      await expect(h.svc.verifyOtp('chal-x', '000000', ctx)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_OTP_INVALID' }),
+      });
+      expect(h.sessions.createForLogin).not.toHaveBeenCalled();
     });
   });
 

@@ -29,6 +29,13 @@ enum ClientKind {
 enum TokenPurpose {
   EMAIL_VERIFICATION
   PASSWORD_RESET
+  // Short-form numeric OTP challenges (6-digit). The same table backs both
+  // link tokens and OTPs — the `tokenHash` column stores sha256(raw) in both
+  // cases; only the format of `raw` and how it is presented to the user
+  // differ. `challengeId`, `attemptCount`, and `resendCount` are only used
+  // by the OTP purposes below.
+  REGISTRATION_OTP
+  LOGIN_OTP
 }
 
 enum AuditEventType {
@@ -171,17 +178,24 @@ model Session {
   @@map("sessions")
 }
 
-// Single table for email-verification AND password-reset flows.
-// `purpose` enum discriminates. `tokenHash` is sha256 of the random secret
-// sent to the user; plaintext is never stored.
+// Single table for email-verification, password-reset, and email-OTP flows.
+// `purpose` discriminates. `tokenHash` is sha256 of the random secret sent
+// to the user; plaintext is never stored. For OTP purposes
+// (REGISTRATION_OTP / LOGIN_OTP) the raw secret is a 6-digit numeric code;
+// `challengeId` is an opaque reference the client presents at verify-otp /
+// resend-otp time, and the attempt / resend counters enforce rate limits.
 model VerificationToken {
-  id        String       @id @default(cuid())
-  userId    String
-  tokenHash String       @unique
-  purpose   TokenPurpose
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime     @default(now())
+  id           String       @id @default(cuid())
+  userId       String
+  tokenHash    String       @unique
+  purpose      TokenPurpose
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime     @default(now())
+  // OTP-only columns — null for EMAIL_VERIFICATION / PASSWORD_RESET rows.
+  challengeId  String?      @unique
+  attemptCount Int          @default(0)
+  resendCount  Int          @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

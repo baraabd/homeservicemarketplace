@@ -4,12 +4,13 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "pnpm build:deps && vite",
+    "build": "pnpm build:deps && tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "pnpm build:deps && tsc --noEmit",
+    "test": "pnpm build:deps && vitest run",
+    "build:deps": "pnpm --filter @homeservicemarketplace/contracts build"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

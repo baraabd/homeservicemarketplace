@@ -3,16 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "predev": "pnpm --filter @homeservicemarketplace/database build",
-    "dev": "nest start --watch",
-    "prebuild": "pnpm --filter @homeservicemarketplace/database build",
-    "build": "nest build",
+    "dev": "pnpm build:deps && nest start --watch",
+    "build": "pnpm build:deps && nest build",
     "start": "node dist/main",
     "start:prod": "node dist/main",
     "lint": "eslint \"src/**/*.ts\"",
-    "typecheck": "tsc --noEmit",
-    "test": "jest",
-    "test:watch": "jest --watch"
+    "typecheck": "pnpm build:deps && tsc --noEmit",
+    "test": "pnpm build:deps && jest",
+    "test:watch": "pnpm build:deps && jest --watch",
+    "build:deps": "pnpm --filter @homeservicemarketplace/database build && pnpm --filter @homeservicemarketplace/contracts build"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.16",

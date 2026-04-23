@@ -1,7 +1,12 @@
 {
   "compilerOptions": {
     "module": "commonjs",
-    "moduleResolution": "node",
+    // `node10` is the non-deprecated explicit name for the classic Node
+    // resolver TS calls `node`. NestJS + CommonJS output require this; the
+    // `node16`/`nodenext` strategies would mandate `.js` extensions on every
+    // local import, which conflicts with Nest's source layout. No
+    // `ignoreDeprecations` needed — this name is current as of TS 5.x.
+    "moduleResolution": "node10",
     "target": "ES2022",
     "lib": ["ES2022"],
     "declaration": false,
@@ -13,15 +18,9 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./",
-    "baseUrl": "./",
     "incremental": true,
     "strict": true,
     "skipLibCheck": true,
-    // `node` here is the legacy alias for `node10`. NestJS works with both;
-    // moving to `node16`/`nodenext` would require .js extensions on every
-    // local import, which conflicts with Nest's source layout. Silence the
-    // TS 5.x deprecation warning rather than rewrite every import site.
-    "ignoreDeprecations": "5.0",
     // `jest` enables the global describe/it/expect/jest typings in spec
     // files, so the editor stops flagging them as undefined. The
     // production build (tsconfig.build.json) excludes specs, so this has

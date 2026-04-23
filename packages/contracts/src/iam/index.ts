@@ -7,5 +7,8 @@ export * from './request/verify-email.request';
 export * from './request/resend-verification.request';
 export * from './request/forgot-password.request';
 export * from './request/reset-password.request';
+export * from './request/verify-otp.request';
+export * from './request/resend-otp.request';
 export * from './response/auth.response';
 export * from './response/me.response';
+export * from './response/otp-challenge.response';
