@@ -1,9 +1,24 @@
 import axios from 'axios';
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
+// Resolve the API base URL at bundle-init time. Production bundles MUST have
+// VITE_API_URL baked in (vite.config.ts enforces this at build time). Dev
+// bundles fall back to localhost:4000 for developer ergonomics. Prod ships
+// with the fallback unreachable — a missing production env surfaces as a
+// build failure, never a silent "talks to localhost" runtime bug.
+function resolveApiBaseUrl(): string {
+  const fromEnv = import.meta.env.VITE_API_URL?.trim();
+  if (fromEnv) return fromEnv;
+  if (import.meta.env.DEV) return 'http://localhost:4000';
+  // Belt-and-braces: vite.config throws before we get here in production
+  // builds. This runtime throw is defense-in-depth for any non-standard
+  // environment where the build validator is bypassed.
+  throw new Error('VITE_API_URL is required in production builds but was not set at build time.');
+}
+
 // ─── Axios instance ──────────────────────────────────────────────────────────
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:4000',
+  baseURL: resolveApiBaseUrl(),
   withCredentials: true,
   headers: {
     'X-Client-Kind': 'web',
