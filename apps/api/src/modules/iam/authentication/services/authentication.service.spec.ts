@@ -486,6 +486,28 @@ describe('AuthenticationService', () => {
       );
     });
 
+    it('clears lockout state so the user can log in with the new password', async () => {
+      // Regression: the most common reason to reset a password is that the
+      // user got locked out. If the reset doesn't clear failedLoginCount and
+      // lockedUntil, the very next login — with the NEW password — throws
+      // AUTH_ACCOUNT_LOCKED. Users reported seeing "Unauthorized Exception"
+      // in the UI right after "Password updated". This test pins that the
+      // reset includes the lockout reset in the same update.
+      const h = makeHarness();
+      h.verification.consume.mockResolvedValueOnce('u-1');
+
+      await h.svc.resetPassword('tok'.repeat(8), 'a-brand-new-passphrase', ctx);
+
+      expect(h.fakeTx.user.update).toHaveBeenCalledWith({
+        where: { id: 'u-1' },
+        data: expect.objectContaining({
+          passwordHash: '$argon2id$hashed',
+          failedLoginCount: 0,
+          lockedUntil: null,
+        }),
+      });
+    });
+
     it('rejects with a stable code when the token is invalid / used / expired', async () => {
       const h = makeHarness();
       h.verification.consume.mockResolvedValueOnce(null);

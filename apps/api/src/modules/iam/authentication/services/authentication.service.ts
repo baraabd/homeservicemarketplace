@@ -474,7 +474,19 @@ export class AuthenticationService {
       const hash = await this.passwords.hash(newPassword);
       await trx.user.update({
         where: { id },
-        data: { passwordHash: hash, passwordUpdatedAt: new Date() },
+        data: {
+          passwordHash: hash,
+          passwordUpdatedAt: new Date(),
+          // A password reset is the canonical recovery path for a user who
+          // got locked out of their account. Leaving `lockedUntil` /
+          // `failedLoginCount` set after a successful reset means the very
+          // next login with the new password throws AUTH_ACCOUNT_LOCKED —
+          // the user is told "wrong password / locked" immediately after
+          // the reset succeeds, which is a confusing dead-end. Clear the
+          // counter so the new password genuinely unlocks the account.
+          failedLoginCount: 0,
+          lockedUntil: null,
+        },
       });
       await this.audit.record(
         {

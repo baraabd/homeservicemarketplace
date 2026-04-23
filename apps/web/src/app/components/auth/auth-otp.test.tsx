@@ -191,6 +191,45 @@ describe('Login → OTP → authenticated', () => {
     expect(screen.queryByTestId('home-ok')).toBeNull();
   });
 
+  it('login 401 with leaky "Unauthorized Exception" message → UI renders friendly copy, never the raw server text', async () => {
+    // Regression: the real server used to emit this exact payload because
+    // NestJS auto-derived HttpException.message from the class name when
+    // IAM threw with only `{ code }`. Users saw "Unauthorized Exception" on
+    // the login form. The UI now maps from the stable code and ignores
+    // response.data.error.message entirely.
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+    mock.onPost('/v1/auth/login').reply(401, {
+      success: false,
+      error: { code: 'AUTH_INVALID_CREDENTIALS', message: 'Unauthorized Exception' },
+    });
+
+    renderAuth('/login');
+    await submitLoginCredentials();
+
+    // The raw framework text MUST NOT appear.
+    await waitFor(() => expect(mock.history.post.length).toBeGreaterThan(0));
+    expect(screen.queryByText(/Unauthorized Exception/i)).toBeNull();
+    expect(screen.queryByText(/Exception$/)).toBeNull();
+    // A friendly message takes its place.
+    expect(screen.getByText(/incorrect email or password/i)).toBeInTheDocument();
+  });
+
+  it('login 401 AUTH_ACCOUNT_LOCKED — UI prompts the user to wait or reset (covers post-lockout path)', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+    mock.onPost('/v1/auth/login').reply(401, {
+      success: false,
+      error: { code: 'AUTH_ACCOUNT_LOCKED', message: 'Unauthorized Exception' },
+    });
+
+    renderAuth('/login');
+    await submitLoginCredentials();
+
+    await waitFor(() => expect(screen.getByText(/locked/i)).toBeInTheDocument());
+    expect(screen.queryByText(/Unauthorized Exception/i)).toBeNull();
+  });
+
   it('resend triggers POST /resend-otp and surfaces a notice', async () => {
     mock.onGet('/v1/auth/me').reply(401, {});
     mock.onPost('/v1/auth/refresh').reply(401, {});

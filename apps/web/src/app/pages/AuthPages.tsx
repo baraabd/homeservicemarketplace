@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { CheckCircle2, Eye, EyeOff, Lock, Mail, RefreshCcw, XCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-provider';
 import * as authApi from '../../lib/auth-api';
+import { resetPasswordErrorMessage } from '../../lib/auth-errors';
 import { LoginScreen, SignUpScreen, ForgotPasswordScreen } from '../components/auth/AuthScreens';
 import { Button } from '../components/ds/Button';
 import { TextField } from '../components/ds/TextField';
@@ -344,12 +345,7 @@ export function ResetPasswordPage() {
       await authApi.resetPassword(token, password);
       setDone(true);
     } catch (e: unknown) {
-      const axiosStatus = (e as { response?: { status?: number } } | undefined)?.response?.status;
-      setError(
-        axiosStatus === 400
-          ? 'This reset link is invalid or expired. Request a new one.'
-          : 'Something went wrong. Please try again.',
-      );
+      setError(resetPasswordErrorMessage(e));
     } finally {
       setIsLoading(false);
     }
