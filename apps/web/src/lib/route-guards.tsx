@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation, useOutletContext } from 'react-router';
 import { useAuth } from './auth-provider';
+import { getIntendedAppPath } from './intended-app';
 
 // ─── Loading spinner ─────────────────────────────────────────────────────────
 function AuthLoadingScreen() {
@@ -57,7 +58,12 @@ export function GuestOnly() {
   if (isLoading) return <AuthLoadingScreen />;
   if (isAuthenticated) {
     const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
-    return <Navigate to={returnTo && returnTo !== '/login' ? returnTo : '/home'} replace />;
+    // returnTo (forwarded from RequireAuth) takes precedence; fall back to
+    // the user's recorded launcher intent so an already-authed user who
+    // clicks Provider on /select and bounces through /login still lands on
+    // /provider, not /home.
+    const dest = returnTo && returnTo !== '/login' ? returnTo : getIntendedAppPath();
+    return <Navigate to={dest} replace />;
   }
   return <ForwardingOutlet />;
 }

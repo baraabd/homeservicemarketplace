@@ -1,9 +1,10 @@
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router';
 import { Smartphone, Monitor, Wrench, ArrowRight, Zap, Shield, Globe } from 'lucide-react';
+import { type IntendedApp, INTENDED_APP_PATHS, setIntendedApp } from '../../lib/intended-app';
 
 interface AppCard {
-  id: string;
+  id: IntendedApp;
   label: string;
   sub: string;
   path: string;
@@ -20,7 +21,7 @@ const APPS: AppCard[] = [
     id: 'seeker',
     label: 'Seeker App',
     sub: 'Client · Home Services Platform',
-    path: '/home',
+    path: INTENDED_APP_PATHS.seeker,
     gradient: 'from-amber-500 via-orange-500 to-red-500',
     border: 'border-amber-400/30',
     icon: <Smartphone size={28} className="text-white" />,
@@ -32,7 +33,7 @@ const APPS: AppCard[] = [
     id: 'provider',
     label: 'Provider App',
     sub: 'Professional · Earnings Platform',
-    path: '/provider',
+    path: INTENDED_APP_PATHS.provider,
     gradient: 'from-blue-600 via-indigo-600 to-purple-700',
     border: 'border-blue-400/30',
     icon: <Wrench size={28} className="text-white" />,
@@ -44,7 +45,7 @@ const APPS: AppCard[] = [
     id: 'admin',
     label: 'Admin Dashboard',
     sub: 'Platform Control · Maharah',
-    path: '/admin',
+    path: INTENDED_APP_PATHS.admin,
     gradient: 'from-slate-700 via-slate-800 to-slate-900',
     border: 'border-slate-400/20',
     icon: <Monitor size={28} className="text-white" />,
@@ -146,14 +147,23 @@ export function AppSelector() {
               <motion.button
                 whileHover={{ scale: 1.02, y: -4 }}
                 whileTap={{ scale: 0.98 }}
+                data-testid={`app-card-${app.id}`}
                 onClick={() => {
-                  if (app.id === 'admin') {
-                    navigate('/admin');
-                  } else if (app.id === 'provider') {
-                    navigate('/provider');
-                  } else {
-                    navigate('/login');
-                  }
+                  // Persist the user's choice so any subsequent auth detour
+                  // (login, signup, OTP, forgot/reset, verify-email) can
+                  // route the user back to the SAME experience they picked.
+                  // Without this layer, navigating through multiple auth
+                  // pages drops react-router state and the user falls back
+                  // to /home (Seeker) — which is exactly how Provider
+                  // appeared to "open Seeker by mistake".
+                  setIntendedApp(app.id);
+                  // Always navigate to the app's own path. RequireAuth
+                  // handles the redirect to /login (with returnTo preserved)
+                  // when the route is protected and the user is not yet
+                  // authenticated. Symmetric handling keeps Seeker /
+                  // Provider on the same code path so a future regression
+                  // in one is harder to miss for the other.
+                  navigate(app.path);
                 }}
                 className={`w-full group flex flex-col rounded-3xl border ${app.border} overflow-hidden cursor-pointer text-start relative`}
                 style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(10px)' }}
