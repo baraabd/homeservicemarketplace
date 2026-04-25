@@ -55,6 +55,102 @@ const APPS: AppCard[] = [
   },
 ];
 
+// Single source of truth for an app-card render. Both the primary
+// (Seeker + Provider) row and the secondary (Admin) row use this so the
+// visual identity — gradients, padding, typography, shadow, badge, tag
+// chips, CTA — is byte-for-byte identical between the two groups. Only
+// the outer grid wrapper differs.
+function renderAppCard(app: AppCard, idx: number, navigate: ReturnType<typeof useNavigate>) {
+  return (
+    <motion.div
+      key={app.id}
+      initial={{ opacity: 0, y: 30 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: idx * 0.1 + 0.2 }}
+    >
+      <motion.button
+        whileHover={{ scale: 1.02, y: -4 }}
+        whileTap={{ scale: 0.98 }}
+        data-testid={`app-card-${app.id}`}
+        onClick={() => {
+          // Persist the user's choice so any subsequent auth detour
+          // (login, signup, OTP, forgot/reset, verify-email) can route
+          // the user back to the SAME experience they picked. Without
+          // this layer, navigating through multiple auth pages drops
+          // react-router state and the user falls back to /home
+          // (Seeker) — which is exactly how Provider appeared to
+          // "open Seeker by mistake".
+          setIntendedApp(app.id);
+          // Always navigate to the app's own path. RequireAuth handles
+          // the redirect to /login (with returnTo preserved) when the
+          // route is protected and the user is not yet authenticated.
+          // Symmetric handling keeps Seeker / Provider on the same
+          // code path so a future regression in one is harder to miss
+          // for the other.
+          navigate(app.path);
+        }}
+        className={`w-full group flex flex-col rounded-3xl border ${app.border} overflow-hidden cursor-pointer text-start relative`}
+        style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(10px)' }}
+      >
+        {/* Card gradient header */}
+        <div className={`bg-gradient-to-br ${app.gradient} p-6 pb-8 relative overflow-hidden`}>
+          <div className="absolute -top-8 -end-8 w-32 h-32 rounded-full bg-white/10" />
+          <div className="absolute top-2 end-2">
+            <span
+              className={`px-2.5 py-1 rounded-full ${app.badgeBg} backdrop-blur-sm`}
+              style={{ fontSize: '10px', fontWeight: 700 }}
+            >
+              {app.badge}
+            </span>
+          </div>
+          <div className="relative">
+            <div className="w-14 h-14 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center mb-4 shadow-lg">
+              {app.icon}
+            </div>
+            <h3 className="text-white mb-1" style={{ fontSize: '20px', fontWeight: 800 }}>
+              {app.label}
+            </h3>
+            <p className="text-white/60" style={{ fontSize: '12px' }}>
+              {app.sub}
+            </p>
+          </div>
+        </div>
+
+        {/* Card body */}
+        <div className="p-5 flex flex-col gap-4 flex-1">
+          {/* Tags */}
+          <div className="flex flex-wrap gap-1.5">
+            {app.tags.map((tag) => (
+              <span
+                key={tag}
+                className="px-2.5 py-1 rounded-lg bg-white/8 border border-white/8 text-slate-300"
+                style={{ fontSize: '11px', fontWeight: 500 }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+
+          {/* CTA */}
+          <div className="flex items-center justify-between mt-auto pt-2">
+            <span className="text-slate-400" style={{ fontSize: '12px' }}>
+              {app.id === 'admin' ? 'Full-width desktop view' : '430px mobile PWA'}
+            </span>
+            <motion.div
+              className="flex items-center gap-1.5 text-amber-400 group-hover:text-amber-300"
+              animate={{ x: 0 }}
+              whileHover={{ x: 3 }}
+              style={{ fontSize: '13px', fontWeight: 700 }}
+            >
+              Launch <ArrowRight size={14} />
+            </motion.div>
+          </div>
+        </div>
+      </motion.button>
+    </motion.div>
+  );
+}
+
 export function AppSelector() {
   const navigate = useNavigate();
 
@@ -135,99 +231,34 @@ export function AppSelector() {
           </div>
         </motion.div>
 
-        {/* App cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {APPS.map((app, idx) => (
-            <motion.div
-              key={app.id}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: idx * 0.1 + 0.2 }}
-            >
-              <motion.button
-                whileHover={{ scale: 1.02, y: -4 }}
-                whileTap={{ scale: 0.98 }}
-                data-testid={`app-card-${app.id}`}
-                onClick={() => {
-                  // Persist the user's choice so any subsequent auth detour
-                  // (login, signup, OTP, forgot/reset, verify-email) can
-                  // route the user back to the SAME experience they picked.
-                  // Without this layer, navigating through multiple auth
-                  // pages drops react-router state and the user falls back
-                  // to /home (Seeker) — which is exactly how Provider
-                  // appeared to "open Seeker by mistake".
-                  setIntendedApp(app.id);
-                  // Always navigate to the app's own path. RequireAuth
-                  // handles the redirect to /login (with returnTo preserved)
-                  // when the route is protected and the user is not yet
-                  // authenticated. Symmetric handling keeps Seeker /
-                  // Provider on the same code path so a future regression
-                  // in one is harder to miss for the other.
-                  navigate(app.path);
-                }}
-                className={`w-full group flex flex-col rounded-3xl border ${app.border} overflow-hidden cursor-pointer text-start relative`}
-                style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(10px)' }}
+        {/* App cards
+            Public entry hierarchy:
+              - Primary row: Seeker + Provider (the two user-facing apps)
+              - Secondary row: Admin (operator console — accessible but
+                visually de-emphasized via a narrower centered container)
+            Visual identity is unchanged — every card still uses the same
+            gradient, border, padding, typography, shadow, badge, and tag
+            styles. Only the OUTER grid layout is rebalanced so the two
+            user-facing apps own the visual real estate. */}
+        {(() => {
+          const primary = APPS.filter((a) => a.id === 'seeker' || a.id === 'provider');
+          const secondary = APPS.filter((a) => a.id === 'admin');
+          return (
+            <>
+              <div
+                className="grid grid-cols-1 md:grid-cols-2 gap-5"
+                data-testid="app-cards-primary"
               >
-                {/* Card gradient header */}
-                <div
-                  className={`bg-gradient-to-br ${app.gradient} p-6 pb-8 relative overflow-hidden`}
-                >
-                  <div className="absolute -top-8 -end-8 w-32 h-32 rounded-full bg-white/10" />
-                  <div className="absolute top-2 end-2">
-                    <span
-                      className={`px-2.5 py-1 rounded-full ${app.badgeBg} backdrop-blur-sm`}
-                      style={{ fontSize: '10px', fontWeight: 700 }}
-                    >
-                      {app.badge}
-                    </span>
-                  </div>
-                  <div className="relative">
-                    <div className="w-14 h-14 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center mb-4 shadow-lg">
-                      {app.icon}
-                    </div>
-                    <h3 className="text-white mb-1" style={{ fontSize: '20px', fontWeight: 800 }}>
-                      {app.label}
-                    </h3>
-                    <p className="text-white/60" style={{ fontSize: '12px' }}>
-                      {app.sub}
-                    </p>
-                  </div>
+                {primary.map((app, idx) => renderAppCard(app, idx, navigate))}
+              </div>
+              {secondary.length > 0 && (
+                <div className="mt-5 max-w-md mx-auto" data-testid="app-cards-secondary">
+                  {secondary.map((app, idx) => renderAppCard(app, primary.length + idx, navigate))}
                 </div>
-
-                {/* Card body */}
-                <div className="p-5 flex flex-col gap-4 flex-1">
-                  {/* Tags */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {app.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-2.5 py-1 rounded-lg bg-white/8 border border-white/8 text-slate-300"
-                        style={{ fontSize: '11px', fontWeight: 500 }}
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* CTA */}
-                  <div className="flex items-center justify-between mt-auto pt-2">
-                    <span className="text-slate-400" style={{ fontSize: '12px' }}>
-                      {app.id === 'admin' ? 'Full-width desktop view' : '430px mobile PWA'}
-                    </span>
-                    <motion.div
-                      className="flex items-center gap-1.5 text-amber-400 group-hover:text-amber-300"
-                      animate={{ x: 0 }}
-                      whileHover={{ x: 3 }}
-                      style={{ fontSize: '13px', fontWeight: 700 }}
-                    >
-                      Launch <ArrowRight size={14} />
-                    </motion.div>
-                  </div>
-                </div>
-              </motion.button>
-            </motion.div>
-          ))}
-        </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* Footer note */}
         <motion.p

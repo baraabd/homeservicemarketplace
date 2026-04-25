@@ -91,6 +91,57 @@ afterEach(() => {
   clearIntendedApp();
 });
 
+describe('Public entry hierarchy — Seeker + Provider primary, Admin secondary', () => {
+  // The visual identity (colors / gradients / typography / shadows / card
+  // markup) is unchanged: both groups call the same renderAppCard helper.
+  // What we assert here is the LAYOUT hierarchy — that Seeker + Provider
+  // sit in the primary container above the Admin card, and Admin sits in
+  // a narrower secondary container below.
+  it('renders Seeker and Provider in the primary container, Admin in the secondary container', () => {
+    renderRouter();
+
+    const primary = screen.getByTestId('app-cards-primary');
+    const secondary = screen.getByTestId('app-cards-secondary');
+
+    // Primary holds the two user-facing apps in the order Seeker → Provider.
+    expect(primary).toContainElement(screen.getByTestId('app-card-seeker'));
+    expect(primary).toContainElement(screen.getByTestId('app-card-provider'));
+    // Admin lives in the secondary container, not primary.
+    expect(primary).not.toContainElement(screen.getByTestId('app-card-admin'));
+    expect(secondary).toContainElement(screen.getByTestId('app-card-admin'));
+  });
+
+  it('Admin remains accessible — its launcher still routes to Admin', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+
+    renderRouter();
+    // Admin is in the secondary container but the click handler still
+    // navigates to /admin. We're proving "secondary in layout != hidden".
+    await act(async () => {
+      screen.getByTestId('app-card-admin').click();
+    });
+    await waitFor(() => expect(screen.getByTestId('admin-app')).toBeInTheDocument());
+  });
+
+  it('primary container appears before the secondary container in DOM order', () => {
+    renderRouter();
+    const primary = screen.getByTestId('app-cards-primary');
+    const secondary = screen.getByTestId('app-cards-secondary');
+    // compareDocumentPosition: bit 4 = "DOCUMENT_POSITION_FOLLOWING" (param
+    // is preceded by the receiver). i.e. primary comes BEFORE secondary.
+    const rel = primary.compareDocumentPosition(secondary);
+    expect(rel & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('all three cards still expose the same data-testid contract', () => {
+    renderRouter();
+    expect(screen.getByTestId('app-card-seeker')).toBeInTheDocument();
+    expect(screen.getByTestId('app-card-provider')).toBeInTheDocument();
+    expect(screen.getByTestId('app-card-admin')).toBeInTheDocument();
+  });
+});
+
 describe('AppSelector — each launcher card opens its own app', () => {
   it('Admin → /admin (no auth required)', async () => {
     mock.onGet('/v1/auth/me').reply(401, {});
