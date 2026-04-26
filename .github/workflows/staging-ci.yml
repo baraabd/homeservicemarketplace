@@ -1,19 +1,23 @@
-name: CI
+name: Staging CI
 
-# CI verification on the production branch (`main`). This workflow does
-# NOT deploy. There are no production deployment secrets, no image
-# pushes, no environment bindings. A green run means "the code is safe
-# to merge to main"; promotion to a hosted environment is a manual,
-# out-of-band action.
+# CI-only verification for the staging branch (`develop`). This workflow
+# does NOT deploy. It runs the full package-scoped quality gate set so a
+# bad commit on develop is caught at PR time, but no deployment, image
+# push, or external system call happens here.
+#
+# Vercel automatic Git deployments are disabled at the project level via
+# apps/web/vercel.json:`git.deploymentEnabled = false`, so a green run
+# here does NOT trigger a hosted preview either.
 
 on:
-  pull_request:
-    branches: ['main']
   push:
-    branches: ['main']
+    branches: ['develop']
+  pull_request:
+    branches: ['develop']
   workflow_dispatch:
 
-# Least privilege: read-only checkout, nothing else.
+# Least privilege: this workflow only reads the repo. No write scopes,
+# no package publishing, no environment binding.
 permissions:
   contents: read
 
@@ -59,10 +63,11 @@ jobs:
           cache: 'pnpm'
       - name: Install
         run: pnpm install --frozen-lockfile
-      # The database package scripts (prisma:validate / generate) wrap
-      # `dotenv -e ../../.env -- prisma <cmd>`. The CI runner has no
-      # .env file, so write a stub with a placeholder DATABASE_URL.
-      # Neither command connects to a real database.
+      # The database package's scripts (prisma:validate, generate) wrap
+      # `dotenv -e ../../.env -- prisma <cmd>`. CI runners have no .env,
+      # so write a stub at repo root with a placeholder DATABASE_URL —
+      # `prisma validate` / `prisma generate` only need the variable to
+      # exist; neither connects to a real database.
       - name: Stub DATABASE_URL for prisma
         run: echo "DATABASE_URL=postgresql://ci:ci@localhost:5432/ci_db" > .env
       - name: Validate prisma schema
@@ -142,9 +147,10 @@ jobs:
         run: pnpm --filter @homeservicemarketplace/web typecheck
       - name: Test web
         run: pnpm --filter @homeservicemarketplace/web test
-      # VITE_API_URL is required at build time by apps/web/vite.config.ts.
-      # The bundle is NOT deployed by this workflow.
+      # Production-parity build. VITE_API_URL is required at build time
+      # by apps/web/vite.config.ts; staging uses an HTTPS placeholder so
+      # the build validator passes. The bundle is NOT deployed.
       - name: Build web
         env:
-          VITE_API_URL: https://api.example.com
+          VITE_API_URL: https://api.staging.example.com
         run: pnpm --filter @homeservicemarketplace/web build

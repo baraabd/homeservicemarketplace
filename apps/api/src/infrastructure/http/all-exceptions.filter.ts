@@ -90,11 +90,26 @@ export class AllExceptionsFilter implements ExceptionFilter {
         const structured = resp as { code?: unknown; message?: string | string[] };
         const code =
           typeof structured.code === 'string' ? structured.code : this.mapHttpStatusToCode(status);
-        const msg = structured.message ?? exception.message;
+        // NestJS's HttpException constructor derives `this.message` from the
+        // class name when the response object carries no `message` field —
+        // `new UnauthorizedException({ code: 'X' })` ends up with
+        // exception.message === "Unauthorized Exception". Falling back to
+        // that here leaks a framework artifact straight into the client
+        // (users literally saw "Unauthorized Exception" on the login form
+        // after a password reset). Only honor an explicit `message` from the
+        // payload; otherwise use the stable code/status mapping so the wire
+        // always carries a safe, user-facing string.
+        const explicit = structured.message;
+        const message =
+          explicit !== undefined
+            ? Array.isArray(explicit)
+              ? explicit.join('; ')
+              : explicit
+            : this.defaultMessageFor(code, status);
         return {
           status,
           code,
-          message: Array.isArray(msg) ? msg.join('; ') : msg,
+          message,
           details: resp,
         };
       }
@@ -162,6 +177,60 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? 'Internal server error'
         : ((exception as Error)?.message ?? 'Internal server error'),
     };
+  }
+
+  // Safe, user-facing default message for an error we know the code of but
+  // that wasn't given an explicit `message` at throw time. Keeps the wire
+  // free of framework-derived strings like "Unauthorized Exception" and
+  // gives the frontend something non-alarming to fall back on when it
+  // doesn't yet recognize a code.
+  private defaultMessageFor(code: string, status: number): string {
+    switch (code) {
+      case 'AUTH_INVALID_CREDENTIALS':
+        return 'Invalid email or password.';
+      case 'AUTH_ACCOUNT_LOCKED':
+        return 'Account temporarily locked. Please try again later or reset your password.';
+      case 'AUTH_ACCOUNT_SUSPENDED':
+        return 'This account has been suspended.';
+      case 'AUTH_ACCOUNT_UNVERIFIED':
+        return 'Please verify your email before signing in.';
+      case 'AUTH_REFRESH_INVALID':
+        return 'Your session has expired. Please sign in again.';
+      case 'AUTH_TOKEN_EXPIRED':
+        return 'Your session has expired. Please sign in again.';
+      case 'AUTH_CSRF_FAILED':
+        return 'Request rejected. Please refresh the page and try again.';
+      case 'AUTH_AMBIGUOUS_TRANSPORT':
+        return 'Request rejected.';
+      case 'AUTH_MFA_REQUIRED':
+        return 'Additional verification is required.';
+      case 'AUTH_OTP_INVALID':
+        return 'Incorrect code.';
+      case 'AUTH_OTP_EXPIRED':
+        return 'This code has expired.';
+      case 'AUTH_OTP_LOCKED':
+        return 'Too many attempts. Please sign in again.';
+      case 'AUTH_OTP_RESEND_EXCEEDED':
+        return 'Resend limit reached. Please sign in again.';
+      default:
+        break;
+    }
+    switch (status) {
+      case 400:
+        return 'Invalid request.';
+      case 401:
+        return 'Authentication required.';
+      case 403:
+        return 'You do not have permission to perform this action.';
+      case 404:
+        return 'Resource not found.';
+      case 409:
+        return 'Conflict with the current state of the resource.';
+      case 429:
+        return 'Too many requests. Please try again shortly.';
+      default:
+        return status >= 500 ? 'Internal server error' : 'Request failed.';
+    }
   }
 
   private mapHttpStatusToCode(status: number): AppErrorCode | string {

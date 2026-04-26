@@ -1,5 +1,6 @@
-import { Navigate, Outlet, useLocation } from 'react-router';
+import { Navigate, Outlet, useLocation, useOutletContext } from 'react-router';
 import { useAuth } from './auth-provider';
+import { getIntendedAppPath } from './intended-app';
 
 // ─── Loading spinner ─────────────────────────────────────────────────────────
 function AuthLoadingScreen() {
@@ -14,6 +15,19 @@ function AuthLoadingScreen() {
 // query params and anchors survive the login round-trip.
 function fullTarget(pathname: string, search: string, hash: string): string {
   return `${pathname}${search}${hash}`;
+}
+
+// react-router's outlet context is scoped to the nearest <Outlet>, so a bare
+// <Outlet /> inside an intermediate layout route (like these guards) silently
+// drops the parent's context. Grandchildren calling useOutletContext() then
+// receive undefined — which is how HomePage used to crash with "Cannot
+// destructure property 'isOffline' of 'useRootContext(...)' as it is
+// undefined". Forward whatever the parent passed us so guards behave as
+// transparent wrappers, not context sinks. Typed as unknown because guards
+// are generic and must not couple to any particular parent's context shape.
+function ForwardingOutlet() {
+  const parentCtx = useOutletContext<unknown>();
+  return <Outlet context={parentCtx} />;
 }
 
 // ─── RequireAuth ─────────────────────────────────────────────────────────────
@@ -31,7 +45,7 @@ export function RequireAuth() {
     const returnTo = fullTarget(location.pathname, location.search, location.hash);
     return <Navigate to="/login" state={{ returnTo }} replace />;
   }
-  return <Outlet />;
+  return <ForwardingOutlet />;
 }
 
 // ─── GuestOnly ───────────────────────────────────────────────────────────────
@@ -44,7 +58,12 @@ export function GuestOnly() {
   if (isLoading) return <AuthLoadingScreen />;
   if (isAuthenticated) {
     const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
-    return <Navigate to={returnTo && returnTo !== '/login' ? returnTo : '/home'} replace />;
+    // returnTo (forwarded from RequireAuth) takes precedence; fall back to
+    // the user's recorded launcher intent so an already-authed user who
+    // clicks Provider on /select and bounces through /login still lands on
+    // /provider, not /home.
+    const dest = returnTo && returnTo !== '/login' ? returnTo : getIntendedAppPath();
+    return <Navigate to={dest} replace />;
   }
-  return <Outlet />;
+  return <ForwardingOutlet />;
 }

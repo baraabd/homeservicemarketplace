@@ -21,6 +21,7 @@ import { HelpSupportPage } from './HelpSupportPage';
 import { SettingsPage } from './SettingsPage';
 import { useLang } from '../../i18n/LanguageContext';
 import { AppNotification } from '../notifications/NotificationDrawer';
+import { useAuthIdentity } from '../../../lib/use-auth-identity';
 
 // ─── Notification types ───────────────────────────────────────────────────────
 type NotifTypeKey = 'bid' | 'tracking' | 'confirmed' | 'message' | 'payment' | 'promo';
@@ -274,6 +275,9 @@ function ProfileList({
   onNavigate: (v: ProfileView) => void;
 }) {
   const { lang, t } = useLang();
+  // Bind the hero card's avatar/name/email to the authenticated user.
+  // Stats (ratings, counts) remain as demo data per the task scope.
+  const identity = useAuthIdentity();
 
   return (
     <div className="px-4 pt-4 pb-6">
@@ -285,17 +289,26 @@ function ProfileList({
             whileTap={{ scale: 0.95 }}
             onClick={() => onNavigate('editProfile')}
             className="w-16 h-16 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center flex-shrink-0"
+            data-testid="profile-hero-avatar"
           >
             <span className="text-white" style={{ fontSize: '20px', fontWeight: 800 }}>
-              AK
+              {identity.initials ?? ''}
             </span>
           </motion.button>
           <div>
-            <p className="text-white" style={{ fontSize: '18px', fontWeight: 800 }}>
-              {lang === 'ar' ? 'أحمد الخالد' : 'Ahmed Al-Khalid'}
+            <p
+              className="text-white"
+              style={{ fontSize: '18px', fontWeight: 800 }}
+              data-testid="profile-hero-name"
+            >
+              {identity.displayName ?? ''}
             </p>
-            <p className="text-white/70" style={{ fontSize: '13px' }}>
-              ahmed@fixnow.app
+            <p
+              className="text-white/70"
+              style={{ fontSize: '13px' }}
+              data-testid="profile-hero-email"
+            >
+              {identity.email ?? ''}
             </p>
             <div className="flex items-center gap-1 mt-1">
               <Star size={12} className="text-white fill-white" />

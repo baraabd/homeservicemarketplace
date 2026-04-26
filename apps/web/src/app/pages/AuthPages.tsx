@@ -3,16 +3,24 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { CheckCircle2, Eye, EyeOff, Lock, Mail, RefreshCcw, XCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-provider';
 import * as authApi from '../../lib/auth-api';
+import { resetPasswordErrorMessage } from '../../lib/auth-errors';
+import { clearIntendedApp, getIntendedAppPath } from '../../lib/intended-app';
 import { LoginScreen, SignUpScreen, ForgotPasswordScreen } from '../components/auth/AuthScreens';
 import { Button } from '../components/ds/Button';
 import { TextField } from '../components/ds/TextField';
 
 // Only in-app paths are honored as returnTo. Reject absolute URLs and
 // protocol-relative strings to prevent open-redirect via the login page.
+// When no explicit returnTo is provided, fall back to the user's recorded
+// app intent (set when they clicked an experience card on /select). This
+// is what keeps "click Provider → log in → land on Provider" working even
+// when intermediate auth navigations (Sign up button, Forgot password,
+// Reset password completion) drop react-router state.
 function sanitizeReturnTo(raw: string | null | undefined): string {
-  if (!raw) return '/home';
-  if (!raw.startsWith('/') || raw.startsWith('//')) return '/home';
-  if (raw === '/login') return '/home';
+  const intentFallback = getIntendedAppPath();
+  if (!raw) return intentFallback;
+  if (!raw.startsWith('/') || raw.startsWith('//')) return intentFallback;
+  if (raw === '/login') return intentFallback;
   return raw;
 }
 
@@ -45,6 +53,11 @@ export function LoginPage() {
       }}
       onOtpVerify={async (challengeId: string, code: string) => {
         await verifyOtp(challengeId, code);
+        // Once the user has reached their intended app, drop the
+        // sessionStorage intent so a future logout → login cycle starts
+        // from a clean slate (the user might want a different app next
+        // time and would re-pick on /select).
+        clearIntendedApp();
         navigate(returnTo, { replace: true });
       }}
       onOtpResend={async (challengeId: string) => {
@@ -89,7 +102,13 @@ export function SignUpPage() {
         await verifyOtp(challengeId, code);
         // Registration OTP success also issues the session, so we drop
         // straight into the authed area rather than bouncing to /login.
-        navigate('/home', { replace: true });
+        // Respect the user's launcher selection: a user who clicked
+        // "Provider App" on /select and then signed up here MUST land on
+        // /provider, not /home. Without the intent layer, this hardcoded
+        // /home was the canonical "Provider opens Seeker" reproduction.
+        const dest = getIntendedAppPath();
+        clearIntendedApp();
+        navigate(dest, { replace: true });
       }}
       onOtpResend={async (challengeId: string) => {
         await resendOtp(challengeId);
@@ -344,12 +363,7 @@ export function ResetPasswordPage() {
       await authApi.resetPassword(token, password);
       setDone(true);
     } catch (e: unknown) {
-      const axiosStatus = (e as { response?: { status?: number } } | undefined)?.response?.status;
-      setError(
-        axiosStatus === 400
-          ? 'This reset link is invalid or expired. Request a new one.'
-          : 'Something went wrong. Please try again.',
-      );
+      setError(resetPasswordErrorMessage(e));
     } finally {
       setIsLoading(false);
     }

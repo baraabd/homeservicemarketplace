@@ -2,7 +2,15 @@
 // Each endpoint throws a different error variety; we assert the normalized
 // HTTP envelope and that driver-internal details never leak.
 
-import { BadRequestException, Controller, Get, INestApplication, Module } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  ForbiddenException,
+  Get,
+  INestApplication,
+  Module,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -38,6 +46,24 @@ class ProbeController {
   @Get('unknown')
   unknown() {
     throw new Error('mysterious crash with driver internals');
+  }
+
+  // Mirrors the IAM throw sites: `new UnauthorizedException({ code })` with
+  // no explicit message. Before the filter fix, this leaked NestJS's class
+  // name ("Unauthorized Exception") into the response body.
+  @Get('iam-invalid-credentials')
+  iamInvalidCredentials() {
+    throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
+  }
+
+  @Get('iam-account-locked')
+  iamAccountLocked() {
+    throw new UnauthorizedException({ code: 'AUTH_ACCOUNT_LOCKED' });
+  }
+
+  @Get('iam-account-unverified')
+  iamAccountUnverified() {
+    throw new ForbiddenException({ code: 'AUTH_ACCOUNT_UNVERIFIED' });
   }
 }
 
@@ -112,6 +138,35 @@ describe('AllExceptionsFilter (route-level)', () => {
       // but the envelope shape is still normalized.
       expect(res.body.success).toBe(false);
       expect(typeof res.body.error.message).toBe('string');
+    });
+
+    // Regression: the exact payload IAM throws used to leak "Unauthorized
+    // Exception" (NestJS class-name derivation) as the response message
+    // whenever the throw site supplied only `{ code }`. This suite pins the
+    // wire shape every frontend relies on.
+    it('IAM UnauthorizedException({ code }) → stable code + safe message, never "Unauthorized Exception"', async () => {
+      const res = await request(app.getHttpServer()).get('/probe/iam-invalid-credentials');
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_INVALID_CREDENTIALS');
+      expect(res.body.error.message).toBe('Invalid email or password.');
+      expect(res.body.error.message).not.toMatch(/Exception/);
+    });
+
+    it('IAM UnauthorizedException AUTH_ACCOUNT_LOCKED → locked-and-reset copy', async () => {
+      const res = await request(app.getHttpServer()).get('/probe/iam-account-locked');
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_ACCOUNT_LOCKED');
+      expect(res.body.error.message.toLowerCase()).toContain('locked');
+      expect(res.body.error.message.toLowerCase()).toMatch(/reset|try again/);
+      expect(res.body.error.message).not.toMatch(/Exception/);
+    });
+
+    it('IAM ForbiddenException AUTH_ACCOUNT_UNVERIFIED → verify-email copy, never "Forbidden Exception"', async () => {
+      const res = await request(app.getHttpServer()).get('/probe/iam-account-unverified');
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('AUTH_ACCOUNT_UNVERIFIED');
+      expect(res.body.error.message.toLowerCase()).toContain('verify');
+      expect(res.body.error.message).not.toMatch(/Exception/);
     });
   });
 

@@ -22,6 +22,7 @@ import { useSwipe } from '../../hooks/useSwipe';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { COUNTRY_DIAL_CODES, dialForCountry } from '../../../lib/country-dial-codes';
 import { useGeoBootstrap } from '../../../lib/geo-bootstrap';
+import { loginErrorMessage, otpErrorMessage } from '../../../lib/auth-errors';
 
 // ─── Back chevron (flips in RTL) ──────────────────────────────────────────────
 function BackChevron() {
@@ -315,10 +316,10 @@ export function LoginScreen({
       const out = await onLogin(email.trim(), password);
       setChallenge(out);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
-          ?.message ?? 'Invalid credentials';
-      setEmailError(msg);
+      // Map the backend's stable error CODE to user copy here — never
+      // render response.data.error.message verbatim. That used to leak raw
+      // framework text like "Unauthorized Exception" onto the login form.
+      setEmailError(loginErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -333,15 +334,7 @@ export function LoginScreen({
       // Success is surfaced by the parent (which navigates to /home or
       // the saved returnTo path). No further UI change needed here.
     } catch (err: unknown) {
-      const code = (err as { response?: { data?: { error?: { code?: string } } } })?.response?.data
-        ?.error?.code;
-      setOtpError(
-        code === 'AUTH_OTP_LOCKED'
-          ? 'Too many attempts. Please sign in again to get a new code.'
-          : code === 'AUTH_OTP_EXPIRED'
-            ? 'This code has expired. Please request a new one.'
-            : 'Incorrect code. Please try again.',
-      );
+      setOtpError(otpErrorMessage(err, 'verify'));
     } finally {
       setIsVerifying(false);
     }
@@ -356,13 +349,7 @@ export function LoginScreen({
       await onOtpResend(challenge.challengeId);
       setResendNotice('A new code has been sent.');
     } catch (err: unknown) {
-      const code = (err as { response?: { data?: { error?: { code?: string } } } })?.response?.data
-        ?.error?.code;
-      setOtpError(
-        code === 'AUTH_OTP_RESEND_EXCEEDED'
-          ? 'Resend limit reached. Please sign in again.'
-          : 'Could not resend the code. Please try again.',
-      );
+      setOtpError(otpErrorMessage(err, 'resend'));
     } finally {
       setIsResending(false);
     }

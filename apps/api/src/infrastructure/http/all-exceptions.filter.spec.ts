@@ -1,4 +1,11 @@
-import { BadRequestException, HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { ArgumentsHost } from '@nestjs/common';
 
 import { AllExceptionsFilter } from './all-exceptions.filter';
@@ -155,6 +162,99 @@ describe('AllExceptionsFilter', () => {
     const { host, json } = mkHost();
     filter.catch(new HttpException({ message: 'bad', hint: 'context' }, 400), host);
     expect(json.mock.calls[0][0].error).toHaveProperty('details');
+  });
+
+  describe('safe messages for structured-code HttpExceptions (no class-name leak)', () => {
+    // Regression: before the fix, the filter fell back to `exception.message`
+    // when the response payload carried only a `code`. NestJS auto-derives
+    // that message from the class name, so users saw "Unauthorized Exception"
+    // literally rendered on the login form after a password reset. These
+    // tests lock in that every IAM throw site produces a safe, user-facing
+    // string even when the throw site supplied only `{ code }`.
+
+    const cases: Array<[() => HttpException, string, string, number]> = [
+      [
+        () => new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' }),
+        'AUTH_INVALID_CREDENTIALS',
+        'Invalid email or password.',
+        401,
+      ],
+      [
+        () => new UnauthorizedException({ code: 'AUTH_ACCOUNT_LOCKED' }),
+        'AUTH_ACCOUNT_LOCKED',
+        'Account temporarily locked. Please try again later or reset your password.',
+        401,
+      ],
+      [
+        () => new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' }),
+        'AUTH_REFRESH_INVALID',
+        'Your session has expired. Please sign in again.',
+        401,
+      ],
+      [
+        () => new ForbiddenException({ code: 'AUTH_ACCOUNT_SUSPENDED' }),
+        'AUTH_ACCOUNT_SUSPENDED',
+        'This account has been suspended.',
+        403,
+      ],
+      [
+        () => new ForbiddenException({ code: 'AUTH_ACCOUNT_UNVERIFIED' }),
+        'AUTH_ACCOUNT_UNVERIFIED',
+        'Please verify your email before signing in.',
+        403,
+      ],
+      [
+        () => new BadRequestException({ code: 'AUTH_CSRF_FAILED' }),
+        'AUTH_CSRF_FAILED',
+        'Request rejected. Please refresh the page and try again.',
+        400,
+      ],
+      [
+        () => new BadRequestException({ code: 'AUTH_OTP_INVALID' }),
+        'AUTH_OTP_INVALID',
+        'Incorrect code.',
+        400,
+      ],
+    ];
+
+    it.each(cases)(
+      'exception → stable code + safe message (%#)',
+      (make, expectedCode, expectedMessage, expectedStatus) => {
+        const filter = new AllExceptionsFilter(mkConfig());
+        const { host, status, json } = mkHost();
+        filter.catch(make(), host);
+        expect(status).toHaveBeenCalledWith(expectedStatus);
+        const body = json.mock.calls[0][0];
+        expect(body.error.code).toBe(expectedCode);
+        expect(body.error.message).toBe(expectedMessage);
+        // Crucially: the message MUST NOT be any NestJS class-name-derived
+        // string. If someone later removes defaultMessageFor(), this fails.
+        expect(body.error.message).not.toMatch(/Exception$/);
+        expect(body.error.message).not.toBe('Unauthorized Exception');
+        expect(body.error.message).not.toBe('Forbidden Exception');
+        expect(body.error.message).not.toBe('Bad Request Exception');
+      },
+    );
+
+    it('honors an explicit message when one is provided in the payload', () => {
+      const filter = new AllExceptionsFilter(mkConfig());
+      const { host, json } = mkHost();
+      filter.catch(
+        new BadRequestException({ code: 'VALIDATION_ERROR', message: 'email must be valid' }),
+        host,
+      );
+      expect(json.mock.calls[0][0].error.message).toBe('email must be valid');
+    });
+
+    it('unknown code + unmapped status still produces a safe string', () => {
+      const filter = new AllExceptionsFilter(mkConfig());
+      const { host, json } = mkHost();
+      filter.catch(new HttpException({ code: 'NEW_CODE_NOT_IN_MAP' }, 418), host);
+      const msg = json.mock.calls[0][0].error.message;
+      expect(typeof msg).toBe('string');
+      expect(msg.length).toBeGreaterThan(0);
+      expect(msg).not.toMatch(/Exception$/);
+    });
   });
 
   it('normalized error envelope shape is { success: false, error: { code, message, ... } }', () => {
