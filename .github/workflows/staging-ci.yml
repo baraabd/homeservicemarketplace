@@ -95,8 +95,27 @@ jobs:
           cache: 'pnpm'
       - name: Install
         run: pnpm install --frozen-lockfile
-      - name: Stub DATABASE_URL for prisma (build:deps invokes database build)
-        run: echo "DATABASE_URL=postgresql://ci:ci@localhost:5432/ci_db" > .env
+      # CI-runtime stub for env validation. The api ConfigModule loads at
+      # test/build time and zod-validates the environment; DATABASE_URL,
+      # MONGODB_URI and a ≥32-char JWT_ACCESS_SECRET are the minimum the
+      # schema requires. The values are placeholders — no command in this
+      # job opens a real DB / Mongo / signs a real token. The .env file
+      # is workflow-scoped and never reaches the repo.
+      - name: Stub env for prisma + nest config validation
+        run: |
+          {
+            echo "DATABASE_URL=postgresql://ci:ci@localhost:5432/ci_db"
+            echo "MONGODB_URI=mongodb://ci:ci@localhost:27017/ci_db"
+            echo "JWT_ACCESS_SECRET=ci_only_dummy_secret_at_least_32_chars_long"
+          } > .env
+      # GitHub Actions jobs run on isolated runners — the generated Prisma
+      # client produced by `verify-database` does NOT carry into this job.
+      # The api package's `build:deps` builds the database package, which
+      # imports from @prisma/client; without a generated client tsc fails
+      # with "Module '@prisma/client' has no exported member 'PrismaClient'".
+      # Generate the client locally inside this job so it's self-contained.
+      - name: Generate prisma client (job-local)
+        run: pnpm --filter @homeservicemarketplace/database generate
       - name: Lint api
         run: pnpm --filter @homeservicemarketplace/api lint
       - name: Typecheck api
