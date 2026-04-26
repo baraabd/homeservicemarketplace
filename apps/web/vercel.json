@@ -4,6 +4,7 @@
   "buildCommand": "pnpm --filter @homeservicemarketplace/web build",
   "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": "dist",
+  "git": { "deploymentEnabled": false },
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
     {
