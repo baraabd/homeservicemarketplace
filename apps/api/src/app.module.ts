@@ -14,10 +14,11 @@ import { RedisModule } from './infrastructure/redis/redis.module';
 import { MetricsModule } from './infrastructure/telemetry/metrics.module';
 import { PersistenceModule } from './infrastructure/persistence/persistence.module';
 import { IamModule } from './modules/iam/iam.module';
+import { ServicesModule } from './modules/services/services.module';
 
-// Infrastructure & data-foundation bootstrap. No business modules are wired
-// at this stage; repositories/transaction helpers are exposed for later
-// domain modules (still to be added under src/modules/<domain>/).
+// Infrastructure & data-foundation bootstrap. Seeker domain modules are
+// wired in incrementally — Sprint 1 slice 1 introduces ServicesModule
+// (read-only catalog at GET /v1/services).
 @Module({
   imports: [
     ConfigModule,
@@ -31,6 +32,7 @@ import { IamModule } from './modules/iam/iam.module';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     HealthModule,
     IamModule,
+    ServicesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

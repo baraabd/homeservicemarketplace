@@ -17,6 +17,27 @@ interface PermissionSpec {
   description: string;
 }
 
+interface ServiceCategorySpec {
+  slug: string;
+  labelEn: string;
+  labelAr: string;
+  icon: string;
+  sortOrder: number;
+}
+
+// Sprint 1, slice 1: bootstrap the public service-catalog. Slugs are
+// stable; labels and sortOrder can be edited via subsequent migrations
+// or admin tooling without breaking existing service_requests rows
+// (those reference categories by id, not slug).
+const SERVICE_CATEGORIES: ServiceCategorySpec[] = [
+  { slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة', icon: '🔧', sortOrder: 0 },
+  { slug: 'electrical', labelEn: 'Electrical', labelAr: 'كهرباء', icon: '⚡', sortOrder: 1 },
+  { slug: 'ac-repair', labelEn: 'AC Repair', labelAr: 'صيانة تكييف', icon: '❄️', sortOrder: 2 },
+  { slug: 'cleaning', labelEn: 'Cleaning', labelAr: 'تنظيف', icon: '✨', sortOrder: 3 },
+  { slug: 'carpentry', labelEn: 'Carpentry', labelAr: 'نجارة', icon: '🔨', sortOrder: 4 },
+  { slug: 'painting', labelEn: 'Painting', labelAr: 'دهانات', icon: '🎨', sortOrder: 5 },
+];
+
 const SYSTEM_ROLES: RoleSpec[] = [
   { name: 'customer', description: 'End user who books services' },
   { name: 'provider', description: 'Operator who lists and fulfils services' },
@@ -86,6 +107,33 @@ async function syncRolePermissions(
   }
 }
 
+async function upsertServiceCategories(tx: Prisma.TransactionClient): Promise<void> {
+  // Idempotent: every call upserts on the unique slug. Reactivates a
+  // soft-deleted row if a previous environment archived a category we
+  // now consider canonical (sets `isActive: true, deletedAt: null`).
+  for (const spec of SERVICE_CATEGORIES) {
+    await tx.serviceCategory.upsert({
+      where: { slug: spec.slug },
+      update: {
+        labelEn: spec.labelEn,
+        labelAr: spec.labelAr,
+        icon: spec.icon,
+        sortOrder: spec.sortOrder,
+        isActive: true,
+        deletedAt: null,
+      },
+      create: {
+        slug: spec.slug,
+        labelEn: spec.labelEn,
+        labelAr: spec.labelAr,
+        icon: spec.icon,
+        sortOrder: spec.sortOrder,
+        isActive: true,
+      },
+    });
+  }
+}
+
 // Extracted so the seed logic can be unit-tested against a mocked
 // TransactionClient without requiring a live Postgres connection.
 // Runtime behavior is unchanged: `seed()` still wraps this in a real
@@ -94,6 +142,7 @@ export async function seedWithTx(tx: Prisma.TransactionClient): Promise<void> {
   const roleIds = await upsertRoles(tx);
   const permissionIds = await upsertPermissions(tx);
   await syncRolePermissions(tx, roleIds, permissionIds);
+  await upsertServiceCategories(tx);
 }
 
 export async function seed(): Promise<void> {

@@ -231,6 +231,34 @@ model MfaBackupCode {
   @@map("mfa_backup_codes")
 }
 
+// ─── Seeker domain (Sprint 1) ────────────────────────────────────────────────
+// Service-category catalog. Read-only from the API surface; rows are
+// curated through migrations / admin tooling, not user input. Bilingual
+// labels live on the row so the API can return whichever locale the
+// client asked for without a join. `slug` is the stable, machine-readable
+// identifier the frontend keys on (e.g. "plumbing", "ac-repair").
+//
+// Soft-delete supported via `deletedAt` so a category that was previously
+// posted against can be hidden from new request creation without breaking
+// historical references from service_requests in later sprints.
+model ServiceCategory {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  labelEn   String
+  labelAr   String
+  icon      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([isActive, sortOrder])
+  @@index([deletedAt])
+  @@map("service_categories")
+}
+
 // Audit rows are append-only. `metadata` is a JSON blob limited to an
 // allowlist of fields by the writer (AuditService) — never raw request
 // bodies or driver errors.

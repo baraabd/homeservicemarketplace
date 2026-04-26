@@ -32,6 +32,7 @@ import { TabSkeleton } from '../ui/SkeletonLoader';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { useEcosystem } from '../../context/EcosystemContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
+import { useServiceCategories } from '../../../lib/use-service-categories';
 
 // ─── Tab routing ──────────────────────────────────────────────────────────────
 const TAB_PATHS: Record<string, string> = {
@@ -363,44 +364,43 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   };
 
   // ── Services ────────────────────────────────────────────────────────────────
-  const SERVICES = [
-    {
-      key: 'plumbing',
-      iconBg: 'bg-blue-100',
-      iconColor: 'text-blue-600',
-      icon: <Wrench size={22} />,
-    },
-    {
-      key: 'acRepair',
-      iconBg: 'bg-cyan-100',
-      iconColor: 'text-cyan-600',
-      icon: <Wind size={22} />,
-    },
-    {
-      key: 'carpentry',
+  // Visual identity (icon + colour pair) for each known service slug.
+  // The catalog itself comes from /v1/services (real backend, Sprint 1
+  // slice 1) — see useServiceCategories below — but the icon mapping is
+  // intentionally local because lucide icons aren't serializable as DB
+  // rows and changing the visual mapping would otherwise require a
+  // backend migration. Unknown slugs (e.g. an admin-added category that
+  // ships before the FE icon map is updated) fall back to the slate
+  // generic icon so the UI never breaks.
+  const SERVICE_ICON_MAP: Record<
+    string,
+    { icon: React.ReactNode; iconBg: string; iconColor: string }
+  > = {
+    plumbing: { icon: <Wrench size={22} />, iconBg: 'bg-blue-100', iconColor: 'text-blue-600' },
+    'ac-repair': { icon: <Wind size={22} />, iconBg: 'bg-cyan-100', iconColor: 'text-cyan-600' },
+    carpentry: {
+      icon: <Hammer size={22} />,
       iconBg: 'bg-orange-100',
       iconColor: 'text-orange-700',
-      icon: <Hammer size={22} />,
     },
-    {
-      key: 'cleaning',
+    cleaning: {
+      icon: <Sparkles size={22} />,
       iconBg: 'bg-green-100',
       iconColor: 'text-green-600',
-      icon: <Sparkles size={22} />,
     },
-    {
-      key: 'electrical',
-      iconBg: 'bg-amber-100',
-      iconColor: 'text-amber-600',
-      icon: <Zap size={22} />,
-    },
-    {
-      key: 'painting',
+    electrical: { icon: <Zap size={22} />, iconBg: 'bg-amber-100', iconColor: 'text-amber-600' },
+    painting: {
+      icon: <PaintBucket size={22} />,
       iconBg: 'bg-purple-100',
       iconColor: 'text-purple-600',
-      icon: <PaintBucket size={22} />,
     },
-  ];
+  };
+  const SERVICE_ICON_FALLBACK = {
+    icon: <Wrench size={22} />,
+    iconBg: 'bg-slate-100',
+    iconColor: 'text-slate-600',
+  };
+  const { data: serviceCategories } = useServiceCategories();
 
   // ── Nav tabs ────────────────────────────────────────────────────────────────
   const NAV_TABS = [
@@ -601,17 +601,21 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                   {t('viewAll')} <ChevronRight size={14} className="rtl:rotate-180" />
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                {SERVICES.map((s) => (
-                  <ServiceCategoryCard
-                    key={s.key}
-                    icon={s.icon}
-                    label={t(s.key)}
-                    iconBg={s.iconBg}
-                    iconColor={s.iconColor}
-                    onClick={() => onServiceSelect(t(s.key))}
-                  />
-                ))}
+              <div className="grid grid-cols-3 gap-3" data-testid="service-categories-grid">
+                {(serviceCategories ?? []).map((c) => {
+                  const visual = SERVICE_ICON_MAP[c.slug] ?? SERVICE_ICON_FALLBACK;
+                  const label = lang === 'ar' ? c.labelAr : c.labelEn;
+                  return (
+                    <ServiceCategoryCard
+                      key={c.id}
+                      icon={visual.icon}
+                      label={label}
+                      iconBg={visual.iconBg}
+                      iconColor={visual.iconColor}
+                      onClick={() => onServiceSelect(label)}
+                    />
+                  );
+                })}
               </div>
             </div>
 
