@@ -84,6 +84,7 @@ model User {
   oauthAccounts      OauthAccount[]
   mfaBackupCodes     MfaBackupCode[]
   auditEvents        AuditEvent[]
+  addresses          Address[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -257,6 +258,57 @@ model ServiceCategory {
   @@index([isActive, sortOrder])
   @@index([deletedAt])
   @@map("service_categories")
+}
+
+// Saved addresses for an authenticated user (Sprint 1, slice 2).
+// Always scoped to a userId on read and write — `userId` is set from the
+// authenticated session on the server, never trusted from client input.
+//
+// `isDefault` carries an at-most-one-true-per-user invariant. Enforced in
+// the application layer inside a transaction (see AddressesService.setDefault)
+// — promote-then-demote happens atomically so two interleaved writers
+// converge on a single default. We deliberately do NOT add a DB-level
+// partial unique index here; doing so would require a raw-SQL migration
+// step Prisma can't reflect into schema.prisma, which trips drift
+// detection on every subsequent `migrate dev`.
+//
+// `lat`/`lng` are nullable because not every address row will be reverse-
+// geocoded at create time (e.g. user types a label-only entry). They are
+// populated when the client supplies coordinates from the location picker.
+//
+// Soft-deleted via `deletedAt`. All read sites filter `deletedAt: null`
+// so a deleted row never appears to the client even via stale references.
+model Address {
+  id        String      @id @default(cuid())
+  userId    String
+  label     String
+  type      AddressType
+  line1     String
+  city      String
+  country   String
+  lat       Float?
+  lng       Float?
+  isDefault Boolean     @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Ownership lookup (the dominant access pattern: list-my-addresses).
+  @@index([userId, deletedAt])
+  // Default-address lookup (which row is the user's current default?).
+  @@index([userId, isDefault])
+  // Generic deleted-row sweep / housekeeping.
+  @@index([deletedAt])
+  @@map("addresses")
+}
+
+enum AddressType {
+  HOME
+  WORK
+  CUSTOM
 }
 
 // Audit rows are append-only. `metadata` is a JSON blob limited to an

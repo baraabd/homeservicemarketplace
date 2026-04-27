@@ -13,12 +13,14 @@ import { PrismaModule } from './infrastructure/prisma/prisma.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
 import { MetricsModule } from './infrastructure/telemetry/metrics.module';
 import { PersistenceModule } from './infrastructure/persistence/persistence.module';
+import { AddressesModule } from './modules/addresses/addresses.module';
 import { IamModule } from './modules/iam/iam.module';
 import { ServicesModule } from './modules/services/services.module';
 
 // Infrastructure & data-foundation bootstrap. Seeker domain modules are
-// wired in incrementally — Sprint 1 slice 1 introduces ServicesModule
-// (read-only catalog at GET /v1/services).
+// wired in incrementally — slice 1 introduced ServicesModule (read-only
+// catalog at GET /v1/services); slice 2 adds AddressesModule (CRUD at
+// /v1/me/addresses, all endpoints session-scoped).
 @Module({
   imports: [
     ConfigModule,
@@ -33,6 +35,7 @@ import { ServicesModule } from './modules/services/services.module';
     HealthModule,
     IamModule,
     ServicesModule,
+    AddressesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

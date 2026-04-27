@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 
+import { AddressRepository } from './addresses/address.repository';
 import { AuditEventRepository } from './iam/audit-event.repository';
 import { PermissionRepository } from './iam/permission.repository';
 import { RoleRepository } from './iam/role.repository';
@@ -18,6 +19,7 @@ import { ServiceCategoryRepository } from './services/service-category.repositor
     VerificationTokenRepository,
     AuditEventRepository,
     ServiceCategoryRepository,
+    AddressRepository,
   ],
   exports: [
     UserRepository,
@@ -27,6 +29,7 @@ import { ServiceCategoryRepository } from './services/service-category.repositor
     VerificationTokenRepository,
     AuditEventRepository,
     ServiceCategoryRepository,
+    AddressRepository,
   ],
 })
 export class PersistenceModule {}
