@@ -86,6 +86,8 @@ model User {
   auditEvents        AuditEvent[]
   addresses          Address[]
   profile            UserProfile?
+  serviceRequests    ServiceRequest[]      @relation("seekerRequests")
+  requestEventsActed ServiceRequestEvent[] @relation("requestEventActor")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -252,6 +254,8 @@ model ServiceCategory {
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
 
+  serviceRequests ServiceRequest[]
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -293,6 +297,8 @@ model Address {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  serviceRequests ServiceRequest[]
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -331,6 +337,108 @@ model UserProfile {
   updatedAt DateTime @updatedAt
 
   @@map("user_profiles")
+}
+
+// Service-request lifecycle (Sprint 1, slice 3). One row per Seeker job
+// posting. `seekerUserId` is the only ownership signal — it is set from
+// the authenticated session at create time, never from the wire.
+//
+// `categoryId` is nullable so a Seeker can post a free-form request
+// against `customServiceText` when none of the curated catalog
+// categories fits. Service-layer validation requires at least one of
+// the two to be present.
+//
+// `addressSnapshot` is JSON because we deliberately copy the address
+// fields onto the request at create time. This decouples the request
+// from later edits / soft-deletes of the source Address row: a Seeker
+// renaming "Home" to something else, or deleting it, must NOT mutate
+// the historical request the Provider is bidding on. `addressId`
+// stays linked for traceability but no read site joins through it.
+//
+// `status` is the lifecycle discriminator. Slice 3 only implements
+// OPEN_FOR_BIDS / CANCELLED; the future statuses (BID_ACCEPTED, BOOKED,
+// IN_PROGRESS, COMPLETED) are present in the enum so the values are
+// stable from day one and don't require an enum-add migration when
+// later slices bring bids/bookings online.
+model ServiceRequest {
+  id                String                @id @default(cuid())
+  seekerUserId      String
+  categoryId        String?
+  customServiceText String?
+  description       String?
+  status            ServiceRequestStatus  @default(OPEN_FOR_BIDS)
+  scheduleType      ScheduleType
+  scheduledAt       DateTime?
+  addressId         String?
+  // JSON snapshot of the address at creation time. Stored as Json
+  // rather than discrete columns so the snapshot shape can evolve
+  // without a migration (it always carries label/line1/city/country/
+  // lat/lng but the wire shape is the source of truth).
+  addressSnapshot   Json
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  deletedAt         DateTime?
+
+  seeker   User             @relation("seekerRequests", fields: [seekerUserId], references: [id], onDelete: Cascade)
+  category ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  address  Address?         @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  events   ServiceRequestEvent[]
+
+  // Dominant access pattern: list-my-requests filtered by status.
+  @@index([seekerUserId, status])
+  // Soft-delete-aware ownership lookup.
+  @@index([seekerUserId, deletedAt])
+  // Category-scoped lookup (future Provider feed).
+  @@index([categoryId])
+  // Time-ordered listing.
+  @@index([createdAt])
+  // Cross-user status sweep (admin / future).
+  @@index([status])
+  @@map("service_requests")
+}
+
+enum ServiceRequestStatus {
+  OPEN_FOR_BIDS
+  BID_ACCEPTED
+  BOOKED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ScheduleType {
+  ASAP
+  LATER
+}
+
+// Append-only timeline of state changes against a request. Driven by the
+// requests service inside the same transaction as the underlying state
+// transition, so the timeline can never disagree with the request row.
+//
+// `actorUserId` is nullable because future slices will emit events on
+// behalf of system actors (auto-cancel after 14d, etc.); for slice 3
+// every event is authored by the request owner.
+model ServiceRequestEvent {
+  id          String                  @id @default(cuid())
+  requestId   String
+  actorUserId String?
+  type        ServiceRequestEventType
+  metadata    Json?
+  createdAt   DateTime                @default(now())
+
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actor   User?          @relation("requestEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([requestId, createdAt])
+  @@index([type, createdAt])
+  @@map("service_request_events")
+}
+
+enum ServiceRequestEventType {
+  REQUEST_CREATED
+  REQUEST_UPDATED
+  REQUEST_CANCELLED
+  REQUEST_REOPENED
 }
 
 // Audit rows are append-only. `metadata` is a JSON blob limited to an

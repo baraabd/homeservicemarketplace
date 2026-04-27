@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   X,
   ChevronLeft,
@@ -26,6 +26,8 @@ import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useLang } from '../../i18n/LanguageContext';
+import { useAddresses } from '../../hooks/seeker/useAddresses';
+import { useCreateServiceRequest } from '../../hooks/seeker/useRequests';
 
 // ─── Service config ───────────────────────────────────────────────────────────
 const SERVICE_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
@@ -202,24 +204,60 @@ function StepProgress({
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface JobWizardModalProps {
   service: string;
+  // Backend ServiceCategory.id for the selected service. Optional so
+  // existing call sites that haven't been wired yet still compile —
+  // when null/undefined the wizard posts a free-form request using
+  // `service` as customServiceText. Slice-3 callers from HomeScreen
+  // pass the real id from the catalog query.
+  categoryId?: string | null;
   isOpen: boolean;
   onClose: () => void;
   isOffline: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizardModalProps) {
-  const { t, dir } = useLang();
+export function JobWizardModal({
+  service,
+  categoryId,
+  isOpen,
+  onClose,
+  isOffline,
+}: JobWizardModalProps) {
+  const { t, dir, lang } = useLang();
 
   const [step, setStep] = useState(1);
   const [notes, setNotes] = useState('');
-  const [address, setAddress] = useState(
-    t('address') === 'Address' ? 'Al Olaya District, Riyadh' : 'حي العليا، الرياض',
-  );
+  const [address, setAddress] = useState('');
   const [schedule, setSchedule] = useState<'asap' | 'later'>('asap');
   const [uploads, setUploads] = useState<string[]>([]);
-  const [isPosting, setIsPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+
+  const addressesQuery = useAddresses();
+  const createMut = useCreateServiceRequest();
+  const isPosting = createMut.isPending;
+
+  // Default the address field to the user's saved default (or first
+  // address) on open; lets a logged-in seeker hit confirm without
+  // retyping it. The user can always overwrite it before posting.
+  const defaultAddress = useMemo(() => {
+    const list = addressesQuery.data ?? [];
+    return list.find((a) => a.isDefault) ?? list[0] ?? null;
+  }, [addressesQuery.data]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (address.trim().length > 0) return;
+    if (defaultAddress) {
+      const composed = [defaultAddress.line1, defaultAddress.city, defaultAddress.country]
+        .filter((p) => p && p.trim().length > 0)
+        .join(', ');
+      if (composed.length > 0) setAddress(composed);
+    }
+    // We deliberately do not depend on `address` here — only seed when
+    // the field is empty, which happens on first open and after reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, defaultAddress]);
 
   const {
     onTouchStart: handleTouchStart,
@@ -235,16 +273,95 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
   const cfg = SERVICE_CONFIG[service] ?? SERVICE_CONFIG.General;
 
   const simulateUpload = () => {
+    // NB: attachments are NOT uploaded in slice 3. The placeholder
+    // colour swatches stay so the visual flow is unchanged, but
+    // nothing is sent to the backend — see also handlePost below.
     const colors = ['bg-blue-200', 'bg-amber-200', 'bg-green-200', 'bg-purple-200'];
     if (uploads.length < 4) setUploads((prev) => [...prev, colors[prev.length % colors.length]]);
   };
 
+  // Split the user-typed "full address" line into discrete
+  // line1 / city / country parts the backend expects. Same comma-split
+  // heuristic the SavedAddressesPage uses on its single-input form;
+  // see splitFullAddress there for the canonical implementation.
+  function splitFullAddress(full: string): {
+    line1: string;
+    city: string;
+    country: string;
+  } {
+    const parts = full
+      .split(',')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    if (parts.length >= 3) {
+      const country = parts.pop() as string;
+      const city = parts.pop() as string;
+      const line1 = parts.join(', ');
+      return { line1, city, country };
+    }
+    if (parts.length === 2) {
+      return { line1: parts[0], city: parts[1], country: parts[1] };
+    }
+    const single = parts[0] ?? full.trim();
+    return {
+      line1: single,
+      city: single,
+      country: single.length >= 2 ? single : `${single}.`,
+    };
+  }
+
   const handlePost = () => {
-    setIsPosting(true);
-    setTimeout(() => {
-      setIsPosting(false);
-      setStep(3);
-    }, 2000);
+    setPostError(null);
+    const trimmedAddress = address.trim();
+    if (!trimmedAddress) {
+      setPostError(
+        lang === 'ar'
+          ? 'الرجاء إدخال العنوان أو إضافته من العناوين المحفوظة.'
+          : 'Please enter an address (or add one from Saved Addresses).',
+      );
+      return;
+    }
+    // If the typed address still matches the default address line
+    // exactly, we forward addressId so the backend snapshots from the
+    // authoritative DB row. Otherwise the user typed/edited it, so we
+    // forward manualAddress.
+    const composedDefault = defaultAddress
+      ? [defaultAddress.line1, defaultAddress.city, defaultAddress.country]
+          .filter((p) => p && p.trim().length > 0)
+          .join(', ')
+      : '';
+    const useDefaultId = defaultAddress !== null && composedDefault === trimmedAddress;
+
+    const split = splitFullAddress(trimmedAddress);
+
+    createMut.mutate(
+      {
+        categoryId: categoryId ?? null,
+        customServiceText: categoryId ? null : service,
+        description: notes.trim().length > 0 ? notes.trim() : null,
+        scheduleType: schedule === 'asap' ? 'ASAP' : 'LATER',
+        // We do not surface a real date/time picker yet, so LATER
+        // schedule cannot be created from this form in slice 3 —
+        // the radio still flips visually, but a real scheduledAt
+        // would be needed before the backend will accept LATER.
+        // For ASAP we send no scheduledAt (the backend rejects
+        // a value alongside ASAP).
+        addressId: useDefaultId ? defaultAddress!.id : null,
+        manualAddress: useDefaultId ? null : split,
+      },
+      {
+        onSuccess: () => {
+          setStep(3);
+        },
+        onError: () => {
+          setPostError(
+            lang === 'ar'
+              ? 'تعذر نشر الطلب. حاول مرة أخرى.'
+              : "We couldn't post this request. Please try again.",
+          );
+        },
+      },
+    );
   };
 
   const handleClose = () => {
@@ -252,6 +369,8 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
     setNotes('');
     setUploads([]);
     setSchedule('asap');
+    setAddress('');
+    setPostError(null);
     onClose();
   };
 
@@ -557,6 +676,15 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
             </div>
 
             <div className="flex-shrink-0 border-t border-slate-100 px-5 py-4 bg-white">
+              {postError && (
+                <p
+                  className="mb-3 text-red-600"
+                  style={{ fontSize: '12px', fontWeight: 600 }}
+                  role="alert"
+                >
+                  {postError}
+                </p>
+              )}
               <Button
                 variant="primary"
                 state={isPosting ? 'loading' : 'default'}

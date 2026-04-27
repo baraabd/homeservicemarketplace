@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import {
@@ -33,6 +33,12 @@ import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { useEcosystem } from '../../context/EcosystemContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { useServiceCategories } from '../../../lib/use-service-categories';
+import { useRequests } from '../../hooks/seeker/useRequests';
+import {
+  formatRelativeTime,
+  mapServiceCategorySlug,
+  mapServiceRequestStatus,
+} from '../../../lib/seeker/request-status-map';
 
 // ─── Tab routing ──────────────────────────────────────────────────────────────
 const TAB_PATHS: Record<string, string> = {
@@ -158,28 +164,11 @@ function bookingToJobData(b: BookingItem, lang: string): JobData {
 }
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
-const INITIAL_LEADS: LeadCardProps[] = [
-  {
-    id: '1',
-    service: 'Plumbing',
-    status: 'active',
-    proName: 'Omar K.',
-    proInitials: 'OK',
-    postedAt: '2h ago',
-    price: 35,
-    bids: 3,
-  },
-  { id: '2', service: 'Electrical', status: 'pending', postedAt: '5h ago', bids: 7 },
-  {
-    id: '3',
-    service: 'Cleaning',
-    status: 'completed',
-    proName: 'Sara M.',
-    proInitials: 'SM',
-    postedAt: '1d ago',
-    price: 28,
-  },
-];
+// The Seeker production source of truth for "my requests" is the live
+// /v1/me/requests endpoint, surfaced via useRequests() inside the
+// HomeScreen component below. The previous hard-coded INITIAL_LEADS
+// array has been removed — it was the slice-2-era placeholder. Tests
+// still mock the API to drive the same UI shape.
 
 const INITIAL_NOTIFS: AppNotification[] = [
   {
@@ -232,7 +221,10 @@ const INITIAL_NOTIFS: AppNotification[] = [
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface HomeScreenProps {
   isOffline: boolean;
-  onServiceSelect: (service: string) => void;
+  // categoryId is forwarded from a real catalog tile so the wizard can
+  // post a curated-category request; null when triggered from the
+  // free-form CTAs.
+  onServiceSelect: (service: string, categoryId?: string | null) => void;
   onToggleOffline: () => void;
 }
 
@@ -253,8 +245,25 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   // ── Core state ─────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
   const [micActive, setMicActive] = useState(false);
-  const [leads, setLeads] = useState<LeadCardProps[]>(INITIAL_LEADS);
   const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFS);
+
+  // Live "my requests" feed. Drives the Active Leads carousel on the
+  // home tab and the All Requests overlay. Empty array on first load
+  // / 401 / network error so the existing empty + error rendering
+  // paths stay safe — we never throw raw errors at LeadCard.
+  const requestsQuery = useRequests();
+  const leads: LeadCardProps[] = useMemo(() => {
+    const items = requestsQuery.data?.items ?? [];
+    return items.map((r) => ({
+      id: r.id,
+      service: mapServiceCategorySlug(r.category?.slug ?? null),
+      status: mapServiceRequestStatus(r.status),
+      postedAt: formatRelativeTime(r.createdAt, lang === 'ar' ? 'ar' : 'en'),
+      // bids/price not yet available — those ship with the bids slice.
+      bids: undefined,
+      price: undefined,
+    }));
+  }, [requestsQuery.data, lang]);
   const [bookSnack, setBookSnack] = useState(false);
   const [bookSnackMsg, setBookSnackMsg] = useState('');
   const [tabLoading, setTabLoading] = useState(false);
@@ -341,20 +350,13 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const handleBookingTap = (b: BookingItem) => setJobDetail(bookingToJobData(b, lang));
 
   // ── Book bid ────────────────────────────────────────────────────────────────
+  // Bid acceptance is bound to the bids slice (out of scope for slice 3).
+  // For now this is a UI-only acknowledgement: it shows the success
+  // snackbar and closes the BidsScreen overlay so the existing demo
+  // path doesn't regress. Once the bids endpoint ships, this should
+  // call POST /v1/me/requests/:id/bids/:bidId/accept and re-let the
+  // requests query refetch.
   const handleBookBid = (bidderName: string) => {
-    setLeads((prev) =>
-      prev.map((l) =>
-        l.id === bidsLead?.id
-          ? {
-              ...l,
-              status: 'active',
-              proName: bidderName.split(' ')[0] + ' ' + (bidderName.split(' ')[1]?.[0] ?? '') + '.',
-              proInitials: bidderName[0] + (bidderName.split(' ')[1]?.[0] ?? ''),
-              bids: undefined,
-            }
-          : l,
-      ),
-    );
     const fn = bidderName.split(' ')[0];
     setBookSnackMsg(
       lang === 'ar' ? `تم الحجز مع ${fn}! 🎉` : `Booked ${fn}! 🎉 Job is now active.`,
@@ -612,7 +614,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                       label={label}
                       iconBg={visual.iconBg}
                       iconColor={visual.iconColor}
-                      onClick={() => onServiceSelect(label)}
+                      onClick={() => onServiceSelect(label, c.id)}
                     />
                   );
                 })}

@@ -1,0 +1,78 @@
+import type { ServiceRequestStatus } from '@homeservicemarketplace/contracts';
+
+// Map the backend ServiceRequestStatus enum to the existing
+// LeadCardProps.status string set the UI components key colour /
+// label / icon / behaviour off. Defined in one place so future status
+// additions stay consistent across HomeScreen, AllLeadsView,
+// LeadCard and JobDetailView.
+//
+// Mapping rules (per slice 3 spec):
+//   OPEN_FOR_BIDS                                → pending
+//   BID_ACCEPTED / BOOKED / IN_PROGRESS          → active
+//   COMPLETED                                    → completed
+//   CANCELLED                                    → cancelled
+export type LeadStatus = 'pending' | 'active' | 'completed' | 'cancelled';
+
+export function mapServiceRequestStatus(status: ServiceRequestStatus): LeadStatus {
+  switch (status) {
+    case 'OPEN_FOR_BIDS':
+      return 'pending';
+    case 'BID_ACCEPTED':
+    case 'BOOKED':
+    case 'IN_PROGRESS':
+      return 'active';
+    case 'COMPLETED':
+      return 'completed';
+    case 'CANCELLED':
+      return 'cancelled';
+    default: {
+      // Exhaustiveness check: if a future enum value is added without
+      // updating this map, TypeScript flags it here. We still need a
+      // safe runtime fallback so an unknown status doesn't crash the UI.
+      const _exhaustive: never = status;
+      void _exhaustive;
+      return 'pending';
+    }
+  }
+}
+
+// Convert the backend category labels (English/Arabic on the wire) to
+// the visual "service" key the existing service-icon maps already
+// understand (Plumbing / Electrical / AC Repair / Cleaning / Carpentry
+// / Painting / General). Falls back to General so unknown slugs render
+// safely.
+export function mapServiceCategorySlug(slug: string | null | undefined): string {
+  switch (slug) {
+    case 'plumbing':
+      return 'Plumbing';
+    case 'electrical':
+      return 'Electrical';
+    case 'ac-repair':
+      return 'AC Repair';
+    case 'cleaning':
+      return 'Cleaning';
+    case 'carpentry':
+      return 'Carpentry';
+    case 'painting':
+      return 'Painting';
+    default:
+      return 'General';
+  }
+}
+
+// "5 minutes ago" / "2 hours ago" / "3 days ago" — a tiny relative-time
+// formatter for LeadCard.postedAt. Keeps the existing string shape (no
+// design change) without pulling in date-fns at this call site.
+export function formatRelativeTime(iso: string, lang: 'en' | 'ar' = 'en'): string {
+  const now = Date.now();
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const diffMs = Math.max(0, now - t);
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return lang === 'ar' ? 'الآن' : 'just now';
+  if (minutes < 60) return lang === 'ar' ? `قبل ${minutes} د` : `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return lang === 'ar' ? `قبل ${hours} س` : `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return lang === 'ar' ? `قبل ${days} ي` : `${days}d ago`;
+}

@@ -15,12 +15,14 @@ import { MetricsModule } from './infrastructure/telemetry/metrics.module';
 import { PersistenceModule } from './infrastructure/persistence/persistence.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { IamModule } from './modules/iam/iam.module';
+import { RequestsModule } from './modules/requests/requests.module';
 import { ServicesModule } from './modules/services/services.module';
 
 // Infrastructure & data-foundation bootstrap. Seeker domain modules are
 // wired in incrementally — slice 1 introduced ServicesModule (read-only
-// catalog at GET /v1/services); slice 2 adds AddressesModule (CRUD at
-// /v1/me/addresses, all endpoints session-scoped).
+// catalog at GET /v1/services); slice 2 added AddressesModule (CRUD at
+// /v1/me/addresses); slice 3 adds RequestsModule (service-request
+// lifecycle at /v1/me/requests, all endpoints session-scoped).
 @Module({
   imports: [
     ConfigModule,
@@ -36,6 +38,7 @@ import { ServicesModule } from './modules/services/services.module';
     IamModule,
     ServicesModule,
     AddressesModule,
+    RequestsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

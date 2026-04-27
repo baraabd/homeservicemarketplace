@@ -10,4 +10,12 @@ export const seekerQueryKeys = {
     root: ['seeker', 'addresses'] as const,
     list: () => ['seeker', 'addresses', 'list'] as const,
   },
+  requests: {
+    // Root for *all* request queries — pass to invalidateQueries() to
+    // refetch list / detail / timeline after a mutation.
+    root: ['seeker', 'requests'] as const,
+    list: (filter?: { status?: string }) => ['seeker', 'requests', 'list', filter ?? {}] as const,
+    detail: (id: string) => ['seeker', 'requests', 'detail', id] as const,
+    timeline: (id: string) => ['seeker', 'requests', 'timeline', id] as const,
+  },
 } as const;
