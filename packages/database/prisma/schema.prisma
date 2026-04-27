@@ -85,6 +85,7 @@ model User {
   mfaBackupCodes     MfaBackupCode[]
   auditEvents        AuditEvent[]
   addresses          Address[]
+  profile            UserProfile?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -309,6 +310,27 @@ enum AddressType {
   HOME
   WORK
   CUSTOM
+}
+
+// One-to-one profile sidecar created by an earlier (pre-slice-2)
+// migration. Modelled here so the Prisma schema reflects the actual DB
+// shape — without this declaration `prisma migrate dev` would detect
+// schema drift on every run. The slice-2 work does not read or write
+// this table; it exists only to keep the migration history consistent
+// with reality.
+model UserProfile {
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  avatarUrl   String?
+  phoneNumber String?
+  bio         String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_profiles")
 }
 
 // Audit rows are append-only. `metadata` is a JSON blob limited to an

@@ -83,6 +83,86 @@ describe('AllExceptionsFilter', () => {
     });
   });
 
+  describe('Prisma catch-all (no raw leak in dev or prod)', () => {
+    // Regression for the slice-2 outage: when the developer DB was out of
+    // sync with the Prisma schema, a P2022 ("column addresses.type does
+    // not exist") error fell through to the dev-mode `exception.message`
+    // path and shipped the raw driver text — including table + column
+    // names — straight to the browser. Anything that looks like a
+    // PrismaClient* error must be collapsed to a stable 500 with a safe
+    // message, regardless of NODE_ENV.
+
+    function makePrismaError(ctorName: string, message: string, code?: string): Error {
+      class FakeCtor extends Error {}
+      Object.defineProperty(FakeCtor, 'name', { value: ctorName });
+      const e = new FakeCtor(message);
+      Object.defineProperty(e, 'name', { value: ctorName });
+      if (code) (e as Error & { code?: string }).code = code;
+      return e;
+    }
+
+    it('PrismaClientKnownRequestError P2022 (column missing) — never leaks the raw message in dev', () => {
+      const filter = new AllExceptionsFilter(mkConfig(false));
+      const { host, status, json } = mkHost();
+      const raw =
+        '\nInvalid `prisma.address.findMany()` invocation:\n\nThe column `addresses.type` does not exist in the current database.';
+      filter.catch(makePrismaError('PrismaClientKnownRequestError', raw, 'P2022'), host);
+      expect(status).toHaveBeenCalledWith(500);
+      const body = json.mock.calls[0][0];
+      expect(body.error.code).toBe('INTERNAL_ERROR');
+      expect(body.error.message).toBe('Internal server error');
+      // None of the leak markers may appear anywhere in the response.
+      const blob = JSON.stringify(body);
+      expect(blob).not.toMatch(/prisma/i);
+      expect(blob).not.toMatch(/PrismaClient/);
+      expect(blob).not.toMatch(/addresses\.type/);
+      expect(blob).not.toMatch(/does not exist/i);
+      expect(blob).not.toMatch(/invocation/i);
+    });
+
+    it('PrismaClientValidationError (no .code) — collapses to safe 500', () => {
+      const filter = new AllExceptionsFilter(mkConfig(false));
+      const { host, status, json } = mkHost();
+      filter.catch(
+        makePrismaError(
+          'PrismaClientValidationError',
+          'Argument `where` of type AddressWhereUniqueInput needs at least one argument.',
+        ),
+        host,
+      );
+      expect(status).toHaveBeenCalledWith(500);
+      const body = json.mock.calls[0][0];
+      expect(body.error.code).toBe('INTERNAL_ERROR');
+      expect(body.error.message).toBe('Internal server error');
+      expect(JSON.stringify(body)).not.toMatch(/AddressWhereUniqueInput|prisma/i);
+    });
+
+    it('PrismaClientInitializationError — collapses to safe 500', () => {
+      const filter = new AllExceptionsFilter(mkConfig(false));
+      const { host, status, json } = mkHost();
+      filter.catch(
+        makePrismaError(
+          'PrismaClientInitializationError',
+          "Can't reach database server at `localhost:5432`",
+        ),
+        host,
+      );
+      expect(status).toHaveBeenCalledWith(500);
+      expect(json.mock.calls[0][0].error.message).toBe('Internal server error');
+      expect(JSON.stringify(json.mock.calls[0][0])).not.toMatch(/localhost:5432|prisma/i);
+    });
+
+    it('Specific Prisma codes (P2002/P2025/...) still take the more useful 4xx mapping', () => {
+      // Sanity: the catch-all must not regress the specific-code branches
+      // that pre-date this fix — those produce friendlier 4xx responses.
+      const filter = new AllExceptionsFilter(mkConfig(false));
+      const { host, status, json } = mkHost();
+      filter.catch(makePrismaError('PrismaClientKnownRequestError', 'unique', 'P2002'), host);
+      expect(status).toHaveBeenCalledWith(409);
+      expect(json.mock.calls[0][0].error.code).toBe('CONFLICT');
+    });
+  });
+
   describe('Mongoose normalization', () => {
     it('ValidationError -> 400 VALIDATION_ERROR', () => {
       const filter = new AllExceptionsFilter(mkConfig());
