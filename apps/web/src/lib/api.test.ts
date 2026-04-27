@@ -109,4 +109,45 @@ describe('401 refresh interceptor', () => {
     const dataCalls = mock.history.get.filter((r) => r.url === '/v1/data');
     expect(dataCalls).toHaveLength(2); // original + exactly one retry
   });
+
+  it('skips /refresh entirely when no hsm_csrf cookie is present (stale-session noise reduction)', async () => {
+    // Stub document.cookie to '' for this test. happy-dom's cookie store
+    // doesn't always honor expiry-based deletion across reruns, so the
+    // safest way to model "no prior session" is to override the getter.
+    const cookieDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie');
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      get: () => '',
+      set: () => {
+        /* no-op */
+      },
+    });
+
+    const sessionExpired = vi.fn();
+    window.addEventListener('auth:session-expired', sessionExpired);
+
+    try {
+      mock.onGet('/v1/auth/me').reply(401);
+      mock.onPost('/v1/auth/refresh').reply(200, {}); // would succeed if hit
+
+      await api.get('/v1/auth/me').catch(() => {});
+
+      // The refresh endpoint must NOT have been called — there's no
+      // point attempting a refresh without a CSRF token; backend would
+      // 401/400 and the right outcome is the same: drop auth state +
+      // route to login.
+      const refreshCalls = mock.history.post.filter((r) => r.url === '/v1/auth/refresh');
+      expect(refreshCalls).toHaveLength(0);
+      // The session-expired event fires so the auth provider clears
+      // cached user data and the route guards send the user to /login.
+      expect(sessionExpired).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('auth:session-expired', sessionExpired);
+      // Restore the real cookie property so subsequent tests see normal
+      // happy-dom semantics.
+      if (cookieDescriptor) {
+        Object.defineProperty(document, 'cookie', cookieDescriptor);
+      }
+    }
+  });
 });
