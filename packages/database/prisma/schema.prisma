@@ -90,6 +90,7 @@ model User {
   requestEventsActed ServiceRequestEvent[] @relation("requestEventActor")
   providerProfile    ProviderProfile?
   bookingsAsSeeker   Booking[]             @relation("seekerBookings")
+  bookingEventsActed BookingEvent[]        @relation("bookingEventActor")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -580,6 +581,7 @@ model Booking {
   bid      Bid             @relation(fields: [bidId], references: [id], onDelete: Cascade)
   seeker   User            @relation("seekerBookings", fields: [seekerUserId], references: [id], onDelete: Cascade)
   provider ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  events   BookingEvent[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -603,6 +605,41 @@ enum BookingStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+// Append-only timeline of state changes against a booking. Slice 2.3
+// emits BOOKING_CREATED (from inside the accept-bid transaction) and
+// BOOKING_CANCELLED. The remaining lifecycle types are pinned now so
+// the next slice (Provider/tracking) doesn't force another enum
+// migration.
+//
+// `actorUserId` is nullable because system actors (auto-cancel, auto-
+// complete-after-N-days, etc.) will write events here in later slices.
+model BookingEvent {
+  id          String           @id @default(cuid())
+  bookingId   String
+  actorUserId String?
+  type        BookingEventType
+  metadata    Json?
+  createdAt   DateTime         @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  actor   User?   @relation("bookingEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  // Dominant access pattern: timeline render = list-by-booking
+  // chronologically. Primary index covers it.
+  @@index([bookingId, createdAt])
+  // Secondary: housekeeping / cross-booking analytics — not used in
+  // slice 2.3 reads but cheap and aligned with ServiceRequestEvent.
+  @@index([type, createdAt])
+  @@map("booking_events")
+}
+
+enum BookingEventType {
+  BOOKING_CREATED
+  BOOKING_CANCELLED
+  BOOKING_STATUS_CHANGED
+  BOOKING_RESCHEDULED
 }
 
 // Audit rows are append-only. `metadata` is a JSON blob limited to an

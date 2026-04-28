@@ -19,6 +19,7 @@ import {
   Search,
   PaintBucket,
 } from 'lucide-react';
+import type { BookingListItem, BookingStatus } from '@homeservicemarketplace/contracts';
 import { ServiceCategoryCard } from '../ds/ServiceCategoryCard';
 import { LeadCard, LeadCardProps } from './LeadCard';
 import { BidsScreen } from './BidsScreen';
@@ -34,6 +35,7 @@ import { useEcosystem } from '../../context/EcosystemContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { useServiceCategories } from '../../../lib/use-service-categories';
 import { useRequests } from '../../hooks/seeker/useRequests';
+import { useBookings } from '../../hooks/seeker/useBookings';
 import {
   formatRelativeTime,
   mapServiceCategorySlug,
@@ -55,14 +57,37 @@ function tabFromPath(pathname: string): string {
   return 'home';
 }
 
-// ─── Booking data ─────────────────────────────────────────────────────────────
+// ─── Booking render shape ─────────────────────────────────────────────────────
+// The Bookings tab renders against this local shape. Slice 2.3 wires the
+// production source to GET /v1/me/bookings; the previous BOOKING_DATA
+// constant was the slice-2-era placeholder and has been removed. The
+// local shape is preserved 1:1 so every existing visual (badge colour,
+// avatar pill, pro line, price suffix) renders unchanged — only the
+// data source moves.
 interface BookingItem {
   id: string;
+  // The "primary" service label and an Arabic mirror; both are sourced
+  // from the API row's service.categoryLabel* / customServiceText
+  // (Arabic fallback to the English label when the category doesn't
+  // ship a localised one).
   serviceEn: string;
   serviceAr: string;
+  // Pre-formatted human dates in the active language. ASAP bookings
+  // (no scheduledAt on the request) render the localised "ASAP" label.
   dateEn: string;
   dateAr: string;
+  // Maps the API BookingStatus onto the existing 3-state UI badge:
+  //   SCHEDULED   → 'pending'   (amber "awaiting" pill)
+  //   IN_PROGRESS → 'active'    (blue "in progress" pill)
+  //   COMPLETED   → 'completed' (green "done" pill)
+  //   CANCELLED   → 'completed' (green pill — slice 2.3 reuses it
+  //                              rather than introducing a new design
+  //                              token; a future slice can add a
+  //                              dedicated cancelled-state visual)
   statusKey: 'active' | 'pending' | 'completed';
+  // Provider display name. The API does not yet ship a localised
+  // Arabic name, so both languages fall back to the API string —
+  // future slice can add provider.displayNameAr.
   proEn: string;
   proAr: string;
   proInitials?: string;
@@ -71,72 +96,68 @@ interface BookingItem {
   addressAr?: string;
 }
 
-const BOOKING_DATA: BookingItem[] = [
-  {
-    id: 'b1',
-    serviceEn: 'Plumbing Repair',
-    serviceAr: 'إصلاح سباكة',
-    dateEn: 'Today, 3:00 PM',
-    dateAr: 'اليوم، 3:00 م',
-    statusKey: 'active',
-    proEn: 'Omar K.',
-    proAr: 'عمر خ.',
-    proInitials: 'OK',
-    price: 35,
-    address: 'Al Olaya District, Riyadh',
-    addressAr: 'حي العليا، الرياض',
-  },
-  {
-    id: 'b2',
-    serviceEn: 'AC Maintenance',
-    serviceAr: 'صيانة تكييف',
-    dateEn: 'Tomorrow, 10 AM',
-    dateAr: 'غداً، 10:00 ص',
-    statusKey: 'pending',
-    proEn: '—',
-    proAr: '—',
-    price: 0,
-    address: 'Al Malqa, Riyadh',
-    addressAr: 'حي الملقا، الرياض',
-  },
-  {
-    id: 'b3',
-    serviceEn: 'Deep Cleaning',
-    serviceAr: 'تنظيف عميق',
-    dateEn: 'Mar 8, 2:00 PM',
-    dateAr: '8 مارس، 2:00 م',
-    statusKey: 'completed',
-    proEn: 'Sara M.',
-    proAr: 'سارة م.',
-    proInitials: 'SM',
-    price: 28,
-    address: 'Al Malqa, Riyadh',
-    addressAr: 'حي الملقا، الرياض',
-  },
-  {
-    id: 'b4',
-    serviceEn: 'Cabinet Install',
-    serviceAr: 'تركيب خزائن',
-    dateEn: 'Mar 5, 9:00 AM',
-    dateAr: '5 مارس، 9:00 ص',
-    statusKey: 'completed',
-    proEn: 'Ali H.',
-    proAr: 'علي ح.',
-    proInitials: 'AH',
-    price: 45,
-    address: 'King Fahd District, Riyadh',
-    addressAr: 'حي الملك فهد، الرياض',
-  },
-];
+// API status → UI status. Centralised here so a future product change
+// (e.g. a dedicated cancelled-state pill) only touches one site.
+function statusKeyFor(s: BookingStatus): BookingItem['statusKey'] {
+  if (s === 'IN_PROGRESS') return 'active';
+  if (s === 'SCHEDULED') return 'pending';
+  return 'completed'; // COMPLETED + CANCELLED both render with the closed-state pill in slice 2.3.
+}
+
+// Format the scheduledAt timestamp into the human strings the existing
+// card renders. ASAP bookings (scheduledAt: null) render the localised
+// "ASAP" label so the card never displays an empty date row.
+function formatBookingDate(scheduledAt: string | null, lang: 'en' | 'ar'): string {
+  if (!scheduledAt) return lang === 'ar' ? 'في أقرب وقت' : 'ASAP';
+  const d = new Date(scheduledAt);
+  if (Number.isNaN(d.getTime())) return lang === 'ar' ? 'في أقرب وقت' : 'ASAP';
+  // Use Intl with the active locale; mirror the slice-2 placeholder
+  // shape ("Today, 3:00 PM" / "Mar 8, 2:00 PM") as closely as Intl
+  // allows without re-implementing relative-day logic.
+  const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  const timeOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  const locale = lang === 'ar' ? 'ar-SA' : 'en-US';
+  return `${d.toLocaleDateString(locale, dateOpts)}, ${d.toLocaleTimeString(locale, timeOpts)}`;
+}
+
+function apiBookingToItem(row: BookingListItem, lang: 'en' | 'ar'): BookingItem {
+  const labelEn =
+    row.service.categoryLabelEn ??
+    row.service.customServiceText ??
+    (lang === 'ar' ? 'خدمة' : 'Service');
+  const labelAr = row.service.categoryLabelAr ?? row.service.customServiceText ?? labelEn;
+  return {
+    id: row.id,
+    serviceEn: labelEn,
+    serviceAr: labelAr,
+    dateEn: formatBookingDate(row.scheduledAt, 'en'),
+    dateAr: formatBookingDate(row.scheduledAt, 'ar'),
+    statusKey: statusKeyFor(row.status),
+    proEn: row.provider.displayName,
+    proAr: row.provider.displayName,
+    proInitials: row.provider.initials,
+    price: row.priceAmount,
+    address: row.addressSnapshot.line1
+      ? `${row.addressSnapshot.line1}, ${row.addressSnapshot.city}`
+      : undefined,
+    addressAr: row.addressSnapshot.line1
+      ? `${row.addressSnapshot.line1}, ${row.addressSnapshot.city}`
+      : undefined,
+  };
+}
 
 function bookingToJobData(b: BookingItem, lang: string): JobData {
+  // Heuristic mapping from the booked-service English label to the
+  // JobDetailView's icon-and-colour key. Falls back to 'General' for
+  // anything outside the well-known set so the detail view always has
+  // a renderable visual identity.
   const svcKey = b.serviceEn.includes('Plumbing')
     ? 'Plumbing'
     : b.serviceEn.includes('AC')
       ? 'AC Repair'
       : b.serviceEn.includes('Cleaning')
         ? 'Cleaning'
-        : b.serviceEn.includes('Cabinet')
+        : b.serviceEn.includes('Cabinet') || b.serviceEn.includes('Carpentry')
           ? 'Carpentry'
           : b.serviceEn.includes('Electrical')
             ? 'Electrical'
@@ -150,6 +171,10 @@ function bookingToJobData(b: BookingItem, lang: string): JobData {
     status: b.statusKey,
     proName: b.proEn !== '—' ? b.proEn : undefined,
     proInitials: b.proInitials,
+    // Provider rating / review count / job count are not yet on the
+    // booking summary; future slice will surface them via a richer
+    // detail endpoint. We keep the historic placeholders so the
+    // detail view layout doesn't shift.
     proRating: 4.8,
     proReviews: 156,
     proJobs: 220,
@@ -264,6 +289,17 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
       price: undefined,
     }));
   }, [requestsQuery.data, lang]);
+
+  // Live "my bookings" feed (slice 2.3). Drives the Bookings tab list
+  // and the notification-tap fallback for tracking / confirmed / message
+  // notifications. Empty array on first load / 401 / network error so
+  // every render path below treats `bookings` as possibly empty — the
+  // existing empty / loading / error UI is safe by construction.
+  const bookingsQuery = useBookings();
+  const bookings: BookingItem[] = useMemo(() => {
+    const items = bookingsQuery.data?.items ?? [];
+    return items.map((row) => apiBookingToItem(row, lang === 'ar' ? 'ar' : 'en'));
+  }, [bookingsQuery.data, lang]);
   const [bookSnack, setBookSnack] = useState(false);
   const [bookSnackMsg, setBookSnackMsg] = useState('');
   const [tabLoading, setTabLoading] = useState(false);
@@ -309,6 +345,10 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   };
 
   // ── Notification tap ────────────────────────────────────────────────────────
+  // Looks up the referenced row in the loaded `leads` / `bookings`
+  // queries — never against a hardcoded list. If the relevant query
+  // hasn't loaded yet (or the referenced row no longer exists), the
+  // tap is a no-op rather than opening a screen against fake data.
   const handleNotifTap = (n: AppNotification) => {
     setNotifOpen(false);
     setTimeout(() => {
@@ -320,11 +360,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
         const lead = leads.find((l) => l.id === n.jobId);
         if (lead) setJobDetail(leadToJobData(lead));
         else {
-          const bk = BOOKING_DATA.find((b) => b.id === n.jobId);
+          const bk = bookings.find((b) => b.id === n.jobId);
           if (bk) setJobDetail(bookingToJobData(bk, lang));
         }
       } else if (n.type === 'message') {
-        const bk = BOOKING_DATA.find((b) => b.id === n.jobId);
+        const bk = bookings.find((b) => b.id === n.jobId);
         if (bk?.proInitials)
           setChatContact({
             name: lang === 'ar' ? bk.proAr : bk.proEn,
@@ -747,8 +787,42 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
               {t('myBookings')}
             </h2>
 
-            {/* Empty state guard - we have data, but demo the component anyway when 0 */}
-            {BOOKING_DATA.length === 0 ? (
+            {/* Loading / error / empty / list — preserved visual idioms.
+                Loading uses the same 20-pad icon block as the empty
+                state with a neutral spinner inside; error keeps the
+                slate copy block (no raw backend error). */}
+            {bookingsQuery.isLoading && !bookingsQuery.data ? (
+              <div
+                className="flex flex-col items-center justify-center py-20 gap-4"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="w-20 h-20 rounded-3xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center animate-pulse">
+                  <Briefcase size={32} className="text-slate-300" />
+                </div>
+                <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: '13px' }}>
+                  {lang === 'ar' ? 'جاري تحميل الحجوزات...' : 'Loading bookings...'}
+                </p>
+              </div>
+            ) : bookingsQuery.isError && !bookingsQuery.data ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-3" role="alert">
+                <p
+                  className="text-slate-700 dark:text-slate-200 text-center"
+                  style={{ fontSize: '14px', fontWeight: 600 }}
+                >
+                  {lang === 'ar'
+                    ? 'تعذر تحميل الحجوزات. حاول مرة أخرى.'
+                    : "We couldn't load bookings. Please try again."}
+                </p>
+                <button
+                  onClick={() => bookingsQuery.refetch()}
+                  className="px-5 py-2.5 rounded-2xl bg-amber-500 text-white active:scale-95 transition-all shadow-sm shadow-amber-200"
+                  style={{ fontSize: '13px', fontWeight: 700 }}
+                >
+                  {lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                </button>
+              </div>
+            ) : bookings.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 gap-4">
                 <div className="w-20 h-20 rounded-3xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                   <Briefcase size={32} className="text-slate-300" />
@@ -764,7 +838,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                 </p>
               </div>
             ) : (
-              BOOKING_DATA.map((b) => (
+              bookings.map((b) => (
                 <motion.button
                   key={b.id}
                   whileTap={{ scale: 0.98 }}

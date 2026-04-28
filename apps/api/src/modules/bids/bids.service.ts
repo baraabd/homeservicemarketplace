@@ -7,7 +7,11 @@ import type {
   ListBidsQuery,
   ProviderBidSummary,
 } from '@homeservicemarketplace/contracts';
-import { ServiceRequestEventType, ServiceRequestStatus } from '@homeservicemarketplace/database';
+import {
+  BookingEventType,
+  ServiceRequestEventType,
+  ServiceRequestStatus,
+} from '@homeservicemarketplace/database';
 import type { Booking } from '@homeservicemarketplace/database';
 
 import {
@@ -15,6 +19,7 @@ import {
   type BidWithProvider,
   type BidSortKey as RepoSortKey,
 } from '../../infrastructure/persistence/bids/bid.repository';
+import { BookingEventRepository } from '../../infrastructure/persistence/bookings/booking-event.repository';
 import { BookingRepository } from '../../infrastructure/persistence/bookings/booking.repository';
 import { ServiceRequestRepository } from '../../infrastructure/persistence/requests/service-request.repository';
 import { ServiceRequestEventRepository } from '../../infrastructure/persistence/requests/service-request-event.repository';
@@ -28,6 +33,7 @@ export class BidsService {
     private readonly requests: ServiceRequestRepository,
     private readonly bookings: BookingRepository,
     private readonly events: ServiceRequestEventRepository,
+    private readonly bookingEvents: BookingEventRepository,
     private readonly tx: TransactionRunner,
   ) {}
 
@@ -150,15 +156,31 @@ export class BidsService {
         tx,
       );
 
-      // 6. Append the timeline event. REQUEST_UPDATED carries the
-      //    transition payload; a dedicated REQUEST_BOOKED event type
-      //    can replace this in slice 2.3 without a forced migration.
+      // 6a. Append the request-side timeline event. REQUEST_UPDATED
+      //     carries the transition payload; a dedicated REQUEST_BOOKED
+      //     event type can replace this in a future slice without a
+      //     forced migration.
       await this.events.create(
         {
           requestId,
           actorUserId: seekerUserId,
           type: ServiceRequestEventType.REQUEST_UPDATED,
           metadata: { acceptedBidId: bidId, bookingId: booking.id },
+        },
+        tx,
+      );
+
+      // 6b. Append the booking-side timeline event (slice 2.3). The
+      //     booking and request timelines are kept separate because
+      //     they answer different questions on different surfaces;
+      //     they are written inside the same transaction so the two
+      //     audit trails can never diverge.
+      await this.bookingEvents.create(
+        {
+          bookingId: booking.id,
+          actorUserId: seekerUserId,
+          type: BookingEventType.BOOKING_CREATED,
+          metadata: { requestId, bidId, providerId: bid.providerId },
         },
         tx,
       );

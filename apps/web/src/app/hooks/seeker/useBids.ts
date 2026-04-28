@@ -49,8 +49,8 @@ export function useBidDetail(
 //   - bids root for this request → list refetch shows ACCEPTED + sibling
 //     REJECTED rows
 //   - requests root → list/detail refetch shows the new BID_ACCEPTED status
-//   - request detail + timeline so the parent JobDetailView (when it
-//     re-opens) renders the latest state
+//   - bookings root (slice 2.3) → the new booking shows up in the
+//     Bookings tab on next visit without a manual refresh
 //
 // We deliberately do NOT seed the new request status into the detail
 // cache because the contract returns a partial summary; a clean
@@ -66,6 +66,7 @@ export function useAcceptBid(requestId: string | null | undefined) {
       if (!requestId) return;
       qc.invalidateQueries({ queryKey: seekerQueryKeys.bids.root(requestId) });
       qc.invalidateQueries({ queryKey: seekerQueryKeys.requests.root });
+      qc.invalidateQueries({ queryKey: seekerQueryKeys.bookings.root });
     },
   });
 }

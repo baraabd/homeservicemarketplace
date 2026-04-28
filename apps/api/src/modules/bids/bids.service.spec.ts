@@ -10,6 +10,7 @@ import type {
   BidRepository,
   BidWithProvider,
 } from '../../infrastructure/persistence/bids/bid.repository';
+import type { BookingEventRepository } from '../../infrastructure/persistence/bookings/booking-event.repository';
 import type { BookingRepository } from '../../infrastructure/persistence/bookings/booking.repository';
 import type {
   ServiceRequestRepository,
@@ -99,6 +100,7 @@ interface Mocks {
   requests: { findOwned: jest.Mock; setStatusOwned: jest.Mock };
   bookings: { create: jest.Mock; findByBidId: jest.Mock };
   events: { create: jest.Mock };
+  bookingEvents: { create: jest.Mock };
 }
 
 // Deep-partial overrides so a test can replace a single repo method
@@ -144,6 +146,10 @@ function makeMocks(over: MocksOverride = {}): Mocks {
       create: jest.fn().mockResolvedValue({ id: 'evt-1' }),
       ...(over.events ?? {}),
     },
+    bookingEvents: {
+      create: jest.fn().mockResolvedValue({ id: 'bevt-1' }),
+      ...(over.bookingEvents ?? {}),
+    },
   };
 }
 
@@ -153,6 +159,7 @@ function makeService(m: Mocks) {
     m.requests as unknown as ServiceRequestRepository,
     m.bookings as unknown as BookingRepository,
     m.events as unknown as ServiceRequestEventRepository,
+    m.bookingEvents as unknown as BookingEventRepository,
     makeTx(),
   );
 }
@@ -324,6 +331,18 @@ describe('BidsService', () => {
           type: 'REQUEST_UPDATED',
           actorUserId: 'user-1',
           metadata: { acceptedBidId: 'bid-1', bookingId: 'bk-1' },
+        }),
+        undefined,
+      );
+      // Booking-side timeline event (slice 2.3) is written inside the
+      // same tx so the booking timeline can never disagree with the
+      // booking row.
+      expect(m.bookingEvents.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bookingId: 'bk-1',
+          actorUserId: 'user-1',
+          type: 'BOOKING_CREATED',
+          metadata: { requestId: 'req-1', bidId: 'bid-1', providerId: 'pp-1' },
         }),
         undefined,
       );

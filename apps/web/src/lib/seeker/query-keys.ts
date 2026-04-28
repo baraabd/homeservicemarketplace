@@ -28,4 +28,15 @@ export const seekerQueryKeys = {
     detail: (requestId: string, bidId: string) =>
       ['seeker', 'requests', requestId, 'bids', 'detail', bidId] as const,
   },
+  bookings: {
+    // Root for all booking queries — pass to invalidateQueries after a
+    // mutation (cancel-booking) to refresh list / detail / timeline in
+    // one call. The accept-bid mutation also invalidates this root so
+    // the new booking shows up in the Bookings tab without a manual
+    // refresh.
+    root: ['seeker', 'bookings'] as const,
+    list: (filter?: { status?: string }) => ['seeker', 'bookings', 'list', filter ?? {}] as const,
+    detail: (id: string) => ['seeker', 'bookings', 'detail', id] as const,
+    timeline: (id: string) => ['seeker', 'bookings', 'timeline', id] as const,
+  },
 } as const;

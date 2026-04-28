@@ -15,14 +15,16 @@ import { MetricsModule } from './infrastructure/telemetry/metrics.module';
 import { PersistenceModule } from './infrastructure/persistence/persistence.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { BidsModule } from './modules/bids/bids.module';
+import { BookingsModule } from './modules/bookings/bookings.module';
 import { IamModule } from './modules/iam/iam.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { ServicesModule } from './modules/services/services.module';
 
 // Infrastructure & data-foundation bootstrap. Seeker domain modules
 // are wired in incrementally — Sprint 1 shipped Services / Addresses /
-// Requests; Sprint 2 slice 2.1 adds BidsModule (read-only bid feed at
-// /v1/me/requests/:requestId/bids).
+// Requests; Sprint 2 slice 2.1 added BidsModule (read-only bid feed),
+// slice 2.2 added accept-bid + booking persistence, and slice 2.3 adds
+// BookingsModule (Seeker-facing list / detail / timeline / cancel).
 @Module({
   imports: [
     ConfigModule,
@@ -40,6 +42,7 @@ import { ServicesModule } from './modules/services/services.module';
     AddressesModule,
     RequestsModule,
     BidsModule,
+    BookingsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
