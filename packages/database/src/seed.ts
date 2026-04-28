@@ -25,6 +25,19 @@ interface ServiceCategorySpec {
   sortOrder: number;
 }
 
+interface ProviderProfileSpec {
+  // Stable id used as the upsert key so re-runs are idempotent and so
+  // dev/test scripts can reference the same provider across environments.
+  id: string;
+  displayName: string;
+  initials: string;
+  ratingAvg: number;
+  reviewCount: number;
+  completedJobs: number;
+  verified: boolean;
+  topPro: boolean;
+}
+
 // Sprint 1, slice 1: bootstrap the public service-catalog. Slugs are
 // stable; labels and sortOrder can be edited via subsequent migrations
 // or admin tooling without breaking existing service_requests rows
@@ -36,6 +49,68 @@ const SERVICE_CATEGORIES: ServiceCategorySpec[] = [
   { slug: 'cleaning', labelEn: 'Cleaning', labelAr: 'تنظيف', icon: '✨', sortOrder: 3 },
   { slug: 'carpentry', labelEn: 'Carpentry', labelAr: 'نجارة', icon: '🔨', sortOrder: 4 },
   { slug: 'painting', labelEn: 'Painting', labelAr: 'دهانات', icon: '🎨', sortOrder: 5 },
+];
+
+// Sprint 2, slice 2.1: bootstrap a small Provider read-model so the
+// Seeker BidsScreen has someone to bid on requests. The Provider app
+// is out of scope for slice 2.1; these rows have no linked user (the
+// `userId` column is nullable). When the Provider app ships and a
+// real provider signs up, that user can claim a profile by attaching
+// their userId — the row id stays stable.
+//
+// Test/dev scripts (and the runtime-verify harness used during slice
+// closure) reference these ids when seeding bids against a request.
+const PROVIDER_PROFILES: ProviderProfileSpec[] = [
+  {
+    id: 'pp-omar',
+    displayName: 'Omar Al-Khalid',
+    initials: 'OK',
+    ratingAvg: 4.9,
+    reviewCount: 312,
+    completedJobs: 540,
+    verified: true,
+    topPro: true,
+  },
+  {
+    id: 'pp-khalid',
+    displayName: 'Khalid Hassan',
+    initials: 'KH',
+    ratingAvg: 4.7,
+    reviewCount: 156,
+    completedJobs: 220,
+    verified: true,
+    topPro: false,
+  },
+  {
+    id: 'pp-ali',
+    displayName: 'Ali Al-Rashid',
+    initials: 'AR',
+    ratingAvg: 4.6,
+    reviewCount: 89,
+    completedJobs: 180,
+    verified: true,
+    topPro: false,
+  },
+  {
+    id: 'pp-mohammed',
+    displayName: 'Mohammed Al-Zahra',
+    initials: 'MZ',
+    ratingAvg: 4.8,
+    reviewCount: 67,
+    completedJobs: 145,
+    verified: false,
+    topPro: false,
+  },
+  {
+    id: 'pp-hassan',
+    displayName: 'Hassan Mustafa',
+    initials: 'HM',
+    ratingAvg: 4.5,
+    reviewCount: 42,
+    completedJobs: 78,
+    verified: false,
+    topPro: false,
+  },
 ];
 
 const SYSTEM_ROLES: RoleSpec[] = [
@@ -107,6 +182,36 @@ async function syncRolePermissions(
   }
 }
 
+async function upsertProviderProfiles(tx: Prisma.TransactionClient): Promise<void> {
+  // Idempotent: every call upserts on the natural id. Reactivates a
+  // soft-deleted row if one was archived in a previous environment.
+  for (const spec of PROVIDER_PROFILES) {
+    await tx.providerProfile.upsert({
+      where: { id: spec.id },
+      update: {
+        displayName: spec.displayName,
+        initials: spec.initials,
+        ratingAvg: spec.ratingAvg,
+        reviewCount: spec.reviewCount,
+        completedJobs: spec.completedJobs,
+        verified: spec.verified,
+        topPro: spec.topPro,
+        deletedAt: null,
+      },
+      create: {
+        id: spec.id,
+        displayName: spec.displayName,
+        initials: spec.initials,
+        ratingAvg: spec.ratingAvg,
+        reviewCount: spec.reviewCount,
+        completedJobs: spec.completedJobs,
+        verified: spec.verified,
+        topPro: spec.topPro,
+      },
+    });
+  }
+}
+
 async function upsertServiceCategories(tx: Prisma.TransactionClient): Promise<void> {
   // Idempotent: every call upserts on the unique slug. Reactivates a
   // soft-deleted row if a previous environment archived a category we
@@ -143,6 +248,7 @@ export async function seedWithTx(tx: Prisma.TransactionClient): Promise<void> {
   const permissionIds = await upsertPermissions(tx);
   await syncRolePermissions(tx, roleIds, permissionIds);
   await upsertServiceCategories(tx);
+  await upsertProviderProfiles(tx);
 }
 
 export async function seed(): Promise<void> {

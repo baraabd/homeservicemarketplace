@@ -88,6 +88,7 @@ model User {
   profile            UserProfile?
   serviceRequests    ServiceRequest[]      @relation("seekerRequests")
   requestEventsActed ServiceRequestEvent[] @relation("requestEventActor")
+  providerProfile    ProviderProfile?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -383,6 +384,7 @@ model ServiceRequest {
   category ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   address  Address?         @relation(fields: [addressId], references: [id], onDelete: SetNull)
   events   ServiceRequestEvent[]
+  bids     Bid[]
 
   // Dominant access pattern: list-my-requests filtered by status.
   @@index([seekerUserId, status])
@@ -439,6 +441,106 @@ enum ServiceRequestEventType {
   REQUEST_UPDATED
   REQUEST_CANCELLED
   REQUEST_REOPENED
+}
+
+// Provider read-model for the Seeker Bids screen (Sprint 2, slice 2.1).
+// `userId` is nullable because the Provider app is out of scope for
+// this slice — most rows in slice 2.1 are seeded test data without a
+// linked user. When the Provider app ships and a real provider signs
+// up, that user's id is attached here. The relation is nullable on
+// both sides so detaching a user does not orphan bids.
+//
+// Display fields (`displayName`, `initials`, `avatarUrl`) and the
+// reputation bag (`ratingAvg`, `reviewCount`, `completedJobs`,
+// `verified`, `topPro`) are denormalized onto this row so a single
+// query can populate the BidsScreen without joining through reviews
+// or completed bookings (those tables don't exist yet anyway).
+model ProviderProfile {
+  id             String   @id @default(cuid())
+  userId         String?  @unique
+  displayName    String
+  initials       String
+  avatarUrl      String?
+  ratingAvg      Float    @default(0)
+  reviewCount    Int      @default(0)
+  completedJobs  Int      @default(0)
+  verified       Boolean  @default(false)
+  topPro         Boolean  @default(false)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  bids Bid[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([deletedAt])
+  @@map("provider_profiles")
+}
+
+// One Provider's bid on one Seeker request (Sprint 2, slice 2.1).
+//
+// At-most-one ACTIVE bid per (request, provider) is enforced in the
+// application layer (BidsService.create — implemented in slice 2.2).
+// Slice 2.1 only surfaces the read path; an additional partial
+// unique index would buy DB-layer safety but Prisma can't reflect a
+// partial unique into schema.prisma, so we rely on the (requestId,
+// providerId) composite index for fast existence checks instead and
+// keep the invariant in the service.
+//
+// Soft-deleted via `deletedAt` so a withdrawn-then-resubmitted bid
+// keeps a stable id and historical reference, while every read site
+// filters `deletedAt: null`.
+model Bid {
+  id                  String      @id @default(cuid())
+  requestId           String
+  providerId          String
+  amount              Int
+  currency            String      @default("USD")
+  pricingType         PricingType
+  note                String?
+  status              BidStatus   @default(PENDING)
+  responseTimeMinutes Int?
+  badge               BidBadge?
+  submittedAt         DateTime    @default(now())
+
+  request  ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  provider ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Dominant access pattern: list-bids-for-request filtered by status.
+  @@index([requestId, status])
+  // Reverse access pattern (provider's own bids, future Provider app).
+  @@index([providerId, status])
+  // Existence check for the at-most-one-active-bid-per-(req,provider)
+  // invariant the create path enforces.
+  @@index([requestId, providerId])
+  // Time-ordered listing for "latest bids" sort.
+  @@index([submittedAt])
+  // Generic deleted-row sweep / housekeeping.
+  @@index([deletedAt])
+  @@map("bids")
+}
+
+enum BidStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum PricingType {
+  HOURLY
+  FIXED
+}
+
+enum BidBadge {
+  BEST_MATCH
+  BEST_VALUE
+  FASTEST
 }
 
 // Audit rows are append-only. `metadata` is a JSON blob limited to an

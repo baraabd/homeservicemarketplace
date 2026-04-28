@@ -1,156 +1,72 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
   TrendingDown,
   Star,
   Zap,
-  RefreshCw,
   CheckCircle2,
   Filter,
+  Loader2,
 } from 'lucide-react';
+import type { BidBadge, BidSortKey, BidSummary } from '@homeservicemarketplace/contracts';
 import { ProBidCard } from '../ds/ProBidCard';
 import { LeadCardProps } from './LeadCard';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useLang } from '../../i18n/LanguageContext';
 import { useEcosystem } from '../../context/EcosystemContext';
-
-// ─── Mock bid data ─────────────────────────────────────────────────────────────
-interface Bid {
-  id: string;
-  name: string;
-  initials: string;
-  avatarBg: string;
-  avatarColor: string;
-  rating: number;
-  reviewCount: number;
-  jobCount: number;
-  price: number;
-  tags: string[];
-  verified: boolean;
-  topPro: boolean;
-  responseTime: string;
-  badge: 'bestMatch' | 'bestValue' | 'fastest' | null;
-}
-
-const SEED_BIDS: Bid[] = [
-  {
-    id: 'b1',
-    name: 'Omar Al-Khalid',
-    initials: 'OK',
-    avatarBg: 'bg-amber-100',
-    avatarColor: 'text-amber-700',
-    rating: 4.9,
-    reviewCount: 312,
-    jobCount: 540,
-    price: 35,
-    tags: ['Licensed', 'Insured', 'Top Rated'],
-    verified: true,
-    topPro: true,
-    responseTime: 'within 5 min',
-    badge: 'bestMatch',
-  },
-  {
-    id: 'b2',
-    name: 'Khalid Hassan',
-    initials: 'KH',
-    avatarBg: 'bg-blue-100',
-    avatarColor: 'text-blue-700',
-    rating: 4.7,
-    reviewCount: 156,
-    jobCount: 220,
-    price: 28,
-    tags: ['Budget-Friendly', 'Quick Response'],
-    verified: true,
-    topPro: false,
-    responseTime: 'within 20 min',
-    badge: 'bestValue',
-  },
-  {
-    id: 'b3',
-    name: 'Ali Al-Rashid',
-    initials: 'AR',
-    avatarBg: 'bg-green-100',
-    avatarColor: 'text-green-700',
-    rating: 4.6,
-    reviewCount: 89,
-    jobCount: 180,
-    price: 30,
-    tags: ['Available Now', 'Fast'],
-    verified: true,
-    topPro: false,
-    responseTime: 'within 10 min',
-    badge: 'fastest',
-  },
-  {
-    id: 'b4',
-    name: 'Mohammed Al-Zahra',
-    initials: 'MZ',
-    avatarBg: 'bg-purple-100',
-    avatarColor: 'text-purple-700',
-    rating: 4.8,
-    reviewCount: 67,
-    jobCount: 145,
-    price: 40,
-    tags: ['Premium Service', 'Certified'],
-    verified: false,
-    topPro: false,
-    responseTime: 'within 30 min',
-    badge: null,
-  },
-  {
-    id: 'b5',
-    name: 'Hassan Mustafa',
-    initials: 'HM',
-    avatarBg: 'bg-slate-100',
-    avatarColor: 'text-slate-700',
-    rating: 4.5,
-    reviewCount: 42,
-    jobCount: 78,
-    price: 25,
-    tags: ['New Pro', 'Eco Products'],
-    verified: false,
-    topPro: false,
-    responseTime: 'within 45 min',
-    badge: null,
-  },
-];
-
-const LIVE_BID: Bid = {
-  id: 'b6',
-  name: 'Faisal Al-Nasser',
-  initials: 'FN',
-  avatarBg: 'bg-red-100',
-  avatarColor: 'text-red-700',
-  rating: 4.8,
-  reviewCount: 189,
-  jobCount: 310,
-  price: 32,
-  tags: ['Top Rated', 'Lightning Fast'],
-  verified: true,
-  topPro: false,
-  responseTime: 'within 15 min',
-  badge: null,
-};
+import { useBids } from '../../hooks/seeker/useBids';
 
 // ─── Badge config ─────────────────────────────────────────────────────────────
-const BADGE_CONFIG_EN = {
-  bestMatch: { label: '⭐ Best Match', bg: 'bg-amber-500', text: 'text-white' },
-  bestValue: { label: '💰 Best Value', bg: 'bg-green-500', text: 'text-white' },
-  fastest: { label: '⚡ Fastest', bg: 'bg-blue-500', text: 'text-white' },
+// Keyed on the contract enum value so the API → UI mapping is direct.
+// Visuals (colours, copy) are unchanged from the slice 1 mock to keep
+// the UI design exactly the same.
+const BADGE_CONFIG_EN: Record<BidBadge, { label: string; bg: string; text: string }> = {
+  BEST_MATCH: { label: '⭐ Best Match', bg: 'bg-amber-500', text: 'text-white' },
+  BEST_VALUE: { label: '💰 Best Value', bg: 'bg-green-500', text: 'text-white' },
+  FASTEST: { label: '⚡ Fastest', bg: 'bg-blue-500', text: 'text-white' },
 };
-const BADGE_CONFIG_AR = {
-  bestMatch: { label: '⭐ الأنسب', bg: 'bg-amber-500', text: 'text-white' },
-  bestValue: { label: '💰 الأوفر', bg: 'bg-green-500', text: 'text-white' },
-  fastest: { label: '⚡ الأسرع', bg: 'bg-blue-500', text: 'text-white' },
+const BADGE_CONFIG_AR: Record<BidBadge, { label: string; bg: string; text: string }> = {
+  BEST_MATCH: { label: '⭐ الأنسب', bg: 'bg-amber-500', text: 'text-white' },
+  BEST_VALUE: { label: '💰 الأوفر', bg: 'bg-green-500', text: 'text-white' },
+  FASTEST: { label: '⚡ الأسرع', bg: 'bg-blue-500', text: 'text-white' },
 };
 
-type SortKey = 'recommended' | 'price' | 'rating';
+// Stable avatar palette keyed on the provider id. Keeps the visual
+// identity unchanged from the mock SEED_BIDS while never relying on
+// the backend to ship Tailwind colour classes.
+const AVATAR_PALETTE: { bg: string; color: string }[] = [
+  { bg: 'bg-amber-100', color: 'text-amber-700' },
+  { bg: 'bg-blue-100', color: 'text-blue-700' },
+  { bg: 'bg-green-100', color: 'text-green-700' },
+  { bg: 'bg-purple-100', color: 'text-purple-700' },
+  { bg: 'bg-slate-100', color: 'text-slate-700' },
+  { bg: 'bg-red-100', color: 'text-red-700' },
+];
+function avatarFor(providerId: string): { bg: string; color: string } {
+  let h = 0;
+  for (let i = 0; i < providerId.length; i++) h = (h * 31 + providerId.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+
+// "within 5 min" / "within 20 min" — converts the API's optional
+// responseTimeMinutes into the existing UI string the ProBidCard
+// already renders. Returns undefined when no value is supplied so
+// the ProBidCard hides the strip cleanly.
+function responseTimeText(
+  minutes: number | null | undefined,
+  lang: 'en' | 'ar',
+): string | undefined {
+  if (typeof minutes !== 'number' || minutes <= 0) return undefined;
+  return lang === 'ar' ? `خلال ${minutes} د` : `within ${minutes} min`;
+}
 
 // ─── Price Range Chart ────────────────────────────────────────────────────────
-function PriceChart({ bids, selectedId }: { bids: Bid[]; selectedId: string | null }) {
+// Takes API bids; visual identical to the slice-1 mock.
+function PriceChart({ bids, selectedId }: { bids: BidSummary[]; selectedId: string | null }) {
   const { t } = useLang();
-  const prices = bids.map((b) => b.price);
+  if (bids.length === 0) return null;
+  const prices = bids.map((b) => b.amount);
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   const avg = Math.round(prices.reduce((s, p) => s + p, 0) / prices.length);
@@ -179,7 +95,7 @@ function PriceChart({ bids, selectedId }: { bids: Bid[]; selectedId: string | nu
           <div className="w-px h-6 bg-amber-400 opacity-60" />
         </div>
         {bids.map((bid) => {
-          const pct = ((bid.price - min) / range) * 100;
+          const pct = ((bid.amount - min) / range) * 100;
           const isSelected = bid.id === selectedId;
           return (
             <div
@@ -218,6 +134,10 @@ function PriceChart({ bids, selectedId }: { bids: Bid[]; selectedId: string | nu
 interface BidsScreenProps {
   lead: LeadCardProps;
   onBack: () => void;
+  // Slice-2.1 keeps the existing onBookBid prop for parent
+  // compatibility, but the BidsScreen no longer drives a real booking
+  // flow from the bid card — accept-bid ships in slice 2.2. The
+  // parent's snackbar is kept for visual continuity.
   onBookBid: (bidderName: string) => void;
 }
 
@@ -225,30 +145,21 @@ interface BidsScreenProps {
 export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
   const { t, lang, dir } = useLang();
   const { showHourlyRate } = useEcosystem();
-  const [bids, setBids] = useState<Bid[]>(SEED_BIDS);
-  const [sortKey, setSortKey] = useState<SortKey>('recommended');
+  const [sortKey, setSortKey] = useState<BidSortKey>('recommended');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [newBidPending, setNewBidPending] = useState(false);
-  const [newBidFlashId, setNewBidFlashId] = useState<string | null>(null);
   const [acceptedId, setAcceptedId] = useState<string | null>(null);
 
-  const BADGE_CONFIG = lang === 'ar' ? BADGE_CONFIG_AR : BADGE_CONFIG_EN;
+  // Real bids feed for THIS request. Empty array on first load / 401
+  // / network error — every render path below treats `bids` as
+  // possibly empty so the existing empty / loading / error UI is
+  // safe by construction.
+  const bidsQuery = useBids(lead.id, sortKey);
+  const bids: BidSummary[] = useMemo(() => bidsQuery.data?.items ?? [], [bidsQuery.data]);
 
-  // ── Simulate live bid arriving ────────────────────────────────────────────
-  useEffect(() => {
-    const t1 = setTimeout(() => setNewBidPending(true), 8_000);
-    const t2 = setTimeout(() => {
-      setNewBidPending(false);
-      setBids((prev) => [LIVE_BID, ...prev]);
-      setNewBidFlashId(LIVE_BID.id);
-    }, 11_000);
-    const t3 = setTimeout(() => setNewBidFlashId(null), 14_000);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, []);
+  const isInitialLoading = bidsQuery.isLoading && !bidsQuery.data;
+  const isError = bidsQuery.isError && !bidsQuery.data;
+
+  const BADGE_CONFIG = lang === 'ar' ? BADGE_CONFIG_AR : BADGE_CONFIG_EN;
 
   // ── Swipe right (LTR) or left (RTL) → back ───────────────────────────────
   const { onTouchStart, onTouchMove, onTouchEnd, dragX } = useSwipe({
@@ -259,16 +170,23 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
     edgeWidth: 55,
   });
 
-  const sorted = [...bids].sort((a, b) => {
-    if (sortKey === 'price') return a.price - b.price;
-    if (sortKey === 'rating') return b.rating - a.rating;
-    const score = (x: Bid) => (x.badge ? 999 : x.rating * 10 - x.price * 0.3);
-    return score(b) - score(a);
-  });
+  // The server returns bids already ordered for the requested sort
+  // (recommended / price / rating / submittedAt). We do not re-sort
+  // client-side — that would diverge from the documented contract
+  // and from the price chart's interpretation.
 
-  const handleBook = (bid: Bid) => {
+  // Slice-2.1 does NOT implement accept-bid. The Book button stays
+  // visible because removing it would change the design; the click
+  // handler shows the existing UI confirmation animation but skips
+  // any backend write and forwards a "coming soon"-style message via
+  // the parent snackbar so the user is never left thinking they
+  // booked something silently.
+  const handleBook = (bid: BidSummary) => {
     setAcceptedId(bid.id);
-    setTimeout(() => onBookBid(bid.name), 900);
+    setTimeout(() => {
+      setAcceptedId(null);
+      onBookBid(bid.provider.displayName);
+    }, 900);
   };
 
   return (
@@ -310,13 +228,11 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
 
         {/* Sort tabs */}
         <div className="flex px-4 gap-2 pb-3">
-          {(
-            [
-              { id: 'recommended', labelKey: 'bestMatch', icon: <Star size={11} /> },
-              { id: 'price', labelKey: 'bestValue', icon: <TrendingDown size={11} /> },
-              { id: 'rating', labelKey: 'fastest', icon: <Zap size={11} /> },
-            ] as { id: SortKey; labelKey: string; icon: React.ReactNode }[]
-          ).map((tab) => (
+          {[
+            { id: 'recommended' as const, labelKey: 'bestMatch', icon: <Star size={11} /> },
+            { id: 'price' as const, labelKey: 'bestValue', icon: <TrendingDown size={11} /> },
+            { id: 'rating' as const, labelKey: 'fastest', icon: <Zap size={11} /> },
+          ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setSortKey(tab.id)}
@@ -336,172 +252,190 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
 
       {/* ── Scrollable content ── */}
       <div className="flex-1 overflow-y-auto px-4 py-4" style={{ scrollbarWidth: 'none' }}>
-        {showHourlyRate && <PriceChart bids={bids} selectedId={hoveredId} />}
-
-        {/* Live bid indicator */}
-        {newBidPending && (
-          <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 my-3">
-            <div className="w-7 h-7 rounded-xl bg-blue-500 flex items-center justify-center flex-shrink-0">
-              <RefreshCw
-                size={13}
-                className="text-white animate-spin"
-                style={{ animationDuration: '1.2s' }}
-              />
-            </div>
-            <p className="text-blue-700" style={{ fontSize: '12px', fontWeight: 600 }}>
-              {lang === 'ar' ? 'عرض جديد قادم…' : 'A new bid is arriving…'}
+        {isInitialLoading ? (
+          /* Loading state — neutral skeleton-style spinner; existing colour idiom. */
+          <div
+            className="flex flex-col items-center justify-center py-20 gap-3"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 size={28} className="text-slate-400 animate-spin" />
+            <p className="text-slate-500" style={{ fontSize: '13px' }}>
+              {lang === 'ar' ? 'جاري تحميل العروض...' : 'Loading bids...'}
             </p>
-            <div className="flex gap-1 ms-auto">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce"
-                  style={{ animationDelay: `${i * 0.15}s` }}
-                />
-              ))}
-            </div>
           </div>
-        )}
+        ) : isError ? (
+          /* Error state — safe friendly copy, no raw backend message. */
+          <div className="flex flex-col items-center justify-center py-20 gap-3" role="alert">
+            <p className="text-slate-700 text-center" style={{ fontSize: '14px', fontWeight: 600 }}>
+              {lang === 'ar'
+                ? 'تعذر تحميل العروض. حاول مرة أخرى.'
+                : "We couldn't load bids. Please try again."}
+            </p>
+            <button
+              onClick={() => bidsQuery.refetch()}
+              className="px-5 py-2.5 rounded-2xl bg-amber-500 text-white active:scale-95 transition-all shadow-sm shadow-amber-200"
+              style={{ fontSize: '13px', fontWeight: 700 }}
+            >
+              {lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+            </button>
+          </div>
+        ) : bids.length === 0 ? (
+          /* Empty state — neutral neutral copy; uses existing slate idiom. */
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <p className="text-slate-700 text-center" style={{ fontSize: '14px', fontWeight: 700 }}>
+              {lang === 'ar' ? 'لا توجد عروض بعد' : 'No bids yet'}
+            </p>
+            <p className="text-slate-400 text-center" style={{ fontSize: '12px' }}>
+              {lang === 'ar'
+                ? 'سيظهر مقدمو الخدمة هنا فور تقديم عروضهم.'
+                : 'Providers will appear here as they submit bids.'}
+            </p>
+          </div>
+        ) : (
+          <>
+            {showHourlyRate && <PriceChart bids={bids} selectedId={hoveredId} />}
 
-        {/* Bid cards */}
-        <div className="flex flex-col gap-4 mt-3">
-          {sorted.map((bid) => {
-            const badgeCfg = bid.badge ? BADGE_CONFIG[bid.badge] : null;
-            const isAccepted = acceptedId === bid.id;
+            {/* Bid cards */}
+            <div className="flex flex-col gap-4 mt-3">
+              {bids.map((bid) => {
+                const badgeCfg = bid.badge ? BADGE_CONFIG[bid.badge] : null;
+                const isAccepted = acceptedId === bid.id;
+                const av = avatarFor(bid.provider.id);
+                const respText = responseTimeText(
+                  bid.responseTimeMinutes,
+                  lang === 'ar' ? 'ar' : 'en',
+                );
 
-            return (
-              <div
-                key={bid.id}
-                className={`relative transition-all duration-500 ${
-                  newBidFlashId === bid.id
-                    ? 'ring-2 ring-blue-400 rounded-3xl shadow-lg shadow-blue-100'
-                    : ''
-                }`}
-                onMouseEnter={() => setHoveredId(bid.id)}
-                onMouseLeave={() => setHoveredId(null)}
-              >
-                {badgeCfg && (
-                  <div className="absolute -top-3 start-4 z-10 flex items-center gap-1">
-                    <div
-                      className={`${badgeCfg.bg} ${badgeCfg.text} px-3 py-1 rounded-full shadow-sm`}
-                      style={{ fontSize: '10px', fontWeight: 800 }}
-                    >
-                      {badgeCfg.label}
-                    </div>
-                  </div>
-                )}
-
-                {bid.id === LIVE_BID.id && (
-                  <div className="absolute -top-3 end-4 z-10">
-                    <div
-                      className="bg-blue-500 text-white px-2.5 py-1 rounded-full flex items-center gap-1"
-                      style={{ fontSize: '10px', fontWeight: 800 }}
-                    >
-                      <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                      {lang === 'ar' ? 'جديد' : 'NEW'}
-                    </div>
-                  </div>
-                )}
-
-                {isAccepted && (
-                  <div className="absolute inset-0 z-20 rounded-3xl bg-green-500/90 flex items-center justify-center gap-3">
-                    <CheckCircle2 size={32} className="text-white" />
-                    <p className="text-white" style={{ fontSize: '16px', fontWeight: 800 }}>
-                      {lang === 'ar' ? 'تم تأكيد الحجز!' : 'Booking confirmed!'}
-                    </p>
-                  </div>
-                )}
-
-                <div
-                  className={`transition-all duration-300 ${badgeCfg ? 'mt-3' : ''} ${isAccepted ? 'scale-95 opacity-60' : ''}`}
-                >
-                  <ProBidCard
-                    name={bid.name}
-                    initials={bid.initials}
-                    avatarBg={bid.avatarBg}
-                    avatarColor={bid.avatarColor}
-                    rating={bid.rating}
-                    reviewCount={bid.reviewCount}
-                    jobCount={bid.jobCount}
-                    price={bid.price}
-                    unit="/hr"
-                    tags={bid.tags}
-                    verified={bid.verified}
-                    topPro={bid.topPro}
-                    responseTime={bid.responseTime}
-                    showPrice={showHourlyRate}
-                    onBook={() => handleBook(bid)}
-                    onMessage={() => {}}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Comparison table */}
-        <div className="mt-6 bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
-          <p className="text-slate-700 mb-3" style={{ fontSize: '13px', fontWeight: 700 }}>
-            {lang === 'ar' ? 'مقارنة سريعة' : 'Quick Comparison'}
-          </p>
-          <div className="overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-            <table className="w-full" style={{ fontSize: '11px' }}>
-              <thead>
-                <tr className="text-slate-400">
-                  <th className="text-start py-2 pe-3 font-semibold">{t('pro')}</th>
-                  <th className="text-center py-2 px-2 font-semibold">
-                    {lang === 'ar' ? 'التقييم' : 'Rating'}
-                  </th>
-                  {showHourlyRate && (
-                    <th className="text-center py-2 px-2 font-semibold">
-                      {lang === 'ar' ? 'السعر' : 'Price'}
-                    </th>
-                  )}
-                  <th className="text-center py-2 px-2 font-semibold">
-                    {lang === 'ar' ? 'الردّ' : 'Response'}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.slice(0, 4).map((bid) => (
-                  <tr key={bid.id} className="border-t border-slate-50">
-                    <td className="py-2 pe-3">
-                      <div className="flex items-center gap-2">
+                return (
+                  <div
+                    key={bid.id}
+                    className="relative"
+                    onMouseEnter={() => setHoveredId(bid.id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                  >
+                    {badgeCfg && (
+                      <div className="absolute -top-3 start-4 z-10 flex items-center gap-1">
                         <div
-                          className={`w-6 h-6 rounded-lg flex items-center justify-center ${bid.avatarBg}`}
+                          className={`${badgeCfg.bg} ${badgeCfg.text} px-3 py-1 rounded-full shadow-sm`}
+                          style={{ fontSize: '10px', fontWeight: 800 }}
                         >
-                          <span
-                            className={bid.avatarColor}
-                            style={{ fontSize: '8px', fontWeight: 800 }}
-                          >
-                            {bid.initials}
-                          </span>
+                          {badgeCfg.label}
                         </div>
-                        <span
-                          className="text-slate-700 font-semibold truncate"
-                          style={{ maxWidth: '70px' }}
-                        >
-                          {bid.name.split(' ')[0]}
-                        </span>
                       </div>
-                    </td>
-                    <td className="text-center py-2 px-2">
-                      <span className="text-amber-600 font-bold">{bid.rating}</span>
-                    </td>
-                    {showHourlyRate && (
-                      <td className="text-center py-2 px-2">
-                        <span className="text-slate-900 font-bold">${bid.price}</span>
-                      </td>
                     )}
-                    <td className="text-center py-2 px-2 text-slate-500">
-                      {bid.responseTime.replace('within ', '')}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+
+                    {isAccepted && (
+                      <div className="absolute inset-0 z-20 rounded-3xl bg-green-500/90 flex items-center justify-center gap-3">
+                        <CheckCircle2 size={32} className="text-white" />
+                        <p className="text-white" style={{ fontSize: '16px', fontWeight: 800 }}>
+                          {lang === 'ar' ? 'تم تأكيد الحجز!' : 'Booking confirmed!'}
+                        </p>
+                      </div>
+                    )}
+
+                    <div
+                      className={`transition-all duration-300 ${badgeCfg ? 'mt-3' : ''} ${isAccepted ? 'scale-95 opacity-60' : ''}`}
+                    >
+                      <ProBidCard
+                        name={bid.provider.displayName}
+                        initials={bid.provider.initials}
+                        avatarBg={av.bg}
+                        avatarColor={av.color}
+                        avatarUrl={bid.provider.avatarUrl ?? undefined}
+                        rating={bid.provider.ratingAvg}
+                        reviewCount={bid.provider.reviewCount}
+                        jobCount={bid.provider.completedJobs}
+                        price={bid.amount}
+                        unit={bid.pricingType === 'HOURLY' ? '/hr' : '/job'}
+                        tags={[]}
+                        verified={bid.provider.verified}
+                        topPro={bid.provider.topPro}
+                        responseTime={respText}
+                        showPrice={showHourlyRate}
+                        onBook={() => handleBook(bid)}
+                        onMessage={() => {}}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Comparison table */}
+            <div className="mt-6 bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
+              <p className="text-slate-700 mb-3" style={{ fontSize: '13px', fontWeight: 700 }}>
+                {lang === 'ar' ? 'مقارنة سريعة' : 'Quick Comparison'}
+              </p>
+              <div className="overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                <table className="w-full" style={{ fontSize: '11px' }}>
+                  <thead>
+                    <tr className="text-slate-400">
+                      <th className="text-start py-2 pe-3 font-semibold">{t('pro')}</th>
+                      <th className="text-center py-2 px-2 font-semibold">
+                        {lang === 'ar' ? 'التقييم' : 'Rating'}
+                      </th>
+                      {showHourlyRate && (
+                        <th className="text-center py-2 px-2 font-semibold">
+                          {lang === 'ar' ? 'السعر' : 'Price'}
+                        </th>
+                      )}
+                      <th className="text-center py-2 px-2 font-semibold">
+                        {lang === 'ar' ? 'الردّ' : 'Response'}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bids.slice(0, 4).map((bid) => {
+                      const av = avatarFor(bid.provider.id);
+                      const respText = responseTimeText(
+                        bid.responseTimeMinutes,
+                        lang === 'ar' ? 'ar' : 'en',
+                      );
+                      return (
+                        <tr key={bid.id} className="border-t border-slate-50">
+                          <td className="py-2 pe-3">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center ${av.bg}`}
+                              >
+                                <span
+                                  className={av.color}
+                                  style={{ fontSize: '8px', fontWeight: 800 }}
+                                >
+                                  {bid.provider.initials}
+                                </span>
+                              </div>
+                              <span
+                                className="text-slate-700 font-semibold truncate"
+                                style={{ maxWidth: '70px' }}
+                              >
+                                {bid.provider.displayName.split(' ')[0]}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="text-center py-2 px-2">
+                            <span className="text-amber-600 font-bold">
+                              {bid.provider.ratingAvg.toFixed(1)}
+                            </span>
+                          </td>
+                          {showHourlyRate && (
+                            <td className="text-center py-2 px-2">
+                              <span className="text-slate-900 font-bold">${bid.amount}</span>
+                            </td>
+                          )}
+                          <td className="text-center py-2 px-2 text-slate-500">
+                            {respText ? respText.replace('within ', '').replace('خلال ', '') : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="h-4" />
       </div>

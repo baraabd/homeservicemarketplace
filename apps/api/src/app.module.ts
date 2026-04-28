@@ -14,15 +14,15 @@ import { RedisModule } from './infrastructure/redis/redis.module';
 import { MetricsModule } from './infrastructure/telemetry/metrics.module';
 import { PersistenceModule } from './infrastructure/persistence/persistence.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
+import { BidsModule } from './modules/bids/bids.module';
 import { IamModule } from './modules/iam/iam.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { ServicesModule } from './modules/services/services.module';
 
-// Infrastructure & data-foundation bootstrap. Seeker domain modules are
-// wired in incrementally — slice 1 introduced ServicesModule (read-only
-// catalog at GET /v1/services); slice 2 added AddressesModule (CRUD at
-// /v1/me/addresses); slice 3 adds RequestsModule (service-request
-// lifecycle at /v1/me/requests, all endpoints session-scoped).
+// Infrastructure & data-foundation bootstrap. Seeker domain modules
+// are wired in incrementally — Sprint 1 shipped Services / Addresses /
+// Requests; Sprint 2 slice 2.1 adds BidsModule (read-only bid feed at
+// /v1/me/requests/:requestId/bids).
 @Module({
   imports: [
     ConfigModule,
@@ -39,6 +39,7 @@ import { ServicesModule } from './modules/services/services.module';
     ServicesModule,
     AddressesModule,
     RequestsModule,
+    BidsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
