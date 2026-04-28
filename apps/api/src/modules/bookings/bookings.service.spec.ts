@@ -51,7 +51,7 @@ function makeCategory(over: Partial<ServiceCategory> = {}): ServiceCategory {
     slug: 'plumbing',
     labelEn: 'Plumbing',
     labelAr: 'سباكة',
-    iconKey: null,
+    icon: 'wrench',
     sortOrder: 1,
     isActive: true,
     createdAt: new Date('2026-04-28T00:00:00.000Z'),

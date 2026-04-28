@@ -23,7 +23,7 @@ import type { BookingListItem, BookingStatus } from '@homeservicemarketplace/con
 import { ServiceCategoryCard } from '../ds/ServiceCategoryCard';
 import { LeadCard, LeadCardProps } from './LeadCard';
 import { BidsScreen } from './BidsScreen';
-import { JobDetailView, JobData, leadToJobData } from './JobDetailView';
+import { JobDetailView, type JobDetailSource } from './JobDetailView';
 import { AllLeadsView } from './AllLeadsView';
 import { NotificationDrawer, AppNotification } from '../notifications/NotificationDrawer';
 import { ChatScreen } from '../chat/ChatScreen';
@@ -146,47 +146,11 @@ function apiBookingToItem(row: BookingListItem, lang: 'en' | 'ar'): BookingItem 
   };
 }
 
-function bookingToJobData(b: BookingItem, lang: string): JobData {
-  // Heuristic mapping from the booked-service English label to the
-  // JobDetailView's icon-and-colour key. Falls back to 'General' for
-  // anything outside the well-known set so the detail view always has
-  // a renderable visual identity.
-  const svcKey = b.serviceEn.includes('Plumbing')
-    ? 'Plumbing'
-    : b.serviceEn.includes('AC')
-      ? 'AC Repair'
-      : b.serviceEn.includes('Cleaning')
-        ? 'Cleaning'
-        : b.serviceEn.includes('Cabinet') || b.serviceEn.includes('Carpentry')
-          ? 'Carpentry'
-          : b.serviceEn.includes('Electrical')
-            ? 'Electrical'
-            : b.serviceEn.includes('Paint')
-              ? 'Painting'
-              : 'General';
-  return {
-    id: b.id,
-    service: svcKey,
-    serviceAr: b.serviceAr,
-    status: b.statusKey,
-    proName: b.proEn !== '—' ? b.proEn : undefined,
-    proInitials: b.proInitials,
-    // Provider rating / review count / job count are not yet on the
-    // booking summary; future slice will surface them via a richer
-    // detail endpoint. We keep the historic placeholders so the
-    // detail view layout doesn't shift.
-    proRating: 4.8,
-    proReviews: 156,
-    proJobs: 220,
-    proTags: ['Licensed', 'Insured', 'Top Rated'],
-    postedAt: lang === 'ar' ? b.dateAr : b.dateEn,
-    price: b.price > 0 ? b.price : undefined,
-    date: b.dateEn,
-    dateAr: b.dateAr,
-    address: b.address,
-    addressAr: b.addressAr,
-  };
-}
+// Slice 2.4 removed the local `bookingToJobData(b, lang)` synthesizer. It
+// used to ship fake provider rating / review count / job count placeholders
+// to the JobDetailView; the detail view now fetches the real BookingDetail
+// (incl. provider summary) directly via useBookingDetail and renders only
+// the fields the API actually supplies.
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
 // The Seeker production source of truth for "my requests" is the live
@@ -307,7 +271,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   // ── Overlay state ──────────────────────────────────────────────────────────
   const [notifOpen, setNotifOpen] = useState(false);
   const [bidsLead, setBidsLead] = useState<LeadCardProps | null>(null);
-  const [jobDetail, setJobDetail] = useState<JobData | null>(null);
+  // Slice 2.4: jobDetail now carries a discriminator (request vs booking)
+  // + the corresponding id. The JobDetailView fetches detail + timeline via
+  // React Query against the matching API surface, so we no longer pre-bake
+  // a synthesized JobData blob here.
+  const [jobDetail, setJobDetail] = useState<JobDetailSource | null>(null);
   const [showAllLeads, setShowAllLeads] = useState(false);
   const [chatContact, setChatContact] = useState<null | {
     name: string;
@@ -358,10 +326,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
         if (lead) setBidsLead(lead);
       } else if (n.type === 'tracking' || n.type === 'confirmed') {
         const lead = leads.find((l) => l.id === n.jobId);
-        if (lead) setJobDetail(leadToJobData(lead));
-        else {
+        if (lead) {
+          setJobDetail({ kind: 'request', id: lead.id });
+        } else {
           const bk = bookings.find((b) => b.id === n.jobId);
-          if (bk) setJobDetail(bookingToJobData(bk, lang));
+          if (bk) setJobDetail({ kind: 'booking', id: bk.id });
         }
       } else if (n.type === 'message') {
         const bk = bookings.find((b) => b.id === n.jobId);
@@ -382,12 +351,14 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
     if (lead.status === 'pending') {
       setBidsLead(lead);
     } else {
-      setJobDetail(leadToJobData(lead));
+      setJobDetail({ kind: 'request', id: lead.id });
     }
   };
 
   // ── Booking tap ─────────────────────────────────────────────────────────────
-  const handleBookingTap = (b: BookingItem) => setJobDetail(bookingToJobData(b, lang));
+  // Slice 2.4: hands the booking id to JobDetailView so it can fetch the
+  // real BookingDetail (provider summary + price snapshot + timeline).
+  const handleBookingTap = (b: BookingItem) => setJobDetail({ kind: 'booking', id: b.id });
 
   // ── Book bid ────────────────────────────────────────────────────────────────
   // Bid acceptance is bound to the bids slice (out of scope for slice 3).
@@ -1112,7 +1083,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
           }}
           onOpenDetail={(lead) => {
             setShowAllLeads(false);
-            setJobDetail(leadToJobData(lead));
+            setJobDetail({ kind: 'request', id: lead.id });
           }}
           onPostNew={() => {
             setShowAllLeads(false);
@@ -1137,7 +1108,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
         {/* Job Detail */}
         {jobDetail && (
           <JobDetailView
-            job={jobDetail}
+            source={jobDetail}
             isVisible={!!jobDetail}
             onBack={() => setJobDetail(null)}
             onOpenChat={(contact) => {
