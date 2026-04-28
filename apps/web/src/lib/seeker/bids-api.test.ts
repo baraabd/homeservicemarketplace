@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
 import { api } from '../api';
-import { getBidDetail, listBidsForRequest } from './bids-api';
+import { acceptBid, getBidDetail, listBidsForRequest } from './bids-api';
 
 let mock: MockAdapter;
 beforeEach(() => {
@@ -85,5 +85,75 @@ describe('bids-api — getBidDetail', () => {
     const out = await getBidDetail('req-1', 'b-1');
     expect(out.id).toBe('b-1');
     expect(out.provider.displayName).toBe('Omar Al-Khalid');
+  });
+});
+
+describe('bids-api — acceptBid', () => {
+  it('POSTs /v1/me/requests/:id/bids/:bidId/accept and returns the response envelope', async () => {
+    let postedUrl: string | null = null;
+    mock.onPost(/\/v1\/me\/requests\/.+\/bids\/.+\/accept/).reply((config) => {
+      postedUrl = config.url ?? null;
+      return [
+        200,
+        {
+          bid: { ...ROW, status: 'ACCEPTED' },
+          booking: {
+            id: 'bk-1',
+            requestId: 'req-1',
+            bidId: 'b-1',
+            status: 'SCHEDULED',
+            scheduledAt: null,
+            priceAmount: 35,
+            currency: 'USD',
+            createdAt: '2026-04-28T02:00:00.000Z',
+          },
+          requestStatus: 'BID_ACCEPTED',
+        },
+      ];
+    });
+    const out = await acceptBid('req-1', 'b-1');
+    expect(postedUrl).toBe('/v1/me/requests/req-1/bids/b-1/accept');
+    expect(out.bid.status).toBe('ACCEPTED');
+    expect(out.booking.id).toBe('bk-1');
+    expect(out.requestStatus).toBe('BID_ACCEPTED');
+  });
+
+  it('propagates a 409 (already-accepted) so the UI can surface a CONFLICT message', async () => {
+    mock.onPost('/v1/me/requests/req-1/bids/b-1/accept').reply(409, {
+      error: {
+        code: 'CONFLICT',
+        message: 'A bid has already been accepted for this request.',
+      },
+    });
+    await expect(acceptBid('req-1', 'b-1')).rejects.toMatchObject({
+      response: { status: 409 },
+    });
+  });
+
+  it('does NOT send a body — accept-bid is path-param only', async () => {
+    let bodyLen: number | undefined;
+    mock.onPost('/v1/me/requests/req-1/bids/b-1/accept').reply((config) => {
+      bodyLen = (config.data as string | undefined)?.length;
+      return [
+        200,
+        {
+          bid: ROW,
+          booking: {
+            id: 'bk-1',
+            requestId: 'req-1',
+            bidId: 'b-1',
+            status: 'SCHEDULED',
+            scheduledAt: null,
+            priceAmount: 35,
+            currency: 'USD',
+            createdAt: '2026-04-28T02:00:00.000Z',
+          },
+          requestStatus: 'BID_ACCEPTED',
+        },
+      ];
+    });
+    await acceptBid('req-1', 'b-1');
+    // axios POST without a body shouldn't ship one.
+    expect(bodyLen === undefined || bodyLen === 0).toBe(true);
   });
 });

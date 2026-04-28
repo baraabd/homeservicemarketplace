@@ -73,6 +73,41 @@ export class BidRepository {
     });
   }
 
+  // Status-flip helper used by accept-bid (slice 2.2). Conditional on
+  // the current status being `from` so concurrent writers cannot both
+  // promote the same bid — only one wins, the loser sees count: 0
+  // and the service maps that to a CONFLICT response.
+  setStatusIf(
+    bidId: string,
+    from: BidStatus,
+    to: BidStatus,
+    tx?: PrismaTx,
+  ): Promise<Prisma.BatchPayload> {
+    return this.db(tx).bid.updateMany({
+      where: { id: bidId, status: from, deletedAt: null },
+      data: { status: to },
+    });
+  }
+
+  // Bulk-flip every other PENDING bid on a request to REJECTED — the
+  // sibling-rejection step in the accept-bid transaction. The
+  // exclude-id clause skips the just-accepted bid.
+  rejectSiblings(
+    requestId: string,
+    exceptBidId: string,
+    tx?: PrismaTx,
+  ): Promise<Prisma.BatchPayload> {
+    return this.db(tx).bid.updateMany({
+      where: {
+        requestId,
+        deletedAt: null,
+        status: 'PENDING',
+        id: { not: exceptBidId },
+      },
+      data: { status: 'REJECTED' },
+    });
+  }
+
   // Used by the dev seed only in slice 2.1. Idempotent at the (requestId,
   // providerId) level so re-running the seed doesn't accumulate
   // duplicate bids; relies on the application-layer one-active-bid

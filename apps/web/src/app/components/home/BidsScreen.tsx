@@ -15,7 +15,7 @@ import { LeadCardProps } from './LeadCard';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useLang } from '../../i18n/LanguageContext';
 import { useEcosystem } from '../../context/EcosystemContext';
-import { useBids } from '../../hooks/seeker/useBids';
+import { useAcceptBid, useBids } from '../../hooks/seeker/useBids';
 
 // ─── Badge config ─────────────────────────────────────────────────────────────
 // Keyed on the contract enum value so the API → UI mapping is direct.
@@ -148,6 +148,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
   const [sortKey, setSortKey] = useState<BidSortKey>('recommended');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [acceptedId, setAcceptedId] = useState<string | null>(null);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
 
   // Real bids feed for THIS request. Empty array on first load / 401
   // / network error — every render path below treats `bids` as
@@ -155,6 +156,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
   // safe by construction.
   const bidsQuery = useBids(lead.id, sortKey);
   const bids: BidSummary[] = useMemo(() => bidsQuery.data?.items ?? [], [bidsQuery.data]);
+  const acceptMut = useAcceptBid(lead.id);
 
   const isInitialLoading = bidsQuery.isLoading && !bidsQuery.data;
   const isError = bidsQuery.isError && !bidsQuery.data;
@@ -175,18 +177,52 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
   // client-side — that would diverge from the documented contract
   // and from the price chart's interpretation.
 
-  // Slice-2.1 does NOT implement accept-bid. The Book button stays
-  // visible because removing it would change the design; the click
-  // handler shows the existing UI confirmation animation but skips
-  // any backend write and forwards a "coming soon"-style message via
-  // the parent snackbar so the user is never left thinking they
-  // booked something silently.
+  // Slice-2.2 wires Book → real backend accept. The green "Booking
+  // confirmed!" overlay is preserved exactly, but it now appears ONLY
+  // after the backend returns 200 — never via a fake setTimeout. The
+  // parent snackbar continues to fire for visual continuity. On
+  // failure we surface a safe friendly message; the raw backend
+  // payload is never rendered. 409 (already-accepted / cancelled
+  // request) gets a distinct, actionable copy so the user understands
+  // why the action was rejected.
   const handleBook = (bid: BidSummary) => {
-    setAcceptedId(bid.id);
-    setTimeout(() => {
-      setAcceptedId(null);
-      onBookBid(bid.provider.displayName);
-    }, 900);
+    if (acceptMut.isPending) return;
+    setAcceptError(null);
+    acceptMut.mutate(bid.id, {
+      onSuccess: () => {
+        setAcceptedId(bid.id);
+        // Brief overlay so the visual confirmation stays on-screen
+        // long enough to be perceived; the parent's snackbar then
+        // takes over and the BidsScreen typically closes.
+        setTimeout(() => {
+          setAcceptedId(null);
+          onBookBid(bid.provider.displayName);
+        }, 900);
+      },
+      onError: (err) => {
+        const status =
+          (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
+        if (status === 409) {
+          setAcceptError(
+            lang === 'ar'
+              ? 'لم يعد بالإمكان قبول هذا العرض. حدّث الصفحة وحاول مرة أخرى.'
+              : 'This bid can no longer be accepted. Refresh and try again.',
+          );
+        } else if (status === 404) {
+          setAcceptError(
+            lang === 'ar'
+              ? 'لم يتم العثور على هذا الطلب أو العرض.'
+              : 'This request or bid was not found.',
+          );
+        } else {
+          setAcceptError(
+            lang === 'ar'
+              ? 'تعذر تأكيد الحجز. حاول مرة أخرى.'
+              : "We couldn't confirm the booking. Please try again.",
+          );
+        }
+      },
+    });
   };
 
   return (
@@ -295,6 +331,16 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
         ) : (
           <>
             {showHourlyRate && <PriceChart bids={bids} selectedId={hoveredId} />}
+
+            {acceptError && (
+              <div
+                className="mt-3 px-4 py-3 rounded-2xl bg-red-50 border border-red-100 text-red-700"
+                style={{ fontSize: '13px', fontWeight: 600 }}
+                role="alert"
+              >
+                {acceptError}
+              </div>
+            )}
 
             {/* Bid cards */}
             <div className="flex flex-col gap-4 mt-3">

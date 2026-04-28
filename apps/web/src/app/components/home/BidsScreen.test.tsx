@@ -15,7 +15,7 @@ import type { LeadCardProps } from './LeadCard';
 // never expose raw backend error text.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderScreen(lead: LeadCardProps) {
+function renderScreen(lead: LeadCardProps, onBookBid: (name: string) => void = () => {}) {
   // Fresh QueryClient per test so React Query state never leaks.
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -24,7 +24,7 @@ function renderScreen(lead: LeadCardProps) {
     <QueryClientProvider client={qc}>
       <LanguageProvider>
         <EcosystemProvider>
-          <BidsScreen lead={lead} onBack={() => {}} onBookBid={() => {}} />
+          <BidsScreen lead={lead} onBack={() => {}} onBookBid={onBookBid} />
         </EcosystemProvider>
       </LanguageProvider>
     </QueryClientProvider>,
@@ -176,5 +176,93 @@ describe('BidsScreen', () => {
     // fired if it still existed, then assert no fake-arrival UI.
     expect(screen.queryByText(/a new bid is arriving/i)).toBeNull();
     expect(screen.queryByText(/^NEW$/)).toBeNull();
+  });
+
+  // ─── Slice 2.2 — accept-bid flow ─────────────────────────────────────
+  it('Book button calls accept endpoint and shows the success overlay only after backend success', async () => {
+    mock.onGet('/v1/me/requests/req-test-1/bids').reply(200, {
+      items: [BID_OMAR],
+      nextCursor: null,
+    });
+    let acceptUrl: string | null = null;
+    let resolveAccept: (() => void) | null = null;
+    const acceptPending = new Promise<void>((r) => {
+      resolveAccept = r;
+    });
+    mock.onPost(/\/v1\/me\/requests\/.+\/bids\/.+\/accept/).reply((config) => {
+      acceptUrl = config.url ?? null;
+      return acceptPending.then(() => [
+        200,
+        {
+          bid: { ...BID_OMAR, status: 'ACCEPTED' },
+          booking: {
+            id: 'bk-1',
+            requestId: 'req-test-1',
+            bidId: BID_OMAR.id,
+            status: 'SCHEDULED',
+            scheduledAt: null,
+            priceAmount: 35,
+            currency: 'USD',
+            createdAt: '2026-04-28T02:00:00.000Z',
+          },
+          requestStatus: 'BID_ACCEPTED',
+        },
+      ]);
+    });
+    const bookSpy = vi.fn();
+    renderScreen(LEAD, bookSpy);
+    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+
+    // Click Book Now → POST is in flight, NO success overlay yet.
+    fireEvent.click(screen.getByRole('button', { name: /book now/i }));
+    await waitFor(() => expect(acceptUrl).toBe('/v1/me/requests/req-test-1/bids/b-omar/accept'));
+    expect(screen.queryByText(/booking confirmed/i)).toBeNull();
+
+    // Resolve the backend → overlay appears.
+    resolveAccept?.();
+    await waitFor(() => expect(screen.getByText(/booking confirmed/i)).toBeInTheDocument());
+    // Parent snackbar fires after the brief overlay window.
+    await waitFor(() => expect(bookSpy).toHaveBeenCalledWith('Omar Al-Khalid'));
+  });
+
+  it('shows a friendly CONFLICT message on 409 (already-accepted) — no raw backend error rendered', async () => {
+    mock.onGet('/v1/me/requests/req-test-1/bids').reply(200, {
+      items: [BID_OMAR],
+      nextCursor: null,
+    });
+    mock.onPost(/\/v1\/me\/requests\/.+\/bids\/.+\/accept/).reply(409, {
+      error: {
+        code: 'CONFLICT',
+        message: 'PrismaClientKnownRequestError: A bid has already been accepted.',
+      },
+    });
+    renderScreen(LEAD);
+    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /book now/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByText(/can no longer be accepted/i)).toBeInTheDocument();
+    // The raw backend message must never reach the DOM.
+    expect(screen.queryByText(/PrismaClient/i)).toBeNull();
+    // Success overlay must NOT have appeared on a failed accept.
+    expect(screen.queryByText(/booking confirmed/i)).toBeNull();
+  });
+
+  it('shows a generic friendly message on 500 — no raw backend error rendered', async () => {
+    mock.onGet('/v1/me/requests/req-test-1/bids').reply(200, {
+      items: [BID_OMAR],
+      nextCursor: null,
+    });
+    mock.onPost(/\/v1\/me\/requests\/.+\/bids\/.+\/accept/).reply(500, {
+      error: { code: 'INTERNAL_ERROR', message: 'PrismaClientUnknownRequestError: kaboom' },
+    });
+    renderScreen(LEAD);
+    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /book now/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByText(/couldn't confirm the booking/i)).toBeInTheDocument();
+    expect(screen.queryByText(/PrismaClient/i)).toBeNull();
+    expect(screen.queryByText(/booking confirmed/i)).toBeNull();
   });
 });

@@ -89,6 +89,7 @@ model User {
   serviceRequests    ServiceRequest[]      @relation("seekerRequests")
   requestEventsActed ServiceRequestEvent[] @relation("requestEventActor")
   providerProfile    ProviderProfile?
+  bookingsAsSeeker   Booking[]             @relation("seekerBookings")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -385,6 +386,7 @@ model ServiceRequest {
   address  Address?         @relation(fields: [addressId], references: [id], onDelete: SetNull)
   events   ServiceRequestEvent[]
   bids     Bid[]
+  bookings Booking[]
 
   // Dominant access pattern: list-my-requests filtered by status.
   @@index([seekerUserId, status])
@@ -467,8 +469,9 @@ model ProviderProfile {
   verified       Boolean  @default(false)
   topPro         Boolean  @default(false)
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-  bids Bid[]
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  bids     Bid[]
+  bookings Booking[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -504,8 +507,9 @@ model Bid {
   badge               BidBadge?
   submittedAt         DateTime    @default(now())
 
-  request  ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request  ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   provider ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  booking  Booking?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -541,6 +545,64 @@ enum BidBadge {
   BEST_MATCH
   BEST_VALUE
   FASTEST
+}
+
+// Booking row created when a Seeker accepts a bid (Sprint 2, slice 2.2).
+// One booking per accepted bid; `bidId` is unique so attempting to
+// create two bookings against the same bid violates the constraint
+// at the DB layer (defence in depth on top of the application-layer
+// transaction in BidsService.acceptBid).
+//
+// `seekerUserId` is denormalized here so booking-listing endpoints
+// (future slice) can scope by user without joining through the
+// request. `providerId` is denormalized for the same reason on the
+// future Provider feed.
+//
+// `priceAmount` and `currency` are snapshotted from the bid at
+// acceptance time so a future Provider edit of the bid (rare; only
+// possible when status is PENDING anyway) cannot mutate the booked
+// amount. `scheduledAt` is nullable for ASAP bookings.
+//
+// Soft delete supported via `deletedAt` for cancellation flows in
+// future slices; slice 2.2 only writes SCHEDULED rows.
+model Booking {
+  id           String        @id @default(cuid())
+  requestId    String
+  bidId        String        @unique
+  seekerUserId String
+  providerId   String
+  status       BookingStatus @default(SCHEDULED)
+  scheduledAt  DateTime?
+  priceAmount  Int
+  currency     String        @default("USD")
+
+  request  ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  bid      Bid             @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  seeker   User            @relation("seekerBookings", fields: [seekerUserId], references: [id], onDelete: Cascade)
+  provider ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Dominant access patterns:
+  // - "list-my-bookings" filtered by status (Seeker's bookings tab —
+  //   future slice).
+  @@index([seekerUserId, status])
+  // - "list-provider-bookings" (future Provider app).
+  @@index([providerId, status])
+  // - reverse-lookup: which booking covers this request?
+  @@index([requestId])
+  // - housekeeping.
+  @@index([deletedAt])
+  @@map("bookings")
+}
+
+enum BookingStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }
 
 // Audit rows are append-only. `metadata` is a JSON blob limited to an
