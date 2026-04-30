@@ -25,27 +25,26 @@ model User {
   mfaSecret                 Bytes?
   passwordUpdatedAt         DateTime?
   status                    AccountStatus               @default(PENDING_VERIFICATION)
-  addresses                 addresses[]
+  addresses                 Address[]
   auditEvents               AuditEvent[]
-  booking_events            booking_events[]
-  bookings                  bookings[]
-  conversation_participants conversation_participants[]
-  messages                  messages[]
+  booking_events            BookingEvent[]
+  bookings                  Booking[]
+  conversation_participants ConversationParticipant[]
+  messages                  Message[]
   mfaBackupCodes            MfaBackupCode[]
-  notifications             notifications[]
+  notifications             Notification[]
   oauthAccounts             OauthAccount[]
-  provider_profiles         provider_profiles?
-  service_request_events    service_request_events[]
-  service_requests          service_requests[]
+  provider_profiles         ProviderProfile?
+  service_request_events    ServiceRequestEvent[]
+  service_requests          ServiceRequest[]
   sessions                  Session[]
-  user_profiles             user_profiles?
+  user_profiles             UserProfile?
   userRoles                 UserRole[]
   verificationTokens        VerificationToken[]
 
   @@index([deletedAt])
   @@index([status])
   @@index([lockedUntil])
-  @@map("users")
 }
 
 model Role {
@@ -60,7 +59,6 @@ model Role {
   userRoles       UserRole[]
 
   @@index([deletedAt])
-  @@map("roles")
 }
 
 model Permission {
@@ -70,8 +68,6 @@ model Permission {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   rolePermissions RolePermission[]
-
-  @@map("permissions")
 }
 
 model UserRole {
@@ -83,7 +79,6 @@ model UserRole {
 
   @@id([userId, roleId])
   @@index([roleId])
-  @@map("UserRole")
 }
 
 model RolePermission {
@@ -94,7 +89,6 @@ model RolePermission {
 
   @@id([roleId, permissionId])
   @@index([permissionId])
-  @@map("RolePermission")
 }
 
 model Session {
@@ -116,7 +110,6 @@ model Session {
   @@index([userId, revokedAt])
   @@index([familyId])
   @@index([expiresAt])
-  @@map("sessions")
 }
 
 model VerificationToken {
@@ -134,7 +127,6 @@ model VerificationToken {
 
   @@index([userId, purpose, usedAt])
   @@index([expiresAt])
-  @@map("VerificationToken")
 }
 
 model OauthAccount {
@@ -147,7 +139,6 @@ model OauthAccount {
 
   @@unique([provider, providerUserId])
   @@index([userId])
-  @@map("OauthAccount")
 }
 
 model MfaBackupCode {
@@ -159,7 +150,6 @@ model MfaBackupCode {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, usedAt])
-  @@map("MfaBackupCode")
 }
 
 model AuditEvent {
@@ -175,10 +165,9 @@ model AuditEvent {
 
   @@index([userId, createdAt])
   @@index([type, createdAt])
-  @@map("AuditEvent")
 }
 
-model addresses {
+model Address {
   id               String             @id
   userId           String
   label            String
@@ -193,14 +182,14 @@ model addresses {
   lng              Float?
   deletedAt        DateTime?
   users            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  service_requests service_requests[]
+  service_requests ServiceRequest[]
 
   @@index([deletedAt])
   @@index([userId, deletedAt])
   @@index([userId, isDefault])
 }
 
-model bids {
+model Bid {
   id                  String            @id
   requestId           String
   providerId          String
@@ -215,9 +204,9 @@ model bids {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime
   deletedAt           DateTime?
-  provider_profiles   provider_profiles @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  service_requests    service_requests  @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  bookings            bookings?
+  provider_profiles   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  service_requests    ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  bookings            Booking?
 
   @@index([deletedAt])
   @@index([providerId, status])
@@ -226,7 +215,7 @@ model bids {
   @@index([submittedAt])
 }
 
-model booking_events {
+model BookingEvent {
   id          String           @id
   bookingId   String
   actorUserId String?
@@ -234,13 +223,13 @@ model booking_events {
   metadata    Json?
   createdAt   DateTime         @default(now())
   users       User?            @relation(fields: [actorUserId], references: [id])
-  bookings    bookings         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookings    Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([bookingId, createdAt])
   @@index([type, createdAt])
 }
 
-model bookings {
+model Booking {
   id                String            @id
   requestId         String
   bidId             String            @unique
@@ -253,12 +242,12 @@ model bookings {
   createdAt         DateTime          @default(now())
   updatedAt         DateTime
   deletedAt         DateTime?
-  booking_events    booking_events[]
-  bids              bids              @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  provider_profiles provider_profiles @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  service_requests  service_requests  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  booking_events    BookingEvent[]
+  bids              Bid              @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  provider_profiles ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  service_requests  ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
   users             User              @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
-  conversations     conversations[]
+  conversations     Conversation[]
 
   @@index([deletedAt])
   @@index([providerId, status])
@@ -266,7 +255,7 @@ model bookings {
   @@index([seekerUserId, status])
 }
 
-model conversation_participants {
+model ConversationParticipant {
   id                String                      @id
   conversationId    String
   userId            String?
@@ -274,8 +263,8 @@ model conversation_participants {
   role              ConversationParticipantRole
   lastReadAt        DateTime?
   createdAt         DateTime                    @default(now())
-  conversations     conversations               @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  provider_profiles provider_profiles?          @relation(fields: [providerProfileId], references: [id])
+  conversations     Conversation               @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  provider_profiles ProviderProfile?          @relation(fields: [providerProfileId], references: [id])
   users             User?                       @relation(fields: [userId], references: [id])
 
   @@unique([conversationId, userId], map: "conversation_participants_conversation_user_unique")
@@ -283,17 +272,17 @@ model conversation_participants {
   @@index([userId])
 }
 
-model conversations {
+model Conversation {
   id                        String                      @id
   requestId                 String?
   bookingId                 String?
   createdAt                 DateTime                    @default(now())
   updatedAt                 DateTime
   deletedAt                 DateTime?
-  conversation_participants conversation_participants[]
-  bookings                  bookings?                   @relation(fields: [bookingId], references: [id])
-  service_requests          service_requests?           @relation(fields: [requestId], references: [id])
-  messages                  messages[]
+  conversation_participants ConversationParticipant[]
+  bookings                  Booking?                   @relation(fields: [bookingId], references: [id])
+  service_requests          ServiceRequest?           @relation(fields: [requestId], references: [id])
+  messages                  Message[]
 
   @@index([bookingId])
   @@index([deletedAt])
@@ -301,7 +290,7 @@ model conversations {
   @@index([updatedAt])
 }
 
-model messages {
+model Message {
   id             String                      @id
   conversationId String
   senderUserId   String?
@@ -309,14 +298,14 @@ model messages {
   body           String
   createdAt      DateTime                    @default(now())
   deletedAt      DateTime?
-  conversations  conversations               @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversations  Conversation               @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   users          User?                       @relation(fields: [senderUserId], references: [id])
 
   @@index([conversationId, createdAt])
   @@index([deletedAt])
 }
 
-model notifications {
+model Notification {
   id           String                    @id
   userId       String
   type         NotificationType
@@ -337,7 +326,7 @@ model notifications {
   @@index([userId, readAt])
 }
 
-model provider_profiles {
+model ProviderProfile {
   id                        String                      @id
   userId                    String?                     @unique
   displayName               String
@@ -351,15 +340,15 @@ model provider_profiles {
   createdAt                 DateTime                    @default(now())
   updatedAt                 DateTime
   deletedAt                 DateTime?
-  bids                      bids[]
-  bookings                  bookings[]
-  conversation_participants conversation_participants[]
+  bids                      Bid[]
+  bookings                  Booking[]
+  conversation_participants ConversationParticipant[]
   users                     User?                       @relation(fields: [userId], references: [id])
 
   @@index([deletedAt])
 }
 
-model service_categories {
+model ServiceCategory {
   id               String             @id
   slug             String             @unique
   labelEn          String
@@ -370,13 +359,13 @@ model service_categories {
   createdAt        DateTime           @default(now())
   updatedAt        DateTime
   deletedAt        DateTime?
-  service_requests service_requests[]
+  service_requests ServiceRequest[]
 
   @@index([deletedAt])
   @@index([isActive, sortOrder])
 }
 
-model service_request_events {
+model ServiceRequestEvent {
   id               String                  @id
   requestId        String
   actorUserId      String?
@@ -384,13 +373,13 @@ model service_request_events {
   metadata         Json?
   createdAt        DateTime                @default(now())
   users            User?                   @relation(fields: [actorUserId], references: [id])
-  service_requests service_requests        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  service_requests ServiceRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId, createdAt])
   @@index([type, createdAt])
 }
 
-model service_requests {
+model ServiceRequest {
   id                     String                   @id
   seekerUserId           String
   categoryId             String?
@@ -404,12 +393,12 @@ model service_requests {
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime
   deletedAt              DateTime?
-  bids                   bids[]
-  bookings               bookings[]
-  conversations          conversations[]
-  service_request_events service_request_events[]
-  addresses              addresses?               @relation(fields: [addressId], references: [id])
-  service_categories     service_categories?      @relation(fields: [categoryId], references: [id])
+  bids                   Bid[]
+  bookings               Booking[]
+  conversations          Conversation[]
+  service_request_events ServiceRequestEvent[]
+  addresses              Address?               @relation(fields: [addressId], references: [id])
+  service_categories     ServiceCategory?      @relation(fields: [categoryId], references: [id])
   users                  User                     @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
 
   @@index([categoryId])
@@ -419,7 +408,7 @@ model service_requests {
   @@index([status])
 }
 
-model user_profiles {
+model UserProfile {
   id          String   @id
   userId      String   @unique
   avatarUrl   String?
