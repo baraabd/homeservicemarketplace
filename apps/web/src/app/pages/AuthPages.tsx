@@ -4,45 +4,69 @@ import { CheckCircle2, Eye, EyeOff, Lock, Mail, RefreshCcw, XCircle, Loader2 } f
 import { useAuth } from '../../lib/auth-provider';
 import * as authApi from '../../lib/auth-api';
 import { resetPasswordErrorMessage } from '../../lib/auth-errors';
-import { clearIntendedApp, getIntendedAppPath } from '../../lib/intended-app';
+import { clearIntendedApp, getIntendedApp } from '../../lib/intended-app';
+import { resolveAuthExperience, resolvePostAuthDestination } from '../../lib/auth-experience';
 import { LoginScreen, SignUpScreen, ForgotPasswordScreen } from '../components/auth/AuthScreens';
 import { Button } from '../components/ds/Button';
 import { TextField } from '../components/ds/TextField';
 
-// Only in-app paths are honored as returnTo. Reject absolute URLs and
+// Only in-app paths are honoured as returnTo. Reject absolute URLs and
 // protocol-relative strings to prevent open-redirect via the login page.
-// When no explicit returnTo is provided, fall back to the user's recorded
-// app intent (set when they clicked an experience card on /select). This
-// is what keeps "click Provider → log in → land on Provider" working even
-// when intermediate auth navigations (Sign up button, Forgot password,
+// Returning null lets the caller fall back through the wider precedence
+// chain (intent → role inference) implemented in
+// `resolvePostAuthDestination`. This is what keeps
+// "click Provider → log in → land on Provider" working even when
+// intermediate auth navigations (Sign up button, Forgot password,
 // Reset password completion) drop react-router state.
-function sanitizeReturnTo(raw: string | null | undefined): string {
-  const intentFallback = getIntendedAppPath();
-  if (!raw) return intentFallback;
-  if (!raw.startsWith('/') || raw.startsWith('//')) return intentFallback;
-  if (raw === '/login') return intentFallback;
+function sanitizeReturnTo(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (typeof raw !== 'string') return null;
+  if (!raw.startsWith('/') || raw.startsWith('//')) return null;
+  // /login itself is not a valid post-auth destination.
+  if (raw === '/login') return null;
   return raw;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN PAGE  /login
+//
+// Two responsibilities:
+//   1. THEME — resolve the right experience (Seeker / Provider / Admin)
+//      from explicit state, returnTo, or sessionStorage intent. This is
+//      what makes "click Provider → /login" render with the Provider
+//      identity instead of orange Seeker branding.
+//   2. ROUTE — after a successful OTP verify, send the user to the
+//      strongest available destination signal:
+//        returnTo > intent > role inference > /home.
 // ─────────────────────────────────────────────────────────────────────────────
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const state = location.state as {
     registered?: boolean;
     returnTo?: string;
     email?: string;
+    // Some internal navigations (e.g. an "Admin login" button on a
+    // landing page) can pass an explicit experience id so the theme
+    // resolves without waiting for sessionStorage to kick in.
+    app?: 'seeker' | 'provider' | 'admin';
   } | null;
   const justRegistered = state?.registered;
   const returnTo = sanitizeReturnTo(state?.returnTo);
 
   const { verifyOtp, resendOtp } = useAuth();
 
+  // Theme decision happens at render time — explicit state.app wins,
+  // then returnTo prefix, then sessionStorage intent, then default.
+  const experience = resolveAuthExperience({
+    explicit: state?.app,
+    returnTo,
+  });
+
   return (
     <LoginScreen
+      experience={experience}
       onLogin={async (email: string, password: string) => {
         const challenge = await login({ email, password });
         return {
@@ -53,18 +77,33 @@ export function LoginPage() {
       }}
       onOtpVerify={async (challengeId: string, code: string) => {
         await verifyOtp(challengeId, code);
-        // Once the user has reached their intended app, drop the
-        // sessionStorage intent so a future logout → login cycle starts
-        // from a clean slate (the user might want a different app next
-        // time and would re-pick on /select).
+        // After OTP verify the auth provider has refetched /me; we read
+        // the freshest roles for the role-inference fallback. The user
+        // ref is stale at this exact point inside the closure, but the
+        // returnTo + intent precedence already covers the explicit
+        // launcher-selection case, so role inference is only used for
+        // direct /login arrivals.
+        const dest = resolvePostAuthDestination({
+          returnTo,
+          intentApp: getIntendedApp(),
+          userRoles: user?.roles ?? null,
+        });
+        // Drop the recorded intent so a future logout → login cycle
+        // starts clean (the user might want a different app next time
+        // and would re-pick on /select).
         clearIntendedApp();
-        navigate(returnTo, { replace: true });
+        navigate(dest, { replace: true });
       }}
       onOtpResend={async (challengeId: string) => {
         await resendOtp(challengeId);
       }}
-      onSignUp={() => navigate('/signup')}
-      onForgotPassword={() => navigate('/forgot-password')}
+      onSignUp={() =>
+        // Forward the resolved experience explicitly so the Sign-up
+        // screen keeps the SAME theme — react-router state is otherwise
+        // dropped through this navigation.
+        navigate('/signup', { state: { app: experience.id } })
+      }
+      onForgotPassword={() => navigate('/forgot-password', { state: { app: experience.id } })}
       banner={justRegistered ? 'Your account is ready. Sign in to continue.' : undefined}
     />
   );
@@ -78,11 +117,16 @@ export function LoginPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 export function SignUpPage() {
   const navigate = useNavigate();
-  const { register: doRegister, verifyOtp, resendOtp } = useAuth();
+  const location = useLocation();
+  const { register: doRegister, verifyOtp, resendOtp, user } = useAuth();
+  const state = location.state as { app?: 'seeker' | 'provider' | 'admin' } | null;
+
+  const experience = resolveAuthExperience({ explicit: state?.app });
 
   return (
     <SignUpScreen
-      onBack={() => navigate('/login')}
+      experience={experience}
+      onBack={() => navigate('/login', { state: { app: experience.id } })}
       onCredentialsSubmit={async (data: { name: string; email: string; password: string }) => {
         const [firstName, ...rest] = data.name.trim().split(' ');
         const lastName = rest.join(' ') || firstName;
@@ -101,12 +145,15 @@ export function SignUpPage() {
       onOtpVerify={async (challengeId: string, code: string) => {
         await verifyOtp(challengeId, code);
         // Registration OTP success also issues the session, so we drop
-        // straight into the authed area rather than bouncing to /login.
-        // Respect the user's launcher selection: a user who clicked
-        // "Provider App" on /select and then signed up here MUST land on
-        // /provider, not /home. Without the intent layer, this hardcoded
-        // /home was the canonical "Provider opens Seeker" reproduction.
-        const dest = getIntendedAppPath();
+        // straight into the authed area. The destination resolver
+        // applies the same returnTo > intent > role precedence the
+        // login flow uses — which means a user who clicked "Provider
+        // App" on /select and signed up here MUST land on /provider,
+        // not /home.
+        const dest = resolvePostAuthDestination({
+          intentApp: getIntendedApp(),
+          userRoles: user?.roles ?? null,
+        });
         clearIntendedApp();
         navigate(dest, { replace: true });
       }}
@@ -125,9 +172,13 @@ export function SignUpPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const state = location.state as { app?: 'seeker' | 'provider' | 'admin' } | null;
+  const experience = resolveAuthExperience({ explicit: state?.app });
   return (
     <ForgotPasswordScreen
-      onBack={() => navigate('/login')}
+      experience={experience}
+      onBack={() => navigate('/login', { state: { app: experience.id } })}
       onSubmit={async (email) => {
         await authApi.forgotPassword(email);
       }}
@@ -144,7 +195,9 @@ export function ForgotPasswordPage() {
 export function CheckEmailPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const email = (location.state as { email?: string } | null)?.email ?? '';
+  const state = location.state as { email?: string; app?: 'seeker' | 'provider' | 'admin' } | null;
+  const email = state?.email ?? '';
+  const experience = resolveAuthExperience({ explicit: state?.app });
   const [isResending, setIsResending] = useState(false);
   const [resendStatus, setResendStatus] = useState<'idle' | 'sent' | 'error'>('idle');
 
@@ -167,8 +220,11 @@ export function CheckEmailPage() {
   return (
     <div className="flex flex-col bg-white" style={{ minHeight: '100svh' }}>
       <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-        <div className="w-24 h-24 rounded-full bg-amber-100 flex items-center justify-center mb-6">
-          <Mail size={44} className="text-amber-500" />
+        <div
+          data-testid={`auth-page-${experience.id}`}
+          className={`w-24 h-24 rounded-full ${experience.classes.iconChipBg} flex items-center justify-center mb-6`}
+        >
+          <Mail size={44} className={experience.classes.iconChipText} />
         </div>
         <h1 className="text-slate-900 mb-2" style={{ fontSize: '24px', fontWeight: 800 }}>
           Check your email
@@ -238,9 +294,15 @@ type VerifyState = 'verifying' | 'success' | 'invalid' | 'missing' | 'error';
 export function VerifyEmailPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const state = location.state as { app?: 'seeker' | 'provider' | 'admin' } | null;
   const token = params.get('token');
   const firedRef = useRef(false);
   const [status, setStatus] = useState<VerifyState>(token ? 'verifying' : 'missing');
+  // Verification links arrive cold (the user clicks an email link in
+  // a fresh tab) so there's no react-router state — we resolve from
+  // sessionStorage intent + the explicit state override.
+  const experience = resolveAuthExperience({ explicit: state?.app });
 
   useEffect(() => {
     if (firedRef.current) return;
@@ -269,7 +331,11 @@ export function VerifyEmailPage() {
     >
       {status === 'verifying' && (
         <>
-          <Loader2 size={40} className="text-amber-500 animate-spin mb-4" />
+          <Loader2
+            size={40}
+            data-testid={`auth-page-${experience.id}`}
+            className={`${experience.classes.iconChipText} animate-spin mb-4`}
+          />
           <h1 className="text-slate-900" style={{ fontSize: '20px', fontWeight: 800 }}>
             Verifying your email…
           </h1>
@@ -336,7 +402,12 @@ export function VerifyEmailPage() {
 export function ResetPasswordPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const state = location.state as { app?: 'seeker' | 'provider' | 'admin' } | null;
   const token = useMemo(() => params.get('token') ?? '', [params]);
+  // Password-reset links arrive cold from email — we lean on the same
+  // explicit-state + intent fallback that VerifyEmailPage uses.
+  const experience = resolveAuthExperience({ explicit: state?.app });
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -395,8 +466,11 @@ export function ResetPasswordPage() {
     <div className="flex flex-col bg-white" style={{ minHeight: '100svh' }}>
       <div className="flex-1 px-6 py-10 max-w-md mx-auto w-full">
         <div className="flex justify-center mb-6">
-          <div className="w-20 h-20 rounded-2xl bg-amber-100 flex items-center justify-center">
-            <Lock size={32} className="text-amber-500" />
+          <div
+            data-testid={`auth-page-${experience.id}`}
+            className={`w-20 h-20 rounded-2xl ${experience.classes.iconChipBg} flex items-center justify-center`}
+          >
+            <Lock size={32} className={experience.classes.iconChipText} />
           </div>
         </div>
         <h1

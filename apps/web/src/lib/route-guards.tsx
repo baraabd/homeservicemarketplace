@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation, useOutletContext } from 'react-router';
 import { useAuth } from './auth-provider';
-import { getIntendedAppPath } from './intended-app';
+import { getIntendedApp } from './intended-app';
+import { resolvePostAuthDestination } from './auth-experience';
 
 // ─── Loading spinner ─────────────────────────────────────────────────────────
 function AuthLoadingScreen() {
@@ -49,20 +50,25 @@ export function RequireAuth() {
 }
 
 // ─── GuestOnly ───────────────────────────────────────────────────────────────
-// Wraps auth pages (login, signup). If already authenticated, redirect to home
-// (or back to a pending returnTo if the router passed one forward).
+// Wraps auth pages (login, signup). If already authenticated, redirect to the
+// strongest available destination signal:
+//   returnTo (router state) > intent (sessionStorage) > role inference > /home.
+// This is the same precedence the LoginPage/SignUpPage post-OTP flow applies,
+// so a refresh on /login while already-authed lands the user in the same
+// place clicking Confirm would have.
 export function GuestOnly() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
 
   if (isLoading) return <AuthLoadingScreen />;
   if (isAuthenticated) {
-    const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
-    // returnTo (forwarded from RequireAuth) takes precedence; fall back to
-    // the user's recorded launcher intent so an already-authed user who
-    // clicks Provider on /select and bounces through /login still lands on
-    // /provider, not /home.
-    const dest = returnTo && returnTo !== '/login' ? returnTo : getIntendedAppPath();
+    const returnToRaw = (location.state as { returnTo?: string } | null)?.returnTo;
+    const returnTo = returnToRaw && returnToRaw !== '/login' ? returnToRaw : null;
+    const dest = resolvePostAuthDestination({
+      returnTo,
+      intentApp: getIntendedApp(),
+      userRoles: user?.roles ?? null,
+    });
     return <Navigate to={dest} replace />;
   }
   return <ForwardingOutlet />;

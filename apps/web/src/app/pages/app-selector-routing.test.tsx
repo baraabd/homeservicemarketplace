@@ -7,7 +7,7 @@ import { AuthProvider, queryClient } from '../../lib/auth-provider';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { EcosystemProvider } from '../context/EcosystemContext';
 import { GuestOnly, RequireAuth } from '../../lib/route-guards';
-import { clearIntendedApp, getIntendedApp } from '../../lib/intended-app';
+import { clearIntendedApp, getIntendedApp, setIntendedApp } from '../../lib/intended-app';
 import { AppSelector } from './AppSelector';
 import { LoginPage, SignUpPage } from './AuthPages';
 
@@ -377,3 +377,165 @@ describe('Provider intent survives the entire auth flow', () => {
     await waitFor(() => expect(screen.getByTestId('provider-app')).toBeInTheDocument());
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 5.1.1 — Experience-aware auth theming.
+//
+// The login screen is shared across Seeker / Provider / Admin but its
+// VISUAL identity must match the app the user clicked on /select. The
+// regression these tests guard is the original "click Provider, see
+// orange Seeker login" bug.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Auth theme follows the selected experience', () => {
+  it('Seeker click → /login renders the Seeker (amber) hero', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+
+    renderRouter();
+    await act(async () => {
+      screen.getByTestId('app-card-seeker').click();
+    });
+    await waitFor(() => expect(screen.getByTestId('auth-hero-seeker')).toBeInTheDocument());
+    // Seeker hero owns the amber gradient.
+    const hero = screen.getByTestId('auth-hero-seeker');
+    expect(hero.className).toMatch(/amber/);
+    expect(hero.className).not.toMatch(/blue|indigo|purple/);
+    // No Provider/Admin hero rendered alongside.
+    expect(screen.queryByTestId('auth-hero-provider')).toBeNull();
+    expect(screen.queryByTestId('auth-hero-admin')).toBeNull();
+    // Brand title matches Seeker.
+    expect(screen.getByText('FixNow')).toBeInTheDocument();
+    expect(screen.getByText('Home Services Marketplace')).toBeInTheDocument();
+  });
+
+  it('Provider click → /login renders the Provider (blue/indigo/purple) hero — never amber', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+
+    renderRouter();
+    await act(async () => {
+      screen.getByTestId('app-card-provider').click();
+    });
+    await waitFor(() => expect(screen.getByTestId('auth-hero-provider')).toBeInTheDocument());
+    const hero = screen.getByTestId('auth-hero-provider');
+    expect(hero.className).toMatch(/blue|indigo|purple/);
+    // Critical regression: the Provider hero must NOT carry the orange
+    // Seeker gradient.
+    expect(hero.className).not.toMatch(/amber|orange/);
+    expect(screen.queryByTestId('auth-hero-seeker')).toBeNull();
+    expect(screen.getByText('FixNow Pro')).toBeInTheDocument();
+    expect(screen.getByText('Professional Earnings Platform')).toBeInTheDocument();
+  });
+
+  it('Admin click → /login renders the Admin (slate) hero', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+
+    renderRouter(); // Admin is open without RequireAuth in this harness, so to
+    // exercise the themed-login path we set the intent and navigate to /login
+    // directly (mirrors what would happen if /admin were guarded).
+    setIntendedApp('admin');
+    await act(async () => {
+      screen.getByTestId('app-card-admin').click();
+    });
+    // Admin route renders directly; navigate to /login via a fresh router
+    // instance that drops the user there. The routing test for unauth-driven
+    // /login bounce already exists for Provider; this case asserts the theme
+    // resolution from sessionStorage intent only.
+    cleanupAfterEach();
+    setIntendedApp('admin');
+    renderRouterAt('/login');
+    await waitFor(() => expect(screen.getByTestId('auth-hero-admin')).toBeInTheDocument());
+    expect(screen.getByTestId('auth-hero-admin').className).toMatch(/slate/);
+    expect(screen.queryByTestId('auth-hero-seeker')).toBeNull();
+    expect(screen.queryByTestId('auth-hero-provider')).toBeNull();
+    expect(screen.getByText('FixNow Admin')).toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 5.1.1 — Multi-role routing rules.
+//
+// The product rule: a user can hold customer + provider + admin roles
+// simultaneously. The selected app wins; role inference only applies on
+// direct /login arrivals with no signal.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Multi-role post-auth routing', () => {
+  function authedAs(roles: ('customer' | 'provider' | 'admin')[]) {
+    mock.onGet('/v1/auth/me').reply(200, { ...MOCK_ME, roles });
+  }
+
+  it('selected app wins over role inference (Provider intent + multi-role user → /provider)', async () => {
+    authedAs(['customer', 'provider', 'admin']);
+
+    renderRouter();
+    await waitFor(() => expect(screen.getByTestId('app-card-provider')).toBeInTheDocument());
+    await act(async () => {
+      screen.getByTestId('app-card-provider').click();
+    });
+    await waitFor(() => expect(screen.getByTestId('provider-app')).toBeInTheDocument());
+    expect(screen.queryByTestId('seeker-app')).toBeNull();
+    expect(screen.queryByTestId('admin-app')).toBeNull();
+  });
+
+  it('direct /login while authed with multiple non-customer roles → /select', async () => {
+    authedAs(['customer', 'provider', 'admin']);
+
+    // Reset intent so role inference is the only signal.
+    clearIntendedApp();
+    renderRouterAt('/login');
+    // GuestOnly should redirect to /select (where AppSelector lives).
+    await waitFor(() => expect(screen.getByTestId('app-card-seeker')).toBeInTheDocument());
+  });
+
+  it('direct /login while authed with sole-provider role → /provider', async () => {
+    authedAs(['customer', 'provider']);
+    clearIntendedApp();
+    renderRouterAt('/login');
+    await waitFor(() => expect(screen.getByTestId('provider-app')).toBeInTheDocument());
+  });
+
+  it('direct /login while authed with customer-only role → /home', async () => {
+    authedAs(['customer']);
+    clearIntendedApp();
+    renderRouterAt('/login');
+    await waitFor(() => expect(screen.getByTestId('seeker-app')).toBeInTheDocument());
+  });
+});
+
+// ── helpers (used by the new suites above) ───────────────────────────────────
+function renderRouterAt(path: string) {
+  return render(
+    <AuthProvider>
+      <LanguageProvider>
+        <EcosystemProvider>
+          <MemoryRouter initialEntries={[path]}>
+            <Routes>
+              <Route path="/admin" element={<AdminStub />} />
+              <Route path="/select" element={<AppSelector />} />
+              <Route element={<GuestOnly />}>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/signup" element={<SignUpPage />} />
+              </Route>
+              <Route element={<RequireAuth />}>
+                <Route path="/home" element={<HomeStub />} />
+                <Route path="/provider" element={<ProviderStub />} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </EcosystemProvider>
+      </LanguageProvider>
+    </AuthProvider>,
+  );
+}
+
+// Used by the Admin theme test to reset between two render() calls in the
+// same `it` body. Mirrors the global afterEach without unmounting React's
+// outer providers (we want the fresh MemoryRouter only).
+function cleanupAfterEach() {
+  queryClient.clear();
+  document.cookie.split(';').forEach((c) => {
+    const name = c.split('=')[0]?.trim();
+    if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+  });
+}
