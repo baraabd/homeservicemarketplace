@@ -20,6 +20,7 @@ import { ConversationsModule } from './modules/conversations/conversations.modul
 import { IamModule } from './modules/iam/iam.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ProfileModule } from './modules/profile/profile.module';
+import { ProviderModule } from './modules/provider/provider.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { ServicesModule } from './modules/services/services.module';
 
@@ -50,6 +51,7 @@ import { ServicesModule } from './modules/services/services.module';
     NotificationsModule,
     ConversationsModule,
     ProfileModule,
+    ProviderModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

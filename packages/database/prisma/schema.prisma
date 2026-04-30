@@ -260,7 +260,8 @@ model ServiceCategory {
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
 
-  serviceRequests ServiceRequest[]
+  serviceRequests  ServiceRequest[]
+  providerProfiles ProviderProfileServiceCategory[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -481,17 +482,57 @@ model ProviderProfile {
   verified       Boolean  @default(false)
   topPro         Boolean  @default(false)
 
-  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  bids     Bid[]
-  bookings Booking[]
+  // Sprint 5 slice 5.1 — editable provider profile fields and service area.
+  // All optional so existing seeded rows (Sprint 2.1) backfill cleanly with
+  // NULL. The Provider app PATCH endpoint writes these.
+  bio                 String?
+  headline            String?
+  phoneNumber         String?
+  serviceAreaCity     String?
+  serviceAreaCountry  String?
+  serviceAreaLat      Float?
+  serviceAreaLng      Float?
+  serviceAreaRadiusKm Int?
+  availability        ProviderAvailability @default(OFFLINE)
+
+  user              User?                            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  bids              Bid[]
+  bookings          Booking[]
   conversationsParticipating ConversationParticipant[] @relation("providerConversations")
+  serviceCategories ProviderProfileServiceCategory[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
   @@index([deletedAt])
+  @@index([availability])
+  @@index([serviceAreaCity])
   @@map("provider_profiles")
+}
+
+enum ProviderAvailability {
+  ONLINE
+  OFFLINE
+  PAUSED
+}
+
+// Many-to-many link between providers and the service categories they
+// offer. Sprint 5 slice 5.1 introduces this so the provider app can
+// render real skills and slice 5.2's available-requests feed can filter
+// by category. Deleting either side cascades — the join row carries no
+// independent data beyond the audit timestamp.
+model ProviderProfileServiceCategory {
+  providerProfileId String
+  serviceCategoryId String
+  createdAt         DateTime @default(now())
+
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  serviceCategory ServiceCategory @relation(fields: [serviceCategoryId], references: [id], onDelete: Cascade)
+
+  @@id([providerProfileId, serviceCategoryId])
+  @@index([serviceCategoryId])
+  @@map("provider_profile_service_categories")
 }
 
 // One Provider's bid on one Seeker request (Sprint 2, slice 2.1).
