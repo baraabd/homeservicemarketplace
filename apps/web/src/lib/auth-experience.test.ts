@@ -191,4 +191,52 @@ describe('resolvePostAuthDestination — multi-role precedence', () => {
     const dest = resolvePostAuthDestination({ userRoles: null });
     expect(dest).toBe('/home');
   });
+
+  // ── experienceId fallback (patch 2) ──────────────────────────────────────
+  it('experienceId is honoured when neither returnTo nor intent exists', () => {
+    // Intent has been cleared (e.g. Provider signup OTP closure). The
+    // experience the screen was themed as becomes the destination.
+    const dest = resolvePostAuthDestination({
+      experienceId: 'provider',
+      userRoles: ['customer'],
+    });
+    expect(dest).toBe('/provider');
+  });
+
+  it('experienceId admin → /admin', () => {
+    const dest = resolvePostAuthDestination({
+      experienceId: 'admin',
+      userRoles: ['customer'],
+    });
+    expect(dest).toBe('/admin');
+  });
+
+  it('experienceId still loses to returnTo', () => {
+    const dest = resolvePostAuthDestination({
+      returnTo: '/home/profile',
+      experienceId: 'provider',
+      userRoles: ['customer'],
+    });
+    expect(dest).toBe('/home/profile');
+  });
+
+  it('experienceId still loses to intent', () => {
+    const dest = resolvePostAuthDestination({
+      intentApp: 'admin',
+      experienceId: 'provider',
+      userRoles: ['customer'],
+    });
+    expect(dest).toBe('/admin');
+  });
+
+  it('experienceId beats role inference (the regression this fix repairs)', () => {
+    // A brand new customer-only user signing up from a Provider-themed
+    // signup flow MUST land on /provider, not /home.
+    const dest = resolvePostAuthDestination({
+      experienceId: 'provider',
+      userRoles: ['customer'],
+    });
+    expect(dest).not.toBe('/home');
+    expect(dest).toBe('/provider');
+  });
 });

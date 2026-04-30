@@ -6,7 +6,7 @@ import { api } from '../../lib/api';
 import { AuthProvider, queryClient } from '../../lib/auth-provider';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { EcosystemProvider } from '../context/EcosystemContext';
-import { GuestOnly, RequireAuth } from '../../lib/route-guards';
+import { GuestOnly, RequireAdmin, RequireAuth } from '../../lib/route-guards';
 import { clearIntendedApp, getIntendedApp, setIntendedApp } from '../../lib/intended-app';
 import { AppSelector } from './AppSelector';
 import { LoginPage, SignUpPage } from './AuthPages';
@@ -539,3 +539,244 @@ function cleanupAfterEach() {
     if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 5.1.1 patch 2 — Admin route is now guarded.
+// ─────────────────────────────────────────────────────────────────────────────
+function renderRouterWithAdminGuard(initialPath = '/select') {
+  return render(
+    <AuthProvider>
+      <LanguageProvider>
+        <EcosystemProvider>
+          <MemoryRouter initialEntries={[initialPath]}>
+            <Routes>
+              <Route element={<RequireAdmin />}>
+                <Route path="/admin" element={<AdminStub />} />
+              </Route>
+              <Route path="/select" element={<AppSelector />} />
+              <Route element={<GuestOnly />}>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/signup" element={<SignUpPage />} />
+              </Route>
+              <Route element={<RequireAuth />}>
+                <Route path="/home" element={<HomeStub />} />
+                <Route path="/provider" element={<ProviderStub />} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </EcosystemProvider>
+      </LanguageProvider>
+    </AuthProvider>,
+  );
+}
+
+describe('Admin route is gated (patch 2)', () => {
+  it('unauthenticated /admin → /login with admin theme + returnTo=/admin', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+
+    renderRouterWithAdminGuard('/admin');
+
+    // Lands on /login with the Admin slate hero (theme resolved from
+    // state.app='admin' that RequireAdmin forwarded).
+    await waitFor(() => expect(screen.getByTestId('auth-hero-admin')).toBeInTheDocument());
+    expect(screen.queryByTestId('admin-app')).toBeNull();
+    expect(screen.queryByTestId('seeker-app')).toBeNull();
+  });
+
+  it('authenticated customer-only /admin → AdminAccessRequired (NOT /home, NOT dashboard)', async () => {
+    mock.onGet('/v1/auth/me').reply(200, { ...MOCK_ME, roles: ['customer' as const] });
+
+    renderRouterWithAdminGuard('/admin');
+
+    await waitFor(() => expect(screen.getByText(/admin access required/i)).toBeInTheDocument());
+    expect(screen.queryByTestId('admin-app')).toBeNull();
+    expect(screen.queryByTestId('seeker-app')).toBeNull();
+  });
+
+  it('authenticated admin /admin → dashboard', async () => {
+    mock
+      .onGet('/v1/auth/me')
+      .reply(200, { ...MOCK_ME, roles: ['customer' as const, 'admin' as const] });
+
+    renderRouterWithAdminGuard('/admin');
+
+    await waitFor(() => expect(screen.getByTestId('admin-app')).toBeInTheDocument());
+    expect(screen.queryByText(/admin access required/i)).toBeNull();
+  });
+
+  it('Admin card click while unauthenticated routes through /login (not direct dashboard)', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+
+    renderRouterWithAdminGuard();
+    await act(async () => {
+      screen.getByTestId('app-card-admin').click();
+    });
+    // Lands on /login with Admin theme rather than the unprotected
+    // dashboard.
+    await waitFor(() => expect(screen.getByTestId('auth-hero-admin')).toBeInTheDocument());
+    expect(screen.queryByTestId('admin-app')).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 5.1.1 patch 2 — destination resolver respects the resolved
+// experience, so a Provider-themed signup OTP lands on /provider even
+// when the new user has only the customer role.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Provider signup OTP → /provider (patch 2 regression repair)', () => {
+  it('Provider card → signup → OTP verify → /provider (NOT /home)', async () => {
+    let meCalls = 0;
+    mock.onGet('/v1/auth/me').reply(() => {
+      meCalls++;
+      // After OTP verify, the new user is customer-only — without the
+      // experienceId fallback this would bounce them to /home.
+      return meCalls === 1 ? [401, {}] : [200, { ...MOCK_ME, roles: ['customer' as const] }];
+    });
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+    mock.onPost('/v1/auth/register').reply(202, {
+      otpRequired: true,
+      challengeId: 'chal-prov-signup',
+      codeLength: 6,
+      expiresInSeconds: 300,
+    });
+    mock.onPost('/v1/auth/verify-otp').reply(200, {});
+
+    renderRouter();
+
+    await act(async () => {
+      screen.getByTestId('app-card-provider').click();
+    });
+
+    // /login renders, click Sign up
+    await waitFor(() => expect(document.querySelector('input[type="email"]')).toBeTruthy());
+    const signUpBtn = screen
+      .getAllByRole('button')
+      .find((b) => /sign up|create account|signUp/i.test(b.textContent ?? ''));
+    expect(signUpBtn).toBeDefined();
+    await act(async () => {
+      signUpBtn!.click();
+    });
+
+    // step 1 — fill name + phone
+    await waitFor(() => expect(document.querySelector('input[type="tel"]')).toBeTruthy());
+    const nameInput = document.querySelectorAll('input')[0] as HTMLInputElement;
+    const phoneInput = document.querySelector('input[type="tel"]') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: 'Ada Lovelace' } });
+      fireEvent.change(phoneInput, { target: { value: '5551234567' } });
+    });
+    const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
+    await act(async () => {
+      nextBtn.click();
+    });
+
+    // step 2 — email + password
+    await waitFor(() => expect(document.querySelector('input[type="email"]')).toBeTruthy());
+    const emailInput = document.querySelector('input[type="email"]') as HTMLInputElement;
+    const passwordInput = document.querySelector('input[type="password"]') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(emailInput, { target: { value: 'ada@example.com' } });
+      fireEvent.change(passwordInput, { target: { value: 'a-reasonable-passphrase' } });
+    });
+    const termsBtn = screen
+      .getAllByRole('button')
+      .find((b) => /privacyPolicy|agreeTerms|i agree/i.test(b.textContent ?? ''));
+    if (termsBtn) {
+      await act(async () => {
+        termsBtn.click();
+      });
+    }
+    const registerBtn = screen
+      .getAllByRole('button')
+      .find((b) => /register|create/i.test(b.textContent ?? ''))!;
+    // Critical: the Create Account button is themed Provider blue, not
+    // amber. data-tone is the regression hook.
+    expect(registerBtn.getAttribute('data-tone')).toBe('provider');
+    expect(registerBtn.className).not.toMatch(/amber/);
+    expect(registerBtn.className).toMatch(/blue/);
+    await act(async () => {
+      registerBtn.click();
+    });
+
+    // step 3 — OTP. Confirm button is also Provider blue.
+    await waitFor(() => expect(screen.getByTestId('otp-input')).toBeInTheDocument());
+    const otpInput = screen.getByTestId('otp-input') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(otpInput, { target: { value: '654321' } });
+    });
+    const confirmBtn = screen
+      .getAllByRole('button')
+      .find((b) => /confirm|verifying/i.test(b.textContent ?? ''))!;
+    expect(confirmBtn.getAttribute('data-tone')).toBe('provider');
+    expect(confirmBtn.className).not.toMatch(/amber/);
+    await act(async () => {
+      confirmBtn.click();
+    });
+
+    // Lands on /provider — the patch-2 regression repair.
+    await waitFor(() => expect(screen.getByTestId('provider-app')).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+    expect(screen.queryByTestId('seeker-app')).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 5.1.1 patch 2 — auth primary buttons carry the resolved
+// experience tone instead of hardcoded amber.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Auth primary buttons follow the resolved experience', () => {
+  it('Provider login button carries data-tone=provider with blue classes (NOT amber)', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+
+    renderRouter();
+    await act(async () => {
+      screen.getByTestId('app-card-provider').click();
+    });
+    await waitFor(() => expect(screen.getByTestId('auth-hero-provider')).toBeInTheDocument());
+
+    const loginBtn = screen
+      .getAllByRole('button')
+      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    expect(loginBtn.getAttribute('data-tone')).toBe('provider');
+    expect(loginBtn.className).not.toMatch(/amber/);
+    expect(loginBtn.className).toMatch(/blue/);
+  });
+
+  it('Seeker login button carries data-tone=seeker with amber classes', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+
+    renderRouter();
+    await act(async () => {
+      screen.getByTestId('app-card-seeker').click();
+    });
+    await waitFor(() => expect(screen.getByTestId('auth-hero-seeker')).toBeInTheDocument());
+
+    const loginBtn = screen
+      .getAllByRole('button')
+      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    expect(loginBtn.getAttribute('data-tone')).toBe('seeker');
+    expect(loginBtn.className).toMatch(/amber/);
+    expect(loginBtn.className).not.toMatch(/\bblue\b|\bslate-700\b/);
+  });
+
+  it('Admin login button (resolved via state.app on direct /login) carries data-tone=admin', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+    setIntendedApp('admin');
+
+    renderRouter('/login');
+    await waitFor(() => expect(screen.getByTestId('auth-hero-admin')).toBeInTheDocument());
+
+    const loginBtn = screen
+      .getAllByRole('button')
+      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    expect(loginBtn.getAttribute('data-tone')).toBe('admin');
+    expect(loginBtn.className).not.toMatch(/amber|\bblue\b/);
+    expect(loginBtn.className).toMatch(/slate/);
+  });
+});

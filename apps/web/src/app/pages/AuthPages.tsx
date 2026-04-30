@@ -77,20 +77,21 @@ export function LoginPage() {
       }}
       onOtpVerify={async (challengeId: string, code: string) => {
         await verifyOtp(challengeId, code);
-        // After OTP verify the auth provider has refetched /me; we read
-        // the freshest roles for the role-inference fallback. The user
-        // ref is stale at this exact point inside the closure, but the
-        // returnTo + intent precedence already covers the explicit
-        // launcher-selection case, so role inference is only used for
-        // direct /login arrivals.
+        // After OTP verify the auth provider has refetched /me. The
+        // destination resolver applies the full precedence chain;
+        // experienceId is the load-bearing fallback when intent has
+        // already been cleared by something earlier in the flow (the
+        // patch-2 regression).
         const dest = resolvePostAuthDestination({
           returnTo,
           intentApp: getIntendedApp(),
+          experienceId: experience.id,
           userRoles: user?.roles ?? null,
         });
-        // Drop the recorded intent so a future logout → login cycle
-        // starts clean (the user might want a different app next time
-        // and would re-pick on /select).
+        // Drop the recorded intent AFTER we've already captured the
+        // experience and resolved the destination, so a future logout
+        // → login cycle starts clean without yanking the rug out of
+        // the resolver above.
         clearIntendedApp();
         navigate(dest, { replace: true });
       }}
@@ -144,14 +145,17 @@ export function SignUpPage() {
       }}
       onOtpVerify={async (challengeId: string, code: string) => {
         await verifyOtp(challengeId, code);
-        // Registration OTP success also issues the session, so we drop
-        // straight into the authed area. The destination resolver
-        // applies the same returnTo > intent > role precedence the
-        // login flow uses — which means a user who clicked "Provider
-        // App" on /select and signed up here MUST land on /provider,
-        // not /home.
+        // Registration OTP success issues the session and lands the
+        // new user in the authed area. The destination resolver picks
+        // the strongest signal:
+        //   returnTo > intent > experienceId > role inference > /home.
+        // experienceId is the load-bearing fallback for the original
+        // patch-2 regression: a brand-new customer-only user signing
+        // up from a Provider-themed flow must land on /provider, not
+        // /home.
         const dest = resolvePostAuthDestination({
           intentApp: getIntendedApp(),
+          experienceId: experience.id,
           userRoles: user?.roles ?? null,
         });
         clearIntendedApp();
@@ -252,14 +256,16 @@ export function CheckEmailPage() {
         <div className="w-full max-w-sm flex flex-col gap-3">
           <Button
             variant="primary"
+            tone={experience.id}
             fullWidth
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/login', { state: { app: experience.id } })}
             leadingIcon={<CheckCircle2 size={16} />}
           >
             Back to sign in
           </Button>
           <Button
             variant="text"
+            tone={experience.id}
             fullWidth
             state={isResending ? 'loading' : !email ? 'disabled' : 'default'}
             onClick={onResend}
@@ -355,7 +361,8 @@ export function VerifyEmailPage() {
           </p>
           <Button
             variant="primary"
-            onClick={() => navigate('/login')}
+            tone={experience.id}
+            onClick={() => navigate('/login', { state: { app: experience.id } })}
             leadingIcon={<CheckCircle2 size={16} />}
           >
             Go to sign in
@@ -383,10 +390,18 @@ export function VerifyEmailPage() {
                 : "We couldn't reach the server. Please try again in a moment."}
           </p>
           <div className="flex flex-col gap-2 w-full max-w-xs">
-            <Button variant="primary" onClick={() => navigate('/login')}>
+            <Button
+              variant="primary"
+              tone={experience.id}
+              onClick={() => navigate('/login', { state: { app: experience.id } })}
+            >
               Back to sign in
             </Button>
-            <Button variant="text" onClick={() => navigate('/check-email')}>
+            <Button
+              variant="text"
+              tone={experience.id}
+              onClick={() => navigate('/check-email', { state: { app: experience.id } })}
+            >
               Resend verification
             </Button>
           </div>
@@ -455,7 +470,11 @@ export function ResetPasswordPage() {
         <p className="text-slate-500 max-w-sm mb-6" style={{ fontSize: '14px' }}>
           You can now sign in with your new password.
         </p>
-        <Button variant="primary" onClick={() => navigate('/login')}>
+        <Button
+          variant="primary"
+          tone={experience.id}
+          onClick={() => navigate('/login', { state: { app: experience.id } })}
+        >
           Go to sign in
         </Button>
       </div>
@@ -517,13 +536,19 @@ export function ResetPasswordPage() {
 
           <Button
             variant="primary"
+            tone={experience.id}
             fullWidth
             state={isLoading ? 'loading' : !token ? 'disabled' : 'default'}
             onClick={onSubmit}
           >
             {isLoading ? 'Updating…' : 'Update password'}
           </Button>
-          <Button variant="text" fullWidth onClick={() => navigate('/login')}>
+          <Button
+            variant="text"
+            tone={experience.id}
+            fullWidth
+            onClick={() => navigate('/login', { state: { app: experience.id } })}
+          >
             Back to sign in
           </Button>
         </div>

@@ -219,8 +219,17 @@ export interface ResolveDestinationInput {
   // Recorded launcher intent (sessionStorage). Falls back to
   // `getIntendedApp()` when not provided.
   intentApp?: AuthExperienceId | null | undefined;
+  // The experience the auth surface is currently THEMED as. Sprint
+  // 5.1.1 patch 2: this is a third-strongest signal sitting between
+  // intent and role inference. The Login/Signup pages resolve their
+  // experience at render time (from explicit state.app, returnTo,
+  // intent, or default); when the user finishes auth, the destination
+  // should respect the experience the user just saw — even if the
+  // intent has been cleared mid-flight (which used to drop Provider
+  // signup users on /home).
+  experienceId?: AuthExperienceId | null | undefined;
   // The roles attached to the authenticated session. Used only when
-  // BOTH returnTo and intentApp are missing.
+  // returnTo, intent, and experienceId are all missing.
   userRoles?: readonly string[] | null | undefined;
 }
 
@@ -231,11 +240,16 @@ const ADMIN_ROLE = 'admin';
 // kept here so consumers don't have to know it.
 export const SELECT_PATH = '/select';
 
-// Multi-role precedence (per Sprint 5.1.1 product rule):
+// Multi-role precedence (Sprint 5.1.1 patch 2):
 //
 //   1. returnTo — wins. The user was deep-linking somewhere specific.
 //   2. intentApp — wins. The user clicked an app card on /select.
-//   3. role inference — only when neither signal exists:
+//   3. experienceId — the theme the auth surface was rendered as.
+//      Sits between intent and role inference because the user just
+//      VISUALLY confirmed which app they were authing into; landing
+//      anywhere else after that would be jarring even if the
+//      sessionStorage intent has since been cleared.
+//   4. role inference — only when none of the above signals exist:
 //      a. exactly one of {provider, admin} → that app
 //      b. both provider AND admin → /select (let the user pick)
 //      c. neither (e.g. just `customer`) → /home
@@ -243,7 +257,9 @@ export const SELECT_PATH = '/select';
 // Roles are advisory at this layer; backend RolesGuards remain the
 // authoritative authorization. A user who selects Provider and lacks
 // the role still lands on /provider — the Provider app's onboarding
-// screen handles the upgrade flow, per Slice 5.1.
+// screen handles the upgrade flow, per Slice 5.1. An admin-themed auth
+// flow lands the user on /admin where RequireAdmin (route guard) does
+// the actual access check.
 export function resolvePostAuthDestination(input: ResolveDestinationInput): string {
   if (typeof input.returnTo === 'string' && input.returnTo.length > 0) {
     return input.returnTo;
@@ -252,6 +268,10 @@ export function resolvePostAuthDestination(input: ResolveDestinationInput): stri
     ? input.intentApp
     : getExperienceForIntendedApp();
   if (intent) return AUTH_EXPERIENCES[intent].path;
+
+  if (isAuthExperienceId(input.experienceId)) {
+    return AUTH_EXPERIENCES[input.experienceId].path;
+  }
 
   const roles = input.userRoles ?? [];
   const hasProvider = roles.includes(PROVIDER_ROLE);

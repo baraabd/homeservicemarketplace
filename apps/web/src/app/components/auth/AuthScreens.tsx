@@ -181,6 +181,7 @@ export function EmailOtpPanel({
 
       <Button
         variant="primary"
+        tone={experience.id}
         fullWidth
         state={isVerifying ? 'loading' : !canSubmit ? 'disabled' : 'default'}
         onClick={() => {
@@ -495,6 +496,7 @@ export function LoginScreen({
 
             <Button
               variant="primary"
+              tone={experience.id}
               state={isLoading ? 'loading' : 'default'}
               fullWidth
               onClick={handleLogin}
@@ -916,6 +918,7 @@ export function SignUpScreen({
             )}
             <Button
               variant="primary"
+              tone={experience.id}
               state={
                 isLoading
                   ? 'loading'
@@ -1023,12 +1026,13 @@ export function ForgotPasswordScreen({
                   {email}
                 </span>
               </div>
-              <Button variant="primary" fullWidth onClick={onBack}>
+              <Button variant="primary" tone={experience.id} fullWidth onClick={onBack}>
                 {t('backToLogin')}
               </Button>
               <div className="mt-4">
                 <Button
                   variant="text"
+                  tone={experience.id}
                   onClick={() => {
                     // Take the user back to the form so they can re-submit
                     // against the real endpoint (we don't auto-resend here).
@@ -1073,6 +1077,7 @@ export function ForgotPasswordScreen({
 
                 <Button
                   variant="primary"
+                  tone={experience.id}
                   state={isLoading ? 'loading' : !email ? 'disabled' : 'default'}
                   fullWidth
                   onClick={handleSend}
@@ -1095,7 +1100,7 @@ export function ForgotPasswordScreen({
                 </div>
 
                 <div className="flex justify-center mt-2">
-                  <Button variant="text" onClick={onBack}>
+                  <Button variant="text" tone={experience.id} onClick={onBack}>
                     {t('backToLogin')}
                   </Button>
                 </div>
