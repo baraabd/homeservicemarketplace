@@ -330,11 +330,18 @@ enum AddressType {
 // schema drift on every run. The slice-2 work does not read or write
 // this table; it exists only to keep the migration history consistent
 // with reality.
+// Editable Seeker profile fields not covered by core User auth columns.
+// `firstName` / `lastName` / `email` live on User and are surfaced through
+// /v1/auth/me; this row carries the profile-only fields the user can edit
+// (phone, city, bio) plus a pre-existing avatarUrl slot. One row per user
+// — `userId` is unique, and the row is created lazily by ProfileService
+// on first GET / PATCH via Prisma upsert.
 model UserProfile {
   id          String  @id @default(cuid())
   userId      String  @unique
   avatarUrl   String?
   phoneNumber String?
+  city        String?
   bio         String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

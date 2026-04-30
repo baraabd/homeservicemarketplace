@@ -19,6 +19,7 @@ import { BookingsModule } from './modules/bookings/bookings.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { IamModule } from './modules/iam/iam.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ProfileModule } from './modules/profile/profile.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { ServicesModule } from './modules/services/services.module';
 
@@ -48,6 +49,7 @@ import { ServicesModule } from './modules/services/services.module';
     BookingsModule,
     NotificationsModule,
     ConversationsModule,
+    ProfileModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -25,3 +25,4 @@ export * from './bids';
 export * from './bookings';
 export * from './notifications';
 export * from './chat';
+export * from './profile';

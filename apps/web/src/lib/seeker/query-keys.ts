@@ -57,4 +57,11 @@ export const seekerQueryKeys = {
       ['seeker', 'notifications', 'list', filter ?? {}] as const,
     unreadCount: () => ['seeker', 'notifications', 'unread-count'] as const,
   },
+  profile: {
+    // Root for the editable-profile query. Update-profile mutation
+    // invalidates this root so the form re-reads the canonical
+    // server state (post-trim, post-null-normalisation).
+    root: ['seeker', 'profile'] as const,
+    get: () => ['seeker', 'profile', 'get'] as const,
+  },
 } as const;
