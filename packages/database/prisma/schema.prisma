@@ -83,7 +83,7 @@ model UserRole {
 
   @@id([userId, roleId])
   @@index([roleId])
-  @@map("user_roles")
+  @@map("UserRole")
 }
 
 model RolePermission {
@@ -94,7 +94,7 @@ model RolePermission {
 
   @@id([roleId, permissionId])
   @@index([permissionId])
-  @@map("role_permissions")
+  @@map("RolePermission")
 }
 
 model Session {
@@ -134,7 +134,7 @@ model VerificationToken {
 
   @@index([userId, purpose, usedAt])
   @@index([expiresAt])
-  @@map("verification_tokens")
+  @@map("VerificationToken")
 }
 
 model OauthAccount {
@@ -147,7 +147,7 @@ model OauthAccount {
 
   @@unique([provider, providerUserId])
   @@index([userId])
-  @@map("oauth_accounts")
+  @@map("OauthAccount")
 }
 
 model MfaBackupCode {
@@ -159,7 +159,7 @@ model MfaBackupCode {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, usedAt])
-  @@map("mfa_backup_codes")
+  @@map("MfaBackupCode")
 }
 
 model AuditEvent {
@@ -175,7 +175,7 @@ model AuditEvent {
 
   @@index([userId, createdAt])
   @@index([type, createdAt])
-  @@map("audit_events")
+  @@map("AuditEvent")
 }
 
 model addresses {
