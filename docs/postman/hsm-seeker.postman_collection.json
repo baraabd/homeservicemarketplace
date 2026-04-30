@@ -1,0 +1,531 @@
+{
+  "info": {
+    "name": "HSM Backend — Seeker (Sprints 1–4)",
+    "description": "Seeker-side endpoints across profile, services, addresses, requests, bids, bookings, conversations, notifications. Uses mobile-mode Authorization: Bearer {{accessToken}} so it does not have to manage CSRF cookies — run the IAM collection's Login/verify-otp first to populate accessToken in the shared environment. Variables captured by tests so a clean run mutates each domain end-to-end without manual id juggling.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "hsm-seeker-sprints-2026-04"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" },
+    { "key": "addressId", "value": "" },
+    { "key": "requestId", "value": "" },
+    { "key": "conversationId", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level guard: the body must never carry Prisma / SQL strings,",
+          "// even on negative tests that expect 4xx.",
+          "const body = pm.response.text();",
+          "pm.test('no Prisma/SQL leak in response', () => {",
+          "  pm.expect(body).to.not.match(/PrismaClient|column .* does not exist|SELECT |INSERT |UPDATE /i);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 — Auth identity",
+      "item": [
+        {
+          "name": "GET /v1/auth/me",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/{{apiVersion}}/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('has id + email + roles', () => {",
+                  "  pm.expect(b.id).to.be.a('string');",
+                  "  pm.expect(b.email).to.be.a('string');",
+                  "  pm.expect(b.roles).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 — Profile",
+      "item": [
+        {
+          "name": "GET /v1/me/profile",
+          "request": { "method": "GET", "url": "{{baseUrl}}/{{apiVersion}}/me/profile" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('envelope: { profile: { ... } }', () => {",
+                  "  pm.expect(b.profile.email).to.be.a('string');",
+                  "  pm.expect(b.profile).to.have.property('avatarUrl');",
+                  "  pm.expect(b.profile).to.have.property('updatedAt');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/me/profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/me/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"city\": \"Riyadh\",\n  \"bio\": \"Postman runtime check\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('city echoed back', () => pm.expect(pm.response.json().profile.city).to.eql('Riyadh'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/me/profile (negative — forbidden field)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/me/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"attacker@example.com\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 — forbidNonWhitelisted', () => pm.response.to.have.status(400));",
+                  "pm.test('VALIDATION_ERROR', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "20 — Services (public)",
+      "item": [
+        {
+          "name": "GET /v1/services",
+          "request": { "method": "GET", "url": "{{baseUrl}}/{{apiVersion}}/services" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items[] non-empty (catalogue seeded)', () => pm.expect(b.items.length).to.be.greaterThan(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "30 — Addresses",
+      "item": [
+        {
+          "name": "POST /v1/me/addresses",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/me/addresses",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"postman-runtime-home\",\n  \"line1\": \"1 Test Avenue\",\n  \"city\": \"Riyadh\",\n  \"country\": \"Saudi Arabia\",\n  \"isDefault\": true\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns id', () => pm.expect(b.id).to.be.a('string'));",
+                  "pm.environment.set('addressId', b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/addresses",
+          "request": { "method": "GET", "url": "{{baseUrl}}/{{apiVersion}}/me/addresses" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('items[]', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/addresses/:id/default",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/addresses/{{addressId}}/default"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('isDefault=true', () => pm.expect(pm.response.json().isDefault).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /v1/me/addresses/:id",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/addresses/{{addressId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('204', () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "40 — Service requests (Job Wizard)",
+      "item": [
+        {
+          "name": "POST /v1/me/requests (ASAP)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/me/requests",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoryId\": null,\n  \"customServiceText\": \"Plumbing\",\n  \"description\": \"Postman runtime — leaky tap\",\n  \"scheduleType\": \"ASAP\",\n  \"scheduledAt\": null,\n  \"manualAddress\": {\n    \"line1\": \"1 Test Avenue\",\n    \"city\": \"Riyadh\",\n    \"country\": \"Saudi Arabia\"\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('id + scheduleType=ASAP + scheduledAt:null', () => {",
+                  "  pm.expect(b.id).to.be.a('string');",
+                  "  pm.expect(b.scheduleType).to.eql('ASAP');",
+                  "  pm.expect(b.scheduledAt).to.be.null;",
+                  "});",
+                  "pm.environment.set('requestId', b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/requests (LATER missing scheduledAt — must reject)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/{{apiVersion}}/me/requests",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoryId\": null,\n  \"customServiceText\": \"Plumbing\",\n  \"scheduleType\": \"LATER\",\n  \"scheduledAt\": null,\n  \"manualAddress\": {\n    \"line1\": \"1 Test Avenue\",\n    \"city\": \"Riyadh\",\n    \"country\": \"Saudi Arabia\"\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('VALIDATION_ERROR', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/requests",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/requests?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('items[]', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/requests/:id",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/requests/{{requestId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('requestId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/requests/:id/timeline",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/requests/{{requestId}}/timeline"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('events[]', () => pm.expect(pm.response.json().events).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/requests/:id/cancel",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/requests/{{requestId}}/cancel"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('status=CANCELLED', () => pm.expect(pm.response.json().status).to.eql('CANCELLED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/requests/:id/reopen",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/requests/{{requestId}}/reopen"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('status not CANCELLED', () => pm.expect(pm.response.json().status).to.not.eql('CANCELLED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "50 — Bids (Sprint 2)",
+      "item": [
+        {
+          "name": "GET /v1/me/requests/:id/bids",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/requests/{{requestId}}/bids"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('items[]', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "60 — Bookings (Sprint 2)",
+      "item": [
+        {
+          "name": "GET /v1/me/bookings",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/bookings?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('items[]', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "70 — Notifications (Sprint 3)",
+      "item": [
+        {
+          "name": "GET /v1/me/notifications/unread-count",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/notifications/unread-count"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('count is a number', () => pm.expect(pm.response.json().count).to.be.a('number'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/notifications",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/notifications?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('items[]', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/notifications/read-all",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/notifications/read-all"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "80 — Conversations (Sprint 3)",
+      "item": [
+        {
+          "name": "GET /v1/me/conversations",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/{{apiVersion}}/me/conversations?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items[]', () => pm.expect(b.items).to.be.an('array'));",
+                  "if (b.items.length > 0) { pm.environment.set('conversationId', b.items[0].id); }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
