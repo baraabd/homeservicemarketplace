@@ -9,7 +9,12 @@ import type {
   ListBookingsQuery,
   ProviderBidSummary,
 } from '@homeservicemarketplace/contracts';
-import { BookingEventType, BookingStatus } from '@homeservicemarketplace/database';
+import {
+  BookingEventType,
+  BookingStatus,
+  NotificationResourceType,
+  NotificationType,
+} from '@homeservicemarketplace/database';
 import type { BookingEvent, ProviderProfile } from '@homeservicemarketplace/database';
 
 import {
@@ -19,6 +24,7 @@ import {
 import { BookingEventRepository } from '../../infrastructure/persistence/bookings/booking-event.repository';
 import { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const DEFAULT_PAGE_SIZE = 50;
 
@@ -27,6 +33,7 @@ export class BookingsService {
   constructor(
     private readonly bookings: BookingRepository,
     private readonly events: BookingEventRepository,
+    private readonly notifications: NotificationsService,
     private readonly tx: TransactionRunner,
   ) {}
 
@@ -111,6 +118,26 @@ export class BookingsService {
         },
         tx,
       );
+
+      // Notification fan-out (slice 3.1). Inside the same transaction
+      // so the notification cannot exist without the cancellation that
+      // produced it. Body uses the snapshotted provider name from the
+      // existing relation load — no extra fetch.
+      const providerName = existing.provider.displayName;
+      await this.notifications.createForUser(
+        {
+          userId: seekerUserId,
+          type: NotificationType.BOOKING_CANCELLED,
+          title: 'Booking cancelled',
+          body: `Your booking with ${providerName} was cancelled.`,
+          resourceType: NotificationResourceType.BOOKING,
+          resourceId: bookingId,
+          deepLink: `/home/bookings/${bookingId}`,
+          metadata: { requestId: existing.requestId, providerId: existing.providerId },
+        },
+        tx,
+      );
+
       const reloaded = await this.bookings.findOwned(bookingId, seekerUserId, tx);
       if (!reloaded) {
         throw new AppError('NOT_FOUND', 'Booking not found.', 404);

@@ -19,7 +19,12 @@ import {
   Search,
   PaintBucket,
 } from 'lucide-react';
-import type { BookingListItem, BookingStatus } from '@homeservicemarketplace/contracts';
+import type {
+  BookingListItem,
+  BookingStatus,
+  NotificationSummary as ContractNotificationSummary,
+  NotificationType as ContractNotificationType,
+} from '@homeservicemarketplace/contracts';
 import { ServiceCategoryCard } from '../ds/ServiceCategoryCard';
 import { LeadCard, LeadCardProps } from './LeadCard';
 import { BidsScreen } from './BidsScreen';
@@ -37,6 +42,12 @@ import { useServiceCategories } from '../../../lib/use-service-categories';
 import { useRequests } from '../../hooks/seeker/useRequests';
 import { useBookings } from '../../hooks/seeker/useBookings';
 import { useConversations } from '../../hooks/seeker/useChat';
+import {
+  useMarkAllNotificationsRead,
+  useMarkNotificationRead,
+  useNotifications,
+  useUnreadNotificationsCount,
+} from '../../hooks/seeker/useNotifications';
 import {
   formatRelativeTime,
   mapServiceCategorySlug,
@@ -160,53 +171,72 @@ function apiBookingToItem(row: BookingListItem, lang: 'en' | 'ar'): BookingItem 
 // array has been removed — it was the slice-2-era placeholder. Tests
 // still mock the API to drive the same UI shape.
 
-const INITIAL_NOTIFS: AppNotification[] = [
-  {
-    id: 'n1',
-    type: 'bid',
-    jobId: '2',
-    title: 'New bid on Electrical job',
-    body: 'Omar Al-Khalid bid $35/hr · ★ 4.9 · Top Pro',
-    time: '2m ago',
-    read: false,
-  },
-  {
-    id: 'n2',
-    type: 'bid',
-    jobId: '2',
-    title: '6 bids on Electrical',
-    body: 'You have 6 new bids waiting for review',
-    time: '5m ago',
-    read: false,
-  },
-  {
-    id: 'n3',
-    type: 'tracking',
-    jobId: '1',
-    title: 'Pro is on the way 📍',
-    body: 'Omar K. is 15 minutes away',
-    time: '1h ago',
-    read: false,
-  },
-  {
-    id: 'n4',
-    type: 'confirmed',
-    jobId: 'b1',
-    title: 'Booking confirmed ✓',
-    body: 'Your Plumbing repair is confirmed for 3 PM',
-    time: '2h ago',
-    read: true,
-  },
-  {
-    id: 'n5',
-    type: 'message',
-    jobId: 'b3',
-    title: 'Message from Sara M.',
-    body: 'Job completed! Please rate your experience',
-    time: '3h ago',
-    read: true,
-  },
-];
+// Slice 3.1 stabilization removed the local INITIAL_NOTIFS seed. The
+// drawer + ProfileTab notifications page now read from
+// /v1/me/notifications via useNotifications(); unread state is
+// persisted server-side, so refresh / logout / login all preserve the
+// read flags. The previous seed produced the user-visible defect where
+// the unread count snapped back to 3 on every refresh.
+
+// API NotificationType (Prisma enum on the wire) → existing UI
+// NotifType. Centralised here so the icon/colour palette in
+// NotificationDrawer stays unchanged regardless of new server-side
+// types.
+function uiTypeForNotification(type: ContractNotificationType): AppNotification['type'] {
+  switch (type) {
+    case 'BID_RECEIVED':
+      return 'bid';
+    case 'BID_ACCEPTED':
+    case 'BOOKING_CREATED':
+    case 'BOOKING_COMPLETED':
+      return 'confirmed';
+    case 'BOOKING_CANCELLED':
+      return 'tracking';
+    case 'MESSAGE_RECEIVED':
+    case 'REVIEW_REQUESTED':
+      return 'message';
+    case 'SYSTEM':
+    default:
+      return 'promo';
+  }
+}
+
+// "2m ago" / "1h ago" — derived from createdAt so the drawer can show
+// human-readable freshness without the server shipping a pre-formatted
+// string.
+function formatRelativeNotificationTime(iso: string, lang: 'en' | 'ar'): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const diff = Date.now() - d.getTime();
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff < hour) {
+    const m = Math.max(1, Math.floor(diff / minute));
+    return lang === 'ar' ? `${m} د` : `${m}m ago`;
+  }
+  if (diff < day) {
+    const h = Math.floor(diff / hour);
+    return lang === 'ar' ? `${h} س` : `${h}h ago`;
+  }
+  const days = Math.floor(diff / day);
+  return lang === 'ar' ? `${days} ي` : `${days}d ago`;
+}
+
+// API row → existing AppNotification render shape. The drawer's
+// jobId path (used by handleNotifTap) is keyed off resourceId now so
+// taps route to the correct request / booking / conversation surface.
+function apiNotifToRender(row: ContractNotificationSummary, lang: 'en' | 'ar'): AppNotification {
+  return {
+    id: row.id,
+    type: uiTypeForNotification(row.type),
+    title: row.title,
+    body: row.body,
+    time: formatRelativeNotificationTime(row.createdAt, lang),
+    read: row.readAt !== null,
+    jobId: row.resourceId ?? undefined,
+  };
+}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface HomeScreenProps {
@@ -235,7 +265,20 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   // ── Core state ─────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
   const [micActive, setMicActive] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFS);
+
+  // Slice 3.1 stabilization: notifications are loaded from the API
+  // and read state is persisted server-side. The drawer receives a
+  // mapped AppNotification[] derived from NotificationSummary so the
+  // existing render shape (icon palette, badge, sections) stays
+  // unchanged.
+  const notificationsQuery = useNotifications();
+  const unreadCountQuery = useUnreadNotificationsCount();
+  const markReadMut = useMarkNotificationRead();
+  const markAllReadMut = useMarkAllNotificationsRead();
+  const notifications: AppNotification[] = useMemo(() => {
+    const items = notificationsQuery.data?.items ?? [];
+    return items.map((n) => apiNotifToRender(n, lang === 'ar' ? 'ar' : 'en'));
+  }, [notificationsQuery.data, lang]);
 
   // Live "my requests" feed. Drives the Active Leads carousel on the
   // home tab and the All Requests overlay. Empty array on first load
@@ -303,10 +346,27 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
     [conversationsQuery.data],
   );
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
-  const markAllRead = () => setNotifications((p) => p.map((n) => ({ ...n, read: true })));
-  const markRead = (id: string) =>
-    setNotifications((p) => p.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  // Unread count: prefer the API-served count (one query, faster
+  // refresh path) but fall back to deriving from the loaded list when
+  // the count query is still in flight or errored — never leaves the
+  // bell badge stuck on a stale local value.
+  const unreadCount = unreadCountQuery.data?.count ?? notifications.filter((n) => !n.read).length;
+
+  // markAllRead / markRead now hit the backend. The mutations
+  // invalidate the notifications root, which triggers list +
+  // unread-count refetch. We do NOT optimistic-update local state
+  // here because the previous local-only behaviour is exactly the
+  // bug we're fixing — the unread count would snap back on refresh
+  // because the server didn't know the user had marked anything
+  // read.
+  const markAllRead = () => {
+    if (markAllReadMut.isPending) return;
+    markAllReadMut.mutate();
+  };
+  const markRead = (id: string) => {
+    if (markReadMut.isPending) return;
+    markReadMut.mutate(id);
+  };
 
   // ── Tab skeleton loader ────────────────────────────────────────────────────
   // تم تصحيح الخطأ هنا بإزالة التعبير غير المستخدم وتنظيم الـ effect

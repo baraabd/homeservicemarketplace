@@ -91,6 +91,7 @@ model User {
   providerProfile    ProviderProfile?
   bookingsAsSeeker   Booking[]             @relation("seekerBookings")
   bookingEventsActed BookingEvent[]        @relation("bookingEventActor")
+  notifications      Notification[]        @relation("userNotifications")
   conversationsParticipating ConversationParticipant[] @relation("userConversations")
   messagesSent       Message[]             @relation("userMessagesSent")
 
@@ -645,6 +646,82 @@ enum BookingEventType {
   BOOKING_CANCELLED
   BOOKING_STATUS_CHANGED
   BOOKING_RESCHEDULED
+}
+
+// Per-user notification feed (Sprint 3, slice 3.1). Notifications are
+// fanned out from existing Sprint 2 marketplace transitions
+// (BidsService.accept, BookingsService.cancel) inside the same
+// $transaction as the underlying state change so the notification can
+// never disagree with the action that produced it.
+//
+// `resourceType` + `resourceId` together form a logical link to the
+// REQUEST / BID / BOOKING (and future CONVERSATION / REVIEW) the
+// notification refers to. The frontend uses them to route the user to
+// the correct detail surface when they tap the row.
+//
+// `deepLink` is a denormalised pre-built path so the renderer can
+// avoid re-deriving routes from (resourceType, resourceId) — useful
+// when a future slice introduces deep-links into surfaces that don't
+// match the canonical resource-detail URL.
+//
+// `metadata` is an optional Json blob the writer controls — keeps
+// auxiliary keys (e.g. acceptedBidId on a BOOKING_CREATED) out of
+// the title/body which must stay rendered as-is.
+//
+// `readAt` is null while unread; the mark-read endpoint sets it to
+// `now()` exactly once (idempotent — re-marking is a no-op via the
+// where filter `readAt: null`).
+//
+// Soft delete supported for a future "clear notifications" surface;
+// not exposed yet in slice 3.1.
+model Notification {
+  id           String                    @id @default(cuid())
+  userId       String
+  type         NotificationType
+  title        String
+  body         String
+  resourceType NotificationResourceType?
+  resourceId   String?
+  deepLink     String?
+  metadata     Json?
+  readAt       DateTime?
+  createdAt    DateTime                  @default(now())
+  deletedAt    DateTime?
+
+  user User @relation("userNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Dominant access patterns:
+  // - "list-my-notifications" filtered by read state (unread badge,
+  //   drawer's New section).
+  @@index([userId, readAt])
+  // - "list-my-notifications" ordered by createdAt for the drawer
+  //   rendering (newest first).
+  @@index([userId, createdAt])
+  // - reverse-lookup: which notifications point at this resource?
+  //   (used by future cleanup flows when a resource is hard-deleted).
+  @@index([resourceType, resourceId])
+  // - housekeeping for soft-deleted rows.
+  @@index([deletedAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  BID_RECEIVED
+  BID_ACCEPTED
+  BOOKING_CREATED
+  BOOKING_CANCELLED
+  BOOKING_COMPLETED
+  MESSAGE_RECEIVED
+  REVIEW_REQUESTED
+  SYSTEM
+}
+
+enum NotificationResourceType {
+  REQUEST
+  BID
+  BOOKING
+  CONVERSATION
+  REVIEW
 }
 
 // Audit rows are append-only. `metadata` is a JSON blob limited to an

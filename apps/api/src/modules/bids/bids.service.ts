@@ -9,6 +9,8 @@ import type {
 } from '@homeservicemarketplace/contracts';
 import {
   BookingEventType,
+  NotificationResourceType,
+  NotificationType,
   ServiceRequestEventType,
   ServiceRequestStatus,
 } from '@homeservicemarketplace/database';
@@ -25,6 +27,7 @@ import { ServiceRequestRepository } from '../../infrastructure/persistence/reque
 import { ServiceRequestEventRepository } from '../../infrastructure/persistence/requests/service-request-event.repository';
 import { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class BidsService {
@@ -34,6 +37,7 @@ export class BidsService {
     private readonly bookings: BookingRepository,
     private readonly events: ServiceRequestEventRepository,
     private readonly bookingEvents: BookingEventRepository,
+    private readonly notifications: NotificationsService,
     private readonly tx: TransactionRunner,
   ) {}
 
@@ -180,6 +184,42 @@ export class BidsService {
           bookingId: booking.id,
           actorUserId: seekerUserId,
           type: BookingEventType.BOOKING_CREATED,
+          metadata: { requestId, bidId, providerId: bid.providerId },
+        },
+        tx,
+      );
+
+      // 6c. Notification fan-out (slice 3.1). Two rows: one confirming
+      //     the bid acceptance (resource: BID), one announcing the new
+      //     booking (resource: BOOKING). Written inside the same
+      //     transaction so a notification can never exist without its
+      //     underlying state change. Body strings are intentionally
+      //     concise + provider-name-driven so the drawer renders
+      //     identical-looking copy regardless of locale; future i18n
+      //     work can swap to a server-side template indirection.
+      const providerName = bid.provider.displayName;
+      await this.notifications.createForUser(
+        {
+          userId: seekerUserId,
+          type: NotificationType.BID_ACCEPTED,
+          title: 'Bid accepted',
+          body: `You accepted ${providerName}'s bid.`,
+          resourceType: NotificationResourceType.BID,
+          resourceId: bidId,
+          deepLink: `/home/requests/${requestId}/bids/${bidId}`,
+          metadata: { requestId, bookingId: booking.id, providerId: bid.providerId },
+        },
+        tx,
+      );
+      await this.notifications.createForUser(
+        {
+          userId: seekerUserId,
+          type: NotificationType.BOOKING_CREATED,
+          title: 'Booking confirmed',
+          body: `${providerName} is booked for your request.`,
+          resourceType: NotificationResourceType.BOOKING,
+          resourceId: booking.id,
+          deepLink: `/home/bookings/${booking.id}`,
           metadata: { requestId, bidId, providerId: bid.providerId },
         },
         tx,

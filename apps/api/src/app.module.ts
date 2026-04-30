@@ -18,14 +18,16 @@ import { BidsModule } from './modules/bids/bids.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { IamModule } from './modules/iam/iam.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { ServicesModule } from './modules/services/services.module';
 
 // Infrastructure & data-foundation bootstrap. Seeker domain modules
 // are wired in incrementally — Sprint 1 shipped Services / Addresses /
-// Requests; Sprint 2 added BidsModule, accept-bid + booking
-// persistence, and BookingsModule. Sprint 3 slice 3.3 adds
-// ConversationsModule (chat foundation).
+// Requests; Sprint 2 added BidsModule (read), accept-bid + booking
+// persistence, and BookingsModule. Sprint 3 slice 3.1 adds
+// NotificationsModule (REST feed + internal createForUser fan-out
+// from BidsService.accept and BookingsService.cancel).
 @Module({
   imports: [
     ConfigModule,
@@ -44,6 +46,7 @@ import { ServicesModule } from './modules/services/services.module';
     RequestsModule,
     BidsModule,
     BookingsModule,
+    NotificationsModule,
     ConversationsModule,
   ],
   providers: [

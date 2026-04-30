@@ -48,4 +48,13 @@ export const seekerQueryKeys = {
     detail: (id: string) => ['seeker', 'conversations', 'detail', id] as const,
     messages: (id: string) => ['seeker', 'conversations', id, 'messages'] as const,
   },
+  notifications: {
+    // Root for all notification queries. mark-read / mark-all-read /
+    // delete mutations invalidate the root so list + unread count
+    // re-fetch in one call.
+    root: ['seeker', 'notifications'] as const,
+    list: (filter?: { unread?: boolean }) =>
+      ['seeker', 'notifications', 'list', filter ?? {}] as const,
+    unreadCount: () => ['seeker', 'notifications', 'unread-count'] as const,
+  },
 } as const;

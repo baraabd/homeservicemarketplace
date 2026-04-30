@@ -11,6 +11,7 @@ import type {
   BidWithProvider,
 } from '../../infrastructure/persistence/bids/bid.repository';
 import type { BookingEventRepository } from '../../infrastructure/persistence/bookings/booking-event.repository';
+import type { NotificationsService } from '../notifications/notifications.service';
 import type { BookingRepository } from '../../infrastructure/persistence/bookings/booking.repository';
 import type {
   ServiceRequestRepository,
@@ -101,6 +102,7 @@ interface Mocks {
   bookings: { create: jest.Mock; findByBidId: jest.Mock };
   events: { create: jest.Mock };
   bookingEvents: { create: jest.Mock };
+  notifications: { createForUser: jest.Mock };
 }
 
 // Deep-partial overrides so a test can replace a single repo method
@@ -150,6 +152,10 @@ function makeMocks(over: MocksOverride = {}): Mocks {
       create: jest.fn().mockResolvedValue({ id: 'bevt-1' }),
       ...(over.bookingEvents ?? {}),
     },
+    notifications: {
+      createForUser: jest.fn().mockResolvedValue({ id: 'notif-1' }),
+      ...(over.notifications ?? {}),
+    },
   };
 }
 
@@ -160,6 +166,7 @@ function makeService(m: Mocks) {
     m.bookings as unknown as BookingRepository,
     m.events as unknown as ServiceRequestEventRepository,
     m.bookingEvents as unknown as BookingEventRepository,
+    m.notifications as unknown as NotificationsService,
     makeTx(),
   );
 }
@@ -343,6 +350,32 @@ describe('BidsService', () => {
           actorUserId: 'user-1',
           type: 'BOOKING_CREATED',
           metadata: { requestId: 'req-1', bidId: 'bid-1', providerId: 'pp-1' },
+        }),
+        undefined,
+      );
+      // Notification fan-out (slice 3.1). Two rows: one for the bid
+      // acceptance, one for the booking creation. Both written inside
+      // the same tx so they can never exist without the action.
+      expect(m.notifications.createForUser).toHaveBeenCalledTimes(2);
+      expect(m.notifications.createForUser).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          userId: 'user-1',
+          type: 'BID_ACCEPTED',
+          resourceType: 'BID',
+          resourceId: 'bid-1',
+          deepLink: '/home/requests/req-1/bids/bid-1',
+        }),
+        undefined,
+      );
+      expect(m.notifications.createForUser).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          userId: 'user-1',
+          type: 'BOOKING_CREATED',
+          resourceType: 'BOOKING',
+          resourceId: 'bk-1',
+          deepLink: '/home/bookings/bk-1',
         }),
         undefined,
       );

@@ -9,6 +9,7 @@ import type {
 } from '@homeservicemarketplace/database';
 
 import type { BookingEventRepository } from '../../infrastructure/persistence/bookings/booking-event.repository';
+import type { NotificationsService } from '../notifications/notifications.service';
 import type {
   BookingRepository,
   BookingWithRelations,
@@ -141,6 +142,7 @@ interface Mocks {
     setStatusOwned: jest.Mock;
   };
   events: { create: jest.Mock; listForBooking: jest.Mock };
+  notifications: { createForUser: jest.Mock };
 }
 
 type MocksOverride = { [K in keyof Mocks]?: Partial<Mocks[K]> };
@@ -158,6 +160,10 @@ function makeMocks(over: MocksOverride = {}): Mocks {
       listForBooking: jest.fn().mockResolvedValue([]),
       ...(over.events ?? {}),
     },
+    notifications: {
+      createForUser: jest.fn().mockResolvedValue({ id: 'notif-1' }),
+      ...(over.notifications ?? {}),
+    },
   };
 }
 
@@ -165,6 +171,7 @@ function makeService(m: Mocks) {
   return new BookingsService(
     m.bookings as unknown as BookingRepository,
     m.events as unknown as BookingEventRepository,
+    m.notifications as unknown as NotificationsService,
     makeTx(),
   );
 }
@@ -317,10 +324,23 @@ describe('BookingsService', () => {
         }),
         undefined,
       );
+      // Notification fan-out (slice 3.1): a BOOKING_CANCELLED row is
+      // created inside the same transaction so the notification can
+      // never exist without the cancellation that produced it.
+      expect(m.notifications.createForUser).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-1',
+          type: 'BOOKING_CANCELLED',
+          resourceType: 'BOOKING',
+          resourceId: 'bk-1',
+          deepLink: '/home/bookings/bk-1',
+        }),
+        undefined,
+      );
       expect(out.status).toBe('CANCELLED');
     });
 
-    it('rejects with NOT_FOUND on a foreign bookingId (no event written)', async () => {
+    it('rejects with NOT_FOUND on a foreign bookingId (no event or notification written)', async () => {
       const m = makeMocks({
         bookings: {
           findOwned: jest.fn().mockResolvedValue(null),
@@ -332,6 +352,7 @@ describe('BookingsService', () => {
       });
       expect(m.bookings.setStatusOwned).not.toHaveBeenCalled();
       expect(m.events.create).not.toHaveBeenCalled();
+      expect(m.notifications.createForUser).not.toHaveBeenCalled();
     });
 
     it('rejects with CONFLICT on a CANCELLED booking (idempotent rejection)', async () => {

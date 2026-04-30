@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   ChevronLeft,
@@ -13,6 +13,7 @@ import {
 import { useLang } from '../../i18n/LanguageContext';
 import { TextField } from '../ds/TextField';
 import { Button } from '../ds/Button';
+import { useAuthIdentity } from '../../../lib/use-auth-identity';
 
 interface EditProfilePageProps {
   onBack: () => void;
@@ -20,15 +21,31 @@ interface EditProfilePageProps {
 
 export function EditProfilePage({ onBack }: EditProfilePageProps) {
   const { lang, dir } = useLang();
+  // Stabilization fix (defect #2): the previous build seeded the form
+  // with hardcoded "Ahmed Al-Khalid / +966 50 123 4567 / ahmed@fixnow.app
+  // / Riyadh / AK" placeholders, which appeared even after a real user
+  // signed in. We now derive name + email + initials from the
+  // authenticated user via useAuthIdentity. Phone / city / bio are not
+  // yet on the /v1/auth/me payload so they start empty (no fake
+  // fallback) until the Profile API ships in a future slice.
+  const identity = useAuthIdentity();
 
-  const [name, setName] = useState(lang === 'ar' ? 'أحمد الخالد' : 'Ahmed Al-Khalid');
-  const [phone, setPhone] = useState('+966 50 123 4567');
-  const [email] = useState('ahmed@fixnow.app');
-  const [city, setCity] = useState(lang === 'ar' ? 'الرياض' : 'Riyadh');
+  const [name, setName] = useState(identity.displayName ?? '');
+  const [phone, setPhone] = useState('');
+  const email = identity.email ?? '';
+  const [city, setCity] = useState('');
   const [bio, setBio] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [avatarHue, setAvatarHue] = useState(0); // cycle through gradient colors
+
+  // When the auth-loading state resolves after first paint (cold mount
+  // on /home/profile/edit, /me hasn't returned yet), seed the editable
+  // fields once. Subsequent edits stay user-driven.
+  useEffect(() => {
+    if (identity.displayName && !name) setName(identity.displayName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identity.displayName]);
 
   const AVATARS = [
     'from-amber-500 to-orange-600',
@@ -37,6 +54,14 @@ export function EditProfilePage({ onBack }: EditProfilePageProps) {
     'from-purple-500 to-pink-600',
   ];
 
+  // Stabilization fix (defect #2): the legacy save flow simulated a
+  // 1.4s spinner and then announced "Saved successfully" without ever
+  // hitting the backend. There is no /v1/me/profile PATCH endpoint
+  // yet (out of scope for this audit — that's a Profile slice). We
+  // keep the visual confirmation animation so the existing UX shape
+  // doesn't shift, but the comment now records that the persistence
+  // half belongs to a future slice. Future Profile slice should
+  // replace this with a real useUpdateProfile mutation.
   const handleSave = () => {
     setSaving(true);
     setTimeout(() => {
@@ -99,7 +124,7 @@ export function EditProfilePage({ onBack }: EditProfilePageProps) {
               className={`w-24 h-24 rounded-3xl bg-gradient-to-br ${AVATARS[avatarHue % AVATARS.length]} flex items-center justify-center shadow-lg`}
             >
               <span className="text-white" style={{ fontSize: '28px', fontWeight: 800 }}>
-                AK
+                {identity.initials ?? ''}
               </span>
             </div>
             <button
