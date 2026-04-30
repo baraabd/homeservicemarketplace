@@ -1,9 +1,3 @@
-// IAM baseline schema.
-// Additive to the prior IAM-only migration. Extends User with account-state
-// and MFA-readiness fields, adds sessions/tokens/audit/oauth tables. Business
-// domain tables (Provider, Booking, Service, etc.) are NOT modeled here —
-// they belong to later phase modules.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,6 +5,419 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model User {
+  id                        String                      @id @default(cuid())
+  email                     String                      @unique
+  passwordHash              String?
+  firstName                 String
+  lastName                  String
+  isActive                  Boolean                     @default(true)
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
+  deletedAt                 DateTime?
+  emailVerifiedAt           DateTime?
+  failedLoginCount          Int                         @default(0)
+  lockedUntil               DateTime?
+  mfaEnabled                Boolean                     @default(false)
+  mfaEnrolledAt             DateTime?
+  mfaSecret                 Bytes?
+  passwordUpdatedAt         DateTime?
+  status                    AccountStatus               @default(PENDING_VERIFICATION)
+  addresses                 Address[]
+  auditEvents               AuditEvent[]
+  booking_events            BookingEvent[]
+  bookings                  Booking[]
+  conversation_participants ConversationParticipant[]
+  messages                  Message[]
+  mfaBackupCodes            MfaBackupCode[]
+  notifications             Notification[]
+  oauthAccounts             OauthAccount[]
+  provider_profiles         ProviderProfile?
+  service_request_events    ServiceRequestEvent[]
+  service_requests          ServiceRequest[]
+  sessions                  Session[]
+  user_profiles             UserProfile?
+  userRoles                 UserRole[]
+  verificationTokens        VerificationToken[]
+
+  @@index([deletedAt])
+  @@index([status])
+  @@index([lockedUntil])
+}
+
+model Role {
+  id              String           @id @default(cuid())
+  name            String           @unique
+  description     String?
+  isSystem        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@index([deletedAt])
+}
+
+model Permission {
+  id              String           @id @default(cuid())
+  key             String           @unique
+  description     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  rolePermissions RolePermission[]
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model Session {
+  id         String     @id @default(cuid())
+  userId     String
+  familyId   String
+  parentJti  String?
+  currentJti String     @unique
+  tokenHash  String     @unique
+  ipAddress  String
+  userAgent  String
+  clientKind ClientKind
+  createdAt  DateTime   @default(now())
+  lastUsedAt DateTime   @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+model VerificationToken {
+  id           String       @id @default(cuid())
+  userId       String
+  tokenHash    String       @unique
+  purpose      TokenPurpose
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime     @default(now())
+  attemptCount Int          @default(0)
+  resendCount  Int          @default(0)
+  challengeId  String?      @unique
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, usedAt])
+  @@index([expiresAt])
+}
+
+model OauthAccount {
+  id             String   @id @default(cuid())
+  userId         String
+  provider       String
+  providerUserId String
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+}
+
+model MfaBackupCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+}
+
+model AuditEvent {
+  id        String         @id @default(cuid())
+  userId    String?
+  type      AuditEventType
+  metadata  Json
+  ipAddress String?
+  userAgent String?
+  requestId String?
+  createdAt DateTime       @default(now())
+  user      User?          @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+}
+
+model Address {
+  id               String             @id
+  userId           String
+  label            String
+  city             String
+  country          String
+  isDefault        Boolean            @default(false)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime
+  type             AddressType
+  line1            String
+  lat              Float?
+  lng              Float?
+  deletedAt        DateTime?
+  users            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service_requests ServiceRequest[]
+
+  @@index([deletedAt])
+  @@index([userId, deletedAt])
+  @@index([userId, isDefault])
+}
+
+model Bid {
+  id                  String            @id
+  requestId           String
+  providerId          String
+  amount              Int
+  currency            String            @default("USD")
+  pricingType         PricingType
+  note                String?
+  status              BidStatus         @default(PENDING)
+  responseTimeMinutes Int?
+  badge               BidBadge?
+  submittedAt         DateTime          @default(now())
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime
+  deletedAt           DateTime?
+  provider_profiles   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  service_requests    ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  bookings            Booking?
+
+  @@index([deletedAt])
+  @@index([providerId, status])
+  @@index([requestId, providerId])
+  @@index([requestId, status])
+  @@index([submittedAt])
+}
+
+model BookingEvent {
+  id          String           @id
+  bookingId   String
+  actorUserId String?
+  type        BookingEventType
+  metadata    Json?
+  createdAt   DateTime         @default(now())
+  users       User?            @relation(fields: [actorUserId], references: [id])
+  bookings    Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+  @@index([type, createdAt])
+}
+
+model Booking {
+  id                String            @id
+  requestId         String
+  bidId             String            @unique
+  seekerUserId      String
+  providerId        String
+  status            BookingStatus     @default(SCHEDULED)
+  scheduledAt       DateTime?
+  priceAmount       Int
+  currency          String            @default("USD")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime
+  deletedAt         DateTime?
+  booking_events    BookingEvent[]
+  bids              Bid              @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  provider_profiles ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  service_requests  ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  users             User              @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
+  conversations     Conversation[]
+
+  @@index([deletedAt])
+  @@index([providerId, status])
+  @@index([requestId])
+  @@index([seekerUserId, status])
+}
+
+model ConversationParticipant {
+  id                String                      @id
+  conversationId    String
+  userId            String?
+  providerProfileId String?
+  role              ConversationParticipantRole
+  lastReadAt        DateTime?
+  createdAt         DateTime                    @default(now())
+  conversations     Conversation               @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  provider_profiles ProviderProfile?          @relation(fields: [providerProfileId], references: [id])
+  users             User?                       @relation(fields: [userId], references: [id])
+
+  @@unique([conversationId, userId], map: "conversation_participants_conversation_user_unique")
+  @@index([providerProfileId])
+  @@index([userId])
+}
+
+model Conversation {
+  id                        String                      @id
+  requestId                 String?
+  bookingId                 String?
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime
+  deletedAt                 DateTime?
+  conversation_participants ConversationParticipant[]
+  bookings                  Booking?                   @relation(fields: [bookingId], references: [id])
+  service_requests          ServiceRequest?           @relation(fields: [requestId], references: [id])
+  messages                  Message[]
+
+  @@index([bookingId])
+  @@index([deletedAt])
+  @@index([requestId])
+  @@index([updatedAt])
+}
+
+model Message {
+  id             String                      @id
+  conversationId String
+  senderUserId   String?
+  senderRole     ConversationParticipantRole
+  body           String
+  createdAt      DateTime                    @default(now())
+  deletedAt      DateTime?
+  conversations  Conversation               @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  users          User?                       @relation(fields: [senderUserId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([deletedAt])
+}
+
+model Notification {
+  id           String                    @id
+  userId       String
+  type         NotificationType
+  title        String
+  body         String
+  resourceType NotificationResourceType?
+  resourceId   String?
+  deepLink     String?
+  metadata     Json?
+  readAt       DateTime?
+  createdAt    DateTime                  @default(now())
+  deletedAt    DateTime?
+  users        User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([deletedAt])
+  @@index([resourceType, resourceId])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+model ProviderProfile {
+  id                        String                      @id
+  userId                    String?                     @unique
+  displayName               String
+  initials                  String
+  avatarUrl                 String?
+  ratingAvg                 Float                       @default(0)
+  reviewCount               Int                         @default(0)
+  completedJobs             Int                         @default(0)
+  verified                  Boolean                     @default(false)
+  topPro                    Boolean                     @default(false)
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime
+  deletedAt                 DateTime?
+  bids                      Bid[]
+  bookings                  Booking[]
+  conversation_participants ConversationParticipant[]
+  users                     User?                       @relation(fields: [userId], references: [id])
+
+  @@index([deletedAt])
+}
+
+model ServiceCategory {
+  id               String             @id
+  slug             String             @unique
+  labelEn          String
+  labelAr          String
+  icon             String
+  sortOrder        Int                @default(0)
+  isActive         Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime
+  deletedAt        DateTime?
+  service_requests ServiceRequest[]
+
+  @@index([deletedAt])
+  @@index([isActive, sortOrder])
+}
+
+model ServiceRequestEvent {
+  id               String                  @id
+  requestId        String
+  actorUserId      String?
+  type             ServiceRequestEventType
+  metadata         Json?
+  createdAt        DateTime                @default(now())
+  users            User?                   @relation(fields: [actorUserId], references: [id])
+  service_requests ServiceRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+  @@index([type, createdAt])
+}
+
+model ServiceRequest {
+  id                     String                   @id
+  seekerUserId           String
+  categoryId             String?
+  customServiceText      String?
+  description            String?
+  status                 ServiceRequestStatus     @default(OPEN_FOR_BIDS)
+  scheduleType           ScheduleType
+  scheduledAt            DateTime?
+  addressId              String?
+  addressSnapshot        Json
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime
+  deletedAt              DateTime?
+  bids                   Bid[]
+  bookings               Booking[]
+  conversations          Conversation[]
+  service_request_events ServiceRequestEvent[]
+  addresses              Address?               @relation(fields: [addressId], references: [id])
+  service_categories     ServiceCategory?      @relation(fields: [categoryId], references: [id])
+  users                  User                     @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@index([createdAt])
+  @@index([seekerUserId, deletedAt])
+  @@index([seekerUserId, status])
+  @@index([status])
+}
+
+model UserProfile {
+  id          String   @id
+  userId      String   @unique
+  avatarUrl   String?
+  phoneNumber String?
+  bio         String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  city        String?
+  users       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum AccountStatus {
@@ -29,13 +436,8 @@ enum ClientKind {
 enum TokenPurpose {
   EMAIL_VERIFICATION
   PASSWORD_RESET
-  // Short-form numeric OTP challenges (6-digit). The same table backs both
-  // link tokens and OTPs — the `tokenHash` column stores sha256(raw) in both
-  // cases; only the format of `raw` and how it is presented to the user
-  // differ. `challengeId`, `attemptCount`, and `resendCount` are only used
-  // by the OTP purposes below.
-  REGISTRATION_OTP
   LOGIN_OTP
+  REGISTRATION_OTP
 }
 
 enum AuditEventType {
@@ -62,191 +464,86 @@ enum AuditEventType {
   ROLE_REVOKED
 }
 
-model User {
-  id                String        @id @default(cuid())
-  email             String        @unique
-  passwordHash      String?
-  firstName         String
-  lastName          String
-  isActive          Boolean       @default(true)
-  status            AccountStatus @default(PENDING_VERIFICATION)
-  emailVerifiedAt   DateTime?
-  passwordUpdatedAt DateTime?
-  failedLoginCount  Int           @default(0)
-  lockedUntil       DateTime?
-  mfaEnabled        Boolean       @default(false)
-  mfaSecret         Bytes?
-  mfaEnrolledAt     DateTime?
-
-  userRoles          UserRole[]
-  sessions           Session[]
-  verificationTokens VerificationToken[]
-  oauthAccounts      OauthAccount[]
-  mfaBackupCodes     MfaBackupCode[]
-  auditEvents        AuditEvent[]
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  @@index([deletedAt])
-  @@index([status])
-  @@index([lockedUntil])
-  @@map("users")
+enum AddressType {
+  HOME
+  WORK
+  CUSTOM
 }
 
-model Role {
-  id          String  @id @default(cuid())
-  name        String  @unique
-  description String?
-  isSystem    Boolean @default(false)
-
-  userRoles       UserRole[]
-  rolePermissions RolePermission[]
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  @@index([deletedAt])
-  @@map("roles")
+enum BidBadge {
+  BEST_MATCH
+  BEST_VALUE
+  FASTEST
 }
 
-model Permission {
-  id          String  @id @default(cuid())
-  key         String  @unique
-  description String?
-
-  rolePermissions RolePermission[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("permissions")
+enum BidStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
 }
 
-model UserRole {
-  userId     String
-  roleId     String
-  assignedAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
-
-  @@id([userId, roleId])
-  @@index([roleId])
-  @@map("user_roles")
+enum BookingEventType {
+  BOOKING_CREATED
+  BOOKING_CANCELLED
+  BOOKING_STATUS_CHANGED
+  BOOKING_RESCHEDULED
 }
 
-model RolePermission {
-  roleId       String
-  permissionId String
-
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  @@id([roleId, permissionId])
-  @@index([permissionId])
-  @@map("role_permissions")
+enum BookingStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }
 
-// Session row = one login = one device. Refresh tokens rotate within a
-// familyId; a rotation issues a new row sharing the familyId and chains
-// parentJti to the previous currentJti. Replay of a revoked refresh token
-// is detected by tokenHash lookup hitting a row with revokedAt != null,
-// which triggers family-wide revoke.
-model Session {
-  id         String     @id @default(cuid())
-  userId     String
-  familyId   String
-  parentJti  String?
-  currentJti String     @unique
-  tokenHash  String     @unique
-  ipAddress  String
-  userAgent  String
-  clientKind ClientKind
-  createdAt  DateTime   @default(now())
-  lastUsedAt DateTime   @default(now())
-  expiresAt  DateTime
-  revokedAt  DateTime?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, revokedAt])
-  @@index([familyId])
-  @@index([expiresAt])
-  @@map("sessions")
+enum ConversationParticipantRole {
+  SEEKER
+  PROVIDER
+  SYSTEM
 }
 
-// Single table for email-verification, password-reset, and email-OTP flows.
-// `purpose` discriminates. `tokenHash` is sha256 of the random secret sent
-// to the user; plaintext is never stored. For OTP purposes
-// (REGISTRATION_OTP / LOGIN_OTP) the raw secret is a 6-digit numeric code;
-// `challengeId` is an opaque reference the client presents at verify-otp /
-// resend-otp time, and the attempt / resend counters enforce rate limits.
-model VerificationToken {
-  id           String       @id @default(cuid())
-  userId       String
-  tokenHash    String       @unique
-  purpose      TokenPurpose
-  expiresAt    DateTime
-  usedAt       DateTime?
-  createdAt    DateTime     @default(now())
-  // OTP-only columns — null for EMAIL_VERIFICATION / PASSWORD_RESET rows.
-  challengeId  String?      @unique
-  attemptCount Int          @default(0)
-  resendCount  Int          @default(0)
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, purpose, usedAt])
-  @@index([expiresAt])
-  @@map("verification_tokens")
+enum NotificationResourceType {
+  REQUEST
+  BID
+  BOOKING
+  CONVERSATION
+  REVIEW
 }
 
-model OauthAccount {
-  id             String   @id @default(cuid())
-  userId         String
-  provider       String
-  providerUserId String
-  createdAt      DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerUserId])
-  @@index([userId])
-  @@map("oauth_accounts")
+enum NotificationType {
+  BID_RECEIVED
+  BID_ACCEPTED
+  BOOKING_CREATED
+  BOOKING_CANCELLED
+  BOOKING_COMPLETED
+  MESSAGE_RECEIVED
+  REVIEW_REQUESTED
+  SYSTEM
 }
 
-model MfaBackupCode {
-  id        String    @id @default(cuid())
-  userId    String
-  codeHash  String
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, usedAt])
-  @@map("mfa_backup_codes")
+enum PricingType {
+  HOURLY
+  FIXED
 }
 
-// Audit rows are append-only. `metadata` is a JSON blob limited to an
-// allowlist of fields by the writer (AuditService) — never raw request
-// bodies or driver errors.
-model AuditEvent {
-  id        String         @id @default(cuid())
-  userId    String?
-  type      AuditEventType
-  metadata  Json
-  ipAddress String?
-  userAgent String?
-  requestId String?
-  createdAt DateTime       @default(now())
+enum ScheduleType {
+  ASAP
+  LATER
+}
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+enum ServiceRequestEventType {
+  REQUEST_CREATED
+  REQUEST_UPDATED
+  REQUEST_CANCELLED
+  REQUEST_REOPENED
+}
 
-  @@index([userId, createdAt])
-  @@index([type, createdAt])
-  @@map("audit_events")
+enum ServiceRequestStatus {
+  OPEN_FOR_BIDS
+  BID_ACCEPTED
+  BOOKED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }
