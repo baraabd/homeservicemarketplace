@@ -39,4 +39,13 @@ export const seekerQueryKeys = {
     detail: (id: string) => ['seeker', 'bookings', 'detail', id] as const,
     timeline: (id: string) => ['seeker', 'bookings', 'timeline', id] as const,
   },
+  conversations: {
+    // Root for all chat queries. Send-message and mark-read mutations
+    // invalidate the root so the conversations list re-orders / updates
+    // unread counts and the messages list refetches.
+    root: ['seeker', 'conversations'] as const,
+    list: () => ['seeker', 'conversations', 'list'] as const,
+    detail: (id: string) => ['seeker', 'conversations', 'detail', id] as const,
+    messages: (id: string) => ['seeker', 'conversations', id, 'messages'] as const,
+  },
 } as const;

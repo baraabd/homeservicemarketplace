@@ -91,6 +91,8 @@ model User {
   providerProfile    ProviderProfile?
   bookingsAsSeeker   Booking[]             @relation("seekerBookings")
   bookingEventsActed BookingEvent[]        @relation("bookingEventActor")
+  conversationsParticipating ConversationParticipant[] @relation("userConversations")
+  messagesSent       Message[]             @relation("userMessagesSent")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -388,6 +390,7 @@ model ServiceRequest {
   events   ServiceRequestEvent[]
   bids     Bid[]
   bookings Booking[]
+  conversations Conversation[]
 
   // Dominant access pattern: list-my-requests filtered by status.
   @@index([seekerUserId, status])
@@ -473,6 +476,7 @@ model ProviderProfile {
   user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   bids     Bid[]
   bookings Booking[]
+  conversationsParticipating ConversationParticipant[] @relation("providerConversations")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -582,6 +586,7 @@ model Booking {
   seeker   User            @relation("seekerBookings", fields: [seekerUserId], references: [id], onDelete: Cascade)
   provider ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
   events   BookingEvent[]
+  conversations Conversation[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -660,4 +665,105 @@ model AuditEvent {
   @@index([userId, createdAt])
   @@index([type, createdAt])
   @@map("audit_events")
+}
+
+// Chat conversation (Sprint 3, slice 3.3). Backed by Postgres (text-only).
+// One conversation MAY be linked to a request (pre-booking inquiry —
+// future surface) and/or a booking. Both link fields are nullable
+// because future support / system conversations don't have either.
+//
+// `updatedAt` is touched on every new message so the conversations
+// list can render newest-active-first without joining through Message.
+model Conversation {
+  id        String  @id @default(cuid())
+  requestId String?
+  bookingId String?
+
+  request  ServiceRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  booking  Booking?        @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Dominant access patterns:
+  // - "list-my-conversations" — joined through participants.userId.
+  //   The active-newest-first order uses updatedAt; the index above
+  //   (per-conversation lookup) is satisfied by the primary key.
+  @@index([bookingId])
+  @@index([requestId])
+  @@index([updatedAt])
+  @@index([deletedAt])
+  @@map("conversations")
+}
+
+// One row per (conversation, party). The party is either a real User
+// (always the case for the Seeker) OR a ProviderProfile that hasn't
+// been linked to a User yet (the Provider app is out of scope; future
+// Provider sign-up will fill in `userId`).
+//
+// At most one of `userId` / `providerProfileId` is set per row; the
+// service layer enforces this. `role` distinguishes SEEKER / PROVIDER /
+// SYSTEM so the renderer can style sender bubbles correctly.
+//
+// `lastReadAt` drives the unread badge on the conversations list.
+model ConversationParticipant {
+  id                String                       @id @default(cuid())
+  conversationId    String
+  userId            String?
+  providerProfileId String?
+  role              ConversationParticipantRole
+  lastReadAt        DateTime?
+  createdAt         DateTime                     @default(now())
+
+  conversation Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User?            @relation("userConversations", fields: [userId], references: [id], onDelete: SetNull)
+  provider     ProviderProfile? @relation("providerConversations", fields: [providerProfileId], references: [id], onDelete: SetNull)
+
+  // Dominant access patterns:
+  // - "is this user a participant of this conversation?" — primary
+  //   ownership gate.
+  @@unique([conversationId, userId], name: "conversation_user_unique")
+  // - "list conversations for this user" — joined from User to
+  //   participant rows.
+  @@index([userId])
+  // - same for the provider profile slot.
+  @@index([providerProfileId])
+  @@map("conversation_participants")
+}
+
+enum ConversationParticipantRole {
+  SEEKER
+  PROVIDER
+  SYSTEM
+}
+
+// Text-only chat message (Sprint 3, slice 3.3). `senderUserId` is
+// nullable for SYSTEM messages and for Provider messages before the
+// Provider app exists. `senderRole` is denormalised so the renderer
+// can style bubbles without joining through ConversationParticipant.
+//
+// `body` is text-only — attachments are explicitly out of scope.
+//
+// Soft delete supported for a future "delete message" surface.
+model Message {
+  id             String                       @id @default(cuid())
+  conversationId String
+  senderUserId   String?
+  senderRole     ConversationParticipantRole
+  body           String
+  createdAt      DateTime                     @default(now())
+  deletedAt      DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User?        @relation("userMessagesSent", fields: [senderUserId], references: [id], onDelete: SetNull)
+
+  // Dominant access pattern: chronological message render.
+  @@index([conversationId, createdAt])
+  // Housekeeping for soft-deleted rows.
+  @@index([deletedAt])
+  @@map("messages")
 }

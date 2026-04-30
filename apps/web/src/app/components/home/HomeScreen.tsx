@@ -36,6 +36,7 @@ import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { useServiceCategories } from '../../../lib/use-service-categories';
 import { useRequests } from '../../hooks/seeker/useRequests';
 import { useBookings } from '../../hooks/seeker/useBookings';
+import { useConversations } from '../../hooks/seeker/useChat';
 import {
   formatRelativeTime,
   mapServiceCategorySlug,
@@ -277,13 +278,30 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   // a synthesized JobData blob here.
   const [jobDetail, setJobDetail] = useState<JobDetailSource | null>(null);
   const [showAllLeads, setShowAllLeads] = useState(false);
+  // Slice 3.3: chatContact carries a conversationId so ChatScreen can
+  // load the persisted message stream via React Query. The visual
+  // contact fields (name / initials / colours) drive the existing
+  // header render and are derived from the conversation's
+  // otherParticipant or — when entering chat from a booking — from
+  // the booking's provider summary.
   const [chatContact, setChatContact] = useState<null | {
+    conversationId: string;
     name: string;
     initials: string;
     bg: string;
     textColor: string;
     status: string;
   }>(null);
+
+  // Slice 3.3: live conversations feed. Drives the messages tab list
+  // and the notification-tap fallback when a 'message' notification
+  // is opened. Empty array on first load / 401 / network error so
+  // every render path treats `conversations` as possibly empty.
+  const conversationsQuery = useConversations();
+  const conversations = useMemo(
+    () => conversationsQuery.data?.items ?? [],
+    [conversationsQuery.data],
+  );
 
   const unreadCount = notifications.filter((n) => !n.read).length;
   const markAllRead = () => setNotifications((p) => p.map((n) => ({ ...n, read: true })));
@@ -333,15 +351,23 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
           if (bk) setJobDetail({ kind: 'booking', id: bk.id });
         }
       } else if (n.type === 'message') {
-        const bk = bookings.find((b) => b.id === n.jobId);
-        if (bk?.proInitials)
+        // Slice 3.3: prefer routing by conversation id when the
+        // notification carries one (future-shape: notifications keyed
+        // to a conversation). Otherwise look up an existing
+        // conversation by booking id from the loaded list. We do NOT
+        // create a conversation from a notification tap — that's an
+        // explicit user action initiated from a booking surface.
+        const conv = conversations.find((c) => c.bookingId === n.jobId);
+        if (conv) {
           setChatContact({
-            name: lang === 'ar' ? bk.proAr : bk.proEn,
-            initials: bk.proInitials,
-            bg: 'bg-green-100',
-            textColor: 'text-green-700',
+            conversationId: conv.id,
+            name: conv.otherParticipant.displayName,
+            initials: conv.otherParticipant.initials,
+            bg: 'bg-amber-100',
+            textColor: 'text-amber-700',
             status: 'Online',
           });
+        }
       }
     }, 200);
   };
@@ -423,47 +449,10 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
     { id: 'profile', labelKey: 'profile', Icon: User, badge: 0 },
   ];
 
-  const MESSAGES_LIST = [
-    {
-      id: '1',
-      nameEn: 'Omar K.',
-      nameAr: 'عمر خ.',
-      initials: 'OK',
-      bg: 'bg-amber-100',
-      textColor: 'text-amber-700',
-      msgEn: "I'm on my way, ETA 15 min!",
-      msgAr: 'أنا في الطريق، الوصول خلال 15 دقيقة!',
-      time: '2m',
-      unread: 2,
-      status: 'Online',
-    },
-    {
-      id: '2',
-      nameEn: 'Sara M.',
-      nameAr: 'سارة م.',
-      initials: 'SM',
-      bg: 'bg-green-100',
-      textColor: 'text-green-700',
-      msgEn: 'Job completed! Please leave a review.',
-      msgAr: 'اكتمل العمل! يرجى ترك تقييم.',
-      time: '1h',
-      unread: 0,
-      status: '1h ago',
-    },
-    {
-      id: '3',
-      nameEn: 'FixNow Support',
-      nameAr: 'دعم فيكس ناو',
-      initials: 'FN',
-      bg: 'bg-amber-500',
-      textColor: 'text-white',
-      msgEn: 'Your invoice is ready.',
-      msgAr: 'فاتورتك جاهزة للعرض.',
-      time: '2h',
-      unread: 1,
-      status: 'System',
-    },
-  ];
+  // Slice 3.3 removed the local MESSAGES_LIST seed (Omar K. / Sara M.
+  // / FixNow Support). The messages tab now reads from
+  // /v1/me/conversations via useConversations(); see the rendering
+  // below in the 'messages' tab branch.
 
   // ─── Tab content renderer ───────────────────────────────────────────────────
   const renderTab = () => {
@@ -910,54 +899,115 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                 style={{ fontSize: '13px' }}
               />
             </div>
-            {MESSAGES_LIST.map((m) => (
-              <motion.button
-                key={m.id}
-                whileTap={{ scale: 0.98 }}
-                onClick={() =>
-                  setChatContact({
-                    name: lang === 'ar' ? m.nameAr : m.nameEn,
-                    initials: m.initials,
-                    bg: m.bg,
-                    textColor: m.textColor,
-                    status: m.status,
-                  })
-                }
-                className="w-full flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 mb-2 cursor-pointer transition-all text-start"
+            {/* Slice 3.3: Conversations are loaded from /v1/me/conversations.
+                The slice-2 MESSAGES_LIST seed (Omar K. / Sara M. / FixNow
+                Support) was removed entirely from the production path.
+                Loading / empty / error states use the existing slate
+                copy idiom. */}
+            {conversationsQuery.isLoading && !conversationsQuery.data ? (
+              <div
+                className="flex flex-col items-center justify-center py-16 gap-3"
+                role="status"
+                aria-live="polite"
               >
-                <div
-                  className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${m.bg}`}
+                <p className="text-slate-500" style={{ fontSize: '13px' }}>
+                  {lang === 'ar' ? 'جاري تحميل المحادثات...' : 'Loading conversations...'}
+                </p>
+              </div>
+            ) : conversationsQuery.isError && !conversationsQuery.data ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3" role="alert">
+                <p
+                  className="text-slate-700 dark:text-slate-200 text-center"
+                  style={{ fontSize: '14px', fontWeight: 600 }}
                 >
-                  <span className={m.textColor} style={{ fontSize: '12px', fontWeight: 800 }}>
-                    {m.initials}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p
-                    className="text-slate-900 dark:text-white"
-                    style={{ fontSize: '14px', fontWeight: 700 }}
+                  {lang === 'ar'
+                    ? 'تعذر تحميل المحادثات. حاول مرة أخرى.'
+                    : "We couldn't load conversations. Please try again."}
+                </p>
+                <button
+                  onClick={() => conversationsQuery.refetch()}
+                  className="px-5 py-2.5 rounded-2xl bg-amber-500 text-white active:scale-95 transition-all shadow-sm shadow-amber-200"
+                  style={{ fontSize: '13px', fontWeight: 700 }}
+                >
+                  {lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                </button>
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <p
+                  className="text-slate-700 dark:text-slate-200 text-center"
+                  style={{ fontSize: '14px', fontWeight: 600 }}
+                >
+                  {lang === 'ar' ? 'لا توجد محادثات بعد' : 'No conversations yet'}
+                </p>
+                <p className="text-slate-400 text-center" style={{ fontSize: '12px' }}>
+                  {lang === 'ar'
+                    ? 'ستظهر محادثاتك هنا فور بدء حجوزات.'
+                    : 'Your conversations will appear here once you have bookings.'}
+                </p>
+              </div>
+            ) : (
+              conversations.map((c) => {
+                const lastAt = c.lastMessageAt ? new Date(c.lastMessageAt) : null;
+                const timeStr = lastAt
+                  ? lastAt.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : '';
+                return (
+                  <motion.button
+                    key={c.id}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() =>
+                      setChatContact({
+                        conversationId: c.id,
+                        name: c.otherParticipant.displayName,
+                        initials: c.otherParticipant.initials,
+                        bg: 'bg-amber-100',
+                        textColor: 'text-amber-700',
+                        status: 'Online',
+                      })
+                    }
+                    className="w-full flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 mb-2 cursor-pointer transition-all text-start"
                   >
-                    {lang === 'ar' ? m.nameAr : m.nameEn}
-                  </p>
-                  <p className="text-slate-400 truncate" style={{ fontSize: '12px' }}>
-                    {lang === 'ar' ? m.msgAr : m.msgEn}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                  <span className="text-slate-400" style={{ fontSize: '10px' }}>
-                    {m.time}
-                  </span>
-                  {m.unread > 0 && (
-                    <span
-                      className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center"
-                      style={{ fontSize: '10px', fontWeight: 700 }}
-                    >
-                      {m.unread}
-                    </span>
-                  )}
-                </div>
-              </motion.button>
-            ))}
+                    <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 bg-amber-100">
+                      <span
+                        className="text-amber-700"
+                        style={{ fontSize: '12px', fontWeight: 800 }}
+                      >
+                        {c.otherParticipant.initials}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-slate-900 dark:text-white"
+                        style={{ fontSize: '14px', fontWeight: 700 }}
+                      >
+                        {c.otherParticipant.displayName}
+                      </p>
+                      <p className="text-slate-400 truncate" style={{ fontSize: '12px' }}>
+                        {c.lastMessageBody ??
+                          (lang === 'ar' ? 'لا توجد رسائل بعد' : 'No messages yet')}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                      <span className="text-slate-400" style={{ fontSize: '10px' }}>
+                        {timeStr}
+                      </span>
+                      {c.unreadCount > 0 && (
+                        <span
+                          className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center"
+                          style={{ fontSize: '10px', fontWeight: 700 }}
+                        >
+                          {c.unreadCount}
+                        </span>
+                      )}
+                    </div>
+                  </motion.button>
+                );
+              })
+            )}
           </motion.div>
         );
 
@@ -1111,9 +1161,16 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
             source={jobDetail}
             isVisible={!!jobDetail}
             onBack={() => setJobDetail(null)}
-            onOpenChat={(contact) => {
-              setJobDetail(null);
-              setChatContact(contact);
+            onOpenChat={(_contact) => {
+              // Slice 2.4 made JobDetailView's Message button a
+              // disabled placeholder — onOpenChat is never invoked
+              // from there. Slice 3.3 routes chat openings through
+              // the messages tab + notification taps, both of which
+              // resolve a real conversationId. If a future surface
+              // calls this from a booking, it should call
+              // useGetOrCreateConversation first and dispatch the
+              // resulting conversationId here.
+              void _contact;
             }}
           />
         )}
@@ -1121,6 +1178,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
         {/* Chat Screen */}
         {chatContact && (
           <ChatScreen
+            conversationId={chatContact.conversationId}
             contact={chatContact}
             onBack={() => setChatContact(null)}
             isVisible={!!chatContact}

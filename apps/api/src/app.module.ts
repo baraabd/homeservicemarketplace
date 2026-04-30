@@ -16,15 +16,16 @@ import { PersistenceModule } from './infrastructure/persistence/persistence.modu
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { BidsModule } from './modules/bids/bids.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
+import { ConversationsModule } from './modules/conversations/conversations.module';
 import { IamModule } from './modules/iam/iam.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { ServicesModule } from './modules/services/services.module';
 
 // Infrastructure & data-foundation bootstrap. Seeker domain modules
 // are wired in incrementally — Sprint 1 shipped Services / Addresses /
-// Requests; Sprint 2 slice 2.1 added BidsModule (read-only bid feed),
-// slice 2.2 added accept-bid + booking persistence, and slice 2.3 adds
-// BookingsModule (Seeker-facing list / detail / timeline / cancel).
+// Requests; Sprint 2 added BidsModule, accept-bid + booking
+// persistence, and BookingsModule. Sprint 3 slice 3.3 adds
+// ConversationsModule (chat foundation).
 @Module({
   imports: [
     ConfigModule,
@@ -43,6 +44,7 @@ import { ServicesModule } from './modules/services/services.module';
     RequestsModule,
     BidsModule,
     BookingsModule,
+    ConversationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

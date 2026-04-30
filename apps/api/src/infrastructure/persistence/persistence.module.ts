@@ -5,6 +5,9 @@ import { BidRepository } from './bids/bid.repository';
 import { ProviderProfileRepository } from './bids/provider-profile.repository';
 import { BookingEventRepository } from './bookings/booking-event.repository';
 import { BookingRepository } from './bookings/booking.repository';
+import { ConversationRepository } from './conversations/conversation.repository';
+import { ConversationParticipantRepository } from './conversations/conversation-participant.repository';
+import { MessageRepository } from './conversations/message.repository';
 import { AuditEventRepository } from './iam/audit-event.repository';
 import { PermissionRepository } from './iam/permission.repository';
 import { RoleRepository } from './iam/role.repository';
@@ -32,6 +35,9 @@ import { ServiceCategoryRepository } from './services/service-category.repositor
     BidRepository,
     BookingRepository,
     BookingEventRepository,
+    ConversationRepository,
+    ConversationParticipantRepository,
+    MessageRepository,
   ],
   exports: [
     UserRepository,
@@ -48,6 +54,9 @@ import { ServiceCategoryRepository } from './services/service-category.repositor
     BidRepository,
     BookingRepository,
     BookingEventRepository,
+    ConversationRepository,
+    ConversationParticipantRepository,
+    MessageRepository,
   ],
 })
 export class PersistenceModule {}
