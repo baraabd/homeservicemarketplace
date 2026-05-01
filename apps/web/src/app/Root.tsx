@@ -9,7 +9,11 @@ import { EcosystemProvider } from './context/EcosystemContext';
 // ─── Shared outlet-context type ───────────────────────────────────────────────
 export interface RootContext {
   isOffline: boolean;
-  openWizard: (service: string) => void;
+  // `categoryId` is the backend ServiceCategory.id when the wizard is
+  // opened from a real catalog tile; null when opened from the
+  // free-form CTAs (search bar, "Post a new job" etc.) so the
+  // resulting request is created with customServiceText.
+  openWizard: (service: string, categoryId?: string | null) => void;
   toggleOffline: () => void;
 }
 
@@ -25,6 +29,7 @@ function RootInner() {
   const [offlineSnack, setOfflineSnack] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [selectedSvc, setSelectedSvc] = useState('General');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
 
   const location = useLocation();
   const navigation = useNavigation();
@@ -46,8 +51,9 @@ function RootInner() {
     };
   }, []);
 
-  const openWizard = (service: string) => {
+  const openWizard = (service: string, categoryId: string | null = null) => {
     setSelectedSvc(service);
+    setSelectedCategoryId(categoryId);
     setWizardOpen(true);
   };
   const toggleOffline = () => {
@@ -109,6 +115,7 @@ function RootInner() {
           {isHome && (
             <JobWizardModal
               service={selectedSvc}
+              categoryId={selectedCategoryId}
               isOpen={wizardOpen}
               onClose={() => setWizardOpen(false)}
               isOffline={isOffline}

@@ -15,10 +15,14 @@ function makeFakeTx() {
   const rolesByName = new Map<string, { id: string; name: string }>();
   const permsByKey = new Map<string, { id: string; key: string }>();
   const rolePermPairs = new Set<string>();
+  const serviceCategoriesBySlug = new Map<string, { id: string; slug: string }>();
+  const providerProfilesById = new Map<string, { id: string; displayName: string }>();
 
   const roleCalls: UpsertCall[] = [];
   const permCalls: UpsertCall[] = [];
   const rolePermCalls: UpsertCall[] = [];
+  const serviceCategoryCalls: UpsertCall[] = [];
+  const providerProfileCalls: UpsertCall[] = [];
 
   let seq = 0;
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
@@ -56,11 +60,43 @@ function makeFakeTx() {
         return {};
       }),
     },
+    serviceCategory: {
+      upsert: jest.fn(async (args: UpsertCall) => {
+        serviceCategoryCalls.push(args);
+        const slug = (args.where as { slug: string }).slug;
+        let row = serviceCategoriesBySlug.get(slug);
+        if (!row) {
+          row = { id: nextId('sc'), slug };
+          serviceCategoriesBySlug.set(slug, row);
+        }
+        return row;
+      }),
+    },
+    providerProfile: {
+      upsert: jest.fn(async (args: UpsertCall) => {
+        providerProfileCalls.push(args);
+        const id = (args.where as { id: string }).id;
+        let row = providerProfilesById.get(id);
+        if (!row) {
+          row = { id, displayName: (args.create as { displayName: string }).displayName };
+          providerProfilesById.set(id, row);
+        }
+        return row;
+      }),
+    },
     // Observability for assertions
     _rolesByName: rolesByName,
     _permsByKey: permsByKey,
     _rolePermPairs: rolePermPairs,
-    _calls: { role: roleCalls, perm: permCalls, rolePerm: rolePermCalls },
+    _serviceCategoriesBySlug: serviceCategoriesBySlug,
+    _providerProfilesById: providerProfilesById,
+    _calls: {
+      role: roleCalls,
+      perm: permCalls,
+      rolePerm: rolePermCalls,
+      serviceCategory: serviceCategoryCalls,
+      providerProfile: providerProfileCalls,
+    },
   };
 }
 
@@ -107,12 +143,16 @@ describe('seedWithTx (unit)', () => {
     const roleCountAfter1 = tx._rolesByName.size;
     const permCountAfter1 = tx._permsByKey.size;
     const pairCountAfter1 = tx._rolePermPairs.size;
+    const serviceCountAfter1 = tx._serviceCategoriesBySlug.size;
+    const providerCountAfter1 = tx._providerProfilesById.size;
 
     await seedWithTx(tx as never);
 
     expect(tx._rolesByName.size).toBe(roleCountAfter1);
     expect(tx._permsByKey.size).toBe(permCountAfter1);
     expect(tx._rolePermPairs.size).toBe(pairCountAfter1);
+    expect(tx._serviceCategoriesBySlug.size).toBe(serviceCountAfter1);
+    expect(tx._providerProfilesById.size).toBe(providerCountAfter1);
   });
 
   it('uses upsert (never plain create) for every row — idempotency guarantee', async () => {
@@ -123,10 +163,59 @@ describe('seedWithTx (unit)', () => {
     expect(tx._calls.role.length).toBeGreaterThan(0);
     expect(tx._calls.perm.length).toBeGreaterThan(0);
     expect(tx._calls.rolePerm.length).toBeGreaterThan(0);
-    for (const call of [...tx._calls.role, ...tx._calls.perm, ...tx._calls.rolePerm]) {
+    expect(tx._calls.serviceCategory.length).toBeGreaterThan(0);
+    expect(tx._calls.providerProfile.length).toBeGreaterThan(0);
+    for (const call of [
+      ...tx._calls.role,
+      ...tx._calls.perm,
+      ...tx._calls.rolePerm,
+      ...tx._calls.serviceCategory,
+      ...tx._calls.providerProfile,
+    ]) {
       expect(call).toHaveProperty('where');
       expect(call).toHaveProperty('create');
       expect(call).toHaveProperty('update');
+    }
+  });
+
+  it('seeds the provider profile read-model (Sprint 2 slice 2.1)', async () => {
+    const tx = makeFakeTx();
+    await seedWithTx(tx as never);
+    const ids = [...tx._providerProfilesById.keys()].sort();
+    // Pin the contract: the BidsScreen seed/test mechanism relies on
+    // these stable provider ids.
+    expect(ids).toEqual(
+      expect.arrayContaining(['pp-omar', 'pp-khalid', 'pp-ali', 'pp-mohammed', 'pp-hassan']),
+    );
+    // Each upsert restores `deletedAt: null` so a previously archived
+    // row in another environment is reactivated, never duplicated.
+    for (const call of tx._calls.providerProfile) {
+      expect((call.update as { deletedAt: null }).deletedAt).toBeNull();
+    }
+  });
+
+  it('seeds the service-category catalog (Sprint 1 slice 1)', async () => {
+    const tx = makeFakeTx();
+    await seedWithTx(tx as never);
+    const slugs = [...tx._serviceCategoriesBySlug.keys()].sort();
+    // The exact set is asserted in the database package's seed source,
+    // but the unit test pins the contract: at minimum the six categories
+    // the frontend's icon map currently knows about are present.
+    expect(slugs).toEqual(
+      expect.arrayContaining([
+        'plumbing',
+        'electrical',
+        'ac-repair',
+        'cleaning',
+        'carpentry',
+        'painting',
+      ]),
+    );
+    // Each upsert clears soft-delete and re-activates: a previously
+    // archived row in another environment is restored, never duplicated.
+    for (const call of tx._calls.serviceCategory) {
+      expect((call.update as { isActive: boolean }).isActive).toBe(true);
+      expect((call.update as { deletedAt: null }).deletedAt).toBeNull();
     }
   });
 

@@ -154,6 +154,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
       default:
         break;
     }
+    // Catch-all for any other PrismaClient* error class (e.g. P2022 column
+    // mismatch, validation errors, init failures, panics). The slice-2
+    // outage shipped a leaking raw "column addresses.type does not exist"
+    // string straight to the browser because P2022 fell through to the
+    // dev-mode `exception.message` path below. Anything Prisma-shaped is
+    // an infrastructure problem from the client's point of view —
+    // collapse to a stable 500 with a safe message regardless of env. The
+    // detail is still recorded in the structured server log above for
+    // debugging.
+    if (this.isPrismaError(exception)) {
+      return {
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+        code: 'INTERNAL_ERROR',
+        message: 'Internal server error',
+      };
+    }
     // Mongoose validation / cast errors
     if (err?.name === 'ValidationError') {
       return {
@@ -177,6 +193,23 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? 'Internal server error'
         : ((exception as Error)?.message ?? 'Internal server error'),
     };
+  }
+
+  // True when the exception originates from any @prisma/client error
+  // class. We match by class name so we don't have to import the Prisma
+  // error classes here (and accidentally couple the HTTP layer to the
+  // Prisma client). Names checked: PrismaClientKnownRequestError,
+  // PrismaClientUnknownRequestError, PrismaClientValidationError,
+  // PrismaClientInitializationError, PrismaClientRustPanicError.
+  private isPrismaError(exception: unknown): boolean {
+    if (exception === null || typeof exception !== 'object') return false;
+    const ctorName = (exception as { constructor?: { name?: string } }).constructor?.name;
+    if (typeof ctorName === 'string' && ctorName.startsWith('PrismaClient')) return true;
+    // PrismaClientValidationError doesn't always carry a `.code`. Detect
+    // it by `.name` as a defensive secondary signal.
+    const errName = (exception as { name?: string }).name;
+    if (typeof errName === 'string' && errName.startsWith('PrismaClient')) return true;
+    return false;
   }
 
   // Safe, user-facing default message for an error we know the code of but

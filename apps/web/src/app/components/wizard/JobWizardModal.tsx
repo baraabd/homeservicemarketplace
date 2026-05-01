@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   X,
   ChevronLeft,
@@ -21,11 +21,15 @@ import {
   ChevronDown,
   Maximize2,
   PaintBucket,
+  Navigation,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useLang } from '../../i18n/LanguageContext';
+import { useAddresses } from '../../hooks/seeker/useAddresses';
+import { useCreateServiceRequest } from '../../hooks/seeker/useRequests';
 
 // ─── Service config ───────────────────────────────────────────────────────────
 const SERVICE_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
@@ -199,27 +203,132 @@ function StepProgress({
   );
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+// Build an ISO datetime string from the user's local-date + local-time
+// inputs. The browser's HTML5 inputs return strings in local-time
+// format (`YYYY-MM-DD` and `HH:MM`); we combine them and let the
+// Date constructor interpret them as local time, then ship the UTC
+// ISO string to the backend.
+function combineLocalDateTimeToIso(date: string, time: string): string | null {
+  if (!date || !time) return null;
+  // Modern browsers parse "YYYY-MM-DDTHH:MM" as LOCAL time (not UTC),
+  // which is what we want.
+  const local = new Date(`${date}T${time}`);
+  if (Number.isNaN(local.getTime())) return null;
+  return local.toISOString();
+}
+
+// Today as YYYY-MM-DD in the browser's local timezone, used as the
+// `min` attribute on the date input so past calendar days are
+// disabled at the picker level.
+function todayLocalDateString(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Comma-split heuristic — same as SavedAddressesPage's. Used when the
+// user typed/edited the address text and we cannot use the saved
+// addressId path.
+function splitFullAddress(full: string): {
+  line1: string;
+  city: string;
+  country: string;
+} {
+  const parts = full
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (parts.length >= 3) {
+    const country = parts.pop() as string;
+    const city = parts.pop() as string;
+    const line1 = parts.join(', ');
+    return { line1, city, country };
+  }
+  if (parts.length === 2) {
+    return { line1: parts[0], city: parts[1], country: parts[1] };
+  }
+  const single = parts[0] ?? full.trim();
+  return {
+    line1: single,
+    city: single,
+    country: single.length >= 2 ? single : `${single}.`,
+  };
+}
+
+// ─── Geolocation state machine ────────────────────────────────────────────────
+type GeoState =
+  | { status: 'idle' }
+  | { status: 'pending' }
+  | { status: 'success'; lat: number; lng: number }
+  | { status: 'error'; reason: 'denied' | 'unsupported' | 'failed' };
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface JobWizardModalProps {
   service: string;
+  // Backend ServiceCategory.id for the selected service. Optional so
+  // existing call sites that haven't been wired yet still compile —
+  // when null/undefined the wizard posts a free-form request using
+  // `service` as customServiceText.
+  categoryId?: string | null;
   isOpen: boolean;
   onClose: () => void;
   isOffline: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizardModalProps) {
-  const { t, dir } = useLang();
+export function JobWizardModal({
+  service,
+  categoryId,
+  isOpen,
+  onClose,
+  isOffline,
+}: JobWizardModalProps) {
+  const { t, dir, lang } = useLang();
+  const langKey: 'en' | 'ar' = lang === 'ar' ? 'ar' : 'en';
 
   const [step, setStep] = useState(1);
   const [notes, setNotes] = useState('');
-  const [address, setAddress] = useState(
-    t('address') === 'Address' ? 'Al Olaya District, Riyadh' : 'حي العليا، الرياض',
-  );
+  const [address, setAddress] = useState('');
   const [schedule, setSchedule] = useState<'asap' | 'later'>('asap');
+  // Slice 4.1 fix (defect: static "Mar 15, 2026" / "10:00 AM"): the
+  // user now picks real date + time via HTML5 inputs. The two pieces
+  // are stored separately so the inputs are controlled cleanly; we
+  // combine them into an ISO string at submit time.
+  const [scheduleDate, setScheduleDate] = useState<string>(''); // YYYY-MM-DD
+  const [scheduleTime, setScheduleTime] = useState<string>(''); // HH:MM
+  // Slice 4.1 fix (defect: synthetic "GPS detected" with no real
+  // navigator.geolocation call): real lat/lng is captured only when
+  // the user clicks the "Use my current location" button.
+  const [geo, setGeo] = useState<GeoState>({ status: 'idle' });
   const [uploads, setUploads] = useState<string[]>([]);
-  const [isPosting, setIsPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+
+  const addressesQuery = useAddresses();
+  const createMut = useCreateServiceRequest();
+  const isPosting = createMut.isPending;
+
+  // Default the address field to the user's saved default (or first
+  // address) on open.
+  const defaultAddress = useMemo(() => {
+    const list = addressesQuery.data ?? [];
+    return list.find((a) => a.isDefault) ?? list[0] ?? null;
+  }, [addressesQuery.data]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (address.trim().length > 0) return;
+    if (defaultAddress) {
+      const composed = [defaultAddress.line1, defaultAddress.city, defaultAddress.country]
+        .filter((p) => p && p.trim().length > 0)
+        .join(', ');
+      if (composed.length > 0) setAddress(composed);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, defaultAddress]);
 
   const {
     onTouchStart: handleTouchStart,
@@ -235,16 +344,125 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
   const cfg = SERVICE_CONFIG[service] ?? SERVICE_CONFIG.General;
 
   const simulateUpload = () => {
+    // NB: attachments are NOT uploaded yet. The placeholder colour
+    // swatches stay so the visual flow is unchanged, but nothing is
+    // sent to the backend.
     const colors = ['bg-blue-200', 'bg-amber-200', 'bg-green-200', 'bg-purple-200'];
     if (uploads.length < 4) setUploads((prev) => [...prev, colors[prev.length % colors.length]]);
   };
 
+  // Slice 4.1: real browser geolocation. Triggered by user click on
+  // "Use my current location" — never auto-fires because browsers
+  // reject silent geolocation prompts and we don't want to ask for
+  // permission on modal open.
+  const handleRequestLocation = () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGeo({ status: 'error', reason: 'unsupported' });
+      return;
+    }
+    setGeo({ status: 'pending' });
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGeo({
+          status: 'success',
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+      },
+      (err) => {
+        // 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT.
+        // We collapse 2/3 into "failed" because they're indistinguishable
+        // to the user and the recovery path is the same: type the
+        // address.
+        if (err.code === 1) setGeo({ status: 'error', reason: 'denied' });
+        else setGeo({ status: 'error', reason: 'failed' });
+      },
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 },
+    );
+  };
+
   const handlePost = () => {
-    setIsPosting(true);
-    setTimeout(() => {
-      setIsPosting(false);
-      setStep(3);
-    }, 2000);
+    setPostError(null);
+    const trimmedAddress = address.trim();
+    if (!trimmedAddress) {
+      setPostError(
+        lang === 'ar'
+          ? 'الرجاء إدخال العنوان أو إضافته من العناوين المحفوظة.'
+          : 'Please enter an address (or add one from Saved Addresses).',
+      );
+      return;
+    }
+
+    // Slice 4.1 fix: build a real ISO scheduledAt for LATER. ASAP
+    // sends null so the backend accepts the request. The previous
+    // build sent neither, and the LATER path silently dropped the
+    // user's selection because there wasn't a real one.
+    let scheduledAt: string | null = null;
+    if (schedule === 'later') {
+      if (!scheduleDate || !scheduleTime) {
+        setPostError(t('scheduleLaterRequiresDateTime'));
+        return;
+      }
+      const iso = combineLocalDateTimeToIso(scheduleDate, scheduleTime);
+      if (!iso) {
+        setPostError(t('scheduleLaterRequiresDateTime'));
+        return;
+      }
+      // Reject past selections client-side — the backend rejects them
+      // too, but a friendly inline error is faster than a round-trip.
+      if (new Date(iso).getTime() <= Date.now()) {
+        setPostError(t('scheduleInPast'));
+        return;
+      }
+      scheduledAt = iso;
+    }
+
+    // If the typed address still matches the default address line
+    // exactly, forward addressId so the backend snapshots from the
+    // authoritative DB row (which already has lat/lng if present).
+    // Otherwise the user typed/edited it, so forward manualAddress —
+    // attaching the captured lat/lng when geolocation succeeded.
+    const composedDefault = defaultAddress
+      ? [defaultAddress.line1, defaultAddress.city, defaultAddress.country]
+          .filter((p) => p && p.trim().length > 0)
+          .join(', ')
+      : '';
+    const useDefaultId = defaultAddress !== null && composedDefault === trimmedAddress;
+    const split = splitFullAddress(trimmedAddress);
+    const lat = geo.status === 'success' ? geo.lat : null;
+    const lng = geo.status === 'success' ? geo.lng : null;
+
+    createMut.mutate(
+      {
+        categoryId: categoryId ?? null,
+        customServiceText: categoryId ? null : service,
+        description: notes.trim().length > 0 ? notes.trim() : null,
+        scheduleType: schedule === 'asap' ? 'ASAP' : 'LATER',
+        scheduledAt,
+        addressId: useDefaultId ? defaultAddress!.id : null,
+        manualAddress: useDefaultId
+          ? null
+          : {
+              line1: split.line1,
+              city: split.city,
+              country: split.country,
+              ...(lat !== null ? { lat } : {}),
+              ...(lng !== null ? { lng } : {}),
+            },
+      },
+      {
+        onSuccess: () => {
+          setStep(3);
+        },
+        onError: (err) => {
+          const status =
+            (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
+          if (status === 400) setPostError(t('requestPostFailedValidation'));
+          else if (status === 401) setPostError(t('requestPostFailedAuth'));
+          else setPostError(t('requestPostFailedGeneric'));
+        },
+      },
+    );
   };
 
   const handleClose = () => {
@@ -252,10 +470,36 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
     setNotes('');
     setUploads([]);
     setSchedule('asap');
+    setScheduleDate('');
+    setScheduleTime('');
+    setGeo({ status: 'idle' });
+    setAddress('');
+    setPostError(null);
     onClose();
   };
 
   const stepLabels = [t('mediaAndBrief'), t('locationAndTime'), t('confirm')];
+
+  // Format the user-selected date+time for the success summary so it
+  // reflects what they actually picked, not the legacy hardcoded
+  // strings.
+  const successScheduleLabel = (() => {
+    if (schedule === 'asap') return t('asapFull');
+    if (!scheduleDate || !scheduleTime) return '';
+    const iso = combineLocalDateTimeToIso(scheduleDate, scheduleTime);
+    if (!iso) return '';
+    const d = new Date(iso);
+    const dateStr = d.toLocaleDateString(langKey === 'ar' ? 'ar-SA' : 'en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    const timeStr = d.toLocaleTimeString(langKey === 'ar' ? 'ar-SA' : 'en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    return `${dateStr} · ${timeStr}`;
+  })();
 
   return (
     <div
@@ -443,7 +687,53 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
               <p className="text-slate-700 mb-2.5" style={{ fontSize: '13px', fontWeight: 600 }}>
                 {t('serviceLocation')}
               </p>
-              <MapPlaceholder label={t('gpsDetected')} />
+              <MapPlaceholder
+                label={geo.status === 'success' ? t('locationCaptured') : t('gpsDetected')}
+              />
+
+              {/* Slice 4.1: real geolocation. Button is the only entry
+                  point — the browser's permission prompt fires on
+                  click, not on modal open. Visual idiom matches the
+                  existing amber action treatment used elsewhere in the
+                  wizard. */}
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={handleRequestLocation}
+                  disabled={geo.status === 'pending'}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-amber-50 border border-amber-100 text-amber-700 active:bg-amber-100 transition-all disabled:opacity-60"
+                  style={{ fontSize: '13px', fontWeight: 700 }}
+                >
+                  {geo.status === 'pending' ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : geo.status === 'success' ? (
+                    <CheckCircle2 size={14} />
+                  ) : (
+                    <Navigation size={14} />
+                  )}
+                  <span>
+                    {geo.status === 'pending'
+                      ? t('detectingLocation')
+                      : geo.status === 'success'
+                        ? t('locationCaptured')
+                        : t('useMyCurrentLocation')}
+                  </span>
+                </button>
+                {geo.status === 'error' && (
+                  <p
+                    className="mt-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100 text-red-700"
+                    style={{ fontSize: '12px', fontWeight: 600 }}
+                    role="alert"
+                  >
+                    {geo.reason === 'denied'
+                      ? t('locationDenied')
+                      : geo.reason === 'unsupported'
+                        ? t('locationUnsupported')
+                        : t('locationFailed')}
+                  </p>
+                )}
+              </div>
+
               <div className="mt-3 mb-4">
                 <TextField
                   label={t('address')}
@@ -509,15 +799,20 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
                       >
                         {t('date')}
                       </p>
-                      <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-2.5">
-                        <Calendar size={14} className="text-amber-500" />
-                        <span
-                          className="text-slate-700"
+                      <label className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
+                        <Calendar size={14} className="text-amber-500 flex-shrink-0" />
+                        {/* Native HTML5 date picker. The visual frame is
+                            unchanged from the slice-2 placeholder card. */}
+                        <input
+                          type="date"
+                          value={scheduleDate}
+                          min={todayLocalDateString()}
+                          onChange={(e) => setScheduleDate(e.target.value)}
+                          className="bg-transparent outline-none text-slate-700 w-full"
                           style={{ fontSize: '13px', fontWeight: 500 }}
-                        >
-                          {t('dateValue')}
-                        </span>
-                      </div>
+                          aria-label={t('date')}
+                        />
+                      </label>
                     </div>
                     <div>
                       <p
@@ -531,15 +826,17 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
                       >
                         {t('time')}
                       </p>
-                      <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-2.5">
-                        <Clock size={14} className="text-amber-500" />
-                        <span
-                          className="text-slate-700"
+                      <label className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
+                        <Clock size={14} className="text-amber-500 flex-shrink-0" />
+                        <input
+                          type="time"
+                          value={scheduleTime}
+                          onChange={(e) => setScheduleTime(e.target.value)}
+                          className="bg-transparent outline-none text-slate-700 w-full"
                           style={{ fontSize: '13px', fontWeight: 500 }}
-                        >
-                          {t('timeValue')}
-                        </span>
-                      </div>
+                          aria-label={t('time')}
+                        />
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -557,6 +854,15 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
             </div>
 
             <div className="flex-shrink-0 border-t border-slate-100 px-5 py-4 bg-white">
+              {postError && (
+                <p
+                  className="mb-3 text-red-600"
+                  style={{ fontSize: '12px', fontWeight: 600 }}
+                  role="alert"
+                >
+                  {postError}
+                </p>
+              )}
               <Button
                 variant="primary"
                 state={isPosting ? 'loading' : 'default'}
@@ -640,11 +946,10 @@ export function JobWizardModal({ service, isOpen, onClose, isOffline }: JobWizar
                 {[
                   { label: t('serviceLabel'), val: service },
                   { label: t('locationLabel'), val: address },
-                  {
-                    label: t('scheduleLabel'),
-                    val:
-                      schedule === 'asap' ? t('asapFull') : `${t('dateValue')} ${t('timeValue')}`,
-                  },
+                  // Slice 4.1: success summary now uses the user's
+                  // actual schedule selection, not the legacy hardcoded
+                  // strings.
+                  { label: t('scheduleLabel'), val: successScheduleLabel },
                   {
                     label: t('statusLabel'),
                     val: isOffline ? t('savedLocally') : t('postedAndLive'),

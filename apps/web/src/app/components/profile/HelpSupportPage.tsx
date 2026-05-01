@@ -81,7 +81,7 @@ const SEED_EN: Message[] = [
   {
     id: 'b0',
     from: 'bot',
-    text: "👋 Hi Ahmed! I'm your FixNow Support assistant. How can I help you today?",
+    text: "👋 Hi there! I'm your FixNow Support assistant. How can I help you today?",
     time: '9:00 AM',
     read: true,
   },
@@ -97,7 +97,7 @@ const SEED_AR: Message[] = [
   {
     id: 'b0',
     from: 'bot',
-    text: '👋 مرحباً أحمد! أنا مساعد دعم فيكس ناو. كيف يمكنني مساعدتك اليوم؟',
+    text: '👋 مرحباً! أنا مساعد دعم فيكس ناو. كيف يمكنني مساعدتك اليوم؟',
     time: '9:00 ص',
     read: true,
   },

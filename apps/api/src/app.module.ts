@@ -13,11 +13,23 @@ import { PrismaModule } from './infrastructure/prisma/prisma.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
 import { MetricsModule } from './infrastructure/telemetry/metrics.module';
 import { PersistenceModule } from './infrastructure/persistence/persistence.module';
+import { AddressesModule } from './modules/addresses/addresses.module';
+import { BidsModule } from './modules/bids/bids.module';
+import { BookingsModule } from './modules/bookings/bookings.module';
+import { ConversationsModule } from './modules/conversations/conversations.module';
 import { IamModule } from './modules/iam/iam.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ProfileModule } from './modules/profile/profile.module';
+import { ProviderModule } from './modules/provider/provider.module';
+import { RequestsModule } from './modules/requests/requests.module';
+import { ServicesModule } from './modules/services/services.module';
 
-// Infrastructure & data-foundation bootstrap. No business modules are wired
-// at this stage; repositories/transaction helpers are exposed for later
-// domain modules (still to be added under src/modules/<domain>/).
+// Infrastructure & data-foundation bootstrap. Seeker domain modules
+// are wired in incrementally — Sprint 1 shipped Services / Addresses /
+// Requests; Sprint 2 added BidsModule (read), accept-bid + booking
+// persistence, and BookingsModule. Sprint 3 slice 3.1 adds
+// NotificationsModule (REST feed + internal createForUser fan-out
+// from BidsService.accept and BookingsService.cancel).
 @Module({
   imports: [
     ConfigModule,
@@ -31,6 +43,15 @@ import { IamModule } from './modules/iam/iam.module';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     HealthModule,
     IamModule,
+    ServicesModule,
+    AddressesModule,
+    RequestsModule,
+    BidsModule,
+    BookingsModule,
+    NotificationsModule,
+    ConversationsModule,
+    ProfileModule,
+    ProviderModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
