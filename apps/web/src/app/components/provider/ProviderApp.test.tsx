@@ -70,6 +70,7 @@ const MOCK_PROFILE = {
   verified: true,
   topPro: true,
   availability: 'OFFLINE' as const,
+  status: 'ACTIVE' as const,
   serviceAreaCity: 'Riyadh',
   serviceAreaCountry: 'Saudi Arabia',
   serviceAreaLat: 24.7136,

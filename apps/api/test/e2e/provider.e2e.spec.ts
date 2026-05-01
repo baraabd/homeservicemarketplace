@@ -125,6 +125,7 @@ const PROFILE_FIXTURE = {
   verified: false,
   topPro: false,
   availability: 'OFFLINE' as const,
+  status: 'ACTIVE' as const,
   serviceAreaCity: null,
   serviceAreaCountry: null,
   serviceAreaLat: null,

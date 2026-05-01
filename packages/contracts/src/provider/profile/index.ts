@@ -4,6 +4,7 @@
 // 5.5 earnings) builds on. None of these endpoints accept client-sent
 // userId; the session is the only ownership signal.
 export * from './enums/provider-availability';
+export * from './enums/provider-profile-status';
 export * from './request/upgrade-to-provider.request';
 export * from './request/update-provider-availability.request';
 export * from './request/update-provider-profile.request';

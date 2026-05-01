@@ -1,4 +1,5 @@
 import type { ProviderAvailability } from '../enums/provider-availability';
+import type { ProviderProfileStatus } from '../enums/provider-profile-status';
 
 // One service category as it appears on a Provider profile. The seeker
 // catalog ships a richer ServiceCategorySummary with localized labels;
@@ -30,6 +31,13 @@ export interface ProviderProfileSummary {
   verified: boolean;
   topPro: boolean;
   availability: ProviderAvailability;
+  // Marketplace-readiness state. ACTIVE means the profile is approved and
+  // can bid; DRAFT / PENDING_REVIEW are pre-approval states; SUSPENDED /
+  // REJECTED are admin-applied lock states. The Provider app branches on
+  // this field to render the right onboarding / pending / locked / live
+  // surface; it is independent of `availability` (the live working
+  // ONLINE/OFFLINE/PAUSED toggle).
+  status: ProviderProfileStatus;
   serviceAreaCity: string | null;
   serviceAreaCountry: string | null;
   serviceAreaLat: number | null;
