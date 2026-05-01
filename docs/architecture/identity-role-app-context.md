@@ -135,6 +135,112 @@ Verified by Sprint 5.1.2 audit (DB at the time of this writing):
 These are the invariants the audit script in Sprint 5.1.2 pinned.
 Re-run the audit before any future identity-related migration.
 
+## Granting admin / provider access (operator runbook)
+
+There is **no public HTTP endpoint** that grants the `admin` role. Any
+admin role assignment goes through one of two sanctioned paths:
+
+1. **Local / dev convenience** — the operator script
+   `packages/database/src/admin-access-grant.ts` (compiled to
+   `dist/admin-access-grant.js` and exposed as the pnpm script
+   `grant:admin-provider`).
+2. **Production** — a reviewed admin moderation tool, **not** this
+   script. The script refuses to run with `NODE_ENV=production` unless
+   `ALLOW_PROD_GRANT=true` is set explicitly, and even then the
+   intended use is one-off operator access for an emergency.
+
+### Usage
+
+```bash
+# Default: target admin@admin.com (the local operator account)
+pnpm --filter @homeservicemarketplace/database grant:admin-provider
+
+# Custom target
+pnpm --filter @homeservicemarketplace/database grant:admin-provider -- foo@example.com
+
+# Or via env
+GRANT_EMAIL=foo@example.com pnpm --filter @homeservicemarketplace/database grant:admin-provider
+
+# Create a passwordless placeholder when the email does not yet exist
+# (operator MUST then set a password via the forgot-password flow)
+pnpm --filter @homeservicemarketplace/database grant:admin-provider -- foo@example.com --create-if-missing
+```
+
+### What the script does
+
+For the target email it:
+
+- Looks the user up by case-insensitive email.
+- Attaches the `customer`, `provider`, and `admin` roles if missing
+  (idempotent — composite PK makes a re-run a no-op).
+- Upserts a `ProviderProfile` for that user with `status = ACTIVE`.
+  An existing profile keeps its editable fields; only the status is
+  promoted to `ACTIVE` if it was something else (DRAFT / PENDING_REVIEW
+  / SUSPENDED / REJECTED).
+- Logs a single safe summary line — never prints passwords, hashes,
+  tokens, OTPs, or session ids.
+
+### What the script does NOT do
+
+- It never sets a password. If the user does not exist yet and
+  `--create-if-missing` is passed, a passwordless placeholder is
+  created (with `emailVerifiedAt` populated so login does not throw
+  `AUTH_ACCOUNT_UNVERIFIED`); the operator must then run the standard
+  forgot-password flow to set a usable password.
+- It never creates a duplicate identity. The lookup is keyed on
+  `lower(email)` and the User row's `email @unique` is the final
+  backstop.
+- It never overwrites a ProviderProfile's editable fields
+  (displayName, bio, headline, service area, …).
+
+### Why no public admin-upgrade endpoint?
+
+A public `/v1/me/admin/upgrade` route — even gated behind a "secret
+code" or "admin email allowlist" — has historically leaked privilege
+in marketplaces. The audit decision is therefore architectural: the
+admin role is granted only through reviewed code paths that touch the
+DB directly, never through a request that an attacker could reach.
+The complete list of legitimate sources of an admin role assignment
+is:
+
+1. The seed (currently does not assign admin to any user — only the
+   `admin` role row itself is created).
+2. This script (`grant-admin-provider-access`), which is local-only
+   by default and refuses production without an explicit override.
+3. A future admin moderation surface, which will be a separate
+   `RolesGuard('admin')`-protected slice (out of scope for the
+   current sprint).
+
+If you find any other code path that writes to `UserRole` with
+`roleId = (admin role id)`, treat it as a security defect — file it
+and remove it.
+
+## Registration / upgrade injection hardening
+
+The audit pinned the following input-rejection rules. They are
+enforced by the global `ValidationPipe { whitelist: true,
+forbidNonWhitelisted: true }` in conjunction with each endpoint's
+DTO:
+
+- **`POST /v1/auth/register`** rejects (with 400 `VALIDATION_ERROR`)
+  any of: `role`, `roles`, `roleName`, `isAdmin`, `admin`, `status`,
+  `providerProfile`, `permissions`, `userId`, `id`. The `customer`
+  role is the only role auto-assigned by registration; provider /
+  admin must go through their own paths.
+- **`POST /v1/me/provider/upgrade`** uses an empty-body DTO. ANY
+  field in the request body is rejected. Identity is sourced from
+  `@CurrentUser()` (the authenticated session). The upgrade is
+  idempotent at the service layer.
+- **`PATCH /v1/me/provider/profile`** and **`PATCH /v1/me/profile`**
+  reject all of: `userId`, `email`, `role`, `status`, `password`,
+  `passwordHash`, `ratingAvg`, `reviewCount`, `completedJobs`,
+  `verified`, `topPro`, `availability`. Availability has its own
+  dedicated single-field endpoint.
+
+Each rule is pinned by an e2e test (`apps/api/test/e2e/auth.e2e.spec.ts`,
+`apps/api/test/e2e/provider.e2e.spec.ts`) that iterates the vectors
+and asserts a 400 response with no service call.
+
 ## What this slice does NOT change
 
 Out of scope (Sprint 5.2 and beyond):

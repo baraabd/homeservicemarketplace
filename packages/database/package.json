@@ -26,7 +26,8 @@
     "lint": "echo \"No lint configured for database package yet\"",
     "typecheck": "tsc --noEmit",
     "prisma:validate": "dotenv -e ../../.env -- prisma validate",
-    "seed": "dotenv -e ../../.env -- node dist/seed.js"
+    "seed": "dotenv -e ../../.env -- node dist/seed.js",
+    "grant:admin-provider": "dotenv -e ../../.env -- node dist/admin-access-grant.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"

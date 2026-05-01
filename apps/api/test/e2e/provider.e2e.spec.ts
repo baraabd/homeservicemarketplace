@@ -244,6 +244,36 @@ describe('ProviderController (e2e)', () => {
       expect(res.body.profile.id).toBe('pp-1');
       expect(res.body.profile).not.toHaveProperty('userId');
     });
+
+    // Sprint security audit: the upgrade endpoint takes ZERO client-supplied
+    // fields. The empty-body DTO + forbidNonWhitelisted pipe must reject any
+    // attempt to inject userId / role / status / admin flags before the
+    // service is reached. Without this layer, a malicious client could not
+    // gain admin access (the service ignores the body), but a future
+    // refactor that reads from `@Body()` would silently re-open the door.
+    it('rejects every forbidden field a client could try to inject', async () => {
+      providerService.upgrade.mockResolvedValue({ profile: PROFILE_FIXTURE });
+      for (const payload of [
+        { userId: 'user-victim' },
+        { email: 'attacker@example.com' },
+        { role: 'admin' },
+        { roles: ['admin'] },
+        { isAdmin: true },
+        { admin: true },
+        { status: 'ACTIVE' },
+        { providerProfile: { status: 'ACTIVE' } },
+        { availability: 'ONLINE' },
+      ]) {
+        const res = await request(app.getHttpServer())
+          .post('/v1/me/provider/upgrade')
+          .set('Cookie', 'hsm_csrf=tok')
+          .set('X-CSRF-Token', 'tok')
+          .send(payload);
+        expect(res.status).toBe(400);
+        expect(res.body?.error?.code).toBe('VALIDATION_ERROR');
+        expect(providerService.upgrade).not.toHaveBeenCalled();
+      }
+    });
   });
 
   // ─── GET ────────────────────────────────────────────────────────────────
