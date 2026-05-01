@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -8,139 +8,60 @@ import {
   MoreVertical,
   Check,
   CheckCheck,
+  Loader2,
 } from 'lucide-react';
+import type { MessageSummary } from '@homeservicemarketplace/contracts';
 import { useLang } from '../../i18n/LanguageContext';
+import { useMarkConversationRead, useMessages, useSendMessage } from '../../hooks/seeker/useChat';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface Message {
+// ─── Render shape ─────────────────────────────────────────────────────────────
+// Slice 3.3 wires ChatScreen to GET /v1/me/conversations/:id/messages.
+// The previous SEED_MESSAGES_EN / SEED_MESSAGES_AR constants and the
+// 1.5s setTimeout fake provider reply have been removed entirely from
+// the production path — there is no fabricated data on this surface.
+//
+// The render shape stays close to the slice-2 placeholder so every
+// existing visual (bubble alignment, time strip, read receipt, typing
+// indicator visual) renders without redesign.
+interface RenderMessage {
   id: string;
   text: string;
   sender: 'user' | 'pro';
   time: string;
   read: boolean;
+  // pendingId on optimistic rows — replaced when the server response
+  // arrives; never persisted.
+  pending?: boolean;
 }
 
-// ─── Seed messages ─────────────────────────────────────────────────────────────
-const SEED_MESSAGES_EN: Message[] = [
-  {
-    id: 'm1',
-    sender: 'pro',
-    text: "Hello! I've reviewed your plumbing request. I can come today around 3 PM. Does that work for you?",
-    time: '9:10 AM',
-    read: true,
-  },
-  {
-    id: 'm2',
-    sender: 'user',
-    text: 'Hi Omar! Yes, 3 PM works perfectly. The issue is under the kitchen sink.',
-    time: '9:13 AM',
-    read: true,
-  },
-  {
-    id: 'm3',
-    sender: 'pro',
-    text: "Great! Could you send me a photo of the area? It'll help me bring the right parts.",
-    time: '9:14 AM',
-    read: true,
-  },
-  {
-    id: 'm4',
-    sender: 'user',
-    text: 'Sure, just sent a photo through the app.',
-    time: '9:16 AM',
-    read: true,
-  },
-  {
-    id: 'm5',
-    sender: 'pro',
-    text: "Perfect, I can see it. Looks like a standard P-trap issue. I'll bring the replacement parts. My rate is $35/hr. Shall I confirm the booking?",
-    time: '9:18 AM',
-    read: true,
-  },
-  {
-    id: 'm6',
-    sender: 'user',
-    text: 'Yes please! Please confirm for 3 PM today.',
-    time: '9:20 AM',
-    read: true,
-  },
-  {
-    id: 'm7',
-    sender: 'pro',
-    text: "Booking confirmed ✅ I'll send you a notification when I'm on my way. See you at 3!",
-    time: '9:21 AM',
-    read: true,
-  },
-  {
-    id: 'm8',
-    sender: 'pro',
-    text: "I'm on my way now, ETA 15 minutes! 📍",
-    time: '2:45 PM',
+function apiToRender(row: MessageSummary, lang: 'en' | 'ar'): RenderMessage {
+  const date = new Date(row.createdAt);
+  const time = Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+  return {
+    id: row.id,
+    text: row.body,
+    sender: row.sentByMe ? 'user' : 'pro',
+    time,
+    // The contract doesn't expose a per-message read flag yet — it
+    // ships at the conversation level via lastReadAt. We render
+    // sender messages as "delivered" (single check) for now; a future
+    // slice can reconcile this against the other participant's
+    // lastReadAt.
     read: false,
-  },
-];
-
-const SEED_MESSAGES_AR: Message[] = [
-  {
-    id: 'm1',
-    sender: 'pro',
-    text: 'مرحباً! راجعت طلب السباكة الخاص بك. أستطيع الحضور اليوم حوالي الساعة 3 مساءً. هل يناسبك ذلك؟',
-    time: '9:10 ص',
-    read: true,
-  },
-  {
-    id: 'm2',
-    sender: 'user',
-    text: 'مرحباً عمر! نعم، الساعة 3 مساءً مناسبة تماماً. المشكلة تحت حوض المطبخ.',
-    time: '9:13 ص',
-    read: true,
-  },
-  {
-    id: 'm3',
-    sender: 'pro',
-    text: 'رائع! هل يمكنك إرسال صورة للمنطقة؟ سيساعدني ذلك على إحضار القطع المناسبة.',
-    time: '9:14 ص',
-    read: true,
-  },
-  {
-    id: 'm4',
-    sender: 'user',
-    text: 'بالتأكيد، أرسلت صورة عبر التطبيق.',
-    time: '9:16 ص',
-    read: true,
-  },
-  {
-    id: 'm5',
-    sender: 'pro',
-    text: 'ممتاز، أرى الصورة. يبدو أنها مشكلة في الفخ الصيفوني. سأحضر قطع الاستبدال. سعري 130 ريال/ساعة. هل تأكد الحجز؟',
-    time: '9:18 ص',
-    read: true,
-  },
-  {
-    id: 'm6',
-    sender: 'user',
-    text: 'نعم من فضلك! أكّد الموعد الساعة 3 مساءً اليوم.',
-    time: '9:20 ص',
-    read: true,
-  },
-  {
-    id: 'm7',
-    sender: 'pro',
-    text: 'تم تأكيد الحجز ✅ سأرسل لك إشعاراً عندما أكون في الطريق. إلى اللقاء الساعة 3!',
-    time: '9:21 ص',
-    read: true,
-  },
-  {
-    id: 'm8',
-    sender: 'pro',
-    text: 'أنا في الطريق الآن، الوصول خلال 15 دقيقة! 📍',
-    time: '2:45 م',
-    read: false,
-  },
-];
+  };
+}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface ChatScreenProps {
+  // The conversation backing this chat panel. Slice 3.3 makes this
+  // the single source of truth — when null/undefined, the screen
+  // shows an empty state. There is no SEED fallback.
+  conversationId: string | null | undefined;
   contact: {
     name: string;
     initials: string;
@@ -153,17 +74,37 @@ interface ChatScreenProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-export function ChatScreen({ contact, onBack, isVisible }: ChatScreenProps) {
+export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatScreenProps) {
   const { t, dir, lang } = useLang();
-  const seedMessages = lang === 'ar' ? SEED_MESSAGES_AR : SEED_MESSAGES_EN;
-  const [messages, setMessages] = useState<Message[]>(seedMessages);
+  const langKey: 'en' | 'ar' = lang === 'ar' ? 'ar' : 'en';
+
+  const messagesQuery = useMessages(conversationId);
+  const sendMut = useSendMessage(conversationId);
+  const markReadMut = useMarkConversationRead(conversationId);
+
+  const [pending, setPending] = useState<RenderMessage[]>([]);
   const [input, setInput] = useState('');
+  const [sendError, setSendError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Reset messages when language changes
-  useEffect(() => {
-    setMessages(lang === 'ar' ? SEED_MESSAGES_AR : SEED_MESSAGES_EN);
-  }, [lang]);
+  // Server messages → render shape. Pending optimistic rows are
+  // appended after the server-confirmed list so they always appear at
+  // the bottom; they're removed once the corresponding server row
+  // arrives (the response invalidates the messages query, which
+  // triggers a refetch).
+  const messages: RenderMessage[] = useMemo(() => {
+    const rows = (messagesQuery.data?.items ?? []).map((m) => apiToRender(m, langKey));
+    const pendingFiltered = pending.filter(
+      // Drop pending rows whose body now matches a confirmed server
+      // row from the same sender — defensive in case the server
+      // response races the optimistic render.
+      (p) => !rows.some((r) => r.sender === p.sender && r.text === p.text),
+    );
+    return [...rows, ...pendingFiltered];
+  }, [messagesQuery.data, pending, langKey]);
+
+  const isInitialLoading = messagesQuery.isLoading && !messagesQuery.data;
+  const isError = messagesQuery.isError && !messagesQuery.data;
 
   // Scroll to bottom on new message
   useEffect(() => {
@@ -172,34 +113,65 @@ export function ChatScreen({ contact, onBack, isVisible }: ChatScreenProps) {
     }
   }, [messages, isVisible]);
 
+  // Auto-mark-read whenever the conversation is opened with new
+  // messages. Idempotent server-side; the conversation list
+  // invalidation clears the unread badge.
+  useEffect(() => {
+    if (!isVisible || !conversationId || !messagesQuery.data) return;
+    if (messagesQuery.data.items.length === 0) return;
+    markReadMut.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVisible, conversationId, messagesQuery.data?.items.length]);
+
   const sendMessage = () => {
-    if (!input.trim()) return;
+    const trimmed = input.trim();
+    if (!trimmed || sendMut.isPending || !conversationId) return;
+    setSendError(null);
+
+    // Optimistic-pending row. Reconciled by the messages-list
+    // invalidation that the mutation's onSuccess fires. If the send
+    // fails, we drop the pending row + surface a safe error.
+    const pendingId = `pending-${Date.now()}`;
     const now = new Date();
-    const timeStr = now.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', {
+    const timeStr = now.toLocaleTimeString(langKey === 'ar' ? 'ar-SA' : 'en-US', {
       hour: '2-digit',
       minute: '2-digit',
     });
-    setMessages((prev) => [
+    setPending((prev) => [
       ...prev,
-      { id: `m${Date.now()}`, sender: 'user', text: input.trim(), time: timeStr, read: false },
+      { id: pendingId, sender: 'user', text: trimmed, time: timeStr, read: false, pending: true },
     ]);
     setInput('');
 
-    // Simulate pro reply
-    setTimeout(() => {
-      const reply =
-        lang === 'ar'
-          ? 'شكراً على رسالتك! سأرد عليك في أقرب وقت ممكن. 👍'
-          : "Thanks for your message! I'll get back to you shortly. 👍";
-      const replyTime = new Date().toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      setMessages((prev) => [
-        ...prev,
-        { id: `m${Date.now()}`, sender: 'pro', text: reply, time: replyTime, read: false },
-      ]);
-    }, 1500);
+    sendMut.mutate(trimmed, {
+      onSuccess: () => {
+        // Drop the optimistic row — the refetch will surface the
+        // canonical server row.
+        setPending((prev) => prev.filter((r) => r.id !== pendingId));
+      },
+      onError: (err) => {
+        setPending((prev) => prev.filter((r) => r.id !== pendingId));
+        const status =
+          (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
+        if (status === 400) {
+          setSendError(
+            langKey === 'ar' ? 'لا يمكن إرسال رسالة فارغة.' : 'Empty message cannot be sent.',
+          );
+        } else if (status === 404) {
+          setSendError(
+            langKey === 'ar' ? 'لم يتم العثور على المحادثة.' : 'Conversation not found.',
+          );
+        } else {
+          setSendError(
+            langKey === 'ar'
+              ? 'تعذر إرسال الرسالة. حاول مرة أخرى.'
+              : "Couldn't send message. Please try again.",
+          );
+        }
+        // Restore the input so the user can retry without retyping.
+        setInput(trimmed);
+      },
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -255,28 +227,31 @@ export function ChatScreen({ contact, onBack, isVisible }: ChatScreenProps) {
             </div>
           </div>
 
-          {/* Actions */}
+          {/* Actions — Phone/Video/More are visual placeholders. Calls
+              are explicitly out of scope for slice 3.3. */}
           <div className="flex items-center gap-1">
-            <button className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center active:bg-slate-100 transition-all">
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              title={langKey === 'ar' ? 'قريباً' : 'Coming soon'}
+              className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center opacity-60 cursor-not-allowed"
+            >
               <Phone size={16} className="text-slate-600" />
             </button>
-            <button className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center active:bg-slate-100 transition-all">
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              title={langKey === 'ar' ? 'قريباً' : 'Coming soon'}
+              className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center opacity-60 cursor-not-allowed"
+            >
               <Video size={16} className="text-slate-600" />
             </button>
             <button className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center active:bg-slate-100 transition-all">
               <MoreVertical size={16} className="text-slate-600" />
             </button>
           </div>
-        </div>
-
-        {/* Active job banner */}
-        <div className="mx-4 mb-3 bg-amber-50 border border-amber-100 rounded-2xl px-3 py-2 flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
-          <p className="text-amber-700" style={{ fontSize: '11px', fontWeight: 600 }}>
-            {lang === 'ar'
-              ? 'طلب نشط: إصلاح سباكة — اليوم الساعة 3 م'
-              : 'Active Job: Plumbing Repair — Today 3:00 PM'}
-          </p>
         </div>
       </div>
 
@@ -288,105 +263,139 @@ export function ChatScreen({ contact, onBack, isVisible }: ChatScreenProps) {
           background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
         }}
       >
-        {/* Date separator */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex-1 h-px bg-slate-200" />
-          <span
-            className="text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-200"
-            style={{ fontSize: '11px', fontWeight: 500 }}
-          >
-            {t('today')}
-          </span>
-          <div className="flex-1 h-px bg-slate-200" />
-        </div>
-
-        {messages.map((msg, idx) => {
-          const isUser = msg.sender === 'user';
-          const showAvatar = !isUser && (idx === 0 || messages[idx - 1].sender !== 'pro');
-
-          return (
-            <div
-              key={msg.id}
-              className={`flex items-end gap-2 mb-3 ${isUser ? 'justify-end' : 'justify-start'}`}
-            >
-              {/* Pro avatar */}
-              {!isUser && (
-                <div className="flex-shrink-0 mb-1" style={{ width: '32px' }}>
-                  {showAvatar ? (
-                    <div
-                      className={`w-8 h-8 rounded-xl flex items-center justify-center ${contact.bg}`}
-                    >
-                      <span
-                        className={contact.textColor}
-                        style={{ fontSize: '10px', fontWeight: 800 }}
-                      >
-                        {contact.initials}
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-
-              <div
-                className={`flex flex-col gap-0.5 max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}
-              >
-                {/* Bubble */}
-                <div
-                  className={`px-4 py-2.5 transition-all ${
-                    isUser
-                      ? 'bg-amber-500 text-white rounded-[20px] rounded-br-[6px]'
-                      : 'bg-white border border-slate-200 text-slate-800 rounded-[20px] rounded-bl-[6px] shadow-sm'
-                  }`}
-                  style={{ fontSize: '14px', lineHeight: '1.5' }}
-                >
-                  {msg.text}
-                </div>
-
-                {/* Time + read receipt */}
-                <div className={`flex items-center gap-1 px-1 ${isUser ? 'flex-row-reverse' : ''}`}>
-                  <span className="text-slate-400" style={{ fontSize: '10px' }}>
-                    {msg.time}
-                  </span>
-                  {isUser &&
-                    (msg.read ? (
-                      <CheckCheck size={12} className="text-amber-500" />
-                    ) : (
-                      <Check size={12} className="text-slate-400" />
-                    ))}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Typing indicator */}
-        <div className="flex items-end gap-2 mb-3">
+        {isInitialLoading ? (
           <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mb-1"
-            style={{ background: '#fef3c7' }}
+            className="flex flex-col items-center justify-center py-16 gap-3"
+            role="status"
+            aria-live="polite"
           >
-            <span className="text-amber-700" style={{ fontSize: '10px', fontWeight: 800 }}>
-              {contact.initials}
-            </span>
+            <Loader2 size={28} className="text-slate-400 animate-spin" />
+            <p className="text-slate-500" style={{ fontSize: '13px' }}>
+              {langKey === 'ar' ? 'جاري تحميل المحادثة...' : 'Loading conversation...'}
+            </p>
           </div>
-          <div className="bg-white border border-slate-200 rounded-[20px] rounded-bl-[6px] shadow-sm px-4 py-3 flex items-center gap-1">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="w-2 h-2 rounded-full bg-slate-300 animate-bounce"
-                style={{ animationDelay: `${i * 0.15}s`, animationDuration: '0.9s' }}
-              />
-            ))}
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3" role="alert">
+            <p className="text-slate-700 text-center" style={{ fontSize: '14px', fontWeight: 600 }}>
+              {langKey === 'ar'
+                ? 'تعذر تحميل المحادثة. حاول مرة أخرى.'
+                : "We couldn't load this conversation. Please try again."}
+            </p>
+            <button
+              onClick={() => messagesQuery.refetch()}
+              className="px-5 py-2.5 rounded-2xl bg-amber-500 text-white active:scale-95 transition-all shadow-sm shadow-amber-200"
+              style={{ fontSize: '13px', fontWeight: 700 }}
+            >
+              {langKey === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+            </button>
           </div>
-        </div>
+        ) : !conversationId ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <p className="text-slate-500" style={{ fontSize: '13px' }}>
+              {langKey === 'ar' ? 'لا توجد محادثة محددة' : 'No conversation selected'}
+            </p>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <p className="text-slate-500" style={{ fontSize: '13px' }}>
+              {langKey === 'ar'
+                ? 'ابدأ المحادثة بإرسال رسالة'
+                : 'Start the conversation by sending a message'}
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Date separator */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex-1 h-px bg-slate-200" />
+              <span
+                className="text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-200"
+                style={{ fontSize: '11px', fontWeight: 500 }}
+              >
+                {t('today')}
+              </span>
+              <div className="flex-1 h-px bg-slate-200" />
+            </div>
+
+            {messages.map((msg, idx) => {
+              const isUser = msg.sender === 'user';
+              const showAvatar = !isUser && (idx === 0 || messages[idx - 1].sender !== 'pro');
+
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex items-end gap-2 mb-3 ${isUser ? 'justify-end' : 'justify-start'}`}
+                >
+                  {/* Pro avatar */}
+                  {!isUser && (
+                    <div className="flex-shrink-0 mb-1" style={{ width: '32px' }}>
+                      {showAvatar ? (
+                        <div
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center ${contact.bg}`}
+                        >
+                          <span
+                            className={contact.textColor}
+                            style={{ fontSize: '10px', fontWeight: 800 }}
+                          >
+                            {contact.initials}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  <div
+                    className={`flex flex-col gap-0.5 max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}
+                  >
+                    {/* Bubble */}
+                    <div
+                      className={`px-4 py-2.5 transition-all ${
+                        isUser
+                          ? `bg-amber-500 text-white rounded-[20px] rounded-br-[6px] ${msg.pending ? 'opacity-70' : ''}`
+                          : 'bg-white border border-slate-200 text-slate-800 rounded-[20px] rounded-bl-[6px] shadow-sm'
+                      }`}
+                      style={{ fontSize: '14px', lineHeight: '1.5' }}
+                    >
+                      {msg.text}
+                    </div>
+
+                    {/* Time + read receipt */}
+                    <div
+                      className={`flex items-center gap-1 px-1 ${isUser ? 'flex-row-reverse' : ''}`}
+                    >
+                      <span className="text-slate-400" style={{ fontSize: '10px' }}>
+                        {msg.time}
+                      </span>
+                      {isUser &&
+                        (msg.read ? (
+                          <CheckCheck size={12} className="text-amber-500" />
+                        ) : (
+                          <Check size={12} className="text-slate-400" />
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
 
         <div ref={bottomRef} />
       </div>
 
       {/* ── Input Bar ── */}
       <div className="flex-shrink-0 bg-white border-t border-slate-100 px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+        {sendError && (
+          <div
+            className="mb-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100 text-red-700"
+            style={{ fontSize: '12px', fontWeight: 600 }}
+            role="alert"
+          >
+            {sendError}
+          </div>
+        )}
         <div className="flex items-end gap-3">
-          {/* Emoji button */}
+          {/* Emoji button — visual placeholder, no picker yet. */}
           <button className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 active:bg-slate-200 transition-all">
             <span style={{ fontSize: '18px' }}>😊</span>
           </button>
@@ -407,14 +416,16 @@ export function ChatScreen({ contact, onBack, isVisible }: ChatScreenProps) {
           {/* Send button */}
           <button
             onClick={sendMessage}
-            disabled={!input.trim()}
+            disabled={!input.trim() || sendMut.isPending || !conversationId}
             className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-90 ${
-              input.trim() ? 'bg-amber-500 shadow-md shadow-amber-200' : 'bg-slate-200'
+              input.trim() && !sendMut.isPending && conversationId
+                ? 'bg-amber-500 shadow-md shadow-amber-200'
+                : 'bg-slate-200'
             }`}
           >
             <Send
               size={16}
-              className={input.trim() ? 'text-white' : 'text-slate-400'}
+              className={input.trim() && !sendMut.isPending ? 'text-white' : 'text-slate-400'}
               style={dir === 'rtl' ? { transform: 'scaleX(-1)' } : undefined}
             />
           </button>

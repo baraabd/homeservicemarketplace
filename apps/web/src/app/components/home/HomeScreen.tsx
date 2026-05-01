@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import {
@@ -19,10 +19,16 @@ import {
   Search,
   PaintBucket,
 } from 'lucide-react';
+import type {
+  BookingListItem,
+  BookingStatus,
+  NotificationSummary as ContractNotificationSummary,
+  NotificationType as ContractNotificationType,
+} from '@homeservicemarketplace/contracts';
 import { ServiceCategoryCard } from '../ds/ServiceCategoryCard';
 import { LeadCard, LeadCardProps } from './LeadCard';
 import { BidsScreen } from './BidsScreen';
-import { JobDetailView, JobData, leadToJobData } from './JobDetailView';
+import { JobDetailView, type JobDetailSource } from './JobDetailView';
 import { AllLeadsView } from './AllLeadsView';
 import { NotificationDrawer, AppNotification } from '../notifications/NotificationDrawer';
 import { ChatScreen } from '../chat/ChatScreen';
@@ -32,6 +38,21 @@ import { TabSkeleton } from '../ui/SkeletonLoader';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { useEcosystem } from '../../context/EcosystemContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
+import { useServiceCategories } from '../../../lib/use-service-categories';
+import { useRequests } from '../../hooks/seeker/useRequests';
+import { useBookings } from '../../hooks/seeker/useBookings';
+import { useConversations } from '../../hooks/seeker/useChat';
+import {
+  useMarkAllNotificationsRead,
+  useMarkNotificationRead,
+  useNotifications,
+  useUnreadNotificationsCount,
+} from '../../hooks/seeker/useNotifications';
+import {
+  formatRelativeTime,
+  mapServiceCategorySlug,
+  mapServiceRequestStatus,
+} from '../../../lib/seeker/request-status-map';
 
 // ─── Tab routing ──────────────────────────────────────────────────────────────
 const TAB_PATHS: Record<string, string> = {
@@ -48,14 +69,37 @@ function tabFromPath(pathname: string): string {
   return 'home';
 }
 
-// ─── Booking data ─────────────────────────────────────────────────────────────
+// ─── Booking render shape ─────────────────────────────────────────────────────
+// The Bookings tab renders against this local shape. Slice 2.3 wires the
+// production source to GET /v1/me/bookings; the previous BOOKING_DATA
+// constant was the slice-2-era placeholder and has been removed. The
+// local shape is preserved 1:1 so every existing visual (badge colour,
+// avatar pill, pro line, price suffix) renders unchanged — only the
+// data source moves.
 interface BookingItem {
   id: string;
+  // The "primary" service label and an Arabic mirror; both are sourced
+  // from the API row's service.categoryLabel* / customServiceText
+  // (Arabic fallback to the English label when the category doesn't
+  // ship a localised one).
   serviceEn: string;
   serviceAr: string;
+  // Pre-formatted human dates in the active language. ASAP bookings
+  // (no scheduledAt on the request) render the localised "ASAP" label.
   dateEn: string;
   dateAr: string;
+  // Maps the API BookingStatus onto the existing 3-state UI badge:
+  //   SCHEDULED   → 'pending'   (amber "awaiting" pill)
+  //   IN_PROGRESS → 'active'    (blue "in progress" pill)
+  //   COMPLETED   → 'completed' (green "done" pill)
+  //   CANCELLED   → 'completed' (green pill — slice 2.3 reuses it
+  //                              rather than introducing a new design
+  //                              token; a future slice can add a
+  //                              dedicated cancelled-state visual)
   statusKey: 'active' | 'pending' | 'completed';
+  // Provider display name. The API does not yet ship a localised
+  // Arabic name, so both languages fall back to the API string —
+  // future slice can add provider.displayNameAr.
   proEn: string;
   proAr: string;
   proInitials?: string;
@@ -64,174 +108,143 @@ interface BookingItem {
   addressAr?: string;
 }
 
-const BOOKING_DATA: BookingItem[] = [
-  {
-    id: 'b1',
-    serviceEn: 'Plumbing Repair',
-    serviceAr: 'إصلاح سباكة',
-    dateEn: 'Today, 3:00 PM',
-    dateAr: 'اليوم، 3:00 م',
-    statusKey: 'active',
-    proEn: 'Omar K.',
-    proAr: 'عمر خ.',
-    proInitials: 'OK',
-    price: 35,
-    address: 'Al Olaya District, Riyadh',
-    addressAr: 'حي العليا، الرياض',
-  },
-  {
-    id: 'b2',
-    serviceEn: 'AC Maintenance',
-    serviceAr: 'صيانة تكييف',
-    dateEn: 'Tomorrow, 10 AM',
-    dateAr: 'غداً، 10:00 ص',
-    statusKey: 'pending',
-    proEn: '—',
-    proAr: '—',
-    price: 0,
-    address: 'Al Malqa, Riyadh',
-    addressAr: 'حي الملقا، الرياض',
-  },
-  {
-    id: 'b3',
-    serviceEn: 'Deep Cleaning',
-    serviceAr: 'تنظيف عميق',
-    dateEn: 'Mar 8, 2:00 PM',
-    dateAr: '8 مارس، 2:00 م',
-    statusKey: 'completed',
-    proEn: 'Sara M.',
-    proAr: 'سارة م.',
-    proInitials: 'SM',
-    price: 28,
-    address: 'Al Malqa, Riyadh',
-    addressAr: 'حي الملقا، الرياض',
-  },
-  {
-    id: 'b4',
-    serviceEn: 'Cabinet Install',
-    serviceAr: 'تركيب خزائن',
-    dateEn: 'Mar 5, 9:00 AM',
-    dateAr: '5 مارس، 9:00 ص',
-    statusKey: 'completed',
-    proEn: 'Ali H.',
-    proAr: 'علي ح.',
-    proInitials: 'AH',
-    price: 45,
-    address: 'King Fahd District, Riyadh',
-    addressAr: 'حي الملك فهد، الرياض',
-  },
-];
+// API status → UI status. Centralised here so a future product change
+// (e.g. a dedicated cancelled-state pill) only touches one site.
+function statusKeyFor(s: BookingStatus): BookingItem['statusKey'] {
+  if (s === 'IN_PROGRESS') return 'active';
+  if (s === 'SCHEDULED') return 'pending';
+  return 'completed'; // COMPLETED + CANCELLED both render with the closed-state pill in slice 2.3.
+}
 
-function bookingToJobData(b: BookingItem, lang: string): JobData {
-  const svcKey = b.serviceEn.includes('Plumbing')
-    ? 'Plumbing'
-    : b.serviceEn.includes('AC')
-      ? 'AC Repair'
-      : b.serviceEn.includes('Cleaning')
-        ? 'Cleaning'
-        : b.serviceEn.includes('Cabinet')
-          ? 'Carpentry'
-          : b.serviceEn.includes('Electrical')
-            ? 'Electrical'
-            : b.serviceEn.includes('Paint')
-              ? 'Painting'
-              : 'General';
+// Format the scheduledAt timestamp into the human strings the existing
+// card renders. ASAP bookings (scheduledAt: null) render the localised
+// "ASAP" label so the card never displays an empty date row.
+function formatBookingDate(scheduledAt: string | null, lang: 'en' | 'ar'): string {
+  if (!scheduledAt) return lang === 'ar' ? 'في أقرب وقت' : 'ASAP';
+  const d = new Date(scheduledAt);
+  if (Number.isNaN(d.getTime())) return lang === 'ar' ? 'في أقرب وقت' : 'ASAP';
+  // Use Intl with the active locale; mirror the slice-2 placeholder
+  // shape ("Today, 3:00 PM" / "Mar 8, 2:00 PM") as closely as Intl
+  // allows without re-implementing relative-day logic.
+  const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  const timeOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  const locale = lang === 'ar' ? 'ar-SA' : 'en-US';
+  return `${d.toLocaleDateString(locale, dateOpts)}, ${d.toLocaleTimeString(locale, timeOpts)}`;
+}
+
+function apiBookingToItem(row: BookingListItem, lang: 'en' | 'ar'): BookingItem {
+  const labelEn =
+    row.service.categoryLabelEn ??
+    row.service.customServiceText ??
+    (lang === 'ar' ? 'خدمة' : 'Service');
+  const labelAr = row.service.categoryLabelAr ?? row.service.customServiceText ?? labelEn;
   return {
-    id: b.id,
-    service: svcKey,
-    serviceAr: b.serviceAr,
-    status: b.statusKey,
-    proName: b.proEn !== '—' ? b.proEn : undefined,
-    proInitials: b.proInitials,
-    proRating: 4.8,
-    proReviews: 156,
-    proJobs: 220,
-    proTags: ['Licensed', 'Insured', 'Top Rated'],
-    postedAt: lang === 'ar' ? b.dateAr : b.dateEn,
-    price: b.price > 0 ? b.price : undefined,
-    date: b.dateEn,
-    dateAr: b.dateAr,
-    address: b.address,
-    addressAr: b.addressAr,
+    id: row.id,
+    serviceEn: labelEn,
+    serviceAr: labelAr,
+    dateEn: formatBookingDate(row.scheduledAt, 'en'),
+    dateAr: formatBookingDate(row.scheduledAt, 'ar'),
+    statusKey: statusKeyFor(row.status),
+    proEn: row.provider.displayName,
+    proAr: row.provider.displayName,
+    proInitials: row.provider.initials,
+    price: row.priceAmount,
+    address: row.addressSnapshot.line1
+      ? `${row.addressSnapshot.line1}, ${row.addressSnapshot.city}`
+      : undefined,
+    addressAr: row.addressSnapshot.line1
+      ? `${row.addressSnapshot.line1}, ${row.addressSnapshot.city}`
+      : undefined,
   };
 }
 
-// ─── Leads ────────────────────────────────────────────────────────────────────
-const INITIAL_LEADS: LeadCardProps[] = [
-  {
-    id: '1',
-    service: 'Plumbing',
-    status: 'active',
-    proName: 'Omar K.',
-    proInitials: 'OK',
-    postedAt: '2h ago',
-    price: 35,
-    bids: 3,
-  },
-  { id: '2', service: 'Electrical', status: 'pending', postedAt: '5h ago', bids: 7 },
-  {
-    id: '3',
-    service: 'Cleaning',
-    status: 'completed',
-    proName: 'Sara M.',
-    proInitials: 'SM',
-    postedAt: '1d ago',
-    price: 28,
-  },
-];
+// Slice 2.4 removed the local `bookingToJobData(b, lang)` synthesizer. It
+// used to ship fake provider rating / review count / job count placeholders
+// to the JobDetailView; the detail view now fetches the real BookingDetail
+// (incl. provider summary) directly via useBookingDetail and renders only
+// the fields the API actually supplies.
 
-const INITIAL_NOTIFS: AppNotification[] = [
-  {
-    id: 'n1',
-    type: 'bid',
-    jobId: '2',
-    title: 'New bid on Electrical job',
-    body: 'Omar Al-Khalid bid $35/hr · ★ 4.9 · Top Pro',
-    time: '2m ago',
-    read: false,
-  },
-  {
-    id: 'n2',
-    type: 'bid',
-    jobId: '2',
-    title: '6 bids on Electrical',
-    body: 'You have 6 new bids waiting for review',
-    time: '5m ago',
-    read: false,
-  },
-  {
-    id: 'n3',
-    type: 'tracking',
-    jobId: '1',
-    title: 'Pro is on the way 📍',
-    body: 'Omar K. is 15 minutes away',
-    time: '1h ago',
-    read: false,
-  },
-  {
-    id: 'n4',
-    type: 'confirmed',
-    jobId: 'b1',
-    title: 'Booking confirmed ✓',
-    body: 'Your Plumbing repair is confirmed for 3 PM',
-    time: '2h ago',
-    read: true,
-  },
-  {
-    id: 'n5',
-    type: 'message',
-    jobId: 'b3',
-    title: 'Message from Sara M.',
-    body: 'Job completed! Please rate your experience',
-    time: '3h ago',
-    read: true,
-  },
-];
+// ─── Leads ────────────────────────────────────────────────────────────────────
+// The Seeker production source of truth for "my requests" is the live
+// /v1/me/requests endpoint, surfaced via useRequests() inside the
+// HomeScreen component below. The previous hard-coded INITIAL_LEADS
+// array has been removed — it was the slice-2-era placeholder. Tests
+// still mock the API to drive the same UI shape.
+
+// Slice 3.1 stabilization removed the local INITIAL_NOTIFS seed. The
+// drawer + ProfileTab notifications page now read from
+// /v1/me/notifications via useNotifications(); unread state is
+// persisted server-side, so refresh / logout / login all preserve the
+// read flags. The previous seed produced the user-visible defect where
+// the unread count snapped back to 3 on every refresh.
+
+// API NotificationType (Prisma enum on the wire) → existing UI
+// NotifType. Centralised here so the icon/colour palette in
+// NotificationDrawer stays unchanged regardless of new server-side
+// types.
+function uiTypeForNotification(type: ContractNotificationType): AppNotification['type'] {
+  switch (type) {
+    case 'BID_RECEIVED':
+      return 'bid';
+    case 'BID_ACCEPTED':
+    case 'BOOKING_CREATED':
+    case 'BOOKING_COMPLETED':
+      return 'confirmed';
+    case 'BOOKING_CANCELLED':
+      return 'tracking';
+    case 'MESSAGE_RECEIVED':
+    case 'REVIEW_REQUESTED':
+      return 'message';
+    case 'SYSTEM':
+    default:
+      return 'promo';
+  }
+}
+
+// "2m ago" / "1h ago" — derived from createdAt so the drawer can show
+// human-readable freshness without the server shipping a pre-formatted
+// string.
+function formatRelativeNotificationTime(iso: string, lang: 'en' | 'ar'): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const diff = Date.now() - d.getTime();
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff < hour) {
+    const m = Math.max(1, Math.floor(diff / minute));
+    return lang === 'ar' ? `${m} د` : `${m}m ago`;
+  }
+  if (diff < day) {
+    const h = Math.floor(diff / hour);
+    return lang === 'ar' ? `${h} س` : `${h}h ago`;
+  }
+  const days = Math.floor(diff / day);
+  return lang === 'ar' ? `${days} ي` : `${days}d ago`;
+}
+
+// API row → existing AppNotification render shape. The drawer's
+// jobId path (used by handleNotifTap) is keyed off resourceId now so
+// taps route to the correct request / booking / conversation surface.
+function apiNotifToRender(row: ContractNotificationSummary, lang: 'en' | 'ar'): AppNotification {
+  return {
+    id: row.id,
+    type: uiTypeForNotification(row.type),
+    title: row.title,
+    body: row.body,
+    time: formatRelativeNotificationTime(row.createdAt, lang),
+    read: row.readAt !== null,
+    jobId: row.resourceId ?? undefined,
+  };
+}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface HomeScreenProps {
   isOffline: boolean;
-  onServiceSelect: (service: string) => void;
+  // categoryId is forwarded from a real catalog tile so the wizard can
+  // post a curated-category request; null when triggered from the
+  // free-form CTAs.
+  onServiceSelect: (service: string, categoryId?: string | null) => void;
   onToggleOffline: () => void;
 }
 
@@ -252,8 +265,49 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   // ── Core state ─────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
   const [micActive, setMicActive] = useState(false);
-  const [leads, setLeads] = useState<LeadCardProps[]>(INITIAL_LEADS);
-  const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFS);
+
+  // Slice 3.1 stabilization: notifications are loaded from the API
+  // and read state is persisted server-side. The drawer receives a
+  // mapped AppNotification[] derived from NotificationSummary so the
+  // existing render shape (icon palette, badge, sections) stays
+  // unchanged.
+  const notificationsQuery = useNotifications();
+  const unreadCountQuery = useUnreadNotificationsCount();
+  const markReadMut = useMarkNotificationRead();
+  const markAllReadMut = useMarkAllNotificationsRead();
+  const notifications: AppNotification[] = useMemo(() => {
+    const items = notificationsQuery.data?.items ?? [];
+    return items.map((n) => apiNotifToRender(n, lang === 'ar' ? 'ar' : 'en'));
+  }, [notificationsQuery.data, lang]);
+
+  // Live "my requests" feed. Drives the Active Leads carousel on the
+  // home tab and the All Requests overlay. Empty array on first load
+  // / 401 / network error so the existing empty + error rendering
+  // paths stay safe — we never throw raw errors at LeadCard.
+  const requestsQuery = useRequests();
+  const leads: LeadCardProps[] = useMemo(() => {
+    const items = requestsQuery.data?.items ?? [];
+    return items.map((r) => ({
+      id: r.id,
+      service: mapServiceCategorySlug(r.category?.slug ?? null),
+      status: mapServiceRequestStatus(r.status),
+      postedAt: formatRelativeTime(r.createdAt, lang === 'ar' ? 'ar' : 'en'),
+      // bids/price not yet available — those ship with the bids slice.
+      bids: undefined,
+      price: undefined,
+    }));
+  }, [requestsQuery.data, lang]);
+
+  // Live "my bookings" feed (slice 2.3). Drives the Bookings tab list
+  // and the notification-tap fallback for tracking / confirmed / message
+  // notifications. Empty array on first load / 401 / network error so
+  // every render path below treats `bookings` as possibly empty — the
+  // existing empty / loading / error UI is safe by construction.
+  const bookingsQuery = useBookings();
+  const bookings: BookingItem[] = useMemo(() => {
+    const items = bookingsQuery.data?.items ?? [];
+    return items.map((row) => apiBookingToItem(row, lang === 'ar' ? 'ar' : 'en'));
+  }, [bookingsQuery.data, lang]);
   const [bookSnack, setBookSnack] = useState(false);
   const [bookSnackMsg, setBookSnackMsg] = useState('');
   const [tabLoading, setTabLoading] = useState(false);
@@ -261,9 +315,20 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   // ── Overlay state ──────────────────────────────────────────────────────────
   const [notifOpen, setNotifOpen] = useState(false);
   const [bidsLead, setBidsLead] = useState<LeadCardProps | null>(null);
-  const [jobDetail, setJobDetail] = useState<JobData | null>(null);
+  // Slice 2.4: jobDetail now carries a discriminator (request vs booking)
+  // + the corresponding id. The JobDetailView fetches detail + timeline via
+  // React Query against the matching API surface, so we no longer pre-bake
+  // a synthesized JobData blob here.
+  const [jobDetail, setJobDetail] = useState<JobDetailSource | null>(null);
   const [showAllLeads, setShowAllLeads] = useState(false);
+  // Slice 3.3: chatContact carries a conversationId so ChatScreen can
+  // load the persisted message stream via React Query. The visual
+  // contact fields (name / initials / colours) drive the existing
+  // header render and are derived from the conversation's
+  // otherParticipant or — when entering chat from a booking — from
+  // the booking's provider summary.
   const [chatContact, setChatContact] = useState<null | {
+    conversationId: string;
     name: string;
     initials: string;
     bg: string;
@@ -271,10 +336,37 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
     status: string;
   }>(null);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
-  const markAllRead = () => setNotifications((p) => p.map((n) => ({ ...n, read: true })));
-  const markRead = (id: string) =>
-    setNotifications((p) => p.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  // Slice 3.3: live conversations feed. Drives the messages tab list
+  // and the notification-tap fallback when a 'message' notification
+  // is opened. Empty array on first load / 401 / network error so
+  // every render path treats `conversations` as possibly empty.
+  const conversationsQuery = useConversations();
+  const conversations = useMemo(
+    () => conversationsQuery.data?.items ?? [],
+    [conversationsQuery.data],
+  );
+
+  // Unread count: prefer the API-served count (one query, faster
+  // refresh path) but fall back to deriving from the loaded list when
+  // the count query is still in flight or errored — never leaves the
+  // bell badge stuck on a stale local value.
+  const unreadCount = unreadCountQuery.data?.count ?? notifications.filter((n) => !n.read).length;
+
+  // markAllRead / markRead now hit the backend. The mutations
+  // invalidate the notifications root, which triggers list +
+  // unread-count refetch. We do NOT optimistic-update local state
+  // here because the previous local-only behaviour is exactly the
+  // bug we're fixing — the unread count would snap back on refresh
+  // because the server didn't know the user had marked anything
+  // read.
+  const markAllRead = () => {
+    if (markAllReadMut.isPending) return;
+    markAllReadMut.mutate();
+  };
+  const markRead = (id: string) => {
+    if (markReadMut.isPending) return;
+    markReadMut.mutate(id);
+  };
 
   // ── Tab skeleton loader ────────────────────────────────────────────────────
   // تم تصحيح الخطأ هنا بإزالة التعبير غير المستخدم وتنظيم الـ effect
@@ -299,6 +391,10 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   };
 
   // ── Notification tap ────────────────────────────────────────────────────────
+  // Looks up the referenced row in the loaded `leads` / `bookings`
+  // queries — never against a hardcoded list. If the relevant query
+  // hasn't loaded yet (or the referenced row no longer exists), the
+  // tap is a no-op rather than opening a screen against fake data.
   const handleNotifTap = (n: AppNotification) => {
     setNotifOpen(false);
     setTimeout(() => {
@@ -308,21 +404,30 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
         if (lead) setBidsLead(lead);
       } else if (n.type === 'tracking' || n.type === 'confirmed') {
         const lead = leads.find((l) => l.id === n.jobId);
-        if (lead) setJobDetail(leadToJobData(lead));
-        else {
-          const bk = BOOKING_DATA.find((b) => b.id === n.jobId);
-          if (bk) setJobDetail(bookingToJobData(bk, lang));
+        if (lead) {
+          setJobDetail({ kind: 'request', id: lead.id });
+        } else {
+          const bk = bookings.find((b) => b.id === n.jobId);
+          if (bk) setJobDetail({ kind: 'booking', id: bk.id });
         }
       } else if (n.type === 'message') {
-        const bk = BOOKING_DATA.find((b) => b.id === n.jobId);
-        if (bk?.proInitials)
+        // Slice 3.3: prefer routing by conversation id when the
+        // notification carries one (future-shape: notifications keyed
+        // to a conversation). Otherwise look up an existing
+        // conversation by booking id from the loaded list. We do NOT
+        // create a conversation from a notification tap — that's an
+        // explicit user action initiated from a booking surface.
+        const conv = conversations.find((c) => c.bookingId === n.jobId);
+        if (conv) {
           setChatContact({
-            name: lang === 'ar' ? bk.proAr : bk.proEn,
-            initials: bk.proInitials,
-            bg: 'bg-green-100',
-            textColor: 'text-green-700',
+            conversationId: conv.id,
+            name: conv.otherParticipant.displayName,
+            initials: conv.otherParticipant.initials,
+            bg: 'bg-amber-100',
+            textColor: 'text-amber-700',
             status: 'Online',
           });
+        }
       }
     }, 200);
   };
@@ -332,28 +437,23 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
     if (lead.status === 'pending') {
       setBidsLead(lead);
     } else {
-      setJobDetail(leadToJobData(lead));
+      setJobDetail({ kind: 'request', id: lead.id });
     }
   };
 
   // ── Booking tap ─────────────────────────────────────────────────────────────
-  const handleBookingTap = (b: BookingItem) => setJobDetail(bookingToJobData(b, lang));
+  // Slice 2.4: hands the booking id to JobDetailView so it can fetch the
+  // real BookingDetail (provider summary + price snapshot + timeline).
+  const handleBookingTap = (b: BookingItem) => setJobDetail({ kind: 'booking', id: b.id });
 
   // ── Book bid ────────────────────────────────────────────────────────────────
+  // Bid acceptance is bound to the bids slice (out of scope for slice 3).
+  // For now this is a UI-only acknowledgement: it shows the success
+  // snackbar and closes the BidsScreen overlay so the existing demo
+  // path doesn't regress. Once the bids endpoint ships, this should
+  // call POST /v1/me/requests/:id/bids/:bidId/accept and re-let the
+  // requests query refetch.
   const handleBookBid = (bidderName: string) => {
-    setLeads((prev) =>
-      prev.map((l) =>
-        l.id === bidsLead?.id
-          ? {
-              ...l,
-              status: 'active',
-              proName: bidderName.split(' ')[0] + ' ' + (bidderName.split(' ')[1]?.[0] ?? '') + '.',
-              proInitials: bidderName[0] + (bidderName.split(' ')[1]?.[0] ?? ''),
-              bids: undefined,
-            }
-          : l,
-      ),
-    );
     const fn = bidderName.split(' ')[0];
     setBookSnackMsg(
       lang === 'ar' ? `تم الحجز مع ${fn}! 🎉` : `Booked ${fn}! 🎉 Job is now active.`,
@@ -363,44 +463,43 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   };
 
   // ── Services ────────────────────────────────────────────────────────────────
-  const SERVICES = [
-    {
-      key: 'plumbing',
-      iconBg: 'bg-blue-100',
-      iconColor: 'text-blue-600',
-      icon: <Wrench size={22} />,
-    },
-    {
-      key: 'acRepair',
-      iconBg: 'bg-cyan-100',
-      iconColor: 'text-cyan-600',
-      icon: <Wind size={22} />,
-    },
-    {
-      key: 'carpentry',
+  // Visual identity (icon + colour pair) for each known service slug.
+  // The catalog itself comes from /v1/services (real backend, Sprint 1
+  // slice 1) — see useServiceCategories below — but the icon mapping is
+  // intentionally local because lucide icons aren't serializable as DB
+  // rows and changing the visual mapping would otherwise require a
+  // backend migration. Unknown slugs (e.g. an admin-added category that
+  // ships before the FE icon map is updated) fall back to the slate
+  // generic icon so the UI never breaks.
+  const SERVICE_ICON_MAP: Record<
+    string,
+    { icon: React.ReactNode; iconBg: string; iconColor: string }
+  > = {
+    plumbing: { icon: <Wrench size={22} />, iconBg: 'bg-blue-100', iconColor: 'text-blue-600' },
+    'ac-repair': { icon: <Wind size={22} />, iconBg: 'bg-cyan-100', iconColor: 'text-cyan-600' },
+    carpentry: {
+      icon: <Hammer size={22} />,
       iconBg: 'bg-orange-100',
       iconColor: 'text-orange-700',
-      icon: <Hammer size={22} />,
     },
-    {
-      key: 'cleaning',
+    cleaning: {
+      icon: <Sparkles size={22} />,
       iconBg: 'bg-green-100',
       iconColor: 'text-green-600',
-      icon: <Sparkles size={22} />,
     },
-    {
-      key: 'electrical',
-      iconBg: 'bg-amber-100',
-      iconColor: 'text-amber-600',
-      icon: <Zap size={22} />,
-    },
-    {
-      key: 'painting',
+    electrical: { icon: <Zap size={22} />, iconBg: 'bg-amber-100', iconColor: 'text-amber-600' },
+    painting: {
+      icon: <PaintBucket size={22} />,
       iconBg: 'bg-purple-100',
       iconColor: 'text-purple-600',
-      icon: <PaintBucket size={22} />,
     },
-  ];
+  };
+  const SERVICE_ICON_FALLBACK = {
+    icon: <Wrench size={22} />,
+    iconBg: 'bg-slate-100',
+    iconColor: 'text-slate-600',
+  };
+  const { data: serviceCategories } = useServiceCategories();
 
   // ── Nav tabs ────────────────────────────────────────────────────────────────
   const NAV_TABS = [
@@ -410,47 +509,10 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
     { id: 'profile', labelKey: 'profile', Icon: User, badge: 0 },
   ];
 
-  const MESSAGES_LIST = [
-    {
-      id: '1',
-      nameEn: 'Omar K.',
-      nameAr: 'عمر خ.',
-      initials: 'OK',
-      bg: 'bg-amber-100',
-      textColor: 'text-amber-700',
-      msgEn: "I'm on my way, ETA 15 min!",
-      msgAr: 'أنا في الطريق، الوصول خلال 15 دقيقة!',
-      time: '2m',
-      unread: 2,
-      status: 'Online',
-    },
-    {
-      id: '2',
-      nameEn: 'Sara M.',
-      nameAr: 'سارة م.',
-      initials: 'SM',
-      bg: 'bg-green-100',
-      textColor: 'text-green-700',
-      msgEn: 'Job completed! Please leave a review.',
-      msgAr: 'اكتمل العمل! يرجى ترك تقييم.',
-      time: '1h',
-      unread: 0,
-      status: '1h ago',
-    },
-    {
-      id: '3',
-      nameEn: 'FixNow Support',
-      nameAr: 'دعم فيكس ناو',
-      initials: 'FN',
-      bg: 'bg-amber-500',
-      textColor: 'text-white',
-      msgEn: 'Your invoice is ready.',
-      msgAr: 'فاتورتك جاهزة للعرض.',
-      time: '2h',
-      unread: 1,
-      status: 'System',
-    },
-  ];
+  // Slice 3.3 removed the local MESSAGES_LIST seed (Omar K. / Sara M.
+  // / FixNow Support). The messages tab now reads from
+  // /v1/me/conversations via useConversations(); see the rendering
+  // below in the 'messages' tab branch.
 
   // ─── Tab content renderer ───────────────────────────────────────────────────
   const renderTab = () => {
@@ -601,17 +663,21 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                   {t('viewAll')} <ChevronRight size={14} className="rtl:rotate-180" />
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                {SERVICES.map((s) => (
-                  <ServiceCategoryCard
-                    key={s.key}
-                    icon={s.icon}
-                    label={t(s.key)}
-                    iconBg={s.iconBg}
-                    iconColor={s.iconColor}
-                    onClick={() => onServiceSelect(t(s.key))}
-                  />
-                ))}
+              <div className="grid grid-cols-3 gap-3" data-testid="service-categories-grid">
+                {(serviceCategories ?? []).map((c) => {
+                  const visual = SERVICE_ICON_MAP[c.slug] ?? SERVICE_ICON_FALLBACK;
+                  const label = lang === 'ar' ? c.labelAr : c.labelEn;
+                  return (
+                    <ServiceCategoryCard
+                      key={c.id}
+                      icon={visual.icon}
+                      label={label}
+                      iconBg={visual.iconBg}
+                      iconColor={visual.iconColor}
+                      onClick={() => onServiceSelect(label, c.id)}
+                    />
+                  );
+                })}
               </div>
             </div>
 
@@ -741,8 +807,42 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
               {t('myBookings')}
             </h2>
 
-            {/* Empty state guard - we have data, but demo the component anyway when 0 */}
-            {BOOKING_DATA.length === 0 ? (
+            {/* Loading / error / empty / list — preserved visual idioms.
+                Loading uses the same 20-pad icon block as the empty
+                state with a neutral spinner inside; error keeps the
+                slate copy block (no raw backend error). */}
+            {bookingsQuery.isLoading && !bookingsQuery.data ? (
+              <div
+                className="flex flex-col items-center justify-center py-20 gap-4"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="w-20 h-20 rounded-3xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center animate-pulse">
+                  <Briefcase size={32} className="text-slate-300" />
+                </div>
+                <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: '13px' }}>
+                  {lang === 'ar' ? 'جاري تحميل الحجوزات...' : 'Loading bookings...'}
+                </p>
+              </div>
+            ) : bookingsQuery.isError && !bookingsQuery.data ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-3" role="alert">
+                <p
+                  className="text-slate-700 dark:text-slate-200 text-center"
+                  style={{ fontSize: '14px', fontWeight: 600 }}
+                >
+                  {lang === 'ar'
+                    ? 'تعذر تحميل الحجوزات. حاول مرة أخرى.'
+                    : "We couldn't load bookings. Please try again."}
+                </p>
+                <button
+                  onClick={() => bookingsQuery.refetch()}
+                  className="px-5 py-2.5 rounded-2xl bg-amber-500 text-white active:scale-95 transition-all shadow-sm shadow-amber-200"
+                  style={{ fontSize: '13px', fontWeight: 700 }}
+                >
+                  {lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                </button>
+              </div>
+            ) : bookings.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 gap-4">
                 <div className="w-20 h-20 rounded-3xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                   <Briefcase size={32} className="text-slate-300" />
@@ -758,7 +858,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                 </p>
               </div>
             ) : (
-              BOOKING_DATA.map((b) => (
+              bookings.map((b) => (
                 <motion.button
                   key={b.id}
                   whileTap={{ scale: 0.98 }}
@@ -859,54 +959,115 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                 style={{ fontSize: '13px' }}
               />
             </div>
-            {MESSAGES_LIST.map((m) => (
-              <motion.button
-                key={m.id}
-                whileTap={{ scale: 0.98 }}
-                onClick={() =>
-                  setChatContact({
-                    name: lang === 'ar' ? m.nameAr : m.nameEn,
-                    initials: m.initials,
-                    bg: m.bg,
-                    textColor: m.textColor,
-                    status: m.status,
-                  })
-                }
-                className="w-full flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 mb-2 cursor-pointer transition-all text-start"
+            {/* Slice 3.3: Conversations are loaded from /v1/me/conversations.
+                The slice-2 MESSAGES_LIST seed (Omar K. / Sara M. / FixNow
+                Support) was removed entirely from the production path.
+                Loading / empty / error states use the existing slate
+                copy idiom. */}
+            {conversationsQuery.isLoading && !conversationsQuery.data ? (
+              <div
+                className="flex flex-col items-center justify-center py-16 gap-3"
+                role="status"
+                aria-live="polite"
               >
-                <div
-                  className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${m.bg}`}
+                <p className="text-slate-500" style={{ fontSize: '13px' }}>
+                  {lang === 'ar' ? 'جاري تحميل المحادثات...' : 'Loading conversations...'}
+                </p>
+              </div>
+            ) : conversationsQuery.isError && !conversationsQuery.data ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3" role="alert">
+                <p
+                  className="text-slate-700 dark:text-slate-200 text-center"
+                  style={{ fontSize: '14px', fontWeight: 600 }}
                 >
-                  <span className={m.textColor} style={{ fontSize: '12px', fontWeight: 800 }}>
-                    {m.initials}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p
-                    className="text-slate-900 dark:text-white"
-                    style={{ fontSize: '14px', fontWeight: 700 }}
+                  {lang === 'ar'
+                    ? 'تعذر تحميل المحادثات. حاول مرة أخرى.'
+                    : "We couldn't load conversations. Please try again."}
+                </p>
+                <button
+                  onClick={() => conversationsQuery.refetch()}
+                  className="px-5 py-2.5 rounded-2xl bg-amber-500 text-white active:scale-95 transition-all shadow-sm shadow-amber-200"
+                  style={{ fontSize: '13px', fontWeight: 700 }}
+                >
+                  {lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                </button>
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <p
+                  className="text-slate-700 dark:text-slate-200 text-center"
+                  style={{ fontSize: '14px', fontWeight: 600 }}
+                >
+                  {lang === 'ar' ? 'لا توجد محادثات بعد' : 'No conversations yet'}
+                </p>
+                <p className="text-slate-400 text-center" style={{ fontSize: '12px' }}>
+                  {lang === 'ar'
+                    ? 'ستظهر محادثاتك هنا فور بدء حجوزات.'
+                    : 'Your conversations will appear here once you have bookings.'}
+                </p>
+              </div>
+            ) : (
+              conversations.map((c) => {
+                const lastAt = c.lastMessageAt ? new Date(c.lastMessageAt) : null;
+                const timeStr = lastAt
+                  ? lastAt.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : '';
+                return (
+                  <motion.button
+                    key={c.id}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() =>
+                      setChatContact({
+                        conversationId: c.id,
+                        name: c.otherParticipant.displayName,
+                        initials: c.otherParticipant.initials,
+                        bg: 'bg-amber-100',
+                        textColor: 'text-amber-700',
+                        status: 'Online',
+                      })
+                    }
+                    className="w-full flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 mb-2 cursor-pointer transition-all text-start"
                   >
-                    {lang === 'ar' ? m.nameAr : m.nameEn}
-                  </p>
-                  <p className="text-slate-400 truncate" style={{ fontSize: '12px' }}>
-                    {lang === 'ar' ? m.msgAr : m.msgEn}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                  <span className="text-slate-400" style={{ fontSize: '10px' }}>
-                    {m.time}
-                  </span>
-                  {m.unread > 0 && (
-                    <span
-                      className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center"
-                      style={{ fontSize: '10px', fontWeight: 700 }}
-                    >
-                      {m.unread}
-                    </span>
-                  )}
-                </div>
-              </motion.button>
-            ))}
+                    <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 bg-amber-100">
+                      <span
+                        className="text-amber-700"
+                        style={{ fontSize: '12px', fontWeight: 800 }}
+                      >
+                        {c.otherParticipant.initials}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-slate-900 dark:text-white"
+                        style={{ fontSize: '14px', fontWeight: 700 }}
+                      >
+                        {c.otherParticipant.displayName}
+                      </p>
+                      <p className="text-slate-400 truncate" style={{ fontSize: '12px' }}>
+                        {c.lastMessageBody ??
+                          (lang === 'ar' ? 'لا توجد رسائل بعد' : 'No messages yet')}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                      <span className="text-slate-400" style={{ fontSize: '10px' }}>
+                        {timeStr}
+                      </span>
+                      {c.unreadCount > 0 && (
+                        <span
+                          className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center"
+                          style={{ fontSize: '10px', fontWeight: 700 }}
+                        >
+                          {c.unreadCount}
+                        </span>
+                      )}
+                    </div>
+                  </motion.button>
+                );
+              })
+            )}
           </motion.div>
         );
 
@@ -1032,7 +1193,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
           }}
           onOpenDetail={(lead) => {
             setShowAllLeads(false);
-            setJobDetail(leadToJobData(lead));
+            setJobDetail({ kind: 'request', id: lead.id });
           }}
           onPostNew={() => {
             setShowAllLeads(false);
@@ -1057,12 +1218,19 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
         {/* Job Detail */}
         {jobDetail && (
           <JobDetailView
-            job={jobDetail}
+            source={jobDetail}
             isVisible={!!jobDetail}
             onBack={() => setJobDetail(null)}
-            onOpenChat={(contact) => {
-              setJobDetail(null);
-              setChatContact(contact);
+            onOpenChat={(_contact) => {
+              // Slice 2.4 made JobDetailView's Message button a
+              // disabled placeholder — onOpenChat is never invoked
+              // from there. Slice 3.3 routes chat openings through
+              // the messages tab + notification taps, both of which
+              // resolve a real conversationId. If a future surface
+              // calls this from a booking, it should call
+              // useGetOrCreateConversation first and dispatch the
+              // resulting conversationId here.
+              void _contact;
             }}
           />
         )}
@@ -1070,6 +1238,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
         {/* Chat Screen */}
         {chatContact && (
           <ChatScreen
+            conversationId={chatContact.conversationId}
             contact={chatContact}
             onBack={() => setChatContact(null)}
             isVisible={!!chatContact}

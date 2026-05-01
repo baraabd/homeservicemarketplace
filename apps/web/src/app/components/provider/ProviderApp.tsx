@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Map,
@@ -40,6 +40,16 @@ import {
 } from '../../context/EcosystemContext';
 import type { ServiceRequest } from '../../context/EcosystemContext';
 import { ImageWithFallback } from '../ui/ImageWithFallback';
+import {
+  useProviderProfile,
+  useUpdateProviderAvailability,
+  useUpgradeToProvider,
+} from '../../hooks/provider/useProviderProfile';
+import { useAuthIdentity } from '../../../lib/use-auth-identity';
+import type {
+  ProviderAvailability,
+  ProviderProfileSummary,
+} from '@homeservicemarketplace/contracts';
 
 // ─── Map image (unsplash) ────────────────────────────────────────────────────
 const MAP_IMG =
@@ -344,10 +354,25 @@ function JobPin({
 function LiveJobsScreen() {
   const { lang } = useLang();
   const { requests, submitBid } = useEcosystem();
+  const profileQuery = useProviderProfile();
   const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [biddingReq, setBiddingReq] = useState<ServiceRequest | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'bidding'>('all');
+
+  // Map status pill: prefer the provider's configured service area; fall
+  // back to a neutral "Online" label when none is set, never hardcoded
+  // city text.
+  const serviceAreaLabel = (() => {
+    const profile = profileQuery.data?.profile;
+    if (!profile) return lang === 'ar' ? 'متصل' : 'Online';
+    const city = profile.serviceAreaCity?.trim();
+    const country = profile.serviceAreaCountry?.trim();
+    if (city && country) return `${city}, ${country}`;
+    if (city) return city;
+    if (country) return country;
+    return lang === 'ar' ? 'متصل' : 'Online';
+  })();
 
   const activeReqs = requests.filter(
     (r) => (r.status !== 'completed' && r.status !== 'assigned') || r.status === 'assigned',
@@ -406,7 +431,7 @@ function LiveJobsScreen() {
           <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md rounded-2xl px-3 py-2 border border-white/10">
             <Navigation size={12} className="text-blue-400" />
             <span className="text-white" style={{ fontSize: '12px' }}>
-              Riyadh, SA
+              {serviceAreaLabel}
             </span>
           </div>
         </div>
@@ -1028,32 +1053,190 @@ function WalletScreen() {
 }
 
 // ─── Provider Profile ─────────────────────────────────────────────────────────
+// Tailwind palette for skill chips. Cycled by index so the chip colours
+// stay distinct without the previous hardcoded mapping (which only
+// covered the four English skill names that no longer drive the data).
+const SKILL_CHIP_COLORS = [
+  'bg-blue-100 text-blue-700',
+  'bg-amber-100 text-amber-700',
+  'bg-cyan-100 text-cyan-700',
+  'bg-orange-100 text-orange-700',
+  'bg-green-100 text-green-700',
+  'bg-purple-100 text-purple-700',
+];
+
+// "Member since Jan 2023" formatter. Localised to en-US / ar-SA so the
+// month name flips with language. Falls back to an empty string when
+// the wire timestamp is somehow missing — the surrounding paragraph
+// hides cleanly.
+function formatMemberSince(iso: string, lang: 'en' | 'ar'): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', {
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 function ProviderProfileScreen() {
   const { lang } = useLang();
-  const [available, setAvailable] = useState(true);
+  const profileQuery = useProviderProfile();
+  const upgradeMut = useUpgradeToProvider();
+  const availabilityMut = useUpdateProviderAvailability();
+
+  const profile = profileQuery.data?.profile ?? null;
+  // Onboarding: only when the cache has NO profile yet AND the last GET
+  // came back 403/404. Once the upgrade mutation seeds the cache, `profile`
+  // is non-null and we render the real surface even if React Query is
+  // mid-refetch (the prior 403 error is still pinned to the query state
+  // until the next fetch resolves).
+  const upgradeNeeded = (() => {
+    if (profile) return false;
+    const status = profileQuery.error?.response?.status;
+    return status === 403 || status === 404;
+  })();
 
   const L = {
     title: lang === 'ar' ? 'ملف المحترف' : 'My Profile',
     online: lang === 'ar' ? 'متاح للعمل' : 'Available for work',
     offline: lang === 'ar' ? 'غير متاح' : 'Unavailable',
+    paused: lang === 'ar' ? 'متوقف مؤقتاً' : 'Paused',
     skills: lang === 'ar' ? 'مهاراتي' : 'My Skills',
+    skillsEmpty: lang === 'ar' ? 'لم تضف مهارات بعد' : 'No skills added yet',
     jobsDone: lang === 'ar' ? 'مهام منجزة' : 'Jobs Done',
     rating: lang === 'ar' ? 'التقييم' : 'Rating',
-    response: lang === 'ar' ? 'وقت الاستجابة' : 'Avg Response',
+    reviews: lang === 'ar' ? 'مراجعات' : 'Reviews',
     editProfile: lang === 'ar' ? 'تعديل الملف' : 'Edit Profile',
     settings: lang === 'ar' ? 'الإعدادات' : 'Settings',
     support: lang === 'ar' ? 'الدعم الفني' : 'Support',
     signOut: lang === 'ar' ? 'تسجيل الخروج' : 'Sign Out',
     level: lang === 'ar' ? 'محترف Pro' : 'Pro Professional',
+    levelStandard: lang === 'ar' ? 'محترف' : 'Professional',
     memberSince: lang === 'ar' ? 'عضو منذ' : 'Member since',
+    receivingRequests: lang === 'ar' ? 'تستقبل الطلبات' : 'Receiving requests',
+    hiddenFromMap: lang === 'ar' ? 'مخفي عن الخريطة' : 'Hidden from map',
+    onboardingTitle: lang === 'ar' ? 'كن مزوّد خدمة على المنصة' : 'Become a service provider',
+    onboardingBody:
+      lang === 'ar'
+        ? 'فعّل حسابك كمحترف لرؤية الطلبات القريبة وتقديم العروض.'
+        : 'Activate your professional account to see nearby requests and submit bids.',
+    onboardingCta: lang === 'ar' ? 'تفعيل حساب المحترف' : 'Activate Provider Account',
+    onboardingPending: lang === 'ar' ? 'جارٍ التفعيل…' : 'Activating…',
+    upgradeError:
+      lang === 'ar'
+        ? 'تعذر تفعيل الحساب. حاول مرة أخرى.'
+        : "We couldn't activate your provider account. Please try again.",
+    availabilityError:
+      lang === 'ar'
+        ? 'تعذر تحديث الحالة. حاول مرة أخرى.'
+        : "We couldn't update your availability. Please try again.",
+    profileError:
+      lang === 'ar'
+        ? 'تعذر تحميل ملف المحترف. حاول مرة أخرى.'
+        : "We couldn't load your provider profile. Please try again.",
   };
 
-  const SKILLS = [
-    { en: 'Plumbing', ar: 'سباكة', color: 'bg-blue-100 text-blue-700' },
-    { en: 'Electrical', ar: 'كهرباء', color: 'bg-amber-100 text-amber-700' },
-    { en: 'AC Repair', ar: 'تكييف', color: 'bg-cyan-100 text-cyan-700' },
-    { en: 'Carpentry', ar: 'نجارة', color: 'bg-orange-100 text-orange-700' },
-  ];
+  // ── Onboarding state — same gradient hero, no fake stats ────────────────
+  if (upgradeNeeded) {
+    return (
+      <div
+        className="absolute inset-0 flex flex-col bg-slate-50 dark:bg-slate-900 overflow-y-auto"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 px-5 pt-6 pb-8 relative overflow-hidden">
+          <div className="absolute -top-6 -end-6 w-28 h-28 rounded-full bg-white/10" />
+          <p className="text-white relative" style={{ fontSize: '20px', fontWeight: 800 }}>
+            {L.onboardingTitle}
+          </p>
+          <p
+            className="text-white/70 relative mt-1.5"
+            style={{ fontSize: '13px', lineHeight: '1.5' }}
+          >
+            {L.onboardingBody}
+          </p>
+        </div>
+        <div className="px-4 -mt-3 z-10 relative">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-5 mb-4 flex flex-col items-stretch">
+            <button
+              onClick={() => upgradeMut.mutate()}
+              disabled={upgradeMut.isPending}
+              className="w-full flex items-center justify-center gap-2.5 py-4 bg-blue-600 text-white rounded-2xl shadow-md shadow-blue-200 dark:shadow-none active:scale-95 transition-all disabled:opacity-60"
+              style={{ fontSize: '15px', fontWeight: 800 }}
+            >
+              {upgradeMut.isPending ? (
+                <>
+                  <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  {L.onboardingPending}
+                </>
+              ) : (
+                <>
+                  <Award size={18} />
+                  {L.onboardingCta}
+                </>
+              )}
+            </button>
+            {upgradeMut.isError && (
+              <p
+                className="mt-3 text-red-600"
+                style={{ fontSize: '12px', fontWeight: 600 }}
+                role="alert"
+              >
+                {L.upgradeError}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Loading skeleton — preserve hero shape so the layout doesn't jump ───
+  if (!profile) {
+    return (
+      <div
+        className="absolute inset-0 flex flex-col bg-slate-50 dark:bg-slate-900 overflow-y-auto"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 px-5 pt-6 pb-8 relative overflow-hidden">
+          <div className="absolute -top-6 -end-6 w-28 h-28 rounded-full bg-white/10" />
+          <div className="flex items-center gap-4 relative">
+            <div className="w-20 h-20 rounded-3xl bg-white/20 border-2 border-white/30" />
+            <div className="space-y-2">
+              <div className="h-5 w-40 rounded bg-white/30" />
+              <div className="h-3 w-24 rounded bg-white/20" />
+            </div>
+          </div>
+        </div>
+        {profileQuery.isError && !upgradeNeeded && (
+          <div className="px-4 mt-4">
+            <p
+              className="px-4 py-3 rounded-2xl bg-red-50 border border-red-100 text-red-700"
+              style={{ fontSize: '13px', fontWeight: 600 }}
+              role="alert"
+            >
+              {L.profileError}
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const isOnline = profile.availability === 'ONLINE';
+  const isPaused = profile.availability === 'PAUSED';
+  const availabilityLabel = isOnline ? L.online : isPaused ? L.paused : L.offline;
+  const availabilityHint = isOnline ? L.receivingRequests : L.hiddenFromMap;
+
+  const handleAvailabilityToggle = () => {
+    if (availabilityMut.isPending) return;
+    const next: ProviderAvailability = isOnline ? 'OFFLINE' : 'ONLINE';
+    availabilityMut.mutate({ availability: next });
+  };
+
+  const memberSince = formatMemberSince(profile.createdAt, lang === 'ar' ? 'ar' : 'en');
+  const ratingDisplay = profile.reviewCount > 0 ? `${profile.ratingAvg.toFixed(1)}★` : '—';
+  const proLabel = profile.topPro ? L.level : L.levelStandard;
 
   return (
     <div
@@ -1066,30 +1249,32 @@ function ProviderProfileScreen() {
         <div className="flex items-center gap-4 relative">
           <div className="w-20 h-20 rounded-3xl bg-white/20 border-2 border-white/30 flex items-center justify-center">
             <span className="text-white" style={{ fontSize: '24px', fontWeight: 900 }}>
-              OK
+              {profile.initials}
             </span>
           </div>
           <div>
             <p className="text-white" style={{ fontSize: '20px', fontWeight: 800 }}>
-              {lang === 'ar' ? 'عمر الخالد' : 'Omar Al-Khalid'}
+              {profile.displayName}
             </p>
             <div className="flex items-center gap-1 mt-0.5">
               <Award size={12} className="text-amber-300" />
               <span className="text-white/70" style={{ fontSize: '12px' }}>
-                {L.level}
+                {proLabel}
               </span>
             </div>
-            <p className="text-white/50 mt-0.5" style={{ fontSize: '11px' }}>
-              {L.memberSince} Jan 2023
-            </p>
+            {memberSince && (
+              <p className="text-white/50 mt-0.5" style={{ fontSize: '11px' }}>
+                {L.memberSince} {memberSince}
+              </p>
+            )}
           </div>
         </div>
         {/* Stats */}
         <div className="grid grid-cols-3 gap-2 mt-5 relative">
           {[
-            { val: '156', label: L.jobsDone },
-            { val: '4.8★', label: L.rating },
-            { val: '~8min', label: L.response },
+            { val: String(profile.completedJobs), label: L.jobsDone },
+            { val: ratingDisplay, label: L.rating },
+            { val: String(profile.reviewCount), label: L.reviews },
           ].map((s) => (
             <div key={s.label} className="bg-white/15 rounded-2xl py-3 flex flex-col items-center">
               <span className="text-white" style={{ fontSize: '15px', fontWeight: 800 }}>
@@ -1108,9 +1293,9 @@ function ProviderProfileScreen() {
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
-              className={`w-9 h-9 rounded-xl flex items-center justify-center ${available ? 'bg-green-100' : 'bg-slate-100'}`}
+              className={`w-9 h-9 rounded-xl flex items-center justify-center ${isOnline ? 'bg-green-100' : 'bg-slate-100'}`}
             >
-              {available ? (
+              {isOnline ? (
                 <CheckCircle2 size={16} className="text-green-600" />
               ) : (
                 <WifiOff size={16} className="text-slate-500" />
@@ -1121,28 +1306,33 @@ function ProviderProfileScreen() {
                 className="text-slate-900 dark:text-white"
                 style={{ fontSize: '14px', fontWeight: 700 }}
               >
-                {available ? L.online : L.offline}
+                {availabilityLabel}
               </p>
               <p className="text-slate-400" style={{ fontSize: '11px' }}>
-                {available
-                  ? lang === 'ar'
-                    ? 'تستقبل الطلبات'
-                    : 'Receiving requests'
-                  : lang === 'ar'
-                    ? 'مخفي عن الخريطة'
-                    : 'Hidden from map'}
+                {availabilityHint}
               </p>
             </div>
           </div>
           <button
-            onClick={() => setAvailable((v) => !v)}
-            className={`w-12 h-7 rounded-full border-2 transition-all duration-300 flex items-center px-0.5 ${available ? 'bg-green-500 border-green-500' : 'bg-slate-300 border-slate-300'}`}
+            onClick={handleAvailabilityToggle}
+            disabled={availabilityMut.isPending}
+            className={`w-12 h-7 rounded-full border-2 transition-all duration-300 flex items-center px-0.5 disabled:opacity-60 ${isOnline ? 'bg-green-500 border-green-500' : 'bg-slate-300 border-slate-300'}`}
+            aria-label={availabilityLabel}
           >
             <div
-              className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-300 ${available ? 'translate-x-5' : 'translate-x-0'}`}
+              className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-300 ${isOnline ? 'translate-x-5' : 'translate-x-0'}`}
             />
           </button>
         </div>
+        {availabilityMut.isError && (
+          <p
+            className="-mt-3 mb-4 px-4 py-2 rounded-xl bg-red-50 border border-red-100 text-red-700"
+            style={{ fontSize: '12px', fontWeight: 600 }}
+            role="alert"
+          >
+            {L.availabilityError}
+          </p>
+        )}
 
         {/* Skills */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 mb-4">
@@ -1152,17 +1342,23 @@ function ProviderProfileScreen() {
           >
             {L.skills}
           </p>
-          <div className="flex flex-wrap gap-2">
-            {SKILLS.map((sk) => (
-              <span
-                key={sk.en}
-                className={`px-3 py-1.5 rounded-xl ${sk.color} dark:bg-slate-700 dark:text-slate-200`}
-                style={{ fontSize: '13px', fontWeight: 600 }}
-              >
-                {lang === 'ar' ? sk.ar : sk.en}
-              </span>
-            ))}
-          </div>
+          {profile.serviceCategories.length === 0 ? (
+            <p className="text-slate-400" style={{ fontSize: '13px' }}>
+              {L.skillsEmpty}
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {profile.serviceCategories.map((cat, i) => (
+                <span
+                  key={cat.id}
+                  className={`px-3 py-1.5 rounded-xl ${SKILL_CHIP_COLORS[i % SKILL_CHIP_COLORS.length]} dark:bg-slate-700 dark:text-slate-200`}
+                  style={{ fontSize: '13px', fontWeight: 600 }}
+                >
+                  {lang === 'ar' ? cat.labelAr : cat.labelEn}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Menu */}
@@ -1218,10 +1414,34 @@ const PROVIDER_NAV = [
 ];
 
 // ─── Provider App Shell ───────────────────────────────────────────────────────
+// Compute the identity strings used by the top bar. Prefer the Provider
+// profile when it exists (server-derived displayName + initials, matches
+// what the rest of the Provider surface shows). Otherwise fall back to
+// the auth-side identity so a logged-in customer who hasn't yet
+// activated their provider account still sees a real name in the bar
+// instead of a hardcoded "Omar Al-Khalid".
+function deriveShellIdentity(
+  profile: ProviderProfileSummary | null,
+  fallback: { displayName: string | null; initials: string | null },
+): { displayName: string; initials: string } {
+  if (profile) return { displayName: profile.displayName, initials: profile.initials };
+  return {
+    displayName: fallback.displayName ?? '',
+    initials: fallback.initials ?? '',
+  };
+}
+
 export function ProviderApp() {
   const { lang, dir, darkMode } = useLang();
   const [activeTab, setActiveTab] = useState('jobs');
   const fontFamily = lang === 'ar' ? "'Cairo', 'Inter', sans-serif" : "'Inter', sans-serif";
+
+  const profileQuery = useProviderProfile();
+  const authIdentity = useAuthIdentity();
+  const shellIdentity = useMemo(
+    () => deriveShellIdentity(profileQuery.data?.profile ?? null, authIdentity),
+    [profileQuery.data, authIdentity],
+  );
 
   const renderTab = () => {
     switch (activeTab) {
@@ -1251,7 +1471,7 @@ export function ProviderApp() {
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-sm">
                 <span className="text-white" style={{ fontSize: '12px', fontWeight: 800 }}>
-                  OK
+                  {shellIdentity.initials}
                 </span>
               </div>
               <div>
@@ -1262,7 +1482,7 @@ export function ProviderApp() {
                   className="text-slate-900 dark:text-white"
                   style={{ fontSize: '14px', fontWeight: 700 }}
                 >
-                  {lang === 'ar' ? 'عمر الخالد' : 'Omar Al-Khalid'}
+                  {shellIdentity.displayName}
                 </p>
               </div>
             </div>

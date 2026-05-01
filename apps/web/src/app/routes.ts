@@ -12,12 +12,23 @@ import { HomePage } from './pages/HomePage';
 import { AppSelector } from './pages/AppSelector';
 import { ProviderPage } from './pages/ProviderPage';
 import { AdminPage } from './pages/AdminPage';
-import { RequireAuth, GuestOnly } from '../lib/route-guards';
+import { RequireAuth, RequireAdmin, GuestOnly } from '../lib/route-guards';
 
 // ─── Router ───────────────────────────────────────────────────────────────────
+//
+// Sprint 5.1.1 patch 2: /admin used to mount as a top-level public route,
+// which made the admin dashboard accessible to anyone who knew the path.
+// It now sits under RequireAdmin (which itself wraps RequireAuth + role
+// check) and lives at the top level so it can opt out of the phone-shell
+// container the Root layout enforces. Unauthenticated visitors get
+// /login themed Admin + returnTo=/admin; authenticated non-admins see
+// the AdminAccessRequired surface; admins see the dashboard.
 export const router = createBrowserRouter([
-  // ── Admin (full-width, no phone container) ───────────────────────────────
-  { path: 'admin', Component: AdminPage },
+  // ── Admin (full-width, no phone container, role-gated) ───────────────────
+  {
+    Component: RequireAdmin,
+    children: [{ path: 'admin', Component: AdminPage }],
+  },
 
   {
     path: '/',

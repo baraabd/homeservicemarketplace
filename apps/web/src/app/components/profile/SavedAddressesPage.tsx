@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ChevronLeft,
@@ -12,52 +12,80 @@ import {
   CheckCircle2,
   X,
   Navigation,
+  Loader2,
 } from 'lucide-react';
+import type { AddressSummary, AddressType } from '@homeservicemarketplace/contracts';
 import { useLang } from '../../i18n/LanguageContext';
 import { Button } from '../ds/Button';
+import {
+  useAddresses,
+  useCreateAddress,
+  useDeleteAddress,
+  useSetDefaultAddress,
+  useUpdateAddress,
+} from '../../hooks/seeker/useAddresses';
 
-interface Address {
-  id: string;
-  typeKey: 'home' | 'work' | 'custom';
-  label: string;
-  labelAr: string;
-  full: string;
-  fullAr: string;
-  isDefault: boolean;
+// Visual map keyed on the persisted AddressType (HOME / WORK / CUSTOM).
+// Same icon + colour palette as the original mock-state version — just
+// wired to the enum the API returns instead of a local 'home' | 'work' |
+// 'custom' string. Unknown types collapse to the generic 'CUSTOM' look so
+// admin-added types in a future sprint never break the grid.
+const TYPE_ICON: Record<AddressType, React.ReactNode> = {
+  HOME: <Home size={16} />,
+  WORK: <Briefcase size={16} />,
+  CUSTOM: <MapPin size={16} />,
+};
+
+const TYPE_COLOR: Record<AddressType, { bg: string; icon: string }> = {
+  HOME: { bg: 'bg-blue-100 dark:bg-blue-900/40', icon: 'text-blue-600 dark:text-blue-400' },
+  WORK: {
+    bg: 'bg-amber-100 dark:bg-amber-900/40',
+    icon: 'text-amber-600 dark:text-amber-400',
+  },
+  CUSTOM: {
+    bg: 'bg-green-100 dark:bg-green-900/40',
+    icon: 'text-green-600 dark:text-green-400',
+  },
+};
+
+function typeStyle(type: AddressType) {
+  return TYPE_COLOR[type] ?? TYPE_COLOR.CUSTOM;
 }
 
-const SEED: Address[] = [
-  {
-    id: 'a1',
-    typeKey: 'home',
-    label: 'Home',
-    labelAr: 'المنزل',
-    full: 'Building 4, Al Olaya District, Riyadh 12241',
-    fullAr: 'مبنى 4، حي العليا، الرياض 12241',
-    isDefault: true,
-  },
-  {
-    id: 'a2',
-    typeKey: 'work',
-    label: 'Work',
-    labelAr: 'العمل',
-    full: 'King Fahd Road, Al Malqa, Riyadh 13521',
-    fullAr: 'طريق الملك فهد، حي الملقا، الرياض 13521',
-    isDefault: false,
-  },
-];
+function typeIcon(type: AddressType) {
+  return TYPE_ICON[type] ?? TYPE_ICON.CUSTOM;
+}
 
-const TYPE_ICON: Record<string, React.ReactNode> = {
-  home: <Home size={16} />,
-  work: <Briefcase size={16} />,
-  custom: <MapPin size={16} />,
-};
+// Render the address as a single human-friendly line. The contract has
+// discrete line1/city/country fields; the UI was originally a single
+// "full address" string, so we recompose for display.
+function formatAddress(a: AddressSummary): string {
+  return [a.line1, a.city, a.country].filter((part) => part && part.trim().length > 0).join(', ');
+}
 
-const TYPE_COLOR: Record<string, { bg: string; icon: string }> = {
-  home: { bg: 'bg-blue-100 dark:bg-blue-900/40', icon: 'text-blue-600 dark:text-blue-400' },
-  work: { bg: 'bg-amber-100 dark:bg-amber-900/40', icon: 'text-amber-600 dark:text-amber-400' },
-  custom: { bg: 'bg-green-100 dark:bg-green-900/40', icon: 'text-green-600 dark:text-green-400' },
-};
+// The original UI exposed a single "Full address" input; the API requires
+// discrete line1/city/country. We split the user's input on commas so the
+// trailing chunk goes to country and the next-to-last to city — matches
+// how the rendered "Building 4, Al Olaya District, Riyadh" examples were
+// already structured, and falls back gracefully when the user types only
+// one segment.
+function splitFullAddress(full: string): { line1: string; city: string; country: string } {
+  const parts = full
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (parts.length >= 3) {
+    const country = parts.pop()!;
+    const city = parts.pop()!;
+    const line1 = parts.join(', ');
+    return { line1, city, country };
+  }
+  if (parts.length === 2) {
+    return { line1: parts[0], city: parts[1], country: parts[1] };
+  }
+  const single = parts[0] ?? full.trim();
+  return { line1: single, city: single, country: single.length >= 2 ? single : `${single}.` };
+}
 
 interface SavedAddressesPageProps {
   onBack: () => void;
@@ -65,81 +93,134 @@ interface SavedAddressesPageProps {
 
 export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
   const { lang, dir } = useLang();
-  const [addresses, setAddresses] = useState<Address[]>(SEED);
+
+  const addressesQuery = useAddresses();
+  const createMut = useCreateAddress();
+  const updateMut = useUpdateAddress();
+  const deleteMut = useDeleteAddress();
+  const setDefaultMut = useSetDefaultAddress();
+
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [delConfirm, setDelConfirm] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [newFull, setNewFull] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const L = {
-    title: lang === 'ar' ? 'عناويني المحفوظة' : 'Saved Addresses',
-    addNew: lang === 'ar' ? 'إضافة عنوان' : 'Add Address',
-    empty: lang === 'ar' ? 'لا توجد عناوين محفوظة' : 'No saved addresses yet',
-    emptySub: lang === 'ar' ? 'أضف عنواناً ليظهر هنا' : 'Add an address to see it here',
-    defaultBadge: lang === 'ar' ? 'افتراضي' : 'Default',
-    setDefault: lang === 'ar' ? 'جعله افتراضياً' : 'Set as default',
-    deleteQ: lang === 'ar' ? 'حذف هذا العنوان؟' : 'Delete this address?',
-    confirm: lang === 'ar' ? 'نعم، احذف' : 'Yes, delete',
-    cancel: lang === 'ar' ? 'إلغاء' : 'Cancel',
-    labelPlh: lang === 'ar' ? 'اسم العنوان (مثل: منزل)' : 'Label (e.g. Home)',
-    addressPlh: lang === 'ar' ? 'الوصف الكامل للعنوان' : 'Full address',
-    save: lang === 'ar' ? 'حفظ العنوان' : 'Save Address',
-    edit: lang === 'ar' ? 'تعديل' : 'Edit',
-    newAddress: lang === 'ar' ? 'عنوان جديد' : 'New Address',
-    getLocation: lang === 'ar' ? 'استخدم موقعي الحالي' : 'Use my current location',
+  const addresses = addressesQuery.data ?? [];
+  const isInitialLoading = addressesQuery.isLoading && !addressesQuery.data;
+  const isListError = addressesQuery.isError && !addressesQuery.data;
+
+  const L = useMemo(
+    () => ({
+      title: lang === 'ar' ? 'عناويني المحفوظة' : 'Saved Addresses',
+      addNew: lang === 'ar' ? 'إضافة عنوان' : 'Add Address',
+      empty: lang === 'ar' ? 'لا توجد عناوين محفوظة' : 'No saved addresses yet',
+      emptySub: lang === 'ar' ? 'أضف عنواناً ليظهر هنا' : 'Add an address to see it here',
+      defaultBadge: lang === 'ar' ? 'افتراضي' : 'Default',
+      setDefault: lang === 'ar' ? 'جعله افتراضياً' : 'Set as default',
+      deleteQ: lang === 'ar' ? 'حذف هذا العنوان؟' : 'Delete this address?',
+      confirm: lang === 'ar' ? 'نعم، احذف' : 'Yes, delete',
+      cancel: lang === 'ar' ? 'إلغاء' : 'Cancel',
+      labelPlh: lang === 'ar' ? 'اسم العنوان (مثل: منزل)' : 'Label (e.g. Home)',
+      addressPlh: lang === 'ar' ? 'الوصف الكامل للعنوان' : 'Full address',
+      save: lang === 'ar' ? 'حفظ العنوان' : 'Save Address',
+      edit: lang === 'ar' ? 'تعديل' : 'Edit',
+      newAddress: lang === 'ar' ? 'عنوان جديد' : 'New Address',
+      getLocation: lang === 'ar' ? 'استخدم موقعي الحالي' : 'Use my current location',
+      loading: lang === 'ar' ? 'جاري التحميل...' : 'Loading addresses...',
+      loadFailed:
+        lang === 'ar'
+          ? 'تعذر تحميل العناوين. حاول مرة أخرى.'
+          : "We couldn't load your addresses. Please try again.",
+      saveFailed:
+        lang === 'ar'
+          ? 'تعذر حفظ العنوان. حاول مرة أخرى.'
+          : "We couldn't save this address. Please try again.",
+      deleteFailed:
+        lang === 'ar'
+          ? 'تعذر حذف العنوان. حاول مرة أخرى.'
+          : "We couldn't delete this address. Please try again.",
+      defaultBlocked:
+        lang === 'ar'
+          ? 'عيّن عنواناً آخر افتراضياً قبل حذف هذا العنوان.'
+          : 'Set another address as default before deleting this one.',
+      defaultFailed:
+        lang === 'ar'
+          ? 'تعذر تعيين العنوان الافتراضي. حاول مرة أخرى.'
+          : "We couldn't set this address as default. Please try again.",
+      retry: lang === 'ar' ? 'إعادة المحاولة' : 'Retry',
+    }),
+    [lang],
+  );
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditId(null);
+    setNewLabel('');
+    setNewFull('');
+    setFormError(null);
   };
 
   const handleSave = () => {
     if (!newLabel.trim() || !newFull.trim()) return;
-    setSaving(true);
-    setTimeout(() => {
-      setSaving(false);
-      if (editId) {
-        setAddresses((prev) =>
-          prev.map((a) =>
-            a.id === editId
-              ? { ...a, label: newLabel, labelAr: newLabel, full: newFull, fullAr: newFull }
-              : a,
-          ),
-        );
-      } else {
-        setAddresses((prev) => [
-          ...prev,
-          {
-            id: `a${Date.now()}`,
-            typeKey: 'custom',
-            label: newLabel,
-            labelAr: newLabel,
-            full: newFull,
-            fullAr: newFull,
-            isDefault: false,
-          },
-        ]);
-      }
-      setShowForm(false);
-      setEditId(null);
-      setNewLabel('');
-      setNewFull('');
-    }, 1000);
+    setFormError(null);
+    const split = splitFullAddress(newFull);
+    if (editId) {
+      updateMut.mutate(
+        {
+          addressId: editId,
+          input: { label: newLabel.trim(), ...split },
+        },
+        {
+          onSuccess: () => closeForm(),
+          onError: () => setFormError(L.saveFailed),
+        },
+      );
+    } else {
+      createMut.mutate(
+        { label: newLabel.trim(), type: 'CUSTOM', ...split },
+        {
+          onSuccess: () => closeForm(),
+          onError: () => setFormError(L.saveFailed),
+        },
+      );
+    }
   };
 
-  const handleEdit = (a: Address) => {
+  const handleEdit = (a: AddressSummary) => {
     setEditId(a.id);
-    setNewLabel(lang === 'ar' ? a.labelAr : a.label);
-    setNewFull(lang === 'ar' ? a.fullAr : a.full);
+    setNewLabel(a.label);
+    setNewFull(formatAddress(a));
+    setFormError(null);
     setShowForm(true);
   };
 
   const handleDelete = (id: string) => {
-    setAddresses((prev) => prev.filter((a) => a.id !== id));
-    setDelConfirm(null);
+    setActionError(null);
+    deleteMut.mutate(id, {
+      onSuccess: () => setDelConfirm(null),
+      onError: (err) => {
+        setDelConfirm(null);
+        // 409 from the server = "can't delete the default while other
+        // addresses exist". Surface that as a distinct, actionable
+        // message; everything else collapses to a safe generic.
+        const status =
+          (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
+        setActionError(status === 409 ? L.defaultBlocked : L.deleteFailed);
+      },
+    });
   };
 
   const handleSetDefault = (id: string) => {
-    setAddresses((prev) => prev.map((a) => ({ ...a, isDefault: a.id === id })));
+    setActionError(null);
+    setDefaultMut.mutate(id, {
+      onError: () => setActionError(L.defaultFailed),
+    });
   };
+
+  const saving = createMut.isPending || updateMut.isPending;
 
   return (
     <motion.div
@@ -173,6 +254,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
               setEditId(null);
               setNewLabel('');
               setNewFull('');
+              setFormError(null);
               setShowForm(true);
             }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 text-white active:scale-95 transition-all shadow-sm shadow-amber-200"
@@ -185,7 +267,49 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
 
       {/* List */}
       <div className="flex-1 overflow-y-auto px-4 py-4" style={{ scrollbarWidth: 'none' }}>
-        {addresses.length === 0 ? (
+        {actionError && (
+          <div
+            className="mb-3 px-4 py-3 rounded-2xl bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-900/40 text-red-700 dark:text-red-300"
+            style={{ fontSize: '13px', fontWeight: 600 }}
+            role="alert"
+          >
+            {actionError}
+          </div>
+        )}
+
+        {isInitialLoading ? (
+          /* Loading state — preserves the page chrome, only swaps the list */
+          <div
+            className="flex flex-col items-center justify-center py-20 gap-3"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 size={28} className="text-slate-400 animate-spin" />
+            <p className="text-slate-500" style={{ fontSize: '13px' }}>
+              {L.loading}
+            </p>
+          </div>
+        ) : isListError ? (
+          /* Error state — safe generic copy, no raw backend message */
+          <div className="flex flex-col items-center justify-center py-20 gap-4" role="alert">
+            <div className="w-20 h-20 rounded-3xl bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
+              <MapPin size={32} className="text-red-400" />
+            </div>
+            <p
+              className="text-slate-700 dark:text-slate-200 text-center"
+              style={{ fontSize: '14px', fontWeight: 600 }}
+            >
+              {L.loadFailed}
+            </p>
+            <button
+              onClick={() => addressesQuery.refetch()}
+              className="px-5 py-2.5 rounded-2xl bg-amber-500 text-white active:scale-95 transition-all shadow-sm shadow-amber-200"
+              style={{ fontSize: '13px', fontWeight: 700 }}
+            >
+              {L.retry}
+            </button>
+          </div>
+        ) : addresses.length === 0 ? (
           /* Empty State */
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <div className="w-20 h-20 rounded-3xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
@@ -207,6 +331,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                 setEditId(null);
                 setNewLabel('');
                 setNewFull('');
+                setFormError(null);
                 setShowForm(true);
               }}
               className="flex items-center gap-2 px-5 py-3 bg-amber-500 text-white rounded-2xl active:scale-95 transition-all shadow-md shadow-amber-200"
@@ -218,7 +343,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
         ) : (
           <AnimatePresence>
             {addresses.map((a) => {
-              const tc = TYPE_COLOR[a.typeKey];
+              const tc = typeStyle(a.type);
               return (
                 <motion.div
                   key={a.id}
@@ -234,7 +359,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                       <div
                         className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${tc.bg}`}
                       >
-                        <span className={tc.icon}>{TYPE_ICON[a.typeKey]}</span>
+                        <span className={tc.icon}>{typeIcon(a.type)}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-0.5">
@@ -242,7 +367,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                             className="text-slate-900 dark:text-white"
                             style={{ fontSize: '14px', fontWeight: 700 }}
                           >
-                            {lang === 'ar' ? a.labelAr : a.label}
+                            {a.label}
                           </p>
                           {a.isDefault && (
                             <span
@@ -257,7 +382,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                           className="text-slate-500 dark:text-slate-400"
                           style={{ fontSize: '12px', lineHeight: '1.5' }}
                         >
-                          {lang === 'ar' ? a.fullAr : a.full}
+                          {formatAddress(a)}
                         </p>
                       </div>
                     </div>
@@ -267,7 +392,8 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                       {!a.isDefault && (
                         <button
                           onClick={() => handleSetDefault(a.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 active:bg-slate-200 transition-all"
+                          disabled={setDefaultMut.isPending}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 active:bg-slate-200 transition-all disabled:opacity-60"
                           style={{ fontSize: '11px', fontWeight: 600 }}
                         >
                           <CheckCircle2 size={12} />
@@ -309,14 +435,16 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setDelConfirm(null)}
-                            className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 active:bg-slate-100 transition-all"
+                            disabled={deleteMut.isPending}
+                            className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 active:bg-slate-100 transition-all disabled:opacity-60"
                             style={{ fontSize: '12px', fontWeight: 600 }}
                           >
                             {L.cancel}
                           </button>
                           <button
                             onClick={() => handleDelete(a.id)}
-                            className="px-3 py-1.5 rounded-xl bg-red-500 text-white active:scale-95 transition-all"
+                            disabled={deleteMut.isPending}
+                            className="px-3 py-1.5 rounded-xl bg-red-500 text-white active:scale-95 transition-all disabled:opacity-60"
                             style={{ fontSize: '12px', fontWeight: 700 }}
                           >
                             {L.confirm}
@@ -342,7 +470,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowForm(false)}
+              onClick={() => closeForm()}
             />
             <motion.div
               className="absolute bottom-0 start-0 end-0 bg-white dark:bg-slate-800 rounded-t-3xl px-5 pt-4 pb-6 z-20"
@@ -360,7 +488,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                   {editId ? L.edit : L.newAddress}
                 </p>
                 <button
-                  onClick={() => setShowForm(false)}
+                  onClick={() => closeForm()}
                   className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90"
                 >
                   <X size={15} className="text-slate-500" />
@@ -398,6 +526,15 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                     {L.getLocation}
                   </span>
                 </button>
+                {formError && (
+                  <p
+                    className="text-red-600 dark:text-red-400"
+                    style={{ fontSize: '12px', fontWeight: 600 }}
+                    role="alert"
+                  >
+                    {formError}
+                  </p>
+                )}
               </div>
 
               <Button

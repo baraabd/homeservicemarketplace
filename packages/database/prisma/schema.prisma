@@ -8,23 +8,23 @@ datasource db {
 }
 
 model User {
-  id                        String                      @id @default(cuid())
-  email                     String                      @unique
+  id                        String                    @id @default(cuid())
+  email                     String                    @unique
   passwordHash              String?
   firstName                 String
   lastName                  String
-  isActive                  Boolean                     @default(true)
-  createdAt                 DateTime                    @default(now())
-  updatedAt                 DateTime                    @updatedAt
+  isActive                  Boolean                   @default(true)
+  createdAt                 DateTime                  @default(now())
+  updatedAt                 DateTime                  @updatedAt
   deletedAt                 DateTime?
   emailVerifiedAt           DateTime?
-  failedLoginCount          Int                         @default(0)
+  failedLoginCount          Int                       @default(0)
   lockedUntil               DateTime?
-  mfaEnabled                Boolean                     @default(false)
+  mfaEnabled                Boolean                   @default(false)
   mfaEnrolledAt             DateTime?
   mfaSecret                 Bytes?
   passwordUpdatedAt         DateTime?
-  status                    AccountStatus               @default(PENDING_VERIFICATION)
+  status                    AccountStatus             @default(PENDING_VERIFICATION)
   addresses                 Address[]
   auditEvents               AuditEvent[]
   booking_events            BookingEvent[]
@@ -168,20 +168,20 @@ model AuditEvent {
 }
 
 model Address {
-  id               String             @id
+  id               String           @id
   userId           String
   label            String
   city             String
   country          String
-  isDefault        Boolean            @default(false)
-  createdAt        DateTime           @default(now())
+  isDefault        Boolean          @default(false)
+  createdAt        DateTime         @default(now())
   updatedAt        DateTime
   type             AddressType
   line1            String
   lat              Float?
   lng              Float?
   deletedAt        DateTime?
-  users            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  users            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   service_requests ServiceRequest[]
 
   @@index([deletedAt])
@@ -190,18 +190,18 @@ model Address {
 }
 
 model Bid {
-  id                  String            @id
+  id                  String          @id
   requestId           String
   providerId          String
   amount              Int
-  currency            String            @default("USD")
+  currency            String          @default("USD")
   pricingType         PricingType
   note                String?
-  status              BidStatus         @default(PENDING)
+  status              BidStatus       @default(PENDING)
   responseTimeMinutes Int?
   badge               BidBadge?
-  submittedAt         DateTime          @default(now())
-  createdAt           DateTime          @default(now())
+  submittedAt         DateTime        @default(now())
+  createdAt           DateTime        @default(now())
   updatedAt           DateTime
   deletedAt           DateTime?
   provider_profiles   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
@@ -223,30 +223,30 @@ model BookingEvent {
   metadata    Json?
   createdAt   DateTime         @default(now())
   users       User?            @relation(fields: [actorUserId], references: [id])
-  bookings    Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookings    Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([bookingId, createdAt])
   @@index([type, createdAt])
 }
 
 model Booking {
-  id                String            @id
+  id                String          @id
   requestId         String
-  bidId             String            @unique
+  bidId             String          @unique
   seekerUserId      String
   providerId        String
-  status            BookingStatus     @default(SCHEDULED)
+  status            BookingStatus   @default(SCHEDULED)
   scheduledAt       DateTime?
   priceAmount       Int
-  currency          String            @default("USD")
-  createdAt         DateTime          @default(now())
+  currency          String          @default("USD")
+  createdAt         DateTime        @default(now())
   updatedAt         DateTime
   deletedAt         DateTime?
   booking_events    BookingEvent[]
-  bids              Bid              @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bids              Bid             @relation(fields: [bidId], references: [id], onDelete: Cascade)
   provider_profiles ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
   service_requests  ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  users             User              @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
+  users             User            @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
   conversations     Conversation[]
 
   @@index([deletedAt])
@@ -263,8 +263,8 @@ model ConversationParticipant {
   role              ConversationParticipantRole
   lastReadAt        DateTime?
   createdAt         DateTime                    @default(now())
-  conversations     Conversation               @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  provider_profiles ProviderProfile?          @relation(fields: [providerProfileId], references: [id])
+  conversations     Conversation                @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  provider_profiles ProviderProfile?            @relation(fields: [providerProfileId], references: [id])
   users             User?                       @relation(fields: [userId], references: [id])
 
   @@unique([conversationId, userId], map: "conversation_participants_conversation_user_unique")
@@ -273,14 +273,14 @@ model ConversationParticipant {
 }
 
 model Conversation {
-  id                        String                      @id
+  id                        String                    @id
   requestId                 String?
   bookingId                 String?
-  createdAt                 DateTime                    @default(now())
+  createdAt                 DateTime                  @default(now())
   updatedAt                 DateTime
   deletedAt                 DateTime?
   conversation_participants ConversationParticipant[]
-  bookings                  Booking?                   @relation(fields: [bookingId], references: [id])
+  bookings                  Booking?                  @relation(fields: [bookingId], references: [id])
   service_requests          ServiceRequest?           @relation(fields: [requestId], references: [id])
   messages                  Message[]
 
@@ -298,7 +298,7 @@ model Message {
   body           String
   createdAt      DateTime                    @default(now())
   deletedAt      DateTime?
-  conversations  Conversation               @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversations  Conversation                @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   users          User?                       @relation(fields: [senderUserId], references: [id])
 
   @@index([conversationId, createdAt])
@@ -327,36 +327,36 @@ model Notification {
 }
 
 model ProviderProfile {
-  id                        String                      @id
-  userId                    String?                     @unique
+  id                        String                    @id
+  userId                    String?                   @unique
   displayName               String
   initials                  String
   avatarUrl                 String?
-  ratingAvg                 Float                       @default(0)
-  reviewCount               Int                         @default(0)
-  completedJobs             Int                         @default(0)
-  verified                  Boolean                     @default(false)
-  topPro                    Boolean                     @default(false)
-  createdAt                 DateTime                    @default(now())
+  ratingAvg                 Float                     @default(0)
+  reviewCount               Int                       @default(0)
+  completedJobs             Int                       @default(0)
+  verified                  Boolean                   @default(false)
+  topPro                    Boolean                   @default(false)
+  createdAt                 DateTime                  @default(now())
   updatedAt                 DateTime
   deletedAt                 DateTime?
   bids                      Bid[]
   bookings                  Booking[]
   conversation_participants ConversationParticipant[]
-  users                     User?                       @relation(fields: [userId], references: [id])
+  users                     User?                     @relation(fields: [userId], references: [id])
 
   @@index([deletedAt])
 }
 
 model ServiceCategory {
-  id               String             @id
-  slug             String             @unique
+  id               String           @id
+  slug             String           @unique
   labelEn          String
   labelAr          String
   icon             String
-  sortOrder        Int                @default(0)
-  isActive         Boolean            @default(true)
-  createdAt        DateTime           @default(now())
+  sortOrder        Int              @default(0)
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
   updatedAt        DateTime
   deletedAt        DateTime?
   service_requests ServiceRequest[]
@@ -373,33 +373,33 @@ model ServiceRequestEvent {
   metadata         Json?
   createdAt        DateTime                @default(now())
   users            User?                   @relation(fields: [actorUserId], references: [id])
-  service_requests ServiceRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  service_requests ServiceRequest          @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId, createdAt])
   @@index([type, createdAt])
 }
 
 model ServiceRequest {
-  id                     String                   @id
+  id                     String                @id
   seekerUserId           String
   categoryId             String?
   customServiceText      String?
   description            String?
-  status                 ServiceRequestStatus     @default(OPEN_FOR_BIDS)
+  status                 ServiceRequestStatus  @default(OPEN_FOR_BIDS)
   scheduleType           ScheduleType
   scheduledAt            DateTime?
   addressId              String?
   addressSnapshot        Json
-  createdAt              DateTime                 @default(now())
+  createdAt              DateTime              @default(now())
   updatedAt              DateTime
   deletedAt              DateTime?
   bids                   Bid[]
   bookings               Booking[]
   conversations          Conversation[]
   service_request_events ServiceRequestEvent[]
-  addresses              Address?               @relation(fields: [addressId], references: [id])
+  addresses              Address?              @relation(fields: [addressId], references: [id])
   service_categories     ServiceCategory?      @relation(fields: [categoryId], references: [id])
-  users                  User                     @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
+  users                  User                  @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
 
   @@index([categoryId])
   @@index([createdAt])

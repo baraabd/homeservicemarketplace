@@ -23,6 +23,11 @@ import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { COUNTRY_DIAL_CODES, dialForCountry } from '../../../lib/country-dial-codes';
 import { useGeoBootstrap } from '../../../lib/geo-bootstrap';
 import { loginErrorMessage, otpErrorMessage } from '../../../lib/auth-errors';
+import {
+  type AuthExperience,
+  AUTH_EXPERIENCES,
+  DEFAULT_EXPERIENCE_ID,
+} from '../../../lib/auth-experience';
 
 // ─── Back chevron (flips in RTL) ──────────────────────────────────────────────
 function BackChevron() {
@@ -68,6 +73,10 @@ interface EmailOtpPanelProps {
   isResending?: boolean;
   verifyError?: string;
   resendNotice?: string;
+  // Experience-aware theming (Sprint 5.1.1). Defaults to seeker so any
+  // call site that hasn't been threaded yet keeps the historical orange
+  // identity exactly. Layout / spacing / typography are unchanged.
+  experience?: AuthExperience;
 }
 
 export function EmailOtpPanel({
@@ -79,6 +88,7 @@ export function EmailOtpPanel({
   isResending,
   verifyError,
   resendNotice,
+  experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
 }: EmailOtpPanelProps) {
   const [code, setCode] = useState('');
   const canSubmit = code.length === codeLength && !isVerifying;
@@ -91,8 +101,10 @@ export function EmailOtpPanel({
 
   return (
     <div className="flex flex-col items-center text-center gap-4">
-      <div className="w-20 h-20 rounded-2xl bg-amber-100 flex items-center justify-center">
-        <Mail size={32} className="text-amber-500" />
+      <div
+        className={`w-20 h-20 rounded-2xl ${experience.classes.iconChipBg} flex items-center justify-center`}
+      >
+        <Mail size={32} className={experience.classes.iconChipText} />
       </div>
       <div>
         <h3 className="text-slate-900" style={{ fontSize: '18px', fontWeight: 800 }}>
@@ -132,9 +144,11 @@ export function EmailOtpPanel({
             key={i}
             data-testid={`otp-box-${i}`}
             className={`w-12 h-14 rounded-2xl border-2 flex items-center justify-center transition-all ${
-              code.length > i ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-slate-50'
+              code.length > i
+                ? `${experience.classes.accentBorder} ${experience.classes.softBg}`
+                : 'border-slate-200 bg-slate-50'
             }`}
-            style={{ fontSize: '24px', fontWeight: 700, color: '#F59E0B' }}
+            style={{ fontSize: '24px', fontWeight: 700, color: experience.accentHex }}
           >
             {code[i] ?? ''}
           </div>
@@ -167,6 +181,7 @@ export function EmailOtpPanel({
 
       <Button
         variant="primary"
+        tone={experience.id}
         fullWidth
         state={isVerifying ? 'loading' : !canSubmit ? 'disabled' : 'default'}
         onClick={() => {
@@ -181,7 +196,7 @@ export function EmailOtpPanel({
         type="button"
         onClick={() => void onResend()}
         disabled={isResending}
-        className="text-amber-600 active:opacity-70 disabled:opacity-50"
+        className={`${experience.classes.accentText} active:opacity-70 disabled:opacity-50`}
         style={{ fontSize: '13px', fontWeight: 600 }}
       >
         {isResending ? 'Sending…' : 'Resend code'}
@@ -282,6 +297,10 @@ interface LoginProps {
   onSignUp: () => void;
   onForgotPassword: () => void;
   banner?: string;
+  // Sprint 5.1.1: experience-aware theming. Defaults to seeker so any
+  // call site that hasn't been threaded yet keeps the historical orange
+  // identity exactly. Layout / spacing / typography unchanged.
+  experience?: AuthExperience;
 }
 
 export function LoginScreen({
@@ -291,6 +310,7 @@ export function LoginScreen({
   onSignUp,
   onForgotPassword,
   banner,
+  experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
 }: LoginProps) {
   const { t } = useLang();
   const navigate = useNavigate();
@@ -357,10 +377,13 @@ export function LoginScreen({
 
   return (
     <div className="flex flex-col bg-white" style={{ minHeight: '100svh' }}>
-      {/* ── Gradient Hero ── */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-amber-500 via-amber-500 to-orange-600 px-6 pt-16 pb-20">
+      {/* ── Gradient Hero — driven by the resolved experience theme ── */}
+      <div
+        data-testid={`auth-hero-${experience.id}`}
+        className={`relative overflow-hidden bg-gradient-to-br ${experience.gradient} px-6 pt-16 pb-20`}
+      >
         <div className="absolute -top-12 -end-12 w-48 h-48 rounded-full bg-white/10" />
-        <div className="absolute -bottom-8 start-8 w-32 h-32 rounded-full bg-orange-600/40" />
+        <div className="absolute -bottom-8 start-8 w-32 h-32 rounded-full bg-white/10" />
         <div className="absolute top-8 end-28 w-16 h-16 rounded-full bg-white/10" />
 
         {/* Language toggle — top-right corner */}
@@ -380,7 +403,9 @@ export function LoginScreen({
         </button>
 
         <div className="relative flex flex-col items-center text-center">
-          <div className="w-16 h-16 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center mb-4 shadow-xl shadow-orange-900/20">
+          <div
+            className={`w-16 h-16 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center mb-4 shadow-xl ${experience.heroShadow}`}
+          >
             <svg
               width="28"
               height="28"
@@ -395,10 +420,10 @@ export function LoginScreen({
             </svg>
           </div>
           <h1 className="text-white" style={{ fontSize: '28px', fontWeight: 800 }}>
-            {t('appName')}
+            {experience.brand.title}
           </h1>
           <p className="text-white/70 mt-1" style={{ fontSize: '13px' }}>
-            {t('appTagline')}
+            {experience.brand.subtitle}
           </p>
         </div>
       </div>
@@ -429,6 +454,7 @@ export function LoginScreen({
             isResending={isResending}
             verifyError={otpError}
             resendNotice={resendNotice}
+            experience={experience}
           />
         ) : (
           <div className="flex flex-col gap-4">
@@ -461,7 +487,7 @@ export function LoginScreen({
             <div className="flex justify-end -mt-2">
               <button
                 onClick={onForgotPassword}
-                className="text-amber-600 active:opacity-70 transition-opacity"
+                className={`${experience.classes.accentText} active:opacity-70 transition-opacity`}
                 style={{ fontSize: '13px', fontWeight: 600 }}
               >
                 {t('forgotPassword')}
@@ -470,6 +496,7 @@ export function LoginScreen({
 
             <Button
               variant="primary"
+              tone={experience.id}
               state={isLoading ? 'loading' : 'default'}
               fullWidth
               onClick={handleLogin}
@@ -485,7 +512,7 @@ export function LoginScreen({
               {t('noAccount')}{' '}
               <button
                 onClick={onSignUp}
-                className="text-amber-600 active:opacity-70"
+                className={`${experience.classes.accentText} active:opacity-70`}
                 style={{ fontWeight: 700 }}
               >
                 {t('signUp')}
@@ -524,6 +551,9 @@ interface SignUpProps {
   }) => Promise<LoginOtpChallenge>;
   onOtpVerify: (challengeId: string, code: string) => Promise<void>;
   onOtpResend: (challengeId: string) => Promise<void>;
+  // Sprint 5.1.1: experience-aware theming. See LoginScreen prop
+  // comment for rationale.
+  experience?: AuthExperience;
 }
 
 export function SignUpScreen({
@@ -531,6 +561,7 @@ export function SignUpScreen({
   onCredentialsSubmit,
   onOtpVerify,
   onOtpResend,
+  experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
 }: SignUpProps) {
   const { t } = useLang();
   const geo = useGeoBootstrap();
@@ -664,9 +695,9 @@ export function SignUpScreen({
                 <div
                   className={`flex items-center justify-center w-7 h-7 rounded-full flex-shrink-0 transition-all ${
                     i + 1 < step
-                      ? 'bg-amber-500 text-white'
+                      ? `${experience.classes.accentBg} text-white`
                       : i + 1 === step
-                        ? 'bg-amber-500 text-white ring-2 ring-amber-200'
+                        ? `${experience.classes.accentBg} text-white ring-2 ${experience.classes.activeRing}`
                         : 'bg-slate-100 text-slate-400'
                   }`}
                   style={{ fontSize: '11px', fontWeight: 800 }}
@@ -692,14 +723,14 @@ export function SignUpScreen({
                   style={{
                     fontSize: '10px',
                     fontWeight: i + 1 <= step ? 700 : 400,
-                    color: i + 1 <= step ? '#F59E0B' : '#94a3b8',
+                    color: i + 1 <= step ? experience.accentHex : '#94a3b8',
                   }}
                 >
                   {label}
                 </span>
                 {i < stepLabels.length - 1 && (
                   <div
-                    className={`flex-1 h-0.5 rounded-full ${i + 1 < step ? 'bg-amber-300' : 'bg-slate-100'}`}
+                    className={`flex-1 h-0.5 rounded-full ${i + 1 < step ? experience.classes.activeConnector : 'bg-slate-100'}`}
                   />
                 )}
               </div>
@@ -762,8 +793,10 @@ export function SignUpScreen({
               {/* Location badge — reflects what we actually resolved.
                   Only claims a real fix when the browser gave one. */}
               <div className="bg-slate-50 rounded-2xl border border-slate-200 px-4 py-3 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                  <MapPin size={14} className="text-amber-600" />
+                <div
+                  className={`w-8 h-8 rounded-xl ${experience.classes.iconChipBg} flex items-center justify-center flex-shrink-0`}
+                >
+                  <MapPin size={14} className={experience.classes.iconChipText} />
                 </div>
                 <div>
                   <p className="text-slate-700" style={{ fontSize: '13px', fontWeight: 600 }}>
@@ -822,7 +855,9 @@ export function SignUpScreen({
               >
                 <div
                   className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center mt-0.5 transition-all ${
-                    agreed ? 'bg-amber-500 border-amber-500' : 'border-slate-300 bg-white'
+                    agreed
+                      ? `${experience.classes.accentBg} ${experience.classes.accentBorder}`
+                      : 'border-slate-300 bg-white'
                   }`}
                 >
                   {agreed && (
@@ -842,9 +877,13 @@ export function SignUpScreen({
                 </div>
                 <p className="text-slate-500" style={{ fontSize: '13px', lineHeight: '1.5' }}>
                   {t('agreeTerms')}{' '}
-                  <span className="text-amber-600 font-semibold">{t('termsConditions')}</span>{' '}
+                  <span className={`${experience.classes.accentText} font-semibold`}>
+                    {t('termsConditions')}
+                  </span>{' '}
                   {t('andWord')}{' '}
-                  <span className="text-amber-600 font-semibold">{t('privacyPolicy')}</span>
+                  <span className={`${experience.classes.accentText} font-semibold`}>
+                    {t('privacyPolicy')}
+                  </span>
                 </p>
               </button>
             </div>
@@ -861,6 +900,7 @@ export function SignUpScreen({
               isResending={isResending}
               verifyError={otpError}
               resendNotice={resendNotice}
+              experience={experience}
             />
           )}
 
@@ -878,6 +918,7 @@ export function SignUpScreen({
             )}
             <Button
               variant="primary"
+              tone={experience.id}
               state={
                 isLoading
                   ? 'loading'
@@ -893,7 +934,7 @@ export function SignUpScreen({
             </Button>
             <p className="text-center text-slate-400 mt-3" style={{ fontSize: '12px' }}>
               {t('alreadyHaveAccount')}{' '}
-              <button onClick={onBack} className="text-amber-600 font-semibold">
+              <button onClick={onBack} className={`${experience.classes.accentText} font-semibold`}>
                 {t('login')}
               </button>
             </p>
@@ -915,9 +956,15 @@ export function SignUpScreen({
 interface ForgotPwProps {
   onBack: () => void;
   onSubmit: (email: string) => Promise<void>;
+  // Sprint 5.1.1: experience-aware theming.
+  experience?: AuthExperience;
 }
 
-export function ForgotPasswordScreen({ onBack, onSubmit }: ForgotPwProps) {
+export function ForgotPasswordScreen({
+  onBack,
+  onSubmit,
+  experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
+}: ForgotPwProps) {
   const { t } = useLang();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -953,7 +1000,9 @@ export function ForgotPasswordScreen({ onBack, onSubmit }: ForgotPwProps) {
                 <div className="w-24 h-24 rounded-full bg-green-100 flex items-center justify-center">
                   <CheckCircle2 size={44} className="text-green-500" />
                 </div>
-                <div className="absolute -top-1 -end-1 w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center shadow-md">
+                <div
+                  className={`absolute -top-1 -end-1 w-8 h-8 rounded-full ${experience.classes.accentBg} flex items-center justify-center shadow-md`}
+                >
                   <Send size={14} className="text-white" />
                 </div>
               </div>
@@ -966,18 +1015,24 @@ export function ForgotPasswordScreen({ onBack, onSubmit }: ForgotPwProps) {
               >
                 {t('sentResetTo')}
               </p>
-              <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-2 mb-8">
-                <Mail size={14} className="text-amber-600" />
-                <span className="text-amber-700" style={{ fontSize: '14px', fontWeight: 600 }}>
+              <div
+                className={`inline-flex items-center gap-2 ${experience.classes.softBg} border ${experience.classes.softBorder} rounded-2xl px-4 py-2 mb-8`}
+              >
+                <Mail size={14} className={experience.classes.accentText} />
+                <span
+                  className={experience.classes.accentText}
+                  style={{ fontSize: '14px', fontWeight: 600 }}
+                >
                   {email}
                 </span>
               </div>
-              <Button variant="primary" fullWidth onClick={onBack}>
+              <Button variant="primary" tone={experience.id} fullWidth onClick={onBack}>
                 {t('backToLogin')}
               </Button>
               <div className="mt-4">
                 <Button
                   variant="text"
+                  tone={experience.id}
                   onClick={() => {
                     // Take the user back to the form so they can re-submit
                     // against the real endpoint (we don't auto-resend here).
@@ -993,8 +1048,10 @@ export function ForgotPasswordScreen({ onBack, onSubmit }: ForgotPwProps) {
             <>
               <div className="flex justify-center mb-6">
                 <div className="relative">
-                  <div className="w-20 h-20 rounded-2xl bg-amber-100 flex items-center justify-center">
-                    <Lock size={32} className="text-amber-500" />
+                  <div
+                    className={`w-20 h-20 rounded-2xl ${experience.classes.iconChipBg} flex items-center justify-center`}
+                  >
+                    <Lock size={32} className={experience.classes.iconChipText} />
                   </div>
                   <div className="absolute -top-2 -end-2 w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center shadow-md">
                     <Mail size={14} className="text-white" />
@@ -1020,6 +1077,7 @@ export function ForgotPasswordScreen({ onBack, onSubmit }: ForgotPwProps) {
 
                 <Button
                   variant="primary"
+                  tone={experience.id}
                   state={isLoading ? 'loading' : !email ? 'disabled' : 'default'}
                   fullWidth
                   onClick={handleSend}
@@ -1042,7 +1100,7 @@ export function ForgotPasswordScreen({ onBack, onSubmit }: ForgotPwProps) {
                 </div>
 
                 <div className="flex justify-center mt-2">
-                  <Button variant="text" onClick={onBack}>
+                  <Button variant="text" tone={experience.id} onClick={onBack}>
                     {t('backToLogin')}
                   </Button>
                 </div>
