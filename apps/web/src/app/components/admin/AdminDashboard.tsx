@@ -48,6 +48,7 @@ import {
   PRO_VERIFICATIONS,
   WALLET_TRANSACTIONS,
 } from '../../context/EcosystemContext';
+import { useAuthIdentity } from '../../../lib/use-auth-identity';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type Section = 'dashboard' | 'users' | 'verification' | 'financials' | 'disputes' | 'settings';
@@ -1416,6 +1417,20 @@ export function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const unread = adminNotifs.filter((n) => !n.read).length;
 
+  // Identity binding (Sprint admin-identity patch). `useAuthIdentity`
+  // returns null fields while /auth/me is loading or absent — we render
+  // those as empty so the existing visual containers stay in place
+  // without flashing fake "AD" / "admin@fixnow.app" copy. The "Platform
+  // Administrator" string below is a generic role label, not a personal
+  // name; it sits next to the user's real identity instead of replacing
+  // it. RequireAdmin already gated this route, so reaching this render
+  // means a real authenticated admin session exists once /me resolves.
+  const identity = useAuthIdentity();
+  const displayName = identity.displayName ?? '';
+  const initials = identity.initials ?? '';
+  const email = identity.email ?? '';
+  const roleLabel = lang === 'ar' ? 'مدير المنصة' : 'Platform Administrator';
+
   const SECTION_TITLES: Record<Section, { en: string; ar: string }> = {
     dashboard: { en: 'Dashboard', ar: 'لوحة التحكم' },
     users: { en: 'User Control', ar: 'إدارة المستخدمين' },
@@ -1501,20 +1516,34 @@ export function AdminDashboard() {
             {/* Sidebar footer */}
             <div className="px-3 py-4 border-t border-white/10">
               <div className="flex items-center gap-3 px-4 py-3">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0">
+                <div
+                  data-testid="admin-sidebar-avatar"
+                  className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0"
+                >
                   <span className="text-white" style={{ fontSize: '12px', fontWeight: 800 }}>
-                    AD
+                    {initials}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white" style={{ fontSize: '13px', fontWeight: 600 }}>
-                    {lang === 'ar' ? 'مدير النظام' : 'System Admin'}
+                  <p
+                    data-testid="admin-sidebar-name"
+                    className="text-white truncate"
+                    style={{ fontSize: '13px', fontWeight: 600 }}
+                  >
+                    {displayName}
                   </p>
-                  <p className="text-white/40 truncate" style={{ fontSize: '10px' }}>
-                    admin@fixnow.app
+                  <p
+                    data-testid="admin-sidebar-email"
+                    className="text-white/40 truncate"
+                    style={{ fontSize: '10px' }}
+                  >
+                    {email || roleLabel}
                   </p>
                 </div>
-                <button className="text-white/40 hover:text-white/70 transition-colors">
+                <button
+                  aria-label={lang === 'ar' ? 'تسجيل الخروج' : 'Sign out'}
+                  className="text-white/40 hover:text-white/70 transition-colors"
+                >
                   <LogOut size={15} />
                 </button>
               </div>
@@ -1590,9 +1619,13 @@ export function AdminDashboard() {
             </button>
 
             {/* Admin avatar */}
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
+            <div
+              data-testid="admin-topbar-avatar"
+              title={displayName || roleLabel}
+              className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center"
+            >
               <span className="text-white" style={{ fontSize: '11px', fontWeight: 800 }}>
-                AD
+                {initials}
               </span>
             </div>
           </div>
