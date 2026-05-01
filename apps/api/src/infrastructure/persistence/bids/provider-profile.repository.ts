@@ -5,6 +5,7 @@ import type {
   ProviderProfile,
   ProviderAvailability,
   ProviderProfileServiceCategory,
+  ProviderProfileStatus,
   ServiceCategory,
 } from '@homeservicemarketplace/database';
 
@@ -34,6 +35,11 @@ export interface CreateProviderProfileInput {
   userId: string;
   displayName: string;
   initials: string;
+  // Optional status override. Defaults to the column default (DRAFT) when
+  // omitted. The /v1/me/provider/upgrade service explicitly passes
+  // ACTIVE for the local/dev auto-approval flow; production will tighten
+  // to PENDING_REVIEW once admin moderation lands.
+  status?: ProviderProfileStatus;
 }
 
 // PATCH /v1/me/provider/profile body. Every field is optional so the
@@ -119,7 +125,22 @@ export class ProviderProfileRepository {
         // here so the row's intent is obvious from the application
         // layer too.
         availability: 'OFFLINE',
+        ...(input.status ? { status: input.status } : {}),
       },
+    });
+  }
+
+  // Used by an admin moderation surface (out of scope for this slice;
+  // shipped now so the field has a single repository owner). Bypasses
+  // `availability` — operators flip status, providers flip availability.
+  updateStatusById(
+    id: string,
+    status: ProviderProfileStatus,
+    tx?: PrismaTx,
+  ): Promise<ProviderProfile> {
+    return this.db(tx).providerProfile.update({
+      where: { id, deletedAt: null },
+      data: { status },
     });
   }
 

@@ -66,6 +66,7 @@ function makeProvider(over: Partial<ProviderProfile> = {}): ProviderProfile {
     serviceAreaLng: null,
     serviceAreaRadiusKm: null,
     availability: 'OFFLINE',
+    status: 'ACTIVE',
     createdAt: new Date('2026-04-30T00:00:00.000Z'),
     updatedAt: new Date('2026-04-30T00:00:00.000Z'),
     deletedAt: null,
@@ -194,11 +195,18 @@ describe('ProviderService', () => {
           userId: 'user-1',
           displayName: 'Ada Lovelace',
           initials: 'AL',
+          // Sprint 5.1.2: upgrade stamps ACTIVE on the local/dev path so
+          // the Provider app drops the user straight into the live
+          // shell. Asserting it here pins the dev product decision so a
+          // refactor cannot silently flip new providers to DRAFT and
+          // leave them stuck on the onboarding screen.
+          status: 'ACTIVE',
         }),
         undefined,
       );
       expect(out.profile.id).toBe('pp-1');
       expect(out.profile.availability).toBe('OFFLINE');
+      expect(out.profile.status).toBe('ACTIVE');
       // Wire fields are ISO strings.
       expect(typeof out.profile.createdAt).toBe('string');
     });

@@ -9,7 +9,11 @@ import type {
   UpdateProviderProfileResponse,
   UpgradeToProviderResponse,
 } from '@homeservicemarketplace/contracts';
-import type { ProviderAvailability, User } from '@homeservicemarketplace/database';
+import type {
+  ProviderAvailability,
+  ProviderProfileStatus,
+  User,
+} from '@homeservicemarketplace/database';
 
 import { ServiceCategoryRepository } from '../../infrastructure/persistence/services/service-category.repository';
 import { RoleRepository } from '../../infrastructure/persistence/iam/role.repository';
@@ -22,6 +26,15 @@ import { TransactionRunner } from '../../infrastructure/prisma/transaction.runne
 import { AppError } from '../../shared/errors/app-error';
 
 const PROVIDER_ROLE_NAME = 'provider';
+
+// Sprint 5.1.2: the status the upgrade service stamps onto a freshly
+// created ProviderProfile. The schema default is DRAFT (safe-by-default
+// for any direct INSERT). The /upgrade flow explicitly stamps ACTIVE
+// here for local/dev so the onboarding UX drops the user straight into
+// the live Provider shell. Production will flip this single constant to
+// `'PENDING_REVIEW'` once the admin moderation surface ships — no other
+// call-site touches the column.
+const UPGRADE_DEFAULT_STATUS: ProviderProfileStatus = 'ACTIVE';
 
 // Provider profile service. Drives the four endpoints in slice 5.1:
 //   POST  /v1/me/provider/upgrade     — deliberate role + profile creation
@@ -84,6 +97,7 @@ export class ProviderService {
           userId,
           displayName: deriveDisplayName(user),
           initials: deriveInitials(user),
+          status: UPGRADE_DEFAULT_STATUS,
         },
         tx,
       );
@@ -240,6 +254,7 @@ function toSummary(row: ProviderProfileWithCategories): ProviderProfileSummary {
     verified: row.verified,
     topPro: row.topPro,
     availability: row.availability,
+    status: row.status,
     serviceAreaCity: row.serviceAreaCity,
     serviceAreaCountry: row.serviceAreaCountry,
     serviceAreaLat: row.serviceAreaLat,

@@ -50,6 +50,7 @@ import type {
   ProviderAvailability,
   ProviderProfileSummary,
 } from '@homeservicemarketplace/contracts';
+import { ProviderStatusState } from './ProviderStatusState';
 
 // ─── Map image (unsplash) ────────────────────────────────────────────────────
 const MAP_IMG =
@@ -1442,6 +1443,25 @@ export function ProviderApp() {
     () => deriveShellIdentity(profileQuery.data?.profile ?? null, authIdentity),
     [profileQuery.data, authIdentity],
   );
+
+  // Sprint 5.1.2 status gate: a provider whose profile is not ACTIVE
+  // gets a focused status surface in place of the live shell — the live
+  // map / bids / wallet are intentionally NOT mounted so the user
+  // cannot bid before approval. The 'profile' tab still owns the
+  // initial onboarding-when-no-profile flow (handled by
+  // ProviderProfileScreen). The 'profile' route is exposed as a deep
+  // link for DRAFT users via onContinueOnboarding so they can jump to
+  // the upgrade button without losing the status surface as a back
+  // stop.
+  const profile = profileQuery.data?.profile ?? null;
+  if (profile && profile.status !== 'ACTIVE') {
+    return (
+      <ProviderStatusState
+        status={profile.status}
+        onContinueOnboarding={() => setActiveTab('profile')}
+      />
+    );
+  }
 
   const renderTab = () => {
     switch (activeTab) {
