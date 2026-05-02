@@ -351,6 +351,11 @@ model ProviderProfile {
   serviceAreaRadiusKm       Int?
   availability              ProviderAvailability              @default(OFFLINE)
   status                    ProviderProfileStatus             @default(DRAFT)
+  // Sprint 6.2 — admin-facing review notes. Free-text, persisted
+  // separately from the audit history so a reviewer can pin context
+  // without scanning every prior decision. Mutated only via
+  // PATCH /v1/admin/providers/:id/review-notes (admin role required).
+  reviewNotes               String?                           @db.Text
   createdAt                 DateTime                          @default(now())
   updatedAt                 DateTime                          @updatedAt
   deletedAt                 DateTime?
@@ -529,6 +534,7 @@ enum AuditEventType {
   ADMIN_PROVIDER_APPROVED
   ADMIN_PROVIDER_REJECTED
   ADMIN_PROVIDER_SUSPENDED
+  ADMIN_PROVIDER_NOTES_UPDATED
   ADMIN_DISPUTE_OPENED
   ADMIN_DISPUTE_RESOLVED
   ADMIN_SETTING_UPDATED

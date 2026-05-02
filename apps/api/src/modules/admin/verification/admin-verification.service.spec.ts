@@ -1,5 +1,10 @@
-import type { ProviderProfile, ProviderProfileStatus } from '@homeservicemarketplace/database';
+import type {
+  AuditEvent,
+  ProviderProfile,
+  ProviderProfileStatus,
+} from '@homeservicemarketplace/database';
 
+import type { AuditEventRepository } from '../../../infrastructure/persistence/iam/audit-event.repository';
 import type { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import type { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import type { NotificationsService } from '../../notifications/notifications.service';
@@ -46,9 +51,13 @@ interface Mocks {
   providers: ProviderProfileRepository;
   notifications: NotificationsService;
   audit: AdminAuditService;
+  auditEvents: AuditEventRepository;
 }
 
-function makeMocks(profile: ReturnType<typeof makeProfile> | null): Mocks {
+function makeMocks(
+  profile: ReturnType<typeof makeProfile> | null,
+  auditRows: AuditEvent[] = [],
+): Mocks {
   const reloaded = profile ? { ...profile, status: 'ACTIVE' as ProviderProfileStatus } : null;
   let call = 0;
   return {
@@ -59,6 +68,11 @@ function makeMocks(profile: ReturnType<typeof makeProfile> | null): Mocks {
       }),
       listForAdmin: jest.fn().mockResolvedValue(profile ? [profile] : []),
       updateStatusById: jest.fn().mockResolvedValue(profile),
+      updateReviewNotesById: jest
+        .fn()
+        .mockImplementation((_id, notes) =>
+          Promise.resolve(profile ? { ...profile, reviewNotes: notes } : null),
+        ),
     } as unknown as ProviderProfileRepository,
     notifications: {
       createForUser: jest.fn().mockResolvedValue(undefined),
@@ -66,11 +80,14 @@ function makeMocks(profile: ReturnType<typeof makeProfile> | null): Mocks {
     audit: {
       record: jest.fn().mockResolvedValue(undefined),
     } as unknown as AdminAuditService,
+    auditEvents: {
+      listForProviderProfile: jest.fn().mockResolvedValue(auditRows),
+    } as unknown as AuditEventRepository,
   };
 }
 
 function makeService(m: Mocks): AdminVerificationService {
-  return new AdminVerificationService(m.providers, m.notifications, m.audit, tx);
+  return new AdminVerificationService(m.providers, m.notifications, m.audit, m.auditEvents, tx);
 }
 
 describe('AdminVerificationService', () => {
@@ -202,5 +219,121 @@ describe('AdminVerificationService', () => {
   it('detail returns 404 when missing', async () => {
     const m = makeMocks(null);
     await expect(makeService(m).detail('pp-missing')).rejects.toMatchObject({ status: 404 });
+  });
+
+  // ── Sprint 6.2 — review notes ──────────────────────────────────
+
+  describe('updateReviewNotes', () => {
+    it('persists notes + writes ADMIN_PROVIDER_NOTES_UPDATED audit', async () => {
+      const m = makeMocks(makeProfile({ status: 'PENDING_REVIEW' }));
+      await makeService(m).updateReviewNotes('admin-1', 'pp-1', 'Suspicious documents');
+      expect(m.providers.updateReviewNotesById).toHaveBeenCalledWith(
+        'pp-1',
+        'Suspicious documents',
+        undefined,
+      );
+      expect(m.audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          adminUserId: 'admin-1',
+          type: 'ADMIN_PROVIDER_NOTES_UPDATED',
+          metadata: expect.objectContaining({
+            providerProfileId: 'pp-1',
+            previousNotesLength: 0,
+            newNotesLength: 20,
+          }),
+        }),
+        undefined,
+      );
+    });
+
+    it('does NOT fan out a user-facing notification (admin-private)', async () => {
+      const m = makeMocks(makeProfile({ status: 'PENDING_REVIEW' }));
+      await makeService(m).updateReviewNotes('admin-1', 'pp-1', 'note');
+      expect(m.notifications.createForUser).not.toHaveBeenCalled();
+    });
+
+    it('skips the DB write when notes are unchanged (idempotent), still audits', async () => {
+      const m = makeMocks(
+        makeProfile({ status: 'PENDING_REVIEW' }) as unknown as ProviderProfile & {
+          user: { id: string; email: string } | null;
+          reviewNotes: string;
+        },
+      );
+      // Patch the makeProfile result to have an existing note string
+      // by intercepting findByIdForAdmin's first return.
+      (m.providers.findByIdForAdmin as jest.Mock).mockReset();
+      (m.providers.findByIdForAdmin as jest.Mock).mockResolvedValue({
+        ...makeProfile({ status: 'PENDING_REVIEW' }),
+        reviewNotes: 'same',
+      });
+      await makeService(m).updateReviewNotes('admin-1', 'pp-1', 'same');
+      expect(m.providers.updateReviewNotesById).not.toHaveBeenCalled();
+      expect(m.audit.record).toHaveBeenCalled();
+    });
+
+    it('returns 404 when the provider profile is missing', async () => {
+      const m = makeMocks(null);
+      await expect(
+        makeService(m).updateReviewNotes('admin-1', 'pp-missing', 'x'),
+      ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
+    });
+  });
+
+  describe('getAuditHistory', () => {
+    it('queries the repo with the providerProfileId + cursor pagination', async () => {
+      const m = makeMocks(makeProfile({ status: 'PENDING_REVIEW' }));
+      await makeService(m).getAuditHistory('pp-1', { limit: 25 });
+      expect(m.auditEvents.listForProviderProfile).toHaveBeenCalledWith(
+        expect.objectContaining({ providerProfileId: 'pp-1', take: 26 }),
+      );
+    });
+
+    it('projects audit rows to the contract shape', async () => {
+      const auditRow = {
+        id: 'ae-1',
+        userId: 'admin-1',
+        type: 'ADMIN_PROVIDER_APPROVED',
+        metadata: { providerProfileId: 'pp-1', previousStatus: 'PENDING_REVIEW' },
+        ipAddress: null,
+        userAgent: null,
+        requestId: null,
+        createdAt: new Date('2026-05-02T00:00:00Z'),
+      } as unknown as AuditEvent;
+      const m = makeMocks(makeProfile({ status: 'ACTIVE' }), [auditRow]);
+      const out = await makeService(m).getAuditHistory('pp-1', {});
+      expect(out.items).toHaveLength(1);
+      expect(out.items[0]).toMatchObject({
+        id: 'ae-1',
+        type: 'ADMIN_PROVIDER_APPROVED',
+        adminUserId: 'admin-1',
+      });
+    });
+
+    it('emits nextCursor when the page overflows', async () => {
+      const rows = ['a', 'b', 'c'].map(
+        (id) =>
+          ({
+            id,
+            userId: 'admin-1',
+            type: 'ADMIN_PROVIDER_APPROVED',
+            metadata: {},
+            ipAddress: null,
+            userAgent: null,
+            requestId: null,
+            createdAt: new Date('2026-05-02T00:00:00Z'),
+          }) as unknown as AuditEvent,
+      );
+      const m = makeMocks(makeProfile(), rows);
+      const out = await makeService(m).getAuditHistory('pp-1', { limit: 2 });
+      expect(out.items.map((i) => i.id)).toEqual(['a', 'b']);
+      expect(out.nextCursor).toBe('b');
+    });
+
+    it('returns 404 when the provider profile is missing (no IDOR cover)', async () => {
+      const m = makeMocks(null);
+      await expect(makeService(m).getAuditHistory('pp-missing', {})).rejects.toMatchObject({
+        status: 404,
+      });
+    });
   });
 });

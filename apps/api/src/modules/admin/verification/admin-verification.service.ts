@@ -4,6 +4,9 @@ import type {
   AdminProviderSummary,
   ListAdminProvidersQuery,
   ListAdminProvidersResponse,
+  ListProviderAuditEventsQuery,
+  ListProviderAuditEventsResponse,
+  ProviderAuditEvent,
 } from '@homeservicemarketplace/contracts';
 import {
   NotificationResourceType,
@@ -13,6 +16,7 @@ import {
   type ProviderProfileStatus,
 } from '@homeservicemarketplace/database';
 
+import { AuditEventRepository } from '../../../infrastructure/persistence/iam/audit-event.repository';
 import { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
@@ -21,12 +25,15 @@ import { AdminAuditService } from '../admin-audit.service';
 
 const DEFAULT_PAGE_SIZE = 50;
 
+const AUDIT_DEFAULT_PAGE_SIZE = 50;
+
 @Injectable()
 export class AdminVerificationService {
   constructor(
     private readonly providers: ProviderProfileRepository,
     private readonly notifications: NotificationsService,
     private readonly audit: AdminAuditService,
+    private readonly auditEvents: AuditEventRepository,
     private readonly tx: TransactionRunner,
   ) {}
 
@@ -202,6 +209,78 @@ export class AdminVerificationService {
     });
     return { provider: toSummary(result) };
   }
+
+  // Sprint 6.2: persist admin-facing review notes on the provider
+  // profile. Free-text, no length cap beyond the DTO's (4 KB). Audited
+  // via ADMIN_PROVIDER_NOTES_UPDATED so the verification timeline can
+  // show every notes mutation alongside the status transitions. Does
+  // NOT fan out a user-facing notification — review notes are an
+  // admin-private surface.
+  async updateReviewNotes(
+    adminUserId: string,
+    providerProfileId: string,
+    notes: string,
+  ): Promise<AdminProviderMutationResponse> {
+    const result = await this.tx.run(async (tx) => {
+      const existing = await this.providers.findByIdForAdmin(providerProfileId, tx);
+      if (!existing) throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
+      const trimmed = notes ?? '';
+      const previousNotes = (existing as { reviewNotes?: string | null }).reviewNotes ?? null;
+      // Idempotent: if the notes haven't changed, skip the DB write
+      // but still emit an audit row. This stops a double-click from
+      // doubling up audit history; the operator's intent is captured.
+      if (previousNotes !== trimmed) {
+        await this.providers.updateReviewNotesById(providerProfileId, trimmed, tx);
+      }
+      await this.audit.record(
+        {
+          adminUserId,
+          type: 'ADMIN_PROVIDER_NOTES_UPDATED' as AuditEventType,
+          metadata: {
+            providerProfileId,
+            targetUserId: existing.user?.id ?? null,
+            previousNotesLength: previousNotes ? previousNotes.length : 0,
+            newNotesLength: trimmed.length,
+          },
+        },
+        tx,
+      );
+      const reloaded = await this.providers.findByIdForAdmin(providerProfileId, tx);
+      if (!reloaded) throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
+      return reloaded;
+    });
+    return { provider: toSummary(result) };
+  }
+
+  // Sprint 6.2: provider-scoped verification timeline. Returns audit
+  // events filtered by metadata.providerProfileId — covers every
+  // ADMIN_PROVIDER_* mutation written by the methods above. Cursor-
+  // paginated by [createdAt desc, id desc].
+  async getAuditHistory(
+    providerProfileId: string,
+    query: ListProviderAuditEventsQuery,
+  ): Promise<ListProviderAuditEventsResponse> {
+    // Existence check first so a request for a deleted / non-existent
+    // profile returns 404 instead of an empty list (no IDOR cover).
+    const existing = await this.providers.findByIdForAdmin(providerProfileId);
+    if (!existing) throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
+    const take = Math.min(Math.max(query.limit ?? AUDIT_DEFAULT_PAGE_SIZE, 1), 100);
+    const rows = await this.auditEvents.listForProviderProfile({
+      providerProfileId,
+      take: take + 1,
+      cursor: query.cursor,
+    });
+    const page = rows.slice(0, take);
+    const items: ProviderAuditEvent[] = page.map((r) => ({
+      id: r.id,
+      type: r.type as string,
+      adminUserId: r.userId ?? null,
+      metadata: (r.metadata as Record<string, unknown> | null) ?? null,
+      createdAt: r.createdAt.toISOString(),
+    }));
+    const nextCursor = rows.length > take ? items[items.length - 1].id : null;
+    return { items, nextCursor };
+  }
 }
 
 function toSummary(
@@ -221,6 +300,7 @@ function toSummary(
     topPro: row.topPro,
     serviceAreaCity: row.serviceAreaCity,
     serviceAreaCountry: row.serviceAreaCountry,
+    reviewNotes: (row as { reviewNotes?: string | null }).reviewNotes ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

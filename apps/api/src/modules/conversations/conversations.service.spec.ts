@@ -46,6 +46,7 @@ function makeProvider(over: Partial<ProviderProfile> = {}): ProviderProfile {
     serviceAreaRadiusKm: null,
     availability: 'OFFLINE',
     status: 'ACTIVE',
+    reviewNotes: null,
     createdAt: new Date('2026-04-29T00:00:00.000Z'),
     updatedAt: new Date('2026-04-29T00:00:00.000Z'),
     deletedAt: null,

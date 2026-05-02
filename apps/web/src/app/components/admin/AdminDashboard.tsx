@@ -15,10 +15,7 @@ import {
   TrendingDown,
   RefreshCw,
   Search,
-  Filter,
-  Download,
   Activity,
-  MapPin,
   Zap,
   Clock,
   Star,
@@ -43,11 +40,7 @@ import {
   Legend,
 } from 'recharts';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
-import {
-  useEcosystem,
-  PRO_VERIFICATIONS,
-  WALLET_TRANSACTIONS,
-} from '../../context/EcosystemContext';
+import { useEcosystem, WALLET_TRANSACTIONS } from '../../context/EcosystemContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { useAuth } from '../../../lib/auth-provider';
 import {
@@ -56,6 +49,7 @@ import {
   useAdminUsers,
   useUpdateAdminUserStatus,
 } from '../../hooks/admin/useAdminUsers';
+import { VerificationSection } from './VerificationSection';
 import type {
   AdminUserStatus,
   AdminUserSummary,
@@ -227,255 +221,6 @@ function HeatMapWidget({ lang }: { lang: string }) {
         <span className="text-slate-400" style={{ fontSize: '10px' }}>
           {lang === 'ar' ? 'مرتفع' : 'High'}
         </span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Verification Table ──────────────────────────────���─────────────────────────
-function VerificationSection() {
-  const { lang } = useLang();
-  const [pros, setPros] = useState([...PRO_VERIFICATIONS]);
-  const [selected, setSelected] = useState<string | null>(null);
-
-  const L = {
-    title: lang === 'ar' ? 'التحقق من المحترفين' : 'Pro Verification',
-    name: lang === 'ar' ? 'الاسم' : 'Name',
-    service: lang === 'ar' ? 'الخدمة' : 'Service',
-    city: lang === 'ar' ? 'المدينة' : 'City',
-    applied: lang === 'ar' ? 'تاريخ الطلب' : 'Applied',
-    checks: lang === 'ar' ? 'الفحوصات' : 'Checks',
-    status: lang === 'ar' ? 'الحالة' : 'Status',
-    actions: lang === 'ar' ? 'الإجراءات' : 'Actions',
-    approve: lang === 'ar' ? 'قبول' : 'Approve',
-    reject: lang === 'ar' ? 'رفض' : 'Reject',
-    viewDocs: lang === 'ar' ? 'وثائق' : 'Docs',
-    idVerif: lang === 'ar' ? 'هوية' : 'ID',
-    bgCheck: lang === 'ar' ? 'خلفية' : 'BG',
-    pending: lang === 'ar' ? 'معلق' : 'Pending',
-    approved: lang === 'ar' ? 'مقبول' : 'Approved',
-    rejected: lang === 'ar' ? 'مرفوض' : 'Rejected',
-    search: lang === 'ar' ? 'بحث عن محترف…' : 'Search professionals…',
-    total: lang === 'ar' ? 'إجمالي الطلبات' : 'Total applications',
-    pending2: lang === 'ar' ? 'معلقة' : 'Pending',
-    filter: lang === 'ar' ? 'فلترة' : 'Filter',
-    export: lang === 'ar' ? 'تصدير' : 'Export',
-  };
-
-  const STATUS_STYLE: Record<string, string> = {
-    pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    rejected: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
-  };
-  const STATUS_LABEL: Record<string, string> = {
-    pending: L.pending,
-    approved: L.approved,
-    rejected: L.rejected,
-  };
-
-  const approve = (id: string) =>
-    setPros((prev) => prev.map((p) => (p.id === id ? { ...p, status: 'approved' } : p)));
-  const reject = (id: string) =>
-    setPros((prev) => prev.map((p) => (p.id === id ? { ...p, status: 'rejected' } : p)));
-
-  const pending = pros.filter((p) => p.status === 'pending').length;
-
-  return (
-    <div className="flex flex-col gap-6">
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          {
-            val: pros.length,
-            label: L.total,
-            color: 'text-slate-900 dark:text-white',
-            bg: 'bg-slate-50 dark:bg-slate-700',
-          },
-          {
-            val: pending,
-            label: L.pending2,
-            color: 'text-amber-700 dark:text-amber-400',
-            bg: 'bg-amber-50 dark:bg-amber-900/30',
-          },
-          {
-            val: pros.filter((p) => p.status === 'approved').length,
-            label: L.approved,
-            color: 'text-green-700 dark:text-green-400',
-            bg: 'bg-green-50 dark:bg-green-900/30',
-          },
-        ].map((s) => (
-          <div key={s.label} className={`${s.bg} rounded-2xl p-4 flex items-center gap-3`}>
-            <p className={s.color} style={{ fontSize: '28px', fontWeight: 900 }}>
-              {s.val}
-            </p>
-            <p className="text-slate-400" style={{ fontSize: '12px' }}>
-              {s.label}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      {/* Search + actions */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1 flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 shadow-sm">
-          <Search size={15} className="text-slate-400" />
-          <input
-            placeholder={L.search}
-            className="flex-1 bg-transparent text-slate-700 dark:text-slate-200 placeholder-slate-400 outline-none"
-            style={{ fontSize: '13px' }}
-          />
-        </div>
-        <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 shadow-sm active:scale-95">
-          <Filter size={14} />
-          <span style={{ fontSize: '13px', fontWeight: 500 }}>{L.filter}</span>
-        </button>
-        <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 text-white shadow-md shadow-amber-200 dark:shadow-none active:scale-95">
-          <Download size={14} />
-          <span style={{ fontSize: '13px', fontWeight: 600 }}>{L.export}</span>
-        </button>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
-        {/* Header */}
-        <div
-          className="grid gap-3 px-5 py-3.5 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700"
-          style={{ gridTemplateColumns: '2fr 1.2fr 1fr 1.5fr 1fr 1fr 1.5fr' }}
-        >
-          {[L.name, L.service, L.city, L.applied, L.checks, L.status, L.actions].map((h) => (
-            <span
-              key={h}
-              className="text-slate-400 dark:text-slate-500"
-              style={{
-                fontSize: '11px',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-              }}
-            >
-              {h}
-            </span>
-          ))}
-        </div>
-
-        {/* Rows */}
-        {pros.map((pro) => (
-          <motion.div
-            key={pro.id}
-            layout
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className={`grid gap-3 px-5 py-4 items-center border-b border-slate-50 dark:border-slate-700 last:border-0 transition-colors ${selected === pro.id ? 'bg-amber-50/50 dark:bg-amber-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-700/30'}`}
-            style={{ gridTemplateColumns: '2fr 1.2fr 1fr 1.5fr 1fr 1fr 1.5fr' }}
-            onClick={() => setSelected((s) => (s === pro.id ? null : pro.id))}
-          >
-            {/* Name */}
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-600 dark:to-slate-700 flex items-center justify-center flex-shrink-0">
-                <span
-                  className="text-slate-700 dark:text-slate-200"
-                  style={{ fontSize: '11px', fontWeight: 800 }}
-                >
-                  {(lang === 'ar' ? pro.nameAr : pro.name)
-                    .split(' ')
-                    .map((w) => w[0])
-                    .join('')
-                    .slice(0, 2)
-                    .toUpperCase()}
-                </span>
-              </div>
-              <div>
-                <p
-                  className="text-slate-900 dark:text-white"
-                  style={{ fontSize: '13px', fontWeight: 600 }}
-                >
-                  {lang === 'ar' ? pro.nameAr : pro.name}
-                </p>
-                {pro.rating > 0 && (
-                  <div className="flex items-center gap-1">
-                    <Star size={10} className="text-amber-400 fill-amber-400" />
-                    <span className="text-slate-400" style={{ fontSize: '10px' }}>
-                      {pro.rating} · {pro.jobs} jobs
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Service */}
-            <span className="text-slate-600 dark:text-slate-300" style={{ fontSize: '13px' }}>
-              {lang === 'ar' ? pro.serviceAr : pro.service}
-            </span>
-
-            {/* City */}
-            <div className="flex items-center gap-1">
-              <MapPin size={11} className="text-slate-400" />
-              <span className="text-slate-500 dark:text-slate-400" style={{ fontSize: '12px' }}>
-                {pro.city}
-              </span>
-            </div>
-
-            {/* Applied */}
-            <span className="text-slate-400 dark:text-slate-500" style={{ fontSize: '12px' }}>
-              {pro.appliedAt}
-            </span>
-
-            {/* Checks */}
-            <div className="flex items-center gap-2">
-              <div
-                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-md ${pro.idVerified ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'}`}
-                style={{ fontSize: '9px', fontWeight: 700 }}
-              >
-                {pro.idVerified ? <Check size={9} /> : <X size={9} />} {L.idVerif}
-              </div>
-              <div
-                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-md ${pro.bgCheck ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'}`}
-                style={{ fontSize: '9px', fontWeight: 700 }}
-              >
-                {pro.bgCheck ? <Check size={9} /> : <X size={9} />} {L.bgCheck}
-              </div>
-            </div>
-
-            {/* Status */}
-            <span
-              className={`px-2.5 py-1 rounded-full w-fit ${STATUS_STYLE[pro.status]}`}
-              style={{ fontSize: '11px', fontWeight: 700 }}
-            >
-              {STATUS_LABEL[pro.status]}
-            </span>
-
-            {/* Actions */}
-            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-              {pro.status === 'pending' && (
-                <>
-                  <button
-                    onClick={() => approve(pro.id)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-green-500 text-white active:scale-90 transition-all shadow-sm shadow-green-200 dark:shadow-none"
-                    style={{ fontSize: '11px', fontWeight: 700 }}
-                  >
-                    <Check size={11} />
-                    {L.approve}
-                  </button>
-                  <button
-                    onClick={() => reject(pro.id)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 active:scale-90 transition-all"
-                    style={{ fontSize: '11px', fontWeight: 700 }}
-                  >
-                    <X size={11} />
-                    {L.reject}
-                  </button>
-                </>
-              )}
-              <button
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 active:scale-90 transition-all"
-                style={{ fontSize: '11px', fontWeight: 700 }}
-              >
-                <Eye size={11} />
-                {L.viewDocs}
-              </button>
-            </div>
-          </motion.div>
-        ))}
       </div>
     </div>
   );

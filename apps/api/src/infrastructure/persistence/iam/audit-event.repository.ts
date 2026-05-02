@@ -51,4 +51,25 @@ export class AuditEventRepository {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
   }
+
+  // Sprint 6.2: provider-scoped audit history. Uses Prisma's JSON
+  // `path` filter to match metadata.providerProfileId (the key all
+  // verification mutations write — see admin-verification.service.ts).
+  // Cursor-paginated by [createdAt desc, id desc] like list().
+  listForProviderProfile(
+    args: { providerProfileId: string; take: number; cursor?: string },
+    tx?: PrismaTx,
+  ): Promise<AuditEvent[]> {
+    return this.db(tx).auditEvent.findMany({
+      where: {
+        metadata: {
+          path: ['providerProfileId'],
+          equals: args.providerProfileId,
+        },
+      },
+      take: args.take,
+      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+  }
 }

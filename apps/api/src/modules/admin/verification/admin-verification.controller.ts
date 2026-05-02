@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -13,6 +14,7 @@ import type {
   AdminProviderMutationResponse,
   AdminProviderSummary,
   ListAdminProvidersResponse,
+  ListProviderAuditEventsResponse,
 } from '@homeservicemarketplace/contracts';
 
 import { CurrentUser } from '../../iam/authentication/decorators/current-user.decorator';
@@ -27,6 +29,8 @@ import {
   AdminProviderSuspendDto,
 } from './dto/admin-provider-decision.dto';
 import { ListAdminProvidersQueryDto } from './dto/list-admin-providers.query';
+import { ListProviderAuditQueryDto } from './dto/list-provider-audit.query';
+import { UpdateReviewNotesDto } from './dto/update-review-notes.dto';
 import { AdminVerificationService } from './admin-verification.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -90,5 +94,32 @@ export class AdminVerificationController {
     @Param('providerProfileId') providerProfileId: string,
   ): Promise<AdminProviderMutationResponse> {
     return this.verification.reactivate(admin.id, providerProfileId);
+  }
+
+  // Sprint 6.2: persist admin-facing review notes. Audited via
+  // ADMIN_PROVIDER_NOTES_UPDATED. Does NOT fan out a notification —
+  // these are an admin-private surface.
+  @UseGuards(CsrfGuard)
+  @Patch(':providerProfileId/review-notes')
+  @HttpCode(HttpStatus.OK)
+  updateReviewNotes(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('providerProfileId') providerProfileId: string,
+    @Body() body: UpdateReviewNotesDto,
+  ): Promise<AdminProviderMutationResponse> {
+    return this.verification.updateReviewNotes(admin.id, providerProfileId, body.notes);
+  }
+
+  // Sprint 6.2: provider-scoped audit history. Returns ADMIN_PROVIDER_*
+  // rows filtered by metadata.providerProfileId. Cursor-paginated; no
+  // type filter on the wire — every audit row that touched this profile
+  // is in the same timeline.
+  @Get(':providerProfileId/audit')
+  @HttpCode(HttpStatus.OK)
+  audit(
+    @Param('providerProfileId') providerProfileId: string,
+    @Query() query: ListProviderAuditQueryDto,
+  ): Promise<ListProviderAuditEventsResponse> {
+    return this.verification.getAuditHistory(providerProfileId, query);
   }
 }

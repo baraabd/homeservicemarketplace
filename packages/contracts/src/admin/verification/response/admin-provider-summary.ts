@@ -18,6 +18,9 @@ export interface AdminProviderSummary {
   topPro: boolean;
   serviceAreaCity: string | null;
   serviceAreaCountry: string | null;
+  // Sprint 6.2 — admin-facing review notes (free text). Distinct from
+  // the audit history; this is the reviewer's pinned context.
+  reviewNotes: string | null;
   createdAt: string;
   updatedAt: string;
 }
