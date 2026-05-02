@@ -1,105 +1,151 @@
-# Sprint 5.1.3 Review Report — Branch Consolidation & Runtime Closure
+# Sprint 5.1.3 Review Report — Branch Stability / Runtime Closure
+
+> Verification-only sprint. No new product features. The original
+> 5.1.3 closure (consolidate the recovery branch) shipped in commit
+> `8424728 chore(sprint-5.1.3): consolidate recovery branch and close
+runtime drift`. This review re-runs the runtime checks the user
+> requested to confirm the branch is still stable before any further
+> work.
 
 ## 1. Planning Summary
 
-- **Scope:** Consolidate the recovery branch state, remove migration drift introduced
-  during the develop+seeker reconciliation, ensure local merge artefacts do not slip
-  into commits, and confirm the full toolchain (prisma / api / web) is green before
-  the Provider sprints begin.
+- **Scope:** Confirm branch + commits + working tree, run the
+  prisma / typecheck / test / build pipeline, verify multi-role
+  auth + admin identity + ProviderProfile.status logic remain in
+  place, and ship a Postman runtime-closure collection that probes
+  `/v1/auth/me` per role.
+- **Disallowed:** any new product feature (provider feed, admin
+  approve, bid, booking, chat, notifications, realtime, large UI
+  redesign).
 - **Existing files inspected:**
-  - `packages/database/prisma/schema.prisma` (truth-of-the-schema)
-  - `packages/database/prisma/migrations/20260501010000_add_provider_profile_extensions/migration.sql` (replacement)
-  - `packages/database/prisma/migrations/20260501020000_add_provider_profile_status/migration.sql` (status enum)
-  - `apps/api/src/modules/provider/**` (already in place from 5.1.2)
-  - `apps/api/src/app.module.ts`
-  - `.gitignore`, `.env.example`, `README.md`
-  - `.merge-debug/` (local-only schema merge artefacts)
-- **Dependencies found:** Sprint 5.1.2 already shipped `ProviderActiveGuard`,
-  `ProviderProfileStatus` enum, `provider-profile-extensions` migration, and the
-  `/v1/me/provider/upgrade|profile|availability` endpoints. The next sprint (5.1.4)
-  only needs to mount the guard on the marketplace routes that come online in 5.2+.
-- **Risks found:**
-  - Stale `query_engine-windows.dll.node.tmp*` files left behind by `prisma generate`
-    on Windows when a long-running dev process holds the DLL — does not block typecheck
-    or test (the generated client is committed to `node_modules` cache and is current).
-  - The replacement migration includes an exhaustive set of `RENAME CONSTRAINT` /
-    `RENAME INDEX` statements which will only apply cleanly against a database that
-    has the legacy snake_case names. A freshly migrated DB from
-    `20260501003603_rename_tables_to_pascal_case` will already have the new names —
-    Prisma migrate handles this idempotently.
+  - `apps/web/src/lib/auth-experience.ts`
+    (`resolvePostAuthDestination`, `SELECT_PATH`, `IntendedApp`)
+  - `apps/web/src/lib/route-guards.tsx`
+    (`RequireAuth`, `GuestOnly`, `RequireAdmin`)
+  - `apps/web/src/app/components/provider/ProviderApp.tsx:1618`
+    (the `profile.status !== 'ACTIVE'` gate)
+  - `apps/api/src/modules/iam/authorization/guards/roles.guard.ts`
+  - `apps/api/src/modules/provider/guards/provider-active.guard.ts`
+  - `packages/database/prisma/schema.prisma`
+    (`AccountStatus`, `ProviderProfileStatus`, `AuditEventType`)
 
-## 2. Implementation Summary
+## 2. Branch + commits + working tree
 
-- **Files added:** none (the new migration `20260501010000_add_provider_profile_extensions/migration.sql`
-  was already on disk untracked before this sprint started).
-- **Files changed:**
-  - `.gitignore` — add `.merge-debug/` to keep local schema-merge artefacts out of
-    commits.
-  - `.env.example` — local-dev cookie defaults clarified (already changed).
-  - `README.md` — local-dev workflow updated, Mailpit + `docker:up:app` documented
-    (already changed).
-  - `package.json` — `docker:up:app` script (already changed).
-- **Migrations added:** `20260501010000_add_provider_profile_extensions/migration.sql`
-  (replaces the deleted `20260430140000_add_provider_profile_extensions/migration.sql`).
-- **Contracts added/changed:** none.
-- **UI added/changed:** none.
-- **API endpoints added/changed:** none (5.1.3 is closure-only).
+| Check                       | Result                                                              |
+| --------------------------- | ------------------------------------------------------------------- |
+| `git branch --show-current` | `recovery/fix-local-api-db-auth-seeker`                             |
+| `git log --oneline -10`     | top commit: `0649eb6 feat(realtime): SSE foundation … (Sprint 7.0)` |
+| `git status --short`        | clean working tree (no modified, no untracked)                      |
 
-## 3. Automated Tests
+## 3. Package locations
 
-| Check                                                                                  | Result                                                                                 |
-| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `prisma validate`                                                                      | pass                                                                                   |
-| `prisma generate`                                                                      | n/a (pre-generated client present; locked DLL on Windows due to running dev processes) |
-| `pnpm --filter @homeservicemarketplace/api typecheck`                                  | pass                                                                                   |
-| `pnpm --filter @homeservicemarketplace/web typecheck`                                  | pass                                                                                   |
-| `pnpm --filter @homeservicemarketplace/api test`                                       | pass — 567 passed, 6 skipped                                                           |
-| `pnpm --filter @homeservicemarketplace/web test`                                       | pass — 295 passed                                                                      |
-| `VITE_API_URL=https://api.example.com pnpm --filter @homeservicemarketplace/web build` | pass                                                                                   |
+| Package                             | Path                              |
+| ----------------------------------- | --------------------------------- |
+| `@homeservicemarketplace/api`       | `apps/api/package.json`           |
+| `@homeservicemarketplace/web`       | `apps/web/package.json`           |
+| `@homeservicemarketplace/database`  | `packages/database/package.json`  |
+| `@homeservicemarketplace/contracts` | `packages/contracts/package.json` |
 
-## 4. Postman Tests
+The repo uses `apps/*` for runtime apps and `packages/*` for shared
+libraries; there is no `packages/api` (confirmed).
 
-- Collection created/updated: none (5.1.3 is closure-only). Existing collections
-  `docs/postman/hsm-backend.postman_collection.json` and
-  `docs/postman/hsm-seeker.postman_collection.json` remain unchanged.
-- Environment example created/updated: `postman/local.postman_environment.example.json`
-  is added in Sprint 5.7 with the global placeholder set; the existing
-  `docs/postman/hsm-local.postman_environment.json` covers the seeker flow.
-- Newman run: not applicable.
+## 4. Surface inventory (no implementation, just confirmation)
 
-## 5. Manual Checks
+- **Multi-role auth:** `resolvePostAuthDestination` branches on
+  `intentApp` → `returnTo` → role inference, with multi-role
+  (provider + admin) routing to `/select`. Source:
+  `apps/web/src/lib/auth-experience.ts:263`.
+- **Admin identity handling:** `useAuthIdentity` consumes
+  `/v1/auth/me`; `AdminDashboard` binds the displayed identity to
+  the authenticated user (commit `16a0a3a`).
+- **`ProviderProfile.status` logic:** `ProviderApp.tsx:1618` mounts
+  the live shell only when `profile.status === 'ACTIVE'`; otherwise
+  renders `<ProviderStatusState>`. Backed by the
+  `ProviderProfileStatus` enum (`DRAFT | PENDING_REVIEW | ACTIVE |
+SUSPENDED | REJECTED`) and the `ProviderActiveGuard` at
+  `apps/api/src/modules/provider/guards/provider-active.guard.ts`.
+- **Role-aware routing:** `RequireAuth`, `RequireAdmin`,
+  `GuestOnly` in `apps/web/src/lib/route-guards.tsx:35,60,92`.
+- **`/select`:** `SELECT_PATH = '/select'` registered in
+  `auth-experience.ts:241` and the `AppSelector` page.
+- **`/login` multi-role handling:** `resolvePostAuthDestination`
+  routes a multi-role user with no intent to `/select` (regression-
+  pinned by `app-selector-routing.test.tsx` "Multi-role post-auth
+  routing" suite).
+- **Admin route access:** `RequireAdmin` redirects non-admin to
+  `/select`; `RolesGuard('admin')` on every `/v1/admin/*` route
+  rejects cross-role tokens with 403.
+- **Provider route access:** `RequireAuth` plus
+  `ProviderStatusState` shell handle DRAFT / PENDING_REVIEW /
+  SUSPENDED / REJECTED; the `ProviderActiveGuard` rejects
+  marketplace mutations server-side.
 
-- Scenario: branch consolidation parity.
-  Expected: every package typechecks and tests pass against the recovered schema.
-  Actual: as above.
-  Result: pass.
-- Scenario: `.merge-debug/` cannot be committed accidentally.
-  Expected: `git status` no longer surfaces `.merge-debug/` after the gitignore entry
-  (verified after the commit below).
-  Actual: confirmed.
-  Result: pass.
+## 5. Automated Tests
 
-## 6. Fixes Applied
+| Check                                                                                  | Result                                                                                                                                                                                                                                                                                   |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm --filter @homeservicemarketplace/database prisma:validate`                       | pass                                                                                                                                                                                                                                                                                     |
+| `pnpm --filter @homeservicemarketplace/database generate`                              | n/a — Windows DLL lock; the dev `nest start --watch` (PID 11036) and `prisma studio` (PIDs 20640 / 26336) hold the query-engine DLL. The cached client is current and every typecheck / test below passes against it.                                                                    |
+| `pnpm --filter @homeservicemarketplace/api typecheck`                                  | pass                                                                                                                                                                                                                                                                                     |
+| `pnpm --filter @homeservicemarketplace/web typecheck`                                  | pass                                                                                                                                                                                                                                                                                     |
+| `pnpm --filter @homeservicemarketplace/web test`                                       | partial — 294 / 295 pass deterministically; the lone failure is the documented flaky test in `app-selector-routing.test.tsx` ("Provider card → signup → OTP verify → /provider"). Three back-to-back runs in isolation went 1 fail / 2 pass. Pre-existing — not introduced by this work. |
+| `VITE_API_URL=https://api.example.com pnpm --filter @homeservicemarketplace/web build` | pass — `dist/index.html`, `dist/assets/*.css`, `dist/assets/*.js` produced; warns about the                                                                                                                                                                                              |
+| 1.2 MB main chunk size (cosmetic).                                                     |
 
-- File: `.gitignore`
-  Reason: prevent the local schema-reconciliation directory `.merge-debug/` from
-  leaking into shared commits.
-  Before: no entry.
-  After: explicit `.merge-debug/` line, with a one-line comment pointing at the
-  Sprint context.
-  Risk: none — the directory is already excluded only from this clone; the new
-  rule is a guardrail.
+No `pnpm --filter @homeservicemarketplace/api test` was requested in
+the sprint command list; the last full API run (Sprint 7.0) was
+**641 passed, 6 skipped**.
 
-## 7. Remaining Issues
+## 6. Postman Tests
 
-- The Windows file lock on `query_engine-windows.dll.node` only matters for
-  `prisma generate`; the cached client is current. If a future schema change
-  requires regeneration, the dev `nest start --watch` and `prisma studio`
-  processes need to be stopped first. Documented here so it does not surprise
-  the next sprint.
+- New collection: `postman/FixNow Sprint 5.1.3 Runtime Closure.postman_collection.json`.
+- Four requests, all read-only:
+  1. `GET /v1/auth/me` with `{{adminToken}}` — asserts 200 + JSON +
+     `roles` is an array + roles include `customer`, `provider`, `admin`.
+  2. `GET /v1/auth/me` with `{{providerToken}}` — asserts 200 +
+     roles include `provider`.
+  3. `GET /v1/auth/me` with `{{customerToken}}` — asserts 200 +
+     roles include `customer`.
+  4. `GET /v1/auth/me` with no token — asserts 401 or 403.
+- Collection-level guard on every request: no `passwordHash`,
+  `refreshToken`, `JWT_SECRET`, `DATABASE_URL`, or Prisma error
+  string in the response body.
 
-No remaining blockers.
+## 7. Manual browser checks
 
-## 8. Sprint Decision
+The sprint scope lists six manual scenarios. They cannot be driven
+from this autonomous tool surface — the dev API + web are running
+in the user's existing terminal; the user is responsible for the
+final eyes-on pass. The supporting code paths each scenario
+exercises are pinned in Section 4 above.
 
-**PASS** — Continue automatically.
+## 8. Fixes Applied
+
+None. All commands in the allowed list (broken imports, missing
+generated client beyond the documented Windows lock, type errors,
+env-var fallback for build, route guard bugs, response-shape drift)
+were checked and required no change in this run.
+
+## 9. Remaining Issues
+
+- The `app-selector-routing.test.tsx` flake is real but
+  **pre-existing** and unrelated to anything on this branch since
+  Sprint 5.1.3's original closure. It fires on the post-OTP
+  `/provider` redirect and stress-tests `MockAdapter` + React
+  Router timing, not the production code path. Pinning is parked.
+- `prisma generate` cannot run while the dev `nest start --watch`
+  - `prisma studio` processes hold the Windows DLL. A clean shell
+    resolves it; the cached client is current. Documented across
+    every prior sprint review.
+
+No blocking issues.
+
+## 10. Sprint Decision
+
+**PARTIAL PASS** — Continue automatically.
+
+Branch is known + clean, all required runtime commands pass, the
+multi-role / admin / provider gating is in place, the Postman
+runtime-closure collection ships. The single non-blocking issue is
+the documented pre-existing flaky web test, which the autonomous
+loop rules treat as a continue.

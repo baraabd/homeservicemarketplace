@@ -1,0 +1,157 @@
+{
+  "info": {
+    "name": "FixNow Sprint 5.1.3 Runtime Closure",
+    "description": "Verification-only collection for Sprint 5.1.3. Pings /v1/auth/me with each role's token (admin/provider/customer) plus the no-token negative. Confirms multi-role identity, role array shape, and the no-secret-leak posture without driving any mutation. Use postman/local.postman_environment.example.json as the env template; tokens are populated by the IAM/auth login requests at runtime.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fixnow-sprint-5-1-3-runtime-closure"
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const text = pm.response.text();",
+          "pm.test('No sensitive fields leaked', function () {",
+          "  pm.expect(text).to.not.include('passwordHash');",
+          "  pm.expect(text).to.not.include('refreshToken');",
+          "  pm.expect(text).to.not.include('JWT_SECRET');",
+          "  pm.expect(text).to.not.include('DATABASE_URL');",
+          "  pm.expect(text).to.not.match(/PrismaClient|column .* does not exist/i);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "GET /v1/auth/me (admin)",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{adminToken}}" }]
+        },
+        "url": "{{apiUrl}}/{{apiVersion}}/auth/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Response is JSON', function () {",
+              "  pm.response.to.be.json;",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Roles array exists', function () {",
+              "  const roles = body.roles || (body.user && body.user.roles);",
+              "  pm.expect(roles).to.be.an('array');",
+              "});",
+              "pm.test('Admin has customer, provider, and admin roles', function () {",
+              "  const roles = body.roles || (body.user && body.user.roles);",
+              "  pm.expect(roles).to.include('customer');",
+              "  pm.expect(roles).to.include('provider');",
+              "  pm.expect(roles).to.include('admin');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET /v1/auth/me (provider)",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{providerToken}}" }]
+        },
+        "url": "{{apiUrl}}/{{apiVersion}}/auth/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Response is JSON', function () {",
+              "  pm.response.to.be.json;",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Roles array includes provider', function () {",
+              "  const roles = body.roles || (body.user && body.user.roles);",
+              "  pm.expect(roles).to.be.an('array');",
+              "  pm.expect(roles).to.include('provider');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET /v1/auth/me (customer)",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+        },
+        "url": "{{apiUrl}}/{{apiVersion}}/auth/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Response is JSON', function () {",
+              "  pm.response.to.be.json;",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Roles array includes customer', function () {",
+              "  const roles = body.roles || (body.user && body.user.roles);",
+              "  pm.expect(roles).to.be.an('array');",
+              "  pm.expect(roles).to.include('customer');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET /v1/auth/me (no token — must 401/403)",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": "{{apiUrl}}/{{apiVersion}}/auth/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 401 or 403', function () {",
+              "  pm.expect([401, 403]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
