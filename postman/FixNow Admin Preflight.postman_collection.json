@@ -1,0 +1,146 @@
+{
+  "info": {
+    "name": "FixNow Admin Preflight",
+    "description": "Sprint 6.0 audit-only preflight. Confirms the admin role gate is in place across the canonical /v1/auth/me + /v1/admin/health endpoints before the Admin chapter (Sprints 6.1 → 6.7) wires real frontends to existing controllers.\n\nRun order:\n  1. /v1/auth/me with admin token  → 200 + roles[] contains 'admin'\n  2. /v1/admin/health with admin token → 200 ok\n  3. /v1/admin/health with customer token → 403 FORBIDDEN\n  4. /v1/admin/health with no token → 401 AUTH_INVALID_CREDENTIALS\n\nThe customerToken for request 3 must belong to a user WITHOUT the admin role. The runtime harness (Sprint 5.7) already populates customerToken in postman/local.postman_environment.json.\n\nThe collection-level guard rejects PrismaClient / SQL fragment / passwordHash / refreshToken / JWT_SECRET / DATABASE_URL on every response, so a regression that leaks an internal string via the admin surface fails the run.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fixnow-admin-preflight"
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const text = pm.response.text();",
+          "pm.test('no Prisma/SQL/secret leak', () => {",
+          "  pm.expect(text).to.not.match(/PrismaClient|column .* does not exist|SELECT |INSERT |UPDATE /i);",
+          "  pm.expect(text).to.not.include('passwordHash');",
+          "  pm.expect(text).to.not.include('refreshToken');",
+          "  pm.expect(text).to.not.include('JWT_SECRET');",
+          "  pm.expect(text).to.not.include('DATABASE_URL');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1) GET /v1/auth/me (admin token → identity carries 'admin' role)",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{adminToken}}" }]
+        },
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/auth/me",
+        "description": "Confirms that the supplied {{adminToken}} resolves to an authenticated user whose roles[] contains 'admin'. This is the contract the web RequireAdmin guard checks before mounting the dashboard."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const me = pm.response.json();",
+              "pm.test('me.id present (string)', () => pm.expect(me.id).to.be.a('string'));",
+              "pm.test('me.email present (string)', () => pm.expect(me.email).to.be.a('string'));",
+              "pm.test('me.roles is an array', () => pm.expect(me.roles).to.be.an('array'));",
+              "pm.test(\"me.roles contains 'admin'\", () => pm.expect(me.roles).to.include('admin'));",
+              "pm.test('me.status is ACTIVE', () => pm.expect(me.status).to.eql('ACTIVE'));",
+              "pm.environment.set('adminUserId', me.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2) GET /v1/admin/health (admin token → 200)",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{adminToken}}" }]
+        },
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/health",
+        "description": "Sanity check that the admin role gate accepts the admin token. The /admin/health endpoint runs the same JwtAuthGuard + RolesGuard('admin') stack every other admin controller uses."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('admin health envelope returns ok=true', () => {",
+              "  // The health controller returns { ok: true, ... } for admin-passable requests.",
+              "  pm.expect(body.ok).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3) GET /v1/admin/health (customer token → 403 FORBIDDEN)",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+        },
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/health",
+        "description": "Negative-case: a non-admin authenticated user MUST be rejected by RolesGuard('admin') with a stable FORBIDDEN code — never with a Prisma stack frame, never with the admin user's identity, never with a 200."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 403', () => pm.response.to.have.status(403));",
+              "const body = pm.response.json();",
+              "pm.test('error.code === FORBIDDEN', () => pm.expect(body.error.code).to.eql('FORBIDDEN'));",
+              "pm.test('no admin identity leaked in body', () => {",
+              "  const text = pm.response.text();",
+              "  pm.expect(text).to.not.include('admin@');",
+              "  pm.expect(text).to.not.match(/role[s]?.*admin/i);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4) GET /v1/admin/health (no token → 401 AUTH_INVALID_CREDENTIALS)",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/health",
+        "description": "Negative-case: anonymous access to an admin route MUST be rejected by JwtAuthGuard with AUTH_INVALID_CREDENTIALS — a stable code that never reveals whether the route or the role was the failure reason."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 401', () => pm.response.to.have.status(401));",
+              "const body = pm.response.json();",
+              "pm.test('error.code === AUTH_INVALID_CREDENTIALS', () => pm.expect(body.error.code).to.eql('AUTH_INVALID_CREDENTIALS'));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
