@@ -41,6 +41,9 @@ model User {
   userProfile              UserProfile?
   userRoles                UserRole[]
   verificationTokens       VerificationToken[]
+  disputesOpened           Dispute[]                 @relation("DisputeOpenedBy")
+  disputesResolved         Dispute[]                 @relation("DisputeResolvedBy")
+  platformSettings         PlatformSetting[]
 
   @@index([deletedAt])
   @@index([status])
@@ -248,6 +251,7 @@ model Booking {
   request           ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
   seeker            User            @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
   conversations     Conversation[]
+  disputes          Dispute[]
 
   @@index([deletedAt])
   @@index([providerId, status])
@@ -434,6 +438,38 @@ model ServiceRequest {
   @@index([status])
 }
 
+model Dispute {
+  id          String         @id @default(cuid())
+  bookingId   String
+  openedById  String
+  status      DisputeStatus  @default(OPEN)
+  reason      String
+  resolution  String?
+  resolvedAt  DateTime?
+  resolvedById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+  booking     Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  openedBy    User           @relation("DisputeOpenedBy", fields: [openedById], references: [id])
+  resolvedBy  User?          @relation("DisputeResolvedBy", fields: [resolvedById], references: [id])
+
+  @@index([bookingId])
+  @@index([openedById])
+  @@index([status, createdAt])
+  @@index([deletedAt])
+}
+
+model PlatformSetting {
+  key        String   @id
+  value      Json
+  updatedAt  DateTime @updatedAt
+  updatedBy  String?
+  updatedByUser User?  @relation(fields: [updatedBy], references: [id])
+
+  @@index([updatedBy])
+}
+
 model UserProfile {
   id          String   @id @default(cuid())
   userId      String   @unique
@@ -573,6 +609,15 @@ enum ProviderProfileStatus {
   ACTIVE
   SUSPENDED
   REJECTED
+}
+
+enum DisputeStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED_REFUND
+  RESOLVED_PARTIAL
+  RESOLVED_DENIED
+  CANCELLED
 }
 
 enum ScheduleType {

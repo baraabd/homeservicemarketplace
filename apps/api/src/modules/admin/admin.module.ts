@@ -9,6 +9,8 @@ import { AdminUsersController } from './users/admin-users.controller';
 import { AdminUsersService } from './users/admin-users.service';
 import { AdminVerificationController } from './verification/admin-verification.controller';
 import { AdminVerificationService } from './verification/admin-verification.service';
+import { AdminDisputesController } from './disputes/admin-disputes.controller';
+import { AdminDisputesService } from './disputes/admin-disputes.service';
 
 // Admin module. Hosts every admin-side surface so the
 // AuthenticationModule / AuthorizationModule / AdminAuditService
@@ -30,8 +32,13 @@ import { AdminVerificationService } from './verification/admin-verification.serv
 // approved → notify provider).
 @Module({
   imports: [AuthenticationModule, AuthorizationModule, NotificationsModule],
-  controllers: [AdminController, AdminUsersController, AdminVerificationController],
-  providers: [AdminAuditService, AdminUsersService, AdminVerificationService],
+  controllers: [
+    AdminController,
+    AdminUsersController,
+    AdminVerificationController,
+    AdminDisputesController,
+  ],
+  providers: [AdminAuditService, AdminUsersService, AdminVerificationService, AdminDisputesService],
   exports: [AdminAuditService],
 })
 export class AdminModule {}

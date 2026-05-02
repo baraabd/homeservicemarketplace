@@ -289,6 +289,101 @@
       ]
     },
     {
+      "name": "40 — Disputes (Sprint 6.3)",
+      "item": [
+        {
+          "name": "GET /v1/admin/disputes",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (b.items.length > 0) { pm.environment.set('disputeId', b.items[0].id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/disputes",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"openedById\": \"{{userId}}\",\n  \"reason\": \"Postman runtime check\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201 or 4xx', () => pm.expect([201, 400, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 201) { pm.environment.set('disputeId', pm.response.json().dispute.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/disputes/:id/resolve",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes/{{disputeId}}/resolve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"RESOLVED_PARTIAL\",\n  \"resolution\": \"50% refund\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200/404/409', () => pm.expect([200, 404, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/disputes/:id/resolve (negative — invalid status)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes/{{disputeId}}/resolve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OPEN\",\n  \"resolution\": \"nope\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 — DTO rejects non-resolved status', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "10 — Health (Sprint 6.0)",
       "item": [
         {
