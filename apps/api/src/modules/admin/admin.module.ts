@@ -16,6 +16,7 @@ import { AdminDisputesService } from './disputes/admin-disputes.service';
 import { AdminFinancialsController } from './financials/admin-financials.controller';
 import { AdminFinancialsService } from './financials/admin-financials.service';
 import { AdminAuditController } from './audit/admin-audit.controller';
+import { AdminNotificationsController } from './notifications/admin-notifications.controller';
 import { AdminSettingsController } from './settings/admin-settings.controller';
 import { AdminSettingsService } from './settings/admin-settings.service';
 
@@ -49,6 +50,7 @@ import { AdminSettingsService } from './settings/admin-settings.service';
     AdminFinancialsController,
     AdminSettingsController,
     AdminAuditController,
+    AdminNotificationsController,
   ],
   providers: [
     AdminAuditService,

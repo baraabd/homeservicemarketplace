@@ -6,16 +6,15 @@ import {
   ShieldCheck,
   DollarSign,
   AlertTriangle,
-  Bell,
   X,
   Search,
   Zap,
   LogOut,
   Menu,
   Settings,
+  FileText,
 } from 'lucide-react';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
-import { useEcosystem } from '../../context/EcosystemContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { useAuth } from '../../../lib/auth-provider';
 import {
@@ -29,6 +28,8 @@ import { DisputeSection } from './DisputesSection';
 import { DashboardOverview } from './DashboardOverview';
 import { FinancialsSection } from './FinancialsSection';
 import { SettingsSection } from './SettingsSection';
+import { AuditLogsSection } from './AuditLogsSection';
+import { AdminNotificationsBell } from './AdminNotificationsBell';
 import type {
   AdminUserStatus,
   AdminUserSummary,
@@ -36,7 +37,14 @@ import type {
 } from '@homeservicemarketplace/contracts';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type Section = 'dashboard' | 'users' | 'verification' | 'financials' | 'disputes' | 'settings';
+type Section =
+  | 'dashboard'
+  | 'users'
+  | 'verification'
+  | 'financials'
+  | 'disputes'
+  | 'settings'
+  | 'audit';
 
 // ─── User Control (Sprint 6.1) ────────────────────────────────────────────────
 //
@@ -469,15 +477,17 @@ const SIDEBAR_ITEMS: { id: Section; icon: React.ReactNode; en: string; ar: strin
   { id: 'financials', icon: <DollarSign size={18} />, en: 'Financials', ar: 'الماليات' },
   { id: 'disputes', icon: <AlertTriangle size={18} />, en: 'Dispute Center', ar: 'مركز النزاعات' },
   { id: 'settings', icon: <Settings size={18} />, en: 'Settings', ar: 'الإعدادات' },
+  { id: 'audit', icon: <FileText size={18} />, en: 'Audit Logs', ar: 'سجل التدقيق' },
 ];
 
 // ─── Admin Dashboard shell ────────────────────────────────────────────────────
 export function AdminDashboard() {
   const { lang, dir, darkMode, toggleDarkMode } = useLang();
-  const { adminNotifs } = useEcosystem();
+  // Sprint 6.6 retired the `useEcosystem.adminNotifs` mock — the
+  // bell badge is now driven by `useAdminNotifications` inside
+  // `AdminNotificationsBell`.
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const unread = adminNotifs.filter((n) => !n.read).length;
 
   // Identity binding (Sprint admin-identity patch). `useAuthIdentity`
   // returns null fields while /auth/me is loading or absent — we render
@@ -500,6 +510,7 @@ export function AdminDashboard() {
     financials: { en: 'Financials', ar: 'التقارير المالية' },
     disputes: { en: 'Dispute Center', ar: 'مركز النزاعات' },
     settings: { en: 'Settings', ar: 'الإعدادات' },
+    audit: { en: 'Audit Logs', ar: 'سجل التدقيق' },
   };
 
   const fontFamily = lang === 'ar' ? "'Cairo','Inter',sans-serif" : "'Inter',sans-serif";
@@ -667,18 +678,8 @@ export function AdminDashboard() {
             {/* Lang toggle */}
             <LangToggle />
 
-            {/* Notifications */}
-            <button className="relative w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition-all">
-              <Bell size={17} className="text-slate-600 dark:text-slate-300" />
-              {unread > 0 && (
-                <span
-                  className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center border-2 border-white dark:border-slate-800"
-                  style={{ fontSize: '8px', fontWeight: 800 }}
-                >
-                  {unread}
-                </span>
-              )}
-            </button>
+            {/* Notifications (Sprint 6.6 — real, API-driven badge + drawer) */}
+            <AdminNotificationsBell lang={lang} />
 
             {/* Admin avatar */}
             <div
@@ -709,6 +710,7 @@ export function AdminDashboard() {
               {activeSection === 'disputes' && <DisputeSection lang={lang} />}
               {activeSection === 'settings' && <SettingsSection lang={lang} />}
               {activeSection === 'users' && <UsersSection lang={lang} />}
+              {activeSection === 'audit' && <AuditLogsSection lang={lang} />}
             </motion.div>
           </AnimatePresence>
         </main>
