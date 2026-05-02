@@ -217,6 +217,63 @@ export class BookingRepository {
       data: { status: to },
     });
   }
+
+  // Aggregate earnings query used by the wallet read model
+  // (Sprint 5 slice 5.6). Single round-trip — three groupBys
+  // executed in parallel inside the same Prisma client. All amounts
+  // come back as the SUM of `priceAmount`; null SUMs (no rows)
+  // collapse to 0 in the application layer.
+  async aggregateEarningsForProvider(
+    providerId: string,
+    monthStart: Date,
+    tx?: PrismaTx,
+  ): Promise<{
+    totalGross: number;
+    currentMonthGross: number;
+    pendingAmount: number;
+    completedJobsCount: number;
+    dominantCurrency: string | null;
+  }> {
+    const db = this.db(tx);
+    const [completedAgg, monthAgg, pendingAgg, currencyByCount] = await Promise.all([
+      db.booking.aggregate({
+        where: { providerId, deletedAt: null, status: 'COMPLETED' },
+        _sum: { priceAmount: true },
+        _count: { _all: true },
+      }),
+      db.booking.aggregate({
+        where: {
+          providerId,
+          deletedAt: null,
+          status: 'COMPLETED',
+          updatedAt: { gte: monthStart },
+        },
+        _sum: { priceAmount: true },
+      }),
+      db.booking.aggregate({
+        where: {
+          providerId,
+          deletedAt: null,
+          status: { in: ['SCHEDULED', 'IN_PROGRESS'] },
+        },
+        _sum: { priceAmount: true },
+      }),
+      db.booking.groupBy({
+        by: ['currency'],
+        where: { providerId, deletedAt: null, status: 'COMPLETED' },
+        _count: { currency: true },
+        orderBy: { _count: { currency: 'desc' } },
+        take: 1,
+      }),
+    ]);
+    return {
+      totalGross: completedAgg._sum.priceAmount ?? 0,
+      currentMonthGross: monthAgg._sum.priceAmount ?? 0,
+      pendingAmount: pendingAgg._sum.priceAmount ?? 0,
+      completedJobsCount: completedAgg._count._all,
+      dominantCurrency: currencyByCount[0]?.currency ?? null,
+    };
+  }
 }
 
 // Eager-loaded shape used by the provider-side finders. Differs from
@@ -228,3 +285,21 @@ export type BookingWithProviderRelations = Booking & {
   provider: ProviderProfile;
   seeker: Pick<User, 'id' | 'firstName'>;
 };
+
+// Aggregate result for the earnings-summary endpoint. All amounts are
+// integers in the marketplace's currency unit (cents-equivalent).
+export interface ProviderEarningsAggregate {
+  totalGross: number;
+  currentMonthGross: number;
+  pendingAmount: number;
+  completedJobsCount: number;
+  // Most-common currency code across the provider's COMPLETED
+  // bookings, or null when no bookings exist. The application layer
+  // falls back to the marketplace default ('USD') when null.
+  dominantCurrency: string | null;
+}
+
+declare module './booking.repository' {
+  // Marker so the repository class can extend itself in this file
+  // without a separate type declaration. Empty by design.
+}

@@ -39,4 +39,14 @@ export const providerQueryKeys = {
     detail: (bookingId: string) => ['provider', 'bookings', 'detail', bookingId] as const,
     timeline: (bookingId: string) => ['provider', 'bookings', 'timeline', bookingId] as const,
   },
+  wallet: {
+    // Provider earnings / wallet read model (Sprint 5.6). Booking
+    // lifecycle mutations (start / complete / cancel) should also
+    // invalidate this root so the summary aggregates update without
+    // a manual refetch — handled in useProviderBookings.
+    root: ['provider', 'wallet'] as const,
+    summary: () => ['provider', 'wallet', 'summary'] as const,
+    transactions: (filters: { status?: string } = {}) =>
+      ['provider', 'wallet', 'transactions', filters] as const,
+  },
 } as const;

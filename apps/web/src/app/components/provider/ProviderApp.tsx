@@ -34,10 +34,10 @@ import {
 } from 'recharts';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 // Sprint 5.3 retired the legacy `useEcosystem` mock from this file —
-// LiveJobsScreen + MyBidsScreen now read from the API. WALLET / EARNINGS
-// constants are still imported for the WalletScreen which migrates in
-// Sprint 5.6.
-import { WALLET_TRANSACTIONS, EARNINGS_CHART_DATA } from '../../context/EcosystemContext';
+// LiveJobsScreen + MyBidsScreen read from the API. Sprint 5.6 also
+// retired the WalletScreen mocks: WALLET_TRANSACTIONS and
+// EARNINGS_CHART_DATA are no longer imported. The Wallet now reads
+// /v1/me/provider/earnings + /transactions.
 import type { ServiceRequest } from '../../context/EcosystemContext';
 import { ImageWithFallback } from '../ui/ImageWithFallback';
 import {
@@ -51,6 +51,10 @@ import { useAvailableJobs } from '../../hooks/provider/useAvailableJobs';
 // + useSubmitBid in this file. Listed here so the shape stays
 // consistent when Sprint 5.4 adds withdraw buttons to the bid cards.
 import { useMyBids, useSubmitBid } from '../../hooks/provider/useMyBids';
+import {
+  useProviderEarningsSummary,
+  useProviderEarningsTransactions,
+} from '../../hooks/provider/useProviderEarnings';
 import {
   formatRelativeTime,
   formatResponseTime,
@@ -937,34 +941,82 @@ function MyBidsScreen() {
 }
 
 // ─── Wallet Screen ────────────────────────────────────────────────────────────
+// Bucket COMPLETED transactions into the last 7 days for the wallet
+// weekly chart. Pure: takes the raw transaction list, returns one
+// row per day in date-ascending order. Days with zero earnings render
+// at $0 — the user can see "Tuesday I earned nothing" instead of a
+// gap in the line. Day labels are short English (Sun..Sat); the chart
+// itself doesn't expose them in Arabic, so localising those strings
+// is a bigger change deferred to the next sprint that touches charts.
+function buildWeeklyEarnings(
+  transactions: ReadonlyArray<{ status: string; amount: number; occurredAt: string }>,
+): Array<{ day: string; earn: number }> {
+  const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const today = new Date();
+  const buckets: Record<string, number> = {};
+  const orderedKeys: string[] = [];
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    buckets[key] = 0;
+    orderedKeys.push(key);
+  }
+  for (const tx of transactions) {
+    if (tx.status !== 'COMPLETED') continue;
+    const key = tx.occurredAt.slice(0, 10);
+    if (!(key in buckets)) continue;
+    buckets[key] = (buckets[key] ?? 0) + tx.amount / 100;
+  }
+  return orderedKeys.map((iso) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    return { day: labels[d.getUTCDay()] ?? iso.slice(5), earn: Math.round(buckets[iso] ?? 0) };
+  });
+}
+
 function WalletScreen() {
   const { lang } = useLang();
-  const [withdrawing, setWithdrawing] = useState(false);
-  const [withdrawn, setWithdrawn] = useState(false);
+
+  // Sprint 5.6: real read-model wired to /v1/me/provider/earnings.
+  // Payouts / withdraw flow is out of scope; the button stays as a
+  // disabled affordance.
+  const summaryQuery = useProviderEarningsSummary();
+  const txQuery = useProviderEarningsTransactions({});
+
+  const summary = summaryQuery.data;
+  const currency = summary?.currency ?? 'USD';
+  const transactions = txQuery.data?.items ?? [];
+  const weeklyChartData = useMemo(() => buildWeeklyEarnings(transactions), [transactions]);
 
   const L = {
     title: lang === 'ar' ? 'المحفظة والأرباح' : 'Wallet & Earnings',
-    balance: lang === 'ar' ? 'الرصيد الحالي' : 'Available Balance',
+    balance: lang === 'ar' ? 'إجمالي الأرباح' : 'Lifetime Earnings',
     pending: lang === 'ar' ? 'معلق' : 'Pending',
-    thisWeek: lang === 'ar' ? 'هذا الأسبوع' : 'This Week',
     thisMonth: lang === 'ar' ? 'هذا الشهر' : 'This Month',
-    withdraw: lang === 'ar' ? 'سحب الأرباح' : 'Withdraw Earnings',
-    withdrwing: lang === 'ar' ? 'جارٍ السحب…' : 'Processing…',
-    withdrawn: lang === 'ar' ? 'تم إرسال $200 للبنك ✓' : '$200 sent to bank ✓',
+    completed: lang === 'ar' ? 'مهام منجزة' : 'Jobs Done',
+    payoutCta: lang === 'ar' ? 'السحب البنكي قريباً' : 'Bank withdrawals — coming soon',
     history: lang === 'ar' ? 'سجل المعاملات' : 'Transaction History',
-    earning: lang === 'ar' ? 'أرباح' : 'Earning',
-    payout: lang === 'ar' ? 'سحب' : 'Payout',
-    weeklyEarn: lang === 'ar' ? 'أرباح الأسبوع' : 'Weekly Earnings',
+    historyEmpty:
+      lang === 'ar'
+        ? 'لا توجد معاملات بعد. أكمل أول حجز لتظهر هنا.'
+        : 'No transactions yet. Complete your first booking to see them here.',
+    weeklyEarn: lang === 'ar' ? 'أرباح آخر 7 أيام' : 'Last 7 days',
+    loading: lang === 'ar' ? 'جارٍ التحميل…' : 'Loading…',
+    failed:
+      lang === 'ar'
+        ? 'تعذّر تحميل الأرباح. حاول مرة أخرى لاحقاً.'
+        : 'Could not load earnings. Try again later.',
   };
 
-  const handleWithdraw = () => {
-    setWithdrawing(true);
-    setTimeout(() => {
-      setWithdrawing(false);
-      setWithdrawn(true);
-      setTimeout(() => setWithdrawn(false), 3000);
-    }, 1500);
-  };
+  // Format an integer marketplace currency unit into the human-
+  // readable wire string. The schema is cents-equivalent; humans want
+  // dollars-and-cents. `currency` comes from the server.
+  const formatAmount = (amount: number) =>
+    new Intl.NumberFormat(lang === 'ar' ? 'ar' : 'en', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount / 100);
 
   return (
     <div
@@ -983,7 +1035,7 @@ function WalletScreen() {
             className="text-white"
             style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '-0.02em' }}
           >
-            $1,240.00
+            {summary ? formatAmount(summary.totalGross) : summaryQuery.isError ? '—' : '…'}
           </p>
           <div className="flex gap-4 mt-4">
             <div className="bg-white/15 rounded-2xl px-3 py-2">
@@ -991,15 +1043,7 @@ function WalletScreen() {
                 {L.pending}
               </p>
               <p className="text-white" style={{ fontSize: '16px', fontWeight: 700 }}>
-                $45.00
-              </p>
-            </div>
-            <div className="bg-white/15 rounded-2xl px-3 py-2">
-              <p className="text-white/60" style={{ fontSize: '10px' }}>
-                {L.thisWeek}
-              </p>
-              <p className="text-white" style={{ fontSize: '16px', fontWeight: 700 }}>
-                $310.00
+                {summary ? formatAmount(summary.pendingAmount) : '…'}
               </p>
             </div>
             <div className="bg-white/15 rounded-2xl px-3 py-2">
@@ -1007,44 +1051,35 @@ function WalletScreen() {
                 {L.thisMonth}
               </p>
               <p className="text-white" style={{ fontSize: '16px', fontWeight: 700 }}>
-                $1,240
+                {summary ? formatAmount(summary.currentMonthGross) : '…'}
+              </p>
+            </div>
+            <div className="bg-white/15 rounded-2xl px-3 py-2">
+              <p className="text-white/60" style={{ fontSize: '10px' }}>
+                {L.completed}
+              </p>
+              <p className="text-white" style={{ fontSize: '16px', fontWeight: 700 }}>
+                {summary ? summary.completedJobsCount : '…'}
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Withdraw button */}
+      {/* Payout placeholder — withdrawals are out of scope until the
+         payouts module ships. Disabled to make the affordance honest. */}
       <div className="px-4 mt-3">
         <button
-          onClick={handleWithdraw}
-          className={`w-full py-4 rounded-2xl flex items-center justify-center gap-2.5 transition-all active:scale-95 ${
-            withdrawn
-              ? 'bg-green-600 text-white'
-              : 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-none'
-          }`}
+          disabled
+          className="w-full py-4 rounded-2xl flex items-center justify-center gap-2.5 bg-slate-200 dark:bg-slate-700 text-slate-500 cursor-not-allowed"
           style={{ fontSize: '15px', fontWeight: 800 }}
         >
-          {withdrawing ? (
-            <>
-              <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-              {L.withdrwing}
-            </>
-          ) : withdrawn ? (
-            <>
-              <CheckCircle2 size={18} />
-              {L.withdrawn}
-            </>
-          ) : (
-            <>
-              <TrendingUp size={18} />
-              {L.withdraw}
-            </>
-          )}
+          <TrendingUp size={18} />
+          {L.payoutCta}
         </button>
       </div>
 
-      {/* Chart */}
+      {/* Chart — last 7 days, derived from the real transactions list. */}
       <div className="mx-4 mt-4 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4">
         <p
           className="text-slate-900 dark:text-white mb-3"
@@ -1053,7 +1088,7 @@ function WalletScreen() {
           {L.weeklyEarn}
         </p>
         <ResponsiveContainer width="100%" height={110}>
-          <AreaChart data={EARNINGS_CHART_DATA} margin={{ top: 5, right: 5, bottom: 0, left: -25 }}>
+          <AreaChart data={weeklyChartData} margin={{ top: 5, right: 5, bottom: 0, left: -25 }}>
             <defs>
               <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
@@ -1098,57 +1133,81 @@ function WalletScreen() {
           {L.history}
         </p>
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
-          {WALLET_TRANSACTIONS.map((tx, i) => (
-            <div
-              key={tx.id}
-              className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? 'border-t border-slate-50 dark:border-slate-700' : ''}`}
-            >
-              <div
-                className={`w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0 ${
-                  tx.type === 'earning'
-                    ? 'bg-green-100 dark:bg-green-900/30'
-                    : tx.type === 'pending'
-                      ? 'bg-amber-100 dark:bg-amber-900/30'
-                      : 'bg-red-100 dark:bg-red-900/30'
-                }`}
-              >
-                {tx.type === 'earning' ? (
-                  <TrendingUp size={14} className="text-green-600" />
-                ) : tx.type === 'pending' ? (
-                  <Clock size={14} className="text-amber-600" />
-                ) : (
-                  <ArrowLeft size={14} className="text-red-600" />
-                )}
+          {transactions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 px-4 gap-3 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                <Wallet size={24} className="text-slate-300" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p
-                  className="text-slate-800 dark:text-slate-100"
-                  style={{ fontSize: '13px', fontWeight: 600 }}
-                >
-                  {lang === 'ar' ? tx.descAr : tx.desc}
-                </p>
-                <p className="text-slate-400" style={{ fontSize: '11px' }}>
-                  {tx.date}
-                </p>
-              </div>
-              <div className="text-end">
-                <p
-                  style={{
-                    fontSize: '14px',
-                    fontWeight: 700,
-                    color: tx.amount > 0 ? '#16a34a' : '#dc2626',
-                  }}
-                >
-                  {tx.amount > 0 ? '+' : ''}${Math.abs(tx.amount)}
-                </p>
-                {tx.status === 'pending' && (
-                  <span className="text-amber-600" style={{ fontSize: '10px', fontWeight: 600 }}>
-                    {lang === 'ar' ? 'معلق' : 'Pending'}
-                  </span>
-                )}
-              </div>
+              <p className="text-slate-400" style={{ fontSize: '13px' }}>
+                {txQuery.isError ? L.failed : txQuery.isPending ? L.loading : L.historyEmpty}
+              </p>
             </div>
-          ))}
+          ) : (
+            transactions.map((tx, i) => {
+              const label =
+                (lang === 'ar' ? tx.service.categoryLabelAr : tx.service.categoryLabelEn) ??
+                tx.service.customServiceText ??
+                tx.bookingId;
+              const isCompleted = tx.status === 'COMPLETED';
+              const isPending = tx.status === 'SCHEDULED' || tx.status === 'IN_PROGRESS';
+              return (
+                <div
+                  key={tx.id}
+                  className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? 'border-t border-slate-50 dark:border-slate-700' : ''}`}
+                >
+                  <div
+                    className={`w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                      isCompleted
+                        ? 'bg-green-100 dark:bg-green-900/30'
+                        : isPending
+                          ? 'bg-amber-100 dark:bg-amber-900/30'
+                          : 'bg-slate-100 dark:bg-slate-700'
+                    }`}
+                  >
+                    {isCompleted ? (
+                      <TrendingUp size={14} className="text-green-600" />
+                    ) : isPending ? (
+                      <Clock size={14} className="text-amber-600" />
+                    ) : (
+                      <ArrowLeft size={14} className="text-slate-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className="text-slate-800 dark:text-slate-100"
+                      style={{ fontSize: '13px', fontWeight: 600 }}
+                    >
+                      {label}
+                    </p>
+                    <p className="text-slate-400" style={{ fontSize: '11px' }}>
+                      {tx.city ? `${tx.city} · ` : ''}
+                      {formatRelativeTime(tx.occurredAt, lang)}
+                    </p>
+                  </div>
+                  <div className="text-end">
+                    <p
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: 700,
+                        color: isCompleted ? '#16a34a' : '#64748b',
+                      }}
+                    >
+                      {isCompleted ? '+' : ''}
+                      {formatAmount(tx.amount)}
+                    </p>
+                    {isPending && (
+                      <span
+                        className="text-amber-600"
+                        style={{ fontSize: '10px', fontWeight: 600 }}
+                      >
+                        {lang === 'ar' ? 'معلق' : 'Pending'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

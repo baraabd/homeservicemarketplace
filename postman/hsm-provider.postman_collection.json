@@ -775,6 +775,123 @@
       ]
     },
     {
+      "name": "50 — Earnings (Sprint 5.6 — read-only wallet)",
+      "item": [
+        {
+          "name": "GET /v1/me/provider/earnings (summary)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/earnings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('summary shape', () => {",
+                  "  pm.expect(b.totalGross).to.be.a('number');",
+                  "  pm.expect(b.currentMonthGross).to.be.a('number');",
+                  "  pm.expect(b.pendingAmount).to.be.a('number');",
+                  "  pm.expect(b.completedJobsCount).to.be.a('number');",
+                  "  pm.expect(b.currency).to.be.a('string');",
+                  "  pm.expect(b.ratingAvg).to.be.a('number');",
+                  "  pm.expect(b.reviewCount).to.be.a('number');",
+                  "});",
+                  "pm.test('aggregates are non-negative', () => {",
+                  "  pm.expect(b.totalGross).to.be.at.least(0);",
+                  "  pm.expect(b.currentMonthGross).to.be.at.least(0);",
+                  "  pm.expect(b.pendingAmount).to.be.at.least(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/earnings/transactions (default — completed only)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/earnings/transactions?limit=50"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items + nextCursor', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('default filter returns COMPLETED only', () => {",
+                  "    pm.expect(b.items.every(function(i){return i.status==='COMPLETED';})).to.eql(true);",
+                  "  });",
+                  "  pm.test('row has narrow projection (no line1, no email)', () => {",
+                  "    const t = pm.response.text();",
+                  "    pm.expect(t).to.not.match(/\\\"line1\\\"\\s*:/);",
+                  "    pm.expect(t).to.not.include('passwordHash');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/earnings/transactions?status=IN_PROGRESS",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/earnings/transactions?status=IN_PROGRESS"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('all rows are IN_PROGRESS', () => {",
+                  "    pm.expect(b.items.every(function(i){return i.status==='IN_PROGRESS';})).to.eql(true);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/earnings (customer token — must 403)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+            },
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/earnings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Forbidden / Unauthorized', () => pm.expect([401, 403, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "11 — Approval Gate (Sprint 5.1.4 negative tests)",
       "description": "Negative-path coverage for the marketplace approval gate. The actual write endpoints (submit-bid, take-job) come online in Sprints 5.3 / 5.4 — when they ship, drop a copy of these requests into folders 30/40 and verify they 403 for DRAFT / PENDING_REVIEW / SUSPENDED / REJECTED providers. Until then this folder documents the contract and runs the only marketplace-write surface that exists today (none, by design).",
       "item": [

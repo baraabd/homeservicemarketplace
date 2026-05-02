@@ -12,6 +12,8 @@ import { ProviderJobsService } from './feed/provider-jobs.service';
 import { ProviderActiveGuard } from './guards/provider-active.guard';
 import { ProviderController } from './provider.controller';
 import { ProviderService } from './provider.service';
+import { ProviderWalletController } from './wallet/provider-wallet.controller';
+import { ProviderWalletService } from './wallet/provider-wallet.service';
 
 // Provider module. Hosts every provider-side surface so the
 // AuthenticationModule / AuthorizationModule / ProviderActiveGuard
@@ -35,12 +37,14 @@ import { ProviderService } from './provider.service';
     ProviderJobsController,
     ProviderBidsController,
     ProviderBookingsController,
+    ProviderWalletController,
   ],
   providers: [
     ProviderService,
     ProviderJobsService,
     ProviderBidsService,
     ProviderBookingsService,
+    ProviderWalletService,
     ProviderActiveGuard,
   ],
   exports: [ProviderService, ProviderActiveGuard],
