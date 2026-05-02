@@ -7,12 +7,31 @@ import * as authApi from './auth-api';
 // ─── Query client (singleton) ────────────────────────────────────────────────
 // Exported only so test suites can reset it between cases. Production code
 // should keep going through `useQueryClient()` inside the provider tree.
+//
+// Sprint 7.x — auth-aware defaults:
+//   - retry: false (queries + mutations). 401/403/404 must NEVER be
+//     retried inside React Query — the axios interceptor (api.ts:67)
+//     already coalesces concurrent 401s into ONE /v1/auth/refresh
+//     attempt and either succeeds (the failed request is retried via
+//     `config._retry = true`) or dispatches `auth:session-expired` so
+//     the auth-provider purges protected queries. A React Query retry
+//     on top of that would only flood the network log without changing
+//     the outcome. 5xx / network errors are also not retried so the UI
+//     shows the safe error copy promptly instead of spinning twice.
+//   - refetchOnWindowFocus: OFF. Every protected hook (notifications,
+//     bookings, available-requests, chat, earnings, audit-logs, …)
+//     polls at fixed cadences (4 s — 30 s) so a focus-triggered refetch
+//     storm adds no information and makes a 401 cascade noisier than it
+//     needs to be when the access token has just expired.
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 5 * 60 * 1000, // 5 min
       retry: false,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      retry: false,
     },
   },
 });

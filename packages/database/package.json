@@ -30,7 +30,8 @@
     "grant:admin-provider": "dotenv -e ../../.env -- node dist/admin-access-grant.js"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0"
+    "@prisma/client": "^5.22.0",
+    "argon2": "^0.44.0"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

@@ -427,6 +427,9 @@ importers:
       '@prisma/client':
         specifier: ^5.22.0
         version: 5.22.0(prisma@5.22.0)
+      argon2:
+        specifier: ^0.44.0
+        version: 0.44.0
     devDependencies:
       '@types/node':
         specifier: ^24.5.2

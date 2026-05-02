@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import type { AxiosError } from 'axios';
+import { toast } from 'sonner';
 import {
   Map,
   Briefcase,
@@ -530,10 +532,15 @@ function LiveJobsScreen() {
     urgentTag: lang === 'ar' ? 'عاجل' : 'Urgent',
   };
 
-  // Real submit. The mutation wraps the /v1/me/provider/bids POST;
+  // Real submit. The mutation wraps the /v1/provider/bids POST;
   // it throws on failure so the modal can surface the safe error
-  // copy. We deliberately do NOT close the modal on failure — the
-  // user may correct the input and retry.
+  // copy. We deliberately do NOT close the modal on UNKNOWN failures
+  // — the user may correct the input and retry. On 409 (the
+  // backend's "you already have an active bid on this request"
+  // invariant from provider-bids.service.ts:78) we close the modal,
+  // toast a friendly message, and refresh the bids list so the
+  // caller's My Bids screen reflects the existing bid without
+  // forcing a manual refetch.
   const handleBidSubmit = async (input: {
     price: number;
     timeLabel: string;
@@ -541,14 +548,30 @@ function LiveJobsScreen() {
     note: string;
   }) => {
     if (!biddingReq) return;
-    await submitBidMutation.mutateAsync({
-      requestId: biddingReq.id,
-      amount: input.price,
-      pricingType: 'HOURLY',
-      note: input.note ? input.note : null,
-      responseTimeMinutes: input.responseTimeMinutes,
-    });
-    setBiddingReq(null);
+    try {
+      await submitBidMutation.mutateAsync({
+        requestId: biddingReq.id,
+        amount: input.price,
+        pricingType: 'HOURLY',
+        note: input.note ? input.note : null,
+        responseTimeMinutes: input.responseTimeMinutes,
+      });
+      setBiddingReq(null);
+    } catch (err) {
+      const status = (err as AxiosError | undefined)?.response?.status;
+      if (status === 409) {
+        toast.error(
+          lang === 'ar'
+            ? 'لقد قدّمت عرضاً بالفعل على هذا الطلب.'
+            : 'You have already placed a bid on this request.',
+        );
+        setBiddingReq(null);
+      } else {
+        // Re-throw so the modal can render its existing inline error
+        // copy for genuine validation / network failures.
+        throw err;
+      }
+    }
   };
 
   return (
