@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -25,6 +26,7 @@ import {
   ListAdminDisputesQueryDto,
   OpenDisputeDto,
   ResolveDisputeDto,
+  UpdateDisputeDto,
 } from './dto/admin-disputes.dto';
 import { AdminDisputesService } from './admin-disputes.service';
 
@@ -54,6 +56,22 @@ export class AdminDisputesController {
     @Body() body: OpenDisputeDto,
   ): Promise<DisputeMutationResponse> {
     return this.disputes.open(admin.id, body);
+  }
+
+  // Sprint 6.3 — PATCH /v1/admin/disputes/:id. Updates status,
+  // priority, or description in any combination. Each changed field
+  // emits its own DisputeEvent row; the response carries the
+  // refreshed recentEvents slice so the timeline reconciles in one
+  // round-trip.
+  @UseGuards(CsrfGuard)
+  @Patch(':disputeId')
+  @HttpCode(HttpStatus.OK)
+  update(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('disputeId') disputeId: string,
+    @Body() body: UpdateDisputeDto,
+  ): Promise<DisputeMutationResponse> {
+    return this.disputes.update(admin.id, disputeId, body);
   }
 
   @UseGuards(CsrfGuard)

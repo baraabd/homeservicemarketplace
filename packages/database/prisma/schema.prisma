@@ -43,6 +43,7 @@ model User {
   verificationTokens       VerificationToken[]
   disputesOpened           Dispute[]                 @relation("DisputeOpenedBy")
   disputesResolved         Dispute[]                 @relation("DisputeResolvedBy")
+  disputeEvents            DisputeEvent[]            @relation("DisputeEventActor")
   platformSettings         PlatformSetting[]
 
   @@index([deletedAt])
@@ -444,25 +445,53 @@ model ServiceRequest {
 }
 
 model Dispute {
-  id          String         @id @default(cuid())
-  bookingId   String
-  openedById  String
-  status      DisputeStatus  @default(OPEN)
-  reason      String
-  resolution  String?
-  resolvedAt  DateTime?
+  id           String           @id @default(cuid())
+  bookingId    String
+  openedById   String
+  status       DisputeStatus    @default(OPEN)
+  // Sprint 6.3 — admin triage priority. Defaults to MEDIUM so existing
+  // rows backfill cleanly without a separate UPDATE.
+  priority     DisputePriority  @default(MEDIUM)
+  reason       String
+  // Sprint 6.3 — long-form description. The original `reason` is the
+  // short headline (kept for back-compat with the open-dispute flow);
+  // `description` carries the full operator narrative.
+  description  String?
+  resolution   String?
+  resolvedAt   DateTime?
   resolvedById String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  deletedAt   DateTime?
-  booking     Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  openedBy    User           @relation("DisputeOpenedBy", fields: [openedById], references: [id])
-  resolvedBy  User?          @relation("DisputeResolvedBy", fields: [resolvedById], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  deletedAt    DateTime?
+  booking      Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  openedBy     User             @relation("DisputeOpenedBy", fields: [openedById], references: [id])
+  resolvedBy   User?            @relation("DisputeResolvedBy", fields: [resolvedById], references: [id])
+  events       DisputeEvent[]
 
   @@index([bookingId])
   @@index([openedById])
   @@index([status, createdAt])
+  @@index([priority, status])
   @@index([deletedAt])
+}
+
+// Sprint 6.3 — verification timeline for a single dispute. Mirrors
+// the AuditEvent shape but is dispute-scoped + carries before/after
+// JSON snapshots so the operator can reconstruct each transition.
+model DisputeEvent {
+  id           String           @id @default(cuid())
+  disputeId    String
+  actorUserId  String?
+  type         DisputeEventType
+  before       Json?
+  after        Json?
+  message      String?
+  createdAt    DateTime         @default(now())
+  dispute      Dispute          @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  actor        User?            @relation("DisputeEventActor", fields: [actorUserId], references: [id])
+
+  @@index([disputeId, createdAt])
+  @@index([type, createdAt])
 }
 
 model PlatformSetting {
@@ -537,6 +566,7 @@ enum AuditEventType {
   ADMIN_PROVIDER_NOTES_UPDATED
   ADMIN_DISPUTE_OPENED
   ADMIN_DISPUTE_RESOLVED
+  ADMIN_DISPUTE_UPDATED
   ADMIN_SETTING_UPDATED
 }
 
@@ -624,6 +654,28 @@ enum DisputeStatus {
   RESOLVED_PARTIAL
   RESOLVED_DENIED
   CANCELLED
+}
+
+// Sprint 6.3 — admin triage priority. Defaults to MEDIUM. Listed
+// roughly in order so an `ORDER BY priority` query naturally surfaces
+// the most important items first.
+enum DisputePriority {
+  URGENT
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// Sprint 6.3 — single event row in a dispute's timeline. The before
+// / after JSON snapshots on DisputeEvent let an operator audit any
+// transition with full field-level granularity.
+enum DisputeEventType {
+  OPENED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  DESCRIPTION_UPDATED
+  RESOLVED
+  COMMENTED
 }
 
 enum ScheduleType {

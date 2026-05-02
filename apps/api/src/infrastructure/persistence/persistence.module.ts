@@ -20,6 +20,7 @@ import { ServiceRequestRepository } from './requests/service-request.repository'
 import { ServiceRequestEventRepository } from './requests/service-request-event.repository';
 import { ServiceCategoryRepository } from './services/service-category.repository';
 import { DisputeRepository } from './disputes/dispute.repository';
+import { DisputeEventRepository } from './disputes/dispute-event.repository';
 import { PlatformSettingRepository } from './settings/platform-setting.repository';
 
 @Global()
@@ -45,6 +46,7 @@ import { PlatformSettingRepository } from './settings/platform-setting.repositor
     MessageRepository,
     UserProfileRepository,
     DisputeRepository,
+    DisputeEventRepository,
     PlatformSettingRepository,
   ],
   exports: [
@@ -68,6 +70,7 @@ import { PlatformSettingRepository } from './settings/platform-setting.repositor
     MessageRepository,
     UserProfileRepository,
     DisputeRepository,
+    DisputeEventRepository,
     PlatformSettingRepository,
   ],
 })

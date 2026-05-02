@@ -3,16 +3,17 @@ import type { PrismaTx } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../prisma/prisma.service';
 
-// Sprint 6.3: dispute persistence.
+// Sprint 6.3 refined — dispute persistence (priority + description).
 //
-// The Prisma client has Dispute / PlatformSetting models in the
-// schema (see packages/database/prisma/schema.prisma) but generation
-// of the typed client is blocked in this dev session by a Windows
-// DLL lock. Casting `as unknown as { dispute: ... }` lets the
-// repository compile against the current generated client and rely
-// on a fresh `prisma generate` at deploy time. The migration in
-// 20260502010000_add_disputes_and_settings creates the underlying
-// table either way.
+// The Prisma client has Dispute / DisputeEvent models in the schema
+// (see packages/database/prisma/schema.prisma) but generation of the
+// typed client is blocked in this dev session by a Windows DLL lock.
+// Casting `as unknown as { dispute: ... }` lets the repository
+// compile against the current generated client and rely on a fresh
+// `prisma generate` at deploy time. The migration in
+// 20260502030000_add_dispute_priority_and_events creates the columns
+// either way.
+
 type DisputeStatus =
   | 'OPEN'
   | 'IN_REVIEW'
@@ -21,18 +22,28 @@ type DisputeStatus =
   | 'RESOLVED_DENIED'
   | 'CANCELLED';
 
+type DisputePriority = 'URGENT' | 'HIGH' | 'MEDIUM' | 'LOW';
+
 export interface DisputeRow {
   id: string;
   bookingId: string;
   openedById: string;
   status: DisputeStatus;
+  priority: DisputePriority;
   reason: string;
+  description: string | null;
   resolution: string | null;
   resolvedAt: Date | null;
   resolvedById: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+}
+
+export interface UpdateDisputeFields {
+  status?: DisputeStatus;
+  priority?: DisputePriority;
+  description?: string | null;
 }
 
 @Injectable()
@@ -51,13 +62,19 @@ export class DisputeRepository {
   }
 
   list(
-    args: { status?: DisputeStatus; take: number; cursor?: string },
+    args: {
+      status?: DisputeStatus;
+      priority?: DisputePriority;
+      take: number;
+      cursor?: string;
+    },
     tx?: PrismaTx,
   ): Promise<DisputeRow[]> {
     return this.db(tx).dispute.findMany({
       where: {
         deletedAt: null,
         ...(args.status ? { status: args.status } : {}),
+        ...(args.priority ? { priority: args.priority } : {}),
       },
       take: args.take,
       ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
@@ -70,7 +87,13 @@ export class DisputeRepository {
   }
 
   create(
-    input: { bookingId: string; openedById: string; reason: string },
+    input: {
+      bookingId: string;
+      openedById: string;
+      reason: string;
+      description?: string | null;
+      priority?: DisputePriority;
+    },
     tx?: PrismaTx,
   ): Promise<DisputeRow> {
     return this.db(tx).dispute.create({
@@ -78,9 +101,19 @@ export class DisputeRepository {
         bookingId: input.bookingId,
         openedById: input.openedById,
         reason: input.reason,
+        description: input.description ?? null,
+        priority: input.priority ?? 'MEDIUM',
         status: 'OPEN',
       },
     });
+  }
+
+  update(id: string, input: UpdateDisputeFields, tx?: PrismaTx): Promise<DisputeRow> {
+    const data: Partial<DisputeRow> = {};
+    if (input.status !== undefined) data.status = input.status;
+    if (input.priority !== undefined) data.priority = input.priority;
+    if (input.description !== undefined) data.description = input.description;
+    return this.db(tx).dispute.update({ where: { id }, data });
   }
 
   resolve(
