@@ -82,6 +82,15 @@ export const envSchema = z.object({
 
   PERMISSION_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
 
+  // Sprint 7.0 (refined) — Socket.IO realtime gateway feature flag.
+  // When `off`, the gateway closes every handshake at the door and
+  // the polling fallback (Sprint 5.5 cadences) is the sole channel.
+  // When `on`, the gateway accepts JWT-authed handshakes and (if a
+  // Redis client is healthy) wires @socket.io/redis-adapter for
+  // multi-instance fan-out. Default: off in dev/test so existing
+  // suites are unaffected; flip to on once REDIS is provisioned.
+  REALTIME_SOCKET_IO: trueish.default(false),
+
   // Provider take-rate (Sprint 5.6 earnings read model). Marketplace fee
   // expressed in basis points (1 bp = 0.01%). 1000 = 10% take, 0 = fee-
   // free, 10000 = 100%. The earnings service computes platform fees as

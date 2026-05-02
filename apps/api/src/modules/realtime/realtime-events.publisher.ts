@@ -3,60 +3,48 @@ import { EventEmitter } from 'node:events';
 import { Observable, Subject } from 'rxjs';
 import type { RealtimeEvent, RealtimeEventType } from '@homeservicemarketplace/contracts';
 
-// Sprint 7.0: realtime publisher.
+import { RealtimeGateway } from './realtime.gateway';
+
+// Sprint 7.0 (refined): realtime publisher.
 //
-// Per the Sprint 5.5.5 spike, the production target is Redis pub/sub
-// per user channel. This first cut uses an in-process EventEmitter
-// + a Subject<RealtimeEvent> so single-instance dev environments
-// already get end-to-end events. Swapping the in-memory emitter for
-// a Redis subscriber is a one-method change (replace `bus.on` with
-// the Redis client) and keeps the surface stable for callers.
+// Originally an in-process EventEmitter only (Phase A — SSE delivery).
+// Phase B (this sprint) adds Socket.IO room-based fan-out alongside
+// the EventEmitter so:
+//   - existing /v1/me/events SSE subscribers keep working (in-process)
+//   - new socket clients receive events through Socket.IO rooms
+//   - production multi-instance deployments get cross-instance fan-out
+//     through @socket.io/redis-adapter (wired in main.ts)
 //
 // Service-layer callers (NotificationsService, ConversationsService,
-// BookingsService, BidsService) call `publish()` post-commit so
-// transactions that roll back never leak events onto the bus.
+// BookingsService, BidsService) keep the existing publish() /
+// publishFor() API. The new publishToRoom() is for events whose
+// recipient set is a room rather than a single user (chat messages,
+// admin broadcasts).
+//
+// The publisher SWALLOWS its own errors. A bus failure must never
+// roll back the calling REST transaction — the audit trail + REST
+// response are the source of truth, the realtime overlay is best-
+// effort.
 @Injectable()
 export class RealtimeEventsPublisher {
   private readonly log = new Logger(RealtimeEventsPublisher.name);
   private readonly bus = new EventEmitter();
 
-  constructor() {
-    // Defensive: keep the listener cap high so we don't trip the
-    // Node default (10) when many users connect to /me/events.
+  constructor(private readonly gateway: RealtimeGateway) {
     this.bus.setMaxListeners(0);
   }
 
   publish<T>(event: RealtimeEvent<T>): void {
     try {
-      this.bus.emit(this.channelFor(event.userId), event);
+      // Local in-process bus → SSE subscribers.
+      if (event.userId) this.bus.emit(this.userChannel(event.userId), event);
+      // Socket.IO room → user-targeted events go to user:{userId}.
+      if (event.userId) this.gateway.emitToRoom(`user:${event.userId}`, event);
     } catch (err) {
-      // Never let a publish error fail the calling transaction —
-      // the audit trail + REST response are the source of truth;
-      // realtime is a best-effort overlay.
       this.log.warn({ msg: 'realtime.publish.failed', err: String(err) });
     }
   }
 
-  // Returns an Observable of events for a single user. The SSE
-  // controller turns each emission into a `data:` line.
-  subscribe(userId: string): Observable<RealtimeEvent> {
-    const subject = new Subject<RealtimeEvent>();
-    const listener = (event: RealtimeEvent) => subject.next(event);
-    this.bus.on(this.channelFor(userId), listener);
-    // The Observable contract requires a teardown so the listener
-    // is removed when the subscriber unsubscribes (the SSE response
-    // closes when the client disconnects).
-    return new Observable<RealtimeEvent>((sub) => {
-      const inner = subject.subscribe(sub);
-      return () => {
-        inner.unsubscribe();
-        this.bus.off(this.channelFor(userId), listener);
-      };
-    });
-  }
-
-  // Helper for service layer — composes the type + userId +
-  // occurredAt envelope.
   publishFor(userId: string, type: RealtimeEventType, payload: unknown): void {
     this.publish({
       v: 1,
@@ -67,7 +55,40 @@ export class RealtimeEventsPublisher {
     });
   }
 
-  private channelFor(userId: string): string {
+  // Fan-out to a server-owned room. Used for events whose recipient
+  // set is bigger than one user (chat threads, admin broadcasts,
+  // provider-targeted events). Bus listeners are NOT notified for
+  // room-targeted events — the SSE channel is per-user only.
+  publishToRoom(room: string, type: RealtimeEventType, payload: unknown): void {
+    try {
+      this.gateway.emitToRoom(room, {
+        v: 1,
+        type,
+        userId: null,
+        occurredAt: new Date().toISOString(),
+        payload,
+      });
+    } catch (err) {
+      this.log.warn({ msg: 'realtime.publishToRoom.failed', room, err: String(err) });
+    }
+  }
+
+  // Per-user Observable used by the SSE controller. Unchanged from
+  // Phase A so the SSE fallback keeps working without Socket.IO.
+  subscribe(userId: string): Observable<RealtimeEvent> {
+    const subject = new Subject<RealtimeEvent>();
+    const listener = (event: RealtimeEvent) => subject.next(event);
+    this.bus.on(this.userChannel(userId), listener);
+    return new Observable<RealtimeEvent>((sub) => {
+      const inner = subject.subscribe(sub);
+      return () => {
+        inner.unsubscribe();
+        this.bus.off(this.userChannel(userId), listener);
+      };
+    });
+  }
+
+  private userChannel(userId: string): string {
     return `user:${userId}`;
   }
 }

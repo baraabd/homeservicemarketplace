@@ -8,6 +8,8 @@ import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
+import { RedisService } from './infrastructure/redis/redis.service';
+import { RealtimeSocketAdapter } from './modules/realtime/realtime-socket.adapter';
 
 async function bootstrap(): Promise<void> {
   const bootstrapLogger = new NestLogger('Bootstrap');
@@ -40,6 +42,17 @@ async function bootstrap(): Promise<void> {
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
     );
+
+    // Sprint 7.0 (refined) — Socket.IO gateway. The adapter is wired
+    // before listen() so the WS upgrade path is ready by the time the
+    // first client connects. Redis adapter wiring is best-effort:
+    // when Redis is not ready (or REALTIME_SOCKET_IO=off) the gateway
+    // still serves the local instance.
+    if (config.get('REALTIME_SOCKET_IO')) {
+      const wsAdapter = new RealtimeSocketAdapter(app, config, app.get(RedisService));
+      await wsAdapter.connectToRedis();
+      app.useWebSocketAdapter(wsAdapter);
+    }
 
     for (const sig of ['SIGINT', 'SIGTERM'] as const) {
       process.on(sig, () => bootstrapLogger.log(`Received ${sig}, shutting down gracefully`));
