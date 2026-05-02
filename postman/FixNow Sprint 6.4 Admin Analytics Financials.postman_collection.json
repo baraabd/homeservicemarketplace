@@ -1,0 +1,271 @@
+{
+  "info": {
+    "name": "FixNow Sprint 6.4 Admin Analytics Financials",
+    "description": "Read-only admin analytics + financials (Sprint 6.4).\n\nDrives:\n  • GET /v1/admin/analytics/overview (default last 30 days)\n  • GET /v1/admin/analytics/overview?from=&to= (explicit range)\n  • GET /v1/admin/analytics/revenue (daily buckets)\n  • GET /v1/admin/financials/summary\n  • GET /v1/admin/financials/bookings\n  • GET /v1/admin/financials/provider-earnings\n  • Customer-token negative → 403\n  • No-token negative → 401\n\nPlatform fee math is consistent with the provider-side wallet (Sprint 5.6) — env-driven `PROVIDER_PLATFORM_FEE_BPS`. Cancelled bookings are excluded from revenue. Refunds aren't tracked yet (totalRefunds is constant 0).\n\nCollection-level guard rejects PrismaClient / SQL fragments / passwordHash / refreshToken / JWT_SECRET / DATABASE_URL / STRIPE_SECRET on every response.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fixnow-sprint-6-4-admin-analytics-financials"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{adminToken}}" }]
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const text = pm.response.text();",
+          "pm.test('no Prisma/SQL/secret leak', () => {",
+          "  pm.expect(text).to.not.match(/PrismaClient|column .* does not exist|SELECT |INSERT |UPDATE /i);",
+          "  pm.expect(text).to.not.include('passwordHash');",
+          "  pm.expect(text).to.not.include('mfaSecret');",
+          "  pm.expect(text).to.not.include('refreshToken');",
+          "  pm.expect(text).to.not.include('JWT_SECRET');",
+          "  pm.expect(text).to.not.include('DATABASE_URL');",
+          "  pm.expect(text).to.not.include('STRIPE_SECRET');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1) GET /v1/admin/analytics/overview",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/analytics/overview"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('counts + revenue + range present', () => {",
+              "  pm.expect(body.counts).to.be.an('object');",
+              "  pm.expect(body.revenue).to.be.an('object');",
+              "  pm.expect(body.range.from).to.be.a('string');",
+              "  pm.expect(body.range.to).to.be.a('string');",
+              "});",
+              "pm.test('numeric fields are numbers >= 0', () => {",
+              "  for (const k of ['users','providers','requests','bookingsCompleted','bookingsCancelled','disputesOpen']) {",
+              "    pm.expect(body.counts[k]).to.be.a('number');",
+              "    pm.expect(body.counts[k]).to.be.at.least(0);",
+              "  }",
+              "  for (const k of ['grossWithinRange','platformFeesWithinRange','netProviderEarningsWithinRange','grossLifetime']) {",
+              "    pm.expect(body.revenue[k]).to.be.a('number');",
+              "    pm.expect(body.revenue[k]).to.be.at.least(0);",
+              "  }",
+              "});",
+              "pm.test('platformFeeRateBps in [0, 10000]', () => pm.expect(body.platformFeeRateBps).to.be.within(0, 10000));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2) GET /v1/admin/analytics/overview?from=2025-01-01&to=2025-12-31",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/analytics/overview?from=2025-01-01&to=2025-12-31"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// 365 days is exactly the cap; 200 expected. The earlier",
+              "// service tests pin that 366+ days returns 400.",
+              "pm.test('status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3) GET /v1/admin/analytics/revenue",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/analytics/revenue"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('buckets array', () => pm.expect(body.buckets).to.be.an('array'));",
+              "pm.test('every bucket has date + grossEarnings + platformFees + netProviderEarnings + completedBookings', () => {",
+              "  for (const b of body.buckets) {",
+              "    pm.expect(b.date).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+              "    pm.expect(b.grossEarnings).to.be.a('number');",
+              "    pm.expect(b.platformFees).to.be.a('number');",
+              "    pm.expect(b.netProviderEarnings).to.be.a('number');",
+              "    pm.expect(b.completedBookings).to.be.a('number');",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4) GET /v1/admin/financials/summary",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/financials/summary"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('canonical financials shape', () => {",
+              "  for (const k of ['totalRevenue','totalPlatformFees','totalProviderEarnings','totalRefunds','pendingBalance','completedBookingsCount','platformFeeRateBps']) {",
+              "    pm.expect(body[k]).to.be.a('number');",
+              "    pm.expect(body[k]).to.be.at.least(0);",
+              "  }",
+              "  pm.expect(body.currency).to.be.a('string');",
+              "});",
+              "pm.test('totalProviderEarnings = totalRevenue − totalPlatformFees', () => pm.expect(body.totalProviderEarnings).to.eql(body.totalRevenue - body.totalPlatformFees));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5) GET /v1/admin/financials/bookings",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/financials/bookings"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('items array + nextCursor', () => {",
+              "  pm.expect(body.items).to.be.an('array');",
+              "  pm.expect(body.nextCursor === null || typeof body.nextCursor === 'string').to.eql(true);",
+              "});",
+              "pm.test('every row has amount/platformFee/netAmount + provider identity', () => {",
+              "  for (const r of body.items) {",
+              "    pm.expect(r.amount).to.be.a('number');",
+              "    pm.expect(r.platformFee).to.be.a('number');",
+              "    pm.expect(r.netAmount).to.be.a('number');",
+              "    pm.expect(r.amount - r.platformFee).to.eql(r.netAmount);",
+              "    pm.expect(r.provider.id).to.be.a('string');",
+              "    pm.expect(r.provider.displayName).to.be.a('string');",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6) GET /v1/admin/financials/provider-earnings",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/financials/provider-earnings"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('items array + nextCursor', () => {",
+              "  pm.expect(body.items).to.be.an('array');",
+              "  pm.expect(body.nextCursor === null || typeof body.nextCursor === 'string').to.eql(true);",
+              "});",
+              "pm.test('every row has providerId/displayName/grossEarnings/netEarnings', () => {",
+              "  for (const r of body.items) {",
+              "    pm.expect(r.providerId).to.be.a('string');",
+              "    pm.expect(r.displayName).to.be.a('string');",
+              "    pm.expect(r.grossEarnings).to.be.a('number');",
+              "    pm.expect(r.netEarnings).to.be.a('number');",
+              "    pm.expect(r.completedBookings).to.be.a('number');",
+              "  }",
+              "});",
+              "pm.test('rows are sorted gross-descending', () => {",
+              "  for (let i = 1; i < body.items.length; i++) {",
+              "    pm.expect(body.items[i].grossEarnings).to.be.at.most(body.items[i-1].grossEarnings);",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7) GET /v1/admin/financials/summary (customer token → 403)",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+        },
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/financials/summary"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 403', () => pm.response.to.have.status(403));",
+              "pm.test('FORBIDDEN code', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8) GET /v1/admin/analytics/overview (no token → 401)",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/analytics/overview"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 401', () => pm.response.to.have.status(401));",
+              "pm.test('AUTH_INVALID_CREDENTIALS code', () => pm.expect(pm.response.json().error.code).to.eql('AUTH_INVALID_CREDENTIALS'));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

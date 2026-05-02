@@ -13,6 +13,8 @@ import { AdminAnalyticsController } from './analytics/admin-analytics.controller
 import { AdminAnalyticsService } from './analytics/admin-analytics.service';
 import { AdminDisputesController } from './disputes/admin-disputes.controller';
 import { AdminDisputesService } from './disputes/admin-disputes.service';
+import { AdminFinancialsController } from './financials/admin-financials.controller';
+import { AdminFinancialsService } from './financials/admin-financials.service';
 import { AdminAuditController } from './audit/admin-audit.controller';
 import { AdminSettingsController } from './settings/admin-settings.controller';
 import { AdminSettingsService } from './settings/admin-settings.service';
@@ -44,6 +46,7 @@ import { AdminSettingsService } from './settings/admin-settings.service';
     AdminVerificationController,
     AdminDisputesController,
     AdminAnalyticsController,
+    AdminFinancialsController,
     AdminSettingsController,
     AdminAuditController,
   ],
@@ -53,6 +56,7 @@ import { AdminSettingsService } from './settings/admin-settings.service';
     AdminVerificationService,
     AdminDisputesService,
     AdminAnalyticsService,
+    AdminFinancialsService,
     AdminSettingsService,
   ],
   exports: [AdminAuditService],

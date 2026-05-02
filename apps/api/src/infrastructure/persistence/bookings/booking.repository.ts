@@ -321,6 +321,144 @@ export class BookingRepository {
           : Number(row.completed_count),
     }));
   }
+
+  // ─── Sprint 6.4 — marketplace-wide aggregates ──────────────────
+  //
+  // Same shape as the per-provider aggregates above but without the
+  // providerId filter. Used by the admin analytics + financials
+  // surfaces to roll up the entire marketplace's revenue.
+
+  async aggregateGrossRevenueForMarketplace(
+    args: { from?: Date; to?: Date } = {},
+    tx?: PrismaTx,
+  ): Promise<{
+    grossLifetime: number;
+    grossWithinRange: number;
+    completedLifetime: number;
+    completedWithinRange: number;
+    cancelledWithinRange: number;
+    pendingAmount: number;
+    dominantCurrency: string | null;
+  }> {
+    const db = this.db(tx);
+    const rangeWhere = args.from && args.to ? { updatedAt: { gte: args.from, lt: args.to } } : {};
+    const [lifetime, inRange, cancelledInRange, pending, currencyByCount] = await Promise.all([
+      db.booking.aggregate({
+        where: { deletedAt: null, status: 'COMPLETED' },
+        _sum: { priceAmount: true },
+        _count: { _all: true },
+      }),
+      db.booking.aggregate({
+        where: { deletedAt: null, status: 'COMPLETED', ...rangeWhere },
+        _sum: { priceAmount: true },
+        _count: { _all: true },
+      }),
+      db.booking.count({
+        where: { deletedAt: null, status: 'CANCELLED', ...rangeWhere },
+      }),
+      db.booking.aggregate({
+        where: { deletedAt: null, status: { in: ['SCHEDULED', 'IN_PROGRESS'] } },
+        _sum: { priceAmount: true },
+      }),
+      db.booking.groupBy({
+        by: ['currency'],
+        where: { deletedAt: null, status: 'COMPLETED' },
+        _count: { currency: true },
+        orderBy: { _count: { currency: 'desc' } },
+        take: 1,
+      }),
+    ]);
+    return {
+      grossLifetime: lifetime._sum.priceAmount ?? 0,
+      grossWithinRange: inRange._sum.priceAmount ?? 0,
+      completedLifetime: lifetime._count._all,
+      completedWithinRange: inRange._count._all,
+      cancelledWithinRange: cancelledInRange,
+      pendingAmount: pending._sum.priceAmount ?? 0,
+      dominantCurrency: currencyByCount[0]?.currency ?? null,
+    };
+  }
+
+  async aggregateEarningsByDayForMarketplace(
+    windowStart: Date,
+    windowEnd: Date,
+    tx?: PrismaTx,
+  ): Promise<Array<{ day: Date; gross: number; completedCount: number }>> {
+    const db = this.db(tx);
+    const rows = await db.$queryRaw<
+      Array<{ day: Date; gross: bigint | number | null; completed_count: bigint | number }>
+    >(Prisma.sql`
+      SELECT
+        DATE_TRUNC('day', "updatedAt" AT TIME ZONE 'UTC') AS day,
+        COALESCE(SUM("priceAmount"), 0) AS gross,
+        COUNT(*) AS completed_count
+      FROM "Booking"
+      WHERE "deletedAt" IS NULL
+        AND status = 'COMPLETED'
+        AND "updatedAt" >= ${windowStart}
+        AND "updatedAt" < ${windowEnd}
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `);
+    return rows.map((row) => ({
+      day: row.day instanceof Date ? row.day : new Date(row.day as unknown as string),
+      gross: typeof row.gross === 'bigint' ? Number(row.gross) : (row.gross ?? 0),
+      completedCount:
+        typeof row.completed_count === 'bigint'
+          ? Number(row.completed_count)
+          : Number(row.completed_count),
+    }));
+  }
+
+  // Cursor-paginated list of completed bookings for the admin
+  // financials table. Eager-loads the same shape as listForProvider
+  // PLUS the provider's linked user (so the admin row can show the
+  // provider's email alongside the display name).
+  async listCompletedBookingsForAdmin(
+    args: { take: number; cursor?: string },
+    tx?: PrismaTx,
+  ): Promise<BookingWithAdminRelations[]> {
+    const db = this.db(tx);
+    return db.booking.findMany({
+      where: { deletedAt: null, status: 'COMPLETED' },
+      include: {
+        request: { include: { category: true } },
+        bid: true,
+        provider: { include: { user: { select: { id: true, email: true } } } },
+        seeker: { select: { id: true, firstName: true } },
+      },
+      take: args.take,
+      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+    }) as unknown as Promise<BookingWithAdminRelations[]>;
+  }
+
+  // Per-provider rollup. SUM + COUNT grouped by providerId, sorted
+  // gross-descending so the marketplace's biggest earners surface
+  // first. Prisma's `groupBy` does not support cursor pagination, so
+  // the controller treats `cursor` as a numeric string offset (skip).
+  // The admin UI's typical use case is "top N" anyway — deep paging
+  // would be unusual. Currency is the booking's recorded currency.
+  async groupCompletedBookingsByProvider(
+    args: { take: number; skip?: number },
+    tx?: PrismaTx,
+  ): Promise<Array<{ providerId: string; gross: number; completedCount: number }>> {
+    const db = this.db(tx);
+    const rows = await db.booking.groupBy({
+      by: ['providerId'],
+      where: { deletedAt: null, status: 'COMPLETED' },
+      _sum: { priceAmount: true },
+      _count: { _all: true },
+      orderBy: { _sum: { priceAmount: 'desc' } },
+      take: args.take,
+      ...(args.skip ? { skip: args.skip } : {}),
+    });
+    return rows.map((r) => ({
+      providerId: r.providerId,
+      gross: r._sum.priceAmount ?? 0,
+      completedCount: r._count._all,
+    }));
+  }
 }
 
 // Eager-loaded shape used by the provider-side finders. Differs from
@@ -330,6 +468,17 @@ export type BookingWithProviderRelations = Booking & {
   request: ServiceRequest & { category: ServiceCategory | null };
   bid: Bid;
   provider: ProviderProfile;
+  seeker: Pick<User, 'id' | 'firstName'>;
+};
+
+// Sprint 6.4 — eager-loaded shape used by the admin financials list.
+// Same as the provider shape but includes the provider's linked user
+// so the admin table can show the provider's email alongside the
+// display name.
+export type BookingWithAdminRelations = Booking & {
+  request: ServiceRequest & { category: ServiceCategory | null };
+  bid: Bid;
+  provider: ProviderProfile & { user: Pick<User, 'id' | 'email'> | null };
   seeker: Pick<User, 'id' | 'firstName'>;
 };
 
