@@ -608,6 +608,173 @@
       ]
     },
     {
+      "name": "60 — Notifications & Chat (Sprint 5.5 — provider role on shared endpoints)",
+      "description": "The /v1/me/notifications and /v1/me/conversations endpoints are role-agnostic — they read userId from the session. Sprint 5.5 made the conversation creation flow side-aware so a provider can also POST /v1/me/conversations { bookingId } and the response is the same shape. The provider also receives BID_ACCEPTED + BOOKING_CREATED notifications when their bid is accepted (slice 5.5 fan-out).",
+      "item": [
+        {
+          "name": "GET /v1/me/notifications (provider)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/notifications?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items + nextCursor', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.environment.set('notificationId', b.items[0].id);",
+                  "}",
+                  "pm.test('no internal leak', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('passwordHash');",
+                  "  pm.expect(t).to.not.include('JWT_SECRET');",
+                  "  pm.expect(t).to.not.include('DATABASE_URL');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/notifications/unread-count (provider)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/notifications/unread-count"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('count is a number', () => pm.expect(pm.response.json().count).to.be.a('number'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/notifications/:id/read (provider)",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/notifications/{{notificationId}}/read"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/conversations (provider)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items array', () => pm.expect(b.items).to.be.an('array'));",
+                  "if (b.items.length > 0) {",
+                  "  pm.environment.set('conversationId', b.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/conversations (provider — open chat for own booking)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/conversations",
+            "body": { "mode": "raw", "raw": "{\n  \"bookingId\": \"{{bookingId}}\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 404', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.conversation.id).to.be.a('string');",
+                  "  pm.environment.set('conversationId', b.conversation.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/conversations/:id/messages (provider sends a message)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/conversations/{{conversationId}}/messages",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Hi! On my way — Sprint 5.5 postman runtime check.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 or 404', () => pm.expect([201, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 201) {",
+                  "  pm.test('senderRole = PROVIDER', () => pm.expect(pm.response.json().message.senderRole).to.eql('PROVIDER'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/conversations/:id/messages (provider reads thread)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/conversations/{{conversationId}}/messages?limit=50"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "11 — Approval Gate (Sprint 5.1.4 negative tests)",
       "description": "Negative-path coverage for the marketplace approval gate. The actual write endpoints (submit-bid, take-job) come online in Sprints 5.3 / 5.4 — when they ship, drop a copy of these requests into folders 30/40 and verify they 403 for DRAFT / PENDING_REVIEW / SUSPENDED / REJECTED providers. Until then this folder documents the contract and runs the only marketplace-write surface that exists today (none, by design).",
       "item": [

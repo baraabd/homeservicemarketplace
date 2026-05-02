@@ -7,6 +7,7 @@ import type {
 } from '@homeservicemarketplace/database';
 
 import type { BookingRepository } from '../../infrastructure/persistence/bookings/booking.repository';
+import type { ProviderProfileRepository } from '../../infrastructure/persistence/bids/provider-profile.repository';
 import type {
   ConversationRepository,
   ConversationWithRelations,
@@ -137,6 +138,10 @@ interface Mocks {
   };
   bookings: {
     findOwned: jest.Mock;
+    findOwnedByProvider: jest.Mock;
+  };
+  providers: {
+    findByUserId: jest.Mock;
   };
 }
 
@@ -173,8 +178,16 @@ function makeMocks(over: MocksOverride = {}): Mocks {
       ...(over.messages ?? {}),
     },
     bookings: {
-      findOwned: jest.fn().mockResolvedValue(makeBooking()),
+      findOwned: jest.fn().mockResolvedValue({
+        ...makeBooking(),
+        provider: makeProvider(),
+      }),
+      findOwnedByProvider: jest.fn().mockResolvedValue(null),
       ...(over.bookings ?? {}),
+    },
+    providers: {
+      findByUserId: jest.fn().mockResolvedValue(null),
+      ...(over.providers ?? {}),
     },
   };
 }
@@ -185,6 +198,7 @@ function makeService(m: Mocks) {
     m.participants as unknown as ConversationParticipantRepository,
     m.messages as unknown as MessageRepository,
     m.bookings as unknown as BookingRepository,
+    m.providers as unknown as ProviderProfileRepository,
     makeTx(),
   );
 }
@@ -257,7 +271,11 @@ describe('ConversationsService', () => {
     it('rejects with NOT_FOUND on a foreign booking (no leak)', async () => {
       const m = makeMocks({
         conversations: { findExistingForBooking: jest.fn().mockResolvedValue(null) },
-        bookings: { findOwned: jest.fn().mockResolvedValue(null) },
+        bookings: {
+          findOwned: jest.fn().mockResolvedValue(null),
+          findOwnedByProvider: jest.fn().mockResolvedValue(null),
+        },
+        providers: { findByUserId: jest.fn().mockResolvedValue(null) },
       });
       await expect(
         makeService(m).getOrCreateForBooking('user-attacker', 'bk-victim'),
@@ -266,6 +284,65 @@ describe('ConversationsService', () => {
       // ownership fails.
       expect(m.conversations.create).not.toHaveBeenCalled();
       expect(m.participants.create).not.toHaveBeenCalled();
+    });
+
+    it('seeker-initiated: provider participant userId tracks the provider profiles userId (slice 5.5)', async () => {
+      // Booking returns a provider that IS linked to a user account.
+      const linkedProvider = makeProvider({ id: 'pp-linked', userId: 'user-prov-2' });
+      const m = makeMocks({
+        bookings: {
+          findOwned: jest.fn().mockResolvedValue({
+            ...makeBooking({ providerId: 'pp-linked' }),
+            provider: linkedProvider,
+          }),
+        },
+      });
+      await makeService(m).getOrCreateForBooking('user-1', 'bk-1');
+      // The provider participant now carries userId: 'user-prov-2'
+      // so /v1/me/conversations on the provider side surfaces it.
+      expect(m.participants.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-prov-2',
+          providerProfileId: 'pp-linked',
+          role: 'PROVIDER',
+        }),
+        undefined,
+      );
+    });
+
+    it('provider-initiated: resolves the booking via providerProfile and creates participants', async () => {
+      // Seeker side returns nothing for this user.
+      const linkedProvider = makeProvider({ id: 'pp-prov', userId: 'user-prov-2' });
+      const m = makeMocks({
+        bookings: {
+          findOwned: jest.fn().mockResolvedValue(null),
+          findOwnedByProvider: jest.fn().mockResolvedValue({
+            ...makeBooking({ providerId: 'pp-prov', seekerUserId: 'user-1' }),
+            provider: linkedProvider,
+          }),
+        },
+        providers: {
+          findByUserId: jest.fn().mockResolvedValue({ id: 'pp-prov', userId: 'user-prov-2' }),
+        },
+      });
+      const out = await makeService(m).getOrCreateForBooking('user-prov-2', 'bk-1');
+      expect(out.conversation.id).toBe('conv-1');
+      expect(m.bookings.findOwnedByProvider).toHaveBeenCalledWith('bk-1', 'pp-prov', undefined);
+      // Both participants are linked to the right userIds — seeker
+      // gets the booking's seekerUserId, provider gets the calling
+      // userId.
+      expect(m.participants.create).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-1', role: 'SEEKER' }),
+        undefined,
+      );
+      expect(m.participants.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-prov-2',
+          providerProfileId: 'pp-prov',
+          role: 'PROVIDER',
+        }),
+        undefined,
+      );
     });
   });
 

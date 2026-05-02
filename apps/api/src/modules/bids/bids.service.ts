@@ -189,15 +189,15 @@ export class BidsService {
         tx,
       );
 
-      // 6c. Notification fan-out (slice 3.1). Two rows: one confirming
-      //     the bid acceptance (resource: BID), one announcing the new
-      //     booking (resource: BOOKING). Written inside the same
-      //     transaction so a notification can never exist without its
-      //     underlying state change. Body strings are intentionally
-      //     concise + provider-name-driven so the drawer renders
-      //     identical-looking copy regardless of locale; future i18n
-      //     work can swap to a server-side template indirection.
+      // 6c. Notification fan-out (slice 3.1; provider-side fan-out
+      //     added in slice 5.5). All four rows are written inside the
+      //     same transaction so a notification can never exist without
+      //     its underlying state change. Body strings are concise +
+      //     name-driven so the drawer renders identical-looking copy
+      //     regardless of locale; future i18n work can swap to a
+      //     server-side template indirection.
       const providerName = bid.provider.displayName;
+      // Seeker side: confirms what they just did.
       await this.notifications.createForUser(
         {
           userId: seekerUserId,
@@ -224,6 +224,40 @@ export class BidsService {
         },
         tx,
       );
+      // Provider side (slice 5.5): the provider's app needs the same
+      // notifications. We only fan out when ProviderProfile.userId is
+      // set — older seed rows where the profile is detached from a
+      // user account are skipped silently (the provider can't sign in
+      // without a userId, so no surface to notify).
+      const providerUserId = bid.provider.userId;
+      if (providerUserId) {
+        await this.notifications.createForUser(
+          {
+            userId: providerUserId,
+            type: NotificationType.BID_ACCEPTED,
+            title: 'Your bid was accepted',
+            body: `Your bid on the request was accepted.`,
+            resourceType: NotificationResourceType.BID,
+            resourceId: bidId,
+            deepLink: `/provider/bids/${bidId}`,
+            metadata: { requestId, bookingId: booking.id },
+          },
+          tx,
+        );
+        await this.notifications.createForUser(
+          {
+            userId: providerUserId,
+            type: NotificationType.BOOKING_CREATED,
+            title: 'New booking',
+            body: `You have a new scheduled booking.`,
+            resourceType: NotificationResourceType.BOOKING,
+            resourceId: booking.id,
+            deepLink: `/provider/bookings/${booking.id}`,
+            metadata: { requestId, bidId },
+          },
+          tx,
+        );
+      }
 
       // 7. Re-read the bid for the response so the caller sees the
       //    final ACCEPTED state plus the eager-loaded provider summary.
