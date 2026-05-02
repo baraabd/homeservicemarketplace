@@ -13,3 +13,4 @@ export * from './health';
 export * from './users';
 export * from './verification';
 export * from './disputes';
+export * from './analytics';

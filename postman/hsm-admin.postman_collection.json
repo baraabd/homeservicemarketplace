@@ -384,6 +384,36 @@
       ]
     },
     {
+      "name": "50 — Analytics (Sprint 6.4)",
+      "item": [
+        {
+          "name": "GET /v1/admin/analytics/summary",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/analytics/summary"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('summary shape', () => {",
+                  "  pm.expect(b.summary.users.total).to.be.a('number');",
+                  "  pm.expect(b.summary.providers.active).to.be.a('number');",
+                  "  pm.expect(b.summary.bookings.grossLifetimeAmount).to.be.a('number');",
+                  "  pm.expect(b.summary.disputes.open).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "10 — Health (Sprint 6.0)",
       "item": [
         {

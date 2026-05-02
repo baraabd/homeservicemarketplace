@@ -9,6 +9,8 @@ import { AdminUsersController } from './users/admin-users.controller';
 import { AdminUsersService } from './users/admin-users.service';
 import { AdminVerificationController } from './verification/admin-verification.controller';
 import { AdminVerificationService } from './verification/admin-verification.service';
+import { AdminAnalyticsController } from './analytics/admin-analytics.controller';
+import { AdminAnalyticsService } from './analytics/admin-analytics.service';
 import { AdminDisputesController } from './disputes/admin-disputes.controller';
 import { AdminDisputesService } from './disputes/admin-disputes.service';
 
@@ -37,8 +39,15 @@ import { AdminDisputesService } from './disputes/admin-disputes.service';
     AdminUsersController,
     AdminVerificationController,
     AdminDisputesController,
+    AdminAnalyticsController,
   ],
-  providers: [AdminAuditService, AdminUsersService, AdminVerificationService, AdminDisputesService],
+  providers: [
+    AdminAuditService,
+    AdminUsersService,
+    AdminVerificationService,
+    AdminDisputesService,
+    AdminAnalyticsService,
+  ],
   exports: [AdminAuditService],
 })
 export class AdminModule {}
