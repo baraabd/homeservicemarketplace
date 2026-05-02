@@ -38,13 +38,20 @@ Edit `.env` if you need non-default ports. The infrastructure baseline does **no
 
 The API validates the entire environment on boot via a strict Zod schema (`apps/api/src/config/env.schema.ts`). Missing or malformed variables cause an immediate, descriptive startup failure — the process never starts in a half-configured state.
 
-### 3. Start data services (Postgres, Mongo, Redis)
+### 3. Start data services (Postgres, Mongo, Redis, Mailpit)
 
 ```bash
-pnpm docker:up           # postgres + mongo + redis (with healthchecks)
+pnpm docker:up           # postgres + mongo + redis + mailpit (infra only)
+pnpm docker:up:app       # same, plus the API container (uses the `app` profile)
 pnpm docker:logs         # follow logs
-pnpm docker:down         # stop
+pnpm docker:down         # stop everything
 ```
+
+The `api` service in `infra/docker/docker-compose.yml` is gated behind the
+`app` profile, so `pnpm docker:up` intentionally starts only the data plane.
+For day-to-day development run the API natively (steps 4–5) — that's the
+fast-feedback path. Use `pnpm docker:up:app` only when you need a fully
+containerised stack (e.g. to mirror a deployment-like image).
 
 ### 4. Apply database schema (Postgres)
 
@@ -58,6 +65,18 @@ pnpm --filter @homeservicemarketplace/database migrate:deploy
 ```bash
 pnpm --filter @homeservicemarketplace/api dev
 ```
+
+### 6. Run the web app in dev mode (separate terminal)
+
+```bash
+pnpm --filter @homeservicemarketplace/web dev
+```
+
+The web app binds to `http://localhost:5173` and talks to the API at
+`http://localhost:4000` via `VITE_API_URL` (see `apps/web/.env`). If the
+browser shows `net::ERR_CONNECTION_REFUSED` for `/v1/auth/...` or
+`/v1/me/addresses`, the API process is not running — start it with the
+command above (or `pnpm docker:up:app`).
 
 The API binds to `http://localhost:4000`.
 

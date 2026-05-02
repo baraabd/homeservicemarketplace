@@ -16,6 +16,7 @@
     "lint:fix": "turbo run lint -- --fix",
     "prepare": "husky",
     "docker:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "docker:up:app": "docker compose -f infra/docker/docker-compose.yml --profile app up -d",
     "docker:down": "docker compose -f infra/docker/docker-compose.yml down",
     "docker:logs": "docker compose -f infra/docker/docker-compose.yml logs -f"
   },
