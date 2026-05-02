@@ -35,6 +35,44 @@
   ],
   "item": [
     {
+      "name": "00 — Provider login (Sprint 5.7 harness)",
+      "description": "Run this folder once at the start of a Newman session. The login response (mobile mode) populates {{providerToken}} from the JWT in the body so every later request inherits it via the collection-level bearer auth.",
+      "item": [
+        {
+          "name": "POST /v1/auth/login (provider, mobile mode)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{providerEmail}}\",\n  \"password\": \"{{providerPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('tokens.accessToken is a JWT', () => pm.expect(b.tokens.accessToken.split('.').length).to.eql(3));",
+                  "pm.test('userId is set', () => pm.expect(b.userId).to.be.a('string'));",
+                  "pm.environment.set('providerToken', b.tokens.accessToken);",
+                  "pm.environment.set('userId', b.userId);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "10 — Profile (Sprint 5.1)",
       "item": [
         {

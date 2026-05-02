@@ -18,7 +18,8 @@
     "docker:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "docker:up:app": "docker compose -f infra/docker/docker-compose.yml --profile app up -d",
     "docker:down": "docker compose -f infra/docker/docker-compose.yml down",
-    "docker:logs": "docker compose -f infra/docker/docker-compose.yml logs -f"
+    "docker:logs": "docker compose -f infra/docker/docker-compose.yml logs -f",
+    "postman:provider": "newman run postman/hsm-provider.postman_collection.json -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/provider.html"
   },
   "lint-staged": {
     "*.{js,mjs,cjs,ts,tsx}": [

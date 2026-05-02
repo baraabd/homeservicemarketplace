@@ -38,6 +38,11 @@ pnpm-debug.log*
 # during the develop+seeker schema reconciliation and not for sharing)
 .merge-debug/
 
+# Postman runtime artefacts (Sprint 5.7) — local-only env file with
+# real credentials, and Newman HTML reports. Never commit.
+postman/local.postman_environment.json
+postman/reports/
+
 # OS / editor
 .DS_Store
 Thumbs.db
