@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "HSM Backend — Provider (Sprints 5.x)",
-    "description": "Provider-side endpoints. Folders are added per sprint slice: 10 Profile (5.1), 11 Approval Gate (5.1.4 negative tests), 20 Available Requests (5.2), 30 Bids (5.3), 40 Bookings (5.4), 50 Earnings (5.6). Run the IAM 'Login' request first as a provider account so {{providerToken}} is populated; this collection's bearer pulls from {{providerToken}}.",
+    "description": "Provider-side endpoints. Folders are added per sprint slice: 10 Profile (5.1), 11 Approval Gate (5.1.4 negative tests), 20 Available Requests (5.2), 30 Bids (5.3), 40 Bookings (5.4), 50 Earnings (5.6).\n\nRealtime status (Sprint 5.5.5): the realtime layer is design-only — see docs/architecture/realtime-plan.md. Notifications + chat in production run REST + polling per Sprint 5.5 cadences (15 s unread count, 20 s lists, 4 s open thread). The polling endpoints in folders 60 + 61 below remain the source of truth.\n\nRun the IAM 'Login' request first as a provider account so {{providerToken}} is populated; this collection's bearer pulls from {{providerToken}}.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_postman_id": "hsm-provider-2026-05"
   },
@@ -982,6 +982,48 @@
                   "  pm.expect(t).to.not.include('JWT_SECRET');",
                   "  pm.expect(t).to.not.include('DATABASE_URL');",
                   "  pm.expect(t).to.not.include('PrismaClientKnownRequestError');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "99 — Realtime Spike (Sprint 5.5.5) — No runtime endpoint",
+      "description": "Sprint 5.5.5 was an architecture-only spike. No runtime realtime endpoint exists yet — see docs/architecture/realtime-plan.md for the Socket.IO + Redis-Adapter design. The folder below contains a single no-op request that fails fast if anyone wires a `/v1/realtime` HTTP surface without re-running the design review.",
+      "item": [
+        {
+          "name": "GET /v1/realtime (must NOT exist yet)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": "{{apiUrl}}/{{apiVersion}}/realtime",
+            "description": "Sprint 5.5.5 docs-only assertion. The realtime channel is not implemented as a REST endpoint at /v1/realtime; if this request returns 200 the production wiring jumped ahead of the spike doc."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Sprint 5.5.5 — Realtime Architecture Spike (docs-only).",
+                  "//",
+                  "// Realtime is intentionally NOT implemented in this sprint.",
+                  "// Notifications + chat in production run REST + polling per",
+                  "// the Sprint 5.5 cadences. The Socket.IO + Redis Adapter",
+                  "// design lives in docs/architecture/realtime-plan.md and",
+                  "// will be implemented in a follow-up sprint.",
+                  "//",
+                  "// This request asserts that no /v1/realtime HTTP endpoint",
+                  "// has been smuggled in ahead of that design review — the",
+                  "// expected outcome is a 404 (route does not exist).",
+                  "pm.test('no /v1/realtime HTTP endpoint exists yet', () => {",
+                  "  pm.expect(pm.response.code).to.eql(404);",
+                  "});",
+                  "pm.test('design lives in docs/architecture/realtime-plan.md', () => {",
+                  "  pm.expect(true).to.eql(true);",
                   "});"
                 ]
               }
