@@ -14,6 +14,7 @@ import { RedisModule } from './infrastructure/redis/redis.module';
 import { MetricsModule } from './infrastructure/telemetry/metrics.module';
 import { PersistenceModule } from './infrastructure/persistence/persistence.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { BidsModule } from './modules/bids/bids.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
@@ -52,6 +53,7 @@ import { ServicesModule } from './modules/services/services.module';
     ConversationsModule,
     ProfileModule,
     ProviderModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

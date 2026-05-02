@@ -1,0 +1,139 @@
+{
+  "info": {
+    "name": "HSM Backend — Admin (Sprints 6.x)",
+    "description": "Admin-side endpoints. Folders are added per sprint slice: 00 Login (6.7 harness), 10 Health (6.0), 20 Users (6.1), 30 Verification (6.2), 40 Disputes (6.3), 50 Analytics (6.4), 60 Settings (6.5), 70 Audit (6.6). Run folder 00 first so {{adminToken}} is populated; this collection's bearer pulls from {{adminToken}}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "hsm-admin-2026-05"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{adminToken}}" }]
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const body = pm.response.text();",
+          "pm.test('no Prisma/SQL/secret leak', () => {",
+          "  pm.expect(body).to.not.match(/PrismaClient|column .* does not exist|SELECT |INSERT |UPDATE /i);",
+          "  pm.expect(body).to.not.include('passwordHash');",
+          "  pm.expect(body).to.not.include('refreshToken');",
+          "  pm.expect(body).to.not.include('JWT_SECRET');",
+          "  pm.expect(body).to.not.include('DATABASE_URL');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 — Admin login (Sprint 6.7 harness)",
+      "description": "Run this folder once at the start of a Newman session.",
+      "item": [
+        {
+          "name": "POST /v1/auth/login (admin, mobile mode)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('JWT in body', () => pm.expect(b.tokens.accessToken.split('.').length).to.eql(3));",
+                  "pm.environment.set('adminToken', b.tokens.accessToken);",
+                  "pm.environment.set('userId', b.userId);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 — Health (Sprint 6.0)",
+      "item": [
+        {
+          "name": "GET /v1/admin/health",
+          "request": { "method": "GET", "url": "{{apiUrl}}/{{apiVersion}}/admin/health" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('ok=true + adminUserId', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.ok).to.eql(true);",
+                  "  pm.expect(b.adminUserId).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/health (customer token — must 403)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+            },
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Forbidden / Unauthorized', () => pm.expect([401, 403, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/health (no token — must 401)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Unauthorized / Forbidden', () => pm.expect([401, 403]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
