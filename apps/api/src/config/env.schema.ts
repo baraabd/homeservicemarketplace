@@ -82,6 +82,14 @@ export const envSchema = z.object({
 
   PERMISSION_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
 
+  // Provider take-rate (Sprint 5.6 earnings read model). Marketplace fee
+  // expressed in basis points (1 bp = 0.01%). 1000 = 10% take, 0 = fee-
+  // free, 10000 = 100%. The earnings service computes platform fees as
+  // round(gross * BPS / 10000) per row and per aggregate. When the
+  // payouts module ships this value moves into a per-tier rate table —
+  // until then a single env-driven rate is the right granularity.
+  PROVIDER_PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(1000),
+
   // --- SMTP / Mail ---------------------------------------------------------
   // When SMTP_HOST is set the API uses Nodemailer; otherwise InMemoryMailAdapter.
   SMTP_HOST: z.string().optional(),

@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@homeservicemarketplace/database';
 import type {
   Bid,
   Booking,
   BookingStatus,
-  Prisma,
   PrismaTx,
   ProviderProfile,
   ServiceCategory,
@@ -273,6 +273,53 @@ export class BookingRepository {
       completedJobsCount: completedAgg._count._all,
       dominantCurrency: currencyByCount[0]?.currency ?? null,
     };
+  }
+
+  // Daily-bucketed earnings aggregation for the canonical chart endpoint
+  // (Sprint 5.6 refined). Returns one row per UTC calendar day in the
+  // [windowStart, windowEnd) range that has at least one COMPLETED
+  // booking. The application layer zero-fills missing days so the
+  // client never has to recompute the calendar.
+  //
+  // Window semantics:
+  //   windowStart — inclusive, midnight UTC of the first day in range
+  //   windowEnd   — exclusive, midnight UTC of the day AFTER the last day
+  //
+  // Bucketing uses booking.updatedAt (the moment the provider marked the
+  // job COMPLETED — booking rows never update again afterwards). The
+  // existing month aggregate uses the same field; the chart stays
+  // consistent with the summary by reusing it.
+  async aggregateEarningsByDayForProvider(
+    providerId: string,
+    windowStart: Date,
+    windowEnd: Date,
+    tx?: PrismaTx,
+  ): Promise<Array<{ day: Date; gross: number; completedCount: number }>> {
+    const db = this.db(tx);
+    const rows = await db.$queryRaw<
+      Array<{ day: Date; gross: bigint | number | null; completed_count: bigint | number }>
+    >(Prisma.sql`
+      SELECT
+        DATE_TRUNC('day', "updatedAt" AT TIME ZONE 'UTC') AS day,
+        COALESCE(SUM("priceAmount"), 0) AS gross,
+        COUNT(*) AS completed_count
+      FROM "Booking"
+      WHERE "providerId" = ${providerId}
+        AND "deletedAt" IS NULL
+        AND status = 'COMPLETED'
+        AND "updatedAt" >= ${windowStart}
+        AND "updatedAt" < ${windowEnd}
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `);
+    return rows.map((row) => ({
+      day: row.day instanceof Date ? row.day : new Date(row.day as unknown as string),
+      gross: typeof row.gross === 'bigint' ? Number(row.gross) : (row.gross ?? 0),
+      completedCount:
+        typeof row.completed_count === 'bigint'
+          ? Number(row.completed_count)
+          : Number(row.completed_count),
+    }));
   }
 }
 

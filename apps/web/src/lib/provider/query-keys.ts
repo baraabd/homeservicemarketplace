@@ -51,14 +51,16 @@ export const providerQueryKeys = {
     timeline: (bookingId: string) => ['provider', 'bookings', 'timeline', bookingId] as const,
   },
   wallet: {
-    // Provider earnings / wallet read model (Sprint 5.6). Booking
-    // lifecycle mutations (start / complete / cancel) should also
-    // invalidate this root so the summary aggregates update without
-    // a manual refetch — handled in useProviderBookings.
+    // Provider earnings / wallet read model (Sprint 5.6 refined —
+    // canonical /v1/provider/earnings/{summary,transactions,chart}).
+    // Booking lifecycle mutations (start / complete / cancel) should
+    // also invalidate this root so the summary, transactions, and
+    // chart all refresh in one call — handled in useProviderBookings.
     root: ['provider', 'wallet'] as const,
     summary: () => ['provider', 'wallet', 'summary'] as const,
-    transactions: (filters: { status?: string } = {}) =>
+    transactions: (filters: { cursor?: string | null; limit?: number | null } = {}) =>
       ['provider', 'wallet', 'transactions', filters] as const,
+    chart: (range: string) => ['provider', 'wallet', 'chart', range] as const,
   },
   notifications: {
     // Provider notifications drawer (Sprint 5.5). Mark-one /

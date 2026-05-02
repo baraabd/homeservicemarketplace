@@ -15,6 +15,8 @@ import { ProviderJobsService } from './feed/provider-jobs.service';
 import { ProviderActiveGuard } from './guards/provider-active.guard';
 import { ProviderController } from './provider.controller';
 import { ProviderService } from './provider.service';
+import { ProviderEarningsController } from './wallet/provider-earnings.controller';
+import { ProviderEarningsService } from './wallet/provider-earnings.service';
 import { ProviderWalletController } from './wallet/provider-wallet.controller';
 import { ProviderWalletService } from './wallet/provider-wallet.service';
 
@@ -43,6 +45,7 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderBookingsController,
     ProviderBookingsCanonicalController,
     ProviderWalletController,
+    ProviderEarningsController,
   ],
   providers: [
     ProviderService,
@@ -51,6 +54,7 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderBidsService,
     ProviderBookingsService,
     ProviderWalletService,
+    ProviderEarningsService,
     ProviderActiveGuard,
   ],
   exports: [ProviderService, ProviderActiveGuard],
