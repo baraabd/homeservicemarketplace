@@ -22,6 +22,7 @@ import { IamModule } from './modules/iam/iam.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ProfileModule } from './modules/profile/profile.module';
 import { ProviderModule } from './modules/provider/provider.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { ServicesModule } from './modules/services/services.module';
 
@@ -54,6 +55,7 @@ import { ServicesModule } from './modules/services/services.module';
     ProfileModule,
     ProviderModule,
     AdminModule,
+    RealtimeModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

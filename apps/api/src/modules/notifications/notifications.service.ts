@@ -19,6 +19,7 @@ import type {
 
 import { NotificationRepository } from '../../infrastructure/persistence/notifications/notification.repository';
 import { AppError } from '../../shared/errors/app-error';
+import { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 
 const DEFAULT_PAGE_SIZE = 50;
 
@@ -35,7 +36,10 @@ export interface CreateNotificationForUserInput {
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly notifications: NotificationRepository) {}
+  constructor(
+    private readonly notifications: NotificationRepository,
+    private readonly realtime: RealtimeEventsPublisher,
+  ) {}
 
   // ─── list ──────────────────────────────────────────────────────────────────
   async list(userId: string, query: ListNotificationsQuery): Promise<NotificationListResponse> {
@@ -112,7 +116,7 @@ export class NotificationsService {
   // Marketplace events are the only legitimate writers; a client-driven
   // create surface would let callers spoof system messages.
   async createForUser(input: CreateNotificationForUserInput, tx?: PrismaTx): Promise<Notification> {
-    return this.notifications.create(
+    const created = await this.notifications.create(
       {
         userId: input.userId,
         type: input.type,
@@ -125,6 +129,12 @@ export class NotificationsService {
       },
       tx,
     );
+    // Sprint 7.0 — realtime fan-out. Publishes the wire-shape summary
+    // so the SSE client can drop it straight into the React Query
+    // notifications cache. The publisher swallows its own errors so
+    // a bus failure can never roll back the calling transaction.
+    this.realtime.publishFor(input.userId, 'notification.created', toSummary(created));
+    return created;
   }
 }
 

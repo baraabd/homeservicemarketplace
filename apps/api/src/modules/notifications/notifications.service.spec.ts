@@ -52,7 +52,17 @@ function makeMocks(over: MocksOverride = {}): Mocks {
 }
 
 function makeService(m: Mocks) {
-  return new NotificationsService(m.notifications as unknown as NotificationRepository);
+  // Sprint 7.0 — realtime publisher is injected; tests only need a
+  // no-op stub since they don't assert on the bus.
+  const realtime = {
+    publish: jest.fn(),
+    publishFor: jest.fn(),
+    subscribe: jest.fn(),
+  };
+  return new NotificationsService(
+    m.notifications as unknown as NotificationRepository,
+    realtime as unknown as import('../realtime/realtime-events.publisher').RealtimeEventsPublisher,
+  );
 }
 
 describe('NotificationsService', () => {
