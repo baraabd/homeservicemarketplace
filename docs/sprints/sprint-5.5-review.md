@@ -80,16 +80,59 @@
 - `POST   /v1/provider/conversations/:id/messages { body }`
 - `POST   /v1/provider/conversations/:id/read`
 
-### Frontend
+### Frontend (notifications drawer + chat tab — shipped in the
 
-- The existing seeker `notifications-api.ts` and `chat-api.ts`
-  already consume `/v1/me/notifications` and `/v1/me/conversations`.
-  The provider's app reuses those hooks — `experience=provider` is
-  the only param the provider's notification badge needs to add.
-  Concretely, no new hooks were introduced this sprint; existing
-  `useNotifications({ experience: 'provider' })` and
-  `useConversations()` paths already poll at the
-  refetch-on-focus + 15–30 s cadence the spec calls out.
+frontend follow-up commit, on top of the backend changes above)
+
+API clients
+
+- `apps/web/src/lib/provider/provider-notifications-api.ts` —
+  thin wrappers that always pass `experience=provider`. The
+  caller cannot accidentally read or mark-all-read seeker rows.
+- `apps/web/src/lib/provider/provider-chat-api.ts` —
+  list / open / send / mark-read against the canonical
+  `/v1/provider/conversations/*` paths.
+
+React Query hooks (cadences match the sprint spec)
+
+- `apps/web/src/app/hooks/provider/useProviderNotifications.ts`
+  - `useProviderNotifications` list, 20 s poll
+  - `useProviderUnreadNotificationsCount` count, 15 s poll
+  - `useMarkProviderNotificationRead` mutation
+  - `useMarkAllProviderNotificationsRead` mutation
+- `apps/web/src/app/hooks/provider/useProviderChat.ts`
+  - `useProviderConversations` list, 20 s poll
+  - `useProviderMessages(id)` 4 s poll while open
+  - `useSendProviderMessage(id)` mutation
+  - `useMarkProviderConversationRead` mutation
+    All mutations invalidate the relevant root keys so list +
+    count + thread re-fetch in one round-trip.
+
+UI components in `ProviderApp.tsx`
+
+- `ProviderNotificationsBellButton` — top-bar bell wired to the
+  real unread count (1-99 + "99+" overflow). No more hardcoded
+  "2" badge.
+- `ProviderNotificationsDrawer` — slides in from the right; lists
+  items, mark-one-read on tap, mark-all-read button (disabled
+  when empty / all-already-read), explicit loading / error /
+  empty states with `role="status"`. Notification body + title
+  are rendered as text by React (no `dangerouslySetInnerHTML`),
+  so no XSS surface.
+- New **Chat tab** in the provider bottom nav (between My Bids and
+  Wallet). `ProviderChatScreen` is a two-pane (mobile: full-screen
+  back-stack) that lists conversations on the left and an active
+  thread on the right.
+- `ProviderChatThread` — auto-scrolls to the freshly-polled tail,
+  renders own messages on the right (blue) and the seeker's on
+  the left (white). Send form trims body, enforces 1..2000 chars
+  client-side so the user gets instant feedback before the wire
+  validator runs.
+
+Polling cadences in place: notifications list 20 s, unread count
+15 s, conversations list 20 s, open thread 4 s — all under the
+sprint's 15–30 s ceiling for lists / counts and inside the 3–5 s
+band for the active thread.
 
 ## 3. Automated Tests
 
@@ -169,15 +212,12 @@ The 11 manual scenarios in the sprint scope map to:
 
 ## 7. Remaining Issues
 
-- A dedicated **provider notifications drawer** + **provider chat
-  list** in the ProviderApp UI is not shipped here; the existing
-  Provider top-bar bell icon is a placeholder. Wiring is a UI-
-  component sprint that can layer on top of the existing seeker
-  notifications drawer code path. The hooks + endpoints are all in
-  place for that follow-up.
+- The notifications drawer lists page 1 only (50 rows). A
+  "Load more" affordance is straightforward (cursor pagination
+  is in the wire shape) but deferred to a polish sprint.
 - Pre-existing flaky `app-selector-routing.test.tsx` test remains
-  (1 fail / 2 pass over 3 runs); not exercised by anything in this
-  slice.
+  (1 fail / 2 pass over 3 runs in prior sprints); did NOT fire
+  on this sprint's web run — 295 / 295 passed.
 - `prisma generate` cannot run while the user's `nest start --watch`
   - `prisma studio` processes hold the Windows DLL. Cached client
     is current.

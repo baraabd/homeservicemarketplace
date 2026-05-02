@@ -60,4 +60,21 @@ export const providerQueryKeys = {
     transactions: (filters: { status?: string } = {}) =>
       ['provider', 'wallet', 'transactions', filters] as const,
   },
+  notifications: {
+    // Provider notifications drawer (Sprint 5.5). Mark-one /
+    // mark-all mutations invalidate the root so list + count
+    // refetch together.
+    root: ['provider', 'notifications'] as const,
+    list: (filters: { unread?: boolean } = {}) =>
+      ['provider', 'notifications', 'list', filters] as const,
+    unreadCount: () => ['provider', 'notifications', 'unread-count'] as const,
+  },
+  chat: {
+    // Provider chat (Sprint 5.5). Send-message invalidates the
+    // messages(id) slot AND the conversations list so the preview
+    // line updates without a manual refetch.
+    root: ['provider', 'chat'] as const,
+    conversations: () => ['provider', 'chat', 'conversations'] as const,
+    messages: (conversationId: string) => ['provider', 'chat', 'messages', conversationId] as const,
+  },
 } as const;

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Map,
@@ -17,6 +17,7 @@ import {
   Bell,
   WifiOff,
   MapPin,
+  MessageCircle,
   Navigation,
   Send,
   Award,
@@ -65,6 +66,21 @@ import {
   useProviderBookings,
   useStartProviderBooking,
 } from '../../hooks/provider/useProviderBookings';
+// Sprint 5.5 — provider notifications + chat hooks (REST + polling,
+// no realtime yet). Notification drawer reads /v1/me/notifications
+// scoped by ?experience=provider; chat reads the canonical
+// /v1/provider/conversations.
+import {
+  useMarkAllProviderNotificationsRead,
+  useMarkProviderNotificationRead,
+  useProviderNotifications,
+  useProviderUnreadNotificationsCount,
+} from '../../hooks/provider/useProviderNotifications';
+import {
+  useProviderConversations,
+  useProviderMessages,
+  useSendProviderMessage,
+} from '../../hooks/provider/useProviderChat';
 import {
   useProviderEarningsSummary,
   useProviderEarningsTransactions,
@@ -1764,9 +1780,432 @@ function ProviderProfileScreen() {
 const PROVIDER_NAV = [
   { id: 'jobs', icon: Map, labelEn: 'Live Jobs', labelAr: 'الوظائف' },
   { id: 'bids', icon: Briefcase, labelEn: 'My Bids', labelAr: 'عروضي' },
+  { id: 'chat', icon: MessageCircle, labelEn: 'Chat', labelAr: 'الدردشة' },
   { id: 'wallet', icon: Wallet, labelEn: 'Wallet', labelAr: 'المحفظة' },
   { id: 'profile', icon: User, labelEn: 'Profile', labelAr: 'ملفي' },
 ];
+
+// ─── Notifications bell button (Sprint 5.5) ──────────────────────────────────
+// Reads the unread count from /v1/me/notifications/unread-count?
+// experience=provider with a 15 s poll. Renders a 99+ pill when the
+// count is large enough that it would overflow the badge.
+function ProviderNotificationsBellButton({ onOpen }: { onOpen: () => void }) {
+  const countQuery = useProviderUnreadNotificationsCount();
+  const count = countQuery.data?.count ?? 0;
+  const display = count > 99 ? '99+' : String(count);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label="Open notifications"
+      className="relative w-9 h-9 rounded-xl bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 flex items-center justify-center active:scale-90 transition-all"
+    >
+      <Bell size={17} className="text-slate-600 dark:text-slate-300" />
+      {count > 0 && (
+        <span
+          className="absolute -top-1 -end-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white flex items-center justify-center border-2 border-white"
+          style={{ fontSize: '8px', fontWeight: 800 }}
+        >
+          {display}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ─── Notifications drawer (Sprint 5.5) ───────────────────────────────────────
+// Slides in from the right. Lists provider notifications, lets the
+// operator mark one read or mark-all-read. The mark-all-read mutation
+// passes ?experience=provider so the seeker badge stays untouched.
+function ProviderNotificationsDrawer({ onClose }: { onClose: () => void }) {
+  const { lang } = useLang();
+  const listQuery = useProviderNotifications();
+  const markRead = useMarkProviderNotificationRead();
+  const markAllRead = useMarkAllProviderNotificationsRead();
+
+  const items = listQuery.data?.items ?? [];
+
+  const L = {
+    title: lang === 'ar' ? 'الإشعارات' : 'Notifications',
+    markAll: lang === 'ar' ? 'تعليم الكل كمقروء' : 'Mark all read',
+    empty: lang === 'ar' ? 'لا توجد إشعارات بعد.' : 'No notifications yet.',
+    loading: lang === 'ar' ? 'جارٍ التحميل…' : 'Loading…',
+    failed: lang === 'ar' ? 'تعذّر تحميل الإشعارات.' : 'Could not load notifications.',
+  };
+
+  const empty = items.length === 0;
+  const allRead = items.every((n) => n.readAt !== null);
+
+  return (
+    <>
+      <motion.div
+        className="fixed inset-0 bg-slate-900/40 z-30"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      />
+      <motion.div
+        className="fixed top-0 end-0 bottom-0 w-full sm:w-[400px] bg-white dark:bg-slate-800 z-40 flex flex-col shadow-2xl"
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+        role="dialog"
+        aria-label={L.title}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+          <p
+            className="text-slate-900 dark:text-white"
+            style={{ fontSize: '16px', fontWeight: 800 }}
+          >
+            {L.title}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => markAllRead.mutate()}
+              disabled={empty || allRead || markAllRead.isPending}
+              className="text-blue-600 disabled:text-slate-400 disabled:cursor-not-allowed"
+              style={{ fontSize: '12px', fontWeight: 600 }}
+            >
+              {L.markAll}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center"
+            >
+              <X size={14} className="text-slate-500" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+          {empty ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                <Bell size={20} className="text-slate-300" />
+              </div>
+              <p role="status" className="text-slate-400" style={{ fontSize: '13px' }}>
+                {listQuery.isError ? L.failed : listQuery.isPending ? L.loading : L.empty}
+              </p>
+            </div>
+          ) : (
+            items.map((n) => {
+              const isRead = n.readAt !== null;
+              return (
+                <button
+                  type="button"
+                  key={n.id}
+                  onClick={() => {
+                    if (!isRead) markRead.mutate(n.id);
+                  }}
+                  className={`w-full text-start px-5 py-4 border-b border-slate-50 dark:border-slate-700/50 active:bg-slate-50 dark:active:bg-slate-700/30 transition-colors ${
+                    isRead ? '' : 'bg-blue-50/50 dark:bg-blue-900/10'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {!isRead && (
+                      <span className="mt-1 w-2 h-2 rounded-full bg-blue-600 flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-slate-900 dark:text-white"
+                        style={{ fontSize: '13px', fontWeight: isRead ? 500 : 700 }}
+                      >
+                        {/* `body` and `title` come from the server,
+                            already escaped on the JSON wire. React
+                            renders them as text (never as HTML), so
+                            no XSS surface here. */}
+                        {n.title}
+                      </p>
+                      <p
+                        className="text-slate-500 dark:text-slate-400 mt-0.5"
+                        style={{ fontSize: '12px', lineHeight: 1.4 }}
+                      >
+                        {n.body}
+                      </p>
+                      <p className="text-slate-400 mt-1" style={{ fontSize: '10px' }}>
+                        {formatRelativeTime(n.createdAt, lang)}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+// ─── Provider chat screen (Sprint 5.5) ───────────────────────────────────────
+// Two-pane: left lists conversations, right shows the active thread
+// + send-message form. On mobile width the right pane is full-screen
+// once a conversation is selected (the back arrow returns to the list).
+function ProviderChatScreen() {
+  const { lang } = useLang();
+  const conversationsQuery = useProviderConversations();
+  const items = conversationsQuery.data?.items ?? [];
+  const [activeId, setActiveId] = useState<string | null>(null);
+  // When the conversations list arrives the first time, auto-select
+  // the most recent so the operator lands in the thread without an
+  // extra tap. Subsequent list refreshes don't override the user's
+  // explicit selection.
+  const autoSelectedRef = useRef(false);
+  useEffect(() => {
+    if (autoSelectedRef.current) return;
+    if (items.length > 0) {
+      setActiveId(items[0].id);
+      autoSelectedRef.current = true;
+    }
+  }, [items]);
+
+  const L = {
+    title: lang === 'ar' ? 'الدردشات' : 'Chats',
+    empty:
+      lang === 'ar'
+        ? 'لا توجد محادثات بعد. ستظهر بعد قبول العرض.'
+        : 'No conversations yet. They appear once a bid is accepted.',
+    loading: lang === 'ar' ? 'جارٍ التحميل…' : 'Loading conversations…',
+    failed: lang === 'ar' ? 'تعذّر تحميل المحادثات.' : 'Could not load conversations.',
+    selectThread: lang === 'ar' ? 'اختر محادثة من القائمة.' : 'Pick a conversation to open it.',
+  };
+
+  return (
+    <div className="absolute inset-0 flex bg-slate-50 dark:bg-slate-900 overflow-hidden">
+      <aside
+        className={`flex-shrink-0 w-full md:w-[320px] bg-white dark:bg-slate-800 border-e border-slate-100 dark:border-slate-700 flex flex-col ${
+          activeId ? 'hidden md:flex' : 'flex'
+        }`}
+      >
+        <div className="px-5 pt-5 pb-3">
+          <h2
+            className="text-slate-900 dark:text-white"
+            style={{ fontSize: '20px', fontWeight: 800 }}
+          >
+            {L.title}
+          </h2>
+        </div>
+        <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+          {items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 px-6 gap-3 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                <MessageCircle size={20} className="text-slate-300" />
+              </div>
+              <p role="status" className="text-slate-400" style={{ fontSize: '13px' }}>
+                {conversationsQuery.isError
+                  ? L.failed
+                  : conversationsQuery.isPending
+                    ? L.loading
+                    : L.empty}
+              </p>
+            </div>
+          ) : (
+            items.map((conv) => {
+              const isActive = conv.id === activeId;
+              const previewText = conv.lastMessageBody ?? '';
+              return (
+                <button
+                  type="button"
+                  key={conv.id}
+                  onClick={() => setActiveId(conv.id)}
+                  className={`w-full text-start px-4 py-3 border-b border-slate-50 dark:border-slate-700/50 active:bg-slate-50 transition-colors ${
+                    isActive ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-lg flex-shrink-0">
+                      {conv.otherParticipant.initials || '👤'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-slate-900 dark:text-white truncate"
+                        style={{ fontSize: '13px', fontWeight: 700 }}
+                      >
+                        {conv.otherParticipant.displayName || (lang === 'ar' ? 'مستخدم' : 'User')}
+                      </p>
+                      <p
+                        className="text-slate-500 dark:text-slate-400 truncate"
+                        style={{ fontSize: '12px' }}
+                      >
+                        {previewText}
+                      </p>
+                    </div>
+                    {conv.unreadCount > 0 && (
+                      <span
+                        className="min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white flex items-center justify-center"
+                        style={{ fontSize: '10px', fontWeight: 800 }}
+                      >
+                        {conv.unreadCount > 99 ? '99+' : conv.unreadCount}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </aside>
+      <section
+        className={`flex-1 flex-col bg-slate-50 dark:bg-slate-900 ${
+          activeId ? 'flex' : 'hidden md:flex'
+        }`}
+      >
+        {activeId ? (
+          <ProviderChatThread conversationId={activeId} onBack={() => setActiveId(null)} />
+        ) : (
+          <div className="flex-1 flex items-center justify-center px-6">
+            <p role="status" className="text-slate-400" style={{ fontSize: '13px' }}>
+              {L.selectThread}
+            </p>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+// Active thread (Sprint 5.5): polls /v1/provider/conversations/:id/
+// messages every 4 s, sends new messages via the canonical send
+// endpoint. Trims body, enforces 1..2000 chars on the client too so
+// the user gets immediate feedback before the wire-side validator
+// runs.
+function ProviderChatThread({
+  conversationId,
+  onBack,
+}: {
+  conversationId: string;
+  onBack: () => void;
+}) {
+  const { lang } = useLang();
+  const messagesQuery = useProviderMessages(conversationId);
+  const sendMessage = useSendProviderMessage(conversationId);
+  const [draft, setDraft] = useState('');
+  const messages = messagesQuery.data?.items ?? [];
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll to the bottom on every render so the freshly polled
+  // tail is in view.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length]);
+
+  const trimmed = draft.trim();
+  const canSend = trimmed.length > 0 && trimmed.length <= 2000 && !sendMessage.isPending;
+
+  const L = {
+    placeholder: lang === 'ar' ? 'اكتب رسالة…' : 'Type a message…',
+    send: lang === 'ar' ? 'إرسال' : 'Send',
+    empty:
+      lang === 'ar'
+        ? 'ابدأ المحادثة بإرسال أول رسالة.'
+        : 'Start the conversation by sending the first message.',
+    loading: lang === 'ar' ? 'جارٍ تحميل الرسائل…' : 'Loading messages…',
+    failed: lang === 'ar' ? 'تعذّر تحميل الرسائل.' : 'Could not load messages.',
+    sendFailed: lang === 'ar' ? 'تعذّر إرسال الرسالة.' : 'Could not send the message.',
+  };
+
+  const handleSend = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canSend) return;
+    sendMessage.mutate(
+      { body: trimmed },
+      {
+        onSuccess: () => setDraft(''),
+      },
+    );
+  };
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Back to conversations"
+          className="md:hidden w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center"
+        >
+          <ArrowLeft size={16} className="text-slate-500 rtl:rotate-180" />
+        </button>
+        <p className="text-slate-900 dark:text-white" style={{ fontSize: '14px', fontWeight: 700 }}>
+          {lang === 'ar' ? 'محادثة' : 'Conversation'}
+        </p>
+      </div>
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-4 py-3 space-y-2"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {messages.length === 0 ? (
+          <p
+            role="status"
+            className="text-slate-400 text-center py-10"
+            style={{ fontSize: '13px' }}
+          >
+            {messagesQuery.isError ? L.failed : messagesQuery.isPending ? L.loading : L.empty}
+          </p>
+        ) : (
+          messages.map((m) => {
+            const mine = m.senderRole === 'PROVIDER';
+            return (
+              <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                <div
+                  className={`max-w-[78%] rounded-2xl px-3 py-2 ${
+                    mine
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700'
+                  }`}
+                >
+                  {/* `body` is server-emitted text — React renders as text,
+                      never HTML, so no XSS surface. */}
+                  <p style={{ fontSize: '13px', lineHeight: 1.4 }}>{m.body}</p>
+                  <p
+                    className={`mt-1 ${mine ? 'text-blue-100' : 'text-slate-400'}`}
+                    style={{ fontSize: '10px' }}
+                  >
+                    {formatRelativeTime(m.createdAt, lang)}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+      <form
+        onSubmit={handleSend}
+        className="flex items-center gap-2 px-3 py-3 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800"
+      >
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={L.placeholder}
+          maxLength={2000}
+          aria-label={L.placeholder}
+          className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-2xl px-4 py-2.5 text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-300"
+          style={{ fontSize: '13px' }}
+        />
+        <button
+          type="submit"
+          disabled={!canSend}
+          className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+          aria-label={L.send}
+        >
+          <Send size={16} />
+        </button>
+      </form>
+      {sendMessage.isError && (
+        <p role="alert" className="text-red-600 text-center pb-2" style={{ fontSize: '12px' }}>
+          {L.sendFailed}
+        </p>
+      )}
+    </div>
+  );
+}
 
 // ─── Provider App Shell ───────────────────────────────────────────────────────
 // Compute the identity strings used by the top bar. Prefer the Provider
@@ -1789,6 +2228,7 @@ function deriveShellIdentity(
 export function ProviderApp() {
   const { lang, dir, darkMode } = useLang();
   const [activeTab, setActiveTab] = useState('jobs');
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const fontFamily = lang === 'ar' ? "'Cairo', 'Inter', sans-serif" : "'Inter', sans-serif";
 
   const profileQuery = useProviderProfile();
@@ -1823,6 +2263,8 @@ export function ProviderApp() {
         return <LiveJobsScreen />;
       case 'bids':
         return <MyBidsScreen />;
+      case 'chat':
+        return <ProviderChatScreen />;
       case 'wallet':
         return <WalletScreen />;
       case 'profile':
@@ -1862,19 +2304,19 @@ export function ProviderApp() {
             </div>
             <div className="flex items-center gap-2">
               <LangToggle />
-              <button className="relative w-9 h-9 rounded-xl bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 flex items-center justify-center active:scale-90 transition-all">
-                <Bell size={17} className="text-slate-600 dark:text-slate-300" />
-                <span
-                  className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center border-2 border-white"
-                  style={{ fontSize: '8px', fontWeight: 800 }}
-                >
-                  2
-                </span>
-              </button>
+              <ProviderNotificationsBellButton onOpen={() => setNotificationsOpen(true)} />
             </div>
           </div>
         </div>
       )}
+
+      {/* Sprint 5.5 — provider notifications drawer. Opens from the
+          top-bar bell; reads /v1/me/notifications?experience=provider. */}
+      <AnimatePresence>
+        {notificationsOpen && (
+          <ProviderNotificationsDrawer onClose={() => setNotificationsOpen(false)} />
+        )}
+      </AnimatePresence>
 
       {/* Content */}
       <div className="flex-1 relative overflow-hidden">
