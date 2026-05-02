@@ -7,6 +7,7 @@ import { AvailableRequestsController } from './available-requests/available-requ
 import { AvailableRequestsService } from './available-requests/available-requests.service';
 import { ProviderBidsController } from './bids/provider-bids.controller';
 import { ProviderBidsService } from './bids/provider-bids.service';
+import { ProviderBookingsCanonicalController } from './bookings/provider-bookings-canonical.controller';
 import { ProviderBookingsController } from './bookings/provider-bookings.controller';
 import { ProviderBookingsService } from './bookings/provider-bookings.service';
 import { ProviderJobsController } from './feed/provider-jobs.controller';
@@ -40,6 +41,7 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     AvailableRequestsController,
     ProviderBidsController,
     ProviderBookingsController,
+    ProviderBookingsCanonicalController,
     ProviderWalletController,
   ],
   providers: [

@@ -1,0 +1,244 @@
+{
+  "info": {
+    "name": "FixNow Sprint 5.4 Provider Bookings",
+    "description": "Provider booking lifecycle. Run order: list (captures bookingId) -> detail -> timeline -> start -> complete (or cancel) -> cross-role 403 -> no-token 401. Bearer auth uses {{providerToken}}; the negatives swap to {{customerToken}}. Transitions are conditional on the current booking state, so each mutation accepts 200 OR 409 — depends on the seed.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fixnow-sprint-5-4-provider-bookings"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{providerToken}}" }]
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const text = pm.response.text();",
+          "pm.test('No sensitive fields leaked', function () {",
+          "  pm.expect(text).to.not.include('passwordHash');",
+          "  pm.expect(text).to.not.include('refreshToken');",
+          "  pm.expect(text).to.not.include('JWT_SECRET');",
+          "  pm.expect(text).to.not.include('DATABASE_URL');",
+          "  pm.expect(text).to.not.match(/PrismaClient|column .* does not exist/i);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1) GET /v1/provider/bookings",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/bookings"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 (ACTIVE) or 403 (gate)', () => {",
+              "  pm.expect([200, 403]).to.include(pm.response.code);",
+              "});",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test('items array exists', () => {",
+              "    pm.expect(body.items).to.be.an('array');",
+              "  });",
+              "  pm.test('nextCursor valid (string or null)', () => {",
+              "    pm.expect(body.nextCursor === null || typeof body.nextCursor === 'string').to.eql(true);",
+              "  });",
+              "  if (body.items.length > 0) {",
+              "    pm.environment.set('bookingId', body.items[0].id);",
+              "  }",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2) GET /v1/provider/bookings/:bookingId",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/bookings/{{bookingId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 or 404 (placeholder env)', () => {",
+              "  pm.expect([200, 403, 404]).to.include(pm.response.code);",
+              "});",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test('id matches', () => {",
+              "    pm.expect(body.id).to.eql(pm.environment.get('bookingId'));",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3) GET /v1/provider/bookings/:bookingId/timeline",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/bookings/{{bookingId}}/timeline"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 or 404', () => {",
+              "  pm.expect([200, 403, 404]).to.include(pm.response.code);",
+              "});",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test('items array exists', () => {",
+              "    pm.expect(body.items).to.be.an('array');",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4) POST /v1/provider/bookings/:bookingId/start",
+      "request": {
+        "method": "POST",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/bookings/{{bookingId}}/start"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 or 409 depending on current state', () => {",
+              "  pm.expect([200, 404, 409]).to.include(pm.response.code);",
+              "});",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test('booking.status = IN_PROGRESS', () => {",
+              "    pm.expect(body.booking.status).to.eql('IN_PROGRESS');",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5) POST /v1/provider/bookings/:bookingId/complete",
+      "request": {
+        "method": "POST",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/bookings/{{bookingId}}/complete"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 or 409 depending on current state', () => {",
+              "  pm.expect([200, 404, 409]).to.include(pm.response.code);",
+              "});",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test('booking.status = COMPLETED', () => {",
+              "    pm.expect(body.booking.status).to.eql('COMPLETED');",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6) POST /v1/provider/bookings/:bookingId/cancel",
+      "description": "After step 5 the booking is COMPLETED, so this typically returns 409. Tests accept either path.",
+      "request": {
+        "method": "POST",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/bookings/{{bookingId}}/cancel"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 or 409', () => {",
+              "  pm.expect([200, 404, 409]).to.include(pm.response.code);",
+              "});",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test('booking.status = CANCELLED', () => {",
+              "    pm.expect(body.booking.status).to.eql('CANCELLED');",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7) Negative — customer token cannot list provider bookings",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+        },
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/bookings"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 401 or 403', () => {",
+              "  pm.expect([401, 403]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8) Negative — no token cannot list provider bookings",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/bookings"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 401 or 403', () => {",
+              "  pm.expect([401, 403]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

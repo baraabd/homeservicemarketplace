@@ -55,6 +55,16 @@ import { useAvailableRequests } from '../../hooks/provider/useAvailableRequests'
 // + useSubmitBid in this file. Listed here so the shape stays
 // consistent when Sprint 5.4 adds withdraw buttons to the bid cards.
 import { useMyBids, useSubmitBid } from '../../hooks/provider/useMyBids';
+// Sprint 5.4 — provider booking lifecycle. The MyBidsScreen reads
+// the bookings list to map accepted bids to their booking ids, then
+// uses the canonical /v1/provider/bookings/:id/{start,complete,cancel}
+// endpoints for transitions.
+import {
+  useCancelProviderBooking,
+  useCompleteProviderBooking,
+  useProviderBookings,
+  useStartProviderBooking,
+} from '../../hooks/provider/useProviderBookings';
 import {
   useProviderEarningsSummary,
   useProviderEarningsTransactions,
@@ -761,13 +771,140 @@ function LiveJobsScreen() {
   );
 }
 
+// ─── Booking transition panel (Sprint 5.4) ────────────────────────────────────
+// Renders the right action button for the linked booking's current
+// state. Pure presentation — the parent owns the mutations + their
+// pending state.
+//
+//   SCHEDULED   → "Start Job" (primary) + "Cancel Booking" (link)
+//   IN_PROGRESS → "Mark Complete" (primary)
+//   COMPLETED   → "Completed" pill (no buttons)
+//   CANCELLED   → "Cancelled" pill (no buttons)
+//   null        → "Waiting for booking…" copy (race window between
+//                 bid acceptance and the booking row landing in the
+//                 list — harmless, resolves on the next 30s poll)
+function BookingTransitionPanel({
+  bookingId,
+  bookingStatus,
+  onStart,
+  onComplete,
+  onCancel,
+  pending,
+  labels,
+}: {
+  bookingId: string | null;
+  bookingStatus: string | null;
+  onStart: (bookingId: string) => void;
+  onComplete: (bookingId: string) => void;
+  onCancel: (bookingId: string) => void;
+  pending: boolean;
+  labels: {
+    start: string;
+    complete: string;
+    cancel: string;
+    inProgress: string;
+    completed: string;
+    cancelled: string;
+    pendingBooking: string;
+  };
+}) {
+  if (!bookingId || !bookingStatus) {
+    return (
+      <p role="status" className="text-slate-400 text-center py-2" style={{ fontSize: '12px' }}>
+        {labels.pendingBooking}
+      </p>
+    );
+  }
+  if (bookingStatus === 'COMPLETED') {
+    return (
+      <div
+        className="w-full py-3 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 flex items-center justify-center gap-2"
+        style={{ fontSize: '13px', fontWeight: 700 }}
+      >
+        <CheckCircle2 size={14} />
+        {labels.completed}
+      </div>
+    );
+  }
+  if (bookingStatus === 'CANCELLED') {
+    return (
+      <div
+        className="w-full py-3 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-500 flex items-center justify-center gap-2"
+        style={{ fontSize: '13px', fontWeight: 700 }}
+      >
+        <X size={14} />
+        {labels.cancelled}
+      </div>
+    );
+  }
+  if (bookingStatus === 'IN_PROGRESS') {
+    return (
+      <button
+        type="button"
+        onClick={() => onComplete(bookingId)}
+        disabled={pending}
+        className="w-full py-3 rounded-2xl bg-blue-600 text-white flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md shadow-blue-200 dark:shadow-none disabled:opacity-60"
+        style={{ fontSize: '14px', fontWeight: 700 }}
+      >
+        <CheckCircle2 size={16} />
+        {labels.complete}
+      </button>
+    );
+  }
+  // Default: SCHEDULED. Start + Cancel.
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={() => onStart(bookingId)}
+        disabled={pending}
+        className="w-full py-3 rounded-2xl bg-green-600 text-white flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md shadow-green-200 dark:shadow-none disabled:opacity-60"
+        style={{ fontSize: '14px', fontWeight: 700 }}
+      >
+        <CheckCircle2 size={16} />
+        {labels.start}
+      </button>
+      <button
+        type="button"
+        onClick={() => onCancel(bookingId)}
+        disabled={pending}
+        className="w-full py-2 rounded-2xl text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-60"
+        style={{ fontSize: '12px', fontWeight: 600 }}
+      >
+        {labels.cancel}
+      </button>
+    </div>
+  );
+}
+
 // ─── My Bids Screen ───────────────────────────────────────────────────────────
 // Sprint 5.3 — live read from /v1/me/provider/bids. The screen filters
 // out WITHDRAWN bids client-side because the existing UI only renders
 // 'pending' / 'accepted' / 'rejected' tabs.
+// Sprint 5.4 — when a bid is ACCEPTED the linked booking surfaces
+// state-aware Start / Complete / Cancel transition buttons.
 function MyBidsScreen() {
   const { lang } = useLang();
   const myBidsQuery = useMyBids();
+  // Sprint 5.4: load bookings so the screen can map an ACCEPTED bid
+  // to its booking id and surface the right transition button.
+  const bookingsQuery = useProviderBookings();
+  const startBooking = useStartProviderBooking();
+  const completeBooking = useCompleteProviderBooking();
+  const cancelBooking = useCancelProviderBooking();
+
+  // bidId -> { bookingId, status } so we can:
+  //   * render Start when SCHEDULED
+  //   * render Complete when IN_PROGRESS
+  //   * render Cancel when SCHEDULED (not after start)
+  //   * hide buttons entirely when COMPLETED / CANCELLED
+  const bookingByBidId = useMemo<Record<string, { bookingId: string; status: string }>>(() => {
+    const map: Record<string, { bookingId: string; status: string }> = {};
+    for (const b of bookingsQuery.data?.items ?? []) {
+      map[b.bidId] = { bookingId: b.id, status: b.status };
+    }
+    return map;
+  }, [bookingsQuery.data]);
 
   const myBids = useMemo(() => {
     const items = myBidsQuery.data?.items ?? [];
@@ -777,6 +914,7 @@ function MyBidsScreen() {
         const labelEn = b.request.category?.labelEn ?? b.request.customServiceText ?? '';
         const labelAr = b.request.category?.labelAr ?? b.request.customServiceText ?? '';
         const icon = iconForCategorySlug(b.request.category?.slug ?? null);
+        const linkedBooking = bookingByBidId[b.id] ?? null;
         return {
           id: b.id,
           requestService: labelEn,
@@ -787,13 +925,15 @@ function MyBidsScreen() {
           // which the booking conversation surfaces the seeker name.
           seekerName: b.request.city,
           status: b.status.toLowerCase() as 'pending' | 'accepted' | 'rejected',
+          bookingId: linkedBooking?.bookingId ?? null,
+          bookingStatus: linkedBooking?.status ?? null,
           price: b.amount,
           executionTime: formatResponseTime(b.responseTimeMinutes, lang),
           note: b.note ?? '',
           submittedAt: formatRelativeTime(b.submittedAt, lang),
         };
       });
-  }, [myBidsQuery.data, lang]);
+  }, [myBidsQuery.data, bookingByBidId, lang]);
 
   const L = {
     title: lang === 'ar' ? 'عروضي' : 'My Bids',
@@ -803,6 +943,12 @@ function MyBidsScreen() {
     price: lang === 'ar' ? 'السعر:' : 'Price:',
     time: lang === 'ar' ? 'الوقت:' : 'Time:',
     startJob: lang === 'ar' ? 'ابدأ العمل' : 'Start Job',
+    completeJob: lang === 'ar' ? 'إنهاء العمل' : 'Mark Complete',
+    cancelJob: lang === 'ar' ? 'إلغاء الحجز' : 'Cancel Booking',
+    inProgress: lang === 'ar' ? 'قيد التنفيذ' : 'In Progress',
+    completed: lang === 'ar' ? 'مكتمل' : 'Completed',
+    cancelled: lang === 'ar' ? 'ملغى' : 'Cancelled',
+    bookingPending: lang === 'ar' ? 'بانتظار التأكيد…' : 'Waiting for booking…',
     noBids: lang === 'ar' ? 'لم تقدم أي عروض بعد' : 'No bids submitted yet',
     noBidsSub:
       lang === 'ar'
@@ -958,13 +1104,25 @@ function MyBidsScreen() {
                 )}
 
                 {bid.status === 'accepted' && (
-                  <button
-                    className="w-full py-3 rounded-2xl bg-green-600 text-white flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md shadow-green-200 dark:shadow-none"
-                    style={{ fontSize: '14px', fontWeight: 700 }}
-                  >
-                    <CheckCircle2 size={16} />
-                    {L.startJob}
-                  </button>
+                  <BookingTransitionPanel
+                    bookingId={bid.bookingId}
+                    bookingStatus={bid.bookingStatus}
+                    onStart={(id) => startBooking.mutate(id)}
+                    onComplete={(id) => completeBooking.mutate(id)}
+                    onCancel={(id) => cancelBooking.mutate(id)}
+                    pending={
+                      startBooking.isPending || completeBooking.isPending || cancelBooking.isPending
+                    }
+                    labels={{
+                      start: L.startJob,
+                      complete: L.completeJob,
+                      cancel: L.cancelJob,
+                      inProgress: L.inProgress,
+                      completed: L.completed,
+                      cancelled: L.cancelled,
+                      pendingBooking: L.bookingPending,
+                    }}
+                  />
                 )}
               </motion.div>
             );
