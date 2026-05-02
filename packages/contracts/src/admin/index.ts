@@ -10,3 +10,4 @@
 // Every admin endpoint is gated on RolesGuard('admin'); mutations
 // additionally require CsrfGuard. Identity comes from the session.
 export * from './health';
+export * from './users';

@@ -5,18 +5,20 @@ import { AuthorizationModule } from '../iam/authorization/authorization.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminController } from './admin.controller';
+import { AdminUsersController } from './users/admin-users.controller';
+import { AdminUsersService } from './users/admin-users.service';
 
 // Admin module. Hosts every admin-side surface so the
 // AuthenticationModule / AuthorizationModule / AdminAuditService
 // wiring is shared across slices:
 //
-//   slice 6.0 ✓ AdminController         — module bootstrap + /health
-//   slice 6.1   AdminUsersController    — list/search/suspend/restore
+//   slice 6.0 ✓ AdminController            — module bootstrap + /health
+//   slice 6.1 ✓ AdminUsersController       — list/search/suspend/restore
 //   slice 6.2   AdminVerificationController — provider approve/reject
-//   slice 6.3   AdminDisputesController — open/resolve disputes
-//   slice 6.4   AdminAnalyticsController — read-only KPIs
-//   slice 6.5   AdminSettingsController — platform settings
-//   slice 6.6   AdminAuditController    — audit log read
+//   slice 6.3   AdminDisputesController    — open/resolve disputes
+//   slice 6.4   AdminAnalyticsController   — read-only KPIs
+//   slice 6.5   AdminSettingsController    — platform settings
+//   slice 6.6   AdminAuditController       — audit log read
 //
 // Repositories (UserRepository, RoleRepository,
 // ProviderProfileRepository, AuditEventRepository,
@@ -26,8 +28,8 @@ import { AdminController } from './admin.controller';
 // approved → notify provider).
 @Module({
   imports: [AuthenticationModule, AuthorizationModule, NotificationsModule],
-  controllers: [AdminController],
-  providers: [AdminAuditService],
+  controllers: [AdminController, AdminUsersController],
+  providers: [AdminAuditService, AdminUsersService],
   exports: [AdminAuditService],
 })
 export class AdminModule {}

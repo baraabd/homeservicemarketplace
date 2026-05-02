@@ -70,6 +70,112 @@
       ]
     },
     {
+      "name": "20 — Users (Sprint 6.1)",
+      "item": [
+        {
+          "name": "GET /v1/admin/users",
+          "request": { "method": "GET", "url": "{{apiUrl}}/{{apiVersion}}/admin/users?limit=20" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items + nextCursor', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.environment.set('userId', b.items[0].id);",
+                  "  pm.test('summary excludes passwordHash + mfaSecret', () => {",
+                  "    const t = pm.response.text();",
+                  "    pm.expect(t).to.not.include('passwordHash');",
+                  "    pm.expect(t).to.not.include('mfaSecret');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/users?q=…",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users?q=admin&role=admin"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/users/:userId",
+          "request": { "method": "GET", "url": "{{apiUrl}}/{{apiVersion}}/admin/users/{{userId}}" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/users/:userId/suspend",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users/{{userId}}/suspend"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200, 400 (self) or 404', () => pm.expect([200, 400, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('user.status = SUSPENDED', () => pm.expect(pm.response.json().user.status).to.eql('SUSPENDED'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/users/:userId/restore",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users/{{userId}}/restore"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('user.status = ACTIVE', () => pm.expect(pm.response.json().user.status).to.eql('ACTIVE'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "10 — Health (Sprint 6.0)",
       "item": [
         {
