@@ -11,3 +11,4 @@
 // additionally require CsrfGuard. Identity comes from the session.
 export * from './health';
 export * from './users';
+export * from './verification';

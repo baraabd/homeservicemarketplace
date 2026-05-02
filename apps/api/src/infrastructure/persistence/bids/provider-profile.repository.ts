@@ -197,6 +197,35 @@ export class ProviderProfileRepository {
     });
   }
 
+  // Sprint 6.2: cursor-paginated list for admin verification queue.
+  // Eager-loads the linked user (id + email) so the admin row can
+  // map the profile back to the account.
+  listForAdmin(
+    args: { status?: ProviderProfileStatus; take: number; cursor?: string },
+    tx?: PrismaTx,
+  ): Promise<(ProviderProfile & { user: { id: string; email: string } | null })[]> {
+    return this.db(tx).providerProfile.findMany({
+      where: {
+        deletedAt: null,
+        ...(args.status ? { status: args.status } : {}),
+      },
+      take: args.take,
+      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      include: { user: { select: { id: true, email: true } } },
+    }) as Promise<(ProviderProfile & { user: { id: string; email: string } | null })[]>;
+  }
+
+  findByIdForAdmin(
+    id: string,
+    tx?: PrismaTx,
+  ): Promise<(ProviderProfile & { user: { id: string; email: string } | null }) | null> {
+    return this.db(tx).providerProfile.findFirst({
+      where: { id, deletedAt: null },
+      include: { user: { select: { id: true, email: true } } },
+    }) as Promise<(ProviderProfile & { user: { id: string; email: string } | null }) | null>;
+  }
+
   upsert(input: UpsertProviderProfileInput, tx?: PrismaTx): Promise<ProviderProfile> {
     const data: Prisma.ProviderProfileCreateInput = {
       id: input.id,

@@ -1,0 +1,23 @@
+import type { ProviderProfileStatus } from '../../../provider/profile/enums/provider-profile-status';
+
+// Admin-facing summary of one provider profile. Differs from the
+// public ProviderProfileSummary in that it surfaces the linked
+// userId + email so the admin can connect the dots between the
+// account and the profile.
+export interface AdminProviderSummary {
+  id: string;
+  status: ProviderProfileStatus;
+  userId: string | null;
+  email: string | null;
+  displayName: string;
+  initials: string;
+  ratingAvg: number;
+  reviewCount: number;
+  completedJobs: number;
+  verified: boolean;
+  topPro: boolean;
+  serviceAreaCity: string | null;
+  serviceAreaCountry: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
