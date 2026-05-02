@@ -1,0 +1,490 @@
+{
+  "info": {
+    "name": "FixNow Runtime Smoke Provider Admin",
+    "description": "Sprint 7.1 — runtime stabilization smoke. The minimum set of GETs an operator pings after a fresh `migrate dev` + `seed` to confirm the Provider and Admin browser apps will load without console 500 errors.\n\nAll responses MUST satisfy:\n  • status is the EXPECTED status for the auth context (200 / 401 / 403 / 404)\n  • the response body never contains Prisma / SQL / passwordHash / refreshToken / JWT_SECRET / DATABASE_URL / STRIPE_SECRET\n  • a 5xx status anywhere is a HARD FAIL — the smoke is built to catch those, not paper over them\n\nRun order:\n  • Folder 0 — Health  (no auth, both 200)\n  • Folder 1 — Auth handshake  (captures admin + provider tokens + admin role)\n  • Folder 2 — Provider runtime smoke  (uses providerToken — provider profile must exist + be ACTIVE)\n  • Folder 3 — Admin runtime smoke  (uses adminToken)\n\nIf folder 2 fails 404 on /me/provider/profile the operator is using a user without a ProviderProfile — that's the wrong account, not a server bug. Use a real provider account.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fixnow-runtime-smoke-provider-admin"
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const text = pm.response.text();",
+          "pm.test('NEVER a 5xx (zero unexpected 500s)', () => {",
+          "  pm.expect(pm.response.code).to.be.lessThan(500);",
+          "});",
+          "pm.test('no Prisma/SQL/secret leak', () => {",
+          "  pm.expect(text).to.not.match(/PrismaClient|column .* does not exist|SELECT |INSERT |UPDATE /i);",
+          "  pm.expect(text).to.not.include('passwordHash');",
+          "  pm.expect(text).to.not.include('refreshToken');",
+          "  pm.expect(text).to.not.include('JWT_SECRET');",
+          "  pm.expect(text).to.not.include('DATABASE_URL');",
+          "  pm.expect(text).to.not.include('STRIPE_SECRET');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "0 — Health",
+      "item": [
+        {
+          "name": "GET /health/live",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": "{{apiUrl}}/health/live"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 — API is running on :4000', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /health/ready",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": "{{apiUrl}}/health/ready"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 — DB / Mongo / Redis ready', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 — Auth handshake",
+      "item": [
+        {
+          "name": "POST /v1/auth/login (admin)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.tokens && body.tokens.accessToken) pm.environment.set('adminToken', body.tokens.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/login (provider)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{providerEmail}}\",\n  \"password\": \"{{providerPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.tokens && body.tokens.accessToken) pm.environment.set('providerToken', body.tokens.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/auth/me (admin)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test(\"roles[] contains 'admin'\", () => pm.expect(pm.response.json().roles).to.include('admin'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/auth/me (provider)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{providerToken}}" }]
+            },
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test(\"roles[] contains 'provider'\", () => pm.expect(pm.response.json().roles).to.include('provider'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 — Provider runtime smoke",
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{providerToken}}" }]
+      },
+      "item": [
+        {
+          "name": "GET /v1/me/provider/profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 (provider account has a ProviderProfile)', () => pm.response.to.have.status(200));",
+                  "pm.test('profile.status === ACTIVE (provider can bid)', () => pm.expect(pm.response.json().profile.status).to.eql('ACTIVE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/provider/available-requests",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/provider/available-requests?limit=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 even when no requests exist', () => pm.response.to.have.status(200));",
+                  "pm.test('items + nextCursor envelope', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/provider/bids (canonical)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/provider/bids"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 — canonical path mounts', () => pm.response.to.have.status(200));",
+                  "pm.test('items array', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/bids (legacy still callable)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 — legacy path retained', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/provider/bookings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/provider/bookings?limit=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 with empty list when no bookings', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/provider/earnings/summary",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/provider/earnings/summary"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 with zero values when no completed bookings', () => pm.response.to.have.status(200));",
+                  "pm.test('zero / non-negative shape', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.grossEarnings).to.be.at.least(0);",
+                  "  pm.expect(body.platformFees).to.be.at.least(0);",
+                  "  pm.expect(body.netEarnings).to.be.at.least(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 — Admin runtime smoke",
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{adminToken}}" }]
+      },
+      "item": [
+        {
+          "name": "GET /v1/admin/providers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/providers?limit=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 with empty list when no providers', () => pm.response.to.have.status(200));",
+                  "pm.test('items + nextCursor envelope', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/settings (defaults when DB row missing)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/settings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 — never 500 on empty Setting table', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('values + defaults + schema present', () => {",
+                  "  pm.expect(body.values).to.be.an('object');",
+                  "  pm.expect(body.defaults).to.be.an('object');",
+                  "  pm.expect(body.schema).to.be.an('array');",
+                  "});",
+                  "pm.test('defaults populate every whitelisted key', () => {",
+                  "  for (const k of ['platform_fee_bps','default_currency','support_email','feature_show_hourly_rate']) {",
+                  "    pm.expect(body.values).to.have.property(k);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/disputes",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes?limit=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 with empty list when no disputes', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/analytics/overview",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/analytics/overview"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 with zero values on empty DB', () => pm.response.to.have.status(200));",
+                  "pm.test('counts + revenue + range present', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.counts).to.be.an('object');",
+                  "  pm.expect(body.revenue).to.be.an('object');",
+                  "  pm.expect(body.range).to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/financials/summary",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/financials/summary"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 with zero totals on empty DB', () => pm.response.to.have.status(200));",
+                  "pm.test('reconciliation: providerEarnings = revenue − fees (even when 0)', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.totalProviderEarnings).to.eql(b.totalRevenue - b.totalPlatformFees);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/audit-logs (default — no filter)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/audit-logs"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/audit-logs?action=NOT_REAL — 400 not 500",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/audit-logs?action=NOT_REAL"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400 (Sprint 7.1 fix — was 500 from Prisma cast)', () => pm.response.to.have.status(400));",
+                  "pm.test('error.code === VALIDATION_ERROR', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

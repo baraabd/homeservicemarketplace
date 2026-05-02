@@ -5,7 +5,10 @@ import { AuthorizationModule } from '../iam/authorization/authorization.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AvailableRequestsController } from './available-requests/available-requests.controller';
 import { AvailableRequestsService } from './available-requests/available-requests.service';
-import { ProviderBidsController } from './bids/provider-bids.controller';
+import {
+  ProviderBidsController,
+  ProviderBidsLegacyController,
+} from './bids/provider-bids.controller';
 import { ProviderBidsService } from './bids/provider-bids.service';
 import { ProviderBookingsCanonicalController } from './bookings/provider-bookings-canonical.controller';
 import { ProviderBookingsController } from './bookings/provider-bookings.controller';
@@ -42,6 +45,7 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderJobsController,
     AvailableRequestsController,
     ProviderBidsController,
+    ProviderBidsLegacyController,
     ProviderBookingsController,
     ProviderBookingsCanonicalController,
     ProviderWalletController,

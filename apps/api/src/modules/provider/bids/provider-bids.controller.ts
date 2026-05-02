@@ -26,7 +26,16 @@ import { ListMyBidsQueryDto } from './dto/list-my-bids.query';
 import { SubmitBidDto } from './dto/submit-bid.dto';
 import { ProviderBidsService } from './provider-bids.service';
 
-// /v1/me/provider/bids — Provider bid surface (Sprint 5 slice 5.3).
+// Provider bid surface (Sprint 5 slice 5.3 + Sprint 7.1 canonical paths).
+//
+// Sprint 7.1 mounts the same handlers at TWO base paths:
+//   • `/v1/provider/bids`     — canonical (preferred for new clients)
+//   • `/v1/me/provider/bids`  — legacy (kept callable for existing clients)
+//
+// Both paths run the identical guard chain and call the identical
+// service methods, so the wire shape and behaviour is the same. The
+// frontend was migrated to canonical in Sprint 7.1; the legacy path
+// stays mounted as a backwards-compatibility surface.
 //
 // Class-level guards (in order):
 //   1. JwtAuthGuard — authenticated session required.
@@ -45,8 +54,48 @@ import { ProviderBidsService } from './provider-bids.service';
 // rejects payloads that try to inject them.
 @UseGuards(JwtAuthGuard, RolesGuard, ProviderActiveGuard)
 @Roles('provider')
-@Controller({ path: 'me/provider/bids', version: '1' })
+@Controller({ path: 'provider/bids', version: '1' })
 export class ProviderBidsController {
+  constructor(private readonly bids: ProviderBidsService) {}
+
+  @UseGuards(CsrfGuard)
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  submit(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: SubmitBidDto,
+  ): Promise<SubmitBidResponse> {
+    return this.bids.submit(user.id, body);
+  }
+
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListMyBidsQueryDto,
+  ): Promise<ListMyBidsResponse> {
+    return this.bids.list(user.id, query);
+  }
+
+  @UseGuards(CsrfGuard)
+  @Post(':bidId/withdraw')
+  @HttpCode(HttpStatus.OK)
+  withdraw(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('bidId') bidId: string,
+  ): Promise<WithdrawBidResponse> {
+    return this.bids.withdraw(user.id, bidId);
+  }
+}
+
+// Sprint 7.1 — backwards-compatibility shim. Same handlers, same
+// guards, same service. Existing clients on `/v1/me/provider/bids`
+// keep working until they're migrated. New clients should prefer
+// the canonical `/v1/provider/bids` controller above.
+@UseGuards(JwtAuthGuard, RolesGuard, ProviderActiveGuard)
+@Roles('provider')
+@Controller({ path: 'me/provider/bids', version: '1' })
+export class ProviderBidsLegacyController {
   constructor(private readonly bids: ProviderBidsService) {}
 
   @UseGuards(CsrfGuard)

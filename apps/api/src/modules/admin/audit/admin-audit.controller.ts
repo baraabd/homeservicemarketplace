@@ -1,12 +1,13 @@
 import { Controller, Get, HttpCode, HttpStatus, Query, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
 import type {
   AdminAuditEvent,
   AdminAuditLog,
   ListAdminAuditLogsResponse,
   ListAuditEventsResponse,
 } from '@homeservicemarketplace/contracts';
+import { AuditEventType } from '@homeservicemarketplace/database';
 
 import { AuditEventRepository } from '../../../infrastructure/persistence/iam/audit-event.repository';
 import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
@@ -14,11 +15,14 @@ import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import { redactSensitive } from './admin-audit-redaction';
 
+// Sprint 7.1 — `type` / `action` query filter is now validated against the
+// AuditEventType enum so an unknown value returns 400 VALIDATION_ERROR
+// instead of letting Prisma 500 on the cast inside
+// AuditEventRepository.list().
 class ListAuditEventsQueryDto {
   @IsOptional()
-  @IsString()
-  @Length(1, 64)
-  type?: string;
+  @IsEnum(AuditEventType)
+  type?: AuditEventType;
 
   @IsOptional()
   @IsString()
@@ -45,9 +49,8 @@ class ListAdminAuditLogsQueryDto {
   actor?: string;
 
   @IsOptional()
-  @IsString()
-  @Length(1, 64)
-  action?: string;
+  @IsEnum(AuditEventType)
+  action?: AuditEventType;
 
   @IsOptional()
   @Type(() => Number)

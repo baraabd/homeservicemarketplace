@@ -187,6 +187,27 @@ describe('Admin Audit + Notifications (e2e) — Sprint 6.6', () => {
       const res = await request(app.getHttpServer()).get('/v1/admin/audit-logs?limit=999');
       expect(res.status).toBe(400);
     });
+
+    // Sprint 7.1 — invalid `action` filter must be rejected at the DTO
+    // layer with VALIDATION_ERROR. Previously the value was cast straight
+    // into `Prisma.AuditEventType`, which 500'd inside the repository
+    // when the runtime DB enum didn't recognise it.
+    it('rejects invalid `action` enum value with 400 VALIDATION_ERROR (no Prisma 500)', async () => {
+      const res = await request(app.getHttpServer()).get(
+        '/v1/admin/audit-logs?action=NOT_A_REAL_TYPE',
+      );
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      // The repository was NEVER called — validation rejected before service.
+      expect(auditRepo.list).not.toHaveBeenCalled();
+    });
+
+    it('legacy `type` filter is also enum-validated → 400 on garbage', async () => {
+      const res = await request(app.getHttpServer()).get('/v1/admin/audit?type=GARBAGE');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(auditRepo.list).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /admin/audit (legacy)', () => {
