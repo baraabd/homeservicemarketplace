@@ -1,0 +1,205 @@
+{
+  "info": {
+    "name": "FixNow Sprint 6.5 Admin Settings",
+    "description": "Admin platform settings — bulk read + partial bulk update with whitelisted, per-key validation (Sprint 6.5 refined).\n\nWhitelist: platform_fee_bps (int 0..10000), default_currency (3-letter ISO), support_email (email), feature_show_hourly_rate (boolean). Adding a key is a contract change; the server rejects unknown keys at 400.\n\nDrives:\n  • GET /v1/admin/settings (bulk envelope: values + defaults + schema + lastUpdatedAt)\n  • PATCH /v1/admin/settings with valid body\n  • PATCH /v1/admin/settings with invalid body (400)\n  • Customer-token negative → 403\n  • No-token negative → 401\n\nCollection-level guard rejects PrismaClient / SQL fragments / passwordHash / refreshToken / JWT_SECRET / DATABASE_URL on every response.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fixnow-sprint-6-5-admin-settings"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{adminToken}}" }]
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const text = pm.response.text();",
+          "pm.test('no Prisma/SQL/secret leak', () => {",
+          "  pm.expect(text).to.not.match(/PrismaClient|column .* does not exist|SELECT |INSERT |UPDATE /i);",
+          "  pm.expect(text).to.not.include('passwordHash');",
+          "  pm.expect(text).to.not.include('refreshToken');",
+          "  pm.expect(text).to.not.include('JWT_SECRET');",
+          "  pm.expect(text).to.not.include('DATABASE_URL');",
+          "  pm.expect(text).to.not.include('STRIPE_SECRET');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1) GET /v1/admin/settings",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/settings"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('values + defaults + schema present', () => {",
+              "  pm.expect(body.values).to.be.an('object');",
+              "  pm.expect(body.defaults).to.be.an('object');",
+              "  pm.expect(body.schema).to.be.an('array');",
+              "});",
+              "pm.test('whitelisted keys present', () => {",
+              "  for (const k of ['platform_fee_bps','default_currency','support_email','feature_show_hourly_rate']) {",
+              "    pm.expect(body.values).to.have.property(k);",
+              "    pm.expect(body.defaults).to.have.property(k);",
+              "  }",
+              "});",
+              "pm.test('lastUpdatedAt is string|null', () => {",
+              "  pm.expect(body.lastUpdatedAt === null || typeof body.lastUpdatedAt === 'string').to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2) PATCH /v1/admin/settings (valid body)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Client-Kind", "value": "mobile" }
+        ],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/settings",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"values\": {\n    \"platform_fee_bps\": 1500,\n    \"feature_show_hourly_rate\": true\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('values echo the new write', () => {",
+              "  pm.expect(body.values.platform_fee_bps).to.eql(1500);",
+              "  pm.expect(body.values.feature_show_hourly_rate).to.eql(true);",
+              "});",
+              "pm.test('changedKeys is an array', () => pm.expect(body.changedKeys).to.be.an('array'));",
+              "pm.test('lastUpdatedAt is a string after a write', () => pm.expect(body.lastUpdatedAt).to.be.a('string'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3) PATCH /v1/admin/settings (invalid body — out of range)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Client-Kind", "value": "mobile" }
+        ],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/settings",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"values\": {\n    \"platform_fee_bps\": 99999\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 400', () => pm.response.to.have.status(400));",
+              "pm.test('VALIDATION_ERROR code', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3b) PATCH /v1/admin/settings (invalid body — unknown key)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Client-Kind", "value": "mobile" }
+        ],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/settings",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"values\": {\n    \"JWT_SECRET\": \"pwned\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 400 (whitelist rejects unknown key)', () => pm.response.to.have.status(400));",
+              "pm.test('attempt did not echo the secret value', () => {",
+              "  pm.expect(pm.response.text()).to.not.include('pwned');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4) GET /v1/admin/settings (customer token → 403)",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+        },
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/settings"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 403', () => pm.response.to.have.status(403));",
+              "pm.test('FORBIDDEN code', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5) GET /v1/admin/settings (no token → 401)",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/settings"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 401', () => pm.response.to.have.status(401));",
+              "pm.test('AUTH_INVALID_CREDENTIALS code', () => pm.expect(pm.response.json().error.code).to.eql('AUTH_INVALID_CREDENTIALS'));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

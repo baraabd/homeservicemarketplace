@@ -6,13 +6,15 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Put,
   UseGuards,
 } from '@nestjs/common';
 import type {
   AdminSettingValue,
-  ListSettingsResponse,
+  AdminSettingsBulkResponse,
   SettingMutationResponse,
+  UpdateAdminSettingsResponse,
   UpsertSettingRequest,
 } from '@homeservicemarketplace/contracts';
 
@@ -23,17 +25,39 @@ import type { AuthenticatedUser } from '../../iam/authentication/types/authentic
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import { AdminSettingsService } from './admin-settings.service';
+import { UpdateAdminSettingsDto } from './dto/update-admin-settings.dto';
 
+// /v1/admin/settings — Sprint 6.5 refined.
+//
+// Two surfaces:
+//   • bulk (`GET /` + `PATCH /`)              — canonical UI surface
+//   • keyed (`GET /:key`, `PUT /:key`, `DELETE /:key`) — legacy
+//     ad-hoc surface
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 @Controller({ path: 'admin/settings', version: '1' })
 export class AdminSettingsController {
   constructor(private readonly settings: AdminSettingsService) {}
 
+  // Sprint 6.5 — canonical bulk read. Returns the whitelisted
+  // values + their defaults + the schema describing each field's
+  // editor + the timestamp of the most recent mutation.
   @Get()
   @HttpCode(HttpStatus.OK)
-  list(): Promise<ListSettingsResponse> {
-    return this.settings.list();
+  bulk(): Promise<AdminSettingsBulkResponse> {
+    return this.settings.getBulk();
+  }
+
+  // Sprint 6.5 — canonical bulk PATCH. Only whitelisted keys are
+  // accepted; per-key type validation runs server-side.
+  @UseGuards(CsrfGuard)
+  @Patch()
+  @HttpCode(HttpStatus.OK)
+  update(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Body() body: UpdateAdminSettingsDto,
+  ): Promise<UpdateAdminSettingsResponse> {
+    return this.settings.updateBulk(admin.id, body.values);
   }
 
   @Get(':key')
