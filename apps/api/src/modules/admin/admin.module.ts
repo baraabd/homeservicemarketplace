@@ -13,6 +13,9 @@ import { AdminAnalyticsController } from './analytics/admin-analytics.controller
 import { AdminAnalyticsService } from './analytics/admin-analytics.service';
 import { AdminDisputesController } from './disputes/admin-disputes.controller';
 import { AdminDisputesService } from './disputes/admin-disputes.service';
+import { AdminAuditController } from './audit/admin-audit.controller';
+import { AdminSettingsController } from './settings/admin-settings.controller';
+import { AdminSettingsService } from './settings/admin-settings.service';
 
 // Admin module. Hosts every admin-side surface so the
 // AuthenticationModule / AuthorizationModule / AdminAuditService
@@ -40,6 +43,8 @@ import { AdminDisputesService } from './disputes/admin-disputes.service';
     AdminVerificationController,
     AdminDisputesController,
     AdminAnalyticsController,
+    AdminSettingsController,
+    AdminAuditController,
   ],
   providers: [
     AdminAuditService,
@@ -47,6 +52,7 @@ import { AdminDisputesService } from './disputes/admin-disputes.service';
     AdminVerificationService,
     AdminDisputesService,
     AdminAnalyticsService,
+    AdminSettingsService,
   ],
   exports: [AdminAuditService],
 })

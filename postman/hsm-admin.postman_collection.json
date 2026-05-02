@@ -414,6 +414,134 @@
       ]
     },
     {
+      "name": "60 — Settings (Sprint 6.5)",
+      "item": [
+        {
+          "name": "PUT /v1/admin/settings/:key",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/settings/commission-percent",
+            "body": { "mode": "raw", "raw": "{\n  \"value\": 15\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('echoes value back', () => pm.expect(pm.response.json().setting.value).to.eql(15));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/settings",
+          "request": { "method": "GET", "url": "{{apiUrl}}/{{apiVersion}}/admin/settings" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('items array', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/settings/:key",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/settings/commission-percent"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /v1/admin/settings/:key",
+          "request": {
+            "method": "DELETE",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/settings/commission-percent"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204 or 404', () => pm.expect([204, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "70 — Audit (Sprint 6.6)",
+      "item": [
+        {
+          "name": "GET /v1/admin/audit",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/audit?limit=50"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.expect(b.items).to.be.an('array');",
+                  "pm.expect(b).to.have.property('nextCursor');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/audit?type=ADMIN_USER_SUSPENDED",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/audit?type=ADMIN_USER_SUSPENDED"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('all rows have type=ADMIN_USER_SUSPENDED', () => {",
+                  "    pm.expect(b.items.every(function(i){return i.type==='ADMIN_USER_SUSPENDED';})).to.eql(true);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "10 — Health (Sprint 6.0)",
       "item": [
         {

@@ -20,6 +20,7 @@ import { ServiceRequestRepository } from './requests/service-request.repository'
 import { ServiceRequestEventRepository } from './requests/service-request-event.repository';
 import { ServiceCategoryRepository } from './services/service-category.repository';
 import { DisputeRepository } from './disputes/dispute.repository';
+import { PlatformSettingRepository } from './settings/platform-setting.repository';
 
 @Global()
 @Module({
@@ -44,6 +45,7 @@ import { DisputeRepository } from './disputes/dispute.repository';
     MessageRepository,
     UserProfileRepository,
     DisputeRepository,
+    PlatformSettingRepository,
   ],
   exports: [
     UserRepository,
@@ -66,6 +68,7 @@ import { DisputeRepository } from './disputes/dispute.repository';
     MessageRepository,
     UserProfileRepository,
     DisputeRepository,
+    PlatformSettingRepository,
   ],
 })
 export class PersistenceModule {}
