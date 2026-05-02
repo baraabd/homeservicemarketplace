@@ -110,7 +110,23 @@ describe('NotificationsService', () => {
     const m = makeMocks({ notifications: { countUnread: jest.fn().mockResolvedValue(7) } });
     const out = await makeService(m).unreadCount('user-1');
     expect(out).toEqual({ count: 7 });
-    expect(m.notifications.countUnread).toHaveBeenCalledWith('user-1');
+    expect(m.notifications.countUnread).toHaveBeenCalledWith('user-1', undefined);
+  });
+
+  it('unreadCount forwards experience=provider as the /provider/ deepLink prefix (Sprint 5.5)', async () => {
+    const m = makeMocks({ notifications: { countUnread: jest.fn().mockResolvedValue(2) } });
+    await makeService(m).unreadCount('user-1', 'provider');
+    expect(m.notifications.countUnread).toHaveBeenCalledWith('user-1', '/provider/');
+  });
+
+  it('list forwards experience=seeker as the /home/ deepLink prefix (Sprint 5.5)', async () => {
+    const m = makeMocks({
+      notifications: { listForUser: jest.fn().mockResolvedValue([]) },
+    });
+    await makeService(m).list('user-1', { experience: 'seeker' });
+    expect(m.notifications.listForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ deepLinkPrefix: '/home/' }),
+    );
   });
 
   // ─── markRead ──────────────────────────────────────────────────────────
@@ -163,7 +179,7 @@ describe('NotificationsService', () => {
       });
       const out = await makeService(m).markAllRead('user-1');
       expect(out).toEqual({ updatedCount: 4 });
-      expect(m.notifications.markAllReadOwned).toHaveBeenCalledWith('user-1');
+      expect(m.notifications.markAllReadOwned).toHaveBeenCalledWith('user-1', undefined);
     });
 
     it('is idempotent (returns 0 when nothing was unread)', async () => {
@@ -172,6 +188,14 @@ describe('NotificationsService', () => {
       });
       const out = await makeService(m).markAllRead('user-1');
       expect(out).toEqual({ updatedCount: 0 });
+    });
+
+    it('experience=provider only flips /provider/ rows; seeker badge unaffected (Sprint 5.5)', async () => {
+      const m = makeMocks({
+        notifications: { markAllReadOwned: jest.fn().mockResolvedValue({ count: 2 }) },
+      });
+      await makeService(m).markAllRead('user-1', 'provider');
+      expect(m.notifications.markAllReadOwned).toHaveBeenCalledWith('user-1', '/provider/');
     });
   });
 

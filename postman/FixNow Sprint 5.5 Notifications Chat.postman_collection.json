@@ -1,0 +1,243 @@
+{
+  "info": {
+    "name": "FixNow Sprint 5.5 Notifications Chat",
+    "description": "Provider notifications + chat REST + polling. Run order: list notifications -> unread count -> mark one read -> mark all read -> conversations list -> messages list -> send message -> empty body 400 -> customer-token 403. Bearer auth uses {{providerToken}}; the 9th request swaps to {{customerToken}}. The `experience=provider` query filters out seeker / admin notifications via the deepLink prefix.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fixnow-sprint-5-5-notifications-chat"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{providerToken}}" }]
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const text = pm.response.text();",
+          "pm.test('No sensitive fields leaked', function () {",
+          "  pm.expect(text).to.not.include('passwordHash');",
+          "  pm.expect(text).to.not.include('refreshToken');",
+          "  pm.expect(text).to.not.include('JWT_SECRET');",
+          "  pm.expect(text).to.not.include('DATABASE_URL');",
+          "  pm.expect(text).to.not.match(/PrismaClient|column .* does not exist/i);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1) GET /v1/me/notifications?experience=provider",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/me/notifications?experience=provider"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('items array exists', () => pm.expect(body.items).to.be.an('array'));",
+              "pm.test('only provider experience (deepLink starts with /provider/)', () => {",
+              "  for (const it of body.items) {",
+              "    if (it.deepLink) pm.expect(it.deepLink.startsWith('/provider/')).to.eql(true);",
+              "  }",
+              "});",
+              "if (body.items && body.items.length > 0) {",
+              "  pm.environment.set('notificationId', body.items[0].id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2) GET /v1/me/notifications/unread-count?experience=provider",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/me/notifications/unread-count?experience=provider"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('count is number', () => pm.expect(pm.response.json().count).to.be.a('number'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3) POST /v1/me/notifications/:id/read",
+      "request": {
+        "method": "POST",
+        "url": "{{apiUrl}}/{{apiVersion}}/me/notifications/{{notificationId}}/read"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 or 404 (placeholder)', () => pm.expect([200, 404]).to.include(pm.response.code));",
+              "if (pm.response.code === 200) {",
+              "  pm.test('readAt is set on the response', () => {",
+              "    const n = pm.response.json().notification;",
+              "    pm.expect(n.readAt).to.not.be.null;",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4) POST /v1/me/notifications/read-all?experience=provider",
+      "request": {
+        "method": "POST",
+        "url": "{{apiUrl}}/{{apiVersion}}/me/notifications/read-all?experience=provider"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('updatedCount is a number', () => pm.expect(pm.response.json().updatedCount).to.be.a('number'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5) GET /v1/provider/conversations",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/conversations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('items array exists', () => pm.expect(body.items).to.be.an('array'));",
+              "pm.test('nextCursor present (string or null)', () => pm.expect(body).to.have.property('nextCursor'));",
+              "if (body.items && body.items.length > 0) {",
+              "  pm.environment.set('conversationId', body.items[0].id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6) GET /v1/provider/conversations/:id/messages",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/conversations/{{conversationId}}/messages"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 or 404 (placeholder)', () => pm.expect([200, 404]).to.include(pm.response.code));",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test('items array exists', () => pm.expect(body.items).to.be.an('array'));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7) POST /v1/provider/conversations/:id/messages",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/conversations/{{conversationId}}/messages",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"body\": \"Hello, I am on my way.\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 201 or 404 (placeholder)', () => pm.expect([201, 404]).to.include(pm.response.code));",
+              "if (pm.response.code === 201) {",
+              "  const m = pm.response.json().message;",
+              "  pm.test('message id exists', () => pm.expect(m.id).to.be.a('string'));",
+              "  pm.test('body matches', () => pm.expect(m.body).to.eql('Hello, I am on my way.'));",
+              "  pm.test('senderRole = PROVIDER', () => pm.expect(m.senderRole).to.eql('PROVIDER'));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8) Negative — empty message body rejected",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/conversations/{{conversationId}}/messages",
+        "body": { "mode": "raw", "raw": "{\n  \"body\": \"\"\n}" }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 400 or 422', () => pm.expect([400, 422]).to.include(pm.response.code));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9) Negative — customer token cannot list provider conversations",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+        },
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/conversations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 401 or 403', () => pm.expect([401, 403]).to.include(pm.response.code));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

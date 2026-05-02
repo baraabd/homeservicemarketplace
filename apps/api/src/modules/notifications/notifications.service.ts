@@ -47,6 +47,7 @@ export class NotificationsService {
     const rows = await this.notifications.listForUser({
       userId,
       unread: query.unread,
+      deepLinkPrefix: experienceToDeepLinkPrefix(query.experience),
       take: take + 1,
       cursor: query.cursor,
     });
@@ -56,8 +57,14 @@ export class NotificationsService {
   }
 
   // ─── unreadCount ───────────────────────────────────────────────────────────
-  async unreadCount(userId: string): Promise<NotificationUnreadCountResponse> {
-    const count = await this.notifications.countUnread(userId);
+  async unreadCount(
+    userId: string,
+    experience?: ListNotificationsQuery['experience'],
+  ): Promise<NotificationUnreadCountResponse> {
+    const count = await this.notifications.countUnread(
+      userId,
+      experienceToDeepLinkPrefix(experience),
+    );
     return { count };
   }
 
@@ -90,8 +97,18 @@ export class NotificationsService {
   }
 
   // ─── markAllRead ───────────────────────────────────────────────────────────
-  async markAllRead(userId: string): Promise<MarkAllNotificationsReadResponse> {
-    const result = await this.notifications.markAllReadOwned(userId);
+  async markAllRead(
+    userId: string,
+    experience?: ListNotificationsQuery['experience'],
+  ): Promise<MarkAllNotificationsReadResponse> {
+    // Sprint 5.5: when an experience filter is supplied, only flip
+    // notifications whose deepLink lives under that experience's
+    // tree. The provider drawer's "mark all read" must NOT silence
+    // the seeker's unread badge.
+    const result = await this.notifications.markAllReadOwned(
+      userId,
+      experienceToDeepLinkPrefix(experience),
+    );
     return { updatedCount: result.count };
   }
 
@@ -136,6 +153,23 @@ export class NotificationsService {
     this.realtime.publishFor(input.userId, 'notification.created', toSummary(created));
     return created;
   }
+}
+
+// ─── helpers ──────────────────────────────────────────────────────────────
+// Sprint 5.5: map the wire `experience` query value to the
+// deepLink prefix that scopes a notification to that user-
+// experience. Every notification creator across the codebase
+// already encodes the target experience in its deepLink — the
+// seeker side uses `/home/...`, the provider side `/provider/...`,
+// the admin side `/admin/...` — so we filter by `startsWith` and
+// avoid a schema column.
+function experienceToDeepLinkPrefix(
+  experience: ListNotificationsQuery['experience'],
+): string | undefined {
+  if (experience === 'seeker') return '/home/';
+  if (experience === 'provider') return '/provider/';
+  if (experience === 'admin') return '/admin/';
+  return undefined;
 }
 
 // ─── DTO mapper ──────────────────────────────────────────────────────────────
