@@ -74,19 +74,22 @@ export class AdminVerificationService {
   async reject(
     adminUserId: string,
     providerProfileId: string,
-    reason: string,
+    reason: string | null | undefined,
   ): Promise<AdminProviderMutationResponse> {
+    const reasonText = reason && reason.length > 0 ? reason : null;
     return this.transition({
       adminUserId,
       providerProfileId,
       from: ['DRAFT', 'PENDING_REVIEW', 'ACTIVE', 'SUSPENDED'] as ProviderProfileStatus[],
       to: 'REJECTED' as ProviderProfileStatus,
       auditType: 'ADMIN_PROVIDER_REJECTED' as AuditEventType,
-      auditMetadata: { reason },
+      auditMetadata: reasonText ? { reason: reasonText } : {},
       notification: {
         type: NotificationType.SYSTEM,
         title: 'Provider account rejected',
-        body: `Your provider application was rejected: ${reason}`,
+        body: reasonText
+          ? `Your provider application was rejected: ${reasonText}`
+          : 'Your provider application was rejected.',
       },
       conflictMessage: 'Provider is already rejected.',
     });
@@ -95,21 +98,54 @@ export class AdminVerificationService {
   async suspend(
     adminUserId: string,
     providerProfileId: string,
-    reason: string,
+    reason: string | null | undefined,
   ): Promise<AdminProviderMutationResponse> {
+    const reasonText = reason && reason.length > 0 ? reason : null;
     return this.transition({
       adminUserId,
       providerProfileId,
       from: ['ACTIVE'] as ProviderProfileStatus[],
       to: 'SUSPENDED' as ProviderProfileStatus,
       auditType: 'ADMIN_PROVIDER_SUSPENDED' as AuditEventType,
-      auditMetadata: { reason },
+      auditMetadata: reasonText ? { reason: reasonText } : {},
       notification: {
         type: NotificationType.SYSTEM,
         title: 'Provider account suspended',
-        body: `Your provider account was suspended: ${reason}`,
+        body: reasonText
+          ? `Your provider account was suspended: ${reasonText}`
+          : 'Your provider account was suspended.',
       },
       conflictMessage: 'Only an ACTIVE provider can be suspended.',
+    });
+  }
+
+  // Sprint 5.1.4: lift the suspension. Mirrors `approve` but is a
+  // distinct verb / audit type so the operator timeline can tell
+  // "was approved for the first time" apart from "had their
+  // suspension lifted". Conditional on status === SUSPENDED;
+  // anything else returns 409.
+  async reactivate(
+    adminUserId: string,
+    providerProfileId: string,
+  ): Promise<AdminProviderMutationResponse> {
+    return this.transition({
+      adminUserId,
+      providerProfileId,
+      from: ['SUSPENDED'] as ProviderProfileStatus[],
+      to: 'ACTIVE' as ProviderProfileStatus,
+      // Re-uses the APPROVED audit type — the metadata's
+      // previousStatus = SUSPENDED already disambiguates this from
+      // a fresh approval, and adding a new enum value would
+      // require another forward-only migration. Documented here so
+      // a future audit-event split has clear motivation.
+      auditType: 'ADMIN_PROVIDER_APPROVED' as AuditEventType,
+      auditMetadata: { reactivate: true },
+      notification: {
+        type: NotificationType.SYSTEM,
+        title: 'Provider account reactivated',
+        body: 'Your provider account is active again.',
+      },
+      conflictMessage: 'Only a SUSPENDED provider can be reactivated.',
     });
   }
 

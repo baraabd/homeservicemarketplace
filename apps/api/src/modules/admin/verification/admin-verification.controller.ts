@@ -79,4 +79,16 @@ export class AdminVerificationController {
   ): Promise<AdminProviderMutationResponse> {
     return this.verification.suspend(admin.id, providerProfileId, body.reason);
   }
+
+  // Sprint 5.1.4: lift a suspension. Body-less; conditional on
+  // status === SUSPENDED, anything else returns 409.
+  @UseGuards(CsrfGuard)
+  @Post(':providerProfileId/reactivate')
+  @HttpCode(HttpStatus.OK)
+  reactivate(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('providerProfileId') providerProfileId: string,
+  ): Promise<AdminProviderMutationResponse> {
+    return this.verification.reactivate(admin.id, providerProfileId);
+  }
 }

@@ -133,6 +133,62 @@ describe('AdminVerificationService', () => {
     );
   });
 
+  it('suspend: empty reason omits metadata.reason and uses generic notification (Sprint 5.1.4)', async () => {
+    const m = makeMocks(makeProfile({ status: 'ACTIVE' }));
+    await makeService(m).suspend('admin-1', 'pp-1', undefined);
+    const auditCall = (m.audit.record as jest.Mock).mock.calls[0][0];
+    expect(auditCall.metadata).not.toHaveProperty('reason');
+    const notifyCall = (m.notifications.createForUser as jest.Mock).mock.calls[0][0];
+    expect(notifyCall.body).toBe('Your provider account was suspended.');
+  });
+
+  it('reject: empty reason omits metadata.reason and uses generic notification (Sprint 5.1.4)', async () => {
+    const m = makeMocks(makeProfile({ status: 'PENDING_REVIEW' }));
+    await makeService(m).reject('admin-1', 'pp-1', undefined);
+    const auditCall = (m.audit.record as jest.Mock).mock.calls[0][0];
+    expect(auditCall.metadata).not.toHaveProperty('reason');
+    const notifyCall = (m.notifications.createForUser as jest.Mock).mock.calls[0][0];
+    expect(notifyCall.body).toBe('Your provider application was rejected.');
+  });
+
+  it('reactivate: SUSPENDED → ACTIVE writes audit + notifies (Sprint 5.1.4)', async () => {
+    const m = makeMocks(makeProfile({ status: 'SUSPENDED' }));
+    await makeService(m).reactivate('admin-1', 'pp-1');
+    expect(m.providers.updateStatusById).toHaveBeenCalledWith('pp-1', 'ACTIVE', undefined);
+    expect(m.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'ADMIN_PROVIDER_APPROVED',
+        metadata: expect.objectContaining({
+          reactivate: true,
+          previousStatus: 'SUSPENDED',
+          newStatus: 'ACTIVE',
+        }),
+      }),
+      undefined,
+    );
+    expect(m.notifications.createForUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-prov-1',
+        title: 'Provider account reactivated',
+      }),
+      undefined,
+    );
+  });
+
+  it('reactivate: 409 if not currently SUSPENDED', async () => {
+    const m = makeMocks(makeProfile({ status: 'ACTIVE' }));
+    await expect(makeService(m).reactivate('admin-1', 'pp-1')).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it('reactivate: 404 if profile is missing', async () => {
+    const m = makeMocks(null);
+    await expect(makeService(m).reactivate('admin-1', 'pp-missing')).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
   it('list returns admin summary including userId + email', async () => {
     const m = makeMocks(makeProfile());
     const out = await makeService(m).list({});

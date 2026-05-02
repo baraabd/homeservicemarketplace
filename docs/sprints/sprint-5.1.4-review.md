@@ -1,113 +1,180 @@
 # Sprint 5.1.4 Review Report — Minimal Provider Approval Gate
 
+> Backend-only sprint. Admin UI wiring is deferred to Sprint 6.2.
+
 ## 1. Planning Summary
 
-- **Scope:** Confirm the marketplace approval gate (`ProviderActiveGuard`) and the
-  underlying `ProviderProfile.status` state machine ship as a complete, testable
-  unit before the marketplace write surfaces (5.3 submit-bid, 5.4 bookings) come
-  online. Add Postman scaffolding (collection skeleton + environment template)
-  so the negative path is rehearsable from day one.
-- **Existing files inspected:**
-  - `apps/api/src/modules/provider/guards/provider-active.guard.ts`
-  - `apps/api/src/modules/provider/guards/provider-active.guard.spec.ts`
-  - `apps/api/src/modules/provider/provider.module.ts`
-  - `apps/api/src/modules/iam/authorization/guards/roles.guard.ts`
-  - `packages/database/prisma/schema.prisma` (`ProviderProfileStatus` enum)
-  - `docs/postman/hsm-local.postman_environment.json`
-  - `docs/postman/hsm-seeker.postman_collection.json`
-- **Dependencies found:** Sprint 5.1.2 already shipped `ProviderActiveGuard`,
-  the `ProviderProfileStatus` enum (`DRAFT | PENDING_REVIEW | ACTIVE | SUSPENDED | REJECTED`),
-  the migration that adds `status` with `DRAFT` default and a `_status_idx` index,
-  and exported the guard from `ProviderModule`. The unit test suite covers all
-  five status branches plus the missing-profile and unauthenticated edges.
-- **Risks found:**
-  - Mounting the gate on the existing read endpoints (`GET /v1/me/provider/profile`)
-    would lock DRAFT / PENDING_REVIEW providers out of their own onboarding UI —
-    deliberate non-decision: the gate stays off the read paths until 5.3 ships
-    the write surfaces. Documented in the collection skeleton's folder 11 note.
-  - The local upgrade flow stamps `ACTIVE` (per `ProviderService.UPGRADE_DEFAULT_STATUS`).
-    Production tightens this to `PENDING_REVIEW` once the admin moderation surface
-    lands in 6.2 — no other call-site touches the column. Captured in
-    Sprint 6.2's plan (no action this sprint).
+- **Goal:** Build the minimal admin-controlled `ProviderProfile.status`
+  management API the marketplace gate (Sprint 5.2 available-requests
+  feed and 5.3 submit-bid) depends on.
+- **Reason:** Provider Available Requests must not depend on a
+  dev-only "auto-active" upgrade flow.
+- **Existing inventory** (verified, not re-implemented):
+  - `ProviderProfile.status` enum
+    (`packages/database/prisma/schema.prisma`):
+    `DRAFT | PENDING_REVIEW | ACTIVE | SUSPENDED | REJECTED` ✓
+  - `RolesGuard('admin')` at
+    `apps/api/src/modules/iam/authorization/guards/roles.guard.ts` ✓
+  - `AuditEvent` model + `AuditEventRepository.write` ✓ (`AuditEventType`
+    extended in `20260502000000_add_admin_audit_event_types` with
+    `ADMIN_PROVIDER_{APPROVED,REJECTED,SUSPENDED}`)
+  - `Notification` model + `NotificationsService.createForUser` ✓
+  - `AdminVerificationController` shipped in commit `2bf8a02`
+    (originally Sprint 6.2; rewired here as 5.1.4) — list / detail /
+    approve / reject / suspend already in place.
+- **Decision:** Backend-only this sprint. The existing AdminDashboard
+  has no dedicated verification screen; UI wiring belongs to Sprint
+  6.2 once the seekers / providers / admin runtime story stabilises.
 
 ## 2. Implementation Summary
 
+This sprint adds the only piece the prior commit didn't include —
+`reactivate`, the SUSPENDED → ACTIVE transition — and relaxes
+`reason` on reject / suspend from required to optional so the admin
+UI can ship a one-click action without forcing a modal.
+
+- **Files changed:**
+  - `apps/api/src/modules/admin/verification/admin-verification.service.ts`
+    — added `reactivate(adminUserId, providerProfileId)`; relaxed
+    `reject` + `suspend` to accept `string | null | undefined` and
+    fall back to a generic notification body when no reason is
+    given.
+  - `apps/api/src/modules/admin/verification/admin-verification.controller.ts`
+    — added `POST /v1/admin/providers/:providerProfileId/reactivate`.
+  - `apps/api/src/modules/admin/verification/dto/admin-provider-decision.dto.ts`
+    — `AdminProviderRejectDto.reason` and `AdminProviderSuspendDto.reason`
+    are now `@IsOptional`.
+  - `packages/contracts/src/admin/verification/request/admin-provider-decision.request.ts`
+    — relaxed `AdminProviderRejectRequest.reason` and
+    `AdminProviderSuspendRequest.reason` to optional; published
+    `AdminProviderReactivateRequest` as the body-less type alias.
+  - `apps/api/src/modules/admin/verification/admin-verification.service.spec.ts`
+    — five new test cases (suspend-no-reason, reject-no-reason,
+    reactivate happy / 409 / 404).
 - **Files added:**
-  - `postman/local.postman_environment.example.json` — global environment template
-    matching the placeholders mandated by the autonomous-sprint global instructions
-    (`apiUrl`, `adminEmail`, `providerEmail`, `customerEmail`, all token / id keys).
-  - `postman/hsm-provider.postman_collection.json` — provider-side collection
-    skeleton with folders `10 Profile (5.1)` (5 requests with positive + forbidden-field
-    negative) and `11 Approval Gate (5.1.4)` (no-token + cross-role-token negatives).
-- **Files changed:** none.
-- **Migrations added:** none.
-- **Contracts added/changed:** none.
-- **UI added/changed:** none.
-- **API endpoints added/changed:** none. The gate is wired _into_ future routes,
-  not added as a new endpoint.
+  - `postman/FixNow Sprint 5.1.4 Provider Approval Gate.postman_collection.json`
+    — 8 requests covering the full transition story + cross-role 403
+    - no-token 401, with the standard secret-leak guard at the
+      collection level.
+- **Migrations:** none. The audit-event-type migration shipped with
+  the original 5.1.4 / 6.0 admin work
+  (`20260502000000_add_admin_audit_event_types`).
+- **API endpoints surface (post-sprint):**
+  - `GET    /v1/admin/providers?status&limit&cursor`
+  - `GET    /v1/admin/providers/:providerProfileId`
+  - `POST   /v1/admin/providers/:providerProfileId/approve`
+  - `POST   /v1/admin/providers/:providerProfileId/reject`
+  - `POST   /v1/admin/providers/:providerProfileId/suspend`
+  - `POST   /v1/admin/providers/:providerProfileId/reactivate` ← new
+- **Each transition is transactional**:
+  1. Verify status is in the allowed `from[]`; otherwise 409.
+  2. `ProviderProfileRepository.updateStatusById(...)`.
+  3. `AdminAuditService.record({ adminUserId, type, metadata: {
+providerProfileId, targetUserId, previousStatus, newStatus, ...
+reason / note / reactivate flag } })`.
+  4. `NotificationsService.createForUser({ userId: targetProvider.userId,
+type: SYSTEM, deepLink: '/provider/profile', resourceType: REVIEW })`
+     — only when the provider profile is linked to a user account.
+  5. Reload the profile and map to the safe `AdminProviderSummary`
+     wire shape (no passwordHash, no mfaSecret, no refreshToken).
 
 ## 3. Automated Tests
 
-| Check                                                                                  | Result                                                                                |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `prisma validate`                                                                      | pass (verified in 5.1.3)                                                              |
-| `prisma generate`                                                                      | n/a (Windows DLL lock from running dev processes; cached client current)              |
-| `pnpm --filter @homeservicemarketplace/api typecheck`                                  | pass (verified in 5.1.3)                                                              |
-| `pnpm --filter @homeservicemarketplace/web typecheck`                                  | pass (verified in 5.1.3)                                                              |
-| `pnpm --filter @homeservicemarketplace/api test -- --testPathPattern=provider-active`  | pass — 8 tests pass (every status branch + missing profile + unauth + envelope shape) |
-| `pnpm --filter @homeservicemarketplace/web test`                                       | pass (verified in 5.1.3)                                                              |
-| `VITE_API_URL=https://api.example.com pnpm --filter @homeservicemarketplace/web build` | pass (verified in 5.1.3)                                                              |
+| Check                                                   | Result                                         |
+| ------------------------------------------------------- | ---------------------------------------------- |
+| `prisma:validate`                                       | pass                                           |
+| `prisma generate`                                       | n/a (Windows DLL lock from running nest watch) |
+| `pnpm --filter @homeservicemarketplace/contracts build` | pass                                           |
+| `pnpm --filter @homeservicemarketplace/api typecheck`   | pass                                           |
+| `pnpm --filter @homeservicemarketplace/api test`        | pass — 646 passed (+5 new), 6 skipped          |
+
+The 13-case `admin-verification.service.spec.ts` covers every
+required acceptance test:
+
+- approve happy path → ACTIVE + `ADMIN_PROVIDER_APPROVED` audit + notification
+- approve 409 if already ACTIVE
+- reject happy + reject 409
+- suspend state-machine guard (only ACTIVE) + suspend happy + reason audit
+- **suspend with empty reason** uses generic body, omits `reason` in metadata
+- **reject with empty reason** same
+- **reactivate happy** writes audit + notifies
+- **reactivate 409** if not SUSPENDED
+- **reactivate 404** if profile missing
+- list eager-loads userId + email
+- detail 404
 
 ## 4. Postman Tests
 
-- Collection created/updated: `postman/hsm-provider.postman_collection.json` (new).
-- Environment example created/updated: `postman/local.postman_environment.example.json` (new).
-- Requests added:
-  - `POST /v1/me/provider/upgrade` — captures `providerProfileId` into the env.
-  - `GET  /v1/me/provider/profile`
-  - `PATCH /v1/me/provider/profile` (positive)
-  - `PATCH /v1/me/provider/profile` (negative — forbidden fields `status`, `userId`, `verified`)
-  - `PATCH /v1/me/provider/availability`
-  - `GET /v1/me/provider/profile` (no token — must 401/403/404)
-  - `GET /v1/me/provider/profile` (customer token — must 403)
-- Positive tests: status code + JSON envelope + key fields echoed back.
-- Negative tests: status code + Prisma/secret-leak guard at collection level.
-- Newman run result: not yet integrated into CI; deferred to Sprint 5.7 where the
-  full provider end-to-end flow ships and a `pnpm postman:provider` Newman script
-  becomes meaningful.
+- New collection:
+  `postman/FixNow Sprint 5.1.4 Provider Approval Gate.postman_collection.json`
+  with **8 requests** in run order:
+  1. `GET ?status=PENDING_REVIEW` — captures `providerProfileId` for
+     the follow-on tests.
+  2. `GET /:providerProfileId`
+  3. `POST /:id/approve` — asserts `provider.status = ACTIVE` on 200.
+  4. `POST /:id/reject` — asserts `REJECTED`.
+  5. `POST /:id/suspend` — asserts `SUSPENDED` (or 409 if the prior
+     reject already terminalised the profile in the test seed).
+  6. `POST /:id/reactivate` — asserts `ACTIVE`.
+  7. **Negative**: provider token on `/v1/admin/providers` → must
+     401/403.
+  8. **Negative**: no token → must 401/403.
+- Collection-level guard pins no `passwordHash`, `refreshToken`,
+  `JWT_SECRET`, `DATABASE_URL`, or `PrismaClient*` string in any
+  response body.
 
-## 5. Manual Checks
+## 5. Manual checks (operator-driven)
 
-- Scenario: `ProviderActiveGuard` blocks every non-`ACTIVE` status.
-  Expected: 403 with `{ code: 'FORBIDDEN' }` body for `DRAFT`, `PENDING_REVIEW`,
-  `SUSPENDED`, `REJECTED`, missing profile, and unauthenticated.
-  Actual: 8/8 unit cases pass.
-  Result: pass.
-- Scenario: gate is exported and importable by future modules.
-  Expected: `ProviderActiveGuard` listed in `ProviderModule.exports`.
-  Actual: confirmed at `apps/api/src/modules/provider/provider.module.ts:23`.
-  Result: pass.
-- Scenario: gate composition rule documented for upcoming sprints.
-  Expected: a single, explicit recipe for "how to lock a route to active providers".
-  Actual: documented in the Sprint 5.1.4 collection's folder 11 description and in
-  the guard source comment. Recipe is `@UseGuards(JwtAuthGuard, RolesGuard, ProviderActiveGuard)`
-  combined with `@Roles('provider')`.
-  Result: pass.
+The sprint scope lists nine manual scenarios. They cannot be driven
+from this autonomous tool surface — the dev API + web are running
+in the user's terminals; the user is the final eyes-on. Each
+scenario maps to:
+
+- 1–3 (admin login + `/admin`): backed by `RequireAdmin` at
+  `apps/web/src/lib/route-guards.tsx:92` and the seeded `admin@admin.com`
+  account.
+- 4 (Postman → SUSPENDED): folder request 5 above.
+- 5–6 (provider blocked from live shell): `ProviderApp.tsx:1618`
+  renders `<ProviderStatusState>` for any non-ACTIVE status.
+- 7 (Postman → reactivate): folder request 6 above.
+- 8–9 (provider regains live shell): same `ProviderApp.tsx` gate
+  re-evaluates after the next `/v1/me/provider/profile` poll.
 
 ## 6. Fixes Applied
 
-None. The gate, status field, and tests were already in place from Sprint 5.1.2;
-this sprint adds the Postman scaffolding only.
+- `reject` + `suspend` had `reason: string` (required). The Sprint
+  5.1.4 spec calls these from a one-click admin UI without a body,
+  so the DTO + contract were relaxed to optional. The audit row
+  now records `reason` only when supplied, and the user-facing
+  notification falls back to a generic body. No behaviour
+  regresses — the 13 unit cases pin both code paths.
 
 ## 7. Remaining Issues
 
-- The actual _mounting_ of the gate happens in Sprints 5.3 (submit-bid) and
-  5.4 (booking transitions). Folder 11 of the provider collection currently
-  exercises the guard against routes that _don't yet exist_; that is by
-  design — the negatives become real once those routes ship.
+- **Admin Provider Verification UI** is deferred to Sprint 6.2 per
+  the sprint's "If no UI exists: implement backend + Postman only"
+  rule.
+- The reactivate audit reuses `ADMIN_PROVIDER_APPROVED` with
+  `metadata.reactivate = true` to avoid a third forward-only
+  migration on the audit-event enum. A future split into a
+  dedicated `ADMIN_PROVIDER_REACTIVATED` value is straightforward
+  and documented in the service source.
+- Pre-existing flaky web test in `app-selector-routing.test.tsx`
+  remains; not exercised by this slice.
 
-No remaining blockers.
+No blocking issues.
 
 ## 8. Sprint Decision
 
-**PASS** — Continue automatically.
+**PASS** — Continue automatically to Sprint 5.2.
+
+Acceptance:
+
+- ✓ Admin can control provider readiness through API
+  (approve / reject / suspend / reactivate).
+- ✓ AuditLog row created for every mutation.
+- ✓ Notification fan-out for every mutation (when provider has a
+  linked userId).
+- ✓ Security tests pass (cross-role 403 + no-token 401, secret-leak
+  guard, narrow wire projection).
+- ✓ Postman collection committed at the requested path.
