@@ -138,6 +138,17 @@ export class ServiceRequestRepository {
     });
   }
 
+  // Plain non-ownership-scoped finder. Used on the provider side
+  // where the caller is NOT the seeker (submit-bid). Soft-deleted
+  // rows are still filtered out. Callers must enforce their own
+  // authorisation rule on the returned row.
+  findById(requestId: string, tx?: PrismaTx): Promise<ServiceRequestWithCategory | null> {
+    return this.db(tx).serviceRequest.findFirst({
+      where: { id: requestId, deletedAt: null },
+      include: { category: true },
+    });
+  }
+
   create(input: CreateServiceRequestInput, tx?: PrismaTx): Promise<ServiceRequestWithCategory> {
     return this.db(tx).serviceRequest.create({
       data: {

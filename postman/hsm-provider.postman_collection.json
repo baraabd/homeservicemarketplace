@@ -304,6 +304,167 @@
       ]
     },
     {
+      "name": "30 — Bids (Sprint 5.3)",
+      "item": [
+        {
+          "name": "POST /v1/me/provider/bids",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"amount\": 3500,\n  \"pricingType\": \"HOURLY\",\n  \"note\": \"Postman runtime check — I can be there in 20 minutes.\",\n  \"responseTimeMinutes\": 30\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Response is JSON', () => pm.response.to.be.json);",
+                  "const b = pm.response.json();",
+                  "pm.test('envelope: { bid: MyBidSummary }', () => {",
+                  "  pm.expect(b.bid.id).to.be.a('string');",
+                  "  pm.expect(b.bid.status).to.eql('PENDING');",
+                  "  pm.expect(b.bid.amount).to.eql(3500);",
+                  "  pm.expect(b.bid.request.id).to.eql(pm.environment.get('requestId'));",
+                  "});",
+                  "pm.test('does not leak seekerUserId', () => {",
+                  "  pm.expect(pm.response.text()).to.not.match(/seekerUserId/);",
+                  "});",
+                  "pm.environment.set('bidId', b.bid.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bids (negative — duplicate)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"amount\": 3500,\n  \"pricingType\": \"HOURLY\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 CONFLICT — one-active-bid invariant', () => pm.response.to.have.status(409));",
+                  "pm.test('No internal leak', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('PrismaClientKnownRequestError');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bids (negative — forbidden field smuggling)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"amount\": 1,\n  \"pricingType\": \"HOURLY\",\n  \"providerId\": \"injected\",\n  \"providerUserId\": \"injected\",\n  \"status\": \"ACCEPTED\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 — forbidNonWhitelisted rejects providerId/status injection', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/bids",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items array + nextCursor', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('row has MyBidSummary shape (no seekerUserId)', () => {",
+                  "    const r = b.items[0];",
+                  "    pm.expect(r.id).to.be.a('string');",
+                  "    pm.expect(r.amount).to.be.a('number');",
+                  "    pm.expect(r.request.id).to.be.a('string');",
+                  "    pm.expect(r.request).to.have.property('city');",
+                  "    pm.expect(r.request).to.not.have.property('seekerUserId');",
+                  "    pm.expect(r.request).to.not.have.property('line1');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bids/:bidId/withdraw",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids/{{bidId}}/withdraw"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = WITHDRAWN', () => pm.expect(pm.response.json().bid.status).to.eql('WITHDRAWN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bids/:bidId/withdraw (negative — already withdrawn)",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids/{{bidId}}/withdraw"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 CONFLICT — already withdrawn', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "11 — Approval Gate (Sprint 5.1.4 negative tests)",
       "description": "Negative-path coverage for the marketplace approval gate. The actual write endpoints (submit-bid, take-job) come online in Sprints 5.3 / 5.4 — when they ship, drop a copy of these requests into folders 30/40 and verify they 403 for DRAFT / PENDING_REVIEW / SUSPENDED / REJECTED providers. Until then this folder documents the contract and runs the only marketplace-write surface that exists today (none, by design).",
       "item": [

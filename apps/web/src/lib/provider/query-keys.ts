@@ -21,4 +21,12 @@ export const providerQueryKeys = {
     available: (filters: Pick<ListAvailableJobsQuery, 'categoryId' | 'city'> = {}) =>
       ['provider', 'jobs', 'available', filters] as const,
   },
+  bids: {
+    // Provider-side own bids (Sprint 5.3). Submit / withdraw mutations
+    // invalidate the root so list views refetch in one call. The
+    // available-jobs feed also gets invalidated on submit so the
+    // hasOwnBid flag flips correctly without a manual refetch.
+    root: ['provider', 'bids'] as const,
+    list: (filters: { status?: string } = {}) => ['provider', 'bids', 'list', filters] as const,
+  },
 } as const;

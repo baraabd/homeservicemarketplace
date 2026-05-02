@@ -94,7 +94,41 @@ const ICON_BY_SLUG: Record<string, string> = {
   handyman: '🛠️',
 };
 
-function iconForCategorySlug(slug: string | null): string {
+// Exported because both LiveJobsScreen (via the legacy ServiceRequest
+// adapter) and MyBidsScreen consume it. Keeping a single icon table
+// keeps the two surfaces visually consistent.
+export function iconForCategorySlug(slug: string | null): string {
   if (!slug) return '🛠️';
   return ICON_BY_SLUG[slug] ?? '🛠️';
+}
+
+// Minutes → human-readable label used on the My Bids cards.
+// The backend stores responseTimeMinutes as an Int; the bidding form
+// only offers six fixed chip values, so we round-trip them faithfully
+// (anything outside the chip set falls back to a "X min" label).
+export function formatResponseTime(minutes: number | null, lang: 'en' | 'ar'): string {
+  if (minutes == null) return '';
+  if (minutes <= 30) return lang === 'ar' ? '30 دقيقة' : '30 min';
+  if (minutes <= 60) return lang === 'ar' ? 'ساعة' : '1 hour';
+  if (minutes <= 120) return lang === 'ar' ? 'ساعة–ساعتين' : '1–2 hours';
+  if (minutes <= 240) return lang === 'ar' ? '2–4 ساعات' : '2–4 hours';
+  if (minutes <= 480) return lang === 'ar' ? 'يوم كامل' : 'Full day';
+  const hours = Math.round(minutes / 60);
+  return lang === 'ar' ? `${hours} ساعات` : `${hours} hours`;
+}
+
+// ISO timestamp → "5m ago" / "منذ 5د". Pure local-time formatter so
+// the screen renders without a date-fns dependency for a single use.
+export function formatRelativeTime(iso: string, lang: 'en' | 'ar'): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (seconds < 60) return lang === 'ar' ? 'الآن' : 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return lang === 'ar' ? `منذ ${minutes}د` : `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return lang === 'ar' ? `منذ ${hours}س` : `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return lang === 'ar' ? `منذ ${days}ي` : `${days}d ago`;
+  return date.toLocaleDateString(lang === 'ar' ? 'ar' : 'en');
 }

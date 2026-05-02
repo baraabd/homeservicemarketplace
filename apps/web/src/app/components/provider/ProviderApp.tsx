@@ -33,11 +33,11 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
-import {
-  useEcosystem,
-  WALLET_TRANSACTIONS,
-  EARNINGS_CHART_DATA,
-} from '../../context/EcosystemContext';
+// Sprint 5.3 retired the legacy `useEcosystem` mock from this file —
+// LiveJobsScreen + MyBidsScreen now read from the API. WALLET / EARNINGS
+// constants are still imported for the WalletScreen which migrates in
+// Sprint 5.6.
+import { WALLET_TRANSACTIONS, EARNINGS_CHART_DATA } from '../../context/EcosystemContext';
 import type { ServiceRequest } from '../../context/EcosystemContext';
 import { ImageWithFallback } from '../ui/ImageWithFallback';
 import {
@@ -46,7 +46,17 @@ import {
   useUpgradeToProvider,
 } from '../../hooks/provider/useProviderProfile';
 import { useAvailableJobs } from '../../hooks/provider/useAvailableJobs';
-import { mapAvailableJobToLegacy } from '../../../lib/provider/available-jobs-adapter';
+// useWithdrawBid is exported from the hook module for the My Bids
+// follow-on UI work; the current ProviderApp only consumes useMyBids
+// + useSubmitBid in this file. Listed here so the shape stays
+// consistent when Sprint 5.4 adds withdraw buttons to the bid cards.
+import { useMyBids, useSubmitBid } from '../../hooks/provider/useMyBids';
+import {
+  formatRelativeTime,
+  formatResponseTime,
+  iconForCategorySlug,
+  mapAvailableJobToLegacy,
+} from '../../../lib/provider/available-jobs-adapter';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import type {
   ProviderAvailability,
@@ -59,6 +69,18 @@ const MAP_IMG =
   'https://images.unsplash.com/photo-1554616242-a3e806a99481?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjaXR5JTIwYWVyaWFsJTIwbWFwJTIwc3RyZWV0cyUyMHNhdGVsbGl0ZSUyMHZpZXd8ZW58MXx8fHwxNzczMjQ4NTc5fDA&ixlib=rb-4.1.0&q=80&w=1080';
 
 // ─── Bidding Modal ────────────────────────────────────────────────────────────
+// Time chip → response-time-in-minutes lookup. Used by the real
+// /v1/me/provider/bids submit path (Sprint 5.3) so the wire carries
+// `responseTimeMinutes` rather than the human-readable chip label.
+const TIME_CHIP_MINUTES: Record<string, number> = {
+  '30 min': 30,
+  '1 hour': 60,
+  '1–2 hours': 120,
+  '2–4 hours': 240,
+  'Half day': 240,
+  'Full day': 480,
+};
+
 function BiddingModal({
   request,
   onClose,
@@ -66,7 +88,15 @@ function BiddingModal({
 }: {
   request: ServiceRequest;
   onClose: () => void;
-  onSubmit: (price: number, time: string, note: string) => void;
+  // Returns a promise that resolves on success, rejects on failure.
+  // The modal drives its own sending / done / error state from the
+  // promise — no setTimeout placeholders.
+  onSubmit: (input: {
+    price: number;
+    timeLabel: string;
+    responseTimeMinutes: number;
+    note: string;
+  }) => Promise<void>;
 }) {
   const { lang } = useLang();
   const [price, setPrice] = useState('');
@@ -74,6 +104,7 @@ function BiddingModal({
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const TIME_CHIPS = ['30 min', '1 hour', '1–2 hours', '2–4 hours', 'Half day', 'Full day'];
   const TIME_CHIPS_AR = ['30 دقيقة', 'ساعة', 'ساعة–ساعتين', '2–4 ساعات', 'نصف يوم', 'يوم كامل'];
@@ -90,20 +121,39 @@ function BiddingModal({
     sending: lang === 'ar' ? 'جارٍ الإرسال…' : 'Sending…',
     sent: lang === 'ar' ? 'تم إرسال عرضك! 🎉' : 'Offer sent! 🎉',
     budget: lang === 'ar' ? 'ميزانية الطلب:' : 'Budget:',
+    failed:
+      lang === 'ar'
+        ? 'تعذّر إرسال العرض. الرجاء المحاولة مرة أخرى.'
+        : 'Could not send your offer. Please try again.',
   };
 
-  const handleSubmit = () => {
-    if (!price || !time) return;
+  const handleSubmit = async () => {
+    if (!price || !time || sending) return;
+    const amount = Math.round(parseFloat(price));
+    if (!Number.isFinite(amount) || amount < 1) return;
     setSending(true);
-    setTimeout(() => {
-      onSubmit(parseFloat(price), time, note);
+    setSubmitError(null);
+    try {
+      await onSubmit({
+        price: amount,
+        timeLabel: time,
+        responseTimeMinutes: TIME_CHIP_MINUTES[time] ?? 60,
+        note,
+      });
       setSending(false);
       setDone(true);
+      // Auto-dismiss after a beat so the success cue is readable.
       setTimeout(() => {
         onClose();
         setDone(false);
       }, 1600);
-    }, 1200);
+    } catch {
+      // Error message comes from the mutation; the wire body never
+      // contains internal stack traces — the API maps everything to
+      // safe envelopes.
+      setSending(false);
+      setSubmitError(L.failed);
+    }
   };
 
   return (
@@ -270,6 +320,16 @@ function BiddingModal({
                 </>
               )}
             </button>
+
+            {submitError && (
+              <p
+                role="alert"
+                className="text-red-600 dark:text-red-400 text-center"
+                style={{ fontSize: '12px', fontWeight: 600 }}
+              >
+                {submitError}
+              </p>
+            )}
           </div>
         )}
       </motion.div>
@@ -356,7 +416,6 @@ function JobPin({
 // ─── Live Jobs Screen (Map) ───────────────────────────────────────────────────
 function LiveJobsScreen() {
   const { lang } = useLang();
-  const { submitBid } = useEcosystem();
   const profileQuery = useProviderProfile();
   // Sprint 5.2: live feed of OPEN_FOR_BIDS service requests, polled
   // every 15s. The hook scopes to the provider's configured categories
@@ -368,6 +427,11 @@ function LiveJobsScreen() {
     () => (availableJobsQuery.data?.items ?? []).map(mapAvailableJobToLegacy),
     [availableJobsQuery.data],
   );
+  // Sprint 5.3: real submit-bid mutation. Replaces the
+  // `useEcosystem().submitBid` mock; the modal awaits the mutation
+  // and React Query invalidates `provider/jobs` and `provider/bids`
+  // on success so the feed and My Bids reflect the new state.
+  const submitBidMutation = useSubmitBid();
   const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [biddingReq, setBiddingReq] = useState<ServiceRequest | null>(null);
@@ -409,16 +473,23 @@ function LiveJobsScreen() {
     urgentTag: lang === 'ar' ? 'عاجل' : 'Urgent',
   };
 
-  const handleBidSubmit = (price: number, time: string, note: string) => {
+  // Real submit. The mutation wraps the /v1/me/provider/bids POST;
+  // it throws on failure so the modal can surface the safe error
+  // copy. We deliberately do NOT close the modal on failure — the
+  // user may correct the input and retry.
+  const handleBidSubmit = async (input: {
+    price: number;
+    timeLabel: string;
+    responseTimeMinutes: number;
+    note: string;
+  }) => {
     if (!biddingReq) return;
-    submitBid(biddingReq.id, {
-      providerName: 'Omar K.',
-      providerAr: 'عمر خ.',
-      providerRating: 4.8,
-      providerJobs: 156,
-      price,
-      executionTime: time,
-      note,
+    await submitBidMutation.mutateAsync({
+      requestId: biddingReq.id,
+      amount: input.price,
+      pricingType: 'HOURLY',
+      note: input.note ? input.note : null,
+      responseTimeMinutes: input.responseTimeMinutes,
     });
     setBiddingReq(null);
   };
@@ -652,21 +723,38 @@ function LiveJobsScreen() {
 }
 
 // ─── My Bids Screen ───────────────────────────────────────────────────────────
+// Sprint 5.3 — live read from /v1/me/provider/bids. The screen filters
+// out WITHDRAWN bids client-side because the existing UI only renders
+// 'pending' / 'accepted' / 'rejected' tabs.
 function MyBidsScreen() {
   const { lang } = useLang();
-  const { requests } = useEcosystem();
+  const myBidsQuery = useMyBids();
 
-  const myBids = requests.flatMap((req) =>
-    req.bids
-      .filter((b) => b.providerName === 'Omar K.')
-      .map((b) => ({
-        ...b,
-        requestService: req.service,
-        requestServiceAr: req.serviceAr,
-        requestIcon: req.serviceIcon,
-        seekerName: req.seekerName,
-      })),
-  );
+  const myBids = useMemo(() => {
+    const items = myBidsQuery.data?.items ?? [];
+    return items
+      .filter((b) => b.status !== 'WITHDRAWN')
+      .map((b) => {
+        const labelEn = b.request.category?.labelEn ?? b.request.customServiceText ?? '';
+        const labelAr = b.request.category?.labelAr ?? b.request.customServiceText ?? '';
+        const icon = iconForCategorySlug(b.request.category?.slug ?? null);
+        return {
+          id: b.id,
+          requestService: labelEn,
+          requestServiceAr: labelAr,
+          requestIcon: icon,
+          // Wire deliberately omits seeker identity. Show city as the
+          // anonymised "where" label until the bid is accepted, after
+          // which the booking conversation surfaces the seeker name.
+          seekerName: b.request.city,
+          status: b.status.toLowerCase() as 'pending' | 'accepted' | 'rejected',
+          price: b.amount,
+          executionTime: formatResponseTime(b.responseTimeMinutes, lang),
+          note: b.note ?? '',
+          submittedAt: formatRelativeTime(b.submittedAt, lang),
+        };
+      });
+  }, [myBidsQuery.data, lang]);
 
   const L = {
     title: lang === 'ar' ? 'عروضي' : 'My Bids',
