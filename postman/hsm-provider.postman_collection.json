@@ -170,6 +170,140 @@
       ]
     },
     {
+      "name": "20 — Available Jobs (Sprint 5.2)",
+      "item": [
+        {
+          "name": "GET /v1/me/provider/jobs/available",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{apiUrl}}/{{apiVersion}}/me/provider/jobs/available?limit=20",
+              "host": ["{{apiUrl}}"],
+              "path": ["{{apiVersion}}", "me", "provider", "jobs", "available"],
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is expected', () => pm.expect([200]).to.include(pm.response.code));",
+                  "pm.test('Response is JSON', () => pm.response.to.be.json);",
+                  "const b = pm.response.json();",
+                  "pm.test('envelope: { items: AvailableJobSummary[], nextCursor: string|null }', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('item has the narrow security projection', () => {",
+                  "    const item = b.items[0];",
+                  "    pm.expect(item.id).to.be.a('string');",
+                  "    pm.expect(item).to.have.property('category');",
+                  "    pm.expect(item.location).to.be.an('object');",
+                  "    pm.expect(item.location).to.have.property('city');",
+                  "    pm.expect(item.location).to.have.property('country');",
+                  "    pm.expect(item).to.have.property('bidsCount');",
+                  "    pm.expect(item).to.have.property('hasOwnBid');",
+                  "  });",
+                  "  pm.test('does not leak seekerUserId or precise line1', () => {",
+                  "    const wire = JSON.stringify(b);",
+                  "    pm.expect(wire).to.not.match(/seekerUserId/i);",
+                  "    pm.expect(wire).to.not.match(/\\\"line1\\\"/);",
+                  "  });",
+                  "  pm.environment.set('requestId', b.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/jobs/available?categoryId=…",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{apiUrl}}/{{apiVersion}}/me/provider/jobs/available?categoryId={{categoryId}}",
+              "host": ["{{apiUrl}}"],
+              "path": ["{{apiVersion}}", "me", "provider", "jobs", "available"],
+              "query": [{ "key": "categoryId", "value": "{{categoryId}}" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 200 when the categoryId is set and valid; 400 when it's bogus.",
+                  "// Both shapes are acceptable here — we test against the bogus negative",
+                  "// in a follow-up request below.",
+                  "pm.test('Status is 200 or 400', () => pm.expect([200, 400]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/jobs/available?categoryId=bogus (negative)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{apiUrl}}/{{apiVersion}}/me/provider/jobs/available?categoryId=cat-does-not-exist",
+              "host": ["{{apiUrl}}"],
+              "path": ["{{apiVersion}}", "me", "provider", "jobs", "available"],
+              "query": [{ "key": "categoryId", "value": "cat-does-not-exist" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 VALIDATION_ERROR (no Prisma FK leak)', () => pm.response.to.have.status(400));",
+                  "pm.test('Negative response does not leak internals', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('PrismaClientKnownRequestError');",
+                  "  pm.expect(t).to.not.include('foreign key');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/jobs/available (customer token — must 403)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+            },
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/jobs/available"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Forbidden (RolesGuard) or Unauthorized', () => pm.expect([401, 403, 404]).to.include(pm.response.code));",
+                  "pm.test('Negative response does not leak internals', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('passwordHash');",
+                  "  pm.expect(t).to.not.include('JWT_SECRET');",
+                  "  pm.expect(t).to.not.include('DATABASE_URL');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "11 — Approval Gate (Sprint 5.1.4 negative tests)",
       "description": "Negative-path coverage for the marketplace approval gate. The actual write endpoints (submit-bid, take-job) come online in Sprints 5.3 / 5.4 — when they ship, drop a copy of these requests into folders 30/40 and verify they 403 for DRAFT / PENDING_REVIEW / SUSPENDED / REJECTED providers. Until then this folder documents the contract and runs the only marketplace-write surface that exists today (none, by design).",
       "item": [

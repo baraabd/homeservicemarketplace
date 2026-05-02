@@ -45,6 +45,8 @@ import {
   useUpdateProviderAvailability,
   useUpgradeToProvider,
 } from '../../hooks/provider/useProviderProfile';
+import { useAvailableJobs } from '../../hooks/provider/useAvailableJobs';
+import { mapAvailableJobToLegacy } from '../../../lib/provider/available-jobs-adapter';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import type {
   ProviderAvailability,
@@ -354,8 +356,18 @@ function JobPin({
 // ─── Live Jobs Screen (Map) ───────────────────────────────────────────────────
 function LiveJobsScreen() {
   const { lang } = useLang();
-  const { requests, submitBid } = useEcosystem();
+  const { submitBid } = useEcosystem();
   const profileQuery = useProviderProfile();
+  // Sprint 5.2: live feed of OPEN_FOR_BIDS service requests, polled
+  // every 15s. The hook scopes to the provider's configured categories
+  // server-side (or to all categories if none configured); explicit
+  // category/city filters can be added once the marketplace UI grows
+  // its filter chips.
+  const availableJobsQuery = useAvailableJobs();
+  const apiRequests = useMemo(
+    () => (availableJobsQuery.data?.items ?? []).map(mapAvailableJobToLegacy),
+    [availableJobsQuery.data],
+  );
   const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [biddingReq, setBiddingReq] = useState<ServiceRequest | null>(null);
@@ -375,9 +387,11 @@ function LiveJobsScreen() {
     return lang === 'ar' ? 'متصل' : 'Online';
   })();
 
-  const activeReqs = requests.filter(
-    (r) => (r.status !== 'completed' && r.status !== 'assigned') || r.status === 'assigned',
-  );
+  // The feed only ships OPEN_FOR_BIDS rows (status maps to 'pending'
+  // when bidsCount === 0 and 'bidding' otherwise). Sprint 5.4 will add
+  // SCHEDULED bookings into a separate view; until then 'assigned' /
+  // 'completed' do not appear here.
+  const activeReqs = apiRequests;
   const filteredReqs =
     filterStatus === 'all' ? activeReqs : activeReqs.filter((r) => r.status === filterStatus);
 

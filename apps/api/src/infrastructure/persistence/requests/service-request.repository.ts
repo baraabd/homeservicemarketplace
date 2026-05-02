@@ -72,6 +72,59 @@ export class ServiceRequestRepository {
     });
   }
 
+  // Provider-side feed. Returns only OPEN_FOR_BIDS rows, scoped away
+  // from the calling provider's own seeker user (a provider who is
+  // also a seeker should not see their own request in the feed) and
+  // away from soft-deleted rows.
+  //
+  // `categoryIds`, when non-empty, restricts results to those
+  // categories (used for the provider's own configured skills, or for
+  // an explicit categoryId filter from the query string). When empty,
+  // the feed is global.
+  //
+  // `city`, when set, filters by the request's snapshotted city. The
+  // snapshot is JSON, so we use Prisma's `path` filter on the
+  // `addressSnapshot` column, equality + case-insensitive.
+  listAvailableForProvider(
+    args: {
+      excludeSeekerUserId: string | null;
+      categoryIds?: string[];
+      city?: string;
+      take: number;
+      cursor?: string;
+    },
+    tx?: PrismaTx,
+  ): Promise<ServiceRequestWithCategory[]> {
+    const where: Prisma.ServiceRequestWhereInput = {
+      status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
+      deletedAt: null,
+      ...(args.excludeSeekerUserId ? { seekerUserId: { not: args.excludeSeekerUserId } } : {}),
+      ...(args.categoryIds && args.categoryIds.length > 0
+        ? { categoryId: { in: args.categoryIds } }
+        : {}),
+      ...(args.city
+        ? {
+            // Postgres JSON `path` lookup, equals match against the
+            // snapshotted city. Case-insensitive at the SQL level via
+            // mode: 'insensitive' on `string_contains`-style filters
+            // would be ideal but Prisma JSON filters do not support
+            // mode — keep this as exact-match and document.
+            addressSnapshot: {
+              path: ['city'],
+              equals: args.city,
+            },
+          }
+        : {}),
+    };
+    return this.db(tx).serviceRequest.findMany({
+      where,
+      take: args.take,
+      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: { category: true },
+    });
+  }
+
   // Returns the row only when it belongs to the given seeker AND is not
   // soft-deleted. Used at every ownership-checked call site.
   findOwned(

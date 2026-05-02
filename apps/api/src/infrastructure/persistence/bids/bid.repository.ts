@@ -73,6 +73,47 @@ export class BidRepository {
     });
   }
 
+  // Active-bid count per request. Returns a Map keyed by requestId.
+  // PENDING + ACCEPTED only (rejected / withdrawn don't contribute to
+  // a feed's competition signal). Used by the available-jobs feed.
+  async countActiveByRequestIds(requestIds: string[], tx?: PrismaTx): Promise<Map<string, number>> {
+    if (requestIds.length === 0) return new Map();
+    const rows = await this.db(tx).bid.groupBy({
+      by: ['requestId'],
+      where: {
+        requestId: { in: requestIds },
+        deletedAt: null,
+        status: { in: ['PENDING', 'ACCEPTED'] },
+      },
+      _count: { _all: true },
+    });
+    const map = new Map<string, number>();
+    for (const r of rows) map.set(r.requestId, r._count._all);
+    return map;
+  }
+
+  // Returns the set of requestIds in `requestIds` for which the given
+  // provider already has a non-WITHDRAWN, non-deleted bid. Used by the
+  // available-jobs feed to compute the `hasOwnBid` flag in a single
+  // query rather than N+1.
+  async findRequestIdsBidByProvider(
+    providerId: string,
+    requestIds: string[],
+    tx?: PrismaTx,
+  ): Promise<Set<string>> {
+    if (requestIds.length === 0) return new Set();
+    const rows = await this.db(tx).bid.findMany({
+      where: {
+        providerId,
+        requestId: { in: requestIds },
+        deletedAt: null,
+        status: { not: 'WITHDRAWN' },
+      },
+      select: { requestId: true },
+    });
+    return new Set(rows.map((r) => r.requestId));
+  }
+
   // Status-flip helper used by accept-bid (slice 2.2). Conditional on
   // the current status being `from` so concurrent writers cannot both
   // promote the same bid — only one wins, the loser sees count: 0
