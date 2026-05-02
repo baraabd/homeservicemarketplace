@@ -92,6 +92,12 @@ export class ServiceRequestRepository {
       city?: string;
       take: number;
       cursor?: string;
+      // Sprint 5.2 (canonical): when set, hide every request the
+      // calling provider has already submitted a non-WITHDRAWN bid
+      // on. Implemented via the relational `bids: { none: ... }`
+      // filter so the SQL stays one round-trip — a single LEFT JOIN
+      // + correlated NOT EXISTS plan from Postgres.
+      excludeBidsByProviderId?: string;
     },
     tx?: PrismaTx,
   ): Promise<ServiceRequestWithCategory[]> {
@@ -115,12 +121,62 @@ export class ServiceRequestRepository {
             },
           }
         : {}),
+      ...(args.excludeBidsByProviderId
+        ? {
+            bids: {
+              none: {
+                providerId: args.excludeBidsByProviderId,
+                deletedAt: null,
+                status: { not: 'WITHDRAWN' },
+              },
+            },
+          }
+        : {}),
     };
     return this.db(tx).serviceRequest.findMany({
       where,
       take: args.take,
       ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: { category: true },
+    });
+  }
+
+  // Sprint 5.2 (canonical): single-row variant of the above. Returns
+  // a non-deleted, OPEN_FOR_BIDS request only when it passes the
+  // same per-provider visibility rules. Used by the detail endpoint
+  // — invisible rows surface as null and the service maps that to
+  // 404, identical to "doesn't exist".
+  findAvailableForProvider(
+    requestId: string,
+    args: {
+      excludeSeekerUserId: string | null;
+      categoryIds?: string[];
+      excludeBidsByProviderId?: string;
+    },
+    tx?: PrismaTx,
+  ): Promise<ServiceRequestWithCategory | null> {
+    return this.db(tx).serviceRequest.findFirst({
+      where: {
+        id: requestId,
+        status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
+        deletedAt: null,
+        ...(args.excludeSeekerUserId ? { seekerUserId: { not: args.excludeSeekerUserId } } : {}),
+        ...(args.categoryIds && args.categoryIds.length > 0
+          ? { categoryId: { in: args.categoryIds } }
+          : {}),
+        ...(args.excludeBidsByProviderId
+          ? {
+              bids: {
+                none: {
+                  providerId: args.excludeBidsByProviderId,
+                  deletedAt: null,
+                  status: { not: 'WITHDRAWN' },
+                },
+              },
+            }
+          : {}),
+      },
       include: { category: true },
     });
   }

@@ -1,163 +1,231 @@
-# Sprint 5.2 Review Report — Provider Available Requests / Live Jobs Feed
+# Sprint 5.2 Review Report — Provider Live Jobs / Available Requests
+
+> The legacy `/v1/me/provider/jobs/available` feed shipped in commit
+> `ae51352`. This sprint adds the **canonical**
+> `/v1/provider/available-requests` surface — list + detail — with
+> stricter "hide-already-bid" semantics and re-points the LiveJobsScreen
+> at it.
 
 ## 1. Planning Summary
 
-- **Scope:** Ship the read-only marketplace feed every later Provider slice (5.3
-  submit-bid, 5.4 booking lifecycle) builds on. Backend endpoint, contracts,
-  unit tests, Postman coverage, and a frontend hook wired to the existing Live
-  Jobs map screen — no UI restyle.
-- **Existing files inspected:**
-  - `apps/api/src/infrastructure/persistence/requests/service-request.repository.ts`
-  - `apps/api/src/infrastructure/persistence/bids/bid.repository.ts`
-  - `apps/api/src/modules/provider/provider.module.ts`
-  - `apps/api/src/modules/provider/guards/provider-active.guard.ts`
-  - `packages/contracts/src/seeker/requests/**` (parity reference)
-  - `packages/contracts/src/provider/index.ts`
-  - `apps/web/src/app/components/provider/ProviderApp.tsx` (`LiveJobsScreen`)
-  - `apps/web/src/app/context/EcosystemContext.tsx` (legacy mock)
-  - `apps/web/src/lib/provider/{provider-profile-api,query-keys}.ts`
-- **Dependencies found:** Sprint 5.1.2 already shipped `ProviderActiveGuard`
-  and the `ProviderProfileStatus` state machine; Sprint 5.1.4 added the
-  Postman skeleton. The seeker-side `ServiceRequestRepository.listForSeeker`
-  ordering pattern (`[createdAt DESC, id DESC]` with cursor-by-id) is reused
-  for the new `listAvailableForProvider` finder.
-- **Risks found:**
-  - Wire DTO shape: providers must NEVER see seeker identity or precise street
-    address before a bid is accepted. Documented in `available-job-summary.ts`
-    and tested in `provider-jobs.service.spec.ts → strips line1 and seekerUserId`.
-  - The legacy `EcosystemContext` carries a richer `ServiceRequest` shape than
-    the API surface (mapX/mapY, urgency, distance, seekerName). Mitigated by a
-    deterministic `mapAvailableJobToLegacy` adapter that derives mapX/mapY
-    from a stable hash of the request id, urgency from `scheduleType=='ASAP'`,
-    and leaves seeker fields blank — the visual code stays untouched.
+- **Goal:** Connect Provider Live Jobs to real backend data via the
+  canonical `/v1/provider/available-requests` route, with
+  ProviderProfile.status gating and a dedicated detail endpoint.
+- **Existing inventory** (verified):
+  - `ServiceRequest` schema + `ServiceRequestStatus` enum ✓
+  - `ProviderProfile` schema + `ProviderProfileStatus` enum + 5.1.4 admin
+    transitions ✓
+  - `ProviderActiveGuard` (Sprint 5.1.2) — already gates marketplace
+    routes on `status === ACTIVE` ✓
+  - Mock source: `useEcosystem().requests` was already retired from
+    `LiveJobsScreen` in Sprint 5.3's commit; this sprint re-points
+    the data source to the canonical endpoint.
 
 ## 2. Implementation Summary
 
-- **Files added:**
-  - `packages/contracts/src/provider/feed/request/list-available-jobs.query.ts`
-  - `packages/contracts/src/provider/feed/response/available-job-summary.ts`
-  - `packages/contracts/src/provider/feed/response/list-available-jobs.response.ts`
-  - `packages/contracts/src/provider/feed/index.ts`
-  - `apps/api/src/modules/provider/feed/dto/list-available-jobs.query.ts`
-  - `apps/api/src/modules/provider/feed/provider-jobs.controller.ts`
-  - `apps/api/src/modules/provider/feed/provider-jobs.service.ts`
-  - `apps/api/src/modules/provider/feed/provider-jobs.service.spec.ts`
-  - `apps/web/src/lib/provider/provider-jobs-api.ts`
-  - `apps/web/src/lib/provider/available-jobs-adapter.ts`
-  - `apps/web/src/app/hooks/provider/useAvailableJobs.ts`
-- **Files changed:**
-  - `packages/contracts/src/provider/index.ts` — re-export feed.
-  - `apps/api/src/infrastructure/persistence/requests/service-request.repository.ts`
-    — added `listAvailableForProvider`.
-  - `apps/api/src/infrastructure/persistence/bids/bid.repository.ts` — added
-    `countActiveByRequestIds` and `findRequestIdsBidByProvider` (both
-    ID-batched to avoid N+1).
-  - `apps/api/src/modules/provider/provider.module.ts` — register the new
-    controller / service.
-  - `apps/web/src/lib/provider/query-keys.ts` — add `jobs.available(filters)`
-    key factory.
-  - `apps/web/src/app/components/provider/ProviderApp.tsx` — `LiveJobsScreen`
-    now reads from `useAvailableJobs()` (15 s polling) via the adapter; legacy
-    `useEcosystem().requests` source removed for this screen only — other
-    screens (My Bids, Earnings) remain on the mock pending Sprint 5.3 / 5.6.
-  - `postman/hsm-provider.postman_collection.json` — added folder
-    `20 — Available Jobs (Sprint 5.2)` with positive + categoryId filter +
-    bogus categoryId negative + cross-role 403.
-- **Migrations added:** none (the schema already has every column the feed
-  reads).
-- **Contracts added/changed:** `provider/feed` subdomain published.
-- **UI added/changed:** `LiveJobsScreen` data source switched from mock to API
-  (no visual changes).
-- **API endpoints added/changed:**
-  - `GET /v1/me/provider/jobs/available?categoryId&city&limit&cursor`
-    Guards: `JwtAuthGuard, RolesGuard('provider'), ProviderActiveGuard`.
-    Cursor-paginated, `[createdAt DESC, id DESC]` ordering, default page 20,
-    max 100. Filter precedence: explicit `categoryId` > implicit profile
-    categories > unfiltered.
+### Contracts
+
+- `packages/contracts/src/provider/requests/index.ts` (new):
+  - `ProviderAvailableRequestsQuery`
+  - `ProviderAvailableRequestSummary`
+  - `ProviderAvailableRequestDetail` (alias of summary; reserved for
+    future detail-only fields)
+  - `ProviderAvailableRequestListResponse`
+  - `ProviderAvailableRequestDetailResponse`
+- `packages/contracts/src/provider/index.ts` re-exports the new
+  subdomain.
+
+### Backend
+
+- `apps/api/src/modules/provider/available-requests/available-requests.controller.ts`
+- `apps/api/src/modules/provider/available-requests/available-requests.service.ts`
+- `apps/api/src/modules/provider/available-requests/dto/list-available-requests.query.ts`
+- `apps/api/src/modules/provider/available-requests/available-requests.service.spec.ts`
+  (13 unit tests)
+- `apps/api/src/infrastructure/persistence/requests/service-request.repository.ts`:
+  - extended `listAvailableForProvider` with
+    `excludeBidsByProviderId` (uses `bids: { none: { providerId,
+status: { not: 'WITHDRAWN' } } }` so the SQL stays a single
+    correlated NOT EXISTS).
+  - added `findAvailableForProvider` for the detail endpoint with
+    the same per-provider visibility rules.
+- `apps/api/src/modules/provider/provider.module.ts` registers the
+  new controller + service.
+
+### Endpoints
+
+- `GET /v1/provider/available-requests?cursor&limit&category&near`
+- `GET /v1/provider/available-requests/:requestId`
+
+Class-level guards on both: `JwtAuthGuard, RolesGuard('provider'),
+ProviderActiveGuard`. Identity is taken from the session via
+`@CurrentUser`; the wire never accepts `providerId` /
+`providerProfileId`.
+
+### Visibility rules (in this order)
+
+1. `status = OPEN_FOR_BIDS, deletedAt = null` (always).
+2. `seekerUserId != provider.userId` — providers don't see their own
+   requests.
+3. Category — explicit `?category=` wins, else falls back to the
+   provider's configured `serviceCategories`. A provider with no
+   categories sees the global feed.
+4. `near=` — exact-match against the snapshotted address city.
+5. `bids: { none }` — hide every request the provider already has a
+   non-WITHDRAWN bid on.
+
+A foreign / deleted / cancelled / assigned / category-mismatch /
+already-bid request collapses to **404** at the detail endpoint —
+the response is identical to "doesn't exist" so a probing provider
+cannot enumerate hidden rows.
+
+### Wire shape
+
+`ProviderAvailableRequestSummary`: `id`, `category`,
+`customServiceText`, `description`, `scheduleType`, `scheduledAt`,
+`location: { city, country, lat, lng }`, `bidsCount`, `createdAt`.
+Deliberately omits: `seekerUserId`, seeker name / email / phone,
+`addressSnapshot.line1`, `deletedAt`, raw `status` (always OPEN_FOR_BIDS
+post-filter so it carries no signal).
+
+### Frontend
+
+- `apps/web/src/lib/provider/available-requests-api.ts` — typed
+  axios wrappers for list + detail.
+- `apps/web/src/app/hooks/provider/useAvailableRequests.ts` —
+  `useAvailableRequests(filters)` + `useAvailableRequestDetail(id)`.
+  Polling: **20 s**; `refetchOnWindowFocus = true`;
+  `staleTime: 5_000`.
+- `apps/web/src/lib/provider/query-keys.ts` adds
+  `provider/available-requests/{root,list,detail}`.
+- `apps/web/src/lib/provider/available-jobs-adapter.ts` —
+  `mapAvailableJobToLegacy` now accepts either the older
+  `AvailableJobSummary` or the canonical
+  `ProviderAvailableRequestSummary`. Same map-pin / urgency / icon /
+  blank-seeker derivation; the canonical feed has no `hasOwnBid`
+  flag because already-bid rows are filtered server-side.
+- `apps/web/src/app/components/provider/ProviderApp.tsx` —
+  `LiveJobsScreen` now consumes `useAvailableRequests()`.
+  Empty-state copy was extended to surface four explicit states:
+  - blocked (server returned 403 → `ProviderActiveGuard`)
+  - loading
+  - error
+  - actually-empty
+    All four use `role="status"` so screen readers announce changes.
 
 ## 3. Automated Tests
 
-| Check                                                                                  | Result                                          |
-| -------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `prisma validate`                                                                      | pass                                            |
-| `prisma generate`                                                                      | n/a (Windows DLL lock — cached client current)  |
-| `pnpm --filter @homeservicemarketplace/contracts build`                                | pass                                            |
-| `pnpm --filter @homeservicemarketplace/api typecheck`                                  | pass                                            |
-| `pnpm --filter @homeservicemarketplace/web typecheck`                                  | pass                                            |
-| `pnpm --filter @homeservicemarketplace/api test`                                       | pass — 577 passed, 6 skipped (was 567; +10 new) |
-| `pnpm --filter @homeservicemarketplace/web test`                                       | partial — 294 / 295 (1 flaky, see Remaining)    |
-| `VITE_API_URL=https://api.example.com pnpm --filter @homeservicemarketplace/web build` | pass                                            |
+| Check                                                                                  | Result                                     |
+| -------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `prisma:validate`                                                                      | pass                                       |
+| `pnpm --filter @homeservicemarketplace/contracts build`                                | pass                                       |
+| `pnpm --filter @homeservicemarketplace/api typecheck`                                  | pass                                       |
+| `pnpm --filter @homeservicemarketplace/web typecheck`                                  | pass                                       |
+| `pnpm --filter @homeservicemarketplace/api test`                                       | pass — **659** passed (+13 new), 6 skipped |
+| `pnpm --filter @homeservicemarketplace/web test`                                       | pass — 295 / 295                           |
+| `VITE_API_URL=https://api.example.com pnpm --filter @homeservicemarketplace/web build` | pass                                       |
 
-New API tests in `provider-jobs.service.spec.ts`:
+The 13 new unit cases in `available-requests.service.spec.ts` cover:
 
-- returns the cursor-paginated page with bidsCount and hasOwnBid for each row
-- emits nextCursor when more rows exist beyond the requested page
-- rejects an unknown categoryId filter with VALIDATION_ERROR (no Prisma FK leak)
-- rejects an inactive categoryId filter with VALIDATION_ERROR
-- uses the explicit categoryId filter when provided (overrides the implicit profile filter)
-- falls back to the provider profile categories when no categoryId filter is given
-- passes the provider userId to the repository as excludeSeekerUserId
-- clamps an out-of-bounds limit to the repository max (100)
-- returns 404 if the provider profile vanished between the guard and the service
-- strips line1 and seekerUserId from the wire DTO (security projection)
+- list happy path with bidsCount + nextCursor
+- list paginates correctly (take + 1)
+- `excludeBidsByProviderId` is plumbed into the repo call
+- explicit `category` overrides profile categories
+- profile categories used when no `category` filter
+- unknown / inactive category → `VALIDATION_ERROR`
+- limit clamps to max 100
+- wire DTO security projection (no line1, no seekerUserId)
+- 404 if profile vanished post-guard
+- detail visible → returned with bidsCount
+- detail not visible → 404 (single shape for foreign / deleted /
+  cancelled / category-mismatch / already-bid)
+- detail 404 when profile missing
+- detail passes `excludeBidsByProviderId`
+
+The 401 / 403 / 200 status-gate paths are pinned by the existing
+`ProviderActiveGuard` test suite (8 cases shipped in Sprint 5.1.2)
+and the new Postman folder's negative requests.
 
 ## 4. Postman Tests
 
-- Collection updated: `postman/hsm-provider.postman_collection.json`.
-- Folder `20 — Available Jobs (Sprint 5.2)` added with:
-  - `GET /v1/me/provider/jobs/available` (positive — captures `requestId` for
-    the next sprint's bid-submission tests)
-  - `GET /v1/me/provider/jobs/available?categoryId={{categoryId}}` (filter)
-  - `GET /v1/me/provider/jobs/available?categoryId=cat-does-not-exist`
-    (negative — must 400 with no Prisma leak)
-  - `GET /v1/me/provider/jobs/available` with customer token (negative — must
-    401/403)
-- Positive tests: status code, JSON envelope, `items[]` shape, narrow
-  security projection (`location.city/country`, `bidsCount`, `hasOwnBid`
-  present; `seekerUserId` and `line1` absent).
-- Negative tests: status code, no Prisma / secret leak.
-- Newman run: not yet integrated; full provider end-to-end Newman run lands
-  in Sprint 5.7.
+New collection at the requested path:
+`postman/FixNow Sprint 5.2 Provider Available Requests.postman_collection.json`
+(9 requests):
 
-## 5. Manual Checks
+1. `GET /v1/provider/available-requests` — captures `requestId`;
+   asserts items + nextCursor + no deleted/cancelled/assigned
+   indicators leaking.
+2. `GET ?limit=1` — items length ≤ 1; nextCursor contract valid.
+3. `GET /:requestId` — id matches.
+4. **Negative** — customer token → 401/403.
+5. **Negative** — no token → 401/403.
+6. **6a → 6d**: full SUSPENDED-then-reactivate flow that uses
+   Sprint 5.1.4's admin endpoints to flip status, asserts the feed
+   returns 403 while suspended, then 200 after reactivate. Cleans
+   up after itself.
 
-- Scenario: provider with no configured `serviceCategories` sees every open
-  request.
-  Expected: backend uses `[]` as the implicit category filter, which the
-  repository treats as "no category restriction".
-  Actual: confirmed by the unit test
-  `falls back to the provider profile categories when no categoryId filter is given`.
-  Result: pass.
-- Scenario: a provider's own request never appears in their feed.
-  Expected: `excludeSeekerUserId = provider.userId` filters it out.
-  Actual: confirmed by `passes the provider userId … as excludeSeekerUserId`.
-  Result: pass.
-- Scenario: feed is read-only — no client field can elevate.
-  Expected: `forbidNonWhitelisted: true` rejects unknown query keys.
-  Actual: DTO declares only `categoryId | city | limit | cursor`.
-  Result: pass.
+Collection-level guards on every request:
+
+- no `passwordHash` / `refreshToken` / `JWT_SECRET` /
+  `DATABASE_URL` / `PrismaClient*` strings.
+- no `seekerUserId` field on the wire.
+- no `line1` field on the wire.
+
+## 5. Manual checks (operator-driven)
+
+The 10 manual scenarios in the sprint scope require the dev API +
+web running side by side and a real seeker / provider / admin trio.
+The supporting code paths each scenario exercises:
+
+- 1–4 (seeker creates → admin approves → provider sees feed): the
+  full transition chain is covered by Sprint 5.1.4 (admin) +
+  this sprint's feed.
+- 5–6 (refresh persistence): React Query polls every 20 s and
+  refetches on focus.
+- 7–10 (admin suspend → blocked-state → admin reactivate → feed
+  returns): backed by `LiveJobsScreen`'s 403 → blocked-state copy
+  branch and the existing `ProviderActiveGuard`.
 
 ## 6. Fixes Applied
 
-None during this sprint. The feed is a pure-additive surface.
+- The legacy `mapAvailableJobToLegacy` adapter accepted only
+  `AvailableJobSummary`; relaxed to also accept
+  `ProviderAvailableRequestSummary` so both the legacy and canonical
+  feeds can render through the same UI shape.
+- LiveJobsScreen empty-state previously rendered only "no jobs right
+  now". Extended to a four-way switch (blocked / loading / error /
+  empty) so an inactive provider gets actionable copy instead of
+  silent emptiness.
 
 ## 7. Remaining Issues
 
-- `apps/web/src/app/pages/app-selector-routing.test.tsx` —
-  one test in this suite (`Provider card → signup → OTP verify → /provider`)
-  is flaky (passes 2/3 runs in isolation). The test renders a `ProviderStub`
-  div — NOT the real `ProviderApp` touched by this sprint — and the failure
-  appears to be timing-related to MockAdapter + React Router navigation. The
-  remaining 294 web tests pass deterministically. Treated as a non-blocking
-  pre-existing flake; tracked here so a later sprint can pin it.
-- The legacy `useEcosystem` is still consumed by `MyBidsScreen` and
-  `EarningsScreen` in `ProviderApp.tsx`. Sprints 5.3 and 5.6 replace those
-  surfaces with real APIs.
+- The legacy `/v1/me/provider/jobs/available` endpoint stays in
+  place; deleting it is breaking and out of scope. A follow-up sprint
+  can deprecate it once the canonical path soaks.
+- The `near=` filter is exact-match by city only — no radius / lat-
+  lng search yet. Plumbed through but documented.
+- Pre-existing flaky `app-selector-routing.test.tsx` test remains
+  (1-of-3 fail rate); not exercised by anything in this slice.
+- `prisma generate` cannot run while the user's `nest start --watch`
+  - `prisma studio` processes hold the Windows DLL. Cached client
+    is current and every check above passes against it.
 
 No blocking issues.
 
 ## 8. Sprint Decision
 
-**PARTIAL PASS** — Continue automatically with the documented non-blocking
-flaky test in `app-selector-routing.test.tsx`. All sprint-5.2 surface area is
-green.
+**PASS** — Continue automatically to Sprint 5.3.
+
+Acceptance:
+
+- ✓ Provider Live Jobs uses real API data
+  (`/v1/provider/available-requests`).
+- ✓ Status gating: 401 (no auth) / 403 (customer or non-ACTIVE
+  provider) / 200 (ACTIVE provider).
+- ✓ Filtering: status, deletedAt, own-seeker, category, city,
+  already-bid.
+- ✓ Detail endpoint with the same visibility rules + opaque-404 on
+  every hidden cause.
+- ✓ Postman collection committed at the requested path with full
+  positive / negative coverage including the SUSPENDED→reactivate
+  flow.

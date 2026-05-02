@@ -1,11 +1,13 @@
-import type { AvailableJobSummary } from '@homeservicemarketplace/contracts';
+import type {
+  AvailableJobSummary,
+  ProviderAvailableRequestSummary,
+} from '@homeservicemarketplace/contracts';
 
 import type { ServiceRequest } from '../../app/context/EcosystemContext';
 
-// Adapter from the API's narrow AvailableJobSummary contract to the
-// legacy ServiceRequest shape the ProviderApp screens render
-// (mapX/mapY/serviceIcon/urgency/etc. were prototyped against an
-// in-memory mock context). The mapper:
+// Adapter from the API's narrow available-request shape (Sprint 5.2)
+// to the legacy ServiceRequest the ProviderApp screens render. The
+// mapper:
 //
 //   - hashes `id` deterministically into mapX/mapY so pins don't jump
 //     around between renders. Without server-side coordinates this is
@@ -18,10 +20,18 @@ import type { ServiceRequest } from '../../app/context/EcosystemContext';
 //     the Sprint 5.2 security projection).
 //
 // Treat the legacy `bids: Bid[]` field as "an array sized to bidsCount
-// for length-only UIs"; the screens that call .map over it are out of
-// scope for this slice and will continue to render context bids until
-// Sprint 5.3 ships the real bid surface.
-export function mapAvailableJobToLegacy(job: AvailableJobSummary): ServiceRequest {
+// for length-only UIs"; the screens that call .map over it have
+// migrated to the real `useMyBids()` data in Sprint 5.3.
+//
+// The function accepts EITHER the older `AvailableJobSummary` (legacy
+// /me/provider/jobs feed) OR the canonical
+// `ProviderAvailableRequestSummary` (Sprint 5.2 `/v1/provider/available-requests`).
+// They differ only in whether the wire emits a `hasOwnBid` flag —
+// the canonical feed hides those rows server-side, so the flag is
+// gone, and the adapter treats both shapes identically.
+type AdaptableJob = AvailableJobSummary | ProviderAvailableRequestSummary;
+
+export function mapAvailableJobToLegacy(job: AdaptableJob): ServiceRequest {
   const { mapX, mapY } = mapPinFromId(job.id);
   const icon = iconForCategorySlug(job.category?.slug ?? null);
   const isUrgent = job.scheduleType === 'ASAP';

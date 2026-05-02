@@ -45,7 +45,11 @@ import {
   useUpdateProviderAvailability,
   useUpgradeToProvider,
 } from '../../hooks/provider/useProviderProfile';
-import { useAvailableJobs } from '../../hooks/provider/useAvailableJobs';
+// Sprint 5.2 (canonical) — switched the LiveJobsScreen to the
+// /v1/provider/available-requests feed. The legacy useAvailableJobs
+// hook stays exported for any other call site but is no longer
+// consumed here.
+import { useAvailableRequests } from '../../hooks/provider/useAvailableRequests';
 // useWithdrawBid is exported from the hook module for the My Bids
 // follow-on UI work; the current ProviderApp only consumes useMyBids
 // + useSubmitBid in this file. Listed here so the shape stays
@@ -421,16 +425,28 @@ function JobPin({
 function LiveJobsScreen() {
   const { lang } = useLang();
   const profileQuery = useProviderProfile();
-  // Sprint 5.2: live feed of OPEN_FOR_BIDS service requests, polled
-  // every 15s. The hook scopes to the provider's configured categories
-  // server-side (or to all categories if none configured); explicit
-  // category/city filters can be added once the marketplace UI grows
-  // its filter chips.
-  const availableJobsQuery = useAvailableJobs();
+  // Sprint 5.2 (canonical): live feed of OPEN_FOR_BIDS service
+  // requests against /v1/provider/available-requests, polled every
+  // 20s with refetchOnWindowFocus. The hook scopes to the provider's
+  // configured categories server-side (or to all categories if none
+  // configured) and hides every request the provider already has an
+  // active bid on.
+  const availableRequestsQuery = useAvailableRequests();
   const apiRequests = useMemo(
-    () => (availableJobsQuery.data?.items ?? []).map(mapAvailableJobToLegacy),
-    [availableJobsQuery.data],
+    () => (availableRequestsQuery.data?.items ?? []).map(mapAvailableJobToLegacy),
+    [availableRequestsQuery.data],
   );
+  // Server-side ProviderActiveGuard returns 403 when the provider's
+  // status is not ACTIVE (DRAFT / PENDING_REVIEW / SUSPENDED /
+  // REJECTED). Surface a "blocked" copy instead of an empty list so
+  // the operator understands why the feed is empty.
+  const isBlockedByStatus =
+    availableRequestsQuery.isError &&
+    /** axios error with response.status === 403 */
+    Boolean(
+      (availableRequestsQuery.error as { response?: { status?: number } } | null)?.response
+        ?.status === 403,
+    );
   // Sprint 5.3: real submit-bid mutation. Replaces the
   // `useEcosystem().submitBid` mock; the modal awaits the mutation
   // and React Query invalidates `provider/jobs` and `provider/bids`
@@ -473,6 +489,15 @@ function LiveJobsScreen() {
     km: lang === 'ar' ? 'كم' : 'km',
     nearby: lang === 'ar' ? 'طلبات قريبة منك' : 'Nearby requests',
     noJobs: lang === 'ar' ? 'لا توجد وظائف حالياً' : 'No jobs right now',
+    loading: lang === 'ar' ? 'جارٍ التحميل…' : 'Loading nearby jobs…',
+    blocked:
+      lang === 'ar'
+        ? 'حسابك ليس نشطًا. يمكن للمسؤول تفعيله من لوحة الإدارة.'
+        : 'Your provider account is not active. An admin can reactivate it.',
+    failed:
+      lang === 'ar'
+        ? 'تعذّر تحميل الطلبات. حاول مرة أخرى لاحقاً.'
+        : 'Could not load nearby jobs. Try again later.',
     drag: lang === 'ar' ? 'اسحب للأعلى لرؤية الطلبات' : 'Pull up to see requests',
     urgentTag: lang === 'ar' ? 'عاجل' : 'Urgent',
   };
@@ -610,8 +635,18 @@ function LiveJobsScreen() {
                   <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
                     <MapPin size={24} className="text-slate-300" />
                   </div>
-                  <p className="text-slate-400" style={{ fontSize: '14px' }}>
-                    {L.noJobs}
+                  <p
+                    role="status"
+                    className="text-slate-400 text-center px-4"
+                    style={{ fontSize: '14px' }}
+                  >
+                    {isBlockedByStatus
+                      ? L.blocked
+                      : availableRequestsQuery.isPending
+                        ? L.loading
+                        : availableRequestsQuery.isError
+                          ? L.failed
+                          : L.noJobs}
                   </p>
                 </div>
               ) : (

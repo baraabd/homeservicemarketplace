@@ -1,4 +1,7 @@
-import type { ListAvailableJobsQuery } from '@homeservicemarketplace/contracts';
+import type {
+  ListAvailableJobsQuery,
+  ProviderAvailableRequestsQuery,
+} from '@homeservicemarketplace/contracts';
 
 // Centralised React Query key factory for the Provider bounded
 // context. Mirrors the seekerQueryKeys layout so invalidation patterns
@@ -13,13 +16,21 @@ export const providerQueryKeys = {
   },
   jobs: {
     root: ['provider', 'jobs'] as const,
-    // Available-jobs feed (Sprint 5.2). Filters are part of the cache
-    // key so different filter combos do not collide. `cursor` is
-    // intentionally NOT in the key — the hook uses
-    // `keepPreviousData` semantics rather than a separate cache slot
-    // per page.
+    // Legacy /me/provider/jobs feed (kept for backwards compatibility
+    // with any caller still on the old path; the canonical feed is
+    // `availableRequests` below).
     available: (filters: Pick<ListAvailableJobsQuery, 'categoryId' | 'city'> = {}) =>
       ['provider', 'jobs', 'available', filters] as const,
+  },
+  availableRequests: {
+    // Sprint 5.2 (canonical) — /v1/provider/available-requests.
+    // Mutations on bids / bookings should invalidate this root so
+    // the feed reflects already-bid hides + scheduled-now-disappears
+    // without a manual refetch.
+    root: ['provider', 'available-requests'] as const,
+    list: (filters: Pick<ProviderAvailableRequestsQuery, 'category' | 'near'> = {}) =>
+      ['provider', 'available-requests', 'list', filters] as const,
+    detail: (requestId: string) => ['provider', 'available-requests', 'detail', requestId] as const,
   },
   bids: {
     // Provider-side own bids (Sprint 5.3). Submit / withdraw mutations

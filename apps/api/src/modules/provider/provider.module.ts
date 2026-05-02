@@ -3,6 +3,8 @@ import { Module } from '@nestjs/common';
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
 import { AuthorizationModule } from '../iam/authorization/authorization.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AvailableRequestsController } from './available-requests/available-requests.controller';
+import { AvailableRequestsService } from './available-requests/available-requests.service';
 import { ProviderBidsController } from './bids/provider-bids.controller';
 import { ProviderBidsService } from './bids/provider-bids.service';
 import { ProviderBookingsController } from './bookings/provider-bookings.controller';
@@ -35,6 +37,7 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
   controllers: [
     ProviderController,
     ProviderJobsController,
+    AvailableRequestsController,
     ProviderBidsController,
     ProviderBookingsController,
     ProviderWalletController,
@@ -42,6 +45,7 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
   providers: [
     ProviderService,
     ProviderJobsService,
+    AvailableRequestsService,
     ProviderBidsService,
     ProviderBookingsService,
     ProviderWalletService,
