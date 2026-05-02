@@ -1,0 +1,234 @@
+{
+  "info": {
+    "name": "HSM Backend — Provider (Sprints 5.x)",
+    "description": "Provider-side endpoints. Folders are added per sprint slice: 10 Profile (5.1), 11 Approval Gate (5.1.4 negative tests), 20 Available Requests (5.2), 30 Bids (5.3), 40 Bookings (5.4), 50 Earnings (5.6). Run the IAM 'Login' request first as a provider account so {{providerToken}} is populated; this collection's bearer pulls from {{providerToken}}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "hsm-provider-2026-05"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{providerToken}}" }]
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level guard — never let internal/Prisma/SQL strings or",
+          "// secrets leak into any response (positive or negative).",
+          "const body = pm.response.text();",
+          "pm.test('no Prisma/SQL/secret leak', () => {",
+          "  pm.expect(body).to.not.match(/PrismaClient|column .* does not exist|SELECT |INSERT |UPDATE /i);",
+          "  pm.expect(body).to.not.include('passwordHash');",
+          "  pm.expect(body).to.not.include('refreshToken');",
+          "  pm.expect(body).to.not.include('JWT_SECRET');",
+          "  pm.expect(body).to.not.include('DATABASE_URL');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "10 — Profile (Sprint 5.1)",
+      "item": [
+        {
+          "name": "POST /v1/me/provider/upgrade",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/upgrade",
+            "body": { "mode": "raw", "raw": "{}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is expected', () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "pm.test('Response is JSON', () => pm.response.to.be.json);",
+                  "const b = pm.response.json();",
+                  "pm.test('envelope: { profile: { id, status } }', () => {",
+                  "  pm.expect(b.profile.id).to.be.a('string');",
+                  "  pm.expect(['DRAFT','PENDING_REVIEW','ACTIVE']).to.include(b.profile.status);",
+                  "});",
+                  "pm.environment.set('providerProfileId', b.profile.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/profile",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('JSON', () => pm.response.to.be.json);",
+                  "const b = pm.response.json();",
+                  "pm.test('summary fields present', () => {",
+                  "  pm.expect(b.profile.id).to.be.a('string');",
+                  "  pm.expect(b.profile).to.have.property('availability');",
+                  "  pm.expect(b.profile).to.have.property('status');",
+                  "  pm.expect(b.profile).to.have.property('serviceCategories');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/me/provider/profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"headline\": \"Postman runtime check\",\n  \"bio\": \"Set via the provider postman collection\",\n  \"serviceAreaCity\": \"Riyadh\",\n  \"serviceAreaCountry\": \"SA\",\n  \"serviceAreaRadiusKm\": 25\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('values echoed back', () => {",
+                  "  pm.expect(b.profile.headline).to.eql('Postman runtime check');",
+                  "  pm.expect(b.profile.serviceAreaCity).to.eql('Riyadh');",
+                  "  pm.expect(b.profile.serviceAreaRadiusKm).to.eql(25);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/me/provider/profile (negative — forbidden field)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"headline\": \"ok\",\n  \"status\": \"ACTIVE\",\n  \"userId\": \"injected\",\n  \"verified\": true\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 forbidden field', () => pm.response.to.have.status(400));",
+                  "pm.test('does not leak internals', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('PrismaClientKnownRequestError');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/me/provider/availability",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/availability",
+            "body": { "mode": "raw", "raw": "{\n  \"availability\": \"ONLINE\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('availability switched', () => pm.expect(pm.response.json().profile.availability).to.eql('ONLINE'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11 — Approval Gate (Sprint 5.1.4 negative tests)",
+      "description": "Negative-path coverage for the marketplace approval gate. The actual write endpoints (submit-bid, take-job) come online in Sprints 5.3 / 5.4 — when they ship, drop a copy of these requests into folders 30/40 and verify they 403 for DRAFT / PENDING_REVIEW / SUSPENDED / REJECTED providers. Until then this folder documents the contract and runs the only marketplace-write surface that exists today (none, by design).",
+      "item": [
+        {
+          "name": "GET /v1/me/provider/profile (no token — must be 401, not 403)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Unauthorized or forbidden as expected', () => pm.expect([401, 403, 404]).to.include(pm.response.code));",
+                  "pm.test('Negative response does not leak internals', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('passwordHash');",
+                  "  pm.expect(t).to.not.include('JWT_SECRET');",
+                  "  pm.expect(t).to.not.include('DATABASE_URL');",
+                  "  pm.expect(t).to.not.include('PrismaClientKnownRequestError');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/profile (customer token — must be 403)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+            },
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Forbidden / Unauthorized / Not found', () => pm.expect([401, 403, 404]).to.include(pm.response.code));",
+                  "pm.test('Negative response does not leak internals', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('passwordHash');",
+                  "  pm.expect(t).to.not.include('JWT_SECRET');",
+                  "  pm.expect(t).to.not.include('DATABASE_URL');",
+                  "  pm.expect(t).to.not.include('PrismaClientKnownRequestError');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
