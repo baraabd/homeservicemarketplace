@@ -22,6 +22,7 @@
     "postman:provider": "newman run postman/hsm-provider.postman_collection.json -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/provider.html",
     "postman:admin": "newman run postman/hsm-admin.postman_collection.json -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/admin.html",
     "postman:provider-runtime": "newman run \"postman/FixNow Provider Runtime.postman_collection.json\" -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/provider-runtime.html",
+    "postman:admin-runtime": "newman run \"postman/FixNow Admin Runtime.postman_collection.json\" -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/admin-runtime.html",
     "runtime:provider-loop": "node scripts/runtime/verify-provider-loop.cjs"
   },
   "lint-staged": {

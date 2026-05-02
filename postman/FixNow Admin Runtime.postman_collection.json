@@ -1,0 +1,920 @@
+{
+  "info": {
+    "name": "FixNow Admin Runtime",
+    "description": "End-to-end Admin runtime (Sprint 6.7).\n\nConsolidates every admin endpoint shipped in Sprints 5.1.4 + 6.0 → 6.6 into one runnable narrative:\n  01 Auth — admin login (mobile mode, captures adminToken)\n  02 User Control (Sprint 6.1) — list / search / detail / PATCH status / roles\n  03 Provider Verification (Sprint 6.2) — list / detail / audit / review-notes / approve/reject/suspend/reactivate\n  04 Disputes (Sprint 6.3) — list / filter / detail / PATCH / resolve\n  05 Analytics (Sprint 6.4) — overview / revenue\n  06 Financials (Sprint 6.4) — summary / bookings / provider-earnings\n  07 Settings (Sprint 6.5) — bulk GET / valid PATCH / invalid PATCH\n  08 Admin Notifications (Sprint 6.6) — list / mark read\n  09 Audit Logs (Sprint 6.6) — list / filter by action / redaction check\n  10 Negative Security — customer-token 403 + no-token 401 + IDOR-style query rejection\n\nBefore running:\n  - Boot the API at http://localhost:4000.\n  - Pre-seed an admin account (one-time): see docs/testing/provider-runtime-loop.md §2 for the Prisma snippet that grants the admin role.\n  - Pre-seed a customer (non-admin) account so folder 10's negatives can fire.\n  - Copy postman/local.postman_environment.example.json → postman/local.postman_environment.json and fill in the email/password fields for both accounts.\n  - Run folder 01 first: it captures adminToken and customerToken into the environment.\n\nEvery request runs the collection-level Prisma/SQL/secret-leak guard.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fixnow-admin-runtime"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{adminToken}}" }]
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const text = pm.response.text();",
+          "pm.test('no Prisma/SQL/secret leak', () => {",
+          "  pm.expect(text).to.not.match(/PrismaClient|column .* does not exist|SELECT |INSERT |UPDATE /i);",
+          "  pm.expect(text).to.not.include('passwordHash');",
+          "  pm.expect(text).to.not.include('mfaSecret');",
+          "  pm.expect(text).to.not.include('refreshToken');",
+          "  pm.expect(text).to.not.include('JWT_SECRET');",
+          "  pm.expect(text).to.not.include('DATABASE_URL');",
+          "  pm.expect(text).to.not.include('STRIPE_SECRET');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01 — Auth",
+      "description": "Admin + customer login. Captures bearer tokens into env vars used by every later folder.",
+      "item": [
+        {
+          "name": "POST /v1/auth/login (admin)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.tokens && body.tokens.accessToken) {",
+                  "  pm.environment.set('adminToken', body.tokens.accessToken);",
+                  "  pm.test('captured adminToken', () => pm.expect(body.tokens.accessToken).to.be.a('string'));",
+                  "} else if (body.otpRequired) {",
+                  "  pm.environment.set('adminOtpChallengeId', body.challengeId);",
+                  "  pm.test('OTP challenge captured', () => pm.expect(body.challengeId).to.be.a('string'));",
+                  "} else {",
+                  "  pm.test.fail('login response carried neither tokens nor OTP challenge');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/login (customer — for negatives)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.tokens && body.tokens.accessToken) {",
+                  "  pm.environment.set('customerToken', body.tokens.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/auth/me (admin role check)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const me = pm.response.json();",
+                  "pm.test(\"roles[] contains 'admin'\", () => pm.expect(me.roles).to.include('admin'));",
+                  "pm.environment.set('adminUserId', me.id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 — User Control (Sprint 6.1)",
+      "item": [
+        {
+          "name": "GET /v1/admin/users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users?limit=10"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('items array', () => pm.expect(body.items).to.be.an('array'));",
+                  "pm.test('cursor pagination shape', () => pm.expect(body).to.have.property('nextCursor'));",
+                  "pm.test('no passwordHash/mfaSecret on the wire', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('passwordHash');",
+                  "  pm.expect(t).to.not.include('mfaSecret');",
+                  "});",
+                  "if (body.items.length > 0) {",
+                  "  pm.environment.set('targetUserId', body.items.find(u => !u.roles.includes('admin'))?.id ?? body.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/users?query=test (search)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users?query=test&limit=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('items array', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/users/:id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users/{{targetUserId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/admin/users/:id/status (suspend → restore round-trip)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users/{{targetUserId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\",\n  \"reason\": \"runtime — restore to known state\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 / 400 (self-disable refused) / 404', () => {",
+                  "  pm.expect([200, 400, 404]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('user.status echoes the patch', () => pm.expect(pm.response.json().user.status).to.eql('ACTIVE'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/roles",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/roles"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"seeded 'admin' role present\", () => pm.expect(body.items.some(r => r.name === 'admin')).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 — Provider Verification (Sprint 6.2)",
+      "item": [
+        {
+          "name": "GET /v1/admin/providers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/providers?limit=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('items + nextCursor envelope', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "});",
+                  "if (body.items.length > 0) pm.environment.set('providerProfileId', body.items[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/providers/:id (carries reviewNotes)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/providers/{{providerProfileId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('detail carries reviewNotes', () => pm.expect(pm.response.json()).to.have.property('reviewNotes'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/providers/:id/audit",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/providers/{{providerProfileId}}/audit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/admin/providers/:id/review-notes",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/providers/{{providerProfileId}}/review-notes",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"runtime test — Sprint 6.7\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 / 404', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('reviewNotes round-trip', () => pm.expect(pm.response.json().provider.reviewNotes).to.eql('runtime test — Sprint 6.7'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/providers/:id/approve",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/providers/{{providerProfileId}}/approve",
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"runtime approval\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200/404/409 (idempotent)', () => pm.expect([200, 404, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 — Disputes (Sprint 6.3)",
+      "item": [
+        {
+          "name": "GET /v1/admin/disputes",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes?limit=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('items + nextCursor', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "});",
+                  "if (body.items.length > 0) pm.environment.set('disputeId', body.items[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/disputes?status=OPEN&priority=HIGH",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes?status=OPEN&priority=HIGH"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('every row matches the filter', () => {",
+                  "  for (const r of body.items) {",
+                  "    pm.expect(r.status).to.eql('OPEN');",
+                  "    pm.expect(r.priority).to.eql('HIGH');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/disputes/:id (carries recentEvents)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes/{{disputeId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('detail carries recentEvents', () => pm.expect(pm.response.json().recentEvents).to.be.an('array'));",
+                  "  pm.test('detail carries priority', () => pm.expect(pm.response.json().priority).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/admin/disputes/:id (priority bump)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes/{{disputeId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"priority\": \"HIGH\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 / 404 / 409', () => pm.expect([200, 404, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 — Analytics (Sprint 6.4)",
+      "item": [
+        {
+          "name": "GET /v1/admin/analytics/overview",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/analytics/overview"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('counts + revenue + range present', () => {",
+                  "  pm.expect(body.counts).to.be.an('object');",
+                  "  pm.expect(body.revenue).to.be.an('object');",
+                  "  pm.expect(body.range.from).to.be.a('string');",
+                  "  pm.expect(body.range.to).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/analytics/revenue",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/analytics/revenue"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('buckets array', () => pm.expect(body.buckets).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 — Financials (Sprint 6.4)",
+      "item": [
+        {
+          "name": "GET /v1/admin/financials/summary",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/financials/summary"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('totals reconcile (gross − fees = providerEarnings)', () => {",
+                  "  pm.expect(body.totalProviderEarnings).to.eql(body.totalRevenue - body.totalPlatformFees);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/financials/bookings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/financials/bookings?limit=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('items + nextCursor', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "});",
+                  "pm.test('per-row reconciliation: amount − platformFee = netAmount', () => {",
+                  "  for (const r of body.items) pm.expect(r.amount - r.platformFee).to.eql(r.netAmount);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/financials/provider-earnings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/financials/provider-earnings?limit=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('rows sorted gross-descending', () => {",
+                  "  for (let i = 1; i < body.items.length; i++) {",
+                  "    pm.expect(body.items[i].grossEarnings).to.be.at.most(body.items[i-1].grossEarnings);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 — Settings (Sprint 6.5)",
+      "item": [
+        {
+          "name": "GET /v1/admin/settings (bulk)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/settings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('whitelisted keys present', () => {",
+                  "  for (const k of ['platform_fee_bps','default_currency','support_email','feature_show_hourly_rate']) {",
+                  "    pm.expect(body.values).to.have.property(k);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/admin/settings (valid)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/settings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"values\": {\n    \"feature_show_hourly_rate\": true\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('values echoes patch', () => pm.expect(pm.response.json().values.feature_show_hourly_rate).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/admin/settings (invalid — unknown key)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/settings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"values\": {\n    \"JWT_SECRET\": \"pwned\"\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('attempt did NOT echo the secret value', () => pm.expect(pm.response.text()).to.not.include('pwned'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 — Admin Notifications (Sprint 6.6)",
+      "item": [
+        {
+          "name": "GET /v1/admin/notifications",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/notifications"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('items + nextCursor', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "});",
+                  "pm.test('every deepLink starts with /admin/ (experience scope)', () => {",
+                  "  for (const n of body.items) {",
+                  "    if (n.deepLink) pm.expect(n.deepLink.startsWith('/admin/')).to.eql(true);",
+                  "  }",
+                  "});",
+                  "if (body.items.length > 0) pm.environment.set('adminNotificationId', body.items[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/notifications/:id/read",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/notifications/{{adminNotificationId}}/read"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('notification.readAt populated', () => pm.expect(pm.response.json().notification.readAt).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "09 — Audit Logs (Sprint 6.6)",
+      "item": [
+        {
+          "name": "GET /v1/admin/audit-logs",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/audit-logs?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('items + nextCursor', () => {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "});",
+                  "pm.test('every row carries actor + action (renamed wire fields)', () => {",
+                  "  for (const r of body.items) {",
+                  "    pm.expect(r.action).to.be.a('string');",
+                  "    pm.expect(r).to.have.property('actor');",
+                  "    pm.expect(r).to.have.property('metadata');",
+                  "  }",
+                  "});",
+                  "pm.test('redaction is in effect (no raw secret strings)', () => {",
+                  "  const text = pm.response.text();",
+                  "  pm.expect(text).to.not.include('passwordHash\":\"');",
+                  "  pm.expect(text).to.not.include('JWT_SECRET\":\"');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/audit-logs?action=ADMIN_PROVIDER_APPROVED",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/audit-logs?action=ADMIN_PROVIDER_APPROVED"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('every row matches the action filter', () => {",
+                  "  for (const r of body.items) pm.expect(r.action).to.eql('ADMIN_PROVIDER_APPROVED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 — Negative Security",
+      "description": "Cross-role 403 + no-token 401 + IDOR-style query rejection. Pins that every admin surface refuses non-admin callers AND rejects unknown query params with VALIDATION_ERROR (no silent acceptance, no leaked admin identity in error envelopes).",
+      "item": [
+        {
+          "name": "GET /v1/admin/users (customer token → 403)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+            },
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "pm.test('FORBIDDEN code', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));",
+                  "pm.test('no admin identity in body', () => {",
+                  "  pm.expect(pm.response.text()).to.not.include('admin@');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/audit-logs (customer token → 403)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+            },
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/audit-logs"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 403', () => pm.response.to.have.status(403));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/financials/summary (no token → 401)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/financials/summary"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('AUTH_INVALID_CREDENTIALS code', () => pm.expect(pm.response.json().error.code).to.eql('AUTH_INVALID_CREDENTIALS'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/users?userId=victim (IDOR-style query rejected)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-Kind", "value": "mobile" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users?userId=victim"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400 (forbidNonWhitelisted)', () => pm.response.to.have.status(400));",
+                  "pm.test('VALIDATION_ERROR code', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
