@@ -2,11 +2,14 @@ import { Injectable } from '@nestjs/common';
 import type {
   AdminUserMutationResponse,
   AdminUserSummary,
+  ListAdminRolesResponse,
   ListAdminUsersQuery,
   ListAdminUsersResponse,
+  UpdateUserStatusRequest,
 } from '@homeservicemarketplace/contracts';
 import type { AccountStatus, AuditEventType, User } from '@homeservicemarketplace/database';
 
+import { RoleRepository } from '../../../infrastructure/persistence/iam/role.repository';
 import { UserRepository } from '../../../infrastructure/persistence/iam/user.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
@@ -24,14 +27,18 @@ const DEFAULT_PAGE_SIZE = 50;
 export class AdminUsersService {
   constructor(
     private readonly users: UserRepository,
+    private readonly roles: RoleRepository,
     private readonly audit: AdminAuditService,
     private readonly tx: TransactionRunner,
   ) {}
 
   async list(query: ListAdminUsersQuery): Promise<ListAdminUsersResponse> {
     const take = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), 100);
+    // `query` (Sprint 6.1 canonical) wins when both are set; falls
+    // back to the legacy `q` so existing callers keep working.
+    const searchTerm = (query.query ?? query.q)?.trim() || undefined;
     const rows = await this.users.searchForAdmin({
-      q: query.q,
+      q: searchTerm,
       status: query.status,
       roleName: query.role,
       take: take + 1,
@@ -43,10 +50,75 @@ export class AdminUsersService {
     return { items, nextCursor };
   }
 
+  async listRoles(): Promise<ListAdminRolesResponse> {
+    const roleRows = await this.roles.listAll();
+    return {
+      items: roleRows.map((r) => ({ id: r.id, name: r.name, description: r.description })),
+    };
+  }
+
   async detail(userId: string): Promise<AdminUserSummary> {
     const u = await this.users.findById(userId);
     if (!u) throw new AppError('NOT_FOUND', 'User not found.', 404);
     return this.toSummary(u);
+  }
+
+  // Sprint 6.1 canonical PATCH path. Unified replacement for the
+  // suspend / restore POST pair. `status` is one of ACTIVE,
+  // SUSPENDED, LOCKED — the wire DTO refuses PENDING_VERIFICATION
+  // and DELETED. Self-protection: an admin cannot flip themselves
+  // to anything other than ACTIVE (i.e., they can't lock themselves
+  // out of the dashboard mid-session).
+  async setStatus(
+    adminUserId: string,
+    targetUserId: string,
+    body: UpdateUserStatusRequest,
+  ): Promise<AdminUserMutationResponse> {
+    const nextStatus = body.status as AccountStatus;
+    if (adminUserId === targetUserId && nextStatus !== 'ACTIVE') {
+      throw new AppError('VALIDATION_ERROR', 'Admins cannot disable their own account.', 400);
+    }
+    const isActive = nextStatus === 'ACTIVE';
+    const updated = await this.tx.run(async (tx) => {
+      const existing = await this.users.findById(targetUserId, tx);
+      if (!existing) throw new AppError('NOT_FOUND', 'User not found.', 404);
+      // Idempotent: if the target already has the requested status,
+      // skip the write but still emit an audit row so the operator's
+      // intent is captured. This stops an accidental double-click
+      // from creating two state-flip rows for one action.
+      if (existing.status !== nextStatus) {
+        await this.users.update(targetUserId, { isActive }, tx);
+        await tx?.user.update({
+          where: { id: targetUserId, deletedAt: null },
+          data: { status: nextStatus },
+        });
+      }
+      // Reuse the existing audit types so dashboards / queries that
+      // group by event type don't have to learn a new one. We pick
+      // RESTORED when flipping to ACTIVE and SUSPENDED otherwise; the
+      // metadata.targetStatus carries the precise new status for the
+      // less common LOCKED case.
+      const auditType: AuditEventType =
+        nextStatus === 'ACTIVE'
+          ? ('ADMIN_USER_RESTORED' as AuditEventType)
+          : ('ADMIN_USER_SUSPENDED' as AuditEventType);
+      await this.audit.record(
+        {
+          adminUserId,
+          type: auditType,
+          metadata: {
+            targetUserId,
+            targetStatus: nextStatus,
+            previousStatus: existing.status,
+            previousIsActive: existing.isActive,
+            ...(body.reason ? { reason: body.reason } : {}),
+          },
+        },
+        tx,
+      );
+      return { ...existing, isActive, status: nextStatus };
+    });
+    return { user: await this.toSummary(updated) };
   }
 
   async suspend(adminUserId: string, targetUserId: string): Promise<AdminUserMutationResponse> {

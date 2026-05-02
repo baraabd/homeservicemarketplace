@@ -5,7 +5,7 @@ import { AuthorizationModule } from '../iam/authorization/authorization.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminController } from './admin.controller';
-import { AdminUsersController } from './users/admin-users.controller';
+import { AdminRolesController, AdminUsersController } from './users/admin-users.controller';
 import { AdminUsersService } from './users/admin-users.service';
 import { AdminVerificationController } from './verification/admin-verification.controller';
 import { AdminVerificationService } from './verification/admin-verification.service';
@@ -40,6 +40,7 @@ import { AdminSettingsService } from './settings/admin-settings.service';
   controllers: [
     AdminController,
     AdminUsersController,
+    AdminRolesController,
     AdminVerificationController,
     AdminDisputesController,
     AdminAnalyticsController,

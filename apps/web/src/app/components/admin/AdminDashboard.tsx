@@ -49,6 +49,18 @@ import {
   WALLET_TRANSACTIONS,
 } from '../../context/EcosystemContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
+import { useAuth } from '../../../lib/auth-provider';
+import {
+  useAdminRoles,
+  useAdminUserDetail,
+  useAdminUsers,
+  useUpdateAdminUserStatus,
+} from '../../hooks/admin/useAdminUsers';
+import type {
+  AdminUserStatus,
+  AdminUserSummary,
+  UpdateUserStatusRequest,
+} from '@homeservicemarketplace/contracts';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type Section = 'dashboard' | 'users' | 'verification' | 'financials' | 'disputes' | 'settings';
@@ -1394,6 +1406,424 @@ function PricingSettingsSection({ lang }: { lang: string }) {
   );
 }
 
+// ─── User Control (Sprint 6.1) ────────────────────────────────────────────────
+//
+// Replaces the prior "Coming Soon" placeholder with a real, API-driven
+// admin user table: search by query, filter by role + status, open the
+// detail drawer, flip the user's status. All mutations are audited
+// server-side; the hook tree invalidates the admin/users root on every
+// successful PATCH so the table reconciles without a manual refetch.
+const STATUS_OPTIONS: ReadonlyArray<AdminUserStatus | 'ALL'> = [
+  'ALL',
+  'ACTIVE',
+  'SUSPENDED',
+  'LOCKED',
+  'PENDING_VERIFICATION',
+];
+
+function statusBadgeClass(status: AdminUserStatus): string {
+  switch (status) {
+    case 'ACTIVE':
+      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+    case 'SUSPENDED':
+      return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400';
+    case 'LOCKED':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+    case 'PENDING_VERIFICATION':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+    case 'DELETED':
+      return 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400';
+    default:
+      return 'bg-slate-100 text-slate-600';
+  }
+}
+
+function UsersSection({ lang }: { lang: string }) {
+  const isAr = lang === 'ar';
+  const [searchInput, setSearchInput] = useState('');
+  const [committedQuery, setCommittedQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<AdminUserStatus | undefined>(undefined);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
+  const usersQuery = useAdminUsers({
+    query: committedQuery || undefined,
+    role: roleFilter,
+    status: statusFilter,
+    limit: 50,
+  });
+  const rolesQuery = useAdminRoles();
+
+  const items: AdminUserSummary[] = usersQuery.data?.items ?? [];
+
+  const L = {
+    title: isAr ? 'إدارة المستخدمين' : 'User Control',
+    searchPlaceholder: isAr ? 'ابحث بالبريد أو الاسم' : 'Search by email or name',
+    searchAction: isAr ? 'بحث' : 'Search',
+    role: isAr ? 'الدور' : 'Role',
+    status: isAr ? 'الحالة' : 'Status',
+    allRoles: isAr ? 'كل الأدوار' : 'All roles',
+    allStatuses: isAr ? 'كل الحالات' : 'All statuses',
+    columns: {
+      name: isAr ? 'المستخدم' : 'User',
+      roles: isAr ? 'الأدوار' : 'Roles',
+      status: isAr ? 'الحالة' : 'Status',
+      created: isAr ? 'منذ' : 'Created',
+    },
+    loading: isAr ? 'جارٍ التحميل…' : 'Loading…',
+    failed: isAr
+      ? 'تعذّر تحميل المستخدمين. حاول مرة أخرى.'
+      : 'Could not load users. Please try again.',
+    empty: isAr ? 'لا يوجد مستخدمون مطابقون.' : 'No users match the current filters.',
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Header + filter bar */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <h2
+          className="text-slate-900 dark:text-white"
+          style={{ fontSize: '22px', fontWeight: 800 }}
+        >
+          {L.title}
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setCommittedQuery(searchInput.trim());
+            }}
+            className="flex gap-2"
+          >
+            <div className="relative">
+              <Search
+                size={14}
+                className="absolute top-1/2 -translate-y-1/2 start-3 text-slate-400"
+              />
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder={L.searchPlaceholder}
+                className="ps-9 pe-3 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                style={{ fontSize: '13px', minWidth: '240px' }}
+                aria-label={L.searchPlaceholder}
+              />
+            </div>
+            <button
+              type="submit"
+              className="px-3 py-2 rounded-2xl bg-blue-600 text-white"
+              style={{ fontSize: '13px', fontWeight: 700 }}
+            >
+              {L.searchAction}
+            </button>
+          </form>
+          <select
+            value={roleFilter ?? ''}
+            onChange={(e) => setRoleFilter(e.target.value || undefined)}
+            className="px-3 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+            style={{ fontSize: '13px' }}
+            aria-label={L.role}
+          >
+            <option value="">{L.allRoles}</option>
+            {(rolesQuery.data?.items ?? []).map((r) => (
+              <option key={r.id} value={r.name}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={statusFilter ?? 'ALL'}
+            onChange={(e) =>
+              setStatusFilter(
+                e.target.value === 'ALL' ? undefined : (e.target.value as AdminUserStatus),
+              )
+            }
+            className="px-3 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+            style={{ fontSize: '13px' }}
+            aria-label={L.status}
+          >
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s === 'ALL' ? L.allStatuses : s}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
+        {usersQuery.isPending ? (
+          <p
+            className="py-12 text-center text-slate-400"
+            role="status"
+            style={{ fontSize: '13px' }}
+          >
+            {L.loading}
+          </p>
+        ) : usersQuery.isError ? (
+          <p className="py-12 text-center text-rose-600" role="status" style={{ fontSize: '13px' }}>
+            {L.failed}
+          </p>
+        ) : items.length === 0 ? (
+          <p
+            className="py-12 text-center text-slate-400"
+            role="status"
+            style={{ fontSize: '13px' }}
+          >
+            {L.empty}
+          </p>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-slate-700 text-start">
+                <th
+                  className="px-4 py-3 text-slate-500 text-start"
+                  style={{ fontSize: '11px', fontWeight: 700 }}
+                >
+                  {L.columns.name}
+                </th>
+                <th
+                  className="px-4 py-3 text-slate-500 text-start"
+                  style={{ fontSize: '11px', fontWeight: 700 }}
+                >
+                  {L.columns.roles}
+                </th>
+                <th
+                  className="px-4 py-3 text-slate-500 text-start"
+                  style={{ fontSize: '11px', fontWeight: 700 }}
+                >
+                  {L.columns.status}
+                </th>
+                <th
+                  className="px-4 py-3 text-slate-500 text-start"
+                  style={{ fontSize: '11px', fontWeight: 700 }}
+                >
+                  {L.columns.created}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((u) => (
+                <tr
+                  key={u.id}
+                  onClick={() => setSelectedUserId(u.id)}
+                  className="border-b border-slate-50 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer"
+                >
+                  <td className="px-4 py-3">
+                    <p
+                      className="text-slate-900 dark:text-white"
+                      style={{ fontSize: '13px', fontWeight: 600 }}
+                    >
+                      {u.firstName} {u.lastName}
+                    </p>
+                    <p className="text-slate-400" style={{ fontSize: '11px' }}>
+                      {u.email}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {u.roles.map((r) => (
+                        <span
+                          key={r}
+                          className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
+                          style={{ fontSize: '10px', fontWeight: 600 }}
+                        >
+                          {r}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`px-2 py-1 rounded-full ${statusBadgeClass(u.status)}`}
+                      style={{ fontSize: '10px', fontWeight: 700 }}
+                    >
+                      {u.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-500" style={{ fontSize: '11px' }}>
+                    {new Date(u.createdAt).toLocaleDateString(isAr ? 'ar' : 'en')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {selectedUserId ? (
+        <UserDetailDrawer
+          userId={selectedUserId}
+          onClose={() => setSelectedUserId(null)}
+          lang={lang}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function UserDetailDrawer({
+  userId,
+  onClose,
+  lang,
+}: {
+  userId: string;
+  onClose: () => void;
+  lang: string;
+}) {
+  const isAr = lang === 'ar';
+  const detailQuery = useAdminUserDetail(userId);
+  const setStatus = useUpdateAdminUserStatus();
+  const { user: meUser } = useAuth();
+  const isSelf = meUser?.id === userId;
+  const user = detailQuery.data;
+
+  const L = {
+    detail: isAr ? 'تفاصيل المستخدم' : 'User detail',
+    close: isAr ? 'إغلاق' : 'Close',
+    suspend: isAr ? 'تعليق' : 'Suspend',
+    activate: isAr ? 'تفعيل' : 'Activate',
+    selfWarning: isAr ? 'لا يمكنك تعطيل حسابك الخاص.' : 'You cannot disable your own account.',
+    loading: isAr ? 'جارٍ التحميل…' : 'Loading…',
+    error: isAr ? 'تعذّر تحميل التفاصيل.' : 'Could not load user details.',
+    saving: isAr ? 'جارٍ الحفظ…' : 'Saving…',
+    saveFailed: isAr ? 'فشل التحديث.' : 'Update failed.',
+  };
+
+  const onFlip = async (next: 'ACTIVE' | 'SUSPENDED') => {
+    if (!user) return;
+    const body: UpdateUserStatusRequest = { status: next };
+    await setStatus.mutateAsync({ userId: user.id, body });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-label={L.close} />
+      <div className="relative ms-auto w-full max-w-md bg-white dark:bg-slate-800 h-full overflow-y-auto p-6 flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h3
+            className="text-slate-900 dark:text-white"
+            style={{ fontSize: '18px', fontWeight: 800 }}
+          >
+            {L.detail}
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"
+            aria-label={L.close}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {detailQuery.isPending ? (
+          <p className="text-slate-400" role="status" style={{ fontSize: '13px' }}>
+            {L.loading}
+          </p>
+        ) : detailQuery.isError || !user ? (
+          <p className="text-rose-600" role="status" style={{ fontSize: '13px' }}>
+            {L.error}
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-col gap-1">
+              <p
+                className="text-slate-900 dark:text-white"
+                style={{ fontSize: '16px', fontWeight: 700 }}
+              >
+                {user.firstName} {user.lastName}
+              </p>
+              <p className="text-slate-500" style={{ fontSize: '13px' }}>
+                {user.email}
+              </p>
+              <span
+                className={`mt-1 inline-block w-fit px-2 py-1 rounded-full ${statusBadgeClass(user.status)}`}
+                style={{ fontSize: '10px', fontWeight: 700 }}
+              >
+                {user.status}
+              </span>
+            </div>
+
+            <div>
+              <p className="text-slate-500" style={{ fontSize: '11px', fontWeight: 700 }}>
+                {isAr ? 'الأدوار' : 'Roles'}
+              </p>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {user.roles.map((r) => (
+                  <span
+                    key={r}
+                    className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
+                    style={{ fontSize: '11px', fontWeight: 600 }}
+                  >
+                    {r}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-slate-500" style={{ fontSize: '11px' }}>
+              <div>
+                <p style={{ fontWeight: 700 }}>{isAr ? 'تم التحقق' : 'Email verified'}</p>
+                <p>
+                  {user.emailVerifiedAt ? new Date(user.emailVerifiedAt).toLocaleString() : '—'}
+                </p>
+              </div>
+              <div>
+                <p style={{ fontWeight: 700 }}>MFA</p>
+                <p>{user.mfaEnabled ? '✓' : '—'}</p>
+              </div>
+              <div>
+                <p style={{ fontWeight: 700 }}>{isAr ? 'تاريخ الإنشاء' : 'Created'}</p>
+                <p>{new Date(user.createdAt).toLocaleString()}</p>
+              </div>
+              <div>
+                <p style={{ fontWeight: 700 }}>{isAr ? 'آخر تحديث' : 'Updated'}</p>
+                <p>{new Date(user.updatedAt).toLocaleString()}</p>
+              </div>
+            </div>
+
+            <div className="mt-2 flex flex-col gap-2">
+              {isSelf ? (
+                <p className="text-amber-600" style={{ fontSize: '12px' }} role="status">
+                  {L.selfWarning}
+                </p>
+              ) : null}
+              {user.status === 'ACTIVE' ? (
+                <button
+                  type="button"
+                  disabled={isSelf || setStatus.isPending}
+                  onClick={() => onFlip('SUSPENDED')}
+                  className="w-full py-2 rounded-2xl bg-rose-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ fontSize: '14px', fontWeight: 700 }}
+                >
+                  {setStatus.isPending ? L.saving : L.suspend}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={setStatus.isPending}
+                  onClick={() => onFlip('ACTIVE')}
+                  className="w-full py-2 rounded-2xl bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ fontSize: '14px', fontWeight: 700 }}
+                >
+                  {setStatus.isPending ? L.saving : L.activate}
+                </button>
+              )}
+              {setStatus.isError ? (
+                <p className="text-rose-600" style={{ fontSize: '12px' }} role="status">
+                  {L.saveFailed}
+                </p>
+              ) : null}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Sidebar ───────────────────────────────────────────────────────────────────
 const SIDEBAR_ITEMS: { id: Section; icon: React.ReactNode; en: string; ar: string }[] = [
   { id: 'dashboard', icon: <LayoutDashboard size={18} />, en: 'Dashboard', ar: 'لوحة التحكم' },
@@ -1646,27 +2076,7 @@ export function AdminDashboard() {
               {activeSection === 'financials' && <FinancialsSection lang={lang} />}
               {activeSection === 'disputes' && <DisputeSection lang={lang} />}
               {activeSection === 'settings' && <PricingSettingsSection lang={lang} />}
-              {activeSection === 'users' && (
-                <div className="flex flex-col items-center justify-center py-32 gap-4">
-                  <div className="w-20 h-20 rounded-3xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                    <Users size={36} className="text-slate-300" />
-                  </div>
-                  <p
-                    className="text-slate-700 dark:text-slate-300"
-                    style={{ fontSize: '18px', fontWeight: 700 }}
-                  >
-                    {lang === 'ar' ? 'إدارة المستخدمين قريباً' : 'User Control — Coming Soon'}
-                  </p>
-                  <p
-                    className="text-slate-400 text-center"
-                    style={{ fontSize: '14px', maxWidth: '360px' }}
-                  >
-                    {lang === 'ar'
-                      ? 'هذا القسم قيد التطوير'
-                      : 'This section is under active development'}
-                  </p>
-                </div>
-              )}
+              {activeSection === 'users' && <UsersSection lang={lang} />}
             </motion.div>
           </AnimatePresence>
         </main>

@@ -4,10 +4,18 @@ import type { ListAdminUsersQuery } from '@homeservicemarketplace/contracts';
 import { AccountStatus } from '@homeservicemarketplace/database';
 
 export class ListAdminUsersQueryDto implements ListAdminUsersQuery {
+  // Sprint 6.1 accepts BOTH `q` (legacy) and `query` (canonical) on
+  // the wire and folds them in the service — `query` wins when both
+  // are present. forbidNonWhitelisted: true rejects any other key.
   @IsOptional()
   @IsString()
   @Length(1, 128)
   q?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 128)
+  query?: string;
 
   @IsOptional()
   @IsEnum(AccountStatus)

@@ -11,8 +11,10 @@ export type AdminUserStatus = (typeof AdminUserStatus)[keyof typeof AdminUserSta
 
 export interface ListAdminUsersQuery {
   // Free-text search. Server matches case-insensitively against
-  // email / firstName / lastName.
+  // email / firstName / lastName. Accepted as either `q` (legacy)
+  // or `query` (Sprint 6.1 canonical) — the controller folds them.
   q?: string;
+  query?: string;
   status?: AdminUserStatus;
   // Role name filter. Common values: 'admin', 'provider', 'customer'.
   role?: string;
