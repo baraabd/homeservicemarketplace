@@ -465,6 +465,149 @@
       ]
     },
     {
+      "name": "40 — Bookings (Sprint 5.4)",
+      "item": [
+        {
+          "name": "GET /v1/me/provider/bookings",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items array + nextCursor', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('row has ProviderBookingSummary shape with seeker firstName', () => {",
+                  "    const r = b.items[0];",
+                  "    pm.expect(r.seeker.firstName).to.be.a('string');",
+                  "    pm.expect(r.addressSnapshot.line1).to.be.a('string');",
+                  "  });",
+                  "  pm.test('does not leak email / phone / passwordHash', () => {",
+                  "    const t = pm.response.text();",
+                  "    pm.expect(t).to.not.include('passwordHash');",
+                  "    pm.expect(t).to.not.match(/\\\"email\\\"\\s*:\\s*\\\"[^\\\"]+@/);",
+                  "  });",
+                  "  pm.environment.set('bookingId', b.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/bookings/:bookingId",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings/{{bookingId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('detail has description + addressSnapshot.line1', () => {",
+                  "  const r = pm.response.json();",
+                  "  pm.expect(r).to.have.property('description');",
+                  "  pm.expect(r.addressSnapshot.line1).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/bookings/:bookingId/timeline",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings/{{bookingId}}/timeline"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('items is an array', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bookings/:bookingId/start",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings/{{bookingId}}/start"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 409 (idempotency)', () => pm.expect([200, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('booking.status = IN_PROGRESS', () => pm.expect(pm.response.json().booking.status).to.eql('IN_PROGRESS'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bookings/:bookingId/complete",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings/{{bookingId}}/complete"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 409 (idempotency)', () => pm.expect([200, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('booking.status = COMPLETED', () => pm.expect(pm.response.json().booking.status).to.eql('COMPLETED'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bookings/:bookingId/cancel (negative — already completed)",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings/{{bookingId}}/cancel"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 — only SCHEDULED is cancellable', () => pm.expect([409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "11 — Approval Gate (Sprint 5.1.4 negative tests)",
       "description": "Negative-path coverage for the marketplace approval gate. The actual write endpoints (submit-bid, take-job) come online in Sprints 5.3 / 5.4 — when they ship, drop a copy of these requests into folders 30/40 and verify they 403 for DRAFT / PENDING_REVIEW / SUSPENDED / REJECTED providers. Until then this folder documents the contract and runs the only marketplace-write surface that exists today (none, by design).",
       "item": [

@@ -29,4 +29,14 @@ export const providerQueryKeys = {
     root: ['provider', 'bids'] as const,
     list: (filters: { status?: string } = {}) => ['provider', 'bids', 'list', filters] as const,
   },
+  bookings: {
+    // Provider-side bookings (Sprint 5.4). Start / complete / cancel
+    // mutations invalidate the root so list + detail refetch in one
+    // call. Bids invalidate too so the My Bids 'Start Job' button
+    // (rendered on ACCEPTED bids) reflects the new booking state.
+    root: ['provider', 'bookings'] as const,
+    list: (filters: { status?: string } = {}) => ['provider', 'bookings', 'list', filters] as const,
+    detail: (bookingId: string) => ['provider', 'bookings', 'detail', bookingId] as const,
+    timeline: (bookingId: string) => ['provider', 'bookings', 'timeline', bookingId] as const,
+  },
 } as const;

@@ -5,6 +5,8 @@ import { AuthorizationModule } from '../iam/authorization/authorization.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ProviderBidsController } from './bids/provider-bids.controller';
 import { ProviderBidsService } from './bids/provider-bids.service';
+import { ProviderBookingsController } from './bookings/provider-bookings.controller';
+import { ProviderBookingsService } from './bookings/provider-bookings.service';
 import { ProviderJobsController } from './feed/provider-jobs.controller';
 import { ProviderJobsService } from './feed/provider-jobs.service';
 import { ProviderActiveGuard } from './guards/provider-active.guard';
@@ -28,8 +30,19 @@ import { ProviderService } from './provider.service';
 // NotificationsService by NotificationsModule.
 @Module({
   imports: [AuthenticationModule, AuthorizationModule, NotificationsModule],
-  controllers: [ProviderController, ProviderJobsController, ProviderBidsController],
-  providers: [ProviderService, ProviderJobsService, ProviderBidsService, ProviderActiveGuard],
+  controllers: [
+    ProviderController,
+    ProviderJobsController,
+    ProviderBidsController,
+    ProviderBookingsController,
+  ],
+  providers: [
+    ProviderService,
+    ProviderJobsService,
+    ProviderBidsService,
+    ProviderBookingsService,
+    ProviderActiveGuard,
+  ],
   exports: [ProviderService, ProviderActiveGuard],
 })
 export class ProviderModule {}

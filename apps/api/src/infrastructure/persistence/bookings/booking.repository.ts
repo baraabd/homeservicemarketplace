@@ -8,6 +8,7 @@ import type {
   ProviderProfile,
   ServiceCategory,
   ServiceRequest,
+  User,
 } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../prisma/prisma.service';
@@ -143,4 +144,87 @@ export class BookingRepository {
       data: { status: to },
     });
   }
+
+  // ─── Provider-side surfaces (Sprint 5 slice 5.4) ──────────────────────────
+
+  // Cursor-paginated list scoped to a single provider. Eager-loads the
+  // request (with category) + bid + provider + seeker (for first name);
+  // the seeker is only included on the provider-side surface where the
+  // booking is already accepted, so first-name exposure is acceptable.
+  listForProvider(
+    args: { providerId: string; status?: BookingStatus; take: number; cursor?: string },
+    tx?: PrismaTx,
+  ): Promise<BookingWithProviderRelations[]> {
+    const where: Prisma.BookingWhereInput = {
+      providerId: args.providerId,
+      deletedAt: null,
+      ...(args.status ? { status: args.status } : {}),
+    };
+    return this.db(tx).booking.findMany({
+      where,
+      take: args.take,
+      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+      orderBy: [
+        { scheduledAt: { sort: 'desc', nulls: 'last' } },
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+      include: {
+        request: { include: { category: true } },
+        bid: true,
+        provider: true,
+        seeker: { select: { id: true, firstName: true } },
+      },
+    }) as Promise<BookingWithProviderRelations[]>;
+  }
+
+  // Provider-scoped detail finder. Returns null when the booking
+  // doesn't exist OR doesn't belong to the calling provider — same
+  // 404-or-existence pattern the seeker side uses.
+  findOwnedByProvider(
+    bookingId: string,
+    providerId: string,
+    tx?: PrismaTx,
+  ): Promise<BookingWithProviderRelations | null> {
+    return this.db(tx).booking.findFirst({
+      where: { id: bookingId, providerId, deletedAt: null },
+      include: {
+        request: { include: { category: true } },
+        bid: true,
+        provider: true,
+        seeker: { select: { id: true, firstName: true } },
+      },
+    }) as Promise<BookingWithProviderRelations | null>;
+  }
+
+  // Provider-scoped status-flip used by start / complete / cancel.
+  // Conditional on current status being in `from` AND ownership; an
+  // unexpected status returns count: 0 → CONFLICT.
+  setStatusOwnedByProvider(
+    bookingId: string,
+    providerId: string,
+    from: BookingStatus[],
+    to: BookingStatus,
+    tx?: PrismaTx,
+  ): Promise<Prisma.BatchPayload> {
+    return this.db(tx).booking.updateMany({
+      where: {
+        id: bookingId,
+        providerId,
+        deletedAt: null,
+        status: { in: from },
+      },
+      data: { status: to },
+    });
+  }
 }
+
+// Eager-loaded shape used by the provider-side finders. Differs from
+// `BookingWithRelations` in that the seeker is included (first name
+// only) instead of the provider being the focal-point.
+export type BookingWithProviderRelations = Booking & {
+  request: ServiceRequest & { category: ServiceCategory | null };
+  bid: Bid;
+  provider: ProviderProfile;
+  seeker: Pick<User, 'id' | 'firstName'>;
+};
