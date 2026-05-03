@@ -69,21 +69,25 @@ function readApiKey(): string {
   return typeof k === 'string' ? k.trim() : '';
 }
 
+interface GoogleAddressComponent {
+  long_name: string;
+  short_name: string;
+  types: string[];
+}
+
+interface GoogleGeocodeResult {
+  formatted_address: string;
+  address_components?: GoogleAddressComponent[];
+}
+
 interface GoogleGeocodeResponse {
   status: string;
-  results?: Array<{
-    formatted_address: string;
-    address_components?: Array<{
-      long_name: string;
-      short_name: string;
-      types: string[];
-    }>;
-  }>;
+  results?: GoogleGeocodeResult[];
   error_message?: string;
 }
 
 function pickComponent(
-  components: GoogleGeocodeResponse['results'][number]['address_components'],
+  components: GoogleAddressComponent[] | undefined,
   type: string,
 ): string | null {
   if (!components) return null;

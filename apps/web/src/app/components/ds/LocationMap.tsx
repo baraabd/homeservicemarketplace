@@ -1,8 +1,33 @@
-import { useCallback, useMemo } from 'react';
-import { GoogleMap, MarkerF, useJsApiLoader } from '@react-google-maps/api';
+import { useCallback, useMemo, useRef } from 'react';
+import L from 'leaflet';
+import { MapContainer, Marker, TileLayer } from 'react-leaflet';
 import { MapPin } from 'lucide-react';
 
-// Phase 4 Feature 4 — interactive Google Map with a draggable marker.
+// ─── Leaflet base styles + default-marker icon fix ───────────────────────────
+//
+// Leaflet ships its CSS as a sibling asset; Vite users must import it at the
+// module scope of any component that mounts a map. Without this, tiles render
+// but the zoom controls and attribution overlay show as unstyled DOM noise.
+import 'leaflet/dist/leaflet.css';
+//
+// The default marker icon URLs that Leaflet bakes into its bundled CSS resolve
+// against the page origin (e.g. `/images/marker-icon.png`), which breaks under
+// every modern bundler — the assets live inside the leaflet package, not at
+// the web root. The standard fix is to import the three images through Vite's
+// asset pipeline, then merge them into the Default-Icon options. Done once at
+// module scope so the cost is paid only on first import.
+import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
+import iconUrl from 'leaflet/dist/images/marker-icon.png';
+import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
+
+// `_getIconUrl` is the internal hook Leaflet uses to compute the URL — once
+// removed, `mergeOptions` becomes the source of truth and our Vite-resolved
+// URLs win. Cast through `unknown` because Leaflet's typings don't expose the
+// private method, but it's part of the de-facto Leaflet+Vite recipe.
+delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
+L.Icon.Default.mergeOptions({ iconRetinaUrl, iconUrl, shadowUrl });
+
+// Phase 4 Feature 4 (revised) — interactive map with a draggable marker.
 //
 // Used by:
 //   - JobWizardModal.tsx (Location & Time step) — pin the captured
@@ -10,36 +35,35 @@ import { MapPin } from 'lucide-react';
 //   - SavedAddressesPage.tsx — let the user fine-tune the saved
 //     address pin before saving.
 //
-// Graceful fallback contract:
-//   - When `VITE_GOOGLE_MAPS_API_KEY` is missing/empty (typical dev
-//     shell, CI), the component renders a non-interactive placeholder
-//     instead of trying to load the Maps JS. No key request goes out;
-//     no console error; the parent's flow is unaffected.
-//   - When `lat`/`lng` are null (the user hasn't captured a location
-//     yet), the placeholder also renders with a "no location yet"
-//     message so the parent doesn't have to conditionally mount us.
-//   - When the Maps JS fails to load (offline, blocked, quota), the
-//     placeholder renders with the same copy. We never show a broken
-//     iframe / blank tile.
+// Migration note: previously rendered through @react-google-maps/api against
+// the Google Maps JS API; now uses Leaflet + OpenStreetMap tiles for the
+// rendering layer (free, no API key) while the reverse-geocoding utility
+// (apps/web/src/lib/reverse-geocode.ts) still calls the Google Geocoding API
+// over plain HTTP. The prop contract — { lat, lng, onCoordsChange } — is
+// unchanged so JobWizardModal and SavedAddressesPage need no changes.
 //
-// The marker is draggable; its drag-end fires `onCoordsChange` so the
-// parent can update its captured-coords state.
+// Graceful fallback contract (unchanged):
+//   - When `lat` / `lng` are null (the user hasn't captured a location yet),
+//     a non-interactive Placeholder renders so the parent doesn't have to
+//     conditionally mount us.
+//   - The marker is draggable; its drag-end fires `onCoordsChange` so the
+//     parent can update its captured-coords state.
+//   - OpenStreetMap tile usage is governed by the OSMF tile usage policy
+//     (https://operations.osmfoundation.org/policies/tiles/). Production
+//     deployments should provision their own tile server or a paid tile
+//     provider rather than relying on the public OSM tile servers at scale.
 
 const MAP_HEIGHT = 200;
 const DEFAULT_ZOOM = 15;
+const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 const containerStyle: React.CSSProperties = {
   width: '100%',
   height: `${MAP_HEIGHT}px`,
   borderRadius: '1rem',
   overflow: 'hidden',
-};
-
-const mapOptions: google.maps.MapOptions = {
-  disableDefaultUI: true,
-  zoomControl: true,
-  // The interactive map's whole job is the marker; clutter is bad.
-  clickableIcons: false,
 };
 
 export interface LocationMapProps {
@@ -49,13 +73,8 @@ export interface LocationMapProps {
   onCoordsChange?: (next: { lat: number; lng: number }) => void;
   /** Aria label for the map region; falls back to a generic English copy. */
   ariaLabel?: string;
-  /** Copy shown in the no-key / no-location placeholder. */
+  /** Copy shown in the no-location placeholder. */
   placeholderLabel?: string;
-}
-
-function readApiKey(): string {
-  const k = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  return typeof k === 'string' ? k.trim() : '';
 }
 
 function Placeholder({ label }: { label: string }) {
@@ -79,51 +98,46 @@ export function LocationMap({
   ariaLabel = 'Location map',
   placeholderLabel = 'Map preview unavailable',
 }: LocationMapProps) {
-  const apiKey = readApiKey();
-
-  // Hooks must run unconditionally — call useJsApiLoader before any
-  // early return so React's hook order stays stable across renders.
-  // When apiKey is empty we pass an empty string; the loader keeps it
-  // un-loaded but the hook still returns a stable shape.
-  const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: apiKey,
-    // Stable id so multiple mount points reuse the same loader.
-    id: 'fixnow-google-maps-loader',
-  });
-
-  const center = useMemo(() => (lat !== null && lng !== null ? { lat, lng } : null), [lat, lng]);
-
-  const handleDragEnd = useCallback(
-    (e: google.maps.MapMouseEvent) => {
-      if (!onCoordsChange || !e.latLng) return;
-      onCoordsChange({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-    },
-    [onCoordsChange],
+  const center = useMemo<[number, number] | null>(
+    () => (lat !== null && lng !== null ? [lat, lng] : null),
+    [lat, lng],
   );
 
-  // Render the placeholder for every "we can't show a real map" case:
-  //   - no API key configured (dev shells, CI, jsdom tests)
-  //   - the Maps JS errored out
-  //   - the user hasn't captured coordinates yet
-  if (!apiKey || loadError || center === null) {
-    return <Placeholder label={placeholderLabel} />;
-  }
+  const markerRef = useRef<L.Marker | null>(null);
 
-  // Loader still in flight — keep the visual frame stable.
-  if (!isLoaded) {
+  // Leaflet's drag-end event fires on the Marker itself; the new position is
+  // read off the marker via getLatLng() rather than off the event payload so
+  // we don't depend on a private LeafletEvent shape.
+  const handleDragEnd = useCallback(() => {
+    if (!onCoordsChange) return;
+    const m = markerRef.current;
+    if (!m) return;
+    const next = m.getLatLng();
+    onCoordsChange({ lat: next.lat, lng: next.lng });
+  }, [onCoordsChange]);
+
+  // No coordinates → placeholder. Mirrors the previous Google-Maps behaviour
+  // so the parent component's mount logic is unchanged.
+  if (center === null) {
     return <Placeholder label={placeholderLabel} />;
   }
 
   return (
-    <div aria-label={ariaLabel}>
-      <GoogleMap
-        mapContainerStyle={containerStyle}
+    <div aria-label={ariaLabel} style={containerStyle}>
+      <MapContainer
         center={center}
         zoom={DEFAULT_ZOOM}
-        options={mapOptions}
+        scrollWheelZoom={false}
+        style={{ width: '100%', height: '100%' }}
       >
-        <MarkerF position={center} draggable onDragEnd={handleDragEnd} />
-      </GoogleMap>
+        <TileLayer attribution={OSM_ATTRIBUTION} url={OSM_TILE_URL} />
+        <Marker
+          position={center}
+          draggable
+          eventHandlers={{ dragend: handleDragEnd }}
+          ref={markerRef}
+        />
+      </MapContainer>
     </div>
   );
 }
