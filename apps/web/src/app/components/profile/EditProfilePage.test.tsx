@@ -214,3 +214,137 @@ describe('EditProfilePage — Save Changes persists', () => {
     expect(screen.queryByDisplayValue('ahmed@fixnow.app')).toBeNull();
   });
 });
+
+// Phase 6 Step 2 — provider-only skills picker + dual-save flow.
+describe('EditProfilePage — provider skills + serviceAreaCity', () => {
+  const PROVIDER_ME = {
+    id: 'u-prov-1',
+    email: 'omar@example.com',
+    firstName: 'Omar',
+    lastName: 'Al-Khalid',
+    status: 'ACTIVE' as const,
+    emailVerifiedAt: '2026-04-19T00:00:00.000Z',
+    mfaEnabled: false,
+    roles: ['customer' as const, 'provider' as const],
+  };
+  const PROVIDER_PROFILE_ROW = {
+    profile: {
+      id: 'pp-omar',
+      displayName: 'Omar Al-Khalid',
+      initials: 'OK',
+      avatarUrl: null,
+      bio: null,
+      headline: null,
+      phoneNumber: null,
+      ratingAvg: 4.9,
+      reviewCount: 0,
+      completedJobs: 0,
+      verified: true,
+      topPro: false,
+      availability: 'OFFLINE' as const,
+      status: 'ACTIVE' as const,
+      serviceAreaCity: 'Riyadh',
+      serviceAreaCountry: 'Saudi Arabia',
+      serviceAreaLat: null,
+      serviceAreaLng: null,
+      serviceAreaRadiusKm: null,
+      // Currently selected: plumbing only.
+      serviceCategories: [
+        { id: 'cat-plumbing', slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة', icon: '🔧' },
+      ],
+      updatedAt: '2026-04-30T00:00:00.000Z',
+    },
+  };
+  const SERVICES = [
+    {
+      id: 'cat-plumbing',
+      slug: 'plumbing',
+      labelEn: 'Plumbing',
+      labelAr: 'سباكة',
+      icon: '🔧',
+      sortOrder: 0,
+    },
+    {
+      id: 'cat-electrical',
+      slug: 'electrical',
+      labelEn: 'Electrical',
+      labelAr: 'كهرباء',
+      icon: '⚡',
+      sortOrder: 1,
+    },
+  ];
+
+  function mockProviderRoute(): void {
+    mock.onGet('/v1/auth/me').reply(200, PROVIDER_ME);
+    mock.onGet('/v1/me/profile').reply(200, {
+      profile: { ...MOCK_PROFILE, displayName: 'Omar Al-Khalid', city: 'Riyadh' },
+    });
+    mock.onGet('/v1/me/provider/profile').reply(200, PROVIDER_PROFILE_ROW);
+    mock.onGet('/v1/services').reply(200, { items: SERVICES });
+  }
+
+  it('renders the skills picker with the provider catalog and seeds the current selection', async () => {
+    mockProviderRoute();
+    renderEdit();
+
+    // Catalog lands → both pills are rendered.
+    await waitFor(() => {
+      expect(screen.getByTestId('skill-pill-plumbing')).toBeInTheDocument();
+      expect(screen.getByTestId('skill-pill-electrical')).toBeInTheDocument();
+    });
+    // Plumbing is currently selected (aria-pressed=true); electrical is not.
+    expect(screen.getByTestId('skill-pill-plumbing').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('skill-pill-electrical').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('does NOT render the skills picker for non-provider users', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    mock.onGet('/v1/me/profile').reply(200, { profile: MOCK_PROFILE });
+    // /v1/me/provider/profile would 403 for non-providers; the hook
+    // marks the query as "needs upgrade" and we render no picker.
+    mock.onGet('/v1/me/provider/profile').reply(403, {
+      error: { code: 'FORBIDDEN', message: 'forbidden' },
+    });
+    mock.onGet('/v1/services').reply(200, { items: SERVICES });
+    renderEdit();
+
+    await waitFor(() => expect(screen.getByDisplayValue('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.queryByTestId('edit-profile-skills')).toBeNull();
+  });
+
+  it('toggles a skill pill and posts categoryIds + serviceAreaCity to the provider profile endpoint', async () => {
+    mockProviderRoute();
+    let providerBody: Record<string, unknown> | null = null;
+    let seekerBody: Record<string, unknown> | null = null;
+    mock.onPatch('/v1/me/profile').reply((cfg) => {
+      seekerBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [200, { profile: { ...MOCK_PROFILE, city: 'Riyadh' } }];
+    });
+    mock.onPatch('/v1/me/provider/profile').reply((cfg) => {
+      providerBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [200, PROVIDER_PROFILE_ROW];
+    });
+
+    renderEdit();
+
+    await waitFor(() => expect(screen.getByTestId('skill-pill-electrical')).toBeInTheDocument());
+
+    // Add electrical to the existing plumbing selection.
+    fireEvent.click(screen.getByTestId('skill-pill-electrical'));
+    expect(screen.getByTestId('skill-pill-electrical').getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: /save changes|حفظ التغييرات/i }));
+
+    await waitFor(() => {
+      expect(providerBody).not.toBeNull();
+      expect(seekerBody).not.toBeNull();
+    });
+    expect(providerBody).toMatchObject({
+      serviceAreaCity: 'Riyadh',
+      categoryIds: expect.arrayContaining(['cat-plumbing', 'cat-electrical']),
+    });
+    // Seeker save still fires in parallel — name + city + bio path
+    // is unchanged from the pre-Phase-6 contract.
+    expect(seekerBody).toMatchObject({ city: 'Riyadh' });
+  });
+});

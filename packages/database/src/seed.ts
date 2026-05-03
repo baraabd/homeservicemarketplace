@@ -42,6 +42,16 @@ interface ProviderProfileSpec {
   completedJobs: number;
   verified: boolean;
   topPro: boolean;
+  // Phase 6 Step 3 — onboarding fields the available-requests filter
+  // (apps/api/src/modules/provider/available-requests/available-
+  // requests.service.ts) depends on. Without these, providers were
+  // created with null city + zero categories so the strict-mode
+  // filter silently returned an empty feed for every test run.
+  serviceAreaCity: string;
+  serviceAreaCountry: string;
+  // ServiceCategory slugs (resolved to ids by upsertProviderProfiles
+  // after the catalog upsert runs).
+  categorySlugs: readonly string[];
 }
 
 // Sprint 1, slice 1: bootstrap the public service-catalog. Slugs are
@@ -76,6 +86,9 @@ const PROVIDER_PROFILES: ProviderProfileSpec[] = [
     completedJobs: 540,
     verified: true,
     topPro: true,
+    serviceAreaCity: 'Riyadh',
+    serviceAreaCountry: 'Saudi Arabia',
+    categorySlugs: ['plumbing', 'ac-repair'],
   },
   {
     id: 'pp-khalid',
@@ -86,6 +99,9 @@ const PROVIDER_PROFILES: ProviderProfileSpec[] = [
     completedJobs: 220,
     verified: true,
     topPro: false,
+    serviceAreaCity: 'Riyadh',
+    serviceAreaCountry: 'Saudi Arabia',
+    categorySlugs: ['electrical', 'ac-repair'],
   },
   {
     id: 'pp-ali',
@@ -96,6 +112,9 @@ const PROVIDER_PROFILES: ProviderProfileSpec[] = [
     completedJobs: 180,
     verified: true,
     topPro: false,
+    serviceAreaCity: 'Aleppo',
+    serviceAreaCountry: 'Syria',
+    categorySlugs: ['plumbing', 'carpentry'],
   },
   {
     id: 'pp-mohammed',
@@ -106,6 +125,9 @@ const PROVIDER_PROFILES: ProviderProfileSpec[] = [
     completedJobs: 145,
     verified: false,
     topPro: false,
+    serviceAreaCity: 'Aleppo',
+    serviceAreaCountry: 'Syria',
+    categorySlugs: ['cleaning', 'painting'],
   },
   {
     id: 'pp-hassan',
@@ -116,6 +138,9 @@ const PROVIDER_PROFILES: ProviderProfileSpec[] = [
     completedJobs: 78,
     verified: false,
     topPro: false,
+    serviceAreaCity: 'Gothenburg',
+    serviceAreaCountry: 'Sweden',
+    categorySlugs: ['electrical', 'painting'],
   },
 ];
 
@@ -189,6 +214,18 @@ async function syncRolePermissions(
 }
 
 async function upsertProviderProfiles(tx: Prisma.TransactionClient): Promise<void> {
+  // Phase 6 Step 3 — resolve category slugs → ids ONCE per call.
+  // upsertServiceCategories has already run above so this lookup is
+  // guaranteed to find every slug listed in PROVIDER_PROFILES.
+  const allCats = await tx.serviceCategory.findMany({
+    where: {
+      slug: { in: PROVIDER_PROFILES.flatMap((p) => [...p.categorySlugs]) },
+      deletedAt: null,
+    },
+    select: { id: true, slug: true },
+  });
+  const catIdBySlug = new Map(allCats.map((c) => [c.slug, c.id] as const));
+
   // Idempotent: every call upserts on the natural id. Reactivates a
   // soft-deleted row if one was archived in a previous environment.
   for (const spec of PROVIDER_PROFILES) {
@@ -202,6 +239,15 @@ async function upsertProviderProfiles(tx: Prisma.TransactionClient): Promise<voi
         completedJobs: spec.completedJobs,
         verified: spec.verified,
         topPro: spec.topPro,
+        // Phase 6 Step 3 — overwrite city/country on every seed run so
+        // a developer-edited dev row is restored to the canonical
+        // value. Status is forced to ACTIVE so the dev provider can
+        // bid immediately (the strict available-requests filter
+        // requires city + at least one category to ALSO be set —
+        // both are configured here).
+        serviceAreaCity: spec.serviceAreaCity,
+        serviceAreaCountry: spec.serviceAreaCountry,
+        status: 'ACTIVE',
         deletedAt: null,
       },
       create: {
@@ -213,8 +259,28 @@ async function upsertProviderProfiles(tx: Prisma.TransactionClient): Promise<voi
         completedJobs: spec.completedJobs,
         verified: spec.verified,
         topPro: spec.topPro,
+        serviceAreaCity: spec.serviceAreaCity,
+        serviceAreaCountry: spec.serviceAreaCountry,
+        status: 'ACTIVE',
       },
     });
+
+    // Replace-set semantics for the join table: delete any previous
+    // links for this provider, then create the canonical ones. Mirrors
+    // the production replaceServiceCategories flow in
+    // apps/api/src/infrastructure/persistence/bids/provider-profile.repository.ts:195
+    // so the dev seed and the runtime PATCH path produce identical
+    // shapes.
+    await tx.providerProfileServiceCategory.deleteMany({
+      where: { providerProfileId: spec.id },
+    });
+    const links = spec.categorySlugs
+      .map((slug) => catIdBySlug.get(slug))
+      .filter((id): id is string => Boolean(id))
+      .map((serviceCategoryId) => ({ providerProfileId: spec.id, serviceCategoryId }));
+    if (links.length > 0) {
+      await tx.providerProfileServiceCategory.createMany({ data: links });
+    }
   }
 }
 
