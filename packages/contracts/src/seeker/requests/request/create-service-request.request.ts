@@ -30,6 +30,13 @@ export interface CreateServiceRequestRequest {
   categoryId?: string | null;
   customServiceText?: string | null;
   description?: string | null;
+  /** Sprint 7.x — pre-uploaded media references. Each entry is a
+   *  fileUrl returned by `POST /v1/media/presigned-url` after the
+   *  browser PUTs the binary to its uploadUrl. The backend stores
+   *  the array verbatim on `ServiceRequest.mediaUrls` for the
+   *  provider's available-requests feed to render. Cap mirrors the
+   *  wizard's `MAX_MEDIA_ITEMS = 4`. */
+  mediaUrls?: string[];
   scheduleType: ScheduleType;
   scheduledAt?: string | null;
   addressId?: string | null;

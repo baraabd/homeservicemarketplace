@@ -87,6 +87,10 @@ export class RequestsService {
           categoryId,
           customServiceText: input.customServiceText ?? null,
           description: input.description ?? null,
+          // Sprint 7.x — pre-uploaded media URLs forwarded verbatim.
+          // The DTO already capped the array length + URL shape; no
+          // extra service-side validation needed here.
+          mediaUrls: input.mediaUrls ?? [],
           scheduleType: input.scheduleType,
           scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
           addressId,

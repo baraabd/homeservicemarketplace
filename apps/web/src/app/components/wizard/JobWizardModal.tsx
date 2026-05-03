@@ -34,6 +34,7 @@ import { useLang } from '../../i18n/LanguageContext';
 import { useAddresses } from '../../hooks/seeker/useAddresses';
 import { useCreateServiceRequest } from '../../hooks/seeker/useRequests';
 import { reverseGeocode } from '../../../lib/reverse-geocode';
+import { uploadAll } from '../../../lib/media-api';
 
 // ─── Service config ───────────────────────────────────────────────────────────
 const SERVICE_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
@@ -270,11 +271,23 @@ export function JobWizardModal({
   const [uploads, setUploads] = useState<MediaItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [postError, setPostError] = useState<string | null>(null);
+  // Phase 7 — covers the entire two-stage upload flow (presign +
+  // parallel PUTs) so the submit button stays in the loading state
+  // for as long as bytes are still in flight. Without this the
+  // button's loading visual would flicker off between presign +
+  // PUT, and a user could double-tap during the gap.
+  const [isUploading, setIsUploading] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
   const addressesQuery = useAddresses();
   const createMut = useCreateServiceRequest();
-  const isPosting = createMut.isPending;
+  // Phase 7 — loading covers BOTH stages of the submit flow:
+  //   stage 1: presign + parallel PUTs (isUploading)
+  //   stage 2: POST /v1/me/requests (createMut.isPending)
+  // The submit button's `state="loading"` is bound to this so the
+  // user sees one continuous busy state rather than a flicker
+  // between the two requests.
+  const isPosting = isUploading || createMut.isPending;
 
   // Default the address field to the user's saved default (or first
   // address) on open.
@@ -410,7 +423,12 @@ export function JobWizardModal({
     );
   };
 
-  const handlePost = () => {
+  const handlePost = async (): Promise<void> => {
+    // Re-entrancy guard: the submit button already disables in
+    // loading state, but a tap during the brief presign→PUT gap
+    // could still fire twice without this check.
+    if (isUploading || createMut.isPending) return;
+
     setPostError(null);
     const trimmedAddress = address.trim();
     if (!trimmedAddress) {
@@ -446,6 +464,42 @@ export function JobWizardModal({
       scheduledAt = iso;
     }
 
+    // Phase 7 (frontend wire) — upload binary media BEFORE creating
+    // the request. Pipeline:
+    //   1. POST /v1/media/presigned-url with one entry per File
+    //   2. PUT each File in parallel to its returned uploadUrl
+    //   3. Pass the resulting fileUrls into createServiceRequest
+    //      as `mediaUrls`
+    // If ANY upload fails the whole submit aborts — we'd rather
+    // show "couldn't upload, please try again" than persist a job
+    // with half its photos.
+    let mediaUrls: string[] = [];
+    if (uploads.length > 0) {
+      setIsUploading(true);
+      try {
+        mediaUrls = await uploadAll(uploads.map((m) => m.file));
+      } catch (err) {
+        const status =
+          (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
+        if (status === 400) setPostError(t('requestPostFailedValidation'));
+        else if (status === 401) setPostError(t('requestPostFailedAuth'));
+        else {
+          // Generic upload-failed copy. Toast on top of the inline
+          // error so the user notices even if the modal scrolled
+          // past the error region.
+          setPostError(
+            lang === 'ar'
+              ? 'تعذّر رفع الصور. يُرجى المحاولة مرة أخرى.'
+              : "Couldn't upload your photos. Please try again.",
+          );
+          toast.error(lang === 'ar' ? 'فشل رفع الصور' : 'Photo upload failed');
+        }
+        return;
+      } finally {
+        setIsUploading(false);
+      }
+    }
+
     // If the typed address still matches the default address line
     // exactly, forward addressId so the backend snapshots from the
     // authoritative DB row (which already has lat/lng if present).
@@ -466,6 +520,9 @@ export function JobWizardModal({
         categoryId: categoryId ?? null,
         customServiceText: categoryId ? null : service,
         description: notes.trim().length > 0 ? notes.trim() : null,
+        // Empty array when the seeker attached nothing — explicit so
+        // the backend's `?? []` fallback never matters.
+        mediaUrls,
         scheduleType: schedule === 'asap' ? 'ASAP' : 'LATER',
         scheduledAt,
         addressId: useDefaultId ? defaultAddress!.id : null,

@@ -610,3 +610,156 @@ describe('JobWizardModal — Phase 3 native media upload', () => {
     }
   });
 });
+
+// Phase 7 (frontend wire) — pre-upload pipeline pinned by tests.
+//
+// Pipeline:
+//   pick files in step 1 → step 2 (location + time) → Confirm Job →
+//   POST /v1/media/presigned-url → PUT each file via native fetch →
+//   POST /v1/me/requests with mediaUrls[].
+//
+// We stub URL.createObjectURL + revoke + global.fetch so the PUTs
+// resolve without actually leaving the test process. axios-mock-
+// adapter still drives the JSON endpoints (presign + create).
+describe('JobWizardModal — Phase 7 media upload', () => {
+  const origCreateObjectURL = URL.createObjectURL;
+  const origRevokeObjectURL = URL.revokeObjectURL;
+  const origFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    let n = 0;
+    URL.createObjectURL = (() => {
+      n += 1;
+      return `blob:mock-${n}`;
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+  });
+  afterEach(() => {
+    URL.createObjectURL = origCreateObjectURL;
+    URL.revokeObjectURL = origRevokeObjectURL;
+    globalThis.fetch = origFetch;
+  });
+
+  function makeImageFile(name: string, bytes = 4): File {
+    const blob = new Blob(['x'.repeat(bytes)], { type: 'image/png' });
+    return new File([blob], name, { type: 'image/png' });
+  }
+
+  it('pre-uploads media before posting and forwards mediaUrls into the request', async () => {
+    mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
+    let presignBody: { items: Array<{ contentType: string; sizeBytes: number }> } = { items: [] };
+    mock.onPost('/v1/media/presigned-url').reply((cfg) => {
+      presignBody = JSON.parse(cfg.data as string) as typeof presignBody;
+      return [
+        200,
+        {
+          items: presignBody.items.map((_it, i) => ({
+            uploadUrl: `https://upload.example/u${i}`,
+            fileUrl: `https://cdn.example/f${i}.png`,
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          })),
+        },
+      ];
+    });
+
+    // Stub the native fetch the upload utility uses for PUTs. Resolve
+    // 204 so Promise.all completes happily.
+    const putUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      putUrls.push(url);
+      expect(init?.method).toBe('PUT');
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+
+    let postedBody: Record<string, unknown> = {};
+    mock.onPost('/v1/me/requests').reply((cfg) => {
+      postedBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [200, { id: 'req-7', status: 'PENDING' }];
+    });
+
+    renderWizard();
+    // Pick two files in step 1.
+    const input = (await screen.findByTestId('job-wizard-media-input')) as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [makeImageFile('a.png'), makeImageFile('b.png')] },
+    });
+
+    await advanceToStep2();
+    await awaitDefaultAddressFilled();
+    fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
+
+    await waitFor(() => expect(postedBody.scheduleType).toBe('ASAP'));
+    expect(presignBody.items).toEqual([
+      { contentType: 'image/png', sizeBytes: 4, filename: 'a.png' },
+      { contentType: 'image/png', sizeBytes: 4, filename: 'b.png' },
+    ]);
+    expect(putUrls).toEqual(['https://upload.example/u0', 'https://upload.example/u1']);
+    expect(postedBody.mediaUrls).toEqual([
+      'https://cdn.example/f0.png',
+      'https://cdn.example/f1.png',
+    ]);
+  });
+
+  it('aborts the post and surfaces a friendly error when ANY upload PUT fails', async () => {
+    mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
+    mock.onPost('/v1/media/presigned-url').reply(200, {
+      items: [
+        { uploadUrl: 'https://upload.example/ok', fileUrl: 'f0', expiresAt: '2030-01-01' },
+        { uploadUrl: 'https://upload.example/bad', fileUrl: 'f1', expiresAt: '2030-01-01' },
+      ],
+    });
+    // First PUT succeeds, second fails.
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.endsWith('/bad')) return new Response('boom', { status: 500 });
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+
+    let postCalled = 0;
+    mock.onPost('/v1/me/requests').reply(() => {
+      postCalled += 1;
+      return [200, { id: 'should-not-fire', status: 'PENDING' }];
+    });
+
+    renderWizard();
+    const input = (await screen.findByTestId('job-wizard-media-input')) as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [makeImageFile('a.png'), makeImageFile('b.png')] },
+    });
+
+    await advanceToStep2();
+    await awaitDefaultAddressFilled();
+    fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Couldn't upload your photos|تعذّر رفع الصور/i)).toBeInTheDocument(),
+    );
+    // The create-request endpoint MUST NOT have been hit — we'd
+    // rather not persist a job with partial media.
+    expect(postCalled).toBe(0);
+  });
+
+  it('skips the upload pipeline when no files were attached', async () => {
+    mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
+    let presignCalled = 0;
+    mock.onPost('/v1/media/presigned-url').reply(() => {
+      presignCalled += 1;
+      return [200, { items: [] }];
+    });
+    let postedBody: Record<string, unknown> = {};
+    mock.onPost('/v1/me/requests').reply((cfg) => {
+      postedBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [200, { id: 'req-empty-media', status: 'PENDING' }];
+    });
+
+    renderWizard();
+    await advanceToStep2();
+    await awaitDefaultAddressFilled();
+    fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
+
+    await waitFor(() => expect(postedBody.scheduleType).toBe('ASAP'));
+    expect(presignCalled).toBe(0); // presign skipped — empty list
+    expect(postedBody.mediaUrls).toEqual([]); // explicit empty array
+  });
+});

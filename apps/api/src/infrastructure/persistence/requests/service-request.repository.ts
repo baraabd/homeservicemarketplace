@@ -15,6 +15,11 @@ export interface CreateServiceRequestInput {
   categoryId: string | null;
   customServiceText: string | null;
   description: string | null;
+  /** Sprint 7.x — pre-uploaded media URLs forwarded verbatim from the
+   *  seeker's create-request payload. Empty array when the seeker
+   *  attached no media; the column has `@default([])` so omitting it
+   *  is also safe. */
+  mediaUrls?: string[];
   scheduleType: ScheduleType;
   scheduledAt: Date | null;
   addressId: string | null;
@@ -232,6 +237,10 @@ export class ServiceRequestRepository {
         categoryId: input.categoryId,
         customServiceText: input.customServiceText,
         description: input.description,
+        // Empty array when the seeker attached nothing — same shape
+        // the column's default produces, but explicit so a future
+        // schema change doesn't silently flip the wire behaviour.
+        mediaUrls: input.mediaUrls ?? [],
         scheduleType: input.scheduleType,
         scheduledAt: input.scheduledAt,
         addressId: input.addressId,
