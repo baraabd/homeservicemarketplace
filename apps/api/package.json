@@ -29,6 +29,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1041.0",
+    "@aws-sdk/s3-request-presigner": "^3.1041.0",
     "@homeservicemarketplace/contracts": "workspace:*",
     "@homeservicemarketplace/database": "workspace:*",
     "@nestjs/common": "^11.1.17",

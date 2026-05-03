@@ -107,6 +107,41 @@ export const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().default('noreply@homeservicemarketplace.local'),
+
+  // --- Storage / Media uploads ---------------------------------------------
+  // STORAGE_DRIVER=local (default) → LocalDiskStorageAdapter writes to
+  //   LOCAL_STORAGE_DIR (default: <repo>/.media-uploads, gitignored). The
+  //   API serves uploads via signed PUT + public GET routes the controller
+  //   exposes — no external dependency, suitable for dev / CI.
+  // STORAGE_DRIVER=s3                → S3StorageAdapter, browser PUTs go
+  //   directly to S3-compatible storage (AWS, R2, MinIO, DO Spaces). The
+  //   adapter requires S3_BUCKET + S3_REGION at minimum; credentials follow
+  //   the AWS SDK provider chain unless S3_ACCESS_KEY_ID + _SECRET are set.
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  LOCAL_STORAGE_DIR: z.string().optional(),
+
+  // Used by the LocalDiskStorageAdapter to HMAC-sign upload tokens.
+  // Optional: when unset the adapter falls back to JWT_ACCESS_SECRET.
+  // Production deploys SHOULD set a dedicated secret so the two
+  // contexts (auth vs media tokens) can be rotated independently.
+  MEDIA_SIGNING_SECRET: z.string().optional(),
+
+  // Public origin the LocalDiskStorageAdapter embeds in presigned URLs
+  // it returns to the browser. Falls back to http://localhost:<PORT>
+  // for dev. In preview / prod set this to the externally-visible
+  // origin of the API (e.g. https://api.example.com).
+  PUBLIC_API_URL: z.string().optional(),
+
+  // S3-only env. None is required when STORAGE_DRIVER=local; the
+  // adapter throws a clear error at presign time if S3 is selected
+  // without a bucket.
+  S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().default('us-east-1'),
+  S3_ENDPOINT: z.string().optional(),
+  S3_FORCE_PATH_STYLE: trueish.default(false),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  S3_PUBLIC_BASE_URL: z.string().optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

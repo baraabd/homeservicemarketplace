@@ -3,6 +3,7 @@ import 'reflect-metadata';
 import { Logger as NestLogger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
+import express from 'express';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 
@@ -14,7 +15,14 @@ import { RealtimeSocketAdapter } from './modules/realtime/realtime-socket.adapte
 async function bootstrap(): Promise<void> {
   const bootstrapLogger = new NestLogger('Bootstrap');
   try {
-    const app = await NestFactory.create(AppModule, { bufferLogs: true });
+    // bodyParser: false disables Nest's default JSON body parser so
+    // we can wire raw + JSON parsers independently below — the raw
+    // parser MUST win for /v1/media/uploads/* so the upload Buffer
+    // doesn't get mis-decoded as JSON.
+    const app = await NestFactory.create(AppModule, {
+      bufferLogs: true,
+      bodyParser: false,
+    });
     app.useLogger(app.get(Logger));
     app.enableShutdownHooks();
 
@@ -28,6 +36,16 @@ async function bootstrap(): Promise<void> {
 
     app.use(helmet());
     app.use(cookieParser());
+    // Sprint 7.x — media-upload PUT route. The body is the binary
+    // file, not JSON, so the default body-parser would reject it.
+    // express.raw() captures it as a Buffer for the LocalDiskStorage
+    // adapter. Cap matches MAX_BYTES_PER_FILE in
+    // apps/api/src/infrastructure/storage/content-type.ts so the
+    // signed-URL contract and the body parser stay in sync.
+    app.use('/v1/media/uploads', express.raw({ type: '*/*', limit: '10mb' }));
+    // JSON parser for everything else. Mounted AFTER the raw parser
+    // so the raw mount wins for upload paths.
+    app.use(express.json({ limit: '1mb' }));
 
     // Production with no explicit allowlist → block all cross-origin requests.
     // Dev with no allowlist → reflect the request origin (local convenience).

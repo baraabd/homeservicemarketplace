@@ -25,6 +25,10 @@ apps/web/vite.config.d.ts
 .env.staging
 !.env.example
 
+# Sprint 7.x — local-disk media storage. Holds binary uploads when
+# STORAGE_DRIVER=local. Recreated on demand by LocalDiskStorageAdapter.
+.media-uploads/
+
 # logs
 *.log
 npm-debug.log*

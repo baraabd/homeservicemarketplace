@@ -11,6 +11,7 @@ import { MailModule } from './infrastructure/mail/mail.module';
 import { MongoModule } from './infrastructure/mongo/mongo.module';
 import { PrismaModule } from './infrastructure/prisma/prisma.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
+import { StorageModule } from './infrastructure/storage/storage.module';
 import { MetricsModule } from './infrastructure/telemetry/metrics.module';
 import { PersistenceModule } from './infrastructure/persistence/persistence.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
@@ -19,6 +20,7 @@ import { BidsModule } from './modules/bids/bids.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { IamModule } from './modules/iam/iam.module';
+import { MediaModule } from './modules/media/media.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ProfileModule } from './modules/profile/profile.module';
 import { ProviderModule } from './modules/provider/provider.module';
@@ -41,6 +43,7 @@ import { ServicesModule } from './modules/services/services.module';
     RedisModule,
     PersistenceModule,
     MailModule,
+    StorageModule,
     MetricsModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     HealthModule,
@@ -56,6 +59,7 @@ import { ServicesModule } from './modules/services/services.module';
     ProviderModule,
     AdminModule,
     RealtimeModule,
+    MediaModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
