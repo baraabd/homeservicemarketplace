@@ -113,6 +113,118 @@ describe('reverseGeocode', () => {
 
     await expect(reverseGeocode(1, 2)).resolves.toMatchObject({ status: 'partial' });
   });
+
+  // Step 1 of the Geocoding & City Filter sprint — pin the robust
+  // city extraction so the available-requests filter has a reliable
+  // city string to match against.
+  it('extracts city from a SIBLING result when the top result has no locality', async () => {
+    // Top result is a street_address with NO locality (Google does
+    // this — the locality lives in the next result, the city itself).
+    global.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: 'OK',
+            results: [
+              {
+                formatted_address: 'King Fahd Rd, Riyadh, Saudi Arabia',
+                address_components: [
+                  { long_name: 'King Fahd Rd', short_name: 'King Fahd Rd', types: ['route'] },
+                  { long_name: 'Saudi Arabia', short_name: 'SA', types: ['country', 'political'] },
+                ],
+              },
+              {
+                formatted_address: 'Riyadh, Saudi Arabia',
+                address_components: [
+                  { long_name: 'Riyadh', short_name: 'Riyadh', types: ['locality', 'political'] },
+                  { long_name: 'Saudi Arabia', short_name: 'SA', types: ['country', 'political'] },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    ) as typeof fetch;
+
+    const r = await reverseGeocode(24.7, 46.7);
+    expect(r.status).toBe('ok');
+    if (r.status === 'ok') {
+      expect(r.city).toBe('Riyadh');
+      expect(r.country).toBe('Saudi Arabia');
+    }
+  });
+
+  it('falls back to postal_town when locality is missing (UK pattern)', async () => {
+    global.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: 'OK',
+            results: [
+              {
+                formatted_address: '1 Princes St, Edinburgh EH2, UK',
+                address_components: [
+                  {
+                    long_name: 'Edinburgh',
+                    short_name: 'Edinburgh',
+                    types: ['postal_town'],
+                  },
+                  {
+                    long_name: 'United Kingdom',
+                    short_name: 'GB',
+                    types: ['country', 'political'],
+                  },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    ) as typeof fetch;
+
+    const r = await reverseGeocode(55.95, -3.19);
+    expect(r.status).toBe('ok');
+    if (r.status === 'ok') expect(r.city).toBe('Edinburgh');
+  });
+
+  it('returns city: "" when no city-typed component matches anywhere', async () => {
+    // Remote point — geocode resolves but only to a country.
+    global.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: 'OK',
+            results: [
+              {
+                formatted_address: 'Saudi Arabia',
+                address_components: [
+                  { long_name: 'Saudi Arabia', short_name: 'SA', types: ['country', 'political'] },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    ) as typeof fetch;
+
+    const r = await reverseGeocode(20, 45);
+    expect(r.status).toBe('ok');
+    if (r.status === 'ok') {
+      expect(r.city).toBe('');
+      expect(r.country).toBe('Saudi Arabia');
+    }
+  });
+
+  it('partial outcomes carry city: "" + country: "" so the union stays symmetric', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '');
+    const r = await reverseGeocode(1, 2);
+    expect(r).toMatchObject({
+      status: 'partial',
+      city: '',
+      country: '',
+      reason: 'no_api_key',
+    });
+  });
 });
 
 describe('getCurrentLocationAddress', () => {
