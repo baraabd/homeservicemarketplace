@@ -18,6 +18,7 @@
     "@homeservicemarketplace/contracts": "workspace:*",
     "@mui/icons-material": "7.3.5",
     "@mui/material": "7.3.5",
+    "@react-google-maps/api": "^2.20.6",
     "@popperjs/core": "2.11.8",
     "@radix-ui/react-accordion": "1.2.3",
     "@radix-ui/react-alert-dialog": "1.1.6",

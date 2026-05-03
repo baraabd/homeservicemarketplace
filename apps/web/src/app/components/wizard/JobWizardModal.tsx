@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ds/Button';
+import { LocationMap } from '../ds/LocationMap';
 import { SegmentedTimePicker } from '../ds/SegmentedTimePicker';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
@@ -60,83 +61,6 @@ const BackChevron = ({ dir }: { dir: string }) =>
   ) : (
     <ChevronLeft size={20} className="text-slate-700" />
   );
-
-// ─── Mock Map ─────────────────────────────────────────────────────────────────
-function MapPlaceholder({ label }: { label: string }) {
-  return (
-    <div
-      className="w-full rounded-2xl overflow-hidden relative"
-      style={{
-        height: '180px',
-        background: '#e8edf0',
-        backgroundImage: `
-          linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px)
-        `,
-        backgroundSize: '28px 28px',
-      }}
-    >
-      {/* Roads */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div
-          className="absolute bg-white/80"
-          style={{ top: '35%', left: 0, right: 0, height: '14px' }}
-        />
-        <div
-          className="absolute bg-white/60"
-          style={{ top: '68%', left: 0, right: 0, height: '8px' }}
-        />
-        <div
-          className="absolute bg-white/80"
-          style={{ left: '28%', top: 0, bottom: 0, width: '14px' }}
-        />
-        <div
-          className="absolute bg-white/60"
-          style={{ left: '65%', top: 0, bottom: 0, width: '8px' }}
-        />
-        {[
-          { top: '6%', left: '4%', w: '22%', h: '26%' },
-          { top: '6%', left: '44%', w: '18%', h: '26%' },
-          { top: '6%', left: '72%', w: '24%', h: '26%' },
-          { top: '50%', left: '4%', w: '20%', h: '20%' },
-          { top: '50%', left: '44%', w: '18%', h: '18%' },
-          { top: '50%', left: '72%', w: '24%', h: '22%' },
-        ].map((b, i) => (
-          <div
-            key={i}
-            className="absolute rounded"
-            style={{
-              top: b.top,
-              left: b.left,
-              width: b.w,
-              height: b.h,
-              background: `rgba(${190 + i * 3}, ${200 + i * 2}, 210, 0.6)`,
-            }}
-          />
-        ))}
-      </div>
-      {/* Pin */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="relative flex flex-col items-center">
-          <div className="absolute w-16 h-16 rounded-full bg-amber-500/20 animate-ping" />
-          <div className="relative w-12 h-12 rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center z-10">
-            <MapPin size={20} className="text-amber-600" />
-          </div>
-          <div className="w-1.5 h-3 bg-amber-500 rounded-b-full -mt-0.5 z-10" />
-        </div>
-      </div>
-      {/* GPS label */}
-      <div className="absolute top-3 inset-x-0 flex justify-center">
-        <div className="flex items-center gap-2 bg-white/90 backdrop-blur rounded-xl px-3 py-1.5 shadow-sm">
-          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-slate-600" style={{ fontSize: '11px', fontWeight: 600 }}>
-            {label}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Step Progress ────────────────────────────────────────────────────────────
 function StepProgress({
@@ -853,8 +777,22 @@ export function JobWizardModal({
               <p className="text-slate-700 mb-2.5" style={{ fontSize: '13px', fontWeight: 600 }}>
                 {t('serviceLocation')}
               </p>
-              <MapPlaceholder
-                label={geo.status === 'success' ? t('locationCaptured') : t('gpsDetected')}
+              {/* Phase 4 Feature 4 — interactive map with a draggable
+                  pin. When VITE_GOOGLE_MAPS_API_KEY is unset or the
+                  user hasn't captured coords yet, LocationMap renders
+                  the same kind of static placeholder MapPlaceholder
+                  used to, so dev shells without a key keep working
+                  exactly as before. Drag-end fires onCoordsChange so
+                  the user can refine the pin and the captured lat/lng
+                  flow stays the source of truth for the post payload. */}
+              <LocationMap
+                lat={geo.status === 'success' ? geo.lat : null}
+                lng={geo.status === 'success' ? geo.lng : null}
+                onCoordsChange={(next) => setGeo({ status: 'success', ...next })}
+                ariaLabel={t('serviceLocation')}
+                placeholderLabel={
+                  geo.status === 'success' ? t('locationCaptured') : t('gpsDetected')
+                }
               />
 
               {/* Slice 4.1: real geolocation. Button is the only entry

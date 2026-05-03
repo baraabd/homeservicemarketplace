@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import type { AddressSummary, AddressType } from '@homeservicemarketplace/contracts';
 import { useLang } from '../../i18n/LanguageContext';
 import { Button } from '../ds/Button';
+import { LocationMap } from '../ds/LocationMap';
 import {
   useAddresses,
   useCreateAddress,
@@ -113,6 +114,10 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
   // reverse geocoding. The button shows a spinner while
   // navigator.geolocation + the Google Geocoding API resolve.
   const [locating, setLocating] = useState(false);
+  // Phase 4 Feature 4 — captured coordinates so the map preview can
+  // pin them and the user can drag to refine. Null until the user
+  // clicks "Use my current location" successfully.
+  const [pinCoords, setPinCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   const addresses = addressesQuery.data ?? [];
   const isInitialLoading = addressesQuery.isLoading && !addressesQuery.data;
@@ -179,6 +184,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
     setEditId(null);
     setNewLabel('');
     setNewFull('');
+    setPinCoords(null);
     setFormError(null);
   };
 
@@ -538,11 +544,13 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                       const outcome = await getCurrentLocationAddress();
                       if (outcome.status === 'ok') {
                         setNewFull(outcome.formattedAddress);
+                        setPinCoords({ lat: outcome.lat, lng: outcome.lng });
                       } else if (outcome.status === 'partial') {
                         // Fill the field with the best-effort fallback
                         // (formatted lat/lng) and tell the user to
                         // verify it before saving.
                         setNewFull(outcome.formattedAddress);
+                        setPinCoords({ lat: outcome.lat, lng: outcome.lng });
                         toast.warning(L.locationFallback);
                       } else {
                         // status === 'error'
@@ -578,6 +586,21 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                   >
                     {formError}
                   </p>
+                )}
+                {/* Phase 4 Feature 4 — interactive map preview. Renders
+                    only after the user has captured coordinates via
+                    "Use my current location"; the marker is draggable
+                    so the seeker can fine-tune the pin before saving.
+                    LocationMap silently falls back to a placeholder
+                    when VITE_GOOGLE_MAPS_API_KEY is unset. */}
+                {pinCoords && (
+                  <LocationMap
+                    lat={pinCoords.lat}
+                    lng={pinCoords.lng}
+                    onCoordsChange={(next) => setPinCoords(next)}
+                    ariaLabel={L.getLocation}
+                    placeholderLabel={L.getLocation}
+                  />
                 )}
               </div>
 

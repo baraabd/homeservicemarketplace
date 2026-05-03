@@ -95,7 +95,10 @@ import {
   iconForCategorySlug,
   mapAvailableJobToLegacy,
 } from '../../../lib/provider/available-jobs-adapter';
+import { useNavigate } from 'react-router';
+import { useAuth } from '../../../lib/auth-provider';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
+import { EditProfilePage } from '../profile/EditProfilePage';
 import type {
   ProviderAvailability,
   ProviderProfileSummary,
@@ -1510,9 +1513,43 @@ function formatMemberSince(iso: string, lang: 'en' | 'ar'): string {
 
 function ProviderProfileScreen() {
   const { lang } = useLang();
+  const navigate = useNavigate();
+  const auth = useAuth();
   const profileQuery = useProviderProfile();
   const upgradeMut = useUpgradeToProvider();
   const availabilityMut = useUpdateProviderAvailability();
+
+  // Phase 5 Feature 5 — local view router so the menu can swap to
+  // <EditProfilePage> in place (mirrors the seeker ProfileTab pattern
+  // at apps/web/src/app/components/profile/ProfileTab.tsx:467). When
+  // the user finishes editing they hit Back which sets view=null and
+  // returns here.
+  const [view, setView] = useState<'editProfile' | null>(null);
+  // Phase 5 Bug 4 — debounce double-clicks on Sign Out so the user
+  // can't fire two logout requests while the auth-provider is still
+  // tearing down the session.
+  const [signingOut, setSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      // useAuth().logout() POSTs /v1/auth/logout (best-effort) and
+      // — succeed or fail — sets the cached /auth/me to null and
+      // purges every non-auth React Query so no stale Provider data
+      // bleeds into the next session. Afterwards we route to /login;
+      // RequireAuth would do this anyway but doing it here keeps the
+      // tab from briefly rendering an unauthenticated provider shell.
+      await auth.logout();
+    } finally {
+      setSigningOut(false);
+      navigate('/login', { replace: true });
+    }
+  };
+
+  if (view === 'editProfile') {
+    return <EditProfilePage onBack={() => setView(null)} />;
+  }
 
   const profile = profileQuery.data?.profile ?? null;
   // Onboarding: only when the cache has NO profile yet AND the last GET
@@ -1793,13 +1830,27 @@ function ProviderProfileScreen() {
         {/* Menu */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden mb-4">
           {[
-            { icon: <User size={16} />, label: L.editProfile },
-            { icon: <BarChart2 size={16} />, label: lang === 'ar' ? 'إحصائياتي' : 'My Analytics' },
+            // Phase 5 Feature 5 — Edit Profile is now the only wired
+            // menu row. The other rows are placeholders pending future
+            // sprints; their non-interactivity is unchanged.
+            {
+              icon: <User size={16} />,
+              label: L.editProfile,
+              onClick: () => setView('editProfile'),
+              testId: 'provider-menu-edit-profile',
+            },
+            {
+              icon: <BarChart2 size={16} />,
+              label: lang === 'ar' ? 'إحصائياتي' : 'My Analytics',
+            },
             { icon: <Bell size={16} />, label: lang === 'ar' ? 'الإشعارات' : 'Notifications' },
             { icon: <Star size={16} />, label: lang === 'ar' ? 'تقييماتي' : 'My Reviews' },
-          ].map(({ icon, label }, i) => (
+          ].map(({ icon, label, onClick, testId }, i) => (
             <button
               key={i}
+              type="button"
+              onClick={onClick}
+              data-testid={testId}
               className={`w-full flex items-center gap-3 px-4 py-3.5 active:bg-slate-50 dark:active:bg-slate-700/50 transition-all text-start ${i > 0 ? 'border-t border-slate-50 dark:border-slate-700' : ''}`}
             >
               <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400">
@@ -1819,8 +1870,18 @@ function ProviderProfileScreen() {
           ))}
         </div>
 
-        {/* Sign out */}
-        <button className="w-full flex items-center justify-center gap-2.5 py-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-3xl mb-6 active:bg-red-100 transition-all">
+        {/* Phase 5 Bug 4 — Sign Out wired to useAuth().logout() (clears
+            cookies + auth state + purges protected React Query) followed
+            by an explicit navigate('/login') so the user lands on the
+            auth screen immediately rather than briefly seeing the
+            unauthenticated provider shell. */}
+        <button
+          type="button"
+          onClick={handleSignOut}
+          disabled={signingOut}
+          data-testid="provider-sign-out"
+          className="w-full flex items-center justify-center gap-2.5 py-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-3xl mb-6 active:bg-red-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+        >
           <LogOut size={18} className="text-red-500" />
           <span
             className="text-red-600 dark:text-red-400"

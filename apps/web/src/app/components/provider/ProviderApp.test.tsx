@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 import { api } from '../../../lib/api';
 import { AuthProvider, queryClient } from '../../../lib/auth-provider';
@@ -21,14 +22,20 @@ import { ProviderApp } from './ProviderApp';
 // ─────────────────────────────────────────────────────────────────────────────
 
 function renderProvider() {
+  // Phase 5: ProviderProfileScreen now calls useNavigate() so the
+  // Sign Out button can route to /login. Tests must wrap in a
+  // MemoryRouter to provide router context. /provider is a sensible
+  // initial path even though the bottom-nav drives the in-app route.
   return render(
-    <AuthProvider>
-      <LanguageProvider>
-        <EcosystemProvider>
-          <ProviderApp />
-        </EcosystemProvider>
-      </LanguageProvider>
-    </AuthProvider>,
+    <MemoryRouter initialEntries={['/provider']}>
+      <AuthProvider>
+        <LanguageProvider>
+          <EcosystemProvider>
+            <ProviderApp />
+          </EcosystemProvider>
+        </LanguageProvider>
+      </AuthProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -277,5 +284,58 @@ describe('ProviderApp — shell top bar identity', () => {
     await waitFor(() => expect(screen.getAllByText('Trade Name LLC').length).toBeGreaterThan(0));
     // Auth identity (Grace Hopper) is overridden.
     expect(screen.queryByText('Grace Hopper')).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 5 — Provider Profile actions.
+// Bug 4 (Sign Out) and Feature 5 (Edit Profile) used to be no-ops.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProviderApp — Phase 5 profile actions', () => {
+  it('Sign Out calls /v1/auth/logout and the button reflects an in-flight state', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    let logoutHits = 0;
+    mock.onPost('/v1/auth/logout').reply(() => {
+      logoutHits += 1;
+      return [200, {}];
+    });
+
+    renderProvider();
+    openProfileTab();
+
+    const signOut = await screen.findByTestId('provider-sign-out');
+    fireEvent.click(signOut);
+
+    await waitFor(() => expect(logoutHits).toBe(1));
+  });
+
+  it('Edit Profile button swaps to the EditProfilePage in place', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    // EditProfilePage hits /v1/me/profile on mount; mock that too so
+    // the swapped surface doesn't sit stuck on a loading state.
+    mock.onGet('/v1/me/profile').reply(200, {
+      id: 'u-1',
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      email: 'grace@example.com',
+      phone: null,
+      bio: null,
+      avatarUrl: null,
+    });
+
+    renderProvider();
+    openProfileTab();
+
+    const edit = await screen.findByTestId('provider-menu-edit-profile');
+    fireEvent.click(edit);
+
+    // EditProfilePage replaces the profile menu — the Sign Out button
+    // disappears because we're on the Edit surface now.
+    await waitFor(() => {
+      expect(screen.queryByTestId('provider-sign-out')).toBeNull();
+    });
   });
 });
