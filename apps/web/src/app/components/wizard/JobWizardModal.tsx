@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ds/Button';
+import { SegmentedTimePicker } from '../ds/SegmentedTimePicker';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useLang } from '../../i18n/LanguageContext';
@@ -979,30 +980,25 @@ export function JobWizardModal({
                         />
                       </label>
                     </div>
-                    <div>
-                      <p
-                        className="text-slate-500 mb-2"
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.05em',
-                        }}
-                      >
-                        {t('time')}
-                      </p>
-                      <label className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
-                        <Clock size={14} className="text-amber-500 flex-shrink-0" />
-                        <input
-                          type="time"
-                          value={scheduleTime}
-                          onChange={(e) => setScheduleTime(e.target.value)}
-                          className="bg-transparent outline-none text-slate-700 w-full"
-                          style={{ fontSize: '13px', fontWeight: 500 }}
-                          aria-label={t('time')}
-                        />
-                      </label>
-                    </div>
+                  </div>
+                  {/* Phase 4 Feature 3 — accessible time picker.
+                      Native <input type="time"> was dropped: tap
+                      target was tiny on Android and the platform UI
+                      was inconsistent across iOS/Android/desktop.
+                      The segmented picker (Morning/Afternoon/Evening
+                      → 15-min pills) emits the same HH:MM string so
+                      the rest of the post pipeline is unchanged. */}
+                  <div className="mt-3">
+                    <SegmentedTimePicker
+                      value={scheduleTime}
+                      onChange={setScheduleTime}
+                      labels={{
+                        timeOfDay: t('timeOfDay'),
+                        morning: t('morning'),
+                        afternoon: t('afternoon'),
+                        evening: t('evening'),
+                      }}
+                    />
                   </div>
                 </div>
               )}

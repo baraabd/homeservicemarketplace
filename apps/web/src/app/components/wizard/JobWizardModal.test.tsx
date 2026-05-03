@@ -173,9 +173,12 @@ describe('JobWizardModal — LATER', () => {
     const futureDate = `${yyyy}-${mm}-${dd}`;
 
     const dateInput = screen.getByLabelText(/^date$/i) as HTMLInputElement;
-    const timeInput = screen.getByLabelText(/^time$/i) as HTMLInputElement;
     fireEvent.change(dateInput, { target: { value: futureDate } });
-    fireEvent.change(timeInput, { target: { value: '14:30' } });
+    // Phase 4 — segmented time picker. Pick "Afternoon" segment, then
+    // tap the 14:30 pill. The picker emits the same HH:MM string the
+    // legacy <input type="time"> did.
+    fireEvent.click(screen.getByTestId('time-segment-afternoon'));
+    fireEvent.click(screen.getByTestId('time-slot-14:30'));
 
     fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
 
@@ -206,9 +209,9 @@ describe('JobWizardModal — LATER', () => {
     // we drive the past-date branch and assert the JS-level guard in
     // handlePost.
     const dateInput = screen.getByLabelText(/^date$/i) as HTMLInputElement;
-    const timeInput = screen.getByLabelText(/^time$/i) as HTMLInputElement;
     fireEvent.change(dateInput, { target: { value: '2020-01-01' } });
-    fireEvent.change(timeInput, { target: { value: '09:00' } });
+    fireEvent.click(screen.getByTestId('time-segment-morning'));
+    fireEvent.click(screen.getByTestId('time-slot-09:00'));
 
     fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
 
@@ -424,7 +427,7 @@ describe('JobWizardModal — backend response', () => {
 // ── Anti-regression: legacy hardcoded display strings ────────────────────────
 
 describe('JobWizardModal — no legacy hardcoded display strings', () => {
-  it('renders real HTML5 date+time inputs (no "Mar 15, 2026" / "10:00 AM")', async () => {
+  it('renders a real HTML5 date input + segmented time picker (no "Mar 15, 2026" / "10:00 AM")', async () => {
     mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
 
     renderWizard();
@@ -438,14 +441,44 @@ describe('JobWizardModal — no legacy hardcoded display strings', () => {
     expect(screen.queryByText(/Mar 15, 2026/i)).toBeNull();
     expect(screen.queryByText(/10:00 AM/i)).toBeNull();
 
-    // Real HTML5 inputs are rendered with empty controlled values
-    // (the user picks; we don't lie about what they'll get).
+    // Real HTML5 date input + segmented time picker (Phase 4 — the
+    // native <input type="time"> was removed because the platform UI
+    // was inconsistent and the tap targets were too small).
     const dateInput = screen.getByLabelText(/^date$/i) as HTMLInputElement;
-    const timeInput = screen.getByLabelText(/^time$/i) as HTMLInputElement;
     expect(dateInput.type).toBe('date');
-    expect(timeInput.type).toBe('time');
     expect(dateInput.value).toBe('');
-    expect(timeInput.value).toBe('');
+    expect(screen.queryByDisplayValue(/^\d{2}:\d{2}$/)).toBeNull();
+    expect(document.querySelector('input[type="time"]')).toBeNull();
+    expect(screen.getByTestId('time-segment-morning')).toBeInTheDocument();
+    expect(screen.getByTestId('time-segment-afternoon')).toBeInTheDocument();
+    expect(screen.getByTestId('time-segment-evening')).toBeInTheDocument();
+  });
+});
+
+// Phase 4 Feature 3 — segmented time picker contract.
+describe('JobWizardModal — segmented time picker', () => {
+  it('shows 15-minute pills only after a segment is selected, and 14:30 lives in Afternoon', async () => {
+    mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
+
+    renderWizard();
+    await advanceToStep2();
+    await awaitDefaultAddressFilled();
+    fireEvent.click(screen.getByRole('button', { name: /schedule later/i }));
+
+    // No segment picked yet → no pills rendered.
+    expect(screen.queryByTestId('time-slot-09:00')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('time-segment-afternoon'));
+    expect(screen.getByTestId('time-slot-12:00')).toBeInTheDocument();
+    expect(screen.getByTestId('time-slot-14:30')).toBeInTheDocument();
+    expect(screen.getByTestId('time-slot-17:45')).toBeInTheDocument();
+    // 06:00 belongs to Morning, not Afternoon — must not appear.
+    expect(screen.queryByTestId('time-slot-06:00')).toBeNull();
+
+    // Switching to Morning resets to the morning slot range.
+    fireEvent.click(screen.getByTestId('time-segment-morning'));
+    expect(screen.getByTestId('time-slot-06:00')).toBeInTheDocument();
+    expect(screen.queryByTestId('time-slot-14:30')).toBeNull();
   });
 });
 
