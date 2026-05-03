@@ -356,6 +356,18 @@ const DEV_USERS: DevUserSpec[] = [
     attachAdminRole: true,
   },
   {
+    // Operator-requested admin account for ad-hoc dashboard testing.
+    // Same hashing path as every other dev user — argon2id via the
+    // shared ARGON2_OPTIONS that mirror the backend PasswordService
+    // (apps/api/src/modules/iam/authentication/services/password.service.ts).
+    email: 'test@admin.com',
+    firstName: 'Test',
+    lastName: 'Admin',
+    password: '1qaz2wsx3edc!!',
+    attachProviderRole: false,
+    attachAdminRole: true,
+  },
+  {
     email: 'admin@admin.com',
     firstName: 'Admin',
     lastName: 'Admin',
@@ -373,6 +385,20 @@ const DEV_USERS: DevUserSpec[] = [
   },
 ];
 
+// argon2id parameters MUST match
+// apps/api/src/modules/iam/authentication/services/password.service.ts
+// so seeded hashes carry the production cost profile and login
+// timing stays consistent. (argon2.verify reads the params out of
+// the PHC string regardless, so login would still work with default
+// options — the alignment is for hash-shape consistency, not
+// correctness.)
+const ARGON2_OPTIONS: argon2.Options = {
+  type: argon2.argon2id,
+  memoryCost: 19_456,
+  timeCost: 2,
+  parallelism: 1,
+};
+
 async function upsertDevUsers(tx: Prisma.TransactionClient): Promise<void> {
   // Roles must already exist in this transaction (upsertRoles ran first).
   const roleByName = new Map<string, { id: string }>();
@@ -382,7 +408,7 @@ async function upsertDevUsers(tx: Prisma.TransactionClient): Promise<void> {
   for (const r of roles) roleByName.set(r.name, { id: r.id });
 
   for (const spec of DEV_USERS) {
-    const passwordHash = await argon2.hash(spec.password, { type: argon2.argon2id });
+    const passwordHash = await argon2.hash(spec.password, ARGON2_OPTIONS);
 
     // Upsert the User row by email. Always set/refresh:
     //   - passwordHash (so a re-run rotates to the documented dev value)
@@ -553,6 +579,7 @@ async function main(): Promise<void> {
       '  - service category catalog + static ProviderProfile pool',
       '  - dev users (NODE_ENV != production):',
       '      test1@admin.com           / DevAdmin123!     (admin)',
+      '      test@admin.com            / 1qaz2wsx3edc!!   (admin)',
       '      admin@admin.com           / DevAdmin123!     (admin + provider, ACTIVE profile)',
       '      provider1@provider.com    / DevProvider123!  (provider, ACTIVE profile)',
     ].join('\n'),
