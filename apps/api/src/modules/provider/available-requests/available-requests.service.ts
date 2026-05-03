@@ -18,23 +18,29 @@ import { AppError } from '../../../shared/errors/app-error';
 const DEFAULT_PAGE_SIZE = 20;
 
 // Sprint 5.2 (canonical) — provider available-requests feed.
+// Sprint 7.x — STRICT location + category match (was: optional).
 //
 // Visibility rules applied (in this order):
 //   1. status = OPEN_FOR_BIDS, deletedAt = null (always)
 //   2. seekerUserId != provider.userId — providers don't see their own
 //      requests in the feed.
-//   3. categoryId — explicit `category` query wins, else falls back to
-//      the provider's configured serviceCategories. A provider with no
-//      categories sees the global feed.
-//   4. city (when `near` is set) — exact-match against the snapshotted
-//      addressSnapshot.city.
+//   3. categoryId — explicit `category` query wins, else strict-filter
+//      by the provider's configured serviceCategories. A provider with
+//      NO categories configured sees an empty feed (was: global feed).
+//      The provider must complete onboarding (skills) to receive jobs.
+//   4. city — explicit `near` query wins, else strict-filter by the
+//      provider's `serviceAreaCity`. A provider with no city configured
+//      AND no `near` query sees an empty feed. Same onboarding intent
+//      as categories: a provider must declare where they work.
 //   5. providers.findActiveBidForRequest = none — hide every request
 //      this provider already bid on (non-WITHDRAWN). The strict
 //      "hide-already-bid" semantics in this slice replace the older
 //      `hasOwnBid` flag the legacy /me/provider/jobs surface emitted.
 //
 // The wire DTO is a NARROW projection — see `toSummary` for what's
-// stripped (seekerUserId, line1, etc.).
+// stripped (seekerUserId, line1, etc.). Sprint 7.x adds `media[]` to
+// the projection so the provider can see seeker-uploaded photos when
+// deciding to bid.
 @Injectable()
 export class AvailableRequestsService {
   constructor(
@@ -66,15 +72,28 @@ export class AvailableRequestsService {
       }
     }
 
-    const explicitCategoryIds = query.category ? [query.category] : undefined;
+    // Sprint 7.x — STRICT category + city filter. The provider must
+    // either pass an explicit override (`category`, `near`) or have
+    // the corresponding profile field set; otherwise the feed is empty.
+    // This replaces the previous "fall back to global feed" behaviour
+    // that surprised providers with mismatched jobs.
+    const explicitCategoryIds = query.category ? [query.category] : null;
     const providerCategoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
-    const categoryIds = explicitCategoryIds ?? providerCategoryIds;
+    const effectiveCategoryIds = explicitCategoryIds ?? providerCategoryIds;
+    const effectiveCity = (query.near ?? profile.serviceAreaCity ?? '').trim() || null;
+
+    // Strict mode: empty profile filter set → empty page. We early-return
+    // with a stable envelope so the client cache doesn't see a global
+    // feed (which would leak unrelated jobs into the provider's UI).
+    if (effectiveCategoryIds.length === 0 || !effectiveCity) {
+      return { items: [], nextCursor: null };
+    }
 
     const take = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), 100);
     const rows = await this.requests.listAvailableForProvider({
       excludeSeekerUserId: profile.userId ?? null,
-      categoryIds,
-      city: query.near,
+      categoryIds: effectiveCategoryIds,
+      city: effectiveCity,
       excludeBidsByProviderId: profile.id,
       take: take + 1,
       cursor: query.cursor,
@@ -93,11 +112,17 @@ export class AvailableRequestsService {
       throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
     }
     const providerCategoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
-    // Same visibility rules as the list. We DON'T enforce category
-    // when the provider has none configured (matches list).
+    const providerCity = profile.serviceAreaCity?.trim() || null;
+    // Sprint 7.x — STRICT detail visibility (mirrors list). A provider
+    // who hasn't onboarded (no city / no categories) cannot fetch
+    // request details either, even by guessing the id.
+    if (providerCategoryIds.length === 0 || !providerCity) {
+      throw new AppError('NOT_FOUND', 'Request not found.', 404);
+    }
     const row = await this.requests.findAvailableForProvider(requestId, {
       excludeSeekerUserId: profile.userId ?? null,
       categoryIds: providerCategoryIds,
+      city: providerCity,
       excludeBidsByProviderId: profile.id,
     });
     if (!row) {
@@ -121,6 +146,11 @@ function toSummary(
     lat: number | null;
     lng: number | null;
   };
+  // Sprint 7.x — `mediaUrls` is a Postgres text[] column with a default
+  // of '{}', so it's always an array on the wire (never null). Defensive
+  // `?? []` covers a hypothetical Prisma client returning undefined for
+  // a row that was inserted via raw SQL bypassing the default.
+  const media = (row as ServiceRequestWithCategory & { mediaUrls?: string[] }).mediaUrls ?? [];
   return {
     id: row.id,
     category: row.category
@@ -133,6 +163,7 @@ function toSummary(
       : null,
     customServiceText: row.customServiceText,
     description: row.description,
+    media,
     scheduleType: row.scheduleType,
     scheduledAt: row.scheduledAt ? row.scheduledAt.toISOString() : null,
     location: {

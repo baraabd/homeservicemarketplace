@@ -48,6 +48,14 @@ export interface ProviderAvailableRequestSummary {
   category: ProviderAvailableRequestCategoryRef | null;
   customServiceText: string | null;
   description: string | null;
+  /**
+   * Seeker-uploaded photos of the issue (e.g. leaky faucet, broken AC).
+   * Always an array — empty when the seeker didn't attach any media.
+   * URLs are absolute and ready to render directly in an <img>; the
+   * frontend should fall back to a neutral placeholder if a URL fails
+   * to load.
+   */
+  media: string[];
   scheduleType: ScheduleType;
   scheduledAt: string | null;
   location: ProviderAvailableRequestLocation;

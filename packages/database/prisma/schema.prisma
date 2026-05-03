@@ -421,6 +421,13 @@ model ServiceRequest {
   categoryId             String?
   customServiceText      String?
   description            String?
+  // Sprint 7.x — seeker-uploaded photos of the issue (e.g. broken pipe,
+  // leaky faucet). Stored as a Postgres `text[]` so the JSON wire shape
+  // stays a flat string array. Empty by default; existing rows backfill
+  // to `'{}'` via the @default clause without data movement. The upload
+  // pipeline (presigned URLs) is a later slice — this column is the
+  // receiving end of the wire.
+  mediaUrls              String[]              @default([])
   status                 ServiceRequestStatus  @default(OPEN_FOR_BIDS)
   scheduleType           ScheduleType
   scheduledAt            DateTime?

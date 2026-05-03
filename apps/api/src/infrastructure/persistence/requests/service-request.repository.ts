@@ -152,6 +152,8 @@ export class ServiceRequestRepository {
     args: {
       excludeSeekerUserId: string | null;
       categoryIds?: string[];
+      // Sprint 7.x — strict city match (mirrors listAvailableForProvider).
+      city?: string;
       excludeBidsByProviderId?: string;
     },
     tx?: PrismaTx,
@@ -164,6 +166,14 @@ export class ServiceRequestRepository {
         ...(args.excludeSeekerUserId ? { seekerUserId: { not: args.excludeSeekerUserId } } : {}),
         ...(args.categoryIds && args.categoryIds.length > 0
           ? { categoryId: { in: args.categoryIds } }
+          : {}),
+        ...(args.city
+          ? {
+              addressSnapshot: {
+                path: ['city'],
+                equals: args.city,
+              },
+            }
           : {}),
         ...(args.excludeBidsByProviderId
           ? {

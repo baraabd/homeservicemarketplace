@@ -364,6 +364,58 @@ async function upsertDevUsers(tx: Prisma.TransactionClient): Promise<void> {
       // role, refactor grantWithTx to accept a roles allowlist.
       await grantWithTx(tx, spec.email, false);
     }
+
+    // Sprint 7.x — ensure the dev provider profile is "fully onboarded"
+    // (city + at least one service category) so the now-strict
+    // available-requests filter has data to match against. Without this
+    // step, strict mode returns an empty feed for fresh dev users.
+    if (spec.attachProviderRole) {
+      await ensureProviderOnboarded(tx, user.id);
+    }
+  }
+}
+
+// Sprint 7.x — set a default service area + attach two categories to a
+// freshly-seeded provider profile so strict-mode filtering produces
+// matching jobs out of the box. Idempotent: the city update is a
+// no-op when already set, and category attachments use upsert against
+// the composite (providerProfileId, serviceCategoryId) PK.
+async function ensureProviderOnboarded(
+  tx: Prisma.TransactionClient,
+  userId: string,
+): Promise<void> {
+  const profile = await tx.providerProfile.findUnique({ where: { userId } });
+  if (!profile) return;
+
+  // Only seed defaults when the operator hasn't customised the profile.
+  // A provider who has explicitly set a city should keep their value.
+  if (!profile.serviceAreaCity || !profile.serviceAreaCity.trim()) {
+    await tx.providerProfile.update({
+      where: { id: profile.id },
+      data: {
+        serviceAreaCity: 'Riyadh',
+        serviceAreaCountry: 'Saudi Arabia',
+      },
+    });
+  }
+
+  // Attach plumbing + electrical so the provider can match the canonical
+  // demo requests. We keep the slug list narrow to avoid pollution.
+  const categories = await tx.serviceCategory.findMany({
+    where: { slug: { in: ['plumbing', 'electrical'] }, isActive: true, deletedAt: null },
+    select: { id: true },
+  });
+  for (const cat of categories) {
+    await tx.providerProfileServiceCategory.upsert({
+      where: {
+        providerProfileId_serviceCategoryId: {
+          providerProfileId: profile.id,
+          serviceCategoryId: cat.id,
+        },
+      },
+      update: {},
+      create: { providerProfileId: profile.id, serviceCategoryId: cat.id },
+    });
   }
 }
 

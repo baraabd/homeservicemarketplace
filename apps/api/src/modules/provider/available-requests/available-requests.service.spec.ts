@@ -246,6 +246,59 @@ describe('AvailableRequestsService.list', () => {
       code: 'NOT_FOUND',
     });
   });
+
+  // Sprint 7.x — strict-mode regression tests.
+  it('STRICT mode: no provider categories AND no explicit category → empty page (no repo call)', async () => {
+    // serviceAreaCity is 'Riyadh' by default, so only categories are missing.
+    const m = makeMocks({ profile: makeProfile([]), rows: [] });
+    const out = await makeService(m).list('user-provider-1', {});
+    expect(out).toEqual({ items: [], nextCursor: null });
+    expect(m.requests.listAvailableForProvider).not.toHaveBeenCalled();
+  });
+
+  it('STRICT mode: provider has no serviceAreaCity AND no explicit `near` → empty page', async () => {
+    const cat = makeCategory();
+    const profile = { ...makeProfile([cat]), serviceAreaCity: null };
+    const m = makeMocks({ profile, rows: [] });
+    const out = await makeService(m).list('user-provider-1', {});
+    expect(out).toEqual({ items: [], nextCursor: null });
+    expect(m.requests.listAvailableForProvider).not.toHaveBeenCalled();
+  });
+
+  it('STRICT mode: provider profile city flows into the repo filter (no near override)', async () => {
+    const cat = makeCategory();
+    const profile = { ...makeProfile([cat]), serviceAreaCity: 'Jeddah' };
+    const m = makeMocks({ profile, rows: [] });
+    await makeService(m).list('user-provider-1', {});
+    expect(m.requests.listAvailableForProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ city: 'Jeddah' }),
+    );
+  });
+
+  it('STRICT mode: explicit `near` query overrides the provider city', async () => {
+    const cat = makeCategory();
+    const m = makeMocks({ profile: makeProfile([cat]), rows: [] });
+    await makeService(m).list('user-provider-1', { near: 'Mecca' });
+    expect(m.requests.listAvailableForProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ city: 'Mecca' }),
+    );
+  });
+
+  it('exposes mediaUrls on the wire as `media` (empty array fallback)', async () => {
+    const cat = makeCategory();
+    const withMedia = makeRequest('r-with-media', cat, {
+      mediaUrls: ['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg'],
+    } as Partial<ServiceRequest> & { mediaUrls: string[] });
+    const noMedia = makeRequest('r-no-media', cat);
+    const m = makeMocks({
+      profile: makeProfile([cat]),
+      rows: [withMedia, noMedia],
+      catalog: [cat],
+    });
+    const out = await makeService(m).list('user-provider-1', {});
+    expect(out.items[0].media).toEqual(['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg']);
+    expect(out.items[1].media).toEqual([]); // defensive ?? [] kicks in
+  });
 });
 
 describe('AvailableRequestsService.detail', () => {

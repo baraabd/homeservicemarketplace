@@ -79,6 +79,7 @@ function makeBookingRow(
       categoryId: 'cat-plumbing',
       customServiceText: null,
       description: 'Leaky kitchen sink',
+      mediaUrls: [],
       status: 'BID_ACCEPTED',
       scheduleType: 'LATER',
       scheduledAt: date,
