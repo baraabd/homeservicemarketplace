@@ -14,6 +14,7 @@ import {
 } from '../../../infrastructure/persistence/requests/service-request.repository';
 import { ServiceCategoryRepository } from '../../../infrastructure/persistence/services/service-category.repository';
 import { AppError } from '../../../shared/errors/app-error';
+import { normaliseCityKey } from '../../requests/requests.service';
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -80,7 +81,13 @@ export class AvailableRequestsService {
     const explicitCategoryIds = query.category ? [query.category] : null;
     const providerCategoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
     const effectiveCategoryIds = explicitCategoryIds ?? providerCategoryIds;
-    const effectiveCity = (query.near ?? profile.serviceAreaCity ?? '').trim() || null;
+    // Case-insensitive city match: normalise the provider's city
+    // (or the explicit `near` override) into the same lowercase
+    // trimmed form the snapshot's `cityKey` carries. Without this
+    // step, a provider profile typed as "Aleppo" would silently miss
+    // requests geocoded as "aleppo" / "ALEPPO".
+    const rawCity = (query.near ?? profile.serviceAreaCity ?? '').trim();
+    const effectiveCity = rawCity ? normaliseCityKey(rawCity) : null;
 
     // Strict mode: empty profile filter set → empty page. We early-return
     // with a stable envelope so the client cache doesn't see a global
@@ -112,10 +119,13 @@ export class AvailableRequestsService {
       throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
     }
     const providerCategoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
-    const providerCity = profile.serviceAreaCity?.trim() || null;
+    const providerCityRaw = profile.serviceAreaCity?.trim() || null;
+    const providerCity = providerCityRaw ? normaliseCityKey(providerCityRaw) : null;
     // Sprint 7.x — STRICT detail visibility (mirrors list). A provider
     // who hasn't onboarded (no city / no categories) cannot fetch
-    // request details either, even by guessing the id.
+    // request details either, even by guessing the id. The city
+    // passed to the repo is the lowercase-trimmed key so a manual
+    // "Aleppo" profile matches an "aleppo" or "ALEPPO" snapshot.
     if (providerCategoryIds.length === 0 || !providerCity) {
       throw new AppError('NOT_FOUND', 'Request not found.', 404);
     }

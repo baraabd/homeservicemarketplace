@@ -110,13 +110,19 @@ export class ServiceRequestRepository {
         : {}),
       ...(args.city
         ? {
-            // Postgres JSON `path` lookup, equals match against the
-            // snapshotted city. Case-insensitive at the SQL level via
-            // mode: 'insensitive' on `string_contains`-style filters
-            // would be ideal but Prisma JSON filters do not support
-            // mode — keep this as exact-match and document.
+            // Postgres JSON `path` lookup against the snapshotted
+            // `cityKey` — a denormalised lowercase-trimmed mirror of
+            // the original city, written by requests.service.ts
+            // alongside `city`. Filtering on `cityKey` means we get
+            // case-insensitive equality (e.g. "Aleppo" matches
+            // "aleppo" matches "ALEPPO") without losing the original
+            // casing for display, and without the false-positive
+            // risk of `string_contains: insensitive` (e.g. "York"
+            // would match "New York"). Caller MUST pass an
+            // already-normalised value — see normaliseCityKey() in
+            // requests.service.ts.
             addressSnapshot: {
-              path: ['city'],
+              path: ['cityKey'],
               equals: args.city,
             },
           }
@@ -170,7 +176,11 @@ export class ServiceRequestRepository {
         ...(args.city
           ? {
               addressSnapshot: {
-                path: ['city'],
+                // Same case-insensitive contract as
+                // listAvailableForProvider — caller normalises via
+                // normaliseCityKey() and we filter on the denormalised
+                // lowercase-trimmed `cityKey` field of the snapshot.
+                path: ['cityKey'],
                 equals: args.city,
               },
             }

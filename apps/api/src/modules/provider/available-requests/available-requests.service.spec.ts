@@ -265,23 +265,48 @@ describe('AvailableRequestsService.list', () => {
     expect(m.requests.listAvailableForProvider).not.toHaveBeenCalled();
   });
 
-  it('STRICT mode: provider profile city flows into the repo filter (no near override)', async () => {
+  it('STRICT mode: provider profile city is normalised to lowercase before the repo filter', async () => {
+    // Provider profile typed as 'Jeddah' (display casing) must be
+    // lowercased on the way to the repo so the snapshot's `cityKey`
+    // (also lowercase) matches.
     const cat = makeCategory();
     const profile = { ...makeProfile([cat]), serviceAreaCity: 'Jeddah' };
     const m = makeMocks({ profile, rows: [] });
     await makeService(m).list('user-provider-1', {});
     expect(m.requests.listAvailableForProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ city: 'Jeddah' }),
+      expect.objectContaining({ city: 'jeddah' }),
     );
   });
 
-  it('STRICT mode: explicit `near` query overrides the provider city', async () => {
+  it('STRICT mode: explicit `near` query overrides the provider city (also lowercased)', async () => {
     const cat = makeCategory();
     const m = makeMocks({ profile: makeProfile([cat]), rows: [] });
     await makeService(m).list('user-provider-1', { near: 'Mecca' });
     expect(m.requests.listAvailableForProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ city: 'Mecca' }),
+      expect.objectContaining({ city: 'mecca' }),
     );
+  });
+
+  // Regression: case-insensitive city match. Provider's "Aleppo"
+  // (display casing) must produce the SAME repo argument as
+  // "aleppo" or "ALEPPO" — the underlying `cityKey` lookup is what
+  // makes the case-insensitivity work, but the contract here is
+  // simply "all three casings produce identical repo args".
+  it('case-insensitive: aleppo / Aleppo / ALEPPO all hit the repo with the SAME normalised city', async () => {
+    const cat = makeCategory();
+    const calls: Array<{ city?: string }> = [];
+    const m = makeMocks({ profile: makeProfile([cat]), rows: [] });
+    (m.requests.listAvailableForProvider as jest.Mock).mockImplementation(
+      async (args: { city?: string }) => {
+        calls.push({ city: args.city });
+        return [];
+      },
+    );
+
+    for (const casing of ['aleppo', 'Aleppo', 'ALEPPO']) {
+      await makeService(m).list('user-provider-1', { near: casing });
+    }
+    expect(calls.map((c) => c.city)).toEqual(['aleppo', 'aleppo', 'aleppo']);
   });
 
   it('exposes mediaUrls on the wire as `media` (empty array fallback)', async () => {

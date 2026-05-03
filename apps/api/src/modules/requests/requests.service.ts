@@ -432,6 +432,7 @@ export class RequestsService {
           label: address.label,
           line1: address.line1,
           city: address.city,
+          cityKey: normaliseCityKey(address.city),
           country: address.country,
           lat: address.lat,
           lng: address.lng,
@@ -448,12 +449,25 @@ export class RequestsService {
         label: m.label ?? null,
         line1: m.line1,
         city: m.city,
+        cityKey: normaliseCityKey(m.city),
         country: m.country ?? '',
         lat: m.lat ?? null,
         lng: m.lng ?? null,
       },
     };
   }
+}
+
+/** Lowercase-trimmed key for case-insensitive city matching. Single
+ *  source of truth for both the snapshot writer above and the
+ *  available-requests filter — keeping it in one place means the two
+ *  sides can never drift on what "the same city" means.
+ *
+ *  Exported so the available-requests service can normalise the
+ *  provider's serviceAreaCity exactly the same way before it hits
+ *  the repository's JSON-path equality filter on `cityKey`. */
+export function normaliseCityKey(city: string): string {
+  return city.trim().toLowerCase();
 }
 
 // Persistence row → wire DTO. Drops infra-only fields and re-shapes the

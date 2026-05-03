@@ -499,6 +499,31 @@ export async function seedWithTx(tx: Prisma.TransactionClient): Promise<void> {
   // `assertSeedProductionSafe()` check in seed() guarantees this block
   // never runs in production.
   await upsertDevUsers(tx);
+  // One-shot backfill for the case-insensitive city filter (Sprint
+  // 7.x). New requests carry addressSnapshot.cityKey at write time;
+  // legacy snapshots written before the normalisation landed need
+  // a derived value to start matching against the provider feed.
+  // The expression is idempotent — only rows missing cityKey are
+  // touched, so re-runs are a no-op.
+  await backfillAddressSnapshotCityKey(tx);
+}
+
+async function backfillAddressSnapshotCityKey(tx: Prisma.TransactionClient): Promise<void> {
+  // jsonb concat (`||`) keeps every existing field and overwrites
+  // only `cityKey`. lower()+trim() mirror normaliseCityKey() in
+  // apps/api/src/modules/requests/requests.service.ts so the seed
+  // and the runtime writer can never drift on what "the same city"
+  // means. WHERE clause limits the update to the rows that need it
+  // — re-runs touch zero rows.
+  await tx.$executeRawUnsafe(
+    `UPDATE "ServiceRequest"
+        SET "addressSnapshot" = "addressSnapshot" || jsonb_build_object(
+          'cityKey',
+          lower(trim(BOTH ' ' FROM ("addressSnapshot"->>'city')))
+        )
+      WHERE "addressSnapshot" ? 'city'
+        AND NOT ("addressSnapshot" ? 'cityKey')`,
+  );
 }
 
 export async function seed(): Promise<void> {

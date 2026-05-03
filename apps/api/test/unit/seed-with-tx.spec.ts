@@ -39,6 +39,9 @@ function makeFakeTx() {
         }
         return row;
       }),
+      // grantWithTx (called from upsertDevUsers) reads back the
+      // seeded customer/provider/admin rows by name.
+      findMany: jest.fn(async () => [...rolesByName.values()]),
     },
     permission: {
       upsert: jest.fn(async (args: UpsertCall) => {
@@ -71,6 +74,13 @@ function makeFakeTx() {
         }
         return row;
       }),
+      // upsertProviderProfiles resolves slugs → ids in one findMany
+      // call; we honour the where.slug.in filter so the join-table
+      // replace-set finds the rows it expects.
+      findMany: jest.fn(async (args: { where?: { slug?: { in?: string[] } } }) => {
+        const wanted = new Set(args?.where?.slug?.in ?? []);
+        return [...serviceCategoriesBySlug.values()].filter((r) => wanted.has(r.slug));
+      }),
     },
     providerProfile: {
       upsert: jest.fn(async (args: UpsertCall) => {
@@ -83,7 +93,36 @@ function makeFakeTx() {
         }
         return row;
       }),
+      // Stubs for the dev-user onboarding path (grantWithTx) and the
+      // upsertProviderProfiles category-replace flow. None of the
+      // existing assertions look at these — they just need to exist
+      // so the seed doesn't crash on TypeError. Extending observable
+      // behaviour to cover them belongs in a dedicated spec.
+      findUnique: jest.fn(async () => null),
+      update: jest.fn(async () => ({ id: 'pp-stub' })),
+      create: jest.fn(async () => ({ id: 'pp-stub' })),
     },
+    // Sprint 7.x — onboarding path (slug → id resolution + join-table
+    // replace-set) inside upsertProviderProfiles.
+    providerProfileServiceCategory: {
+      deleteMany: jest.fn(async () => ({ count: 0 })),
+      createMany: jest.fn(async () => ({ count: 0 })),
+      upsert: jest.fn(async () => ({ providerProfileId: 'p', serviceCategoryId: 'c' })),
+    },
+    // Dev-user upsert + role-attach path.
+    user: {
+      upsert: jest.fn(async () => ({ id: 'u-stub' })),
+      findFirst: jest.fn(async () => null),
+      create: jest.fn(async () => ({ id: 'u-stub' })),
+    },
+    userRole: {
+      upsert: jest.fn(async () => ({})),
+      findMany: jest.fn(async () => []),
+    },
+    // Sprint 7.x — backfill of addressSnapshot.cityKey on legacy rows
+    // is run via a raw SQL UPDATE inside seedWithTx. Fake into a no-op
+    // returning the affected-row count Prisma would normally return.
+    $executeRawUnsafe: jest.fn(async () => 0),
     // Observability for assertions
     _rolesByName: rolesByName,
     _permsByKey: permsByKey,
