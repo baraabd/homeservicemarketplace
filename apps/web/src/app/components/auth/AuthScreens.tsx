@@ -678,7 +678,19 @@ export function SignUpScreen({
           onBack={step > 1 ? () => setStep((s) => s - 1) : onBack}
         />
 
-        <div className="flex-1 overflow-y-auto px-6 py-6" style={{ scrollbarWidth: 'none' }}>
+        <div
+          className="flex-1 overflow-y-auto px-6 py-6"
+          style={{
+            scrollbarWidth: 'none',
+            // Phase 1 Bug 1 — guarantee that the iOS safe-area inset
+            // (home-bar / bottom gesture area) is never under the
+            // sticky-bottom CTA. The form's own footer takes care of
+            // its own padding; this is an additional gutter so any
+            // future floating element (e.g. the desktop watermark)
+            // can never re-creep over the scrollable content.
+            paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))',
+          }}
+        >
           <div className="mb-6">
             <h2 className="text-slate-900 mb-1" style={{ fontSize: '22px', fontWeight: 800 }}>
               {t('letsGetStarted')}

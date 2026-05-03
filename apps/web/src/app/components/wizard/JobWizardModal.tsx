@@ -642,6 +642,13 @@ export function JobWizardModal({
                   onChange={setNotes}
                   leadingIcon={<FileText size={16} />}
                   hint={t('notesHint')}
+                  // Phase 1 Bug 2 — autosizing textarea so the seeker
+                  // can describe the issue without being constrained
+                  // to a single line. Starts at 3 visible rows and
+                  // grows up to 10 before the field internally scrolls.
+                  multiline
+                  minRows={3}
+                  maxRows={10}
                 />
               </div>
               <div className="h-2" />
