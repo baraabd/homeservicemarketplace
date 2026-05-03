@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X,
   ChevronLeft,
@@ -267,6 +267,39 @@ type GeoState =
   | { status: 'success'; lat: number; lng: number }
   | { status: 'error'; reason: 'denied' | 'unsupported' | 'failed' };
 
+// ─── Phase 3: media upload ────────────────────────────────────────────────────
+//
+// Each picked file gets an object URL so we can render a thumbnail
+// before the actual upload pipeline ships. The URL MUST be revoked
+// when the item is removed (and en-masse when the modal closes /
+// unmounts) — otherwise every File hangs around in browser memory
+// for the lifetime of the document.
+//
+// `id` is a synthetic key for React reconciliation; File names are
+// not unique (a user can pick "IMG_001.jpg" twice from different
+// folders) so we don't use them as keys.
+interface MediaItem {
+  id: string;
+  file: File;
+  previewUrl: string;
+  isVideo: boolean;
+}
+
+const MAX_MEDIA_ITEMS = 4;
+const ACCEPTED_MEDIA = 'image/*,video/*';
+
+function makeMediaItem(file: File): MediaItem {
+  return {
+    // crypto.randomUUID would be cleaner but is gated behind secure
+    // contexts in older browsers; this is a fine collision-free key
+    // for a per-modal list capped at MAX_MEDIA_ITEMS.
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    file,
+    previewUrl: URL.createObjectURL(file),
+    isVideo: file.type.startsWith('video/'),
+  };
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface JobWizardModalProps {
   service: string;
@@ -305,7 +338,12 @@ export function JobWizardModal({
   // navigator.geolocation call): real lat/lng is captured only when
   // the user clicks the "Use my current location" button.
   const [geo, setGeo] = useState<GeoState>({ status: 'idle' });
-  const [uploads, setUploads] = useState<string[]>([]);
+  // Phase 3 — real native HTML5 media upload. `uploads` was previously a
+  // string[] of mock CSS class names; it now holds File objects + their
+  // object-URL previews. Object URLs are revoked when an item is removed
+  // OR when the modal closes / unmounts so we never leak memory.
+  const [uploads, setUploads] = useState<MediaItem[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [postError, setPostError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
@@ -345,13 +383,59 @@ export function JobWizardModal({
 
   const cfg = SERVICE_CONFIG[service] ?? SERVICE_CONFIG.General;
 
-  const simulateUpload = () => {
-    // NB: attachments are NOT uploaded yet. The placeholder colour
-    // swatches stay so the visual flow is unchanged, but nothing is
-    // sent to the backend.
-    const colors = ['bg-blue-200', 'bg-amber-200', 'bg-green-200', 'bg-purple-200'];
-    if (uploads.length < 4) setUploads((prev) => [...prev, colors[prev.length % colors.length]]);
+  // Phase 3 — open the system file picker. The hidden <input> below
+  // (in the JSX) carries `accept="image/*,video/*"` + `capture="environment"`
+  // so mobile browsers prompt the user to take a photo / record a
+  // video OR pick from the gallery. Desktop browsers ignore `capture`
+  // and just open the file dialog.
+  const openFilePicker = () => {
+    fileInputRef.current?.click();
   };
+
+  const handleFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (!list || list.length === 0) return;
+    setUploads((prev) => {
+      const remaining = Math.max(0, MAX_MEDIA_ITEMS - prev.length);
+      if (remaining === 0) {
+        toast.warning(
+          lang === 'ar'
+            ? `الحد الأقصى ${MAX_MEDIA_ITEMS} ملفات.`
+            : `You can attach up to ${MAX_MEDIA_ITEMS} files.`,
+        );
+        return prev;
+      }
+      const picked = Array.from(list).slice(0, remaining).map(makeMediaItem);
+      return [...prev, ...picked];
+    });
+    // Reset the input so picking the same file twice still triggers
+    // a change event.
+    e.target.value = '';
+  };
+
+  const removeUpload = (id: string) => {
+    setUploads((prev) => {
+      const target = prev.find((m) => m.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((m) => m.id !== id);
+    });
+  };
+
+  // Memory hygiene: revoke every outstanding object URL when the
+  // component unmounts. We deliberately use a ref-style "current
+  // uploads" snapshot via the cleanup closure so the effect doesn't
+  // need `uploads` in its dep array (which would re-run cleanup on
+  // every keystroke and prematurely revoke live URLs).
+  useEffect(() => {
+    return () => {
+      // `uploads` is captured from the latest render via the closure
+      // setter trick — we read it imperatively right before unmount.
+      setUploads((current) => {
+        for (const item of current) URL.revokeObjectURL(item.previewUrl);
+        return [];
+      });
+    };
+  }, []);
 
   // Slice 4.1: real browser geolocation. Triggered by user click on
   // "Use my current location" — never auto-fires because browsers
@@ -488,6 +572,10 @@ export function JobWizardModal({
   const handleClose = () => {
     setStep(1);
     setNotes('');
+    // Phase 3 — revoke every object URL before clearing the list.
+    // Skipping this would leave the picked Files (potentially many MB
+    // each) anchored in memory until the document unloads.
+    for (const item of uploads) URL.revokeObjectURL(item.previewUrl);
     setUploads([]);
     setSchedule('asap');
     setScheduleDate('');
@@ -598,13 +686,36 @@ export function JobWizardModal({
             <StepProgress current={1} total={3} labels={stepLabels} />
 
             <div className="flex-1 overflow-y-auto px-5" style={{ scrollbarWidth: 'none' }}>
+              {/* Phase 3 — hidden native file picker. `capture="environment"`
+                  hints to mobile browsers that the rear camera is the
+                  preferred source, but every modern mobile browser
+                  honours this as a HINT, still surfacing the
+                  "Take Photo / Record Video / Photo Library" sheet so
+                  the user can choose. Desktop browsers ignore `capture`
+                  and open the file dialog. The input stays in the DOM
+                  (display:none) so React can manage focus + onChange. */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_MEDIA}
+                capture="environment"
+                multiple
+                onChange={handleFilesPicked}
+                style={{ display: 'none' }}
+                aria-hidden="true"
+                tabIndex={-1}
+                data-testid="job-wizard-media-input"
+              />
+
               {/* Upload zone */}
               <p className="text-slate-700 mb-2.5" style={{ fontSize: '13px', fontWeight: 600 }}>
                 {t('uploadPhotos')}
               </p>
               <button
-                onClick={simulateUpload}
-                className="w-full rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/50 p-6 flex flex-col items-center gap-3 text-center active:bg-amber-50 transition-all mb-3"
+                type="button"
+                onClick={openFilePicker}
+                disabled={uploads.length >= MAX_MEDIA_ITEMS}
+                className="w-full rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/50 p-6 flex flex-col items-center gap-3 text-center active:bg-amber-50 transition-all mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center">
                   <Camera size={24} className="text-amber-500" />
@@ -625,24 +736,51 @@ export function JobWizardModal({
 
               {uploads.length > 0 && (
                 <div className="flex gap-2 mb-4 flex-wrap">
-                  {uploads.map((color, i) => (
+                  {uploads.map((item) => (
                     <div
-                      key={i}
-                      className={`w-16 h-16 rounded-xl ${color} flex items-center justify-center relative`}
+                      key={item.id}
+                      className="w-16 h-16 rounded-xl bg-slate-100 overflow-hidden relative"
                     >
-                      <ImageIcon size={20} className="text-white opacity-70" />
+                      {item.isVideo ? (
+                        <>
+                          {/* Video thumbnail: muted/playsInline so iOS
+                              doesn't auto-pause + a play-icon overlay
+                              so the visual rhythm stays clear at the
+                              16x16 thumbnail size. */}
+                          <video
+                            src={item.previewUrl}
+                            className="w-full h-full object-cover"
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                          <div className="absolute inset-0 bg-black/30 flex items-center justify-center pointer-events-none">
+                            <ImageIcon size={20} className="text-white opacity-90" />
+                          </div>
+                        </>
+                      ) : (
+                        <img
+                          src={item.previewUrl}
+                          alt={item.file.name}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
                       <button
-                        onClick={() => setUploads((p) => p.filter((_, j) => j !== i))}
+                        type="button"
+                        onClick={() => removeUpload(item.id)}
+                        aria-label={lang === 'ar' ? 'حذف' : 'Remove'}
                         className="absolute -top-1.5 -end-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center shadow-sm"
                       >
                         <X size={9} />
                       </button>
                     </div>
                   ))}
-                  {uploads.length < 4 && (
+                  {uploads.length < MAX_MEDIA_ITEMS && (
                     <button
-                      onClick={simulateUpload}
+                      type="button"
+                      onClick={openFilePicker}
                       className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center active:bg-slate-50"
+                      aria-label={lang === 'ar' ? 'إضافة' : 'Add more'}
                     >
                       <span className="text-slate-400" style={{ fontSize: '22px', lineHeight: 1 }}>
                         +

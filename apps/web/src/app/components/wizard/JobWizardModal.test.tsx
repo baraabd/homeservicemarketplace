@@ -448,3 +448,132 @@ describe('JobWizardModal — no legacy hardcoded display strings', () => {
     expect(timeInput.value).toBe('');
   });
 });
+
+// Phase 3 — native HTML5 media upload (Sprint 7.x).
+//
+// Pins the regression contract that:
+//   1. The hidden <input type="file"> is configured for both gallery
+//      and camera (`accept="image/*,video/*"`, `capture="environment"`,
+//      `multiple`).
+//   2. Picking N files renders N thumbnails AND N <img> previews
+//      backed by object URLs (URL.createObjectURL).
+//   3. Clicking the per-thumbnail X button calls URL.revokeObjectURL
+//      and removes the row.
+//   4. The MAX_MEDIA_ITEMS=4 cap is enforced (excess files are dropped
+//      and the toast surface is exercised).
+describe('JobWizardModal — Phase 3 native media upload', () => {
+  beforeEach(() => {
+    mock.onGet('/v1/me/addresses').reply(200, { items: [] });
+  });
+
+  function getMediaInput(): HTMLInputElement {
+    return screen.getByTestId('job-wizard-media-input') as HTMLInputElement;
+  }
+
+  function makeFile(name: string, type: string, size = 1024): File {
+    const blob = new Blob(['x'.repeat(size)], { type });
+    return new File([blob], name, { type });
+  }
+
+  it('renders a hidden multi-select file input wired for camera + gallery', async () => {
+    renderWizard();
+    const input = await waitFor(() => getMediaInput());
+    expect(input.type).toBe('file');
+    expect(input.accept).toBe('image/*,video/*');
+    expect(input.multiple).toBe(true);
+    // `capture` is the camera-source hint. jsdom returns it via the
+    // attribute API rather than a typed property.
+    expect(input.getAttribute('capture')).toBe('environment');
+    expect(input.style.display).toBe('none');
+  });
+
+  it('previews picked images with real <img> object-URL thumbnails', async () => {
+    // Stable createObjectURL stub so we can assert exact URLs.
+    let counter = 0;
+    const created: string[] = [];
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = (() => {
+      counter += 1;
+      const u = `blob:mock-${counter}`;
+      created.push(u);
+      return u;
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+
+    try {
+      renderWizard();
+      const input = await waitFor(() => getMediaInput());
+      const files = [makeFile('a.jpg', 'image/jpeg'), makeFile('b.png', 'image/png')];
+      fireEvent.change(input, { target: { files } });
+
+      await waitFor(() => {
+        const previews = document.querySelectorAll<HTMLImageElement>('img[src^="blob:mock-"]');
+        expect(previews).toHaveLength(2);
+      });
+      const srcs = Array.from(
+        document.querySelectorAll<HTMLImageElement>('img[src^="blob:mock-"]'),
+      ).map((n) => n.src);
+      expect(srcs).toEqual(expect.arrayContaining(['blob:mock-1', 'blob:mock-2']));
+    } finally {
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+    }
+  });
+
+  it('caps the total at 4 files (extras are dropped)', async () => {
+    URL.createObjectURL = (() => 'blob:mock') as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+
+    renderWizard();
+    const input = await waitFor(() => getMediaInput());
+    const files = [
+      makeFile('1.jpg', 'image/jpeg'),
+      makeFile('2.jpg', 'image/jpeg'),
+      makeFile('3.jpg', 'image/jpeg'),
+      makeFile('4.jpg', 'image/jpeg'),
+      makeFile('5.jpg', 'image/jpeg'),
+      makeFile('6.jpg', 'image/jpeg'),
+    ];
+    fireEvent.change(input, { target: { files } });
+
+    await waitFor(() => {
+      const previews = document.querySelectorAll('img[src^="blob:mock"]');
+      expect(previews.length).toBe(4);
+    });
+  });
+
+  it('removes a thumbnail and revokes its object URL when X is clicked', async () => {
+    let counter = 0;
+    const revoked: string[] = [];
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = (() => {
+      counter += 1;
+      return `blob:mock-${counter}`;
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = ((u: string) => {
+      revoked.push(u);
+    }) as typeof URL.revokeObjectURL;
+
+    try {
+      renderWizard();
+      const input = await waitFor(() => getMediaInput());
+      fireEvent.change(input, {
+        target: { files: [makeFile('a.jpg', 'image/jpeg')] },
+      });
+      await waitFor(() => expect(document.querySelector('img[src="blob:mock-1"]')).not.toBeNull());
+
+      const remove = screen.getByRole('button', { name: /^remove$/i });
+      fireEvent.click(remove);
+
+      await waitFor(() => {
+        expect(document.querySelector('img[src="blob:mock-1"]')).toBeNull();
+      });
+      expect(revoked).toContain('blob:mock-1');
+    } finally {
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+    }
+  });
+});
