@@ -24,12 +24,14 @@ import {
   Navigation,
   Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useLang } from '../../i18n/LanguageContext';
 import { useAddresses } from '../../hooks/seeker/useAddresses';
 import { useCreateServiceRequest } from '../../hooks/seeker/useRequests';
+import { reverseGeocode } from '../../../lib/reverse-geocode';
 
 // ─── Service config ───────────────────────────────────────────────────────────
 const SERVICE_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
@@ -355,6 +357,13 @@ export function JobWizardModal({
   // "Use my current location" — never auto-fires because browsers
   // reject silent geolocation prompts and we don't want to ask for
   // permission on modal open.
+  //
+  // Phase 2 Bug 3: after capturing coords we now reverse-geocode them
+  // through the Google Maps Geocoding API and auto-fill the address
+  // input. Reverse-geocoding never throws — `reverseGeocode` returns a
+  // typed result so a missing API key, network failure, or "no match"
+  // simply produces a `partial` outcome (formatted lat/lng) and a
+  // toast asking the user to verify.
   const handleRequestLocation = () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGeo({ status: 'error', reason: 'unsupported' });
@@ -362,12 +371,23 @@ export function JobWizardModal({
     }
     setGeo({ status: 'pending' });
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGeo({
-          status: 'success',
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        });
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setGeo({ status: 'success', lat, lng });
+        const result = await reverseGeocode(lat, lng);
+        if (result.status === 'ok') {
+          setAddress(result.formattedAddress);
+        } else {
+          // Best-effort: fill the field with formatted coords + toast
+          // so the user knows to verify.
+          setAddress(result.formattedAddress);
+          toast.warning(
+            lang === 'ar'
+              ? 'تعذّر العثور على عنوان مطابق. تم إدخال الإحداثيات — يرجى التحقق منها.'
+              : "Couldn't resolve a street address. Coordinates were filled in — please verify.",
+          );
+        }
       },
       (err) => {
         // 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT.
