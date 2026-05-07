@@ -20,10 +20,26 @@ import {
   useUpdateProviderProfile,
 } from '../../hooks/provider/useProviderProfile';
 import { useServiceCategories } from '../../../lib/use-service-categories';
-import { useAuth } from '../../../lib/auth-provider';
+
+// The page is shared between the Seeker app (`/home` → ProfileTab) and
+// the Provider app (`/provider` → ProviderProfileScreen). Originally
+// the page gated the skills picker + tone palette on
+// `user.roles.includes('provider')` — but a single user can hold BOTH
+// the customer + provider roles, so a dual-role user opening
+// /home → Edit Profile would see the Provider blue theme + the Skills
+// picker even though they're inside the Seeker app. The Seeker context
+// must always render Seeker amber + hide skills. We solve this by
+// taking the app context as an explicit prop from the caller — there's
+// exactly one mount per app, so the caller knows the answer with
+// certainty and the page never has to guess from URL or roles.
+export type EditProfileAppContext = 'seeker' | 'provider';
 
 interface EditProfilePageProps {
   onBack: () => void;
+  /** Which app shell mounted this page. Drives tone palette + whether
+   *  the provider-only Skills picker is rendered + which side of the
+   *  city field is the source of truth. */
+  appContext: EditProfileAppContext;
 }
 
 // Splits a single Full Name string into firstName / lastName for the
@@ -39,21 +55,44 @@ function splitName(name: string): { firstName: string; lastName: string } {
   return { firstName: parts[0]!, lastName: parts.slice(1).join(' ') };
 }
 
-export function EditProfilePage({ onBack }: EditProfilePageProps) {
+export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   const { lang, dir } = useLang();
   const profileQuery = useProfile();
   const updateMut = useUpdateProfile();
 
-  // Phase 6 Step 2 — provider-only fields. The page is shared with
-  // seekers (mounted from ProfileTab.tsx) and providers (mounted
-  // from ProviderProfileScreen). The skills picker + the
-  // serviceAreaCity write-through to /v1/me/provider/profile only
-  // render / fire when the authenticated user has the provider role.
-  const auth = useAuth();
-  const isProvider = (auth.user?.roles ?? []).includes('provider');
+  // Provider-only fields are gated on APP CONTEXT, not on role. A
+  // dual-role user opening /home → Edit Profile is in the Seeker
+  // experience and must see the Seeker-only form. The provider hooks
+  // are still called unconditionally (rules of hooks) but their data
+  // is only read + their mutation is only fired when the page was
+  // mounted from inside the Provider app.
+  const isProviderContext = appContext === 'provider';
   const providerProfileQuery = useProviderProfile();
   const updateProviderMut = useUpdateProviderProfile();
   const categoriesQuery = useServiceCategories();
+
+  // Tone palette. Seeker context keeps the historical amber identity;
+  // Provider context uses the blue/indigo brand that matches the rest
+  // of the Provider shell + the DS Button's `provider` tone.
+  const accent = isProviderContext
+    ? {
+        fabBg: 'bg-blue-600',
+        textLink: 'text-blue-600',
+        pillActive: 'border-blue-600 bg-blue-600 text-white',
+        pillIdleHover:
+          'border-slate-200 bg-white text-slate-600 hover:border-blue-400 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300',
+        bioFocus: 'focus:border-blue-500',
+        buttonTone: 'provider' as const,
+      }
+    : {
+        fabBg: 'bg-amber-500',
+        textLink: 'text-amber-600',
+        pillActive: 'border-amber-500 bg-amber-500 text-white',
+        pillIdleHover:
+          'border-slate-200 bg-white text-slate-600 hover:border-amber-300 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300',
+        bioFocus: 'focus:border-amber-400',
+        buttonTone: 'seeker' as const,
+      };
 
   // Form state. We initialise empty so the form never renders the
   // legacy "Ahmed Al-Khalid / +966 / Riyadh / AK" hardcodes; the
@@ -68,7 +107,10 @@ export function EditProfilePage({ onBack }: EditProfilePageProps) {
   const [avatarHue, setAvatarHue] = useState(0); // cycle through gradient colors
 
   const profile = profileQuery.data?.profile ?? null;
-  const providerProfile = providerProfileQuery.data?.profile ?? null;
+  // In Seeker context the provider profile data is irrelevant — even
+  // if the dual-role user has one, the Seeker form must not seed from
+  // it (city should track User.city, not ProviderProfile.serviceAreaCity).
+  const providerProfile = isProviderContext ? (providerProfileQuery.data?.profile ?? null) : null;
   const email = profile?.email ?? '';
   const initials = profile?.initials ?? '';
 
@@ -134,12 +176,13 @@ export function EditProfilePage({ onBack }: EditProfilePageProps) {
         bio: trimmedBio === '' ? null : trimmedBio,
       });
 
-      // Provider-only write — only fire when the user actually has
-      // a provider profile. A provider-roled user without a profile
-      // (corner case after manual data edit) won't 404 us into a
-      // "save failed" because the mutation simply isn't called.
+      // Provider-only write — only fire when we're in the Provider
+      // app context AND the user actually has a provider profile. The
+      // Seeker app must NEVER trigger this PATCH even for a dual-role
+      // user, otherwise editing seeker fields would silently overwrite
+      // the provider's service categories.
       const providerSave =
-        isProvider && providerProfile
+        isProviderContext && providerProfile
           ? updateProviderMut.mutateAsync({
               // Empty string explicitly clears the city; backend DTO
               // accepts string | null.
@@ -255,14 +298,14 @@ export function EditProfilePage({ onBack }: EditProfilePageProps) {
             </div>
             <button
               onClick={() => setAvatarHue((h) => h + 1)}
-              className="absolute -bottom-2 -end-2 w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center shadow-md active:scale-90 transition-all border-2 border-white"
+              className={`absolute -bottom-2 -end-2 w-9 h-9 rounded-xl ${accent.fabBg} flex items-center justify-center shadow-md active:scale-90 transition-all border-2 border-white`}
             >
               <Camera size={14} className="text-white" />
             </button>
           </div>
           <button
             onClick={() => setAvatarHue((h) => h + 1)}
-            className="mt-3 text-amber-600 active:opacity-70"
+            className={`mt-3 ${accent.textLink} active:opacity-70`}
             style={{ fontSize: '13px', fontWeight: 600 }}
           >
             {L.photo}
@@ -303,7 +346,7 @@ export function EditProfilePage({ onBack }: EditProfilePageProps) {
             value={city}
             onChange={setCity}
             leadingIcon={<MapPin size={16} />}
-            hint={isProvider ? L.cityHint : undefined}
+            hint={isProviderContext ? L.cityHint : undefined}
           />
 
           {/* Phase 6 Step 2 — provider-only skills picker. Toggleable
@@ -314,9 +357,10 @@ export function EditProfilePage({ onBack }: EditProfilePageProps) {
                 useServiceCategories() → catalog
                 providerProfile.serviceCategories → seed selection
                 selectedCategoryIds → handleSave → categoryIds payload
-              When the user has no provider role, this whole block is
-              hidden and the underlying state stays the empty default. */}
-          {isProvider && (
+              In Seeker context this whole block is hidden — even if
+              the user has the provider role, the Seeker app's Edit
+              Profile must never expose Provider-only fields. */}
+          {isProviderContext && (
             <div data-testid="edit-profile-skills">
               <p
                 className="text-slate-600 dark:text-slate-300 mb-1"
@@ -344,9 +388,7 @@ export function EditProfilePage({ onBack }: EditProfilePageProps) {
                         data-testid={`skill-pill-${cat.slug}`}
                         className={[
                           'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 border transition-all active:scale-95',
-                          active
-                            ? 'border-amber-500 bg-amber-500 text-white'
-                            : 'border-slate-200 bg-white text-slate-600 hover:border-amber-300 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300',
+                          active ? accent.pillActive : accent.pillIdleHover,
                         ].join(' ')}
                         style={{ fontSize: '12px', fontWeight: 600 }}
                       >
@@ -374,7 +416,7 @@ export function EditProfilePage({ onBack }: EditProfilePageProps) {
               placeholder={L.bioHint}
               rows={3}
               maxLength={500}
-              className="w-full bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 text-slate-700 dark:text-slate-200 placeholder-slate-400 outline-none focus:border-amber-400 transition-colors resize-none"
+              className={`w-full bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 text-slate-700 dark:text-slate-200 placeholder-slate-400 outline-none ${accent.bioFocus} transition-colors resize-none`}
               style={{ fontSize: '14px' }}
             />
             <p className="text-end text-slate-400 mt-1" style={{ fontSize: '11px' }}>
@@ -413,6 +455,7 @@ export function EditProfilePage({ onBack }: EditProfilePageProps) {
         ) : (
           <Button
             variant="primary"
+            tone={accent.buttonTone}
             state={
               updateMut.isPending || updateProviderMut.isPending
                 ? 'loading'

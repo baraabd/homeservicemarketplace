@@ -98,6 +98,7 @@ import {
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth-provider';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
+import { clearIntendedApp } from '../../../lib/intended-app';
 import { EditProfilePage } from '../profile/EditProfilePage';
 import type {
   ProviderAvailability,
@@ -226,7 +227,7 @@ function BiddingModal({
             </p>
             <p className="text-slate-400" style={{ fontSize: '12px' }}>
               {L.requestFor}{' '}
-              <span className="text-amber-600 font-semibold">
+              <span className="text-blue-600 font-semibold">
                 {lang === 'ar' ? request.serviceAr : request.service}
               </span>
             </p>
@@ -629,7 +630,7 @@ function LiveJobsScreen() {
                 {L.drag}
               </span>
               <span
-                className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center"
+                className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center"
                 style={{ fontSize: '10px', fontWeight: 800 }}
               >
                 {activeReqs.filter((r) => r.status === 'pending').length}
@@ -1533,22 +1534,35 @@ function ProviderProfileScreen() {
   const handleSignOut = async () => {
     if (signingOut) return;
     setSigningOut(true);
+    // Drop the "/provider" intent BEFORE logout flips auth/me — once
+    // auth/me clears, RequireAuth fires its own redirect and this
+    // component unmounts; sessionStorage writes from an unmounted
+    // closure are racy. The intent is what would otherwise yank the
+    // user back into /provider on the next login from /select.
+    clearIntendedApp();
+    // Navigate FIRST so a stale /provider URL never paints behind the
+    // logout call — and so the redirect doesn't depend on
+    // setQueryData → useAuth re-render → RequireAuth observation
+    // landing in time. We use replace:true so the back button doesn't
+    // bounce the user into a half-logged-out provider shell.
+    navigate('/login', { replace: true });
     try {
       // useAuth().logout() POSTs /v1/auth/logout (best-effort) and
       // — succeed or fail — sets the cached /auth/me to null and
       // purges every non-auth React Query so no stale Provider data
-      // bleeds into the next session. Afterwards we route to /login;
-      // RequireAuth would do this anyway but doing it here keeps the
-      // tab from briefly rendering an unauthenticated provider shell.
+      // bleeds into the next session.
       await auth.logout();
+    } catch {
+      // doLogout already swallows API errors; reaching the catch here
+      // would be a programming error. Either way the navigate above
+      // has already moved the user off the protected shell.
     } finally {
       setSigningOut(false);
-      navigate('/login', { replace: true });
     }
   };
 
   if (view === 'editProfile') {
-    return <EditProfilePage onBack={() => setView(null)} />;
+    return <EditProfilePage onBack={() => setView(null)} appContext="provider" />;
   }
 
   const profile = profileQuery.data?.profile ?? null;
