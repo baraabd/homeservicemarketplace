@@ -44,6 +44,14 @@ export interface ProviderProfileSummary {
   serviceAreaLng: number | null;
   serviceAreaRadiusKm: number | null;
   serviceCategories: ProviderServiceCategoryRef[];
+  // Categories the provider has applied for that are still awaiting
+  // admin approval. The Provider app renders these in the Skills
+  // section with a distinct "pending review" affordance so the
+  // operator can see what's in flight without polling the admin queue.
+  // Optional on the wire — backend slices that pre-date the approval
+  // queue may omit the field; consumers must treat `undefined` and
+  // `[]` identically.
+  pendingCategories?: ProviderServiceCategoryRef[];
   createdAt: string;
   updatedAt: string;
 }
