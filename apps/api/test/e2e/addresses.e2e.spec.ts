@@ -141,13 +141,19 @@ describe('AddressesController (e2e)', () => {
 
     it('every mutation route requires auth', async () => {
       const server = app.getHttpServer();
-      const responses = await Promise.all([
-        request(server).post('/v1/me/addresses').send({}),
-        request(server).patch('/v1/me/addresses/x').send({}),
-        request(server).delete('/v1/me/addresses/x'),
-        request(server).post('/v1/me/addresses/x/default'),
-      ]);
-      for (const res of responses) {
+      // Sequential, not Promise.all, so we don't fan out four concurrent
+      // sockets at the in-process Nest test server. CI workers exhibit
+      // ECONNRESET when the parallel keep-alive sockets stack up against
+      // a single-process server; the auth gate doesn't need parallelism
+      // to be exercised, only coverage.
+      const requestFns = [
+        () => request(server).post('/v1/me/addresses').send({}),
+        () => request(server).patch('/v1/me/addresses/x').send({}),
+        () => request(server).delete('/v1/me/addresses/x'),
+        () => request(server).post('/v1/me/addresses/x/default'),
+      ];
+      for (const fn of requestFns) {
+        const res = await fn();
         expect(res.status).toBe(401);
         expect(res.body?.error?.code).toBe('AUTH_INVALID_CREDENTIALS');
       }
