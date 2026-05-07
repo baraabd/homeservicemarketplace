@@ -32,8 +32,13 @@ export interface ServiceRequest {
   postedAt: string;
   status: 'pending' | 'bidding' | 'assigned' | 'active' | 'completed';
   bids: Bid[];
-  mapX: number;
-  mapY: number;
+  // Real geographic coordinates threaded from the
+  // ProviderAvailableRequestSummary.location wire shape. Either may be
+  // null when the seeker's address has no captured lat/lng (legacy
+  // rows or coarse-city-only addresses) — the map deliberately skips
+  // those pins rather than synthesising fake locations.
+  lat: number | null;
+  lng: number | null;
 }
 
 export interface CrossAppNotif {
@@ -112,8 +117,8 @@ const SEED_REQUESTS: ServiceRequest[] = [
         submittedAt: '30s ago',
       },
     ],
-    mapX: 38,
-    mapY: 42,
+    lat: 24.6904,
+    lng: 46.6863,
   },
   {
     id: 'r2',
@@ -132,8 +137,8 @@ const SEED_REQUESTS: ServiceRequest[] = [
     postedAt: '8m ago',
     status: 'pending',
     bids: [],
-    mapX: 62,
-    mapY: 28,
+    lat: 24.8112,
+    lng: 46.6298,
   },
   {
     id: 'r3',
@@ -152,8 +157,8 @@ const SEED_REQUESTS: ServiceRequest[] = [
     postedAt: '15m ago',
     status: 'pending',
     bids: [],
-    mapX: 75,
-    mapY: 60,
+    lat: 24.7268,
+    lng: 46.6924,
   },
   {
     id: 'r4',
@@ -186,8 +191,8 @@ const SEED_REQUESTS: ServiceRequest[] = [
         submittedAt: '18m ago',
       },
     ],
-    mapX: 22,
-    mapY: 68,
+    lat: 24.6553,
+    lng: 46.6217,
   },
   {
     id: 'r5',
@@ -206,8 +211,8 @@ const SEED_REQUESTS: ServiceRequest[] = [
     postedAt: '35m ago',
     status: 'pending',
     bids: [],
-    mapX: 50,
-    mapY: 78,
+    lat: 24.7741,
+    lng: 46.7382,
   },
 ];
 
