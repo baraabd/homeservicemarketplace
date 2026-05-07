@@ -26,7 +26,12 @@ export const api = axios.create({
 });
 
 // ─── CSRF: read hsm_csrf cookie → echo as X-CSRF-Token on mutations ─────────
-function getCsrfToken(): string | undefined {
+// Exported so the realtime socket-client can mirror it into the
+// handshake `auth.token` field. Cookie auth carries the session over
+// `withCredentials: true`; the CSRF token is the only piece the
+// gateway needs in the handshake to bind the connection to the
+// authenticated session in the same way mutations bind it.
+export function getCsrfToken(): string | undefined {
   const match = document.cookie.match(/(?:^|;\s*)hsm_csrf=([^;]*)/);
   return match?.[1];
 }

@@ -89,15 +89,19 @@ afterEach(() => {
     if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
   });
   clearIntendedApp();
-  // Defensive end-of-test cleanup. queryClient.clear() drops any
-  // stale fetches that landed after the last assertion. The two
-  // storage clears catch any test that writes browser storage
-  // without a dedicated reset; the intent layer specifically uses
-  // sessionStorage (key fixnow_intended_app — see lib/intended-app),
-  // not localStorage, but we clear both for thoroughness.
-  queryClient.clear();
-  window.sessionStorage.clear();
+  // Defensive end-of-test cleanup. The intent layer uses
+  // sessionStorage (key `fixnow_intended_app` — see lib/intended-app),
+  // not localStorage; `clearIntendedApp()` above already removes that
+  // specific key. The blanket .clear() calls catch any other state a
+  // future test might write (e.g. an analytics ack flag, a feature
+  // toggle override) that could leak into a sibling case. queryClient
+  // is also cleared again on the way out so a refetch landing after
+  // the test's last assertion can't pollute the next test's
+  // baseline — beforeEach clears it on the way in, afterEach
+  // clears it on the way out.
   window.localStorage.clear();
+  window.sessionStorage.clear();
+  queryClient.clear();
 });
 
 describe('Public entry hierarchy — Seeker + Provider primary, Admin secondary', () => {
@@ -199,23 +203,20 @@ describe('AppSelector — each launcher card opens its own app', () => {
 });
 
 describe('Provider intent survives the entire auth flow', () => {
-  // 15 s outer timeout: under full-suite load the verify-otp →
-  // invalidateQueries → /me refetch → destination-resolver →
-  // router-redirect chain occasionally exceeds the 5 s default,
-  // even with the inner waitFor bumped to 10 s.
+  // 15s: under full-suite load the verify-otp → invalidateQueries
+  // → /me refetch → SignUpPage destination resolver → router redirect
+  // chain occasionally exceeds the 5 s default, even though the inner
+  // waitFor was bumped to 8 s.
   it(
     'Provider click → /login → log in with OTP → lands on /provider (returnTo path)',
-    { timeout: 20000 },
+    { timeout: 15000 },
     async () => {
-      // Auth state is gated on an explicit OTP-verified flag rather
-      // than a call counter. The previous shape:
-      //   let meCalls = 0;
-      //   mock.onGet('/v1/auth/me').reply(() => meCalls++ === 0 ? 401 : 200);
-      // was order-dependent: a phantom auth/me leaking from the shared
-      // module-level queryClient (a sibling test file's last refetch
-      // landing slightly late) bumped the counter past 1 before the
-      // test even started, flipping the very first auth check to 200
-      // and breaking the post-OTP redirect.
+      // Auth state is gated on an explicit OTP-verified flag rather than
+      // a call counter. A counter-based shape was order-dependent: any
+      // phantom /v1/auth/me leaking from the shared module-level
+      // queryClient (left over by a sibling test file) bumped the
+      // counter past 1 before the test even started, flipping the first
+      // real auth check to 200 and breaking the post-OTP redirect.
       let otpVerified = false;
       mock.onGet('/v1/auth/me').reply(() => (otpVerified ? [200, MOCK_ME] : [401, {}]));
       mock.onPost('/v1/auth/refresh').reply(401, {});
@@ -271,22 +272,12 @@ describe('Provider intent survives the entire auth flow', () => {
         confirmBtn.click();
       });
 
-      // 4b. Stability gate. Wait for the AuthProvider to observe the
-      // authenticated /me response in React Query's cache before
-      // asserting on the rendered route. Without this, the outer
-      // waitFor occasionally polls during the fraction of a second
-      // between verify-otp succeeding and invalidateQueries → /me
-      // refetch landing — and on a slow CI worker the redirect
-      // resolves to the default /home (Seeker) before the new user
-      // identity is observable.
-      await waitFor(() => expect(queryClient.getQueryData(['auth', 'me'])).toBeTruthy());
-
       // 5. lands on /provider (NOT /home)
       await waitFor(
         () => {
           expect(screen.getByTestId('provider-app')).toBeInTheDocument();
         },
-        { timeout: 14000 },
+        { timeout: 8000 },
       );
       expect(screen.queryByTestId('seeker-app')).toBeNull();
     },
@@ -294,16 +285,16 @@ describe('Provider intent survives the entire auth flow', () => {
 
   it(
     'Provider click → /login → "Sign up" → register → OTP → lands on /provider (intent layer fallback)',
-    { timeout: 20000 },
+    { timeout: 15000 },
     async () => {
       // This is THE original bug: navigating from /login to /signup loses
       // react-router state, so SignUpPage has no `returnTo` to honor. Before
       // the intent layer, SignUpPage hardcoded `/home`, sending the user
       // straight into Seeker. Now the intent fallback resolves to /provider.
       //
-      // Auth state is gated on an explicit OTP-verified flag (not a
-      // call counter) — same rationale as the sibling test in this
-      // describe.
+      // Auth state is gated on an explicit OTP-verified flag (not a call
+      // counter). The counter-based shape was order-dependent — see the
+      // sibling test in this describe for the same rationale.
       let otpVerified = false;
       mock.onGet('/v1/auth/me').reply(() => (otpVerified ? [200, MOCK_ME] : [401, {}]));
       mock.onPost('/v1/auth/refresh').reply(401, {});
@@ -394,17 +385,12 @@ describe('Provider intent survives the entire auth flow', () => {
         confirmBtn.click();
       });
 
-      // 6b. Stability gate (see sibling test for rationale). Wait for
-      // the AuthProvider to observe the authenticated /me response in
-      // React Query's cache before asserting on the rendered route.
-      await waitFor(() => expect(queryClient.getQueryData(['auth', 'me'])).toBeTruthy());
-
       // 7. The whole point: lands on /provider, NOT /home.
       await waitFor(
         () => {
           expect(screen.getByTestId('provider-app')).toBeInTheDocument();
         },
-        { timeout: 14000 },
+        { timeout: 8000 },
       );
       expect(screen.queryByTestId('seeker-app')).toBeNull();
     },
@@ -677,17 +663,23 @@ describe('Admin route is gated (patch 2)', () => {
 describe('Provider signup OTP → /provider (patch 2 regression repair)', () => {
   it(
     'Provider card → signup → OTP verify → /provider (NOT /home)',
-    { timeout: 20000 },
+    { timeout: 15000 },
     async () => {
-      // Auth state is gated on an explicit OTP-verified flag (not a
-      // call counter) — same rationale as the sibling tests in
-      // "Provider intent survives the entire auth flow".
+      // Auth state is driven by an explicit OTP-verified flag rather than
+      // a call counter. The earlier counter-based shape was order-
+      // dependent: a phantom /v1/auth/me from a stale React Query in the
+      // shared module-level queryClient (left over by another test file)
+      // could bump the counter to 1 before the test even started, making
+      // the first real auth check return 200 instead of 401. That bounced
+      // the post-OTP redirect to /home and produced an intermittent
+      // "lands on seeker-app" failure when the file ran after a busy
+      // sibling.
       let otpVerified = false;
-      mock.onGet('/v1/auth/me').reply(() =>
+      mock.onGet('/v1/auth/me').reply(() => {
         // After OTP verify, the new user is customer-only — without the
         // experienceId fallback this would bounce them to /home.
-        otpVerified ? [200, { ...MOCK_ME, roles: ['customer' as const] }] : [401, {}],
-      );
+        return otpVerified ? [200, { ...MOCK_ME, roles: ['customer' as const] }] : [401, {}];
+      });
       mock.onPost('/v1/auth/refresh').reply(401, {});
       mock.onPost('/v1/auth/register').reply(202, {
         otpRequired: true,
@@ -772,14 +764,16 @@ describe('Provider signup OTP → /provider (patch 2 regression repair)', () => 
         confirmBtn.click();
       });
 
-      // Stability gate (see sibling tests for rationale). Wait for the
-      // AuthProvider to observe the authenticated /me response in
-      // React Query's cache before asserting on the rendered route.
-      await waitFor(() => expect(queryClient.getQueryData(['auth', 'me'])).toBeTruthy());
-
       // Lands on /provider — the patch-2 regression repair.
       await waitFor(() => expect(screen.getByTestId('provider-app')).toBeInTheDocument(), {
-        timeout: 14000,
+        // Generous upper bound: under full-suite load (45 files), the
+        // auth-provider's verify-otp → invalidateQueries → /me refetch
+        // → SignUpPage destination resolver → router redirect chain
+        // can take longer than the 3 s default. The test fired hot
+        // when run isolated; the timeout was the only thing failing
+        // under load. 8 s is well below the 30 s vitest default test
+        // timeout and gives us margin for the cold start.
+        timeout: 8000,
       });
       expect(screen.queryByTestId('seeker-app')).toBeNull();
     },
