@@ -768,6 +768,39 @@ function LiveJobsScreen() {
   const [biddingReq, setBiddingReq] = useState<ServiceRequest | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'bidding'>('all');
 
+  // Sprint 7.0 — "new job nearby" toast.
+  //
+  // The realtime socket invalidates the available-requests cache on
+  // `request.available` events (see dispatchInvalidations); polling at
+  // 20 s also surfaces new rows. Either way, the next refetch lands
+  // a fresh items list. We compare it against the previous render's
+  // ids to detect FRESH rows (not just refetch noise) and toast once
+  // per arrival batch.
+  //
+  // Two correctness rules:
+  //   1. The first successful fetch is NOT a "new job" — it's the
+  //      initial state. We seed the seen-ids set on the first non-null
+  //      data and skip the toast.
+  //   2. On screen unmount the ref naturally GCs with the component;
+  //      there is no global toast spam if the operator switches tabs
+  //      mid-poll (the effect cleanup + remount re-establishes the
+  //      baseline cleanly).
+  const seenRequestIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!availableRequestsQuery.data) return;
+    const ids = availableRequestsQuery.data.items.map((it) => it.id);
+    const seen = seenRequestIdsRef.current;
+    if (seen === null) {
+      seenRequestIdsRef.current = new Set(ids);
+      return;
+    }
+    const fresh = ids.filter((id) => !seen.has(id));
+    if (fresh.length > 0) {
+      toast.success(lang === 'ar' ? 'طلب خدمة جديد بالقرب منك!' : 'New job nearby!');
+    }
+    seenRequestIdsRef.current = new Set(ids);
+  }, [availableRequestsQuery.data, lang]);
+
   // Map status pill: prefer the provider's configured service area; fall
   // back to a neutral "Online" label when none is set, never hardcoded
   // city text.
@@ -967,8 +1000,16 @@ function LiveJobsScreen() {
               <span
                 className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center"
                 style={{ fontSize: '10px', fontWeight: 800 }}
+                data-testid="job-count-badge"
               >
-                {activeReqs.filter((r) => r.status === 'pending').length}
+                {/*
+                  Reflects the count of cards the operator will see when
+                  they pull the bottom sheet up — i.e. activeReqs after
+                  the all/pending/bidding filter is applied. The earlier
+                  shape (pending count regardless of filter) drifted from
+                  the sheet contents whenever the filter wasn't 'all'.
+                */}
+                {filteredReqs.length}
               </span>
             </div>
           </motion.button>
