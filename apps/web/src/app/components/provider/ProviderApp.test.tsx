@@ -598,3 +598,114 @@ describe('ProviderApp — pending skills (admin approval queue)', () => {
     expect(screen.queryByLabelText(/^pending approval$/i)).toBeNull();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 6 — Job Detail overlay.
+// LiveJobsScreen tap surfaces (bottom-sheet card body, marker popup
+// CTA) now route through a JobDetailOverlay before the BiddingModal.
+// The overlay surfaces the request context (service / description /
+// distance / budget / seeker / urgency); its "Place Bid" CTA is what
+// actually opens the BiddingModal.
+//
+// Wire-data caveat verified by these tests: distance / budget / seeker
+// are NOT on the Sprint 5.2 ProviderAvailableRequestSummary contract.
+// The adapter blanks them; the overlay must render "—" rather than
+// fake values for those rows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProviderApp — Phase 6 Job Detail overlay', () => {
+  function mockBaseFlow() {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/provider/available-requests').reply(200, {
+      items: [SAMPLE_AVAILABLE_REQUEST],
+      nextCursor: null,
+    });
+  }
+
+  it('clicking a bottom-sheet card opens the JobDetailOverlay with the request copy', async () => {
+    mockBaseFlow();
+    renderProvider();
+
+    // Open the bottom sheet first; the cards live inside it.
+    const dragHandle = await screen.findByRole('button', {
+      name: /pull up to see requests|اسحب للأعلى لرؤية الطلبات/i,
+    });
+    fireEvent.click(dragHandle);
+
+    // The card uses role=button + aria-label = service name (English).
+    const card = await screen.findByTestId('job-card-r1');
+    fireEvent.click(card);
+
+    // Overlay mounts with the request's service + description.
+    const overlay = await screen.findByTestId('job-detail-overlay');
+    expect(overlay).toHaveTextContent('Plumbing');
+    expect(overlay).toHaveTextContent('Pipe leak under kitchen sink');
+    // The BiddingModal must NOT yet be open — overlay sits between
+    // feed and bidding.
+    expect(screen.queryByText(/submit offer|تقديم عرض/i)).toBeNull();
+  });
+
+  it('clicking the marker popup CTA opens the JobDetailOverlay (NOT the BiddingModal directly)', async () => {
+    mockBaseFlow();
+    renderProvider();
+
+    // The mocked react-leaflet Popup renders its children eagerly
+    // (no open-on-click affordance under the test stub), so the CTA
+    // is reachable directly.
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+
+    expect(await screen.findByTestId('job-detail-overlay')).toBeInTheDocument();
+    expect(screen.queryByText(/submit offer|تقديم عرض/i)).toBeNull();
+  });
+
+  it('the overlay\'s "Place Bid" CTA closes the overlay and opens the BiddingModal', async () => {
+    mockBaseFlow();
+    renderProvider();
+
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+
+    // Overlay open.
+    const overlayBidBtn = await screen.findByTestId('job-detail-place-bid');
+    fireEvent.click(overlayBidBtn);
+
+    // Overlay closed AND BiddingModal mounted (its title is "Submit Offer").
+    await waitFor(() => expect(screen.queryByTestId('job-detail-overlay')).toBeNull());
+    expect(screen.getByText(/submit offer|تقديم عرض/i)).toBeInTheDocument();
+  });
+
+  it('renders "—" for distance / budget / seeker when the wire fields are blank', async () => {
+    mockBaseFlow();
+    renderProvider();
+
+    // Open overlay via the popup CTA so we land in the overlay context.
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+
+    const overlay = await screen.findByTestId('job-detail-overlay');
+    // The Sprint 5.2 wire shape doesn't carry distance / budget /
+    // seeker name on available-requests; the adapter blanks those
+    // and the overlay must surface "—" rather than zero / empty.
+    // Three em-dash placeholders → one per missing field.
+    const placeholders = Array.from(overlay.querySelectorAll('p')).filter(
+      (p) => p.textContent?.trim() === '—',
+    );
+    expect(placeholders).toHaveLength(3);
+  });
+
+  it('the overlay close button dismisses without opening the BiddingModal', async () => {
+    mockBaseFlow();
+    renderProvider();
+
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+
+    const closeBtn = await screen.findByTestId('job-detail-close');
+    fireEvent.click(closeBtn);
+
+    await waitFor(() => expect(screen.queryByTestId('job-detail-overlay')).toBeNull());
+    expect(screen.queryByText(/submit offer|تقديم عرض/i)).toBeNull();
+  });
+});

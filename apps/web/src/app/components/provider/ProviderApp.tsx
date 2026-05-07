@@ -541,6 +541,193 @@ function MapAutoFit({ points }: { points: Array<[number, number]> }) {
   return null;
 }
 
+// ─── Job detail overlay ──────────────────────────────────────────────────────
+// Phase 6 — Job Details UX. Renders an opt-in detail surface between
+// the LiveJobsScreen feed and the BiddingModal. The provider taps a
+// pin popup or a bottom-sheet card → this overlay slides up with the
+// full request context → the overlay's "Place Bid" CTA is what
+// actually opens the BiddingModal.
+//
+// Data caveat (intentional, not a TODO): three legacy ServiceRequest
+// fields — `distance`, `seekerName`, `budget` — are NOT on the
+// Sprint 5.2 ProviderAvailableRequestSummary wire. The adapter
+// blanks them (0 / '' / ''); we surface those rows with a `—` so the
+// operator sees the layout but never a fabricated value. Whenever the
+// wire grows the matching fields, the rendering here will start
+// showing real values without further frontend work.
+function JobDetailOverlay({
+  req,
+  lang,
+  onClose,
+  onPlaceBid,
+  labels,
+}: {
+  req: ServiceRequest;
+  lang: 'en' | 'ar';
+  onClose: () => void;
+  onPlaceBid: (req: ServiceRequest) => void;
+  labels: {
+    title: string;
+    placeBid: string;
+    distance: string;
+    seeker: string;
+    budget: string;
+    urgency: string;
+    description: string;
+    urgent: string;
+    standard: string;
+    notSet: string;
+  };
+}) {
+  const color =
+    req.urgency === 'urgent' ? '#ef4444' : req.status === 'bidding' ? '#f59e0b' : '#3b82f6';
+  // The legacy ServiceRequest type carries these as primitives that
+  // the adapter blanks for missing wire fields. Treat 0 / '' as "no
+  // value yet" so the overlay never renders a fabricated zero.
+  const hasDistance = req.distance > 0;
+  const hasBudget = Boolean(req.budget && req.budget.trim());
+  const hasSeeker = Boolean(req.seekerName && req.seekerName.trim());
+
+  return (
+    <>
+      <motion.div
+        className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm z-30"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label={labels.title}
+        data-testid="job-detail-overlay"
+        className="absolute bottom-0 start-0 end-0 bg-white dark:bg-slate-800 rounded-t-3xl z-40 overflow-hidden"
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+      >
+        <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-600 mx-auto mt-3 mb-4" />
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 border-2 border-white shadow-md"
+              style={{ background: color }}
+            >
+              <span style={{ fontSize: '22px', lineHeight: 1 }}>{req.serviceIcon}</span>
+            </div>
+            <div className="min-w-0">
+              <p
+                className="text-slate-900 dark:text-white truncate"
+                style={{ fontSize: '17px', fontWeight: 800 }}
+              >
+                {lang === 'ar' ? req.serviceAr : req.service}
+              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span
+                  className={`px-1.5 py-0.5 rounded-md ${
+                    req.urgency === 'urgent'
+                      ? 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400'
+                      : 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400'
+                  }`}
+                  style={{ fontSize: '10px', fontWeight: 700 }}
+                >
+                  {req.urgency === 'urgent' ? labels.urgent : labels.standard}
+                </span>
+                <span className="text-slate-400" style={{ fontSize: '11px' }}>
+                  {lang === 'ar' ? req.locationAr : req.location}
+                </span>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={lang === 'ar' ? 'إغلاق' : 'Close'}
+            data-testid="job-detail-close"
+            className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 flex-shrink-0"
+          >
+            <X size={16} className="text-slate-500" />
+          </button>
+        </div>
+
+        <div className="px-5 pb-6 flex flex-col gap-4">
+          {/* Meta row — Distance · Budget · Seeker */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
+              <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
+                {labels.distance}
+              </p>
+              <p
+                className="text-slate-900 dark:text-white mt-0.5"
+                style={{ fontSize: '13px', fontWeight: 700 }}
+              >
+                {hasDistance ? `${req.distance}km` : labels.notSet}
+              </p>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
+              <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
+                {labels.budget}
+              </p>
+              <p
+                className="text-slate-900 dark:text-white mt-0.5 truncate"
+                style={{ fontSize: '13px', fontWeight: 700 }}
+              >
+                {hasBudget ? req.budget : labels.notSet}
+              </p>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
+              <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
+                {labels.seeker}
+              </p>
+              <p
+                className="text-slate-900 dark:text-white mt-0.5 truncate"
+                style={{ fontSize: '13px', fontWeight: 700 }}
+              >
+                {hasSeeker ? req.seekerName : labels.notSet}
+              </p>
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <p
+              className="text-slate-600 dark:text-slate-300 mb-1.5"
+              style={{ fontSize: '12px', fontWeight: 600 }}
+            >
+              {labels.description}
+            </p>
+            <p
+              className="text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5"
+              style={{ fontSize: '13px', lineHeight: 1.5 }}
+            >
+              {(lang === 'ar' ? req.descriptionAr : req.description) || labels.notSet}
+            </p>
+          </div>
+
+          {/* Place Bid CTA */}
+          {req.status !== 'assigned' && req.status !== 'completed' && (
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={() => onPlaceBid(req)}
+              data-testid="job-detail-place-bid"
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-200 dark:shadow-none"
+              style={{ fontSize: '14px', fontWeight: 700 }}
+            >
+              <Send size={14} />
+              {labels.placeBid}
+            </motion.button>
+          )}
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
 // ─── Live Jobs Screen (Map) ───────────────────────────────────────────────────
 function LiveJobsScreen() {
   const { lang } = useLang();
@@ -573,6 +760,11 @@ function LiveJobsScreen() {
   // on success so the feed and My Bids reflect the new state.
   const submitBidMutation = useSubmitBid();
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Phase 6 — JobDetailOverlay sits between the feed and the bidding
+  // modal. Tapping a marker popup or a bottom-sheet card sets
+  // `detailReq`; the overlay's "Place Bid" CTA clears it and sets
+  // `biddingReq`, which mounts the BiddingModal as before.
+  const [detailReq, setDetailReq] = useState<ServiceRequest | null>(null);
   const [biddingReq, setBiddingReq] = useState<ServiceRequest | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'bidding'>('all');
 
@@ -651,6 +843,13 @@ function LiveJobsScreen() {
         : 'Could not load nearby jobs. Try again later.',
     drag: lang === 'ar' ? 'اسحب للأعلى لرؤية الطلبات' : 'Pull up to see requests',
     urgentTag: lang === 'ar' ? 'عاجل' : 'Urgent',
+    detailTitle: lang === 'ar' ? 'تفاصيل الطلب' : 'Request details',
+    distanceLabel: lang === 'ar' ? 'المسافة' : 'Distance',
+    seekerLabel: lang === 'ar' ? 'صاحب الطلب' : 'Seeker',
+    budgetLabel: lang === 'ar' ? 'الميزانية' : 'Budget',
+    descriptionLabel: lang === 'ar' ? 'الوصف' : 'Description',
+    standardTag: lang === 'ar' ? 'عادي' : 'Standard',
+    notSet: '—',
   };
 
   // Real submit. The mutation wraps the /v1/provider/bids POST;
@@ -725,9 +924,12 @@ function LiveJobsScreen() {
               req={req}
               lang={lang}
               bidLabel={L.bid}
+              // The marker popup's CTA opens the detail overlay first;
+              // the overlay's own "Place Bid" CTA is what actually
+              // sets biddingReq and mounts the BiddingModal.
               onPlaceBid={(r) => {
-                setBiddingReq(r);
                 setSheetOpen(false);
+                setDetailReq(r);
               }}
             />
           ))}
@@ -842,7 +1044,18 @@ function LiveJobsScreen() {
                   <motion.div
                     key={req.id}
                     whileTap={{ scale: 0.98 }}
-                    className="bg-slate-50 dark:bg-slate-700 rounded-3xl p-4 mb-3"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={lang === 'ar' ? req.serviceAr : req.service}
+                    data-testid={`job-card-${req.id}`}
+                    onClick={() => setDetailReq(req)}
+                    onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setDetailReq(req);
+                      }
+                    }}
+                    className="bg-slate-50 dark:bg-slate-700 rounded-3xl p-4 mb-3 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 text-2xl">
@@ -910,27 +1123,38 @@ function LiveJobsScreen() {
                         </div>
                       </div>
                     </div>
-
-                    {req.status !== 'assigned' && req.status !== 'completed' && (
-                      <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                          e.stopPropagation();
-                          setBiddingReq(req);
-                          setSheetOpen(false);
-                        }}
-                        className="w-full mt-3 py-2.5 rounded-2xl bg-blue-600 text-white flex items-center justify-center gap-2 shadow-md shadow-blue-200 dark:shadow-none"
-                        style={{ fontSize: '13px', fontWeight: 700 }}
-                      >
-                        <Send size={14} />
-                        {L.bid}
-                      </motion.button>
-                    )}
                   </motion.div>
                 ))
               )}
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Job detail overlay (Phase 6) — sits between feed and bidding */}
+      <AnimatePresence>
+        {detailReq && (
+          <JobDetailOverlay
+            req={detailReq}
+            lang={lang}
+            onClose={() => setDetailReq(null)}
+            onPlaceBid={(r) => {
+              setDetailReq(null);
+              setBiddingReq(r);
+            }}
+            labels={{
+              title: L.detailTitle,
+              placeBid: L.bid,
+              distance: L.distanceLabel,
+              seeker: L.seekerLabel,
+              budget: L.budgetLabel,
+              urgency: L.urgentTag,
+              description: L.descriptionLabel,
+              urgent: L.urgentTag,
+              standard: L.standardTag,
+              notSet: L.notSet,
+            }}
+          />
         )}
       </AnimatePresence>
 
