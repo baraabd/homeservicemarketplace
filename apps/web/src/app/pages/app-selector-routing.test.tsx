@@ -190,176 +190,198 @@ describe('AppSelector — each launcher card opens its own app', () => {
 });
 
 describe('Provider intent survives the entire auth flow', () => {
-  it('Provider click → /login → log in with OTP → lands on /provider (returnTo path)', async () => {
-    let meCalls = 0;
-    mock.onGet('/v1/auth/me').reply(() => {
-      meCalls++;
-      return meCalls === 1 ? [401, {}] : [200, MOCK_ME];
-    });
-    mock.onPost('/v1/auth/refresh').reply(401, {});
-    mock.onPost('/v1/auth/login').reply(200, {
-      otpRequired: true,
-      challengeId: 'chal-prov-1',
-      codeLength: 6,
-      expiresInSeconds: 300,
-    });
-    mock.onPost('/v1/auth/verify-otp').reply(200, {});
-
-    renderRouter();
-
-    // 1. click Provider on /select
-    await act(async () => {
-      screen.getByTestId('app-card-provider').click();
-    });
-    expect(getIntendedApp()).toBe('provider');
-
-    // 2. user is unauthenticated → RequireAuth bounces to /login
-    await waitFor(() => {
-      const email = document.querySelector('input[type="email"]') as HTMLInputElement | null;
-      expect(email).not.toBeNull();
-    });
-
-    // 3. submit credentials
-    const email = document.querySelector('input[type="email"]') as HTMLInputElement;
-    const password = document.querySelector('input[type="password"]') as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(email, { target: { value: 'ada@example.com' } });
-      fireEvent.change(password, { target: { value: 'a-reasonable-passphrase' } });
-    });
-    const loginBtn = screen
-      .getAllByRole('button')
-      .find((b) => /log ?in|sign ?in/i.test(b.textContent ?? ''))!;
-    await act(async () => {
-      loginBtn.click();
-    });
-
-    // 4. enter OTP
-    await waitFor(() => expect(screen.getByTestId('otp-input')).toBeInTheDocument());
-    const otpInput = screen.getByTestId('otp-input') as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(otpInput, { target: { value: '123456' } });
-    });
-    const confirmBtn = screen
-      .getAllByRole('button')
-      .find((b) => /confirm|verifying/i.test(b.textContent ?? ''))!;
-    await act(async () => {
-      confirmBtn.click();
-    });
-
-    // 5. lands on /provider (NOT /home)
-    await waitFor(
-      () => {
-        expect(screen.getByTestId('provider-app')).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
-    expect(screen.queryByTestId('seeker-app')).toBeNull();
-  });
-
-  it('Provider click → /login → "Sign up" → register → OTP → lands on /provider (intent layer fallback)', async () => {
-    // This is THE original bug: navigating from /login to /signup loses
-    // react-router state, so SignUpPage has no `returnTo` to honor. Before
-    // the intent layer, SignUpPage hardcoded `/home`, sending the user
-    // straight into Seeker. Now the intent fallback resolves to /provider.
-    let meCalls = 0;
-    mock.onGet('/v1/auth/me').reply(() => {
-      meCalls++;
-      return meCalls === 1 ? [401, {}] : [200, MOCK_ME];
-    });
-    mock.onPost('/v1/auth/refresh').reply(401, {});
-    mock.onPost('/v1/auth/register').reply(202, {
-      otpRequired: true,
-      challengeId: 'chal-reg-prov',
-      codeLength: 6,
-      expiresInSeconds: 300,
-    });
-    mock.onPost('/v1/auth/verify-otp').reply(200, {});
-
-    renderRouter();
-
-    // 1. Provider intent
-    await act(async () => {
-      screen.getByTestId('app-card-provider').click();
-    });
-    expect(getIntendedApp()).toBe('provider');
-
-    // 2. land on /login (RequireAuth bounce)
-    await waitFor(() => {
-      expect(document.querySelector('input[type="email"]')).toBeTruthy();
-    });
-
-    // 3. user clicks "Don't have an account? Sign up" — navigates to
-    //    /signup WITHOUT preserving react-router state.
-    const signUpBtn = screen
-      .getAllByRole('button')
-      .find((b) => /sign up|create account|signUp/i.test(b.textContent ?? ''));
-    expect(signUpBtn).toBeDefined();
-    await act(async () => {
-      signUpBtn!.click();
-    });
-
-    // 4. step 1 of signup wizard: name + phone
-    await waitFor(() => {
-      expect(document.querySelector('input[type="tel"]')).toBeTruthy();
-    });
-    const nameInput = document.querySelectorAll('input')[0] as HTMLInputElement;
-    const phoneInput = document.querySelector('input[type="tel"]') as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(nameInput, { target: { value: 'Ada Lovelace' } });
-      fireEvent.change(phoneInput, { target: { value: '5551234567' } });
-    });
-    const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
-    await act(async () => {
-      nextBtn.click();
-    });
-
-    // 5. step 2: email + password + terms
-    await waitFor(() => {
-      expect(document.querySelector('input[type="email"]')).toBeTruthy();
-    });
-    const emailInput = document.querySelector('input[type="email"]') as HTMLInputElement;
-    const passwordInput = document.querySelector('input[type="password"]') as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(emailInput, { target: { value: 'ada@example.com' } });
-      fireEvent.change(passwordInput, { target: { value: 'a-reasonable-passphrase' } });
-    });
-    const termsBtn = screen
-      .getAllByRole('button')
-      .find((b) => /privacyPolicy|agreeTerms|i agree/i.test(b.textContent ?? ''));
-    if (termsBtn) {
-      await act(async () => {
-        termsBtn.click();
+  // 15s: under full-suite load the verify-otp → invalidateQueries
+  // → /me refetch → SignUpPage destination resolver → router redirect
+  // chain occasionally exceeds the 5 s default, even though the inner
+  // waitFor was bumped to 8 s.
+  it(
+    'Provider click → /login → log in with OTP → lands on /provider (returnTo path)',
+    { timeout: 15000 },
+    async () => {
+      // Auth state is gated on an explicit OTP-verified flag rather than
+      // a call counter. A counter-based shape was order-dependent: any
+      // phantom /v1/auth/me leaking from the shared module-level
+      // queryClient (left over by a sibling test file) bumped the
+      // counter past 1 before the test even started, flipping the first
+      // real auth check to 200 and breaking the post-OTP redirect.
+      let otpVerified = false;
+      mock.onGet('/v1/auth/me').reply(() => (otpVerified ? [200, MOCK_ME] : [401, {}]));
+      mock.onPost('/v1/auth/refresh').reply(401, {});
+      mock.onPost('/v1/auth/login').reply(200, {
+        otpRequired: true,
+        challengeId: 'chal-prov-1',
+        codeLength: 6,
+        expiresInSeconds: 300,
       });
-    }
-    const registerBtn = screen
-      .getAllByRole('button')
-      .find((b) => /register|create/i.test(b.textContent ?? ''))!;
-    await act(async () => {
-      registerBtn.click();
-    });
+      mock.onPost('/v1/auth/verify-otp').reply(() => {
+        otpVerified = true;
+        return [200, {}];
+      });
 
-    // 6. OTP step
-    await waitFor(() => expect(screen.getByTestId('otp-input')).toBeInTheDocument());
-    const otpInput = screen.getByTestId('otp-input') as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(otpInput, { target: { value: '654321' } });
-    });
-    const confirmBtn = screen
-      .getAllByRole('button')
-      .find((b) => /confirm|verifying/i.test(b.textContent ?? ''))!;
-    await act(async () => {
-      confirmBtn.click();
-    });
+      renderRouter();
 
-    // 7. The whole point: lands on /provider, NOT /home.
-    await waitFor(
-      () => {
-        expect(screen.getByTestId('provider-app')).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
-    expect(screen.queryByTestId('seeker-app')).toBeNull();
-  });
+      // 1. click Provider on /select
+      await act(async () => {
+        screen.getByTestId('app-card-provider').click();
+      });
+      expect(getIntendedApp()).toBe('provider');
+
+      // 2. user is unauthenticated → RequireAuth bounces to /login
+      await waitFor(() => {
+        const email = document.querySelector('input[type="email"]') as HTMLInputElement | null;
+        expect(email).not.toBeNull();
+      });
+
+      // 3. submit credentials
+      const email = document.querySelector('input[type="email"]') as HTMLInputElement;
+      const password = document.querySelector('input[type="password"]') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(email, { target: { value: 'ada@example.com' } });
+        fireEvent.change(password, { target: { value: 'a-reasonable-passphrase' } });
+      });
+      const loginBtn = screen
+        .getAllByRole('button')
+        .find((b) => /log ?in|sign ?in/i.test(b.textContent ?? ''))!;
+      await act(async () => {
+        loginBtn.click();
+      });
+
+      // 4. enter OTP
+      await waitFor(() => expect(screen.getByTestId('otp-input')).toBeInTheDocument());
+      const otpInput = screen.getByTestId('otp-input') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(otpInput, { target: { value: '123456' } });
+      });
+      const confirmBtn = screen
+        .getAllByRole('button')
+        .find((b) => /confirm|verifying/i.test(b.textContent ?? ''))!;
+      await act(async () => {
+        confirmBtn.click();
+      });
+
+      // 5. lands on /provider (NOT /home)
+      await waitFor(
+        () => {
+          expect(screen.getByTestId('provider-app')).toBeInTheDocument();
+        },
+        { timeout: 8000 },
+      );
+      expect(screen.queryByTestId('seeker-app')).toBeNull();
+    },
+  );
+
+  it(
+    'Provider click → /login → "Sign up" → register → OTP → lands on /provider (intent layer fallback)',
+    { timeout: 15000 },
+    async () => {
+      // This is THE original bug: navigating from /login to /signup loses
+      // react-router state, so SignUpPage has no `returnTo` to honor. Before
+      // the intent layer, SignUpPage hardcoded `/home`, sending the user
+      // straight into Seeker. Now the intent fallback resolves to /provider.
+      //
+      // Auth state is gated on an explicit OTP-verified flag (not a call
+      // counter). The counter-based shape was order-dependent — see the
+      // sibling test in this describe for the same rationale.
+      let otpVerified = false;
+      mock.onGet('/v1/auth/me').reply(() => (otpVerified ? [200, MOCK_ME] : [401, {}]));
+      mock.onPost('/v1/auth/refresh').reply(401, {});
+      mock.onPost('/v1/auth/register').reply(202, {
+        otpRequired: true,
+        challengeId: 'chal-reg-prov',
+        codeLength: 6,
+        expiresInSeconds: 300,
+      });
+      mock.onPost('/v1/auth/verify-otp').reply(() => {
+        otpVerified = true;
+        return [200, {}];
+      });
+
+      renderRouter();
+
+      // 1. Provider intent
+      await act(async () => {
+        screen.getByTestId('app-card-provider').click();
+      });
+      expect(getIntendedApp()).toBe('provider');
+
+      // 2. land on /login (RequireAuth bounce)
+      await waitFor(() => {
+        expect(document.querySelector('input[type="email"]')).toBeTruthy();
+      });
+
+      // 3. user clicks "Don't have an account? Sign up" — navigates to
+      //    /signup WITHOUT preserving react-router state.
+      const signUpBtn = screen
+        .getAllByRole('button')
+        .find((b) => /sign up|create account|signUp/i.test(b.textContent ?? ''));
+      expect(signUpBtn).toBeDefined();
+      await act(async () => {
+        signUpBtn!.click();
+      });
+
+      // 4. step 1 of signup wizard: name + phone
+      await waitFor(() => {
+        expect(document.querySelector('input[type="tel"]')).toBeTruthy();
+      });
+      const nameInput = document.querySelectorAll('input')[0] as HTMLInputElement;
+      const phoneInput = document.querySelector('input[type="tel"]') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(nameInput, { target: { value: 'Ada Lovelace' } });
+        fireEvent.change(phoneInput, { target: { value: '5551234567' } });
+      });
+      const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
+      await act(async () => {
+        nextBtn.click();
+      });
+
+      // 5. step 2: email + password + terms
+      await waitFor(() => {
+        expect(document.querySelector('input[type="email"]')).toBeTruthy();
+      });
+      const emailInput = document.querySelector('input[type="email"]') as HTMLInputElement;
+      const passwordInput = document.querySelector('input[type="password"]') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(emailInput, { target: { value: 'ada@example.com' } });
+        fireEvent.change(passwordInput, { target: { value: 'a-reasonable-passphrase' } });
+      });
+      const termsBtn = screen
+        .getAllByRole('button')
+        .find((b) => /privacyPolicy|agreeTerms|i agree/i.test(b.textContent ?? ''));
+      if (termsBtn) {
+        await act(async () => {
+          termsBtn.click();
+        });
+      }
+      const registerBtn = screen
+        .getAllByRole('button')
+        .find((b) => /register|create/i.test(b.textContent ?? ''))!;
+      await act(async () => {
+        registerBtn.click();
+      });
+
+      // 6. OTP step
+      await waitFor(() => expect(screen.getByTestId('otp-input')).toBeInTheDocument());
+      const otpInput = screen.getByTestId('otp-input') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(otpInput, { target: { value: '654321' } });
+      });
+      const confirmBtn = screen
+        .getAllByRole('button')
+        .find((b) => /confirm|verifying/i.test(b.textContent ?? ''))!;
+      await act(async () => {
+        confirmBtn.click();
+      });
+
+      // 7. The whole point: lands on /provider, NOT /home.
+      await waitFor(
+        () => {
+          expect(screen.getByTestId('provider-app')).toBeInTheDocument();
+        },
+        { timeout: 8000 },
+      );
+      expect(screen.queryByTestId('seeker-app')).toBeNull();
+    },
+  );
 
   it('an authed user on /select clicking Provider then bouncing through /login still lands on /provider via GuestOnly intent fallback', async () => {
     // Edge case: the user is already authed, hits /login somehow (e.g. by
@@ -626,101 +648,123 @@ describe('Admin route is gated (patch 2)', () => {
 // when the new user has only the customer role.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Provider signup OTP → /provider (patch 2 regression repair)', () => {
-  it('Provider card → signup → OTP verify → /provider (NOT /home)', async () => {
-    let meCalls = 0;
-    mock.onGet('/v1/auth/me').reply(() => {
-      meCalls++;
-      // After OTP verify, the new user is customer-only — without the
-      // experienceId fallback this would bounce them to /home.
-      return meCalls === 1 ? [401, {}] : [200, { ...MOCK_ME, roles: ['customer' as const] }];
-    });
-    mock.onPost('/v1/auth/refresh').reply(401, {});
-    mock.onPost('/v1/auth/register').reply(202, {
-      otpRequired: true,
-      challengeId: 'chal-prov-signup',
-      codeLength: 6,
-      expiresInSeconds: 300,
-    });
-    mock.onPost('/v1/auth/verify-otp').reply(200, {});
-
-    renderRouter();
-
-    await act(async () => {
-      screen.getByTestId('app-card-provider').click();
-    });
-
-    // /login renders, click Sign up
-    await waitFor(() => expect(document.querySelector('input[type="email"]')).toBeTruthy());
-    const signUpBtn = screen
-      .getAllByRole('button')
-      .find((b) => /sign up|create account|signUp/i.test(b.textContent ?? ''));
-    expect(signUpBtn).toBeDefined();
-    await act(async () => {
-      signUpBtn!.click();
-    });
-
-    // step 1 — fill name + phone
-    await waitFor(() => expect(document.querySelector('input[type="tel"]')).toBeTruthy());
-    const nameInput = document.querySelectorAll('input')[0] as HTMLInputElement;
-    const phoneInput = document.querySelector('input[type="tel"]') as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(nameInput, { target: { value: 'Ada Lovelace' } });
-      fireEvent.change(phoneInput, { target: { value: '5551234567' } });
-    });
-    const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
-    await act(async () => {
-      nextBtn.click();
-    });
-
-    // step 2 — email + password
-    await waitFor(() => expect(document.querySelector('input[type="email"]')).toBeTruthy());
-    const emailInput = document.querySelector('input[type="email"]') as HTMLInputElement;
-    const passwordInput = document.querySelector('input[type="password"]') as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(emailInput, { target: { value: 'ada@example.com' } });
-      fireEvent.change(passwordInput, { target: { value: 'a-reasonable-passphrase' } });
-    });
-    const termsBtn = screen
-      .getAllByRole('button')
-      .find((b) => /privacyPolicy|agreeTerms|i agree/i.test(b.textContent ?? ''));
-    if (termsBtn) {
-      await act(async () => {
-        termsBtn.click();
+  it(
+    'Provider card → signup → OTP verify → /provider (NOT /home)',
+    { timeout: 15000 },
+    async () => {
+      // Auth state is driven by an explicit OTP-verified flag rather than
+      // a call counter. The earlier counter-based shape was order-
+      // dependent: a phantom /v1/auth/me from a stale React Query in the
+      // shared module-level queryClient (left over by another test file)
+      // could bump the counter to 1 before the test even started, making
+      // the first real auth check return 200 instead of 401. That bounced
+      // the post-OTP redirect to /home and produced an intermittent
+      // "lands on seeker-app" failure when the file ran after a busy
+      // sibling.
+      let otpVerified = false;
+      mock.onGet('/v1/auth/me').reply(() => {
+        // After OTP verify, the new user is customer-only — without the
+        // experienceId fallback this would bounce them to /home.
+        return otpVerified ? [200, { ...MOCK_ME, roles: ['customer' as const] }] : [401, {}];
       });
-    }
-    const registerBtn = screen
-      .getAllByRole('button')
-      .find((b) => /register|create/i.test(b.textContent ?? ''))!;
-    // Critical: the Create Account button is themed Provider blue, not
-    // amber. data-tone is the regression hook.
-    expect(registerBtn.getAttribute('data-tone')).toBe('provider');
-    expect(registerBtn.className).not.toMatch(/amber/);
-    expect(registerBtn.className).toMatch(/blue/);
-    await act(async () => {
-      registerBtn.click();
-    });
+      mock.onPost('/v1/auth/refresh').reply(401, {});
+      mock.onPost('/v1/auth/register').reply(202, {
+        otpRequired: true,
+        challengeId: 'chal-prov-signup',
+        codeLength: 6,
+        expiresInSeconds: 300,
+      });
+      mock.onPost('/v1/auth/verify-otp').reply(() => {
+        otpVerified = true;
+        return [200, {}];
+      });
 
-    // step 3 — OTP. Confirm button is also Provider blue.
-    await waitFor(() => expect(screen.getByTestId('otp-input')).toBeInTheDocument());
-    const otpInput = screen.getByTestId('otp-input') as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(otpInput, { target: { value: '654321' } });
-    });
-    const confirmBtn = screen
-      .getAllByRole('button')
-      .find((b) => /confirm|verifying/i.test(b.textContent ?? ''))!;
-    expect(confirmBtn.getAttribute('data-tone')).toBe('provider');
-    expect(confirmBtn.className).not.toMatch(/amber/);
-    await act(async () => {
-      confirmBtn.click();
-    });
+      renderRouter();
 
-    // Lands on /provider — the patch-2 regression repair.
-    await waitFor(() => expect(screen.getByTestId('provider-app')).toBeInTheDocument(), {
-      timeout: 3000,
-    });
-    expect(screen.queryByTestId('seeker-app')).toBeNull();
-  });
+      await act(async () => {
+        screen.getByTestId('app-card-provider').click();
+      });
+
+      // /login renders, click Sign up
+      await waitFor(() => expect(document.querySelector('input[type="email"]')).toBeTruthy());
+      const signUpBtn = screen
+        .getAllByRole('button')
+        .find((b) => /sign up|create account|signUp/i.test(b.textContent ?? ''));
+      expect(signUpBtn).toBeDefined();
+      await act(async () => {
+        signUpBtn!.click();
+      });
+
+      // step 1 — fill name + phone
+      await waitFor(() => expect(document.querySelector('input[type="tel"]')).toBeTruthy());
+      const nameInput = document.querySelectorAll('input')[0] as HTMLInputElement;
+      const phoneInput = document.querySelector('input[type="tel"]') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(nameInput, { target: { value: 'Ada Lovelace' } });
+        fireEvent.change(phoneInput, { target: { value: '5551234567' } });
+      });
+      const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
+      await act(async () => {
+        nextBtn.click();
+      });
+
+      // step 2 — email + password
+      await waitFor(() => expect(document.querySelector('input[type="email"]')).toBeTruthy());
+      const emailInput = document.querySelector('input[type="email"]') as HTMLInputElement;
+      const passwordInput = document.querySelector('input[type="password"]') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(emailInput, { target: { value: 'ada@example.com' } });
+        fireEvent.change(passwordInput, { target: { value: 'a-reasonable-passphrase' } });
+      });
+      const termsBtn = screen
+        .getAllByRole('button')
+        .find((b) => /privacyPolicy|agreeTerms|i agree/i.test(b.textContent ?? ''));
+      if (termsBtn) {
+        await act(async () => {
+          termsBtn.click();
+        });
+      }
+      const registerBtn = screen
+        .getAllByRole('button')
+        .find((b) => /register|create/i.test(b.textContent ?? ''))!;
+      // Critical: the Create Account button is themed Provider blue, not
+      // amber. data-tone is the regression hook.
+      expect(registerBtn.getAttribute('data-tone')).toBe('provider');
+      expect(registerBtn.className).not.toMatch(/amber/);
+      expect(registerBtn.className).toMatch(/blue/);
+      await act(async () => {
+        registerBtn.click();
+      });
+
+      // step 3 — OTP. Confirm button is also Provider blue.
+      await waitFor(() => expect(screen.getByTestId('otp-input')).toBeInTheDocument());
+      const otpInput = screen.getByTestId('otp-input') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(otpInput, { target: { value: '654321' } });
+      });
+      const confirmBtn = screen
+        .getAllByRole('button')
+        .find((b) => /confirm|verifying/i.test(b.textContent ?? ''))!;
+      expect(confirmBtn.getAttribute('data-tone')).toBe('provider');
+      expect(confirmBtn.className).not.toMatch(/amber/);
+      await act(async () => {
+        confirmBtn.click();
+      });
+
+      // Lands on /provider — the patch-2 regression repair.
+      await waitFor(() => expect(screen.getByTestId('provider-app')).toBeInTheDocument(), {
+        // Generous upper bound: under full-suite load (45 files), the
+        // auth-provider's verify-otp → invalidateQueries → /me refetch
+        // → SignUpPage destination resolver → router redirect chain
+        // can take longer than the 3 s default. The test fired hot
+        // when run isolated; the timeout was the only thing failing
+        // under load. 8 s is well below the 30 s vitest default test
+        // timeout and gives us margin for the cold start.
+        timeout: 8000,
+      });
+      expect(screen.queryByTestId('seeker-app')).toBeNull();
+    },
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
