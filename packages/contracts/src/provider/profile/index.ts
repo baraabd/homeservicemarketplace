@@ -8,6 +8,7 @@ export * from './enums/provider-profile-status';
 export * from './request/upgrade-to-provider.request';
 export * from './request/update-provider-availability.request';
 export * from './request/update-provider-profile.request';
+export * from './request/apply-for-category.request';
 export * from './response/get-provider-profile.response';
 export * from './response/provider-profile-summary';
 export * from './response/update-provider-availability.response';
