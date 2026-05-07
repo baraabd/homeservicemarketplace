@@ -89,6 +89,19 @@ afterEach(() => {
     if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
   });
   clearIntendedApp();
+  // Defensive end-of-test cleanup. The intent layer uses
+  // sessionStorage (key `fixnow_intended_app` — see lib/intended-app),
+  // not localStorage; `clearIntendedApp()` above already removes that
+  // specific key. The blanket .clear() calls catch any other state a
+  // future test might write (e.g. an analytics ack flag, a feature
+  // toggle override) that could leak into a sibling case. queryClient
+  // is also cleared again on the way out so a refetch landing after
+  // the test's last assertion can't pollute the next test's
+  // baseline — beforeEach clears it on the way in, afterEach
+  // clears it on the way out.
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+  queryClient.clear();
 });
 
 describe('Public entry hierarchy — Seeker + Provider primary, Admin secondary', () => {
