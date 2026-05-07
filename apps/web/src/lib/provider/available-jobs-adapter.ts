@@ -9,9 +9,10 @@ import type { ServiceRequest } from '../../app/context/EcosystemContext';
 // to the legacy ServiceRequest the ProviderApp screens render. The
 // mapper:
 //
-//   - hashes `id` deterministically into mapX/mapY so pins don't jump
-//     around between renders. Without server-side coordinates this is
-//     the cleanest substitute until Sprint 7.0 (realtime + locations).
+//   - threads `location.lat` / `location.lng` straight through. Either
+//     may be null when the seeker's address has no captured coords;
+//     the LiveJobsScreen's Leaflet layer skips null-coord pins rather
+//     than synthesising fake positions.
 //   - derives `urgency` from `scheduleType === 'ASAP'`.
 //   - maps the category slug to a default emoji; `customServiceText`
 //     requests fall back to a generic icon.
@@ -32,7 +33,6 @@ import type { ServiceRequest } from '../../app/context/EcosystemContext';
 type AdaptableJob = AvailableJobSummary | ProviderAvailableRequestSummary;
 
 export function mapAvailableJobToLegacy(job: AdaptableJob): ServiceRequest {
-  const { mapX, mapY } = mapPinFromId(job.id);
   const icon = iconForCategorySlug(job.category?.slug ?? null);
   const isUrgent = job.scheduleType === 'ASAP';
   const status = job.bidsCount > 0 ? 'bidding' : 'pending';
@@ -69,26 +69,9 @@ export function mapAvailableJobToLegacy(job: AdaptableJob): ServiceRequest {
       status: 'pending' as const,
       submittedAt: '',
     })),
-    mapX,
-    mapY,
+    lat: job.location.lat,
+    lng: job.location.lng,
   };
-}
-
-// Stable djb2-style hash → percentage-on-canvas. Keeps the same id
-// pinned to the same coordinate across renders, which the existing
-// JobPin animation (whileHover scale) relies on.
-function mapPinFromId(id: string): { mapX: number; mapY: number } {
-  let hashX = 5381;
-  let hashY = 5381;
-  for (let i = 0; i < id.length; i += 1) {
-    const code = id.charCodeAt(i);
-    hashX = (hashX * 33) ^ code;
-    hashY = (hashY * 31) ^ (code + 17);
-  }
-  // Avoid the very edges (15..85 range) so pins stay inside the map.
-  const mapX = 15 + (Math.abs(hashX) % 70);
-  const mapY = 15 + (Math.abs(hashY) % 70);
-  return { mapX, mapY };
 }
 
 const ICON_BY_SLUG: Record<string, string> = {
