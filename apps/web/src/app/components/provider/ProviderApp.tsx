@@ -2,6 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { AxiosError } from 'axios';
 import { toast } from 'sonner';
+// Leaflet powers the LiveJobsScreen's interactive map (Phase 6 —
+// Provider). The CSS import is required at module scope so the zoom
+// controls and attribution overlay render with the canonical Leaflet
+// styling under Vite. The default-marker icon URL fix lives in
+// LocationMap.tsx and is module-scoped there; we don't reuse the
+// default icon here (markers render as custom divIcons), so we don't
+// repeat the icon-URL patch in this file.
+import L from 'leaflet';
+import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
   Map,
   Briefcase,
@@ -42,7 +52,6 @@ import { useLang, LangToggle } from '../../i18n/LanguageContext';
 // WALLET_TRANSACTIONS / EARNINGS_CHART_DATA mocks and the client-side
 // buildWeeklyEarnings reducer are gone.
 import type { ServiceRequest } from '../../context/EcosystemContext';
-import { ImageWithFallback } from '../ui/ImageWithFallback';
 import {
   useProviderProfile,
   useUpdateProviderAvailability,
@@ -106,9 +115,16 @@ import type {
 } from '@homeservicemarketplace/contracts';
 import { ProviderStatusState } from './ProviderStatusState';
 
-// ─── Map image (unsplash) ────────────────────────────────────────────────────
-const MAP_IMG =
-  'https://images.unsplash.com/photo-1554616242-a3e806a99481?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjaXR5JTIwYWVyaWFsJTIwbWFwJTIwc3RyZWV0cyUyMHNhdGVsbGl0ZSUyMHZpZXd8ZW58MXx8fHwxNzczMjQ4NTc5fDA&ixlib=rb-4.1.0&q=80&w=1080';
+// ─── Map config ──────────────────────────────────────────────────────────────
+// Riyadh fallback used when the provider profile carries no service-area
+// coordinates AND there are no markers to fit bounds against. Same
+// ordering convention as Leaflet (lat, lng).
+const RIYADH_FALLBACK: [number, number] = [24.7136, 46.6753];
+const DEFAULT_MAP_ZOOM = 12;
+const FIT_BOUNDS_MAX_ZOOM = 14;
+const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 // ─── Bidding Modal ────────────────────────────────────────────────────────────
 // Time chip → response-time-in-minutes lookup. Used by the real
@@ -379,80 +395,149 @@ function BiddingModal({
   );
 }
 
-// ─── Job pin component ────────────────────────────────────────────────────────
-function JobPin({
+// ─── Job pin (Leaflet divIcon) ────────────────────────────────────────────────
+// Status / urgency → pin colour. Pure helper so the colour is computed
+// the same way for the Leaflet divIcon HTML and the popup status row.
+function pinColorFor(req: ServiceRequest): string {
+  const urgentColor = req.urgency === 'urgent' ? '#ef4444' : '#3b82f6';
+  if (req.status === 'pending') return urgentColor;
+  if (req.status === 'bidding') return '#f59e0b';
+  return '#10b981';
+}
+
+// Build the Leaflet divIcon HTML for one job pin. The string is fed to
+// L.divIcon, which mounts it inside a Leaflet-managed wrapper element
+// at the marker's lat/lng. Two notes for future readers:
+//   • Tailwind classes used here (`animate-ping`, `rounded-2xl` etc.)
+//     must already exist in JIT-scanned source elsewhere in the file —
+//     Tailwind's content scanner doesn't follow string literals through
+//     L.divIcon. The classes used below are all live in the popup JSX
+//     below or in nearby surfaces.
+//   • The serviceIcon is a single emoji from the curated category map
+//     (apps/web/src/lib/provider/available-jobs-adapter.ts:iconForCategorySlug)
+//     so HTML escaping isn't required. If the icon source ever widens
+//     to seeker-supplied content this needs an escape pass.
+function buildPinHtml(req: ServiceRequest): string {
+  const color = pinColorFor(req);
+  const ripple =
+    req.status === 'pending'
+      ? `<span class="absolute inset-0 rounded-full animate-ping opacity-40" style="background:${color};transform:scale(2);"></span>`
+      : '';
+  return `
+    <div class="relative" style="width:40px;height:40px;">
+      ${ripple}
+      <div class="relative w-10 h-10 rounded-2xl flex items-center justify-center shadow-xl border-2 border-white" style="background:${color};">
+        <span style="font-size:18px;line-height:1;">${req.serviceIcon}</span>
+      </div>
+    </div>
+  `;
+}
+
+function JobMarker({
   req,
-  onTap,
-  isSelected,
+  lang,
+  bidLabel,
+  onPlaceBid,
 }: {
   req: ServiceRequest;
-  onTap: () => void;
-  isSelected: boolean;
+  lang: 'en' | 'ar';
+  bidLabel: string;
+  onPlaceBid: (req: ServiceRequest) => void;
 }) {
-  const urgentColor = req.urgency === 'urgent' ? '#ef4444' : '#3b82f6';
-  const statusColor =
-    req.status === 'pending' ? urgentColor : req.status === 'bidding' ? '#f59e0b' : '#10b981';
+  // L.divIcon must be stable per (status, urgency, serviceIcon) — Leaflet
+  // detaches/re-attaches the marker DOM whenever the icon reference
+  // changes. Recreating it on every parent re-render would thrash the
+  // marker layer and cancel hover state.
+  const icon = useMemo(
+    () =>
+      L.divIcon({
+        className: 'job-pin-icon',
+        html: buildPinHtml(req),
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        popupAnchor: [0, -20],
+      }),
+    [req],
+  );
+
+  // Null-coord pins are filtered upstream — this is a defensive
+  // narrow so TypeScript treats lat/lng as numbers below.
+  if (req.lat == null || req.lng == null) return null;
+
+  const color = pinColorFor(req);
+  const statusLabel =
+    req.status === 'pending'
+      ? lang === 'ar'
+        ? 'بانتظار العروض'
+        : 'Awaiting bids'
+      : req.status === 'bidding'
+        ? lang === 'ar'
+          ? `${req.bids.length} عرض`
+          : `${req.bids.length} bids`
+        : lang === 'ar'
+          ? 'مُسند'
+          : 'Assigned';
+
   return (
-    <div
-      className="absolute cursor-pointer"
-      style={{
-        left: `${req.mapX}%`,
-        top: `${req.mapY}%`,
-        transform: 'translate(-50%,-50%)',
-        zIndex: isSelected ? 20 : 10,
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        onTap();
-      }}
-    >
-      {/* Ripple */}
-      {req.status === 'pending' && (
-        <div
-          className="absolute inset-0 rounded-full animate-ping opacity-40"
-          style={{ background: statusColor, transform: 'scale(2)' }}
-        />
-      )}
-      <motion.div
-        whileHover={{ scale: 1.2 }}
-        whileTap={{ scale: 0.9 }}
-        className="relative w-10 h-10 rounded-2xl flex items-center justify-center shadow-xl border-2 border-white"
-        style={{ background: statusColor }}
-      >
-        <span style={{ fontSize: '18px' }}>{req.serviceIcon}</span>
-      </motion.div>
-      {isSelected && (
-        <motion.div
-          initial={{ opacity: 0, y: 4, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          className="absolute bottom-full mb-2 start-1/2 -translate-x-1/2 bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-3 w-44 border border-slate-100 dark:border-slate-700"
-        >
+    <Marker position={[req.lat, req.lng]} icon={icon}>
+      <Popup>
+        <div className="w-44">
           <p
             className="text-slate-900 dark:text-white"
-            style={{ fontSize: '13px', fontWeight: 700 }}
+            style={{ fontSize: '13px', fontWeight: 700, margin: 0 }}
           >
-            {req.service}
+            {lang === 'ar' ? req.serviceAr : req.service}
           </p>
-          <p className="text-slate-400" style={{ fontSize: '11px' }}>
+          <p className="text-slate-400" style={{ fontSize: '11px', margin: '2px 0 0' }}>
             {req.distance}km · {req.budget}
           </p>
           <div className="flex items-center gap-1.5 mt-1">
-            <div
+            <span
               className="w-2 h-2 rounded-full animate-pulse"
-              style={{ background: statusColor }}
+              style={{ background: color, display: 'inline-block' }}
             />
-            <span style={{ fontSize: '10px', color: statusColor, fontWeight: 600 }}>
-              {req.status === 'pending'
-                ? 'Awaiting bids'
-                : req.status === 'bidding'
-                  ? `${req.bids.length} bids`
-                  : 'Assigned'}
-            </span>
+            <span style={{ fontSize: '10px', color, fontWeight: 600 }}>{statusLabel}</span>
           </div>
-        </motion.div>
-      )}
-    </div>
+          {req.status !== 'assigned' && req.status !== 'completed' && (
+            <button
+              type="button"
+              onClick={() => onPlaceBid(req)}
+              className="w-full mt-2 py-1.5 rounded-xl bg-blue-600 text-white"
+              style={{ fontSize: '11px', fontWeight: 700 }}
+            >
+              {bidLabel}
+            </button>
+          )}
+        </div>
+      </Popup>
+    </Marker>
   );
+}
+
+// ─── Map auto-fit helper ──────────────────────────────────────────────────────
+// Mounted as a child of MapContainer so it can call useMap(). Whenever
+// the (memoised) list of marker coordinates changes, we fitBounds the
+// map to include them all. With 0 coords it leaves the map at the
+// default center (Riyadh / provider service-area), with 1 coord the
+// maxZoom cap prevents the single-point zoom-to-the-moon behaviour.
+function MapAutoFit({ points }: { points: Array<[number, number]> }) {
+  const map = useMap();
+  // Stable stringified key so the effect doesn't refire on identity
+  // changes when the underlying lat/lng list is unchanged.
+  const key = points.map((p) => `${p[0]},${p[1]}`).join('|');
+  useEffect(() => {
+    if (points.length === 0) return;
+    const bounds = L.latLngBounds(points);
+    map.fitBounds(bounds, {
+      padding: [40, 40],
+      maxZoom: FIT_BOUNDS_MAX_ZOOM,
+      animate: false,
+    });
+    // points is a fresh array on every render — depend on the stable
+    // key above; map is stable from useMap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, key]);
+  return null;
 }
 
 // ─── Live Jobs Screen (Map) ───────────────────────────────────────────────────
@@ -486,7 +571,6 @@ function LiveJobsScreen() {
   // and React Query invalidates `provider/jobs` and `provider/bids`
   // on success so the feed and My Bids reflect the new state.
   const submitBidMutation = useSubmitBid();
-  const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [biddingReq, setBiddingReq] = useState<ServiceRequest | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'bidding'>('all');
@@ -512,6 +596,38 @@ function LiveJobsScreen() {
   const activeReqs = apiRequests;
   const filteredReqs =
     filterStatus === 'all' ? activeReqs : activeReqs.filter((r) => r.status === filterStatus);
+
+  // Only requests with real coordinates render as map pins. Rows with
+  // null lat/lng still appear in the bottom-sheet list — they're valid
+  // jobs the provider can bid on, the wire just hasn't captured precise
+  // coords for them. Synthesising fake locations would be worse than a
+  // missing pin.
+  const geolocatedReqs = useMemo(
+    () =>
+      activeReqs.filter(
+        (r): r is ServiceRequest & { lat: number; lng: number } => r.lat != null && r.lng != null,
+      ),
+    [activeReqs],
+  );
+  const markerPoints = useMemo<Array<[number, number]>>(
+    () => geolocatedReqs.map((r) => [r.lat, r.lng]),
+    [geolocatedReqs],
+  );
+
+  // Default center precedence:
+  //   1. Provider profile's configured service area (when both lat/lng
+  //      are set on /v1/me/provider/profile).
+  //   2. Riyadh — the product's primary market today.
+  // The MapAutoFit child overrides this with fitBounds when there is at
+  // least one geolocated marker; the center matters mainly for the
+  // empty-feed and provider-not-yet-onboarded cases.
+  const mapCenter = useMemo<[number, number]>(() => {
+    const profile = profileQuery.data?.profile;
+    if (profile?.serviceAreaLat != null && profile?.serviceAreaLng != null) {
+      return [profile.serviceAreaLat, profile.serviceAreaLng];
+    }
+    return RIYADH_FALLBACK;
+  }, [profileQuery.data?.profile]);
 
   const L = {
     title: lang === 'ar' ? 'الوظائف النشطة' : 'Live Jobs',
@@ -581,17 +697,43 @@ function LiveJobsScreen() {
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden">
       {/* Map */}
-      <div className="flex-1 relative overflow-hidden" onClick={() => setSelectedPin(null)}>
-        <ImageWithFallback
-          src={MAP_IMG}
-          alt="City map"
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{ filter: 'brightness(0.7) saturate(0.8)' }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-900/30 to-slate-900/10" />
+      <div className="flex-1 relative overflow-hidden">
+        {/*
+          Leaflet's MapContainer renders its own DOM tree (panes for
+          tiles / markers / popups) with internal z-indices up to ~700.
+          Sibling overlays below use z-[1000]+ so the status pills and
+          drag handle stay above popups; the AnimatePresence-wrapped
+          BottomSheet is a SIBLING of this map div (one level up) and
+          its z-20 already wins because its stacking context is at the
+          parent flex level, not inside Leaflet's pane stack.
+        */}
+        <MapContainer
+          center={mapCenter}
+          zoom={DEFAULT_MAP_ZOOM}
+          zoomControl={false}
+          attributionControl
+          scrollWheelZoom
+          style={{ position: 'absolute', inset: 0, zIndex: 0 }}
+          aria-label={lang === 'ar' ? 'خريطة الوظائف الحية' : 'Live jobs map'}
+        >
+          <TileLayer attribution={OSM_ATTRIBUTION} url={OSM_TILE_URL} />
+          <MapAutoFit points={markerPoints} />
+          {geolocatedReqs.map((req) => (
+            <JobMarker
+              key={req.id}
+              req={req}
+              lang={lang}
+              bidLabel={L.bid}
+              onPlaceBid={(r) => {
+                setBiddingReq(r);
+                setSheetOpen(false);
+              }}
+            />
+          ))}
+        </MapContainer>
 
         {/* Top status bar */}
-        <div className="absolute top-4 start-4 end-4 flex items-center justify-between z-10">
+        <div className="absolute top-4 start-4 end-4 flex items-center justify-between z-[1000]">
           <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md rounded-2xl px-3 py-2 border border-white/10">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             <span className="text-white" style={{ fontSize: '12px', fontWeight: 600 }}>
@@ -606,20 +748,10 @@ function LiveJobsScreen() {
           </div>
         </div>
 
-        {/* Job pins */}
-        {activeReqs.map((req) => (
-          <JobPin
-            key={req.id}
-            req={req}
-            isSelected={selectedPin === req.id}
-            onTap={() => setSelectedPin((prev) => (prev === req.id ? null : req.id))}
-          />
-        ))}
-
         {/* Drag handle */}
         {!sheetOpen && (
           <motion.button
-            className="absolute bottom-4 start-1/2 -translate-x-1/2 flex flex-col items-center gap-1"
+            className="absolute bottom-4 start-1/2 -translate-x-1/2 flex flex-col items-center gap-1 z-[1000]"
             onClick={() => setSheetOpen(true)}
             animate={{ y: [0, -6, 0] }}
             transition={{ repeat: Infinity, duration: 1.8 }}
@@ -709,8 +841,7 @@ function LiveJobsScreen() {
                   <motion.div
                     key={req.id}
                     whileTap={{ scale: 0.98 }}
-                    className="bg-slate-50 dark:bg-slate-700 rounded-3xl p-4 mb-3 cursor-pointer"
-                    onClick={() => setSelectedPin(req.id)}
+                    className="bg-slate-50 dark:bg-slate-700 rounded-3xl p-4 mb-3"
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 text-2xl">
