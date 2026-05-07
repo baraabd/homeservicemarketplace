@@ -56,6 +56,19 @@ vi.mock('leaflet', () => ({
 // time. The stub keeps the import a no-op.
 vi.mock('leaflet/dist/leaflet.css', () => ({}));
 
+// Sprint 7.0 — sonner is imported by BiddingModal (toast.error path)
+// and by LiveJobsScreen (the new-job toast.success path). Mock at
+// module scope so the new-job toast tests can assert on the mock,
+// and so existing BiddingModal tests don't fire real toasts during
+// happy-dom runs.
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+import { toast } from 'sonner';
 import { api } from '../../../lib/api';
 import { AuthProvider, queryClient } from '../../../lib/auth-provider';
 import { LanguageProvider } from '../../i18n/LanguageContext';
@@ -707,5 +720,112 @@ describe('ProviderApp — Phase 6 Job Detail overlay', () => {
 
     await waitFor(() => expect(screen.queryByTestId('job-detail-overlay')).toBeNull());
     expect(screen.queryByText(/submit offer|تقديم عرض/i)).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 7.0 — Live Jobs floating job-count badge + new-job toast.
+// The badge that sits inside the "Pull up to see requests" pill should
+// reflect what the operator will see when they pull the bottom sheet
+// up — i.e. activeReqs after the all/pending/bidding filter is
+// applied. The earlier shape rendered the count of `pending` rows
+// regardless of filter, which drifted from the sheet contents.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProviderApp — Sprint 7.0 floating job-count badge', () => {
+  it('badge reflects filteredReqs.length, not activeReqs pending count', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    // Two pending, one bidding — under filter='all' the badge must
+    // show 3 (the bottom-sheet card count), NOT 2 (the pending count).
+    mock.onGet('/v1/provider/available-requests').reply(200, {
+      items: [
+        { ...SAMPLE_AVAILABLE_REQUEST, id: 'r1' },
+        { ...SAMPLE_AVAILABLE_REQUEST, id: 'r2' },
+        { ...SAMPLE_AVAILABLE_REQUEST, id: 'r3', bidsCount: 2 },
+      ],
+      nextCursor: null,
+    });
+
+    renderProvider();
+
+    // findByTestId resolves on first render — when filteredReqs is
+    // still empty (the feed hasn't landed). Wait for the data to
+    // settle before asserting.
+    const badge = await screen.findByTestId('job-count-badge');
+    await waitFor(() => expect(badge.textContent?.trim()).toBe('3'));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 7.0 — "New job nearby" toast (cache-subscribe pattern).
+// LiveJobsScreen tracks the previously-seen request ids and fires a
+// success toast whenever the next available-requests refetch lands an
+// id that wasn't in the prior set. The first successful fetch is the
+// initial baseline and must NOT toast. (`toast` is mocked at the top
+// of this file alongside the other module-scope mocks.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProviderApp — Sprint 7.0 new-job toast', () => {
+  beforeEach(() => {
+    (toast.success as unknown as { mockClear: () => void }).mockClear();
+  });
+
+  it('does NOT toast on the initial available-requests fetch', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/provider/available-requests').reply(200, {
+      items: [SAMPLE_AVAILABLE_REQUEST],
+      nextCursor: null,
+    });
+
+    renderProvider();
+
+    // Wait for the feed to settle.
+    await screen.findByTestId('leaflet-marker');
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('toasts when a refetch lands a new request id', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    // First fetch: r1 only. Second fetch (same endpoint, different
+    // payload): r1 + r2. The second response is what
+    // queryClient.refetchQueries lands.
+    let call = 0;
+    mock.onGet('/v1/provider/available-requests').reply(() => {
+      call += 1;
+      if (call === 1) {
+        return [200, { items: [SAMPLE_AVAILABLE_REQUEST], nextCursor: null }];
+      }
+      return [
+        200,
+        {
+          items: [
+            SAMPLE_AVAILABLE_REQUEST,
+            {
+              ...SAMPLE_AVAILABLE_REQUEST,
+              id: 'r2',
+              location: { ...SAMPLE_AVAILABLE_REQUEST.location, lat: 24.8112, lng: 46.6298 },
+            },
+          ],
+          nextCursor: null,
+        },
+      ];
+    });
+
+    renderProvider();
+
+    // First fetch settles — baseline established, no toast.
+    await waitFor(() => expect(screen.getAllByTestId('leaflet-marker')).toHaveLength(1));
+    expect(toast.success).not.toHaveBeenCalled();
+
+    // Force a refetch via the queryClient. The provider feed key uses
+    // the canonical `providerQueryKeys.availableRequests.list({})`
+    // shape — refetching the root invalidates every variant.
+    await queryClient.refetchQueries({ queryKey: ['provider', 'available-requests'] });
+
+    await waitFor(() => expect(screen.getAllByTestId('leaflet-marker')).toHaveLength(2));
+    expect(toast.success).toHaveBeenCalledWith('New job nearby!');
   });
 });
