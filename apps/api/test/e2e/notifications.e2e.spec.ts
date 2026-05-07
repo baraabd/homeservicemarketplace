@@ -192,7 +192,8 @@ describe('NotificationsController (e2e)', () => {
       const res = await request(app.getHttpServer()).get('/v1/me/notifications/unread-count');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ count: 3 });
-      expect(notificationsService.unreadCount).toHaveBeenCalledWith('user-1');
+      // Sprint 5.5 added the optional `experience` second arg.
+      expect(notificationsService.unreadCount).toHaveBeenCalledWith('user-1', undefined);
     });
   });
 
@@ -264,7 +265,7 @@ describe('NotificationsController (e2e)', () => {
         .set('X-CSRF-Token', 'tok');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ updatedCount: 5 });
-      expect(notificationsService.markAllRead).toHaveBeenCalledWith('user-1');
+      expect(notificationsService.markAllRead).toHaveBeenCalledWith('user-1', undefined);
     });
   });
 

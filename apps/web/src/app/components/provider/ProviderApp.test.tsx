@@ -1,6 +1,61 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
+
+// Phase 6 (Provider) — LiveJobsScreen mounts a Leaflet MapContainer
+// at the top of the default tab. Real Leaflet measures the viewport
+// (clientWidth/Height) on init, which happy-dom does not size, so the
+// map throws on mount during tests. We replace react-leaflet with
+// minimal DOM stubs that surface the props we want to assert on
+// (center / position / popup contents) without booting Leaflet's
+// rendering engine. The stubs are scoped to the test file so the real
+// Leaflet code path is exercised in the runtime build.
+vi.mock('react-leaflet', () => ({
+  MapContainer: ({
+    children,
+    center,
+    'aria-label': ariaLabel,
+  }: {
+    children?: ReactNode;
+    center?: [number, number];
+    'aria-label'?: string;
+  }) => (
+    <div data-testid="leaflet-map" data-center={JSON.stringify(center)} aria-label={ariaLabel}>
+      {children}
+    </div>
+  ),
+  TileLayer: ({ url }: { url?: string }) => <div data-testid="leaflet-tile" data-url={url} />,
+  Marker: ({ children, position }: { children?: ReactNode; position?: [number, number] }) => (
+    <div data-testid="leaflet-marker" data-position={JSON.stringify(position)}>
+      {children}
+    </div>
+  ),
+  Popup: ({ children }: { children?: ReactNode }) => (
+    <div data-testid="leaflet-popup">{children}</div>
+  ),
+  useMap: () => ({
+    fitBounds: () => {},
+    setView: () => {},
+  }),
+}));
+
+// L.divIcon / L.latLngBounds are called from JobMarker / MapAutoFit at
+// render time. The real implementations need a DOM-attached element to
+// compute bounds; the no-op stubs are enough to satisfy the call sites.
+vi.mock('leaflet', () => ({
+  default: {
+    divIcon: vi.fn((opts: unknown) => opts ?? {}),
+    latLngBounds: vi.fn(() => ({})),
+  },
+}));
+
+// Importing the leaflet stylesheet has no DOM side-effect under
+// happy-dom, but Vite would still try to resolve the asset at test
+// time. The stub keeps the import a no-op.
+vi.mock('leaflet/dist/leaflet.css', () => ({}));
+
 import { api } from '../../../lib/api';
 import { AuthProvider, queryClient } from '../../../lib/auth-provider';
 import { LanguageProvider } from '../../i18n/LanguageContext';
@@ -21,14 +76,20 @@ import { ProviderApp } from './ProviderApp';
 // ─────────────────────────────────────────────────────────────────────────────
 
 function renderProvider() {
+  // Phase 5: ProviderProfileScreen now calls useNavigate() so the
+  // Sign Out button can route to /login. Tests must wrap in a
+  // MemoryRouter to provide router context. /provider is a sensible
+  // initial path even though the bottom-nav drives the in-app route.
   return render(
-    <AuthProvider>
-      <LanguageProvider>
-        <EcosystemProvider>
-          <ProviderApp />
-        </EcosystemProvider>
-      </LanguageProvider>
-    </AuthProvider>,
+    <MemoryRouter initialEntries={['/provider']}>
+      <AuthProvider>
+        <LanguageProvider>
+          <EcosystemProvider>
+            <ProviderApp />
+          </EcosystemProvider>
+        </LanguageProvider>
+      </AuthProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -277,5 +338,172 @@ describe('ProviderApp — shell top bar identity', () => {
     await waitFor(() => expect(screen.getAllByText('Trade Name LLC').length).toBeGreaterThan(0));
     // Auth identity (Grace Hopper) is overridden.
     expect(screen.queryByText('Grace Hopper')).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 5 — Provider Profile actions.
+// Bug 4 (Sign Out) and Feature 5 (Edit Profile) used to be no-ops.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProviderApp — Phase 5 profile actions', () => {
+  it('Sign Out calls /v1/auth/logout and the button reflects an in-flight state', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    let logoutHits = 0;
+    mock.onPost('/v1/auth/logout').reply(() => {
+      logoutHits += 1;
+      return [200, {}];
+    });
+
+    renderProvider();
+    openProfileTab();
+
+    const signOut = await screen.findByTestId('provider-sign-out');
+    fireEvent.click(signOut);
+
+    await waitFor(() => expect(logoutHits).toBe(1));
+  });
+
+  it('Edit Profile button swaps to the EditProfilePage in place', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    // EditProfilePage hits /v1/me/profile on mount; mock that too so
+    // the swapped surface doesn't sit stuck on a loading state.
+    mock.onGet('/v1/me/profile').reply(200, {
+      id: 'u-1',
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      email: 'grace@example.com',
+      phone: null,
+      bio: null,
+      avatarUrl: null,
+    });
+
+    renderProvider();
+    openProfileTab();
+
+    const edit = await screen.findByTestId('provider-menu-edit-profile');
+    fireEvent.click(edit);
+
+    // EditProfilePage replaces the profile menu — the Sign Out button
+    // disappears because we're on the Edit surface now.
+    await waitFor(() => {
+      expect(screen.queryByTestId('provider-sign-out')).toBeNull();
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 6 — LiveJobsScreen interactive map.
+// Replaces the static Unsplash photo with a Leaflet MapContainer that
+// renders one Marker per available-request that carries real lat/lng,
+// skipping rows whose location.{lat,lng} are null. The map's default
+// center comes from the provider's serviceArea coords when set, with
+// Riyadh [24.7136, 46.6753] as the hard-coded fallback for the empty
+// case. react-leaflet + leaflet are mocked at the top of this file
+// because happy-dom doesn't size the viewport for real Leaflet to
+// measure.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SAMPLE_AVAILABLE_REQUEST = {
+  id: 'r1',
+  category: { id: 'c1', slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة' },
+  customServiceText: null,
+  description: 'Pipe leak under kitchen sink',
+  media: [],
+  scheduleType: 'ASAP' as const,
+  scheduledAt: null,
+  location: {
+    city: 'Riyadh',
+    country: 'Saudi Arabia',
+    lat: 24.6904,
+    lng: 46.6863,
+  },
+  bidsCount: 0,
+  createdAt: '2026-05-01T08:00:00.000Z',
+};
+
+describe('ProviderApp — Phase 6 Live Jobs map', () => {
+  it('mounts a Leaflet MapContainer + TileLayer on the default Live Jobs tab', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/provider/available-requests').reply(200, { items: [], nextCursor: null });
+
+    renderProvider();
+
+    // The aria-label distinguishes our map from any other landmarks.
+    await waitFor(() =>
+      expect(screen.getByLabelText(/live jobs map|خريطة الوظائف الحية/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('leaflet-tile')).toBeInTheDocument();
+    // The static-image map is gone — no img with alt 'City map' remains.
+    expect(screen.queryByAltText(/city map/i)).toBeNull();
+  });
+
+  it('renders one Marker per request with real coords and skips null-coord rows', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    // Three rows: two carry real lat/lng, the third has null coords and
+    // must NOT render a marker (the LiveJobsScreen does not synthesise
+    // fake locations for missing-coord rows).
+    mock.onGet('/v1/provider/available-requests').reply(200, {
+      items: [
+        SAMPLE_AVAILABLE_REQUEST,
+        {
+          ...SAMPLE_AVAILABLE_REQUEST,
+          id: 'r2',
+          location: { ...SAMPLE_AVAILABLE_REQUEST.location, lat: 24.8112, lng: 46.6298 },
+        },
+        {
+          ...SAMPLE_AVAILABLE_REQUEST,
+          id: 'r3',
+          location: { ...SAMPLE_AVAILABLE_REQUEST.location, lat: null, lng: null },
+        },
+      ],
+      nextCursor: null,
+    });
+
+    renderProvider();
+
+    // Wait for the feed to land and the markers to mount.
+    await waitFor(() => expect(screen.getAllByTestId('leaflet-marker')).toHaveLength(2));
+    const markers = screen.getAllByTestId('leaflet-marker');
+    const positions = markers.map((m) => m.getAttribute('data-position'));
+    expect(positions).toContain(JSON.stringify([24.6904, 46.6863]));
+    expect(positions).toContain(JSON.stringify([24.8112, 46.6298]));
+  });
+
+  it('uses the provider serviceArea coords as the map center when present', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    // MOCK_PROFILE carries Riyadh's coords on serviceAreaLat/Lng — use
+    // a different city to prove the wire field, not the fallback,
+    // is what the map reads.
+    mock.onGet('/v1/me/provider/profile').reply(200, {
+      profile: { ...MOCK_PROFILE, serviceAreaLat: 21.5433, serviceAreaLng: 39.1728 },
+    });
+    mock.onGet('/v1/provider/available-requests').reply(200, { items: [], nextCursor: null });
+
+    renderProvider();
+
+    await waitFor(() => {
+      const map = screen.getByTestId('leaflet-map');
+      expect(map.getAttribute('data-center')).toBe(JSON.stringify([21.5433, 39.1728]));
+    });
+  });
+
+  it('falls back to Riyadh when the provider profile has no serviceArea coords', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, {
+      profile: { ...MOCK_PROFILE, serviceAreaLat: null, serviceAreaLng: null },
+    });
+    mock.onGet('/v1/provider/available-requests').reply(200, { items: [], nextCursor: null });
+
+    renderProvider();
+
+    await waitFor(() => {
+      const map = screen.getByTestId('leaflet-map');
+      expect(map.getAttribute('data-center')).toBe(JSON.stringify([24.7136, 46.6753]));
+    });
   });
 });

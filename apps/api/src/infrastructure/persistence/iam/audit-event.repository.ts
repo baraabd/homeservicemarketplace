@@ -32,4 +32,44 @@ export class AuditEventRepository {
       },
     });
   }
+
+  // Sprint 6.6: admin-side cursor-paginated read. Filters: optional
+  // `type` (exact match against AuditEventType) and optional `userId`
+  // (the actor). Soft-deleted users still surface their events so
+  // the audit history is preserved.
+  list(
+    args: { type?: string; userId?: string; take: number; cursor?: string },
+    tx?: PrismaTx,
+  ): Promise<AuditEvent[]> {
+    return this.db(tx).auditEvent.findMany({
+      where: {
+        ...(args.type ? { type: args.type as AuditEventType } : {}),
+        ...(args.userId ? { userId: args.userId } : {}),
+      },
+      take: args.take,
+      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+  }
+
+  // Sprint 6.2: provider-scoped audit history. Uses Prisma's JSON
+  // `path` filter to match metadata.providerProfileId (the key all
+  // verification mutations write — see admin-verification.service.ts).
+  // Cursor-paginated by [createdAt desc, id desc] like list().
+  listForProviderProfile(
+    args: { providerProfileId: string; take: number; cursor?: string },
+    tx?: PrismaTx,
+  ): Promise<AuditEvent[]> {
+    return this.db(tx).auditEvent.findMany({
+      where: {
+        metadata: {
+          path: ['providerProfileId'],
+          equals: args.providerProfileId,
+        },
+      },
+      take: args.take,
+      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+  }
 }

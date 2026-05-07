@@ -13,6 +13,7 @@ import { ConversationParticipantRole } from '@homeservicemarketplace/database';
 import type { Message } from '@homeservicemarketplace/database';
 
 import { BookingRepository } from '../../infrastructure/persistence/bookings/booking.repository';
+import { ProviderProfileRepository } from '../../infrastructure/persistence/bids/provider-profile.repository';
 import {
   ConversationRepository,
   type ConversationWithRelations,
@@ -31,6 +32,7 @@ export class ConversationsService {
     private readonly participants: ConversationParticipantRepository,
     private readonly messages: MessageRepository,
     private readonly bookings: BookingRepository,
+    private readonly providers: ProviderProfileRepository,
     private readonly tx: TransactionRunner,
   ) {}
 
@@ -44,16 +46,23 @@ export class ConversationsService {
   }
 
   // ─── getOrCreateForBooking ─────────────────────────────────────────────────
-  // Idempotent. If the seeker already has a conversation tied to this
+  // Idempotent and side-aware (slice 5.5 generalised for providers).
+  // If the calling user already has a conversation tied to this
   // booking, return it. Otherwise create one in a transaction:
-  //   1. resolve the booking + assert ownership (foreign bookingId →
-  //      404, identical to "doesn't exist", so an attacker cannot
-  //      enumerate other seekers' bookings)
+  //   1. resolve the booking — accept either the seeker side
+  //      (booking.seekerUserId === userId) OR the provider side
+  //      (booking.provider.userId === userId). Foreign bookingId → 404,
+  //      identical to "doesn't exist", so an attacker cannot enumerate
+  //      other users' bookings.
   //   2. create the Conversation
-  //   3. create the seeker participant (userId = self, role = SEEKER)
-  //   4. create the provider participant (providerProfileId = booking
-  //      provider, userId nullable, role = PROVIDER)
+  //   3. create the seeker participant (userId = booking.seekerUserId,
+  //      role = SEEKER)
+  //   4. create the provider participant (userId = provider.userId
+  //      when set, providerProfileId = booking.providerId, role = PROVIDER)
   //
+  // Setting both userIds at creation means every existing list /
+  // detail / send-message / mark-read query (which all match by
+  // participants.userId) works for both roles without changes.
   // If any step fails, the whole thing rolls back.
   async getOrCreateForBooking(
     userId: string,
@@ -66,44 +75,41 @@ export class ConversationsService {
     }
 
     const created = await this.tx.run(async (tx) => {
-      // Ownership: the booking must belong to the seeker (and not be
-      // soft-deleted).
-      const booking = await this.bookings.findOwned(bookingId, userId, tx);
-      if (!booking) {
-        throw new AppError('NOT_FOUND', 'Booking not found.', 404);
+      // Try the seeker side first (cheap path).
+      const seekerOwned = await this.bookings.findOwned(bookingId, userId, tx);
+      if (seekerOwned) {
+        return this.createConversationRows(
+          {
+            bookingId: seekerOwned.id,
+            requestId: seekerOwned.requestId,
+            seekerUserId: seekerOwned.seekerUserId,
+            providerId: seekerOwned.providerId,
+            providerUserId: seekerOwned.provider.userId ?? null,
+          },
+          tx,
+        );
       }
-
-      const conversation = await this.conversations.create(
-        { bookingId: booking.id, requestId: booking.requestId },
-        tx,
-      );
-
-      // Seeker participant — userId is always set because the auth
-      // session guarantees a real User.
-      await this.participants.create(
-        {
-          conversationId: conversation.id,
-          userId,
-          providerProfileId: null,
-          role: ConversationParticipantRole.SEEKER,
-        },
-        tx,
-      );
-
-      // Provider participant — userId is nullable because the
-      // Provider app is out of scope; the providerProfileId slot is
-      // populated so a future Provider sign-up can be linked.
-      await this.participants.create(
-        {
-          conversationId: conversation.id,
-          userId: null,
-          providerProfileId: booking.providerId,
-          role: ConversationParticipantRole.PROVIDER,
-        },
-        tx,
-      );
-
-      return conversation.id;
+      // Provider side: resolve the calling user's profile, then look
+      // up the booking by providerId. If the profile is missing OR
+      // the booking is not theirs, return 404 (indistinguishable
+      // from "doesn't exist").
+      const profile = await this.providers.findByUserId(userId, tx);
+      if (profile) {
+        const providerOwned = await this.bookings.findOwnedByProvider(bookingId, profile.id, tx);
+        if (providerOwned) {
+          return this.createConversationRows(
+            {
+              bookingId: providerOwned.id,
+              requestId: providerOwned.requestId,
+              seekerUserId: providerOwned.seekerUserId,
+              providerId: providerOwned.providerId,
+              providerUserId: userId,
+            },
+            tx,
+          );
+        }
+      }
+      throw new AppError('NOT_FOUND', 'Booking not found.', 404);
     });
 
     const reloaded = await this.conversations.findOwnedByUser(created, userId);
@@ -113,6 +119,48 @@ export class ConversationsService {
       throw new AppError('INTERNAL_ERROR', 'Conversation could not be loaded.', 500);
     }
     return { conversation: await toSummary(reloaded, userId, this.messages) };
+  }
+
+  // Creates the conversation + both participants in one place so the
+  // seeker- and provider-initiated branches above can share the writes
+  // (and stay inside the same transaction).
+  private async createConversationRows(
+    args: {
+      bookingId: string;
+      requestId: string;
+      seekerUserId: string;
+      providerId: string;
+      providerUserId: string | null;
+    },
+    tx: Parameters<TransactionRunner['run']>[0] extends (tx: infer T) => unknown ? T : never,
+  ): Promise<string> {
+    const conversation = await this.conversations.create(
+      { bookingId: args.bookingId, requestId: args.requestId },
+      tx,
+    );
+    await this.participants.create(
+      {
+        conversationId: conversation.id,
+        userId: args.seekerUserId,
+        providerProfileId: null,
+        role: ConversationParticipantRole.SEEKER,
+      },
+      tx,
+    );
+    await this.participants.create(
+      {
+        conversationId: conversation.id,
+        // Slice 5.5: when the provider has a userId, set it. Existing
+        // (pre-5.5) rows where this is null remain queryable through
+        // the providerProfileId slot but won't surface in /v1/me/
+        // conversations until backfilled.
+        userId: args.providerUserId,
+        providerProfileId: args.providerId,
+        role: ConversationParticipantRole.PROVIDER,
+      },
+      tx,
+    );
+    return conversation.id;
   }
 
   // ─── listMessages ──────────────────────────────────────────────────────────

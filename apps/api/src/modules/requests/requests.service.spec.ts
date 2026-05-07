@@ -68,6 +68,7 @@ function makeRequest(overrides: Partial<ServiceRequest> = {}): ServiceRequestWit
     categoryId: 'cat-1',
     customServiceText: null,
     description: null,
+    mediaUrls: [],
     status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
     scheduleType: 'ASAP',
     scheduledAt: null,
@@ -158,6 +159,11 @@ describe('RequestsService', () => {
         label: 'Office',
         line1: 'King Fahd Rd',
         city: 'Riyadh',
+        // Sprint 7.x — case-insensitive city filter. Snapshot
+        // writers also persist a lowercase-trimmed `cityKey` so the
+        // available-requests filter can match without losing display
+        // casing on the wire.
+        cityKey: 'riyadh',
         country: 'SA',
         lat: null,
         lng: null,
@@ -185,6 +191,7 @@ describe('RequestsService', () => {
         label: null,
         line1: 'Main',
         city: 'Jeddah',
+        cityKey: 'jeddah',
         country: 'SA',
         lat: null,
         lng: null,
@@ -523,6 +530,7 @@ describe('RequestsService', () => {
       label: 'Home',
       line1: 'Old',
       city: 'Riyadh',
+      cityKey: 'riyadh',
       country: 'SA',
       lat: null,
       lng: null,

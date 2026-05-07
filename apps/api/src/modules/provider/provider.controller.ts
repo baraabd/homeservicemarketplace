@@ -23,6 +23,7 @@ import { Roles } from '../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../iam/authorization/guards/roles.guard';
 import { UpdateProviderAvailabilityDto } from './dto/update-provider-availability.dto';
 import { UpdateProviderProfileDto } from './dto/update-provider-profile.dto';
+import { UpgradeToProviderDto } from './dto/upgrade-to-provider.dto';
 import { ProviderService } from './provider.service';
 
 // /v1/me/provider/* — Provider-facing profile surface (Sprint 5 slice 5.1).
@@ -45,7 +46,13 @@ export class ProviderController {
   @UseGuards(CsrfGuard)
   @Post('upgrade')
   @HttpCode(HttpStatus.OK)
-  upgrade(@CurrentUser() user: AuthenticatedUser): Promise<UpgradeToProviderResponse> {
+  upgrade(
+    @CurrentUser() user: AuthenticatedUser,
+    // Empty-body DTO. forbidNonWhitelisted rejects ANY field a client
+    // tries to inject (userId, role, status, isAdmin, …). The body is
+    // intentionally unused — userId comes from the authenticated session.
+    @Body() _body: UpgradeToProviderDto,
+  ): Promise<UpgradeToProviderResponse> {
     return this.provider.upgrade(user.id);
   }
 

@@ -1,5 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import type { AxiosError } from 'axios';
+import { toast } from 'sonner';
+// Leaflet powers the LiveJobsScreen's interactive map (Phase 6 —
+// Provider). The CSS import is required at module scope so the zoom
+// controls and attribution overlay render with the canonical Leaflet
+// styling under Vite. The default-marker icon URL fix lives in
+// LocationMap.tsx and is module-scoped there; we don't reuse the
+// default icon here (markers render as custom divIcons), so we don't
+// repeat the icon-URL patch in this file.
+import L from 'leaflet';
+import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
   Map,
   Briefcase,
@@ -8,7 +20,6 @@ import {
   ChevronRight,
   ChevronUp,
   X,
-  Clock,
   DollarSign,
   Star,
   CheckCircle2,
@@ -17,6 +28,7 @@ import {
   Bell,
   WifiOff,
   MapPin,
+  MessageCircle,
   Navigation,
   Send,
   Award,
@@ -33,30 +45,100 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
-import {
-  useEcosystem,
-  WALLET_TRANSACTIONS,
-  EARNINGS_CHART_DATA,
-} from '../../context/EcosystemContext';
+// Sprint 5.3 retired the legacy `useEcosystem` mock from this file —
+// LiveJobsScreen + MyBidsScreen read from the API. Sprint 5.6 (refined)
+// migrated the wallet to the canonical /v1/provider/earnings/* surface:
+// summary + transactions + a server-side daily chart. The static
+// WALLET_TRANSACTIONS / EARNINGS_CHART_DATA mocks and the client-side
+// buildWeeklyEarnings reducer are gone.
 import type { ServiceRequest } from '../../context/EcosystemContext';
-import { ImageWithFallback } from '../ui/ImageWithFallback';
 import {
   useProviderProfile,
   useUpdateProviderAvailability,
   useUpgradeToProvider,
 } from '../../hooks/provider/useProviderProfile';
+// Sprint 5.2 (canonical) — switched the LiveJobsScreen to the
+// /v1/provider/available-requests feed. The legacy useAvailableJobs
+// hook stays exported for any other call site but is no longer
+// consumed here.
+import { useAvailableRequests } from '../../hooks/provider/useAvailableRequests';
+// useWithdrawBid is exported from the hook module for the My Bids
+// follow-on UI work; the current ProviderApp only consumes useMyBids
+// + useSubmitBid in this file. Listed here so the shape stays
+// consistent when Sprint 5.4 adds withdraw buttons to the bid cards.
+import { useMyBids, useSubmitBid } from '../../hooks/provider/useMyBids';
+// Sprint 5.4 — provider booking lifecycle. The MyBidsScreen reads
+// the bookings list to map accepted bids to their booking ids, then
+// uses the canonical /v1/provider/bookings/:id/{start,complete,cancel}
+// endpoints for transitions.
+import {
+  useCancelProviderBooking,
+  useCompleteProviderBooking,
+  useProviderBookings,
+  useStartProviderBooking,
+} from '../../hooks/provider/useProviderBookings';
+// Sprint 5.5 — provider notifications + chat hooks (REST + polling,
+// no realtime yet). Notification drawer reads /v1/me/notifications
+// scoped by ?experience=provider; chat reads the canonical
+// /v1/provider/conversations.
+import {
+  useMarkAllProviderNotificationsRead,
+  useMarkProviderNotificationRead,
+  useProviderNotifications,
+  useProviderUnreadNotificationsCount,
+} from '../../hooks/provider/useProviderNotifications';
+import {
+  useProviderConversations,
+  useProviderMessages,
+  useSendProviderMessage,
+} from '../../hooks/provider/useProviderChat';
+import {
+  useProviderEarningsChart,
+  useProviderEarningsSummary,
+  useProviderEarningsTransactions,
+} from '../../hooks/provider/useProviderEarnings';
+import type { EarningsChartRange } from '@homeservicemarketplace/contracts';
+import {
+  formatRelativeTime,
+  formatResponseTime,
+  iconForCategorySlug,
+  mapAvailableJobToLegacy,
+} from '../../../lib/provider/available-jobs-adapter';
+import { useNavigate } from 'react-router';
+import { useAuth } from '../../../lib/auth-provider';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
+import { clearIntendedApp } from '../../../lib/intended-app';
+import { EditProfilePage } from '../profile/EditProfilePage';
 import type {
   ProviderAvailability,
   ProviderProfileSummary,
 } from '@homeservicemarketplace/contracts';
 import { ProviderStatusState } from './ProviderStatusState';
 
-// ─── Map image (unsplash) ────────────────────────────────────────────────────
-const MAP_IMG =
-  'https://images.unsplash.com/photo-1554616242-a3e806a99481?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjaXR5JTIwYWVyaWFsJTIwbWFwJTIwc3RyZWV0cyUyMHNhdGVsbGl0ZSUyMHZpZXd8ZW58MXx8fHwxNzczMjQ4NTc5fDA&ixlib=rb-4.1.0&q=80&w=1080';
+// ─── Map config ──────────────────────────────────────────────────────────────
+// Riyadh fallback used when the provider profile carries no service-area
+// coordinates AND there are no markers to fit bounds against. Same
+// ordering convention as Leaflet (lat, lng).
+const RIYADH_FALLBACK: [number, number] = [24.7136, 46.6753];
+const DEFAULT_MAP_ZOOM = 12;
+const FIT_BOUNDS_MAX_ZOOM = 14;
+const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 // ─── Bidding Modal ────────────────────────────────────────────────────────────
+// Time chip → response-time-in-minutes lookup. Used by the real
+// /v1/me/provider/bids submit path (Sprint 5.3) so the wire carries
+// `responseTimeMinutes` rather than the human-readable chip label.
+const TIME_CHIP_MINUTES: Record<string, number> = {
+  '30 min': 30,
+  '1 hour': 60,
+  '1–2 hours': 120,
+  '2–4 hours': 240,
+  'Half day': 240,
+  'Full day': 480,
+};
+
 function BiddingModal({
   request,
   onClose,
@@ -64,7 +146,15 @@ function BiddingModal({
 }: {
   request: ServiceRequest;
   onClose: () => void;
-  onSubmit: (price: number, time: string, note: string) => void;
+  // Returns a promise that resolves on success, rejects on failure.
+  // The modal drives its own sending / done / error state from the
+  // promise — no setTimeout placeholders.
+  onSubmit: (input: {
+    price: number;
+    timeLabel: string;
+    responseTimeMinutes: number;
+    note: string;
+  }) => Promise<void>;
 }) {
   const { lang } = useLang();
   const [price, setPrice] = useState('');
@@ -72,6 +162,7 @@ function BiddingModal({
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const TIME_CHIPS = ['30 min', '1 hour', '1–2 hours', '2–4 hours', 'Half day', 'Full day'];
   const TIME_CHIPS_AR = ['30 دقيقة', 'ساعة', 'ساعة–ساعتين', '2–4 ساعات', 'نصف يوم', 'يوم كامل'];
@@ -88,20 +179,39 @@ function BiddingModal({
     sending: lang === 'ar' ? 'جارٍ الإرسال…' : 'Sending…',
     sent: lang === 'ar' ? 'تم إرسال عرضك! 🎉' : 'Offer sent! 🎉',
     budget: lang === 'ar' ? 'ميزانية الطلب:' : 'Budget:',
+    failed:
+      lang === 'ar'
+        ? 'تعذّر إرسال العرض. الرجاء المحاولة مرة أخرى.'
+        : 'Could not send your offer. Please try again.',
   };
 
-  const handleSubmit = () => {
-    if (!price || !time) return;
+  const handleSubmit = async () => {
+    if (!price || !time || sending) return;
+    const amount = Math.round(parseFloat(price));
+    if (!Number.isFinite(amount) || amount < 1) return;
     setSending(true);
-    setTimeout(() => {
-      onSubmit(parseFloat(price), time, note);
+    setSubmitError(null);
+    try {
+      await onSubmit({
+        price: amount,
+        timeLabel: time,
+        responseTimeMinutes: TIME_CHIP_MINUTES[time] ?? 60,
+        note,
+      });
       setSending(false);
       setDone(true);
+      // Auto-dismiss after a beat so the success cue is readable.
       setTimeout(() => {
         onClose();
         setDone(false);
       }, 1600);
-    }, 1200);
+    } catch {
+      // Error message comes from the mutation; the wire body never
+      // contains internal stack traces — the API maps everything to
+      // safe envelopes.
+      setSending(false);
+      setSubmitError(L.failed);
+    }
   };
 
   return (
@@ -133,7 +243,7 @@ function BiddingModal({
             </p>
             <p className="text-slate-400" style={{ fontSize: '12px' }}>
               {L.requestFor}{' '}
-              <span className="text-amber-600 font-semibold">
+              <span className="text-blue-600 font-semibold">
                 {lang === 'ar' ? request.serviceAr : request.service}
               </span>
             </p>
@@ -268,6 +378,16 @@ function BiddingModal({
                 </>
               )}
             </button>
+
+            {submitError && (
+              <p
+                role="alert"
+                className="text-red-600 dark:text-red-400 text-center"
+                style={{ fontSize: '12px', fontWeight: 600 }}
+              >
+                {submitError}
+              </p>
+            )}
           </div>
         )}
       </motion.div>
@@ -275,88 +395,182 @@ function BiddingModal({
   );
 }
 
-// ─── Job pin component ────────────────────────────────────────────────────────
-function JobPin({
+// ─── Job pin (Leaflet divIcon) ────────────────────────────────────────────────
+// Status / urgency → pin colour. Pure helper so the colour is computed
+// the same way for the Leaflet divIcon HTML and the popup status row.
+function pinColorFor(req: ServiceRequest): string {
+  const urgentColor = req.urgency === 'urgent' ? '#ef4444' : '#3b82f6';
+  if (req.status === 'pending') return urgentColor;
+  if (req.status === 'bidding') return '#f59e0b';
+  return '#10b981';
+}
+
+// Build the Leaflet divIcon HTML for one job pin. The string is fed to
+// L.divIcon, which mounts it inside a Leaflet-managed wrapper element
+// at the marker's lat/lng. Two notes for future readers:
+//   • Tailwind classes used here (`animate-ping`, `rounded-2xl` etc.)
+//     must already exist in JIT-scanned source elsewhere in the file —
+//     Tailwind's content scanner doesn't follow string literals through
+//     L.divIcon. The classes used below are all live in the popup JSX
+//     below or in nearby surfaces.
+//   • The serviceIcon is a single emoji from the curated category map
+//     (apps/web/src/lib/provider/available-jobs-adapter.ts:iconForCategorySlug)
+//     so HTML escaping isn't required. If the icon source ever widens
+//     to seeker-supplied content this needs an escape pass.
+function buildPinHtml(req: ServiceRequest): string {
+  const color = pinColorFor(req);
+  const ripple =
+    req.status === 'pending'
+      ? `<span class="absolute inset-0 rounded-full animate-ping opacity-40" style="background:${color};transform:scale(2);"></span>`
+      : '';
+  return `
+    <div class="relative" style="width:40px;height:40px;">
+      ${ripple}
+      <div class="relative w-10 h-10 rounded-2xl flex items-center justify-center shadow-xl border-2 border-white" style="background:${color};">
+        <span style="font-size:18px;line-height:1;">${req.serviceIcon}</span>
+      </div>
+    </div>
+  `;
+}
+
+function JobMarker({
   req,
-  onTap,
-  isSelected,
+  lang,
+  bidLabel,
+  onPlaceBid,
 }: {
   req: ServiceRequest;
-  onTap: () => void;
-  isSelected: boolean;
+  lang: 'en' | 'ar';
+  bidLabel: string;
+  onPlaceBid: (req: ServiceRequest) => void;
 }) {
-  const urgentColor = req.urgency === 'urgent' ? '#ef4444' : '#3b82f6';
-  const statusColor =
-    req.status === 'pending' ? urgentColor : req.status === 'bidding' ? '#f59e0b' : '#10b981';
+  // L.divIcon must be stable per (status, urgency, serviceIcon) — Leaflet
+  // detaches/re-attaches the marker DOM whenever the icon reference
+  // changes. Recreating it on every parent re-render would thrash the
+  // marker layer and cancel hover state.
+  const icon = useMemo(
+    () =>
+      L.divIcon({
+        className: 'job-pin-icon',
+        html: buildPinHtml(req),
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        popupAnchor: [0, -20],
+      }),
+    [req],
+  );
+
+  // Null-coord pins are filtered upstream — this is a defensive
+  // narrow so TypeScript treats lat/lng as numbers below.
+  if (req.lat == null || req.lng == null) return null;
+
+  const color = pinColorFor(req);
+  const statusLabel =
+    req.status === 'pending'
+      ? lang === 'ar'
+        ? 'بانتظار العروض'
+        : 'Awaiting bids'
+      : req.status === 'bidding'
+        ? lang === 'ar'
+          ? `${req.bids.length} عرض`
+          : `${req.bids.length} bids`
+        : lang === 'ar'
+          ? 'مُسند'
+          : 'Assigned';
+
   return (
-    <div
-      className="absolute cursor-pointer"
-      style={{
-        left: `${req.mapX}%`,
-        top: `${req.mapY}%`,
-        transform: 'translate(-50%,-50%)',
-        zIndex: isSelected ? 20 : 10,
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        onTap();
-      }}
-    >
-      {/* Ripple */}
-      {req.status === 'pending' && (
-        <div
-          className="absolute inset-0 rounded-full animate-ping opacity-40"
-          style={{ background: statusColor, transform: 'scale(2)' }}
-        />
-      )}
-      <motion.div
-        whileHover={{ scale: 1.2 }}
-        whileTap={{ scale: 0.9 }}
-        className="relative w-10 h-10 rounded-2xl flex items-center justify-center shadow-xl border-2 border-white"
-        style={{ background: statusColor }}
-      >
-        <span style={{ fontSize: '18px' }}>{req.serviceIcon}</span>
-      </motion.div>
-      {isSelected && (
-        <motion.div
-          initial={{ opacity: 0, y: 4, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          className="absolute bottom-full mb-2 start-1/2 -translate-x-1/2 bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-3 w-44 border border-slate-100 dark:border-slate-700"
-        >
+    <Marker position={[req.lat, req.lng]} icon={icon}>
+      <Popup>
+        <div className="w-44">
           <p
             className="text-slate-900 dark:text-white"
-            style={{ fontSize: '13px', fontWeight: 700 }}
+            style={{ fontSize: '13px', fontWeight: 700, margin: 0 }}
           >
-            {req.service}
+            {lang === 'ar' ? req.serviceAr : req.service}
           </p>
-          <p className="text-slate-400" style={{ fontSize: '11px' }}>
+          <p className="text-slate-400" style={{ fontSize: '11px', margin: '2px 0 0' }}>
             {req.distance}km · {req.budget}
           </p>
           <div className="flex items-center gap-1.5 mt-1">
-            <div
+            <span
               className="w-2 h-2 rounded-full animate-pulse"
-              style={{ background: statusColor }}
+              style={{ background: color, display: 'inline-block' }}
             />
-            <span style={{ fontSize: '10px', color: statusColor, fontWeight: 600 }}>
-              {req.status === 'pending'
-                ? 'Awaiting bids'
-                : req.status === 'bidding'
-                  ? `${req.bids.length} bids`
-                  : 'Assigned'}
-            </span>
+            <span style={{ fontSize: '10px', color, fontWeight: 600 }}>{statusLabel}</span>
           </div>
-        </motion.div>
-      )}
-    </div>
+          {req.status !== 'assigned' && req.status !== 'completed' && (
+            <button
+              type="button"
+              onClick={() => onPlaceBid(req)}
+              className="w-full mt-2 py-1.5 rounded-xl bg-blue-600 text-white"
+              style={{ fontSize: '11px', fontWeight: 700 }}
+            >
+              {bidLabel}
+            </button>
+          )}
+        </div>
+      </Popup>
+    </Marker>
   );
+}
+
+// ─── Map auto-fit helper ──────────────────────────────────────────────────────
+// Mounted as a child of MapContainer so it can call useMap(). Whenever
+// the (memoised) list of marker coordinates changes, we fitBounds the
+// map to include them all. With 0 coords it leaves the map at the
+// default center (Riyadh / provider service-area), with 1 coord the
+// maxZoom cap prevents the single-point zoom-to-the-moon behaviour.
+function MapAutoFit({ points }: { points: Array<[number, number]> }) {
+  const map = useMap();
+  // Stable stringified key so the effect doesn't refire on identity
+  // changes when the underlying lat/lng list is unchanged.
+  const key = points.map((p) => `${p[0]},${p[1]}`).join('|');
+  useEffect(() => {
+    if (points.length === 0) return;
+    const bounds = L.latLngBounds(points);
+    map.fitBounds(bounds, {
+      padding: [40, 40],
+      maxZoom: FIT_BOUNDS_MAX_ZOOM,
+      animate: false,
+    });
+    // points is a fresh array on every render — depend on the stable
+    // key above; map is stable from useMap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, key]);
+  return null;
 }
 
 // ─── Live Jobs Screen (Map) ───────────────────────────────────────────────────
 function LiveJobsScreen() {
   const { lang } = useLang();
-  const { requests, submitBid } = useEcosystem();
   const profileQuery = useProviderProfile();
-  const [selectedPin, setSelectedPin] = useState<string | null>(null);
+  // Sprint 5.2 (canonical): live feed of OPEN_FOR_BIDS service
+  // requests against /v1/provider/available-requests, polled every
+  // 20s with refetchOnWindowFocus. The hook scopes to the provider's
+  // configured categories server-side (or to all categories if none
+  // configured) and hides every request the provider already has an
+  // active bid on.
+  const availableRequestsQuery = useAvailableRequests();
+  const apiRequests = useMemo(
+    () => (availableRequestsQuery.data?.items ?? []).map(mapAvailableJobToLegacy),
+    [availableRequestsQuery.data],
+  );
+  // Server-side ProviderActiveGuard returns 403 when the provider's
+  // status is not ACTIVE (DRAFT / PENDING_REVIEW / SUSPENDED /
+  // REJECTED). Surface a "blocked" copy instead of an empty list so
+  // the operator understands why the feed is empty.
+  const isBlockedByStatus =
+    availableRequestsQuery.isError &&
+    /** axios error with response.status === 403 */
+    Boolean(
+      (availableRequestsQuery.error as { response?: { status?: number } } | null)?.response
+        ?.status === 403,
+    );
+  // Sprint 5.3: real submit-bid mutation. Replaces the
+  // `useEcosystem().submitBid` mock; the modal awaits the mutation
+  // and React Query invalidates `provider/jobs` and `provider/bids`
+  // on success so the feed and My Bids reflect the new state.
+  const submitBidMutation = useSubmitBid();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [biddingReq, setBiddingReq] = useState<ServiceRequest | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'bidding'>('all');
@@ -375,11 +589,45 @@ function LiveJobsScreen() {
     return lang === 'ar' ? 'متصل' : 'Online';
   })();
 
-  const activeReqs = requests.filter(
-    (r) => (r.status !== 'completed' && r.status !== 'assigned') || r.status === 'assigned',
-  );
+  // The feed only ships OPEN_FOR_BIDS rows (status maps to 'pending'
+  // when bidsCount === 0 and 'bidding' otherwise). Sprint 5.4 will add
+  // SCHEDULED bookings into a separate view; until then 'assigned' /
+  // 'completed' do not appear here.
+  const activeReqs = apiRequests;
   const filteredReqs =
     filterStatus === 'all' ? activeReqs : activeReqs.filter((r) => r.status === filterStatus);
+
+  // Only requests with real coordinates render as map pins. Rows with
+  // null lat/lng still appear in the bottom-sheet list — they're valid
+  // jobs the provider can bid on, the wire just hasn't captured precise
+  // coords for them. Synthesising fake locations would be worse than a
+  // missing pin.
+  const geolocatedReqs = useMemo(
+    () =>
+      activeReqs.filter(
+        (r): r is ServiceRequest & { lat: number; lng: number } => r.lat != null && r.lng != null,
+      ),
+    [activeReqs],
+  );
+  const markerPoints = useMemo<Array<[number, number]>>(
+    () => geolocatedReqs.map((r) => [r.lat, r.lng]),
+    [geolocatedReqs],
+  );
+
+  // Default center precedence:
+  //   1. Provider profile's configured service area (when both lat/lng
+  //      are set on /v1/me/provider/profile).
+  //   2. Riyadh — the product's primary market today.
+  // The MapAutoFit child overrides this with fitBounds when there is at
+  // least one geolocated marker; the center matters mainly for the
+  // empty-feed and provider-not-yet-onboarded cases.
+  const mapCenter = useMemo<[number, number]>(() => {
+    const profile = profileQuery.data?.profile;
+    if (profile?.serviceAreaLat != null && profile?.serviceAreaLng != null) {
+      return [profile.serviceAreaLat, profile.serviceAreaLng];
+    }
+    return RIYADH_FALLBACK;
+  }, [profileQuery.data?.profile]);
 
   const L = {
     title: lang === 'ar' ? 'الوظائف النشطة' : 'Live Jobs',
@@ -391,38 +639,101 @@ function LiveJobsScreen() {
     km: lang === 'ar' ? 'كم' : 'km',
     nearby: lang === 'ar' ? 'طلبات قريبة منك' : 'Nearby requests',
     noJobs: lang === 'ar' ? 'لا توجد وظائف حالياً' : 'No jobs right now',
+    loading: lang === 'ar' ? 'جارٍ التحميل…' : 'Loading nearby jobs…',
+    blocked:
+      lang === 'ar'
+        ? 'حسابك ليس نشطًا. يمكن للمسؤول تفعيله من لوحة الإدارة.'
+        : 'Your provider account is not active. An admin can reactivate it.',
+    failed:
+      lang === 'ar'
+        ? 'تعذّر تحميل الطلبات. حاول مرة أخرى لاحقاً.'
+        : 'Could not load nearby jobs. Try again later.',
     drag: lang === 'ar' ? 'اسحب للأعلى لرؤية الطلبات' : 'Pull up to see requests',
     urgentTag: lang === 'ar' ? 'عاجل' : 'Urgent',
   };
 
-  const handleBidSubmit = (price: number, time: string, note: string) => {
+  // Real submit. The mutation wraps the /v1/provider/bids POST;
+  // it throws on failure so the modal can surface the safe error
+  // copy. We deliberately do NOT close the modal on UNKNOWN failures
+  // — the user may correct the input and retry. On 409 (the
+  // backend's "you already have an active bid on this request"
+  // invariant from provider-bids.service.ts:78) we close the modal,
+  // toast a friendly message, and refresh the bids list so the
+  // caller's My Bids screen reflects the existing bid without
+  // forcing a manual refetch.
+  const handleBidSubmit = async (input: {
+    price: number;
+    timeLabel: string;
+    responseTimeMinutes: number;
+    note: string;
+  }) => {
     if (!biddingReq) return;
-    submitBid(biddingReq.id, {
-      providerName: 'Omar K.',
-      providerAr: 'عمر خ.',
-      providerRating: 4.8,
-      providerJobs: 156,
-      price,
-      executionTime: time,
-      note,
-    });
-    setBiddingReq(null);
+    try {
+      await submitBidMutation.mutateAsync({
+        requestId: biddingReq.id,
+        amount: input.price,
+        pricingType: 'HOURLY',
+        note: input.note ? input.note : null,
+        responseTimeMinutes: input.responseTimeMinutes,
+      });
+      setBiddingReq(null);
+    } catch (err) {
+      const status = (err as AxiosError | undefined)?.response?.status;
+      if (status === 409) {
+        toast.error(
+          lang === 'ar'
+            ? 'لقد قدّمت عرضاً بالفعل على هذا الطلب.'
+            : 'You have already placed a bid on this request.',
+        );
+        setBiddingReq(null);
+      } else {
+        // Re-throw so the modal can render its existing inline error
+        // copy for genuine validation / network failures.
+        throw err;
+      }
+    }
   };
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden">
       {/* Map */}
-      <div className="flex-1 relative overflow-hidden" onClick={() => setSelectedPin(null)}>
-        <ImageWithFallback
-          src={MAP_IMG}
-          alt="City map"
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{ filter: 'brightness(0.7) saturate(0.8)' }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-900/30 to-slate-900/10" />
+      <div className="flex-1 relative overflow-hidden">
+        {/*
+          Leaflet's MapContainer renders its own DOM tree (panes for
+          tiles / markers / popups) with internal z-indices up to ~700.
+          Sibling overlays below use z-[1000]+ so the status pills and
+          drag handle stay above popups; the AnimatePresence-wrapped
+          BottomSheet is a SIBLING of this map div (one level up) and
+          its z-20 already wins because its stacking context is at the
+          parent flex level, not inside Leaflet's pane stack.
+        */}
+        <MapContainer
+          center={mapCenter}
+          zoom={DEFAULT_MAP_ZOOM}
+          zoomControl={false}
+          attributionControl
+          scrollWheelZoom
+          style={{ position: 'absolute', inset: 0, zIndex: 0 }}
+          aria-label={lang === 'ar' ? 'خريطة الوظائف الحية' : 'Live jobs map'}
+        >
+          <TileLayer attribution={OSM_ATTRIBUTION} url={OSM_TILE_URL} />
+          <MapAutoFit points={markerPoints} />
+          {geolocatedReqs.map((req) => (
+            <JobMarker
+              key={req.id}
+              req={req}
+              lang={lang}
+              bidLabel={L.bid}
+              onPlaceBid={(r) => {
+                setBiddingReq(r);
+                setSheetOpen(false);
+              }}
+            />
+          ))}
+        </MapContainer>
 
         {/* Top status bar */}
-        <div className="absolute top-4 start-4 end-4 flex items-center justify-between z-10">
+        <div className="absolute top-4 start-4 end-4 flex items-center justify-between z-[1000]">
           <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md rounded-2xl px-3 py-2 border border-white/10">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             <span className="text-white" style={{ fontSize: '12px', fontWeight: 600 }}>
@@ -437,20 +748,10 @@ function LiveJobsScreen() {
           </div>
         </div>
 
-        {/* Job pins */}
-        {activeReqs.map((req) => (
-          <JobPin
-            key={req.id}
-            req={req}
-            isSelected={selectedPin === req.id}
-            onTap={() => setSelectedPin((prev) => (prev === req.id ? null : req.id))}
-          />
-        ))}
-
         {/* Drag handle */}
         {!sheetOpen && (
           <motion.button
-            className="absolute bottom-4 start-1/2 -translate-x-1/2 flex flex-col items-center gap-1"
+            className="absolute bottom-4 start-1/2 -translate-x-1/2 flex flex-col items-center gap-1 z-[1000]"
             onClick={() => setSheetOpen(true)}
             animate={{ y: [0, -6, 0] }}
             transition={{ repeat: Infinity, duration: 1.8 }}
@@ -461,7 +762,7 @@ function LiveJobsScreen() {
                 {L.drag}
               </span>
               <span
-                className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center"
+                className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center"
                 style={{ fontSize: '10px', fontWeight: 800 }}
               >
                 {activeReqs.filter((r) => r.status === 'pending').length}
@@ -521,8 +822,18 @@ function LiveJobsScreen() {
                   <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
                     <MapPin size={24} className="text-slate-300" />
                   </div>
-                  <p className="text-slate-400" style={{ fontSize: '14px' }}>
-                    {L.noJobs}
+                  <p
+                    role="status"
+                    className="text-slate-400 text-center px-4"
+                    style={{ fontSize: '14px' }}
+                  >
+                    {isBlockedByStatus
+                      ? L.blocked
+                      : availableRequestsQuery.isPending
+                        ? L.loading
+                        : availableRequestsQuery.isError
+                          ? L.failed
+                          : L.noJobs}
                   </p>
                 </div>
               ) : (
@@ -530,8 +841,7 @@ function LiveJobsScreen() {
                   <motion.div
                     key={req.id}
                     whileTap={{ scale: 0.98 }}
-                    className="bg-slate-50 dark:bg-slate-700 rounded-3xl p-4 mb-3 cursor-pointer"
-                    onClick={() => setSelectedPin(req.id)}
+                    className="bg-slate-50 dark:bg-slate-700 rounded-3xl p-4 mb-3"
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 text-2xl">
@@ -637,22 +947,169 @@ function LiveJobsScreen() {
   );
 }
 
+// ─── Booking transition panel (Sprint 5.4) ────────────────────────────────────
+// Renders the right action button for the linked booking's current
+// state. Pure presentation — the parent owns the mutations + their
+// pending state.
+//
+//   SCHEDULED   → "Start Job" (primary) + "Cancel Booking" (link)
+//   IN_PROGRESS → "Mark Complete" (primary)
+//   COMPLETED   → "Completed" pill (no buttons)
+//   CANCELLED   → "Cancelled" pill (no buttons)
+//   null        → "Waiting for booking…" copy (race window between
+//                 bid acceptance and the booking row landing in the
+//                 list — harmless, resolves on the next 30s poll)
+function BookingTransitionPanel({
+  bookingId,
+  bookingStatus,
+  onStart,
+  onComplete,
+  onCancel,
+  pending,
+  labels,
+}: {
+  bookingId: string | null;
+  bookingStatus: string | null;
+  onStart: (bookingId: string) => void;
+  onComplete: (bookingId: string) => void;
+  onCancel: (bookingId: string) => void;
+  pending: boolean;
+  labels: {
+    start: string;
+    complete: string;
+    cancel: string;
+    inProgress: string;
+    completed: string;
+    cancelled: string;
+    pendingBooking: string;
+  };
+}) {
+  if (!bookingId || !bookingStatus) {
+    return (
+      <p role="status" className="text-slate-400 text-center py-2" style={{ fontSize: '12px' }}>
+        {labels.pendingBooking}
+      </p>
+    );
+  }
+  if (bookingStatus === 'COMPLETED') {
+    return (
+      <div
+        className="w-full py-3 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 flex items-center justify-center gap-2"
+        style={{ fontSize: '13px', fontWeight: 700 }}
+      >
+        <CheckCircle2 size={14} />
+        {labels.completed}
+      </div>
+    );
+  }
+  if (bookingStatus === 'CANCELLED') {
+    return (
+      <div
+        className="w-full py-3 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-500 flex items-center justify-center gap-2"
+        style={{ fontSize: '13px', fontWeight: 700 }}
+      >
+        <X size={14} />
+        {labels.cancelled}
+      </div>
+    );
+  }
+  if (bookingStatus === 'IN_PROGRESS') {
+    return (
+      <button
+        type="button"
+        onClick={() => onComplete(bookingId)}
+        disabled={pending}
+        className="w-full py-3 rounded-2xl bg-blue-600 text-white flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md shadow-blue-200 dark:shadow-none disabled:opacity-60"
+        style={{ fontSize: '14px', fontWeight: 700 }}
+      >
+        <CheckCircle2 size={16} />
+        {labels.complete}
+      </button>
+    );
+  }
+  // Default: SCHEDULED. Start + Cancel.
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={() => onStart(bookingId)}
+        disabled={pending}
+        className="w-full py-3 rounded-2xl bg-green-600 text-white flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md shadow-green-200 dark:shadow-none disabled:opacity-60"
+        style={{ fontSize: '14px', fontWeight: 700 }}
+      >
+        <CheckCircle2 size={16} />
+        {labels.start}
+      </button>
+      <button
+        type="button"
+        onClick={() => onCancel(bookingId)}
+        disabled={pending}
+        className="w-full py-2 rounded-2xl text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-60"
+        style={{ fontSize: '12px', fontWeight: 600 }}
+      >
+        {labels.cancel}
+      </button>
+    </div>
+  );
+}
+
 // ─── My Bids Screen ───────────────────────────────────────────────────────────
+// Sprint 5.3 — live read from /v1/me/provider/bids. The screen filters
+// out WITHDRAWN bids client-side because the existing UI only renders
+// 'pending' / 'accepted' / 'rejected' tabs.
+// Sprint 5.4 — when a bid is ACCEPTED the linked booking surfaces
+// state-aware Start / Complete / Cancel transition buttons.
 function MyBidsScreen() {
   const { lang } = useLang();
-  const { requests } = useEcosystem();
+  const myBidsQuery = useMyBids();
+  // Sprint 5.4: load bookings so the screen can map an ACCEPTED bid
+  // to its booking id and surface the right transition button.
+  const bookingsQuery = useProviderBookings();
+  const startBooking = useStartProviderBooking();
+  const completeBooking = useCompleteProviderBooking();
+  const cancelBooking = useCancelProviderBooking();
 
-  const myBids = requests.flatMap((req) =>
-    req.bids
-      .filter((b) => b.providerName === 'Omar K.')
-      .map((b) => ({
-        ...b,
-        requestService: req.service,
-        requestServiceAr: req.serviceAr,
-        requestIcon: req.serviceIcon,
-        seekerName: req.seekerName,
-      })),
-  );
+  // bidId -> { bookingId, status } so we can:
+  //   * render Start when SCHEDULED
+  //   * render Complete when IN_PROGRESS
+  //   * render Cancel when SCHEDULED (not after start)
+  //   * hide buttons entirely when COMPLETED / CANCELLED
+  const bookingByBidId = useMemo<Record<string, { bookingId: string; status: string }>>(() => {
+    const map: Record<string, { bookingId: string; status: string }> = {};
+    for (const b of bookingsQuery.data?.items ?? []) {
+      map[b.bidId] = { bookingId: b.id, status: b.status };
+    }
+    return map;
+  }, [bookingsQuery.data]);
+
+  const myBids = useMemo(() => {
+    const items = myBidsQuery.data?.items ?? [];
+    return items
+      .filter((b) => b.status !== 'WITHDRAWN')
+      .map((b) => {
+        const labelEn = b.request.category?.labelEn ?? b.request.customServiceText ?? '';
+        const labelAr = b.request.category?.labelAr ?? b.request.customServiceText ?? '';
+        const icon = iconForCategorySlug(b.request.category?.slug ?? null);
+        const linkedBooking = bookingByBidId[b.id] ?? null;
+        return {
+          id: b.id,
+          requestService: labelEn,
+          requestServiceAr: labelAr,
+          requestIcon: icon,
+          // Wire deliberately omits seeker identity. Show city as the
+          // anonymised "where" label until the bid is accepted, after
+          // which the booking conversation surfaces the seeker name.
+          seekerName: b.request.city,
+          status: b.status.toLowerCase() as 'pending' | 'accepted' | 'rejected',
+          bookingId: linkedBooking?.bookingId ?? null,
+          bookingStatus: linkedBooking?.status ?? null,
+          price: b.amount,
+          executionTime: formatResponseTime(b.responseTimeMinutes, lang),
+          note: b.note ?? '',
+          submittedAt: formatRelativeTime(b.submittedAt, lang),
+        };
+      });
+  }, [myBidsQuery.data, bookingByBidId, lang]);
 
   const L = {
     title: lang === 'ar' ? 'عروضي' : 'My Bids',
@@ -662,6 +1119,12 @@ function MyBidsScreen() {
     price: lang === 'ar' ? 'السعر:' : 'Price:',
     time: lang === 'ar' ? 'الوقت:' : 'Time:',
     startJob: lang === 'ar' ? 'ابدأ العمل' : 'Start Job',
+    completeJob: lang === 'ar' ? 'إنهاء العمل' : 'Mark Complete',
+    cancelJob: lang === 'ar' ? 'إلغاء الحجز' : 'Cancel Booking',
+    inProgress: lang === 'ar' ? 'قيد التنفيذ' : 'In Progress',
+    completed: lang === 'ar' ? 'مكتمل' : 'Completed',
+    cancelled: lang === 'ar' ? 'ملغى' : 'Cancelled',
+    bookingPending: lang === 'ar' ? 'بانتظار التأكيد…' : 'Waiting for booking…',
     noBids: lang === 'ar' ? 'لم تقدم أي عروض بعد' : 'No bids submitted yet',
     noBidsSub:
       lang === 'ar'
@@ -817,13 +1280,25 @@ function MyBidsScreen() {
                 )}
 
                 {bid.status === 'accepted' && (
-                  <button
-                    className="w-full py-3 rounded-2xl bg-green-600 text-white flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md shadow-green-200 dark:shadow-none"
-                    style={{ fontSize: '14px', fontWeight: 700 }}
-                  >
-                    <CheckCircle2 size={16} />
-                    {L.startJob}
-                  </button>
+                  <BookingTransitionPanel
+                    bookingId={bid.bookingId}
+                    bookingStatus={bid.bookingStatus}
+                    onStart={(id) => startBooking.mutate(id)}
+                    onComplete={(id) => completeBooking.mutate(id)}
+                    onCancel={(id) => cancelBooking.mutate(id)}
+                    pending={
+                      startBooking.isPending || completeBooking.isPending || cancelBooking.isPending
+                    }
+                    labels={{
+                      start: L.startJob,
+                      complete: L.completeJob,
+                      cancel: L.cancelJob,
+                      inProgress: L.inProgress,
+                      completed: L.completed,
+                      cancelled: L.cancelled,
+                      pendingBooking: L.bookingPending,
+                    }}
+                  />
                 )}
               </motion.div>
             );
@@ -835,159 +1310,248 @@ function MyBidsScreen() {
 }
 
 // ─── Wallet Screen ────────────────────────────────────────────────────────────
+// Bucket COMPLETED transactions into the last 7 days for the wallet
+// weekly chart. Pure: takes the raw transaction list, returns one
+// Wallet screen day-label localiser. The server returns ISO 'YYYY-MM-DD'
+// strings; the Recharts X-axis just needs a short human-readable tick.
+const WEEKDAY_LABELS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAY_LABELS_AR = ['أحد', 'إثن', 'ثلا', 'أرب', 'خمي', 'جمع', 'سبت'];
+
 function WalletScreen() {
   const { lang } = useLang();
-  const [withdrawing, setWithdrawing] = useState(false);
-  const [withdrawn, setWithdrawn] = useState(false);
+
+  // Sprint 5.6 (refined): canonical /v1/provider/earnings/* read model.
+  // Withdrawals are intentionally out of scope; the CTA stays disabled
+  // until the payouts module ships.
+  const summaryQuery = useProviderEarningsSummary();
+  const txQuery = useProviderEarningsTransactions({});
+  const [chartRange, setChartRange] = useState<EarningsChartRange>('30d');
+  const chartQuery = useProviderEarningsChart(chartRange);
+
+  const summary = summaryQuery.data;
+  const currency = summary?.currency ?? 'USD';
+  const transactions = txQuery.data?.items ?? [];
+
+  // Build the AreaChart data from the canonical /chart buckets. Every
+  // bucket has a stable ISO date and a gross amount; no client-side
+  // bucketing math is needed beyond mapping ISO → weekday/short-date.
+  const chartData = useMemo(() => {
+    const buckets = chartQuery.data?.buckets ?? [];
+    return buckets.map((b) => {
+      const d = new Date(`${b.date}T00:00:00Z`);
+      const wkLabels = lang === 'ar' ? WEEKDAY_LABELS_AR : WEEKDAY_LABELS_EN;
+      // For 7d ranges show weekday labels; for longer windows show
+      // 'MM-DD' so the axis stays legible at 30/90 ticks.
+      const tick =
+        chartRange === '7d' ? (wkLabels[d.getUTCDay()] ?? b.date.slice(5)) : b.date.slice(5);
+      return { tick, gross: b.grossEarnings / 100, net: b.netEarnings / 100 };
+    });
+  }, [chartQuery.data, chartRange, lang]);
 
   const L = {
     title: lang === 'ar' ? 'المحفظة والأرباح' : 'Wallet & Earnings',
-    balance: lang === 'ar' ? 'الرصيد الحالي' : 'Available Balance',
+    available: lang === 'ar' ? 'الرصيد المتاح' : 'Available Balance',
+    gross: lang === 'ar' ? 'إجمالي' : 'Gross',
+    fees: lang === 'ar' ? 'العمولة' : 'Platform Fees',
     pending: lang === 'ar' ? 'معلق' : 'Pending',
-    thisWeek: lang === 'ar' ? 'هذا الأسبوع' : 'This Week',
-    thisMonth: lang === 'ar' ? 'هذا الشهر' : 'This Month',
-    withdraw: lang === 'ar' ? 'سحب الأرباح' : 'Withdraw Earnings',
-    withdrwing: lang === 'ar' ? 'جارٍ السحب…' : 'Processing…',
-    withdrawn: lang === 'ar' ? 'تم إرسال $200 للبنك ✓' : '$200 sent to bank ✓',
+    completed: lang === 'ar' ? 'مهام منجزة' : 'Jobs Done',
+    payoutCta: lang === 'ar' ? 'السحب البنكي قريباً' : 'Bank withdrawals — coming soon',
     history: lang === 'ar' ? 'سجل المعاملات' : 'Transaction History',
-    earning: lang === 'ar' ? 'أرباح' : 'Earning',
-    payout: lang === 'ar' ? 'سحب' : 'Payout',
-    weeklyEarn: lang === 'ar' ? 'أرباح الأسبوع' : 'Weekly Earnings',
+    historyEmpty:
+      lang === 'ar'
+        ? 'لا توجد معاملات بعد. أكمل أول حجز لتظهر هنا.'
+        : 'No transactions yet. Complete your first booking to see them here.',
+    rangeTitle: lang === 'ar' ? 'الأرباح اليومية' : 'Daily earnings',
+    range7d: lang === 'ar' ? '٧ أيام' : '7d',
+    range30d: lang === 'ar' ? '٣٠ يوم' : '30d',
+    range90d: lang === 'ar' ? '٩٠ يوم' : '90d',
+    loading: lang === 'ar' ? 'جارٍ التحميل…' : 'Loading…',
+    failed:
+      lang === 'ar'
+        ? 'تعذّر تحميل الأرباح. حاول مرة أخرى لاحقاً.'
+        : 'Could not load earnings. Try again later.',
+    feeFootnote: (bps: number) =>
+      lang === 'ar'
+        ? `بعد عمولة المنصة ${(bps / 100).toFixed(0)}٪`
+        : `After ${(bps / 100).toFixed(0)}% platform fee`,
   };
 
-  const handleWithdraw = () => {
-    setWithdrawing(true);
-    setTimeout(() => {
-      setWithdrawing(false);
-      setWithdrawn(true);
-      setTimeout(() => setWithdrawn(false), 3000);
-    }, 1500);
-  };
+  // Format an integer marketplace currency unit (cents-equivalent in
+  // the schema) into a human-readable string. `currency` comes from
+  // the server and reflects the dominant booking currency.
+  const formatAmount = (amount: number) =>
+    new Intl.NumberFormat(lang === 'ar' ? 'ar' : 'en', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount / 100);
+
+  const summaryError = summaryQuery.isError;
 
   return (
     <div
       className="absolute inset-0 flex flex-col bg-slate-50 dark:bg-slate-900 overflow-y-auto"
       style={{ scrollbarWidth: 'none' }}
     >
-      {/* Header card */}
+      {/* Header card — Available Balance is the headline value. Gross,
+         platform fees, and pending sit underneath as supporting tiles. */}
       <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 mx-4 mt-4 rounded-3xl p-6 relative overflow-hidden">
         <div className="absolute -top-8 -end-8 w-36 h-36 rounded-full bg-white/10" />
         <div className="absolute -bottom-6 start-0 w-24 h-24 rounded-full bg-purple-500/20" />
         <div className="relative">
           <p className="text-white/70 mb-1" style={{ fontSize: '12px' }}>
-            {L.balance}
+            {L.available}
           </p>
           <p
             className="text-white"
             style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '-0.02em' }}
           >
-            $1,240.00
+            {summary ? formatAmount(summary.availableBalance) : summaryError ? '—' : '…'}
           </p>
-          <div className="flex gap-4 mt-4">
-            <div className="bg-white/15 rounded-2xl px-3 py-2">
+          {summary ? (
+            <p className="text-white/60 mt-1" style={{ fontSize: '11px' }}>
+              {L.feeFootnote(summary.platformFeeRateBps)}
+            </p>
+          ) : null}
+          <div className="flex gap-3 mt-4 flex-wrap">
+            <div className="bg-white/15 rounded-2xl px-3 py-2 flex-1 min-w-[80px]">
+              <p className="text-white/60" style={{ fontSize: '10px' }}>
+                {L.gross}
+              </p>
+              <p className="text-white" style={{ fontSize: '14px', fontWeight: 700 }}>
+                {summary ? formatAmount(summary.grossEarnings) : '…'}
+              </p>
+            </div>
+            <div className="bg-white/15 rounded-2xl px-3 py-2 flex-1 min-w-[80px]">
+              <p className="text-white/60" style={{ fontSize: '10px' }}>
+                {L.fees}
+              </p>
+              <p className="text-white" style={{ fontSize: '14px', fontWeight: 700 }}>
+                {summary ? `−${formatAmount(summary.platformFees)}` : '…'}
+              </p>
+            </div>
+            <div className="bg-white/15 rounded-2xl px-3 py-2 flex-1 min-w-[80px]">
               <p className="text-white/60" style={{ fontSize: '10px' }}>
                 {L.pending}
               </p>
-              <p className="text-white" style={{ fontSize: '16px', fontWeight: 700 }}>
-                $45.00
+              <p className="text-white" style={{ fontSize: '14px', fontWeight: 700 }}>
+                {summary ? formatAmount(summary.pendingBalance) : '…'}
               </p>
             </div>
-            <div className="bg-white/15 rounded-2xl px-3 py-2">
+            <div className="bg-white/15 rounded-2xl px-3 py-2 flex-1 min-w-[80px]">
               <p className="text-white/60" style={{ fontSize: '10px' }}>
-                {L.thisWeek}
+                {L.completed}
               </p>
-              <p className="text-white" style={{ fontSize: '16px', fontWeight: 700 }}>
-                $310.00
-              </p>
-            </div>
-            <div className="bg-white/15 rounded-2xl px-3 py-2">
-              <p className="text-white/60" style={{ fontSize: '10px' }}>
-                {L.thisMonth}
-              </p>
-              <p className="text-white" style={{ fontSize: '16px', fontWeight: 700 }}>
-                $1,240
+              <p className="text-white" style={{ fontSize: '14px', fontWeight: 700 }}>
+                {summary ? summary.completedBookingsCount : '…'}
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Withdraw button */}
+      {summaryError ? (
+        <div className="mx-4 mt-3 text-rose-600 text-center" style={{ fontSize: '12px' }}>
+          {L.failed}
+        </div>
+      ) : null}
+
+      {/* Payout placeholder — withdrawals are out of scope until the
+         payouts module ships. Disabled to make the affordance honest;
+         no fake setTimeout success. */}
       <div className="px-4 mt-3">
         <button
-          onClick={handleWithdraw}
-          className={`w-full py-4 rounded-2xl flex items-center justify-center gap-2.5 transition-all active:scale-95 ${
-            withdrawn
-              ? 'bg-green-600 text-white'
-              : 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-none'
-          }`}
+          disabled
+          className="w-full py-4 rounded-2xl flex items-center justify-center gap-2.5 bg-slate-200 dark:bg-slate-700 text-slate-500 cursor-not-allowed"
           style={{ fontSize: '15px', fontWeight: 800 }}
+          aria-disabled="true"
         >
-          {withdrawing ? (
-            <>
-              <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-              {L.withdrwing}
-            </>
-          ) : withdrawn ? (
-            <>
-              <CheckCircle2 size={18} />
-              {L.withdrawn}
-            </>
-          ) : (
-            <>
-              <TrendingUp size={18} />
-              {L.withdraw}
-            </>
-          )}
+          <TrendingUp size={18} />
+          {L.payoutCta}
         </button>
       </div>
 
-      {/* Chart */}
+      {/* Daily-earnings chart — server-side buckets from /v1/provider/
+         earnings/chart. Range toggle: 7d / 30d / 90d. */}
       <div className="mx-4 mt-4 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4">
-        <p
-          className="text-slate-900 dark:text-white mb-3"
-          style={{ fontSize: '14px', fontWeight: 700 }}
-        >
-          {L.weeklyEarn}
-        </p>
-        <ResponsiveContainer width="100%" height={110}>
-          <AreaChart data={EARNINGS_CHART_DATA} margin={{ top: 5, right: 5, bottom: 0, left: -25 }}>
-            <defs>
-              <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
-                <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" vertical={false} />
-            <XAxis
-              dataKey="day"
-              tick={{ fontSize: 10, fill: '#94a3b8' }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-            <Tooltip
-              contentStyle={{
-                borderRadius: '12px',
-                border: 'none',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-                fontSize: '12px',
-              }}
-              formatter={(v: number) => [`$${v}`, 'Earnings']}
-            />
-            <Area
-              type="monotone"
-              dataKey="earn"
-              stroke="#3b82f6"
-              strokeWidth={2.5}
-              fill="url(#blueGrad)"
-              dot={{ fill: '#3b82f6', r: 3 }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        <div className="flex items-center justify-between mb-3">
+          <p
+            className="text-slate-900 dark:text-white"
+            style={{ fontSize: '14px', fontWeight: 700 }}
+          >
+            {L.rangeTitle}
+          </p>
+          <div className="flex bg-slate-100 dark:bg-slate-700 rounded-full p-0.5">
+            {(['7d', '30d', '90d'] as const).map((r) => {
+              const active = chartRange === r;
+              const label = r === '7d' ? L.range7d : r === '30d' ? L.range30d : L.range90d;
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setChartRange(r)}
+                  className={`px-3 py-1 rounded-full transition-colors ${
+                    active ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500'
+                  }`}
+                  style={{ fontSize: '11px', fontWeight: 700 }}
+                  aria-pressed={active}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {chartQuery.isPending ? (
+          <p className="text-slate-400 py-8 text-center" style={{ fontSize: '12px' }}>
+            {L.loading}
+          </p>
+        ) : chartQuery.isError ? (
+          <p className="text-rose-600 py-8 text-center" style={{ fontSize: '12px' }}>
+            {L.failed}
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={130}>
+            <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: -25 }}>
+              <defs>
+                <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="tick"
+                tick={{ fontSize: 10, fill: '#94a3b8' }}
+                axisLine={false}
+                tickLine={false}
+                interval="preserveStartEnd"
+                minTickGap={chartRange === '7d' ? 0 : 24}
+              />
+              <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{
+                  borderRadius: '12px',
+                  border: 'none',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                  fontSize: '12px',
+                }}
+                formatter={(v: number) => [formatAmount(v * 100), L.gross]}
+              />
+              <Area
+                type="monotone"
+                dataKey="gross"
+                stroke="#3b82f6"
+                strokeWidth={2.5}
+                fill="url(#blueGrad)"
+                dot={chartRange === '7d' ? { fill: '#3b82f6', r: 3 } : false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
-      {/* Transaction history */}
+      {/* Transaction history — COMPLETED-only canonical rows. */}
       <div className="mx-4 mt-4 mb-4">
         <p
           className="text-slate-900 dark:text-white mb-3"
@@ -996,57 +1560,56 @@ function WalletScreen() {
           {L.history}
         </p>
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
-          {WALLET_TRANSACTIONS.map((tx, i) => (
+          {transactions.length === 0 ? (
             <div
-              key={tx.id}
-              className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? 'border-t border-slate-50 dark:border-slate-700' : ''}`}
+              className="flex flex-col items-center justify-center py-10 px-4 gap-3 text-center"
+              role="status"
             >
-              <div
-                className={`w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0 ${
-                  tx.type === 'earning'
-                    ? 'bg-green-100 dark:bg-green-900/30'
-                    : tx.type === 'pending'
-                      ? 'bg-amber-100 dark:bg-amber-900/30'
-                      : 'bg-red-100 dark:bg-red-900/30'
-                }`}
-              >
-                {tx.type === 'earning' ? (
-                  <TrendingUp size={14} className="text-green-600" />
-                ) : tx.type === 'pending' ? (
-                  <Clock size={14} className="text-amber-600" />
-                ) : (
-                  <ArrowLeft size={14} className="text-red-600" />
-                )}
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                <Wallet size={24} className="text-slate-300" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p
-                  className="text-slate-800 dark:text-slate-100"
-                  style={{ fontSize: '13px', fontWeight: 600 }}
-                >
-                  {lang === 'ar' ? tx.descAr : tx.desc}
-                </p>
-                <p className="text-slate-400" style={{ fontSize: '11px' }}>
-                  {tx.date}
-                </p>
-              </div>
-              <div className="text-end">
-                <p
-                  style={{
-                    fontSize: '14px',
-                    fontWeight: 700,
-                    color: tx.amount > 0 ? '#16a34a' : '#dc2626',
-                  }}
-                >
-                  {tx.amount > 0 ? '+' : ''}${Math.abs(tx.amount)}
-                </p>
-                {tx.status === 'pending' && (
-                  <span className="text-amber-600" style={{ fontSize: '10px', fontWeight: 600 }}>
-                    {lang === 'ar' ? 'معلق' : 'Pending'}
-                  </span>
-                )}
-              </div>
+              <p className="text-slate-400" style={{ fontSize: '13px' }}>
+                {txQuery.isError ? L.failed : txQuery.isPending ? L.loading : L.historyEmpty}
+              </p>
             </div>
-          ))}
+          ) : (
+            transactions.map((tx, i) => {
+              const label =
+                (lang === 'ar' ? tx.service.categoryLabelAr : tx.service.categoryLabelEn) ??
+                tx.service.customServiceText ??
+                tx.bookingId;
+              return (
+                <div
+                  key={tx.id}
+                  className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? 'border-t border-slate-50 dark:border-slate-700' : ''}`}
+                >
+                  <div className="w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0 bg-green-100 dark:bg-green-900/30">
+                    <TrendingUp size={14} className="text-green-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className="text-slate-800 dark:text-slate-100"
+                      style={{ fontSize: '13px', fontWeight: 600 }}
+                    >
+                      {label}
+                    </p>
+                    <p className="text-slate-400" style={{ fontSize: '11px' }}>
+                      {tx.city ? `${tx.city} · ` : ''}
+                      {formatRelativeTime(tx.occurredAt, lang)}
+                    </p>
+                  </div>
+                  <div className="text-end">
+                    <p style={{ fontSize: '14px', fontWeight: 700, color: '#16a34a' }}>
+                      +{formatAmount(tx.netAmount)}
+                    </p>
+                    <p className="text-slate-400" style={{ fontSize: '10px' }}>
+                      {formatAmount(tx.amount)} − {formatAmount(tx.platformFee)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>
@@ -1082,9 +1645,56 @@ function formatMemberSince(iso: string, lang: 'en' | 'ar'): string {
 
 function ProviderProfileScreen() {
   const { lang } = useLang();
+  const navigate = useNavigate();
+  const auth = useAuth();
   const profileQuery = useProviderProfile();
   const upgradeMut = useUpgradeToProvider();
   const availabilityMut = useUpdateProviderAvailability();
+
+  // Phase 5 Feature 5 — local view router so the menu can swap to
+  // <EditProfilePage> in place (mirrors the seeker ProfileTab pattern
+  // at apps/web/src/app/components/profile/ProfileTab.tsx:467). When
+  // the user finishes editing they hit Back which sets view=null and
+  // returns here.
+  const [view, setView] = useState<'editProfile' | null>(null);
+  // Phase 5 Bug 4 — debounce double-clicks on Sign Out so the user
+  // can't fire two logout requests while the auth-provider is still
+  // tearing down the session.
+  const [signingOut, setSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    // Drop the "/provider" intent BEFORE logout flips auth/me — once
+    // auth/me clears, RequireAuth fires its own redirect and this
+    // component unmounts; sessionStorage writes from an unmounted
+    // closure are racy. The intent is what would otherwise yank the
+    // user back into /provider on the next login from /select.
+    clearIntendedApp();
+    // Navigate FIRST so a stale /provider URL never paints behind the
+    // logout call — and so the redirect doesn't depend on
+    // setQueryData → useAuth re-render → RequireAuth observation
+    // landing in time. We use replace:true so the back button doesn't
+    // bounce the user into a half-logged-out provider shell.
+    navigate('/login', { replace: true });
+    try {
+      // useAuth().logout() POSTs /v1/auth/logout (best-effort) and
+      // — succeed or fail — sets the cached /auth/me to null and
+      // purges every non-auth React Query so no stale Provider data
+      // bleeds into the next session.
+      await auth.logout();
+    } catch {
+      // doLogout already swallows API errors; reaching the catch here
+      // would be a programming error. Either way the navigate above
+      // has already moved the user off the protected shell.
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
+  if (view === 'editProfile') {
+    return <EditProfilePage onBack={() => setView(null)} appContext="provider" />;
+  }
 
   const profile = profileQuery.data?.profile ?? null;
   // Onboarding: only when the cache has NO profile yet AND the last GET
@@ -1365,13 +1975,27 @@ function ProviderProfileScreen() {
         {/* Menu */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden mb-4">
           {[
-            { icon: <User size={16} />, label: L.editProfile },
-            { icon: <BarChart2 size={16} />, label: lang === 'ar' ? 'إحصائياتي' : 'My Analytics' },
+            // Phase 5 Feature 5 — Edit Profile is now the only wired
+            // menu row. The other rows are placeholders pending future
+            // sprints; their non-interactivity is unchanged.
+            {
+              icon: <User size={16} />,
+              label: L.editProfile,
+              onClick: () => setView('editProfile'),
+              testId: 'provider-menu-edit-profile',
+            },
+            {
+              icon: <BarChart2 size={16} />,
+              label: lang === 'ar' ? 'إحصائياتي' : 'My Analytics',
+            },
             { icon: <Bell size={16} />, label: lang === 'ar' ? 'الإشعارات' : 'Notifications' },
             { icon: <Star size={16} />, label: lang === 'ar' ? 'تقييماتي' : 'My Reviews' },
-          ].map(({ icon, label }, i) => (
+          ].map(({ icon, label, onClick, testId }, i) => (
             <button
               key={i}
+              type="button"
+              onClick={onClick}
+              data-testid={testId}
               className={`w-full flex items-center gap-3 px-4 py-3.5 active:bg-slate-50 dark:active:bg-slate-700/50 transition-all text-start ${i > 0 ? 'border-t border-slate-50 dark:border-slate-700' : ''}`}
             >
               <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400">
@@ -1391,8 +2015,18 @@ function ProviderProfileScreen() {
           ))}
         </div>
 
-        {/* Sign out */}
-        <button className="w-full flex items-center justify-center gap-2.5 py-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-3xl mb-6 active:bg-red-100 transition-all">
+        {/* Phase 5 Bug 4 — Sign Out wired to useAuth().logout() (clears
+            cookies + auth state + purges protected React Query) followed
+            by an explicit navigate('/login') so the user lands on the
+            auth screen immediately rather than briefly seeing the
+            unauthenticated provider shell. */}
+        <button
+          type="button"
+          onClick={handleSignOut}
+          disabled={signingOut}
+          data-testid="provider-sign-out"
+          className="w-full flex items-center justify-center gap-2.5 py-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-3xl mb-6 active:bg-red-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+        >
           <LogOut size={18} className="text-red-500" />
           <span
             className="text-red-600 dark:text-red-400"
@@ -1410,9 +2044,432 @@ function ProviderProfileScreen() {
 const PROVIDER_NAV = [
   { id: 'jobs', icon: Map, labelEn: 'Live Jobs', labelAr: 'الوظائف' },
   { id: 'bids', icon: Briefcase, labelEn: 'My Bids', labelAr: 'عروضي' },
+  { id: 'chat', icon: MessageCircle, labelEn: 'Chat', labelAr: 'الدردشة' },
   { id: 'wallet', icon: Wallet, labelEn: 'Wallet', labelAr: 'المحفظة' },
   { id: 'profile', icon: User, labelEn: 'Profile', labelAr: 'ملفي' },
 ];
+
+// ─── Notifications bell button (Sprint 5.5) ──────────────────────────────────
+// Reads the unread count from /v1/me/notifications/unread-count?
+// experience=provider with a 15 s poll. Renders a 99+ pill when the
+// count is large enough that it would overflow the badge.
+function ProviderNotificationsBellButton({ onOpen }: { onOpen: () => void }) {
+  const countQuery = useProviderUnreadNotificationsCount();
+  const count = countQuery.data?.count ?? 0;
+  const display = count > 99 ? '99+' : String(count);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label="Open notifications"
+      className="relative w-9 h-9 rounded-xl bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 flex items-center justify-center active:scale-90 transition-all"
+    >
+      <Bell size={17} className="text-slate-600 dark:text-slate-300" />
+      {count > 0 && (
+        <span
+          className="absolute -top-1 -end-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white flex items-center justify-center border-2 border-white"
+          style={{ fontSize: '8px', fontWeight: 800 }}
+        >
+          {display}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ─── Notifications drawer (Sprint 5.5) ───────────────────────────────────────
+// Slides in from the right. Lists provider notifications, lets the
+// operator mark one read or mark-all-read. The mark-all-read mutation
+// passes ?experience=provider so the seeker badge stays untouched.
+function ProviderNotificationsDrawer({ onClose }: { onClose: () => void }) {
+  const { lang } = useLang();
+  const listQuery = useProviderNotifications();
+  const markRead = useMarkProviderNotificationRead();
+  const markAllRead = useMarkAllProviderNotificationsRead();
+
+  const items = listQuery.data?.items ?? [];
+
+  const L = {
+    title: lang === 'ar' ? 'الإشعارات' : 'Notifications',
+    markAll: lang === 'ar' ? 'تعليم الكل كمقروء' : 'Mark all read',
+    empty: lang === 'ar' ? 'لا توجد إشعارات بعد.' : 'No notifications yet.',
+    loading: lang === 'ar' ? 'جارٍ التحميل…' : 'Loading…',
+    failed: lang === 'ar' ? 'تعذّر تحميل الإشعارات.' : 'Could not load notifications.',
+  };
+
+  const empty = items.length === 0;
+  const allRead = items.every((n) => n.readAt !== null);
+
+  return (
+    <>
+      <motion.div
+        className="fixed inset-0 bg-slate-900/40 z-30"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      />
+      <motion.div
+        className="fixed top-0 end-0 bottom-0 w-full sm:w-[400px] bg-white dark:bg-slate-800 z-40 flex flex-col shadow-2xl"
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+        role="dialog"
+        aria-label={L.title}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+          <p
+            className="text-slate-900 dark:text-white"
+            style={{ fontSize: '16px', fontWeight: 800 }}
+          >
+            {L.title}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => markAllRead.mutate()}
+              disabled={empty || allRead || markAllRead.isPending}
+              className="text-blue-600 disabled:text-slate-400 disabled:cursor-not-allowed"
+              style={{ fontSize: '12px', fontWeight: 600 }}
+            >
+              {L.markAll}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center"
+            >
+              <X size={14} className="text-slate-500" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+          {empty ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                <Bell size={20} className="text-slate-300" />
+              </div>
+              <p role="status" className="text-slate-400" style={{ fontSize: '13px' }}>
+                {listQuery.isError ? L.failed : listQuery.isPending ? L.loading : L.empty}
+              </p>
+            </div>
+          ) : (
+            items.map((n) => {
+              const isRead = n.readAt !== null;
+              return (
+                <button
+                  type="button"
+                  key={n.id}
+                  onClick={() => {
+                    if (!isRead) markRead.mutate(n.id);
+                  }}
+                  className={`w-full text-start px-5 py-4 border-b border-slate-50 dark:border-slate-700/50 active:bg-slate-50 dark:active:bg-slate-700/30 transition-colors ${
+                    isRead ? '' : 'bg-blue-50/50 dark:bg-blue-900/10'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {!isRead && (
+                      <span className="mt-1 w-2 h-2 rounded-full bg-blue-600 flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-slate-900 dark:text-white"
+                        style={{ fontSize: '13px', fontWeight: isRead ? 500 : 700 }}
+                      >
+                        {/* `body` and `title` come from the server,
+                            already escaped on the JSON wire. React
+                            renders them as text (never as HTML), so
+                            no XSS surface here. */}
+                        {n.title}
+                      </p>
+                      <p
+                        className="text-slate-500 dark:text-slate-400 mt-0.5"
+                        style={{ fontSize: '12px', lineHeight: 1.4 }}
+                      >
+                        {n.body}
+                      </p>
+                      <p className="text-slate-400 mt-1" style={{ fontSize: '10px' }}>
+                        {formatRelativeTime(n.createdAt, lang)}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+// ─── Provider chat screen (Sprint 5.5) ───────────────────────────────────────
+// Two-pane: left lists conversations, right shows the active thread
+// + send-message form. On mobile width the right pane is full-screen
+// once a conversation is selected (the back arrow returns to the list).
+function ProviderChatScreen() {
+  const { lang } = useLang();
+  const conversationsQuery = useProviderConversations();
+  const items = conversationsQuery.data?.items ?? [];
+  const [activeId, setActiveId] = useState<string | null>(null);
+  // When the conversations list arrives the first time, auto-select
+  // the most recent so the operator lands in the thread without an
+  // extra tap. Subsequent list refreshes don't override the user's
+  // explicit selection.
+  const autoSelectedRef = useRef(false);
+  useEffect(() => {
+    if (autoSelectedRef.current) return;
+    if (items.length > 0) {
+      setActiveId(items[0].id);
+      autoSelectedRef.current = true;
+    }
+  }, [items]);
+
+  const L = {
+    title: lang === 'ar' ? 'الدردشات' : 'Chats',
+    empty:
+      lang === 'ar'
+        ? 'لا توجد محادثات بعد. ستظهر بعد قبول العرض.'
+        : 'No conversations yet. They appear once a bid is accepted.',
+    loading: lang === 'ar' ? 'جارٍ التحميل…' : 'Loading conversations…',
+    failed: lang === 'ar' ? 'تعذّر تحميل المحادثات.' : 'Could not load conversations.',
+    selectThread: lang === 'ar' ? 'اختر محادثة من القائمة.' : 'Pick a conversation to open it.',
+  };
+
+  return (
+    <div className="absolute inset-0 flex bg-slate-50 dark:bg-slate-900 overflow-hidden">
+      <aside
+        className={`flex-shrink-0 w-full md:w-[320px] bg-white dark:bg-slate-800 border-e border-slate-100 dark:border-slate-700 flex flex-col ${
+          activeId ? 'hidden md:flex' : 'flex'
+        }`}
+      >
+        <div className="px-5 pt-5 pb-3">
+          <h2
+            className="text-slate-900 dark:text-white"
+            style={{ fontSize: '20px', fontWeight: 800 }}
+          >
+            {L.title}
+          </h2>
+        </div>
+        <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+          {items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 px-6 gap-3 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                <MessageCircle size={20} className="text-slate-300" />
+              </div>
+              <p role="status" className="text-slate-400" style={{ fontSize: '13px' }}>
+                {conversationsQuery.isError
+                  ? L.failed
+                  : conversationsQuery.isPending
+                    ? L.loading
+                    : L.empty}
+              </p>
+            </div>
+          ) : (
+            items.map((conv) => {
+              const isActive = conv.id === activeId;
+              const previewText = conv.lastMessageBody ?? '';
+              return (
+                <button
+                  type="button"
+                  key={conv.id}
+                  onClick={() => setActiveId(conv.id)}
+                  className={`w-full text-start px-4 py-3 border-b border-slate-50 dark:border-slate-700/50 active:bg-slate-50 transition-colors ${
+                    isActive ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-lg flex-shrink-0">
+                      {conv.otherParticipant.initials || '👤'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-slate-900 dark:text-white truncate"
+                        style={{ fontSize: '13px', fontWeight: 700 }}
+                      >
+                        {conv.otherParticipant.displayName || (lang === 'ar' ? 'مستخدم' : 'User')}
+                      </p>
+                      <p
+                        className="text-slate-500 dark:text-slate-400 truncate"
+                        style={{ fontSize: '12px' }}
+                      >
+                        {previewText}
+                      </p>
+                    </div>
+                    {conv.unreadCount > 0 && (
+                      <span
+                        className="min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white flex items-center justify-center"
+                        style={{ fontSize: '10px', fontWeight: 800 }}
+                      >
+                        {conv.unreadCount > 99 ? '99+' : conv.unreadCount}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </aside>
+      <section
+        className={`flex-1 flex-col bg-slate-50 dark:bg-slate-900 ${
+          activeId ? 'flex' : 'hidden md:flex'
+        }`}
+      >
+        {activeId ? (
+          <ProviderChatThread conversationId={activeId} onBack={() => setActiveId(null)} />
+        ) : (
+          <div className="flex-1 flex items-center justify-center px-6">
+            <p role="status" className="text-slate-400" style={{ fontSize: '13px' }}>
+              {L.selectThread}
+            </p>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+// Active thread (Sprint 5.5): polls /v1/provider/conversations/:id/
+// messages every 4 s, sends new messages via the canonical send
+// endpoint. Trims body, enforces 1..2000 chars on the client too so
+// the user gets immediate feedback before the wire-side validator
+// runs.
+function ProviderChatThread({
+  conversationId,
+  onBack,
+}: {
+  conversationId: string;
+  onBack: () => void;
+}) {
+  const { lang } = useLang();
+  const messagesQuery = useProviderMessages(conversationId);
+  const sendMessage = useSendProviderMessage(conversationId);
+  const [draft, setDraft] = useState('');
+  const messages = messagesQuery.data?.items ?? [];
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll to the bottom on every render so the freshly polled
+  // tail is in view.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length]);
+
+  const trimmed = draft.trim();
+  const canSend = trimmed.length > 0 && trimmed.length <= 2000 && !sendMessage.isPending;
+
+  const L = {
+    placeholder: lang === 'ar' ? 'اكتب رسالة…' : 'Type a message…',
+    send: lang === 'ar' ? 'إرسال' : 'Send',
+    empty:
+      lang === 'ar'
+        ? 'ابدأ المحادثة بإرسال أول رسالة.'
+        : 'Start the conversation by sending the first message.',
+    loading: lang === 'ar' ? 'جارٍ تحميل الرسائل…' : 'Loading messages…',
+    failed: lang === 'ar' ? 'تعذّر تحميل الرسائل.' : 'Could not load messages.',
+    sendFailed: lang === 'ar' ? 'تعذّر إرسال الرسالة.' : 'Could not send the message.',
+  };
+
+  const handleSend = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canSend) return;
+    sendMessage.mutate(
+      { body: trimmed },
+      {
+        onSuccess: () => setDraft(''),
+      },
+    );
+  };
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Back to conversations"
+          className="md:hidden w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center"
+        >
+          <ArrowLeft size={16} className="text-slate-500 rtl:rotate-180" />
+        </button>
+        <p className="text-slate-900 dark:text-white" style={{ fontSize: '14px', fontWeight: 700 }}>
+          {lang === 'ar' ? 'محادثة' : 'Conversation'}
+        </p>
+      </div>
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-4 py-3 space-y-2"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {messages.length === 0 ? (
+          <p
+            role="status"
+            className="text-slate-400 text-center py-10"
+            style={{ fontSize: '13px' }}
+          >
+            {messagesQuery.isError ? L.failed : messagesQuery.isPending ? L.loading : L.empty}
+          </p>
+        ) : (
+          messages.map((m) => {
+            const mine = m.senderRole === 'PROVIDER';
+            return (
+              <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                <div
+                  className={`max-w-[78%] rounded-2xl px-3 py-2 ${
+                    mine
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700'
+                  }`}
+                >
+                  {/* `body` is server-emitted text — React renders as text,
+                      never HTML, so no XSS surface. */}
+                  <p style={{ fontSize: '13px', lineHeight: 1.4 }}>{m.body}</p>
+                  <p
+                    className={`mt-1 ${mine ? 'text-blue-100' : 'text-slate-400'}`}
+                    style={{ fontSize: '10px' }}
+                  >
+                    {formatRelativeTime(m.createdAt, lang)}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+      <form
+        onSubmit={handleSend}
+        className="flex items-center gap-2 px-3 py-3 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800"
+      >
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={L.placeholder}
+          maxLength={2000}
+          aria-label={L.placeholder}
+          className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-2xl px-4 py-2.5 text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-300"
+          style={{ fontSize: '13px' }}
+        />
+        <button
+          type="submit"
+          disabled={!canSend}
+          className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+          aria-label={L.send}
+        >
+          <Send size={16} />
+        </button>
+      </form>
+      {sendMessage.isError && (
+        <p role="alert" className="text-red-600 text-center pb-2" style={{ fontSize: '12px' }}>
+          {L.sendFailed}
+        </p>
+      )}
+    </div>
+  );
+}
 
 // ─── Provider App Shell ───────────────────────────────────────────────────────
 // Compute the identity strings used by the top bar. Prefer the Provider
@@ -1435,6 +2492,7 @@ function deriveShellIdentity(
 export function ProviderApp() {
   const { lang, dir, darkMode } = useLang();
   const [activeTab, setActiveTab] = useState('jobs');
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const fontFamily = lang === 'ar' ? "'Cairo', 'Inter', sans-serif" : "'Inter', sans-serif";
 
   const profileQuery = useProviderProfile();
@@ -1469,6 +2527,8 @@ export function ProviderApp() {
         return <LiveJobsScreen />;
       case 'bids':
         return <MyBidsScreen />;
+      case 'chat':
+        return <ProviderChatScreen />;
       case 'wallet':
         return <WalletScreen />;
       case 'profile':
@@ -1508,19 +2568,19 @@ export function ProviderApp() {
             </div>
             <div className="flex items-center gap-2">
               <LangToggle />
-              <button className="relative w-9 h-9 rounded-xl bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 flex items-center justify-center active:scale-90 transition-all">
-                <Bell size={17} className="text-slate-600 dark:text-slate-300" />
-                <span
-                  className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center border-2 border-white"
-                  style={{ fontSize: '8px', fontWeight: 800 }}
-                >
-                  2
-                </span>
-              </button>
+              <ProviderNotificationsBellButton onOpen={() => setNotificationsOpen(true)} />
             </div>
           </div>
         </div>
       )}
+
+      {/* Sprint 5.5 — provider notifications drawer. Opens from the
+          top-bar bell; reads /v1/me/notifications?experience=provider. */}
+      <AnimatePresence>
+        {notificationsOpen && (
+          <ProviderNotificationsDrawer onClose={() => setNotificationsOpen(false)} />
+        )}
+      </AnimatePresence>
 
       {/* Content */}
       <div className="flex-1 relative overflow-hidden">

@@ -29,6 +29,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1041.0",
+    "@aws-sdk/s3-request-presigner": "^3.1041.0",
     "@homeservicemarketplace/contracts": "workspace:*",
     "@homeservicemarketplace/database": "workspace:*",
     "@nestjs/common": "^11.1.17",
@@ -37,7 +39,10 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.17",
+    "@nestjs/platform-socket.io": "^11.0.0",
     "@nestjs/throttler": "^6.5.0",
+    "@nestjs/websockets": "^11.0.0",
+    "@socket.io/redis-adapter": "^8.3.0",
     "argon2": "^0.44.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
@@ -55,6 +60,7 @@
     "prom-client": "^15.1.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "socket.io": "^4.7.5",
     "zod": "^3.23.8"
   }
 }

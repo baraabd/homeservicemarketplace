@@ -173,9 +173,12 @@ describe('JobWizardModal — LATER', () => {
     const futureDate = `${yyyy}-${mm}-${dd}`;
 
     const dateInput = screen.getByLabelText(/^date$/i) as HTMLInputElement;
-    const timeInput = screen.getByLabelText(/^time$/i) as HTMLInputElement;
     fireEvent.change(dateInput, { target: { value: futureDate } });
-    fireEvent.change(timeInput, { target: { value: '14:30' } });
+    // Phase 4 — segmented time picker. Pick "Afternoon" segment, then
+    // tap the 14:30 pill. The picker emits the same HH:MM string the
+    // legacy <input type="time"> did.
+    fireEvent.click(screen.getByTestId('time-segment-afternoon'));
+    fireEvent.click(screen.getByTestId('time-slot-14:30'));
 
     fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
 
@@ -206,9 +209,9 @@ describe('JobWizardModal — LATER', () => {
     // we drive the past-date branch and assert the JS-level guard in
     // handlePost.
     const dateInput = screen.getByLabelText(/^date$/i) as HTMLInputElement;
-    const timeInput = screen.getByLabelText(/^time$/i) as HTMLInputElement;
     fireEvent.change(dateInput, { target: { value: '2020-01-01' } });
-    fireEvent.change(timeInput, { target: { value: '09:00' } });
+    fireEvent.click(screen.getByTestId('time-segment-morning'));
+    fireEvent.click(screen.getByTestId('time-slot-09:00'));
 
     fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
 
@@ -424,7 +427,7 @@ describe('JobWizardModal — backend response', () => {
 // ── Anti-regression: legacy hardcoded display strings ────────────────────────
 
 describe('JobWizardModal — no legacy hardcoded display strings', () => {
-  it('renders real HTML5 date+time inputs (no "Mar 15, 2026" / "10:00 AM")', async () => {
+  it('renders a real HTML5 date input + segmented time picker (no "Mar 15, 2026" / "10:00 AM")', async () => {
     mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
 
     renderWizard();
@@ -438,13 +441,325 @@ describe('JobWizardModal — no legacy hardcoded display strings', () => {
     expect(screen.queryByText(/Mar 15, 2026/i)).toBeNull();
     expect(screen.queryByText(/10:00 AM/i)).toBeNull();
 
-    // Real HTML5 inputs are rendered with empty controlled values
-    // (the user picks; we don't lie about what they'll get).
+    // Real HTML5 date input + segmented time picker (Phase 4 — the
+    // native <input type="time"> was removed because the platform UI
+    // was inconsistent and the tap targets were too small).
     const dateInput = screen.getByLabelText(/^date$/i) as HTMLInputElement;
-    const timeInput = screen.getByLabelText(/^time$/i) as HTMLInputElement;
     expect(dateInput.type).toBe('date');
-    expect(timeInput.type).toBe('time');
     expect(dateInput.value).toBe('');
-    expect(timeInput.value).toBe('');
+    expect(screen.queryByDisplayValue(/^\d{2}:\d{2}$/)).toBeNull();
+    expect(document.querySelector('input[type="time"]')).toBeNull();
+    expect(screen.getByTestId('time-segment-morning')).toBeInTheDocument();
+    expect(screen.getByTestId('time-segment-afternoon')).toBeInTheDocument();
+    expect(screen.getByTestId('time-segment-evening')).toBeInTheDocument();
+  });
+});
+
+// Phase 4 Feature 3 — segmented time picker contract.
+describe('JobWizardModal — segmented time picker', () => {
+  it('shows 15-minute pills only after a segment is selected, and 14:30 lives in Afternoon', async () => {
+    mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
+
+    renderWizard();
+    await advanceToStep2();
+    await awaitDefaultAddressFilled();
+    fireEvent.click(screen.getByRole('button', { name: /schedule later/i }));
+
+    // No segment picked yet → no pills rendered.
+    expect(screen.queryByTestId('time-slot-09:00')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('time-segment-afternoon'));
+    expect(screen.getByTestId('time-slot-12:00')).toBeInTheDocument();
+    expect(screen.getByTestId('time-slot-14:30')).toBeInTheDocument();
+    expect(screen.getByTestId('time-slot-17:45')).toBeInTheDocument();
+    // 06:00 belongs to Morning, not Afternoon — must not appear.
+    expect(screen.queryByTestId('time-slot-06:00')).toBeNull();
+
+    // Switching to Morning resets to the morning slot range.
+    fireEvent.click(screen.getByTestId('time-segment-morning'));
+    expect(screen.getByTestId('time-slot-06:00')).toBeInTheDocument();
+    expect(screen.queryByTestId('time-slot-14:30')).toBeNull();
+  });
+});
+
+// Phase 3 — native HTML5 media upload (Sprint 7.x).
+//
+// Pins the regression contract that:
+//   1. The hidden <input type="file"> is configured for both gallery
+//      and camera (`accept="image/*,video/*"`, `capture="environment"`,
+//      `multiple`).
+//   2. Picking N files renders N thumbnails AND N <img> previews
+//      backed by object URLs (URL.createObjectURL).
+//   3. Clicking the per-thumbnail X button calls URL.revokeObjectURL
+//      and removes the row.
+//   4. The MAX_MEDIA_ITEMS=4 cap is enforced (excess files are dropped
+//      and the toast surface is exercised).
+describe('JobWizardModal — Phase 3 native media upload', () => {
+  beforeEach(() => {
+    mock.onGet('/v1/me/addresses').reply(200, { items: [] });
+  });
+
+  function getMediaInput(): HTMLInputElement {
+    return screen.getByTestId('job-wizard-media-input') as HTMLInputElement;
+  }
+
+  function makeFile(name: string, type: string, size = 1024): File {
+    const blob = new Blob(['x'.repeat(size)], { type });
+    return new File([blob], name, { type });
+  }
+
+  it('renders a hidden multi-select file input wired for camera + gallery', async () => {
+    renderWizard();
+    const input = await waitFor(() => getMediaInput());
+    expect(input.type).toBe('file');
+    expect(input.accept).toBe('image/*,video/*');
+    expect(input.multiple).toBe(true);
+    // `capture` is the camera-source hint. jsdom returns it via the
+    // attribute API rather than a typed property.
+    expect(input.getAttribute('capture')).toBe('environment');
+    expect(input.style.display).toBe('none');
+  });
+
+  it('previews picked images with real <img> object-URL thumbnails', async () => {
+    // Stable createObjectURL stub so we can assert exact URLs.
+    let counter = 0;
+    const created: string[] = [];
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = (() => {
+      counter += 1;
+      const u = `blob:mock-${counter}`;
+      created.push(u);
+      return u;
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+
+    try {
+      renderWizard();
+      const input = await waitFor(() => getMediaInput());
+      const files = [makeFile('a.jpg', 'image/jpeg'), makeFile('b.png', 'image/png')];
+      fireEvent.change(input, { target: { files } });
+
+      await waitFor(() => {
+        const previews = document.querySelectorAll<HTMLImageElement>('img[src^="blob:mock-"]');
+        expect(previews).toHaveLength(2);
+      });
+      const srcs = Array.from(
+        document.querySelectorAll<HTMLImageElement>('img[src^="blob:mock-"]'),
+      ).map((n) => n.src);
+      expect(srcs).toEqual(expect.arrayContaining(['blob:mock-1', 'blob:mock-2']));
+    } finally {
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+    }
+  });
+
+  it('caps the total at 4 files (extras are dropped)', async () => {
+    URL.createObjectURL = (() => 'blob:mock') as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+
+    renderWizard();
+    const input = await waitFor(() => getMediaInput());
+    const files = [
+      makeFile('1.jpg', 'image/jpeg'),
+      makeFile('2.jpg', 'image/jpeg'),
+      makeFile('3.jpg', 'image/jpeg'),
+      makeFile('4.jpg', 'image/jpeg'),
+      makeFile('5.jpg', 'image/jpeg'),
+      makeFile('6.jpg', 'image/jpeg'),
+    ];
+    fireEvent.change(input, { target: { files } });
+
+    await waitFor(() => {
+      const previews = document.querySelectorAll('img[src^="blob:mock"]');
+      expect(previews.length).toBe(4);
+    });
+  });
+
+  it('removes a thumbnail and revokes its object URL when X is clicked', async () => {
+    let counter = 0;
+    const revoked: string[] = [];
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = (() => {
+      counter += 1;
+      return `blob:mock-${counter}`;
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = ((u: string) => {
+      revoked.push(u);
+    }) as typeof URL.revokeObjectURL;
+
+    try {
+      renderWizard();
+      const input = await waitFor(() => getMediaInput());
+      fireEvent.change(input, {
+        target: { files: [makeFile('a.jpg', 'image/jpeg')] },
+      });
+      await waitFor(() => expect(document.querySelector('img[src="blob:mock-1"]')).not.toBeNull());
+
+      const remove = screen.getByRole('button', { name: /^remove$/i });
+      fireEvent.click(remove);
+
+      await waitFor(() => {
+        expect(document.querySelector('img[src="blob:mock-1"]')).toBeNull();
+      });
+      expect(revoked).toContain('blob:mock-1');
+    } finally {
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+    }
+  });
+});
+
+// Phase 7 (frontend wire) — pre-upload pipeline pinned by tests.
+//
+// Pipeline:
+//   pick files in step 1 → step 2 (location + time) → Confirm Job →
+//   POST /v1/media/presigned-url → PUT each file via native fetch →
+//   POST /v1/me/requests with mediaUrls[].
+//
+// We stub URL.createObjectURL + revoke + global.fetch so the PUTs
+// resolve without actually leaving the test process. axios-mock-
+// adapter still drives the JSON endpoints (presign + create).
+describe('JobWizardModal — Phase 7 media upload', () => {
+  const origCreateObjectURL = URL.createObjectURL;
+  const origRevokeObjectURL = URL.revokeObjectURL;
+  const origFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    let n = 0;
+    URL.createObjectURL = (() => {
+      n += 1;
+      return `blob:mock-${n}`;
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+  });
+  afterEach(() => {
+    URL.createObjectURL = origCreateObjectURL;
+    URL.revokeObjectURL = origRevokeObjectURL;
+    globalThis.fetch = origFetch;
+  });
+
+  function makeImageFile(name: string, bytes = 4): File {
+    const blob = new Blob(['x'.repeat(bytes)], { type: 'image/png' });
+    return new File([blob], name, { type: 'image/png' });
+  }
+
+  it('pre-uploads media before posting and forwards mediaUrls into the request', async () => {
+    mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
+    let presignBody: { items: Array<{ contentType: string; sizeBytes: number }> } = { items: [] };
+    mock.onPost('/v1/media/presigned-url').reply((cfg) => {
+      presignBody = JSON.parse(cfg.data as string) as typeof presignBody;
+      return [
+        200,
+        {
+          items: presignBody.items.map((_it, i) => ({
+            uploadUrl: `https://upload.example/u${i}`,
+            fileUrl: `https://cdn.example/f${i}.png`,
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          })),
+        },
+      ];
+    });
+
+    // Stub the native fetch the upload utility uses for PUTs. Resolve
+    // 204 so Promise.all completes happily.
+    const putUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      putUrls.push(url);
+      expect(init?.method).toBe('PUT');
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+
+    let postedBody: Record<string, unknown> = {};
+    mock.onPost('/v1/me/requests').reply((cfg) => {
+      postedBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [200, { id: 'req-7', status: 'PENDING' }];
+    });
+
+    renderWizard();
+    // Pick two files in step 1.
+    const input = (await screen.findByTestId('job-wizard-media-input')) as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [makeImageFile('a.png'), makeImageFile('b.png')] },
+    });
+
+    await advanceToStep2();
+    await awaitDefaultAddressFilled();
+    fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
+
+    await waitFor(() => expect(postedBody.scheduleType).toBe('ASAP'));
+    expect(presignBody.items).toEqual([
+      { contentType: 'image/png', sizeBytes: 4, filename: 'a.png' },
+      { contentType: 'image/png', sizeBytes: 4, filename: 'b.png' },
+    ]);
+    expect(putUrls).toEqual(['https://upload.example/u0', 'https://upload.example/u1']);
+    expect(postedBody.mediaUrls).toEqual([
+      'https://cdn.example/f0.png',
+      'https://cdn.example/f1.png',
+    ]);
+  });
+
+  it('aborts the post and surfaces a friendly error when ANY upload PUT fails', async () => {
+    mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
+    mock.onPost('/v1/media/presigned-url').reply(200, {
+      items: [
+        { uploadUrl: 'https://upload.example/ok', fileUrl: 'f0', expiresAt: '2030-01-01' },
+        { uploadUrl: 'https://upload.example/bad', fileUrl: 'f1', expiresAt: '2030-01-01' },
+      ],
+    });
+    // First PUT succeeds, second fails.
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.endsWith('/bad')) return new Response('boom', { status: 500 });
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+
+    let postCalled = 0;
+    mock.onPost('/v1/me/requests').reply(() => {
+      postCalled += 1;
+      return [200, { id: 'should-not-fire', status: 'PENDING' }];
+    });
+
+    renderWizard();
+    const input = (await screen.findByTestId('job-wizard-media-input')) as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [makeImageFile('a.png'), makeImageFile('b.png')] },
+    });
+
+    await advanceToStep2();
+    await awaitDefaultAddressFilled();
+    fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Couldn't upload your photos|تعذّر رفع الصور/i)).toBeInTheDocument(),
+    );
+    // The create-request endpoint MUST NOT have been hit — we'd
+    // rather not persist a job with partial media.
+    expect(postCalled).toBe(0);
+  });
+
+  it('skips the upload pipeline when no files were attached', async () => {
+    mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
+    let presignCalled = 0;
+    mock.onPost('/v1/media/presigned-url').reply(() => {
+      presignCalled += 1;
+      return [200, { items: [] }];
+    });
+    let postedBody: Record<string, unknown> = {};
+    mock.onPost('/v1/me/requests').reply((cfg) => {
+      postedBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [200, { id: 'req-empty-media', status: 'PENDING' }];
+    });
+
+    renderWizard();
+    await advanceToStep2();
+    await awaitDefaultAddressFilled();
+    fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
+
+    await waitFor(() => expect(postedBody.scheduleType).toBe('ASAP'));
+    expect(presignCalled).toBe(0); // presign skipped — empty list
+    expect(postedBody.mediaUrls).toEqual([]); // explicit empty array
   });
 });

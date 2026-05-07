@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X,
   ChevronLeft,
@@ -24,12 +24,17 @@ import {
   Navigation,
   Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../ds/Button';
+import { LocationMap } from '../ds/LocationMap';
+import { SegmentedTimePicker } from '../ds/SegmentedTimePicker';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useLang } from '../../i18n/LanguageContext';
 import { useAddresses } from '../../hooks/seeker/useAddresses';
 import { useCreateServiceRequest } from '../../hooks/seeker/useRequests';
+import { reverseGeocode } from '../../../lib/reverse-geocode';
+import { uploadAll } from '../../../lib/media-api';
 
 // ─── Service config ───────────────────────────────────────────────────────────
 const SERVICE_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
@@ -57,83 +62,6 @@ const BackChevron = ({ dir }: { dir: string }) =>
   ) : (
     <ChevronLeft size={20} className="text-slate-700" />
   );
-
-// ─── Mock Map ─────────────────────────────────────────────────────────────────
-function MapPlaceholder({ label }: { label: string }) {
-  return (
-    <div
-      className="w-full rounded-2xl overflow-hidden relative"
-      style={{
-        height: '180px',
-        background: '#e8edf0',
-        backgroundImage: `
-          linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px)
-        `,
-        backgroundSize: '28px 28px',
-      }}
-    >
-      {/* Roads */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div
-          className="absolute bg-white/80"
-          style={{ top: '35%', left: 0, right: 0, height: '14px' }}
-        />
-        <div
-          className="absolute bg-white/60"
-          style={{ top: '68%', left: 0, right: 0, height: '8px' }}
-        />
-        <div
-          className="absolute bg-white/80"
-          style={{ left: '28%', top: 0, bottom: 0, width: '14px' }}
-        />
-        <div
-          className="absolute bg-white/60"
-          style={{ left: '65%', top: 0, bottom: 0, width: '8px' }}
-        />
-        {[
-          { top: '6%', left: '4%', w: '22%', h: '26%' },
-          { top: '6%', left: '44%', w: '18%', h: '26%' },
-          { top: '6%', left: '72%', w: '24%', h: '26%' },
-          { top: '50%', left: '4%', w: '20%', h: '20%' },
-          { top: '50%', left: '44%', w: '18%', h: '18%' },
-          { top: '50%', left: '72%', w: '24%', h: '22%' },
-        ].map((b, i) => (
-          <div
-            key={i}
-            className="absolute rounded"
-            style={{
-              top: b.top,
-              left: b.left,
-              width: b.w,
-              height: b.h,
-              background: `rgba(${190 + i * 3}, ${200 + i * 2}, 210, 0.6)`,
-            }}
-          />
-        ))}
-      </div>
-      {/* Pin */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="relative flex flex-col items-center">
-          <div className="absolute w-16 h-16 rounded-full bg-amber-500/20 animate-ping" />
-          <div className="relative w-12 h-12 rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center z-10">
-            <MapPin size={20} className="text-amber-600" />
-          </div>
-          <div className="w-1.5 h-3 bg-amber-500 rounded-b-full -mt-0.5 z-10" />
-        </div>
-      </div>
-      {/* GPS label */}
-      <div className="absolute top-3 inset-x-0 flex justify-center">
-        <div className="flex items-center gap-2 bg-white/90 backdrop-blur rounded-xl px-3 py-1.5 shadow-sm">
-          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-slate-600" style={{ fontSize: '11px', fontWeight: 600 }}>
-            {label}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Step Progress ────────────────────────────────────────────────────────────
 function StepProgress({
@@ -265,6 +193,39 @@ type GeoState =
   | { status: 'success'; lat: number; lng: number }
   | { status: 'error'; reason: 'denied' | 'unsupported' | 'failed' };
 
+// ─── Phase 3: media upload ────────────────────────────────────────────────────
+//
+// Each picked file gets an object URL so we can render a thumbnail
+// before the actual upload pipeline ships. The URL MUST be revoked
+// when the item is removed (and en-masse when the modal closes /
+// unmounts) — otherwise every File hangs around in browser memory
+// for the lifetime of the document.
+//
+// `id` is a synthetic key for React reconciliation; File names are
+// not unique (a user can pick "IMG_001.jpg" twice from different
+// folders) so we don't use them as keys.
+interface MediaItem {
+  id: string;
+  file: File;
+  previewUrl: string;
+  isVideo: boolean;
+}
+
+const MAX_MEDIA_ITEMS = 4;
+const ACCEPTED_MEDIA = 'image/*,video/*';
+
+function makeMediaItem(file: File): MediaItem {
+  return {
+    // crypto.randomUUID would be cleaner but is gated behind secure
+    // contexts in older browsers; this is a fine collision-free key
+    // for a per-modal list capped at MAX_MEDIA_ITEMS.
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    file,
+    previewUrl: URL.createObjectURL(file),
+    isVideo: file.type.startsWith('video/'),
+  };
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface JobWizardModalProps {
   service: string;
@@ -303,13 +264,30 @@ export function JobWizardModal({
   // navigator.geolocation call): real lat/lng is captured only when
   // the user clicks the "Use my current location" button.
   const [geo, setGeo] = useState<GeoState>({ status: 'idle' });
-  const [uploads, setUploads] = useState<string[]>([]);
+  // Phase 3 — real native HTML5 media upload. `uploads` was previously a
+  // string[] of mock CSS class names; it now holds File objects + their
+  // object-URL previews. Object URLs are revoked when an item is removed
+  // OR when the modal closes / unmounts so we never leak memory.
+  const [uploads, setUploads] = useState<MediaItem[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [postError, setPostError] = useState<string | null>(null);
+  // Phase 7 — covers the entire two-stage upload flow (presign +
+  // parallel PUTs) so the submit button stays in the loading state
+  // for as long as bytes are still in flight. Without this the
+  // button's loading visual would flicker off between presign +
+  // PUT, and a user could double-tap during the gap.
+  const [isUploading, setIsUploading] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
   const addressesQuery = useAddresses();
   const createMut = useCreateServiceRequest();
-  const isPosting = createMut.isPending;
+  // Phase 7 — loading covers BOTH stages of the submit flow:
+  //   stage 1: presign + parallel PUTs (isUploading)
+  //   stage 2: POST /v1/me/requests (createMut.isPending)
+  // The submit button's `state="loading"` is bound to this so the
+  // user sees one continuous busy state rather than a flicker
+  // between the two requests.
+  const isPosting = isUploading || createMut.isPending;
 
   // Default the address field to the user's saved default (or first
   // address) on open.
@@ -343,18 +321,71 @@ export function JobWizardModal({
 
   const cfg = SERVICE_CONFIG[service] ?? SERVICE_CONFIG.General;
 
-  const simulateUpload = () => {
-    // NB: attachments are NOT uploaded yet. The placeholder colour
-    // swatches stay so the visual flow is unchanged, but nothing is
-    // sent to the backend.
-    const colors = ['bg-blue-200', 'bg-amber-200', 'bg-green-200', 'bg-purple-200'];
-    if (uploads.length < 4) setUploads((prev) => [...prev, colors[prev.length % colors.length]]);
+  // Phase 3 — open the system file picker. The hidden <input> below
+  // (in the JSX) carries `accept="image/*,video/*"` + `capture="environment"`
+  // so mobile browsers prompt the user to take a photo / record a
+  // video OR pick from the gallery. Desktop browsers ignore `capture`
+  // and just open the file dialog.
+  const openFilePicker = () => {
+    fileInputRef.current?.click();
   };
+
+  const handleFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (!list || list.length === 0) return;
+    setUploads((prev) => {
+      const remaining = Math.max(0, MAX_MEDIA_ITEMS - prev.length);
+      if (remaining === 0) {
+        toast.warning(
+          lang === 'ar'
+            ? `الحد الأقصى ${MAX_MEDIA_ITEMS} ملفات.`
+            : `You can attach up to ${MAX_MEDIA_ITEMS} files.`,
+        );
+        return prev;
+      }
+      const picked = Array.from(list).slice(0, remaining).map(makeMediaItem);
+      return [...prev, ...picked];
+    });
+    // Reset the input so picking the same file twice still triggers
+    // a change event.
+    e.target.value = '';
+  };
+
+  const removeUpload = (id: string) => {
+    setUploads((prev) => {
+      const target = prev.find((m) => m.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((m) => m.id !== id);
+    });
+  };
+
+  // Memory hygiene: revoke every outstanding object URL when the
+  // component unmounts. We deliberately use a ref-style "current
+  // uploads" snapshot via the cleanup closure so the effect doesn't
+  // need `uploads` in its dep array (which would re-run cleanup on
+  // every keystroke and prematurely revoke live URLs).
+  useEffect(() => {
+    return () => {
+      // `uploads` is captured from the latest render via the closure
+      // setter trick — we read it imperatively right before unmount.
+      setUploads((current) => {
+        for (const item of current) URL.revokeObjectURL(item.previewUrl);
+        return [];
+      });
+    };
+  }, []);
 
   // Slice 4.1: real browser geolocation. Triggered by user click on
   // "Use my current location" — never auto-fires because browsers
   // reject silent geolocation prompts and we don't want to ask for
   // permission on modal open.
+  //
+  // Phase 2 Bug 3: after capturing coords we now reverse-geocode them
+  // through the Google Maps Geocoding API and auto-fill the address
+  // input. Reverse-geocoding never throws — `reverseGeocode` returns a
+  // typed result so a missing API key, network failure, or "no match"
+  // simply produces a `partial` outcome (formatted lat/lng) and a
+  // toast asking the user to verify.
   const handleRequestLocation = () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGeo({ status: 'error', reason: 'unsupported' });
@@ -362,12 +393,23 @@ export function JobWizardModal({
     }
     setGeo({ status: 'pending' });
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGeo({
-          status: 'success',
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        });
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setGeo({ status: 'success', lat, lng });
+        const result = await reverseGeocode(lat, lng);
+        if (result.status === 'ok') {
+          setAddress(result.formattedAddress);
+        } else {
+          // Best-effort: fill the field with formatted coords + toast
+          // so the user knows to verify.
+          setAddress(result.formattedAddress);
+          toast.warning(
+            lang === 'ar'
+              ? 'تعذّر العثور على عنوان مطابق. تم إدخال الإحداثيات — يرجى التحقق منها.'
+              : "Couldn't resolve a street address. Coordinates were filled in — please verify.",
+          );
+        }
       },
       (err) => {
         // 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT.
@@ -381,7 +423,12 @@ export function JobWizardModal({
     );
   };
 
-  const handlePost = () => {
+  const handlePost = async (): Promise<void> => {
+    // Re-entrancy guard: the submit button already disables in
+    // loading state, but a tap during the brief presign→PUT gap
+    // could still fire twice without this check.
+    if (isUploading || createMut.isPending) return;
+
     setPostError(null);
     const trimmedAddress = address.trim();
     if (!trimmedAddress) {
@@ -417,6 +464,42 @@ export function JobWizardModal({
       scheduledAt = iso;
     }
 
+    // Phase 7 (frontend wire) — upload binary media BEFORE creating
+    // the request. Pipeline:
+    //   1. POST /v1/media/presigned-url with one entry per File
+    //   2. PUT each File in parallel to its returned uploadUrl
+    //   3. Pass the resulting fileUrls into createServiceRequest
+    //      as `mediaUrls`
+    // If ANY upload fails the whole submit aborts — we'd rather
+    // show "couldn't upload, please try again" than persist a job
+    // with half its photos.
+    let mediaUrls: string[] = [];
+    if (uploads.length > 0) {
+      setIsUploading(true);
+      try {
+        mediaUrls = await uploadAll(uploads.map((m) => m.file));
+      } catch (err) {
+        const status =
+          (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
+        if (status === 400) setPostError(t('requestPostFailedValidation'));
+        else if (status === 401) setPostError(t('requestPostFailedAuth'));
+        else {
+          // Generic upload-failed copy. Toast on top of the inline
+          // error so the user notices even if the modal scrolled
+          // past the error region.
+          setPostError(
+            lang === 'ar'
+              ? 'تعذّر رفع الصور. يُرجى المحاولة مرة أخرى.'
+              : "Couldn't upload your photos. Please try again.",
+          );
+          toast.error(lang === 'ar' ? 'فشل رفع الصور' : 'Photo upload failed');
+        }
+        return;
+      } finally {
+        setIsUploading(false);
+      }
+    }
+
     // If the typed address still matches the default address line
     // exactly, forward addressId so the backend snapshots from the
     // authoritative DB row (which already has lat/lng if present).
@@ -437,6 +520,9 @@ export function JobWizardModal({
         categoryId: categoryId ?? null,
         customServiceText: categoryId ? null : service,
         description: notes.trim().length > 0 ? notes.trim() : null,
+        // Empty array when the seeker attached nothing — explicit so
+        // the backend's `?? []` fallback never matters.
+        mediaUrls,
         scheduleType: schedule === 'asap' ? 'ASAP' : 'LATER',
         scheduledAt,
         addressId: useDefaultId ? defaultAddress!.id : null,
@@ -468,6 +554,10 @@ export function JobWizardModal({
   const handleClose = () => {
     setStep(1);
     setNotes('');
+    // Phase 3 — revoke every object URL before clearing the list.
+    // Skipping this would leave the picked Files (potentially many MB
+    // each) anchored in memory until the document unloads.
+    for (const item of uploads) URL.revokeObjectURL(item.previewUrl);
     setUploads([]);
     setSchedule('asap');
     setScheduleDate('');
@@ -578,13 +668,36 @@ export function JobWizardModal({
             <StepProgress current={1} total={3} labels={stepLabels} />
 
             <div className="flex-1 overflow-y-auto px-5" style={{ scrollbarWidth: 'none' }}>
+              {/* Phase 3 — hidden native file picker. `capture="environment"`
+                  hints to mobile browsers that the rear camera is the
+                  preferred source, but every modern mobile browser
+                  honours this as a HINT, still surfacing the
+                  "Take Photo / Record Video / Photo Library" sheet so
+                  the user can choose. Desktop browsers ignore `capture`
+                  and open the file dialog. The input stays in the DOM
+                  (display:none) so React can manage focus + onChange. */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_MEDIA}
+                capture="environment"
+                multiple
+                onChange={handleFilesPicked}
+                style={{ display: 'none' }}
+                aria-hidden="true"
+                tabIndex={-1}
+                data-testid="job-wizard-media-input"
+              />
+
               {/* Upload zone */}
               <p className="text-slate-700 mb-2.5" style={{ fontSize: '13px', fontWeight: 600 }}>
                 {t('uploadPhotos')}
               </p>
               <button
-                onClick={simulateUpload}
-                className="w-full rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/50 p-6 flex flex-col items-center gap-3 text-center active:bg-amber-50 transition-all mb-3"
+                type="button"
+                onClick={openFilePicker}
+                disabled={uploads.length >= MAX_MEDIA_ITEMS}
+                className="w-full rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/50 p-6 flex flex-col items-center gap-3 text-center active:bg-amber-50 transition-all mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center">
                   <Camera size={24} className="text-amber-500" />
@@ -605,24 +718,51 @@ export function JobWizardModal({
 
               {uploads.length > 0 && (
                 <div className="flex gap-2 mb-4 flex-wrap">
-                  {uploads.map((color, i) => (
+                  {uploads.map((item) => (
                     <div
-                      key={i}
-                      className={`w-16 h-16 rounded-xl ${color} flex items-center justify-center relative`}
+                      key={item.id}
+                      className="w-16 h-16 rounded-xl bg-slate-100 overflow-hidden relative"
                     >
-                      <ImageIcon size={20} className="text-white opacity-70" />
+                      {item.isVideo ? (
+                        <>
+                          {/* Video thumbnail: muted/playsInline so iOS
+                              doesn't auto-pause + a play-icon overlay
+                              so the visual rhythm stays clear at the
+                              16x16 thumbnail size. */}
+                          <video
+                            src={item.previewUrl}
+                            className="w-full h-full object-cover"
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                          <div className="absolute inset-0 bg-black/30 flex items-center justify-center pointer-events-none">
+                            <ImageIcon size={20} className="text-white opacity-90" />
+                          </div>
+                        </>
+                      ) : (
+                        <img
+                          src={item.previewUrl}
+                          alt={item.file.name}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
                       <button
-                        onClick={() => setUploads((p) => p.filter((_, j) => j !== i))}
+                        type="button"
+                        onClick={() => removeUpload(item.id)}
+                        aria-label={lang === 'ar' ? 'حذف' : 'Remove'}
                         className="absolute -top-1.5 -end-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center shadow-sm"
                       >
                         <X size={9} />
                       </button>
                     </div>
                   ))}
-                  {uploads.length < 4 && (
+                  {uploads.length < MAX_MEDIA_ITEMS && (
                     <button
-                      onClick={simulateUpload}
+                      type="button"
+                      onClick={openFilePicker}
                       className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center active:bg-slate-50"
+                      aria-label={lang === 'ar' ? 'إضافة' : 'Add more'}
                     >
                       <span className="text-slate-400" style={{ fontSize: '22px', lineHeight: 1 }}>
                         +
@@ -642,6 +782,13 @@ export function JobWizardModal({
                   onChange={setNotes}
                   leadingIcon={<FileText size={16} />}
                   hint={t('notesHint')}
+                  // Phase 1 Bug 2 — autosizing textarea so the seeker
+                  // can describe the issue without being constrained
+                  // to a single line. Starts at 3 visible rows and
+                  // grows up to 10 before the field internally scrolls.
+                  multiline
+                  minRows={3}
+                  maxRows={10}
                 />
               </div>
               <div className="h-2" />
@@ -687,8 +834,22 @@ export function JobWizardModal({
               <p className="text-slate-700 mb-2.5" style={{ fontSize: '13px', fontWeight: 600 }}>
                 {t('serviceLocation')}
               </p>
-              <MapPlaceholder
-                label={geo.status === 'success' ? t('locationCaptured') : t('gpsDetected')}
+              {/* Phase 4 Feature 4 — interactive map with a draggable
+                  pin. When VITE_GOOGLE_MAPS_API_KEY is unset or the
+                  user hasn't captured coords yet, LocationMap renders
+                  the same kind of static placeholder MapPlaceholder
+                  used to, so dev shells without a key keep working
+                  exactly as before. Drag-end fires onCoordsChange so
+                  the user can refine the pin and the captured lat/lng
+                  flow stays the source of truth for the post payload. */}
+              <LocationMap
+                lat={geo.status === 'success' ? geo.lat : null}
+                lng={geo.status === 'success' ? geo.lng : null}
+                onCoordsChange={(next) => setGeo({ status: 'success', ...next })}
+                ariaLabel={t('serviceLocation')}
+                placeholderLabel={
+                  geo.status === 'success' ? t('locationCaptured') : t('gpsDetected')
+                }
               />
 
               {/* Slice 4.1: real geolocation. Button is the only entry
@@ -814,30 +975,25 @@ export function JobWizardModal({
                         />
                       </label>
                     </div>
-                    <div>
-                      <p
-                        className="text-slate-500 mb-2"
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.05em',
-                        }}
-                      >
-                        {t('time')}
-                      </p>
-                      <label className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
-                        <Clock size={14} className="text-amber-500 flex-shrink-0" />
-                        <input
-                          type="time"
-                          value={scheduleTime}
-                          onChange={(e) => setScheduleTime(e.target.value)}
-                          className="bg-transparent outline-none text-slate-700 w-full"
-                          style={{ fontSize: '13px', fontWeight: 500 }}
-                          aria-label={t('time')}
-                        />
-                      </label>
-                    </div>
+                  </div>
+                  {/* Phase 4 Feature 3 — accessible time picker.
+                      Native <input type="time"> was dropped: tap
+                      target was tiny on Android and the platform UI
+                      was inconsistent across iOS/Android/desktop.
+                      The segmented picker (Morning/Afternoon/Evening
+                      → 15-min pills) emits the same HH:MM string so
+                      the rest of the post pipeline is unchanged. */}
+                  <div className="mt-3">
+                    <SegmentedTimePicker
+                      value={scheduleTime}
+                      onChange={setScheduleTime}
+                      labels={{
+                        timeOfDay: t('timeOfDay'),
+                        morning: t('morning'),
+                        afternoon: t('afternoon'),
+                        evening: t('evening'),
+                      }}
+                    />
                   </div>
                 </div>
               )}

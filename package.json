@@ -16,8 +16,16 @@
     "lint:fix": "turbo run lint -- --fix",
     "prepare": "husky",
     "docker:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "docker:up:app": "docker compose -f infra/docker/docker-compose.yml --profile app up -d",
     "docker:down": "docker compose -f infra/docker/docker-compose.yml down",
-    "docker:logs": "docker compose -f infra/docker/docker-compose.yml logs -f"
+    "docker:logs": "docker compose -f infra/docker/docker-compose.yml logs -f",
+    "postman:provider": "newman run postman/hsm-provider.postman_collection.json -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/provider.html",
+    "postman:admin": "newman run postman/hsm-admin.postman_collection.json -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/admin.html",
+    "postman:provider-runtime": "newman run \"postman/FixNow Provider Runtime.postman_collection.json\" -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/provider-runtime.html",
+    "postman:admin-runtime": "newman run \"postman/FixNow Admin Runtime.postman_collection.json\" -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/admin-runtime.html",
+    "postman:runtime-smoke": "newman run \"postman/FixNow Runtime Smoke Provider Admin.postman_collection.json\" -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/runtime-smoke.html",
+    "runtime:provider-loop": "node scripts/runtime/verify-provider-loop.cjs",
+    "runtime:verify-500": "node scripts/runtime/verify-runtime-500-elimination.cjs"
   },
   "lint-staged": {
     "*.{js,mjs,cjs,ts,tsx}": [

@@ -189,16 +189,44 @@ describe('Authentication controller (e2e)', () => {
       expect(authService.register).not.toHaveBeenCalled();
     });
 
-    it('strips non-whitelisted fields (forbidNonWhitelisted)', async () => {
+    // Auth security audit: the register surface accepts only email +
+    // password + firstName + lastName. Every other field — and especially
+    // anything that could grant a privileged role — must be rejected by
+    // the global ValidationPipe before the service is called. Pinning each
+    // vector individually means a future DTO change that accidentally
+    // whitelists one of them will fail loudly here.
+    it.each([
+      { isAdmin: true },
+      { admin: true },
+      { role: 'admin' },
+      { roles: ['admin'] },
+      { roleName: 'admin' },
+      { status: 'ACTIVE' },
+      { providerProfile: { status: 'ACTIVE' } },
+      { permissions: ['user:write:any'] },
+      { userId: 'someone-else' },
+      { id: 'someone-else' },
+    ])('rejects forbidden field on register: %p', async (extra) => {
       app = await bootApp();
-      const res = await request(app.getHttpServer()).post('/v1/auth/register').send({
-        email: 'ada@example.com',
-        password: 'strong-password',
-        firstName: 'Ada',
-        lastName: 'Lovelace',
-        isAdmin: true, // unexpected
+      authService.register.mockResolvedValue({
+        challengeId: 'chal-reg-xyz',
+        expiresInSeconds: 300,
+        codeLength: 6,
       });
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .send({
+          email: 'ada@example.com',
+          password: 'strong-password',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          ...extra,
+        });
       expect(res.status).toBe(400);
+      expect(res.body?.error?.code).toBe('VALIDATION_ERROR');
+      // The service is never called — the rejection happens at the pipe
+      // layer, so a bad payload cannot create even a partial user.
+      expect(authService.register).not.toHaveBeenCalled();
     });
 
     it('rejects passwords below the policy minimum (12 chars), accepts at the boundary', async () => {

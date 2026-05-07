@@ -13,11 +13,11 @@ import { EditProfilePage } from './EditProfilePage';
 // fake save are gone.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderEdit() {
+function renderEdit(appContext: 'seeker' | 'provider' = 'seeker') {
   return render(
     <AuthProvider>
       <LanguageProvider>
-        <EditProfilePage onBack={() => {}} />
+        <EditProfilePage onBack={() => {}} appContext={appContext} />
       </LanguageProvider>
     </AuthProvider>,
   );
@@ -212,5 +212,176 @@ describe('EditProfilePage — Save Changes persists', () => {
     expect(screen.getByText(/Email cannot be changed|لا يمكن تغيير البريد/i)).toBeInTheDocument();
     // The legacy hardcoded address never appears.
     expect(screen.queryByDisplayValue('ahmed@fixnow.app')).toBeNull();
+  });
+});
+
+// Phase 6 Step 2 — provider-only skills picker + dual-save flow.
+describe('EditProfilePage — provider skills + serviceAreaCity', () => {
+  const PROVIDER_ME = {
+    id: 'u-prov-1',
+    email: 'omar@example.com',
+    firstName: 'Omar',
+    lastName: 'Al-Khalid',
+    status: 'ACTIVE' as const,
+    emailVerifiedAt: '2026-04-19T00:00:00.000Z',
+    mfaEnabled: false,
+    roles: ['customer' as const, 'provider' as const],
+  };
+  const PROVIDER_PROFILE_ROW = {
+    profile: {
+      id: 'pp-omar',
+      displayName: 'Omar Al-Khalid',
+      initials: 'OK',
+      avatarUrl: null,
+      bio: null,
+      headline: null,
+      phoneNumber: null,
+      ratingAvg: 4.9,
+      reviewCount: 0,
+      completedJobs: 0,
+      verified: true,
+      topPro: false,
+      availability: 'OFFLINE' as const,
+      status: 'ACTIVE' as const,
+      serviceAreaCity: 'Riyadh',
+      serviceAreaCountry: 'Saudi Arabia',
+      serviceAreaLat: null,
+      serviceAreaLng: null,
+      serviceAreaRadiusKm: null,
+      // Currently selected: plumbing only.
+      serviceCategories: [
+        { id: 'cat-plumbing', slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة', icon: '🔧' },
+      ],
+      updatedAt: '2026-04-30T00:00:00.000Z',
+    },
+  };
+  const SERVICES = [
+    {
+      id: 'cat-plumbing',
+      slug: 'plumbing',
+      labelEn: 'Plumbing',
+      labelAr: 'سباكة',
+      icon: '🔧',
+      sortOrder: 0,
+    },
+    {
+      id: 'cat-electrical',
+      slug: 'electrical',
+      labelEn: 'Electrical',
+      labelAr: 'كهرباء',
+      icon: '⚡',
+      sortOrder: 1,
+    },
+  ];
+
+  function mockProviderRoute(): void {
+    mock.onGet('/v1/auth/me').reply(200, PROVIDER_ME);
+    mock.onGet('/v1/me/profile').reply(200, {
+      profile: { ...MOCK_PROFILE, displayName: 'Omar Al-Khalid', city: 'Riyadh' },
+    });
+    mock.onGet('/v1/me/provider/profile').reply(200, PROVIDER_PROFILE_ROW);
+    mock.onGet('/v1/services').reply(200, { items: SERVICES });
+  }
+
+  it('renders the skills picker with the provider catalog and seeds the current selection (provider context)', async () => {
+    mockProviderRoute();
+    renderEdit('provider');
+
+    // Catalog lands → both pills are rendered.
+    await waitFor(() => {
+      expect(screen.getByTestId('skill-pill-plumbing')).toBeInTheDocument();
+      expect(screen.getByTestId('skill-pill-electrical')).toBeInTheDocument();
+    });
+    // Plumbing is currently selected (aria-pressed=true); electrical is not.
+    expect(screen.getByTestId('skill-pill-plumbing').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('skill-pill-electrical').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('does NOT render the skills picker in seeker context, even when the user has the provider role (regression for dual-role bleed)', async () => {
+    // PROVIDER_ME has BOTH customer + provider roles. Pre-fix, the
+    // page gated skills on roles.includes('provider') — which meant
+    // /home → Edit Profile would show Skills + the blue tone for any
+    // dual-role account. With context-based gating, Seeker context
+    // must hide Skills regardless of role.
+    mockProviderRoute();
+    renderEdit('seeker');
+
+    await waitFor(() => expect(screen.getByDisplayValue('Omar Al-Khalid')).toBeInTheDocument());
+    expect(screen.queryByTestId('edit-profile-skills')).toBeNull();
+    expect(screen.queryByTestId('skill-pill-plumbing')).toBeNull();
+    expect(screen.queryByTestId('skill-pill-electrical')).toBeNull();
+  });
+
+  it('does NOT render the skills picker in seeker context for users without a provider role', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    mock.onGet('/v1/me/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/me/provider/profile').reply(403, {
+      error: { code: 'FORBIDDEN', message: 'forbidden' },
+    });
+    mock.onGet('/v1/services').reply(200, { items: SERVICES });
+    renderEdit('seeker');
+
+    await waitFor(() => expect(screen.getByDisplayValue('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.queryByTestId('edit-profile-skills')).toBeNull();
+  });
+
+  it('toggles a skill pill and posts categoryIds + serviceAreaCity in provider context', async () => {
+    mockProviderRoute();
+    let providerBody: Record<string, unknown> | null = null;
+    let seekerBody: Record<string, unknown> | null = null;
+    mock.onPatch('/v1/me/profile').reply((cfg) => {
+      seekerBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [200, { profile: { ...MOCK_PROFILE, city: 'Riyadh' } }];
+    });
+    mock.onPatch('/v1/me/provider/profile').reply((cfg) => {
+      providerBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [200, PROVIDER_PROFILE_ROW];
+    });
+
+    renderEdit('provider');
+
+    await waitFor(() => expect(screen.getByTestId('skill-pill-electrical')).toBeInTheDocument());
+
+    // Add electrical to the existing plumbing selection.
+    fireEvent.click(screen.getByTestId('skill-pill-electrical'));
+    expect(screen.getByTestId('skill-pill-electrical').getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: /save changes|حفظ التغييرات/i }));
+
+    await waitFor(() => {
+      expect(providerBody).not.toBeNull();
+      expect(seekerBody).not.toBeNull();
+    });
+    expect(providerBody).toMatchObject({
+      serviceAreaCity: 'Riyadh',
+      categoryIds: expect.arrayContaining(['cat-plumbing', 'cat-electrical']),
+    });
+    // Seeker save still fires in parallel — name + city + bio path
+    // is unchanged from the pre-Phase-6 contract.
+    expect(seekerBody).toMatchObject({ city: 'Riyadh' });
+  });
+
+  it('seeker context does NOT post to /v1/me/provider/profile, even for a dual-role user', async () => {
+    mockProviderRoute();
+    let providerHits = 0;
+    let seekerBody: Record<string, unknown> | null = null;
+    mock.onPatch('/v1/me/profile').reply((cfg) => {
+      seekerBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [200, { profile: { ...MOCK_PROFILE, city: 'Jeddah' } }];
+    });
+    mock.onPatch('/v1/me/provider/profile').reply(() => {
+      providerHits += 1;
+      return [200, PROVIDER_PROFILE_ROW];
+    });
+
+    renderEdit('seeker');
+
+    await waitFor(() => expect(screen.getByDisplayValue('Omar Al-Khalid')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /save changes|حفظ التغييرات/i }));
+
+    await waitFor(() => expect(seekerBody).not.toBeNull());
+    // The provider PATCH must NEVER fire from the Seeker context.
+    expect(providerHits).toBe(0);
   });
 });

@@ -1,0 +1,611 @@
+{
+  "info": {
+    "name": "HSM Backend — Admin (Sprints 6.x)",
+    "description": "Admin-side endpoints. Folders are added per sprint slice: 00 Login (6.7 harness), 10 Health (6.0), 20 Users (6.1), 30 Verification (6.2), 40 Disputes (6.3), 50 Analytics (6.4), 60 Settings (6.5), 70 Audit (6.6). Run folder 00 first so {{adminToken}} is populated; this collection's bearer pulls from {{adminToken}}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "hsm-admin-2026-05"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{adminToken}}" }]
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const body = pm.response.text();",
+          "pm.test('no Prisma/SQL/secret leak', () => {",
+          "  pm.expect(body).to.not.match(/PrismaClient|column .* does not exist|SELECT |INSERT |UPDATE /i);",
+          "  pm.expect(body).to.not.include('passwordHash');",
+          "  pm.expect(body).to.not.include('refreshToken');",
+          "  pm.expect(body).to.not.include('JWT_SECRET');",
+          "  pm.expect(body).to.not.include('DATABASE_URL');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 — Admin login (Sprint 6.7 harness)",
+      "description": "Run this folder once at the start of a Newman session.",
+      "item": [
+        {
+          "name": "POST /v1/auth/login (admin, mobile mode)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('JWT in body', () => pm.expect(b.tokens.accessToken.split('.').length).to.eql(3));",
+                  "pm.environment.set('adminToken', b.tokens.accessToken);",
+                  "pm.environment.set('userId', b.userId);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "20 — Users (Sprint 6.1)",
+      "item": [
+        {
+          "name": "GET /v1/admin/users",
+          "request": { "method": "GET", "url": "{{apiUrl}}/{{apiVersion}}/admin/users?limit=20" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items + nextCursor', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.environment.set('userId', b.items[0].id);",
+                  "  pm.test('summary excludes passwordHash + mfaSecret', () => {",
+                  "    const t = pm.response.text();",
+                  "    pm.expect(t).to.not.include('passwordHash');",
+                  "    pm.expect(t).to.not.include('mfaSecret');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/users?q=…",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users?q=admin&role=admin"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/users/:userId",
+          "request": { "method": "GET", "url": "{{apiUrl}}/{{apiVersion}}/admin/users/{{userId}}" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/users/:userId/suspend",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users/{{userId}}/suspend"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200, 400 (self) or 404', () => pm.expect([200, 400, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('user.status = SUSPENDED', () => pm.expect(pm.response.json().user.status).to.eql('SUSPENDED'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/users/:userId/restore",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/users/{{userId}}/restore"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('user.status = ACTIVE', () => pm.expect(pm.response.json().user.status).to.eql('ACTIVE'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "30 — Verification (Sprint 6.2)",
+      "item": [
+        {
+          "name": "GET /v1/admin/providers (default = PENDING_REVIEW)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/providers?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.expect(b.items).to.be.an('array');",
+                  "if (b.items.length > 0) {",
+                  "  pm.environment.set('providerProfileId', b.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/providers/:providerProfileId",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/providers/{{providerProfileId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/providers/:id/approve",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/providers/{{providerProfileId}}/approve",
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"Postman runtime check\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200/404/409', () => pm.expect([200, 404, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('provider.status = ACTIVE', () => pm.expect(pm.response.json().provider.status).to.eql('ACTIVE'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/providers/:id/reject (negative — empty reason rejected by DTO)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/providers/{{providerProfileId}}/reject",
+            "body": { "mode": "raw", "raw": "{}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('400 — reason required', () => pm.response.to.have.status(400));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/providers/:id/suspend",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/providers/{{providerProfileId}}/suspend",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman: suspend after approve\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200/404/409', () => pm.expect([200, 404, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('provider.status = SUSPENDED', () => pm.expect(pm.response.json().provider.status).to.eql('SUSPENDED'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "40 — Disputes (Sprint 6.3)",
+      "item": [
+        {
+          "name": "GET /v1/admin/disputes",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (b.items.length > 0) { pm.environment.set('disputeId', b.items[0].id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/disputes",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"openedById\": \"{{userId}}\",\n  \"reason\": \"Postman runtime check\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201 or 4xx', () => pm.expect([201, 400, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 201) { pm.environment.set('disputeId', pm.response.json().dispute.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/disputes/:id/resolve",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes/{{disputeId}}/resolve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"RESOLVED_PARTIAL\",\n  \"resolution\": \"50% refund\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200/404/409', () => pm.expect([200, 404, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/admin/disputes/:id/resolve (negative — invalid status)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/disputes/{{disputeId}}/resolve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OPEN\",\n  \"resolution\": \"nope\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 — DTO rejects non-resolved status', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "50 — Analytics (Sprint 6.4)",
+      "item": [
+        {
+          "name": "GET /v1/admin/analytics/summary",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/analytics/summary"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('summary shape', () => {",
+                  "  pm.expect(b.summary.users.total).to.be.a('number');",
+                  "  pm.expect(b.summary.providers.active).to.be.a('number');",
+                  "  pm.expect(b.summary.bookings.grossLifetimeAmount).to.be.a('number');",
+                  "  pm.expect(b.summary.disputes.open).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "60 — Settings (Sprint 6.5)",
+      "item": [
+        {
+          "name": "PUT /v1/admin/settings/:key",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/settings/commission-percent",
+            "body": { "mode": "raw", "raw": "{\n  \"value\": 15\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('echoes value back', () => pm.expect(pm.response.json().setting.value).to.eql(15));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/settings",
+          "request": { "method": "GET", "url": "{{apiUrl}}/{{apiVersion}}/admin/settings" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('items array', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/settings/:key",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/settings/commission-percent"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /v1/admin/settings/:key",
+          "request": {
+            "method": "DELETE",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/settings/commission-percent"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204 or 404', () => pm.expect([204, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "70 — Audit (Sprint 6.6)",
+      "item": [
+        {
+          "name": "GET /v1/admin/audit",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/audit?limit=50"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.expect(b.items).to.be.an('array');",
+                  "pm.expect(b).to.have.property('nextCursor');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/audit?type=ADMIN_USER_SUSPENDED",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/audit?type=ADMIN_USER_SUSPENDED"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('all rows have type=ADMIN_USER_SUSPENDED', () => {",
+                  "    pm.expect(b.items.every(function(i){return i.type==='ADMIN_USER_SUSPENDED';})).to.eql(true);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 — Health (Sprint 6.0)",
+      "item": [
+        {
+          "name": "GET /v1/admin/health",
+          "request": { "method": "GET", "url": "{{apiUrl}}/{{apiVersion}}/admin/health" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('ok=true + adminUserId', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.ok).to.eql(true);",
+                  "  pm.expect(b.adminUserId).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/health (customer token — must 403)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+            },
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Forbidden / Unauthorized', () => pm.expect([401, 403, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/admin/health (no token — must 401)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": "{{apiUrl}}/{{apiVersion}}/admin/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Unauthorized / Forbidden', () => pm.expect([401, 403]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

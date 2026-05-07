@@ -15,6 +15,11 @@ export interface CreateServiceRequestInput {
   categoryId: string | null;
   customServiceText: string | null;
   description: string | null;
+  /** Sprint 7.x — pre-uploaded media URLs forwarded verbatim from the
+   *  seeker's create-request payload. Empty array when the seeker
+   *  attached no media; the column has `@default([])` so omitting it
+   *  is also safe. */
+  mediaUrls?: string[];
   scheduleType: ScheduleType;
   scheduledAt: Date | null;
   addressId: string | null;
@@ -72,6 +77,135 @@ export class ServiceRequestRepository {
     });
   }
 
+  // Provider-side feed. Returns only OPEN_FOR_BIDS rows, scoped away
+  // from the calling provider's own seeker user (a provider who is
+  // also a seeker should not see their own request in the feed) and
+  // away from soft-deleted rows.
+  //
+  // `categoryIds`, when non-empty, restricts results to those
+  // categories (used for the provider's own configured skills, or for
+  // an explicit categoryId filter from the query string). When empty,
+  // the feed is global.
+  //
+  // `city`, when set, filters by the request's snapshotted city. The
+  // snapshot is JSON, so we use Prisma's `path` filter on the
+  // `addressSnapshot` column, equality + case-insensitive.
+  listAvailableForProvider(
+    args: {
+      excludeSeekerUserId: string | null;
+      categoryIds?: string[];
+      city?: string;
+      take: number;
+      cursor?: string;
+      // Sprint 5.2 (canonical): when set, hide every request the
+      // calling provider has already submitted a non-WITHDRAWN bid
+      // on. Implemented via the relational `bids: { none: ... }`
+      // filter so the SQL stays one round-trip — a single LEFT JOIN
+      // + correlated NOT EXISTS plan from Postgres.
+      excludeBidsByProviderId?: string;
+    },
+    tx?: PrismaTx,
+  ): Promise<ServiceRequestWithCategory[]> {
+    const where: Prisma.ServiceRequestWhereInput = {
+      status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
+      deletedAt: null,
+      ...(args.excludeSeekerUserId ? { seekerUserId: { not: args.excludeSeekerUserId } } : {}),
+      ...(args.categoryIds && args.categoryIds.length > 0
+        ? { categoryId: { in: args.categoryIds } }
+        : {}),
+      ...(args.city
+        ? {
+            // Postgres JSON `path` lookup against the snapshotted
+            // `cityKey` — a denormalised lowercase-trimmed mirror of
+            // the original city, written by requests.service.ts
+            // alongside `city`. Filtering on `cityKey` means we get
+            // case-insensitive equality (e.g. "Aleppo" matches
+            // "aleppo" matches "ALEPPO") without losing the original
+            // casing for display, and without the false-positive
+            // risk of `string_contains: insensitive` (e.g. "York"
+            // would match "New York"). Caller MUST pass an
+            // already-normalised value — see normaliseCityKey() in
+            // requests.service.ts.
+            addressSnapshot: {
+              path: ['cityKey'],
+              equals: args.city,
+            },
+          }
+        : {}),
+      ...(args.excludeBidsByProviderId
+        ? {
+            bids: {
+              none: {
+                providerId: args.excludeBidsByProviderId,
+                deletedAt: null,
+                status: { not: 'WITHDRAWN' },
+              },
+            },
+          }
+        : {}),
+    };
+    return this.db(tx).serviceRequest.findMany({
+      where,
+      take: args.take,
+      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: { category: true },
+    });
+  }
+
+  // Sprint 5.2 (canonical): single-row variant of the above. Returns
+  // a non-deleted, OPEN_FOR_BIDS request only when it passes the
+  // same per-provider visibility rules. Used by the detail endpoint
+  // — invisible rows surface as null and the service maps that to
+  // 404, identical to "doesn't exist".
+  findAvailableForProvider(
+    requestId: string,
+    args: {
+      excludeSeekerUserId: string | null;
+      categoryIds?: string[];
+      // Sprint 7.x — strict city match (mirrors listAvailableForProvider).
+      city?: string;
+      excludeBidsByProviderId?: string;
+    },
+    tx?: PrismaTx,
+  ): Promise<ServiceRequestWithCategory | null> {
+    return this.db(tx).serviceRequest.findFirst({
+      where: {
+        id: requestId,
+        status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
+        deletedAt: null,
+        ...(args.excludeSeekerUserId ? { seekerUserId: { not: args.excludeSeekerUserId } } : {}),
+        ...(args.categoryIds && args.categoryIds.length > 0
+          ? { categoryId: { in: args.categoryIds } }
+          : {}),
+        ...(args.city
+          ? {
+              addressSnapshot: {
+                // Same case-insensitive contract as
+                // listAvailableForProvider — caller normalises via
+                // normaliseCityKey() and we filter on the denormalised
+                // lowercase-trimmed `cityKey` field of the snapshot.
+                path: ['cityKey'],
+                equals: args.city,
+              },
+            }
+          : {}),
+        ...(args.excludeBidsByProviderId
+          ? {
+              bids: {
+                none: {
+                  providerId: args.excludeBidsByProviderId,
+                  deletedAt: null,
+                  status: { not: 'WITHDRAWN' },
+                },
+              },
+            }
+          : {}),
+      },
+      include: { category: true },
+    });
+  }
+
   // Returns the row only when it belongs to the given seeker AND is not
   // soft-deleted. Used at every ownership-checked call site.
   findOwned(
@@ -85,6 +219,17 @@ export class ServiceRequestRepository {
     });
   }
 
+  // Plain non-ownership-scoped finder. Used on the provider side
+  // where the caller is NOT the seeker (submit-bid). Soft-deleted
+  // rows are still filtered out. Callers must enforce their own
+  // authorisation rule on the returned row.
+  findById(requestId: string, tx?: PrismaTx): Promise<ServiceRequestWithCategory | null> {
+    return this.db(tx).serviceRequest.findFirst({
+      where: { id: requestId, deletedAt: null },
+      include: { category: true },
+    });
+  }
+
   create(input: CreateServiceRequestInput, tx?: PrismaTx): Promise<ServiceRequestWithCategory> {
     return this.db(tx).serviceRequest.create({
       data: {
@@ -92,6 +237,10 @@ export class ServiceRequestRepository {
         categoryId: input.categoryId,
         customServiceText: input.customServiceText,
         description: input.description,
+        // Empty array when the seeker attached nothing — same shape
+        // the column's default produces, but explicit so a future
+        // schema change doesn't silently flip the wire behaviour.
+        mediaUrls: input.mediaUrls ?? [],
         scheduleType: input.scheduleType,
         scheduledAt: input.scheduledAt,
         addressId: input.addressId,

@@ -464,7 +464,9 @@ export function ProfileTab({
 
       {/* Sub-pages slide over the list */}
       <AnimatePresence>
-        {view === 'editProfile' && <EditProfilePage key="edit" onBack={() => setView(null)} />}
+        {view === 'editProfile' && (
+          <EditProfilePage key="edit" onBack={() => setView(null)} appContext="seeker" />
+        )}
         {view === 'savedAddresses' && (
           <SavedAddressesPage key="addresses" onBack={() => setView(null)} />
         )}

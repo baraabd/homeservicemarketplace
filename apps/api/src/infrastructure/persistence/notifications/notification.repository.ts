@@ -23,6 +23,10 @@ export interface CreateNotificationInput {
 export interface ListNotificationsArgs {
   userId: string;
   unread?: boolean;
+  // Sprint 5.5: deepLink-prefix filter that scopes the feed to one
+  // user-experience. Pass `/home/`, `/provider/`, or `/admin/` as
+  // appropriate. When omitted, no prefix filter is applied.
+  deepLinkPrefix?: string;
   take: number;
   cursor?: string;
 }
@@ -65,6 +69,7 @@ export class NotificationRepository {
       userId: args.userId,
       deletedAt: null,
       ...(args.unread === true ? { readAt: null } : {}),
+      ...(args.deepLinkPrefix ? { deepLink: { startsWith: args.deepLinkPrefix } } : {}),
     };
     return this.db(tx).notification.findMany({
       where,
@@ -96,16 +101,33 @@ export class NotificationRepository {
 
   // Bulk flip every unread row owned by the user. Returns the count of
   // rows that actually flipped — already-read rows are untouched.
-  markAllReadOwned(userId: string, tx?: PrismaTx): Promise<Prisma.BatchPayload> {
+  // Sprint 5.5: when `deepLinkPrefix` is supplied, only rows for that
+  // experience flip. Read-all on the provider drawer must NOT silence
+  // the seeker's unread badge.
+  markAllReadOwned(
+    userId: string,
+    deepLinkPrefix?: string,
+    tx?: PrismaTx,
+  ): Promise<Prisma.BatchPayload> {
     return this.db(tx).notification.updateMany({
-      where: { userId, deletedAt: null, readAt: null },
+      where: {
+        userId,
+        deletedAt: null,
+        readAt: null,
+        ...(deepLinkPrefix ? { deepLink: { startsWith: deepLinkPrefix } } : {}),
+      },
       data: { readAt: new Date() },
     });
   }
 
-  countUnread(userId: string, tx?: PrismaTx): Promise<number> {
+  countUnread(userId: string, deepLinkPrefix?: string, tx?: PrismaTx): Promise<number> {
     return this.db(tx).notification.count({
-      where: { userId, deletedAt: null, readAt: null },
+      where: {
+        userId,
+        deletedAt: null,
+        readAt: null,
+        ...(deepLinkPrefix ? { deepLink: { startsWith: deepLinkPrefix } } : {}),
+      },
     });
   }
 

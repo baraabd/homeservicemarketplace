@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Outlet, useLocation, useNavigation, useOutletContext } from 'react-router';
 import { JobWizardModal } from './components/wizard/JobWizardModal';
 import { Snackbar } from './components/ds/Snackbar';
+import { Toaster } from './components/ui/sonner';
 import { LanguageProvider, useLang } from './i18n/LanguageContext';
 import { EcosystemProvider } from './context/EcosystemContext';
 
@@ -70,7 +71,12 @@ function RootInner() {
 
   // ── App selector: full-screen, no phone shell ─────────────────────────────
   if (isSelect) {
-    return <Outlet context={ctx} />;
+    return (
+      <>
+        <Outlet context={ctx} />
+        <Toaster position="top-center" richColors closeButton />
+      </>
+    );
   }
 
   return (
@@ -132,9 +138,18 @@ function RootInner() {
           />
         </motion.div>
       </AnimatePresence>
+      {/* Sprint 7.x — toast surface used for graceful error handling
+          (e.g. 409 on duplicate bid). Mounted once at the Root so any
+          screen can call sonner's `toast.*` helpers without per-screen
+          wiring. */}
+      <Toaster position="top-center" richColors closeButton />
 
-      {/* Desktop label */}
-      <div className="fixed bottom-6 left-0 right-0 flex justify-center pointer-events-none">
+      {/* Desktop label — informational watermark visible only on
+          screens wider than the phone container. On mobile it would
+          overlay the bottom of the phone shell (auth signup's Next
+          button + "Already have an account? Log in" link, the wizard's
+          submit button, etc.) so we hide it below the md breakpoint. */}
+      <div className="fixed bottom-6 left-0 right-0 hidden md:flex justify-center pointer-events-none">
         <div className="flex items-center gap-2 bg-white/10 backdrop-blur rounded-full px-4 py-2 border border-white/10">
           <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
           <span

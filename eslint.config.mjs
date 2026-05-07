@@ -76,13 +76,18 @@ export default tseslint.config(
   },
 
   // CommonJS config files (jest.config.cjs, etc.) — Node globals,
-  // no TS type-checking rules apply.
+  // no TS type-checking rules apply. .cjs files legitimately use
+  // require() so the TS-eslint rule that bans require imports is
+  // disabled for this glob.
   {
     files: ['**/*.{js,cjs,mjs}'],
     languageOptions: {
       globals: {
         ...globals.node,
       },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
 );

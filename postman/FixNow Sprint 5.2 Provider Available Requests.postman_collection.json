@@ -1,0 +1,264 @@
+{
+  "info": {
+    "name": "FixNow Sprint 5.2 Provider Available Requests",
+    "description": "Provider /v1/provider/available-requests feed verification. Run order: list (captures requestId) -> list with limit=1 -> detail -> negative cross-role + no-token -> SUSPENDED-then-reactivate flow. Bearer auth uses {{providerToken}}; the negatives swap to {{customerToken}} or {{adminToken}}. The SUSPENDED scenario uses Sprint 5.1.4's admin endpoints to flip status.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fixnow-sprint-5-2-provider-available-requests"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{providerToken}}" }]
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const text = pm.response.text();",
+          "pm.test('No sensitive fields leaked', function () {",
+          "  pm.expect(text).to.not.include('passwordHash');",
+          "  pm.expect(text).to.not.include('refreshToken');",
+          "  pm.expect(text).to.not.include('JWT_SECRET');",
+          "  pm.expect(text).to.not.include('DATABASE_URL');",
+          "  pm.expect(text).to.not.match(/PrismaClient|column .* does not exist/i);",
+          "});",
+          "pm.test('No seekerUserId leaked', function () {",
+          "  pm.expect(text).to.not.match(/\"seekerUserId\"/);",
+          "});",
+          "pm.test('No precise line1 leaked', function () {",
+          "  pm.expect(text).to.not.match(/\"line1\"\\s*:/);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1) GET /v1/provider/available-requests",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/available-requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 (ACTIVE) or 403 (gate)', () => {",
+              "  pm.expect([200, 403]).to.include(pm.response.code);",
+              "});",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test('items is an array', () => pm.expect(body.items).to.be.an('array'));",
+              "  pm.test('nextCursor present (string or null)', () => {",
+              "    pm.expect(body).to.have.property('nextCursor');",
+              "  });",
+              "  pm.test('no deleted/cancelled/assigned indicators on the wire', () => {",
+              "    const t = pm.response.text();",
+              "    pm.expect(t).to.not.match(/\"deletedAt\"\\s*:/);",
+              "    pm.expect(t).to.not.match(/\"status\"\\s*:\\s*\"CANCELLED\"/);",
+              "    pm.expect(t).to.not.match(/\"status\"\\s*:\\s*\"BID_ACCEPTED\"/);",
+              "  });",
+              "  if (body.items.length > 0) {",
+              "    pm.environment.set('requestId', body.items[0].id);",
+              "  }",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2) GET /v1/provider/available-requests?limit=1",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/available-requests?limit=1"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 or 403', () => {",
+              "  pm.expect([200, 403]).to.include(pm.response.code);",
+              "});",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test('items length <= 1', () => {",
+              "    pm.expect(body.items.length).to.be.at.most(1);",
+              "  });",
+              "  pm.test('nextCursor contract valid (string or null)', () => {",
+              "    pm.expect(body.nextCursor === null || typeof body.nextCursor === 'string').to.eql(true);",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3) GET /v1/provider/available-requests/:requestId",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/available-requests/{{requestId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 or 404 (placeholder env)', () => {",
+              "  pm.expect([200, 403, 404]).to.include(pm.response.code);",
+              "});",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test('id matches the captured requestId', () => {",
+              "    pm.expect(body.id).to.eql(pm.environment.get('requestId'));",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4) Negative — customer token cannot list provider feed",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+        },
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/available-requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 401 or 403', () => {",
+              "  pm.expect([401, 403]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5) Negative — no token cannot list provider feed",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/available-requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 401 or 403', () => {",
+              "  pm.expect([401, 403]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6a) Admin SUSPENDS the provider (setup for the gate test)",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{adminToken}}" }]
+        },
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/providers/{{providerProfileId}}/suspend",
+        "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Sprint 5.2 gate verification\"\n}" }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200, 404, or 409', () => {",
+              "  pm.expect([200, 404, 409]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6b) Provider SUSPENDED → feed must 403",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/available-requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 403 — ProviderActiveGuard blocks SUSPENDED', () => {",
+              "  pm.response.to.have.status(403);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6c) Admin REACTIVATES the provider (cleanup)",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{adminToken}}" }]
+        },
+        "url": "{{apiUrl}}/{{apiVersion}}/admin/providers/{{providerProfileId}}/reactivate"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200, 404, or 409', () => {",
+              "  pm.expect([200, 404, 409]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6d) Provider REACTIVATED → feed must 200 again",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/available-requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -54,8 +54,13 @@ export class NotificationsController {
 
   @Get('unread-count')
   @HttpCode(HttpStatus.OK)
-  unreadCount(@CurrentUser() user: AuthenticatedUser): Promise<NotificationUnreadCountResponse> {
-    return this.notifications.unreadCount(user.id);
+  unreadCount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListNotificationsQueryDto,
+  ): Promise<NotificationUnreadCountResponse> {
+    // Sprint 5.5: optional `?experience=` scopes the count to one
+    // user-experience drawer.
+    return this.notifications.unreadCount(user.id, query.experience);
   }
 
   @UseGuards(CsrfGuard)
@@ -71,8 +76,14 @@ export class NotificationsController {
   @UseGuards(CsrfGuard)
   @Post('read-all')
   @HttpCode(HttpStatus.OK)
-  markAllRead(@CurrentUser() user: AuthenticatedUser): Promise<MarkAllNotificationsReadResponse> {
-    return this.notifications.markAllRead(user.id);
+  markAllRead(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListNotificationsQueryDto,
+  ): Promise<MarkAllNotificationsReadResponse> {
+    // Sprint 5.5: optional `?experience=` scopes which unread rows
+    // get flipped — the provider drawer's "mark all read" must NOT
+    // silence the seeker's unread badge.
+    return this.notifications.markAllRead(user.id, query.experience);
   }
 
   @UseGuards(CsrfGuard)

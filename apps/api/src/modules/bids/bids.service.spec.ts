@@ -53,6 +53,7 @@ function makeProvider(overrides: Partial<ProviderProfile> = {}): ProviderProfile
     serviceAreaRadiusKm: null,
     availability: 'OFFLINE',
     status: 'ACTIVE',
+    reviewNotes: null,
     createdAt: new Date('2026-04-28T00:00:00.000Z'),
     updatedAt: new Date('2026-04-28T00:00:00.000Z'),
     deletedAt: null,
@@ -88,6 +89,7 @@ function makeRequest(overrides: Partial<ServiceRequest> = {}): ServiceRequestWit
     categoryId: null,
     customServiceText: null,
     description: null,
+    mediaUrls: [],
     status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
     scheduleType: 'ASAP',
     scheduledAt: null,
@@ -393,6 +395,45 @@ describe('BidsService', () => {
       expect(out.bid.status).toBe('ACCEPTED');
       expect(out.booking.id).toBe('bk-1');
       expect(out.requestStatus).toBe('BID_ACCEPTED');
+    });
+
+    it('also fans out two provider-side notifications when the provider has a linked userId (slice 5.5)', async () => {
+      const linkedProvider = makeProvider({ id: 'pp-1', userId: 'user-prov-2' });
+      const pre = makeBid({ status: 'PENDING' as BidStatus }, linkedProvider);
+      const post = makeBid({ status: 'ACCEPTED' as BidStatus }, linkedProvider);
+      const m = makeMocks({
+        bids: {
+          findOwned: jest
+            .fn()
+            .mockResolvedValueOnce(pre)
+            .mockResolvedValueOnce(post)
+            .mockResolvedValue(post),
+          setStatusIf: jest.fn().mockResolvedValue({ count: 1 }),
+          rejectSiblings: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      });
+      await makeService(m).accept('user-1', 'req-1', 'bid-1');
+      // Four total: seeker BID_ACCEPTED, seeker BOOKING_CREATED,
+      // provider BID_ACCEPTED, provider BOOKING_CREATED.
+      expect(m.notifications.createForUser).toHaveBeenCalledTimes(4);
+      expect(m.notifications.createForUser).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
+          userId: 'user-prov-2',
+          type: 'BID_ACCEPTED',
+          deepLink: '/provider/bids/bid-1',
+        }),
+        undefined,
+      );
+      expect(m.notifications.createForUser).toHaveBeenNthCalledWith(
+        4,
+        expect.objectContaining({
+          userId: 'user-prov-2',
+          type: 'BOOKING_CREATED',
+          deepLink: '/provider/bookings/bk-1',
+        }),
+        undefined,
+      );
     });
 
     it('rejects with NOT_FOUND when the request is not owned (cross-user attempt)', async () => {

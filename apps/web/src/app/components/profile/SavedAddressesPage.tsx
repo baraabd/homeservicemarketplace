@@ -14,9 +14,11 @@ import {
   Navigation,
   Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { AddressSummary, AddressType } from '@homeservicemarketplace/contracts';
 import { useLang } from '../../i18n/LanguageContext';
 import { Button } from '../ds/Button';
+import { LocationMap } from '../ds/LocationMap';
 import {
   useAddresses,
   useCreateAddress,
@@ -24,6 +26,7 @@ import {
   useSetDefaultAddress,
   useUpdateAddress,
 } from '../../hooks/seeker/useAddresses';
+import { getCurrentLocationAddress } from '../../../lib/reverse-geocode';
 
 // Visual map keyed on the persisted AddressType (HOME / WORK / CUSTOM).
 // Same icon + colour palette as the original mock-state version — just
@@ -107,6 +110,14 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
   const [newFull, setNewFull] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Phase 2 Bug 3 — "Use my current location" now does real
+  // reverse geocoding. The button shows a spinner while
+  // navigator.geolocation + the Google Geocoding API resolve.
+  const [locating, setLocating] = useState(false);
+  // Phase 4 Feature 4 — captured coordinates so the map preview can
+  // pin them and the user can drag to refine. Null until the user
+  // clicks "Use my current location" successfully.
+  const [pinCoords, setPinCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   const addresses = addressesQuery.data ?? [];
   const isInitialLoading = addressesQuery.isLoading && !addressesQuery.data;
@@ -129,6 +140,19 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
       edit: lang === 'ar' ? 'تعديل' : 'Edit',
       newAddress: lang === 'ar' ? 'عنوان جديد' : 'New Address',
       getLocation: lang === 'ar' ? 'استخدم موقعي الحالي' : 'Use my current location',
+      locating: lang === 'ar' ? 'جاري تحديد موقعك…' : 'Detecting your location…',
+      locationDenied:
+        lang === 'ar'
+          ? 'تم رفض إذن الموقع. اكتب العنوان يدوياً.'
+          : 'Location permission denied. Please type the address manually.',
+      locationFallback:
+        lang === 'ar'
+          ? 'تعذّر العثور على عنوان مطابق. تم إدخال الإحداثيات — يرجى التحقق منها.'
+          : "Couldn't resolve a street address. Coordinates were filled in — please verify.",
+      locationUnavailable:
+        lang === 'ar'
+          ? 'الموقع غير متاح حالياً. اكتب العنوان يدوياً.'
+          : 'Location is unavailable right now. Please type the address manually.',
       loading: lang === 'ar' ? 'جاري التحميل...' : 'Loading addresses...',
       loadFailed:
         lang === 'ar'
@@ -160,6 +184,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
     setEditId(null);
     setNewLabel('');
     setNewFull('');
+    setPinCoords(null);
     setFormError(null);
   };
 
@@ -511,19 +536,46 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                   style={{ fontSize: '14px' }}
                 />
                 <button
-                  onClick={() =>
-                    setNewFull(
-                      lang === 'ar' ? 'الموقع الحالي (تم التحديد)' : 'Current Location (detected)',
-                    )
-                  }
-                  className="flex items-center gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 rounded-2xl active:bg-blue-100 transition-all"
+                  type="button"
+                  disabled={locating}
+                  onClick={async () => {
+                    setLocating(true);
+                    try {
+                      const outcome = await getCurrentLocationAddress();
+                      if (outcome.status === 'ok') {
+                        setNewFull(outcome.formattedAddress);
+                        setPinCoords({ lat: outcome.lat, lng: outcome.lng });
+                      } else if (outcome.status === 'partial') {
+                        // Fill the field with the best-effort fallback
+                        // (formatted lat/lng) and tell the user to
+                        // verify it before saving.
+                        setNewFull(outcome.formattedAddress);
+                        setPinCoords({ lat: outcome.lat, lng: outcome.lng });
+                        toast.warning(L.locationFallback);
+                      } else {
+                        // status === 'error'
+                        if (outcome.reason === 'denied') {
+                          toast.error(L.locationDenied);
+                        } else {
+                          toast.error(L.locationUnavailable);
+                        }
+                      }
+                    } finally {
+                      setLocating(false);
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 rounded-2xl active:bg-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <Navigation size={15} className="text-blue-600 dark:text-blue-400" />
+                  {locating ? (
+                    <Loader2 size={15} className="text-blue-600 dark:text-blue-400 animate-spin" />
+                  ) : (
+                    <Navigation size={15} className="text-blue-600 dark:text-blue-400" />
+                  )}
                   <span
                     className="text-blue-700 dark:text-blue-400"
                     style={{ fontSize: '13px', fontWeight: 600 }}
                   >
-                    {L.getLocation}
+                    {locating ? L.locating : L.getLocation}
                   </span>
                 </button>
                 {formError && (
@@ -534,6 +586,21 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                   >
                     {formError}
                   </p>
+                )}
+                {/* Phase 4 Feature 4 — interactive map preview. Renders
+                    only after the user has captured coordinates via
+                    "Use my current location"; the marker is draggable
+                    so the seeker can fine-tune the pin before saving.
+                    LocationMap silently falls back to a placeholder
+                    when VITE_GOOGLE_MAPS_API_KEY is unset. */}
+                {pinCoords && (
+                  <LocationMap
+                    lat={pinCoords.lat}
+                    lng={pinCoords.lng}
+                    onCoordsChange={(next) => setPinCoords(next)}
+                    ariaLabel={L.getLocation}
+                    placeholderLabel={L.getLocation}
+                  />
                 )}
               </div>
 

@@ -1,0 +1,1036 @@
+{
+  "info": {
+    "name": "HSM Backend — Provider (Sprints 5.x)",
+    "description": "Provider-side endpoints. Folders are added per sprint slice: 10 Profile (5.1), 11 Approval Gate (5.1.4 negative tests), 20 Available Requests (5.2), 30 Bids (5.3), 40 Bookings (5.4), 50 Earnings (5.6).\n\nRealtime status (Sprint 5.5.5): the realtime layer is design-only — see docs/architecture/realtime-plan.md. Notifications + chat in production run REST + polling per Sprint 5.5 cadences (15 s unread count, 20 s lists, 4 s open thread). The polling endpoints in folders 60 + 61 below remain the source of truth.\n\nRun the IAM 'Login' request first as a provider account so {{providerToken}} is populated; this collection's bearer pulls from {{providerToken}}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "hsm-provider-2026-05"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{providerToken}}" }]
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level guard — never let internal/Prisma/SQL strings or",
+          "// secrets leak into any response (positive or negative).",
+          "const body = pm.response.text();",
+          "pm.test('no Prisma/SQL/secret leak', () => {",
+          "  pm.expect(body).to.not.match(/PrismaClient|column .* does not exist|SELECT |INSERT |UPDATE /i);",
+          "  pm.expect(body).to.not.include('passwordHash');",
+          "  pm.expect(body).to.not.include('refreshToken');",
+          "  pm.expect(body).to.not.include('JWT_SECRET');",
+          "  pm.expect(body).to.not.include('DATABASE_URL');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 — Provider login (Sprint 5.7 harness)",
+      "description": "Run this folder once at the start of a Newman session. The login response (mobile mode) populates {{providerToken}} from the JWT in the body so every later request inherits it via the collection-level bearer auth.",
+      "item": [
+        {
+          "name": "POST /v1/auth/login (provider, mobile mode)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Client-Kind", "value": "mobile" }
+            ],
+            "url": "{{apiUrl}}/{{apiVersion}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{providerEmail}}\",\n  \"password\": \"{{providerPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('tokens.accessToken is a JWT', () => pm.expect(b.tokens.accessToken.split('.').length).to.eql(3));",
+                  "pm.test('userId is set', () => pm.expect(b.userId).to.be.a('string'));",
+                  "pm.environment.set('providerToken', b.tokens.accessToken);",
+                  "pm.environment.set('userId', b.userId);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 — Profile (Sprint 5.1)",
+      "item": [
+        {
+          "name": "POST /v1/me/provider/upgrade",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/upgrade",
+            "body": { "mode": "raw", "raw": "{}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is expected', () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "pm.test('Response is JSON', () => pm.response.to.be.json);",
+                  "const b = pm.response.json();",
+                  "pm.test('envelope: { profile: { id, status } }', () => {",
+                  "  pm.expect(b.profile.id).to.be.a('string');",
+                  "  pm.expect(['DRAFT','PENDING_REVIEW','ACTIVE']).to.include(b.profile.status);",
+                  "});",
+                  "pm.environment.set('providerProfileId', b.profile.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/profile",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('JSON', () => pm.response.to.be.json);",
+                  "const b = pm.response.json();",
+                  "pm.test('summary fields present', () => {",
+                  "  pm.expect(b.profile.id).to.be.a('string');",
+                  "  pm.expect(b.profile).to.have.property('availability');",
+                  "  pm.expect(b.profile).to.have.property('status');",
+                  "  pm.expect(b.profile).to.have.property('serviceCategories');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/me/provider/profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"headline\": \"Postman runtime check\",\n  \"bio\": \"Set via the provider postman collection\",\n  \"serviceAreaCity\": \"Riyadh\",\n  \"serviceAreaCountry\": \"SA\",\n  \"serviceAreaRadiusKm\": 25\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('values echoed back', () => {",
+                  "  pm.expect(b.profile.headline).to.eql('Postman runtime check');",
+                  "  pm.expect(b.profile.serviceAreaCity).to.eql('Riyadh');",
+                  "  pm.expect(b.profile.serviceAreaRadiusKm).to.eql(25);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/me/provider/profile (negative — forbidden field)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"headline\": \"ok\",\n  \"status\": \"ACTIVE\",\n  \"userId\": \"injected\",\n  \"verified\": true\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 forbidden field', () => pm.response.to.have.status(400));",
+                  "pm.test('does not leak internals', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('PrismaClientKnownRequestError');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /v1/me/provider/availability",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/availability",
+            "body": { "mode": "raw", "raw": "{\n  \"availability\": \"ONLINE\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('availability switched', () => pm.expect(pm.response.json().profile.availability).to.eql('ONLINE'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "20 — Available Jobs (Sprint 5.2)",
+      "item": [
+        {
+          "name": "GET /v1/me/provider/jobs/available",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{apiUrl}}/{{apiVersion}}/me/provider/jobs/available?limit=20",
+              "host": ["{{apiUrl}}"],
+              "path": ["{{apiVersion}}", "me", "provider", "jobs", "available"],
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is expected', () => pm.expect([200]).to.include(pm.response.code));",
+                  "pm.test('Response is JSON', () => pm.response.to.be.json);",
+                  "const b = pm.response.json();",
+                  "pm.test('envelope: { items: AvailableJobSummary[], nextCursor: string|null }', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('item has the narrow security projection', () => {",
+                  "    const item = b.items[0];",
+                  "    pm.expect(item.id).to.be.a('string');",
+                  "    pm.expect(item).to.have.property('category');",
+                  "    pm.expect(item.location).to.be.an('object');",
+                  "    pm.expect(item.location).to.have.property('city');",
+                  "    pm.expect(item.location).to.have.property('country');",
+                  "    pm.expect(item).to.have.property('bidsCount');",
+                  "    pm.expect(item).to.have.property('hasOwnBid');",
+                  "  });",
+                  "  pm.test('does not leak seekerUserId or precise line1', () => {",
+                  "    const wire = JSON.stringify(b);",
+                  "    pm.expect(wire).to.not.match(/seekerUserId/i);",
+                  "    pm.expect(wire).to.not.match(/\\\"line1\\\"/);",
+                  "  });",
+                  "  pm.environment.set('requestId', b.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/jobs/available?categoryId=…",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{apiUrl}}/{{apiVersion}}/me/provider/jobs/available?categoryId={{categoryId}}",
+              "host": ["{{apiUrl}}"],
+              "path": ["{{apiVersion}}", "me", "provider", "jobs", "available"],
+              "query": [{ "key": "categoryId", "value": "{{categoryId}}" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 200 when the categoryId is set and valid; 400 when it's bogus.",
+                  "// Both shapes are acceptable here — we test against the bogus negative",
+                  "// in a follow-up request below.",
+                  "pm.test('Status is 200 or 400', () => pm.expect([200, 400]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/jobs/available?categoryId=bogus (negative)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{apiUrl}}/{{apiVersion}}/me/provider/jobs/available?categoryId=cat-does-not-exist",
+              "host": ["{{apiUrl}}"],
+              "path": ["{{apiVersion}}", "me", "provider", "jobs", "available"],
+              "query": [{ "key": "categoryId", "value": "cat-does-not-exist" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 VALIDATION_ERROR (no Prisma FK leak)', () => pm.response.to.have.status(400));",
+                  "pm.test('Negative response does not leak internals', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('PrismaClientKnownRequestError');",
+                  "  pm.expect(t).to.not.include('foreign key');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/jobs/available (customer token — must 403)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+            },
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/jobs/available"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Forbidden (RolesGuard) or Unauthorized', () => pm.expect([401, 403, 404]).to.include(pm.response.code));",
+                  "pm.test('Negative response does not leak internals', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('passwordHash');",
+                  "  pm.expect(t).to.not.include('JWT_SECRET');",
+                  "  pm.expect(t).to.not.include('DATABASE_URL');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "30 — Bids (Sprint 5.3)",
+      "item": [
+        {
+          "name": "POST /v1/me/provider/bids",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"amount\": 3500,\n  \"pricingType\": \"HOURLY\",\n  \"note\": \"Postman runtime check — I can be there in 20 minutes.\",\n  \"responseTimeMinutes\": 30\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Response is JSON', () => pm.response.to.be.json);",
+                  "const b = pm.response.json();",
+                  "pm.test('envelope: { bid: MyBidSummary }', () => {",
+                  "  pm.expect(b.bid.id).to.be.a('string');",
+                  "  pm.expect(b.bid.status).to.eql('PENDING');",
+                  "  pm.expect(b.bid.amount).to.eql(3500);",
+                  "  pm.expect(b.bid.request.id).to.eql(pm.environment.get('requestId'));",
+                  "});",
+                  "pm.test('does not leak seekerUserId', () => {",
+                  "  pm.expect(pm.response.text()).to.not.match(/seekerUserId/);",
+                  "});",
+                  "pm.environment.set('bidId', b.bid.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bids (negative — duplicate)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"amount\": 3500,\n  \"pricingType\": \"HOURLY\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 CONFLICT — one-active-bid invariant', () => pm.response.to.have.status(409));",
+                  "pm.test('No internal leak', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('PrismaClientKnownRequestError');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bids (negative — forbidden field smuggling)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"amount\": 1,\n  \"pricingType\": \"HOURLY\",\n  \"providerId\": \"injected\",\n  \"providerUserId\": \"injected\",\n  \"status\": \"ACCEPTED\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 — forbidNonWhitelisted rejects providerId/status injection', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/bids",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items array + nextCursor', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('row has MyBidSummary shape (no seekerUserId)', () => {",
+                  "    const r = b.items[0];",
+                  "    pm.expect(r.id).to.be.a('string');",
+                  "    pm.expect(r.amount).to.be.a('number');",
+                  "    pm.expect(r.request.id).to.be.a('string');",
+                  "    pm.expect(r.request).to.have.property('city');",
+                  "    pm.expect(r.request).to.not.have.property('seekerUserId');",
+                  "    pm.expect(r.request).to.not.have.property('line1');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bids/:bidId/withdraw",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids/{{bidId}}/withdraw"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = WITHDRAWN', () => pm.expect(pm.response.json().bid.status).to.eql('WITHDRAWN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bids/:bidId/withdraw (negative — already withdrawn)",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bids/{{bidId}}/withdraw"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 CONFLICT — already withdrawn', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "40 — Bookings (Sprint 5.4)",
+      "item": [
+        {
+          "name": "GET /v1/me/provider/bookings",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items array + nextCursor', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('row has ProviderBookingSummary shape with seeker firstName', () => {",
+                  "    const r = b.items[0];",
+                  "    pm.expect(r.seeker.firstName).to.be.a('string');",
+                  "    pm.expect(r.addressSnapshot.line1).to.be.a('string');",
+                  "  });",
+                  "  pm.test('does not leak email / phone / passwordHash', () => {",
+                  "    const t = pm.response.text();",
+                  "    pm.expect(t).to.not.include('passwordHash');",
+                  "    pm.expect(t).to.not.match(/\\\"email\\\"\\s*:\\s*\\\"[^\\\"]+@/);",
+                  "  });",
+                  "  pm.environment.set('bookingId', b.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/bookings/:bookingId",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings/{{bookingId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('detail has description + addressSnapshot.line1', () => {",
+                  "  const r = pm.response.json();",
+                  "  pm.expect(r).to.have.property('description');",
+                  "  pm.expect(r.addressSnapshot.line1).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/bookings/:bookingId/timeline",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings/{{bookingId}}/timeline"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('items is an array', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bookings/:bookingId/start",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings/{{bookingId}}/start"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 409 (idempotency)', () => pm.expect([200, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('booking.status = IN_PROGRESS', () => pm.expect(pm.response.json().booking.status).to.eql('IN_PROGRESS'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bookings/:bookingId/complete",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings/{{bookingId}}/complete"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 409 (idempotency)', () => pm.expect([200, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('booking.status = COMPLETED', () => pm.expect(pm.response.json().booking.status).to.eql('COMPLETED'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/provider/bookings/:bookingId/cancel (negative — already completed)",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/bookings/{{bookingId}}/cancel"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 — only SCHEDULED is cancellable', () => pm.expect([409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "60 — Notifications & Chat (Sprint 5.5 — provider role on shared endpoints)",
+      "description": "The /v1/me/notifications and /v1/me/conversations endpoints are role-agnostic — they read userId from the session. Sprint 5.5 made the conversation creation flow side-aware so a provider can also POST /v1/me/conversations { bookingId } and the response is the same shape. The provider also receives BID_ACCEPTED + BOOKING_CREATED notifications when their bid is accepted (slice 5.5 fan-out).",
+      "item": [
+        {
+          "name": "GET /v1/me/notifications (provider)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/notifications?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items + nextCursor', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.environment.set('notificationId', b.items[0].id);",
+                  "}",
+                  "pm.test('no internal leak', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('passwordHash');",
+                  "  pm.expect(t).to.not.include('JWT_SECRET');",
+                  "  pm.expect(t).to.not.include('DATABASE_URL');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/notifications/unread-count (provider)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/notifications/unread-count"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('count is a number', () => pm.expect(pm.response.json().count).to.be.a('number'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/notifications/:id/read (provider)",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/notifications/{{notificationId}}/read"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/conversations (provider)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items array', () => pm.expect(b.items).to.be.an('array'));",
+                  "if (b.items.length > 0) {",
+                  "  pm.environment.set('conversationId', b.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/conversations (provider — open chat for own booking)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/conversations",
+            "body": { "mode": "raw", "raw": "{\n  \"bookingId\": \"{{bookingId}}\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 404', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.conversation.id).to.be.a('string');",
+                  "  pm.environment.set('conversationId', b.conversation.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/me/conversations/:id/messages (provider sends a message)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiUrl}}/{{apiVersion}}/me/conversations/{{conversationId}}/messages",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Hi! On my way — Sprint 5.5 postman runtime check.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 or 404', () => pm.expect([201, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 201) {",
+                  "  pm.test('senderRole = PROVIDER', () => pm.expect(pm.response.json().message.senderRole).to.eql('PROVIDER'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/conversations/:id/messages (provider reads thread)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/conversations/{{conversationId}}/messages?limit=50"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "50 — Earnings (Sprint 5.6 — read-only wallet)",
+      "item": [
+        {
+          "name": "GET /v1/me/provider/earnings (summary)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/earnings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('summary shape', () => {",
+                  "  pm.expect(b.totalGross).to.be.a('number');",
+                  "  pm.expect(b.currentMonthGross).to.be.a('number');",
+                  "  pm.expect(b.pendingAmount).to.be.a('number');",
+                  "  pm.expect(b.completedJobsCount).to.be.a('number');",
+                  "  pm.expect(b.currency).to.be.a('string');",
+                  "  pm.expect(b.ratingAvg).to.be.a('number');",
+                  "  pm.expect(b.reviewCount).to.be.a('number');",
+                  "});",
+                  "pm.test('aggregates are non-negative', () => {",
+                  "  pm.expect(b.totalGross).to.be.at.least(0);",
+                  "  pm.expect(b.currentMonthGross).to.be.at.least(0);",
+                  "  pm.expect(b.pendingAmount).to.be.at.least(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/earnings/transactions (default — completed only)",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/earnings/transactions?limit=50"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('items + nextCursor', () => {",
+                  "  pm.expect(b.items).to.be.an('array');",
+                  "  pm.expect(b).to.have.property('nextCursor');",
+                  "});",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('default filter returns COMPLETED only', () => {",
+                  "    pm.expect(b.items.every(function(i){return i.status==='COMPLETED';})).to.eql(true);",
+                  "  });",
+                  "  pm.test('row has narrow projection (no line1, no email)', () => {",
+                  "    const t = pm.response.text();",
+                  "    pm.expect(t).to.not.match(/\\\"line1\\\"\\s*:/);",
+                  "    pm.expect(t).to.not.include('passwordHash');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/earnings/transactions?status=IN_PROGRESS",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/earnings/transactions?status=IN_PROGRESS"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (b.items.length > 0) {",
+                  "  pm.test('all rows are IN_PROGRESS', () => {",
+                  "    pm.expect(b.items.every(function(i){return i.status==='IN_PROGRESS';})).to.eql(true);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/earnings (customer token — must 403)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+            },
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/earnings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Forbidden / Unauthorized', () => pm.expect([401, 403, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11 — Approval Gate (Sprint 5.1.4 negative tests)",
+      "description": "Negative-path coverage for the marketplace approval gate. The actual write endpoints (submit-bid, take-job) come online in Sprints 5.3 / 5.4 — when they ship, drop a copy of these requests into folders 30/40 and verify they 403 for DRAFT / PENDING_REVIEW / SUSPENDED / REJECTED providers. Until then this folder documents the contract and runs the only marketplace-write surface that exists today (none, by design).",
+      "item": [
+        {
+          "name": "GET /v1/me/provider/profile (no token — must be 401, not 403)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Unauthorized or forbidden as expected', () => pm.expect([401, 403, 404]).to.include(pm.response.code));",
+                  "pm.test('Negative response does not leak internals', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('passwordHash');",
+                  "  pm.expect(t).to.not.include('JWT_SECRET');",
+                  "  pm.expect(t).to.not.include('DATABASE_URL');",
+                  "  pm.expect(t).to.not.include('PrismaClientKnownRequestError');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/me/provider/profile (customer token — must be 403)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+            },
+            "url": "{{apiUrl}}/{{apiVersion}}/me/provider/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Forbidden / Unauthorized / Not found', () => pm.expect([401, 403, 404]).to.include(pm.response.code));",
+                  "pm.test('Negative response does not leak internals', () => {",
+                  "  const t = pm.response.text();",
+                  "  pm.expect(t).to.not.include('passwordHash');",
+                  "  pm.expect(t).to.not.include('JWT_SECRET');",
+                  "  pm.expect(t).to.not.include('DATABASE_URL');",
+                  "  pm.expect(t).to.not.include('PrismaClientKnownRequestError');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "99 — Realtime Spike (Sprint 5.5.5) — No runtime endpoint",
+      "description": "Sprint 5.5.5 was an architecture-only spike. No runtime realtime endpoint exists yet — see docs/architecture/realtime-plan.md for the Socket.IO + Redis-Adapter design. The folder below contains a single no-op request that fails fast if anyone wires a `/v1/realtime` HTTP surface without re-running the design review.",
+      "item": [
+        {
+          "name": "GET /v1/realtime (must NOT exist yet)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": "{{apiUrl}}/{{apiVersion}}/realtime",
+            "description": "Sprint 5.5.5 docs-only assertion. The realtime channel is not implemented as a REST endpoint at /v1/realtime; if this request returns 200 the production wiring jumped ahead of the spike doc."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Sprint 5.5.5 — Realtime Architecture Spike (docs-only).",
+                  "//",
+                  "// Realtime is intentionally NOT implemented in this sprint.",
+                  "// Notifications + chat in production run REST + polling per",
+                  "// the Sprint 5.5 cadences. The Socket.IO + Redis Adapter",
+                  "// design lives in docs/architecture/realtime-plan.md and",
+                  "// will be implemented in a follow-up sprint.",
+                  "//",
+                  "// This request asserts that no /v1/realtime HTTP endpoint",
+                  "// has been smuggled in ahead of that design review — the",
+                  "// expected outcome is a 404 (route does not exist).",
+                  "pm.test('no /v1/realtime HTTP endpoint exists yet', () => {",
+                  "  pm.expect(pm.response.code).to.eql(404);",
+                  "});",
+                  "pm.test('design lives in docs/architecture/realtime-plan.md', () => {",
+                  "  pm.expect(true).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

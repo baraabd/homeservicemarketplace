@@ -73,6 +73,175 @@ export class BidRepository {
     });
   }
 
+  // Active-bid count per request. Returns a Map keyed by requestId.
+  // PENDING + ACCEPTED only (rejected / withdrawn don't contribute to
+  // a feed's competition signal). Used by the available-jobs feed.
+  async countActiveByRequestIds(requestIds: string[], tx?: PrismaTx): Promise<Map<string, number>> {
+    if (requestIds.length === 0) return new Map();
+    const rows = await this.db(tx).bid.groupBy({
+      by: ['requestId'],
+      where: {
+        requestId: { in: requestIds },
+        deletedAt: null,
+        status: { in: ['PENDING', 'ACCEPTED'] },
+      },
+      _count: { _all: true },
+    });
+    const map = new Map<string, number>();
+    for (const r of rows) map.set(r.requestId, r._count._all);
+    return map;
+  }
+
+  // Returns the set of requestIds in `requestIds` for which the given
+  // provider already has a non-WITHDRAWN, non-deleted bid. Used by the
+  // available-jobs feed to compute the `hasOwnBid` flag in a single
+  // query rather than N+1.
+  async findRequestIdsBidByProvider(
+    providerId: string,
+    requestIds: string[],
+    tx?: PrismaTx,
+  ): Promise<Set<string>> {
+    if (requestIds.length === 0) return new Set();
+    const rows = await this.db(tx).bid.findMany({
+      where: {
+        providerId,
+        requestId: { in: requestIds },
+        deletedAt: null,
+        status: { not: 'WITHDRAWN' },
+      },
+      select: { requestId: true },
+    });
+    return new Set(rows.map((r) => r.requestId));
+  }
+
+  // The provider's existing non-WITHDRAWN bid on a specific request,
+  // if any. Used by the submit-bid path to enforce the
+  // one-active-bid-per-(provider, request) invariant before insert —
+  // the database has no partial-unique index on this and Prisma can't
+  // express it, so the application layer is the gate.
+  findActiveBidForRequest(
+    providerId: string,
+    requestId: string,
+    tx?: PrismaTx,
+  ): Promise<Bid | null> {
+    return this.db(tx).bid.findFirst({
+      where: {
+        providerId,
+        requestId,
+        deletedAt: null,
+        status: { not: 'WITHDRAWN' },
+      },
+    });
+  }
+
+  // The provider's bid by id, scoped to provider. Returns null when
+  // the bid doesn't exist OR doesn't belong to the calling provider —
+  // ownership-vs-existence is intentionally not distinguishable on the
+  // wire (both surface as 404).
+  findOwnedByProvider(
+    providerId: string,
+    bidId: string,
+    tx?: PrismaTx,
+  ): Promise<BidWithProvider | null> {
+    return this.db(tx).bid.findFirst({
+      where: { id: bidId, providerId, deletedAt: null },
+      include: { provider: true },
+    });
+  }
+
+  // Provider-side cursor-paginated listing. Includes the linked
+  // ServiceRequest (with category) so the my-bids screen renders
+  // without an extra round-trip per row.
+  listForProvider(
+    args: {
+      providerId: string;
+      status?: BidStatus;
+      take: number;
+      cursor?: string;
+    },
+    tx?: PrismaTx,
+  ): Promise<
+    (BidWithProvider & {
+      request: {
+        id: string;
+        categoryId: string | null;
+        customServiceText: string | null;
+        description: string | null;
+        addressSnapshot: Prisma.JsonValue;
+        category: { id: string; slug: string; labelEn: string; labelAr: string } | null;
+      };
+    })[]
+  > {
+    const where: Prisma.BidWhereInput = {
+      providerId: args.providerId,
+      deletedAt: null,
+      ...(args.status ? { status: args.status } : {}),
+    };
+    return this.db(tx).bid.findMany({
+      where,
+      take: args.take,
+      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+      orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+      include: {
+        provider: true,
+        request: {
+          select: {
+            id: true,
+            categoryId: true,
+            customServiceText: true,
+            description: true,
+            addressSnapshot: true,
+            category: {
+              select: { id: true, slug: true, labelEn: true, labelAr: true },
+            },
+          },
+        },
+      },
+    }) as Promise<
+      (BidWithProvider & {
+        request: {
+          id: string;
+          categoryId: string | null;
+          customServiceText: string | null;
+          description: string | null;
+          addressSnapshot: Prisma.JsonValue;
+          category: { id: string; slug: string; labelEn: string; labelAr: string } | null;
+        };
+      })[]
+    >;
+  }
+
+  // Insert a new PENDING bid. Caller is responsible for validating
+  // request ownership / state and the one-active-bid invariant; the
+  // repository is a thin write helper.
+  createForProvider(
+    input: {
+      requestId: string;
+      providerId: string;
+      amount: number;
+      currency?: string;
+      pricingType: 'HOURLY' | 'FIXED';
+      note?: string | null;
+      responseTimeMinutes?: number | null;
+    },
+    tx?: PrismaTx,
+  ): Promise<Bid> {
+    return this.db(tx).bid.create({
+      data: {
+        requestId: input.requestId,
+        providerId: input.providerId,
+        amount: input.amount,
+        currency: input.currency ?? 'USD',
+        pricingType: input.pricingType,
+        note: input.note ?? null,
+        responseTimeMinutes: input.responseTimeMinutes ?? null,
+        // PENDING is the default; be explicit so the intent is obvious
+        // when reading the call site.
+        status: 'PENDING',
+      },
+    });
+  }
+
   // Status-flip helper used by accept-bid (slice 2.2). Conditional on
   // the current status being `from` so concurrent writers cannot both
   // promote the same bid — only one wins, the loser sees count: 0

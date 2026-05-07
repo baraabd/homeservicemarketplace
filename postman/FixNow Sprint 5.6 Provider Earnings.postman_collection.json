@@ -1,0 +1,245 @@
+{
+  "info": {
+    "name": "FixNow Sprint 5.6 Provider Earnings",
+    "description": "Canonical provider wallet read model: /v1/provider/earnings/{summary,transactions,chart}. Source of truth = COMPLETED bookings only. Cancelled and in-progress bookings DO NOT count toward earnings. Platform fee is computed at query time from PROVIDER_PLATFORM_FEE_BPS (defaults to 1000 bps = 10%). Withdrawals are out of scope until the payouts module ships. Run order: summary → transactions → chart (default 30d) → chart (90d) → cross-role 403 → unauthenticated 401. Bearer auth uses {{providerToken}}; request 5 swaps to {{customerToken}}; request 6 sends no token.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fixnow-sprint-5-6-provider-earnings"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{providerToken}}" }]
+  },
+  "variable": [
+    { "key": "apiUrl", "value": "http://localhost:4000" },
+    { "key": "apiVersion", "value": "v1" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level guard — never let internal/Prisma/SQL strings or",
+          "// secrets leak into any response (positive or negative).",
+          "const body = pm.response.text();",
+          "pm.test('no Prisma/SQL/secret leak', () => {",
+          "  pm.expect(body).to.not.match(/PrismaClient|column .* does not exist|SELECT |INSERT |UPDATE /i);",
+          "  pm.expect(body).to.not.include('passwordHash');",
+          "  pm.expect(body).to.not.include('refreshToken');",
+          "  pm.expect(body).to.not.include('JWT_SECRET');",
+          "  pm.expect(body).to.not.include('DATABASE_URL');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1) GET /v1/provider/earnings/summary",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/earnings/summary"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('canonical earnings fields exist', () => {",
+              "  pm.expect(body).to.have.property('grossEarnings');",
+              "  pm.expect(body).to.have.property('platformFees');",
+              "  pm.expect(body).to.have.property('netEarnings');",
+              "  pm.expect(body).to.have.property('availableBalance');",
+              "  pm.expect(body).to.have.property('pendingBalance');",
+              "  pm.expect(body).to.have.property('completedBookingsCount');",
+              "  pm.expect(body).to.have.property('currency');",
+              "  pm.expect(body).to.have.property('platformFeeRateBps');",
+              "});",
+              "pm.test('every numeric field is >= 0', () => {",
+              "  for (const k of ['grossEarnings','platformFees','netEarnings','availableBalance','pendingBalance','completedBookingsCount','platformFeeRateBps']) {",
+              "    pm.expect(body[k]).to.be.a('number');",
+              "    pm.expect(body[k]).to.be.at.least(0);",
+              "  }",
+              "});",
+              "pm.test('netEarnings = grossEarnings − platformFees', () => {",
+              "  pm.expect(body.netEarnings).to.eql(body.grossEarnings - body.platformFees);",
+              "});",
+              "pm.test('availableBalance ≤ netEarnings (no withdrawals yet → equal)', () => {",
+              "  pm.expect(body.availableBalance).to.be.at.most(body.netEarnings);",
+              "});",
+              "pm.test('platformFeeRateBps is in [0, 10000]', () => {",
+              "  pm.expect(body.platformFeeRateBps).to.be.within(0, 10000);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2) GET /v1/provider/earnings/transactions",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/earnings/transactions"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('items array exists', () => pm.expect(body.items).to.be.an('array'));",
+              "pm.test('nextCursor is string or null', () => {",
+              "  pm.expect(body.nextCursor === null || typeof body.nextCursor === 'string').to.eql(true);",
+              "});",
+              "pm.test('every item has the canonical EarningsTransaction shape', () => {",
+              "  for (const it of body.items) {",
+              "    pm.expect(it.kind).to.eql('BOOKING_COMPLETED');",
+              "    pm.expect(it).to.have.property('amount');",
+              "    pm.expect(it).to.have.property('platformFee');",
+              "    pm.expect(it).to.have.property('netAmount');",
+              "    pm.expect(it).to.have.property('currency');",
+              "    pm.expect(it).to.have.property('occurredAt');",
+              "    pm.expect(it.amount - it.platformFee).to.eql(it.netAmount);",
+              "  }",
+              "});",
+              "pm.test('city is present (no line1 leak)', () => {",
+              "  for (const it of body.items) {",
+              "    pm.expect(it).to.have.property('city');",
+              "    pm.expect(JSON.stringify(it)).to.not.include('line1');",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3) GET /v1/provider/earnings/chart?range=30d",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/earnings/chart?range=30d"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('range echoed', () => pm.expect(body.range).to.eql('30d'));",
+              "pm.test('buckets array exists', () => pm.expect(body.buckets).to.be.an('array'));",
+              "pm.test('30 daily buckets, zero-filled where empty', () => {",
+              "  pm.expect(body.buckets.length).to.eql(30);",
+              "  for (const b of body.buckets) {",
+              "    pm.expect(b).to.have.property('date');",
+              "    pm.expect(b).to.have.property('grossEarnings');",
+              "    pm.expect(b).to.have.property('platformFees');",
+              "    pm.expect(b).to.have.property('netEarnings');",
+              "    pm.expect(b).to.have.property('completedBookings');",
+              "    pm.expect(b.netEarnings).to.eql(b.grossEarnings - b.platformFees);",
+              "  }",
+              "});",
+              "pm.test('windowStart + windowEnd are ISO timestamps', () => {",
+              "  pm.expect(typeof body.windowStart).to.eql('string');",
+              "  pm.expect(typeof body.windowEnd).to.eql('string');",
+              "  pm.expect(new Date(body.windowEnd) > new Date(body.windowStart)).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4) GET /v1/provider/earnings/chart?range=90d",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/earnings/chart?range=90d"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('90 daily buckets', () => pm.expect(body.buckets.length).to.eql(90));",
+              "pm.test('range echoed', () => pm.expect(body.range).to.eql('90d'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5) GET /v1/provider/earnings/summary (customer token → 403)",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{customerToken}}" }]
+        },
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/earnings/summary"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 403', () => pm.response.to.have.status(403));",
+              "const body = pm.response.json();",
+              "pm.test('FORBIDDEN error code', () => pm.expect(body.error.code).to.eql('FORBIDDEN'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6) GET /v1/provider/earnings/summary (no token → 401)",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/earnings/summary"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 401 or 403 (no token at all)', () => {",
+              "  pm.expect([401, 403]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7) GET /v1/provider/earnings/chart?range=invalid (400)",
+      "request": {
+        "method": "GET",
+        "url": "{{apiUrl}}/{{apiVersion}}/provider/earnings/chart?range=1y"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 400 (invalid range rejected, no silent default)', () => pm.response.to.have.status(400));",
+              "const body = pm.response.json();",
+              "pm.test('VALIDATION_ERROR code', () => pm.expect(body.error.code).to.eql('VALIDATION_ERROR'));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

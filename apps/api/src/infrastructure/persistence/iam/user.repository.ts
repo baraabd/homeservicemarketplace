@@ -53,6 +53,42 @@ export class UserRepository {
     });
   }
 
+  // Sprint 6.1: admin-side search. `q` matches email / firstName /
+  // lastName case-insensitively (Postgres ILIKE). `status` and
+  // `roleName` are exact filters. Cursor pagination by id descending
+  // (matches the seeker patterns).
+  searchForAdmin(
+    args: {
+      q?: string;
+      status?: string;
+      roleName?: string;
+      take: number;
+      cursor?: string;
+    },
+    tx?: PrismaTx,
+  ): Promise<User[]> {
+    const where: Prisma.UserWhereInput = {
+      deletedAt: null,
+      ...(args.status ? { status: args.status as Prisma.UserWhereInput['status'] } : {}),
+      ...(args.roleName ? { userRoles: { some: { role: { name: args.roleName } } } } : {}),
+      ...(args.q
+        ? {
+            OR: [
+              { email: { contains: args.q, mode: 'insensitive' } },
+              { firstName: { contains: args.q, mode: 'insensitive' } },
+              { lastName: { contains: args.q, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    return this.db(tx).user.findMany({
+      where,
+      take: args.take,
+      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+  }
+
   create(input: CreateUserInput, tx?: PrismaTx): Promise<User> {
     return this.db(tx).user.create({ data: input });
   }
