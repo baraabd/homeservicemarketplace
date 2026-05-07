@@ -23,6 +23,7 @@ import {
   Send,
   Award,
   BarChart2,
+  Clock,
   LogOut,
 } from 'lucide-react';
 import {
@@ -1822,23 +1823,47 @@ function ProviderProfileScreen() {
           >
             {L.skills}
           </p>
-          {profile.serviceCategories.length === 0 ? (
-            <p className="text-slate-400" style={{ fontSize: '13px' }}>
-              {L.skillsEmpty}
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {profile.serviceCategories.map((cat, i) => (
-                <span
-                  key={cat.id}
-                  className={`px-3 py-1.5 rounded-xl ${SKILL_CHIP_COLORS[i % SKILL_CHIP_COLORS.length]} dark:bg-slate-700 dark:text-slate-200`}
-                  style={{ fontSize: '13px', fontWeight: 600 }}
-                >
-                  {lang === 'ar' ? cat.labelAr : cat.labelEn}
-                </span>
-              ))}
-            </div>
-          )}
+          {(() => {
+            const pending = profile.pendingCategories ?? [];
+            const approved = profile.serviceCategories;
+            if (approved.length === 0 && pending.length === 0) {
+              return (
+                <p className="text-slate-400" style={{ fontSize: '13px' }}>
+                  {L.skillsEmpty}
+                </p>
+              );
+            }
+            // Approved + pending render in a single flex row so the chips
+            // wrap together at the same `gap-2` rhythm. The dashed-border
+            // affordance carries the visual distinction; we deliberately
+            // do NOT split them across two rows because that would imply
+            // the lists are separately scrollable.
+            return (
+              <div className="flex flex-wrap gap-2">
+                {approved.map((cat, i) => (
+                  <span
+                    key={cat.id}
+                    className={`px-3 py-1.5 rounded-xl ${SKILL_CHIP_COLORS[i % SKILL_CHIP_COLORS.length]} dark:bg-slate-700 dark:text-slate-200`}
+                    style={{ fontSize: '13px', fontWeight: 600 }}
+                  >
+                    {lang === 'ar' ? cat.labelAr : cat.labelEn}
+                  </span>
+                ))}
+                {pending.map((cat) => (
+                  <span
+                    key={cat.id}
+                    aria-label={lang === 'ar' ? 'في انتظار موافقة الإدارة' : 'Pending approval'}
+                    title={lang === 'ar' ? 'في انتظار موافقة الإدارة' : 'Pending Admin Approval'}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 border border-dashed border-slate-300 dark:bg-slate-700/40 dark:text-slate-400 dark:border-slate-600 inline-flex items-center gap-1.5 cursor-help"
+                    style={{ fontSize: '13px', fontWeight: 600 }}
+                  >
+                    <Clock size={12} aria-hidden="true" />
+                    {lang === 'ar' ? cat.labelAr : cat.labelEn}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Menu */}

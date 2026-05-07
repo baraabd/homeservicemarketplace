@@ -339,3 +339,95 @@ describe('ProviderApp — Phase 5 profile actions', () => {
     });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 6 — Pending skills (admin approval queue surface).
+// Providers can apply for new categories; until an admin approves,
+// the row appears on /v1/me/provider/profile under
+// `pendingCategories` and the Skills section renders it with a
+// dashed-border, faded pill carrying a Clock icon and a
+// "Pending Admin Approval" tooltip.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MOCK_PENDING_CATEGORY = {
+  id: 'c-pending-1',
+  slug: 'painting',
+  labelEn: 'Painting',
+  labelAr: 'دهان',
+  icon: 'brush',
+};
+
+describe('ProviderApp — pending skills (admin approval queue)', () => {
+  it('renders a dashed-border pill with a Clock icon and "Pending Admin Approval" title', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, {
+      profile: { ...MOCK_PROFILE, pendingCategories: [MOCK_PENDING_CATEGORY] },
+    });
+
+    renderProvider();
+    openProfileTab();
+
+    // The pending pill is the only element labelled "Pending approval"
+    // (aria-label) — that's the canonical handle for the assertion.
+    const pendingPill = await screen.findByLabelText(/^pending approval$/i);
+    expect(pendingPill).toHaveTextContent('Painting');
+    expect(pendingPill).toHaveAttribute('title', 'Pending Admin Approval');
+    expect(pendingPill).toHaveClass('border-dashed');
+    expect(pendingPill).toHaveClass('cursor-help');
+    // The Clock icon is hidden from AT (aria-hidden) but present in DOM.
+    const clockIcon = pendingPill.querySelector('svg');
+    expect(clockIcon).not.toBeNull();
+  });
+
+  it('renders approved categories alongside pending ones (single flex row, both visible)', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, {
+      profile: { ...MOCK_PROFILE, pendingCategories: [MOCK_PENDING_CATEGORY] },
+    });
+
+    renderProvider();
+    openProfileTab();
+
+    // Approved categories from MOCK_PROFILE — rendered without the
+    // dashed-border / pending affordance.
+    await waitFor(() => expect(screen.getByText('Plumbing')).toBeInTheDocument());
+    expect(screen.getByText('Electrical')).toBeInTheDocument();
+    // Pending category — coexists with the approved ones.
+    expect(screen.getByText('Painting')).toBeInTheDocument();
+    // Empty-state copy must NOT appear when at least one pill renders.
+    expect(screen.queryByText(/no skills added yet|لم تضف مهارات بعد/i)).toBeNull();
+  });
+
+  it('uses the Arabic copy for the pending tooltip when lang is ar', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, {
+      profile: { ...MOCK_PROFILE, pendingCategories: [MOCK_PENDING_CATEGORY] },
+    });
+
+    renderProvider();
+    // The LangToggle lives on the top-bar, which is hidden on the
+    // default Live Jobs tab. Switch to Profile first so the toggle
+    // is mountable, then flip to Arabic, then assert the localised
+    // pending tooltip copy.
+    openProfileTab();
+    const langToggle = await screen.findByRole('button', { name: /switch language/i });
+    fireEvent.click(langToggle);
+
+    const pendingPill = await screen.findByLabelText(/في انتظار موافقة الإدارة/);
+    expect(pendingPill).toHaveAttribute('title', 'في انتظار موافقة الإدارة');
+  });
+
+  it('treats pendingCategories as [] when the wire omits the field', async () => {
+    // Backend slices that pre-date the approval queue do not emit
+    // `pendingCategories`. The frontend must render the same as if the
+    // field were an empty array (no pending pills, approved list intact).
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+
+    renderProvider();
+    openProfileTab();
+
+    await waitFor(() => expect(screen.getByText('Plumbing')).toBeInTheDocument());
+    expect(screen.queryByLabelText(/^pending approval$/i)).toBeNull();
+  });
+});
