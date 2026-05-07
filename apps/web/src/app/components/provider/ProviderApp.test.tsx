@@ -78,7 +78,6 @@ describe('ProviderApp — pending skills (admin approval queue)', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Phase 6 — LiveJobsScreen interactive map.
 // Replaces the static Unsplash photo with a Leaflet MapContainer that
 // renders one Marker per available-request that carries real lat/lng.
