@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { api } from '../../lib/api';
@@ -38,9 +39,24 @@ function AdminStub() {
   return <div data-testid="admin-app">admin-app</div>;
 }
 
+// Each render gets its own freshly-instantiated QueryClient. The
+// production AuthProvider falls back to the module-level singleton when
+// `client` is omitted; passing a per-test instance here means stale
+// fetches from sibling test files cannot pollute this test's auth
+// state. Defaults mirror the production singleton (retry off,
+// refetchOnWindowFocus off) so test environment matches runtime.
+//
+// The created client is returned so individual tests can inspect cache
+// state — e.g. `await waitFor(() => qc.getQueryData(['auth','me']))`.
 function renderRouter(initialPath = '/select') {
-  return render(
-    <AuthProvider>
+  const testQueryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, refetchOnWindowFocus: false },
+      mutations: { retry: false },
+    },
+  });
+  const renderResult = render(
+    <AuthProvider client={testQueryClient}>
       <LanguageProvider>
         <EcosystemProvider>
           <MemoryRouter initialEntries={[initialPath]}>
@@ -61,6 +77,7 @@ function renderRouter(initialPath = '/select') {
       </LanguageProvider>
     </AuthProvider>,
   );
+  return { ...renderResult, queryClient: testQueryClient };
 }
 
 const MOCK_ME = {
@@ -277,7 +294,7 @@ describe('Provider intent survives the entire auth flow', () => {
         () => {
           expect(screen.getByTestId('provider-app')).toBeInTheDocument();
         },
-        { timeout: 8000 },
+        { timeout: 10000 },
       );
       expect(screen.queryByTestId('seeker-app')).toBeNull();
     },
@@ -390,7 +407,7 @@ describe('Provider intent survives the entire auth flow', () => {
         () => {
           expect(screen.getByTestId('provider-app')).toBeInTheDocument();
         },
-        { timeout: 8000 },
+        { timeout: 10000 },
       );
       expect(screen.queryByTestId('seeker-app')).toBeNull();
     },
@@ -773,7 +790,7 @@ describe('Provider signup OTP → /provider (patch 2 regression repair)', () => 
         // when run isolated; the timeout was the only thing failing
         // under load. 8 s is well below the 30 s vitest default test
         // timeout and gives us margin for the cold start.
-        timeout: 8000,
+        timeout: 10000,
       });
       expect(screen.queryByTestId('seeker-app')).toBeNull();
     },

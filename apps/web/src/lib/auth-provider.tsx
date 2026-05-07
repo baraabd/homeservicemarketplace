@@ -189,9 +189,16 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
 }
 
 // ─── Outer provider wraps with QueryClientProvider ───────────────────────────
-export function AuthProvider({ children }: { children: ReactNode }) {
+//
+// `client` is an optional override. Production callers omit it and get
+// the module-level singleton; test renderers pass a freshly-instantiated
+// QueryClient per render so each test has a completely empty, isolated
+// cache. The shared singleton was the root of an intermittent CI flake
+// in routing tests where stale fetches from sibling test files landed
+// during a test's setup window and polluted auth state.
+export function AuthProvider({ children, client }: { children: ReactNode; client?: QueryClient }) {
   return (
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={client ?? queryClient}>
       <AuthProviderInner>{children}</AuthProviderInner>
     </QueryClientProvider>
   );
