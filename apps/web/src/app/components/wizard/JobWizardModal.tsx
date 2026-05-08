@@ -268,6 +268,25 @@ export function JobWizardModal({
   // navigator.geolocation call): real lat/lng is captured only when
   // the user clicks the "Use my current location" button.
   const [geo, setGeo] = useState<GeoState>({ status: 'idle' });
+  // Sprint 7.x — clean city/country captured from the geocoder.
+  //
+  // The wizard's address text is a free-form string; without a structured
+  // companion, the only way to derive a city for the manualAddress payload
+  // was the comma-pop heuristic in `splitFullAddress`. That heuristic is
+  // brittle for multi-segment Nominatim/Google display names like
+  // "King Fahd Rd, Sheikh Maqsood, Aleppo, Aleppo Governorate, Syria"
+  // — pop-from-end picks "Aleppo Governorate" as city when the actual
+  // city Google/Nominatim already gave us is "Aleppo". The provider
+  // feed then matches on the wrong key and the request is invisible.
+  //
+  // Fix: persist the geocoder's strict `city` + `country` whenever
+  // reverseGeocode resolves with status === 'ok' AND a non-empty city.
+  // Stays the source of truth for the manualAddress payload as long as
+  // the user keeps the city in the address text. Cleared when the user
+  // edits the text past recognition (see `handleAddressChange`) so a
+  // fully-retyped "Damascus, Syria" doesn't silently keep routing to
+  // the previously-resolved Aleppo.
+  const [geocoded, setGeocoded] = useState<{ city: string; country: string } | null>(null);
   // Phase 3 — real native HTML5 media upload. `uploads` was previously a
   // string[] of mock CSS class names; it now holds File objects + their
   // object-URL previews. Object URLs are revoked when an item is removed
@@ -399,16 +418,39 @@ export function JobWizardModal({
   // toast asking the user to verify.
   const applyReverseGeocode = async (lat: number, lng: number) => {
     const result = await reverseGeocode(lat, lng);
-    if (result.status === 'ok') {
-      setAddress(result.formattedAddress);
+    setAddress(result.formattedAddress);
+    if (result.status === 'ok' && result.city.trim().length > 0) {
+      // Authoritative city/country from the geocoder. Survives user
+      // edits to the address text (line1 / apt number / building name)
+      // so the provider feed keeps matching on the right key.
+      setGeocoded({ city: result.city, country: result.country });
       return;
     }
-    setAddress(result.formattedAddress);
-    toast.warning(
-      lang === 'ar'
-        ? 'تعذّر العثور على عنوان مطابق. تم إدخال الإحداثيات — يرجى التحقق منها.'
-        : "Couldn't resolve a street address. Coordinates were filled in — please verify.",
-    );
+    // Partial outcome OR an OK without a city-typed component (rare —
+    // remote points that resolve only to a country). Either way we have
+    // no trustworthy city, so clear any stale value and let
+    // `splitFullAddress` take over at submit.
+    setGeocoded(null);
+    if (result.status !== 'ok') {
+      toast.warning(
+        lang === 'ar'
+          ? 'تعذّر العثور على عنوان مطابق. تم إدخال الإحداثيات — يرجى التحقق منها.'
+          : "Couldn't resolve a street address. Coordinates were filled in — please verify.",
+      );
+    }
+  };
+
+  // Setter passed to the address TextField. The user can freely type
+  // street detail / apartment numbers / building names without losing
+  // the geocoded city — but if they retype the text past recognition
+  // (geocoded city no longer appears in the new value, case-insensitive)
+  // we drop the captured city so the manualAddress payload reverts to
+  // the comma-split heuristic instead of misrouting the request.
+  const handleAddressChange = (next: string) => {
+    setAddress(next);
+    if (geocoded && !next.toLowerCase().includes(geocoded.city.toLowerCase())) {
+      setGeocoded(null);
+    }
   };
 
   const handleRequestLocation = () => {
@@ -566,6 +608,11 @@ export function JobWizardModal({
       : '';
     const useDefaultId = defaultAddress !== null && composedDefault === trimmedAddress;
     const split = splitFullAddress(trimmedAddress);
+    // Prefer the geocoder's strict city/country when we have them.
+    // Falls back to the comma-pop heuristic for the all-manual path
+    // (user typed an address without ever using geolocation / drag).
+    const cleanCity = geocoded ? geocoded.city : split.city;
+    const cleanCountry = geocoded && geocoded.country ? geocoded.country : split.country;
     const lat = geo.status === 'success' ? geo.lat : null;
     const lng = geo.status === 'success' ? geo.lng : null;
 
@@ -584,8 +631,8 @@ export function JobWizardModal({
           ? null
           : {
               line1: split.line1,
-              city: split.city,
-              country: split.country,
+              city: cleanCity,
+              country: cleanCountry,
               ...(lat !== null ? { lat } : {}),
               ...(lng !== null ? { lng } : {}),
             },
@@ -618,6 +665,7 @@ export function JobWizardModal({
     setScheduleTime('');
     setGeo({ status: 'idle' });
     setAddress('');
+    setGeocoded(null);
     setPostError(null);
     onClose();
   };
@@ -956,7 +1004,7 @@ export function JobWizardModal({
                 <TextField
                   label={t('address')}
                   value={address}
-                  onChange={setAddress}
+                  onChange={handleAddressChange}
                   leadingIcon={<MapPin size={16} />}
                   hint={t('addressHint')}
                 />
