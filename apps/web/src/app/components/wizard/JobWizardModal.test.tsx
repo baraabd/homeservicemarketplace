@@ -276,6 +276,14 @@ describe('JobWizardModal — address routing', () => {
 // ── Geolocation ──────────────────────────────────────────────────────────────
 
 describe('JobWizardModal — geolocation', () => {
+  // Sprint 7.x — when no Google key is present (the default in tests),
+  // applyReverseGeocode now calls Nominatim. Stub global.fetch so the
+  // wizard never makes a real HTTP call out of the test process.
+  const origFetchGeo = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = origFetchGeo;
+  });
+
   it('attaches lat/lng to manualAddress when navigator.geolocation succeeds', async () => {
     Object.defineProperty(navigator, 'geolocation', {
       value: {
@@ -288,6 +296,19 @@ describe('JobWizardModal — geolocation', () => {
       configurable: true,
     });
 
+    // Stub the Nominatim reverse-geocode call so the address field
+    // ends up at a deterministic non-empty value once the auto-fill
+    // resolves. Without this the wizard would fire a real network
+    // request to nominatim.openstreetmap.org.
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          display_name: 'Auto-Filled St, Riyadh, Saudi Arabia',
+          address: { city: 'Riyadh', country: 'Saudi Arabia' },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )) as typeof fetch;
+
     mock.onGet('/v1/me/addresses').reply(200, { items: [] });
     let postedBody: Record<string, unknown> = {};
     mock.onPost('/v1/me/requests').reply((config) => {
@@ -298,19 +319,14 @@ describe('JobWizardModal — geolocation', () => {
     renderWizard();
     await advanceToStep2();
 
-    // No saved default — type the address. The TextField uses a
-    // floating-label pattern (no htmlFor association), so we target
-    // the only `textbox` rendered on step 2.
-    const addressInput = screen.getAllByRole('textbox')[0] as HTMLInputElement;
-    fireEvent.change(addressInput, {
-      target: { value: '500 Park Lane, Riyadh, Saudi Arabia' },
-    });
-
     fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /location captured/i })).toBeInTheDocument(),
     );
+    // Wait for the Nominatim auto-fill to land — the address field
+    // transitions from "Fetching address..." → real display_name.
+    await waitFor(() => expect(screen.getByDisplayValue(/Auto-Filled St/i)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
 

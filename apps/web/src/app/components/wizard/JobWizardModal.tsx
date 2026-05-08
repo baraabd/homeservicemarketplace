@@ -386,6 +386,31 @@ export function JobWizardModal({
   // typed result so a missing API key, network failure, or "no match"
   // simply produces a `partial` outcome (formatted lat/lng) and a
   // toast asking the user to verify.
+  // Reverse-geocode the captured coords and update the address field.
+  // Sprint 7.x: shared between the "Use my current location" button
+  // (initial capture) AND the marker drag-end (subsequent refinement)
+  // so the address text stays bi-directionally synced with whatever
+  // the pin is pointing at.
+  //
+  // UX: an immediate localised "Fetching address…" placeholder lands
+  // in the address field BEFORE we await the network call, so the
+  // user sees a clear loading state instead of a stale value snapping
+  // to coordinates. The placeholder is replaced by the real address
+  // (or formatted-coords fallback on a network/no-match outcome) once
+  // the promise resolves.
+  const applyReverseGeocode = async (lat: number, lng: number) => {
+    setAddress(lang === 'ar' ? 'جاري جلب العنوان...' : 'Fetching address...');
+    const result = await reverseGeocode(lat, lng);
+    setAddress(result.formattedAddress);
+    if (result.status !== 'ok') {
+      toast.warning(
+        lang === 'ar'
+          ? 'تعذّر العثور على عنوان مطابق. تم إدخال الإحداثيات — يرجى التحقق منها.'
+          : "Couldn't resolve a street address. Coordinates were filled in — please verify.",
+      );
+    }
+  };
+
   const handleRequestLocation = () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGeo({ status: 'error', reason: 'unsupported' });
@@ -397,19 +422,7 @@ export function JobWizardModal({
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         setGeo({ status: 'success', lat, lng });
-        const result = await reverseGeocode(lat, lng);
-        if (result.status === 'ok') {
-          setAddress(result.formattedAddress);
-        } else {
-          // Best-effort: fill the field with formatted coords + toast
-          // so the user knows to verify.
-          setAddress(result.formattedAddress);
-          toast.warning(
-            lang === 'ar'
-              ? 'تعذّر العثور على عنوان مطابق. تم إدخال الإحداثيات — يرجى التحقق منها.'
-              : "Couldn't resolve a street address. Coordinates were filled in — please verify.",
-          );
-        }
+        await applyReverseGeocode(lat, lng);
       },
       (err) => {
         // 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT.
@@ -845,7 +858,16 @@ export function JobWizardModal({
               <LocationMap
                 lat={geo.status === 'success' ? geo.lat : null}
                 lng={geo.status === 'success' ? geo.lng : null}
-                onCoordsChange={(next) => setGeo({ status: 'success', ...next })}
+                onCoordsChange={(next) => {
+                  // Sprint 7.x — drag-end now ALSO triggers
+                  // reverse-geocode so the address text input stays
+                  // bi-directionally synced with the pin. Without
+                  // this, the field would only auto-update on
+                  // initial geolocation; subsequent drags would
+                  // leave a stale street name.
+                  setGeo({ status: 'success', ...next });
+                  void applyReverseGeocode(next.lat, next.lng);
+                }}
                 ariaLabel={t('serviceLocation')}
                 placeholderLabel={
                   geo.status === 'success' ? t('locationCaptured') : t('gpsDetected')
