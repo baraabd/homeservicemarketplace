@@ -382,6 +382,166 @@ describe('JobWizardModal — geolocation', () => {
     expect(manual?.lng).toBeCloseTo(46.6753, 4);
   });
 
+  // Sprint 7.x — provider feed mismatch regression. Real Google /
+  // Nominatim display strings carry 4–5 comma-separated segments
+  // ("King Fahd Rd, Sheikh Maqsood, Aleppo, Aleppo Governorate, Syria").
+  // The legacy comma-pop heuristic used "Aleppo Governorate" (the
+  // second-to-last chunk) as the city, while the geocoder's
+  // `address_components` already gave us the strict locality "Aleppo".
+  // The provider's available-requests filter normalises both sides via
+  // `cityKey` (lowercase trim, exact equality), so the misnamed city
+  // silently never matched any provider and the request was invisible
+  // in the feed.
+  //
+  // The wizard now persists the geocoder's strict city/country and
+  // forwards them on the manualAddress payload — this test pins it.
+  it('forwards the geocoder strict city (not the comma-split chunk) on manualAddress', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      value: {
+        getCurrentPosition: (
+          success: (pos: { coords: { latitude: number; longitude: number } }) => void,
+        ) => {
+          success({ coords: { latitude: 36.2012, longitude: 37.1612 } });
+        },
+      },
+      configurable: true,
+    });
+
+    // Google response with the polluted multi-segment formatted_address
+    // PLUS a clean `locality: "Aleppo"` component. The pre-fix wizard
+    // would split the formatted_address and pick "Aleppo Governorate"
+    // as city; the fix uses the locality directly.
+    const POLLUTED_ADDRESS = 'King Fahd Rd, Sheikh Maqsood, Aleppo, Aleppo Governorate, Syria';
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          status: 'OK',
+          results: [
+            {
+              formatted_address: POLLUTED_ADDRESS,
+              address_components: [
+                { long_name: 'King Fahd Rd', short_name: 'King Fahd Rd', types: ['route'] },
+                { long_name: 'Aleppo', short_name: 'Aleppo', types: ['locality', 'political'] },
+                {
+                  long_name: 'Aleppo Governorate',
+                  short_name: 'Aleppo Governorate',
+                  types: ['administrative_area_level_1', 'political'],
+                },
+                { long_name: 'Syria', short_name: 'SY', types: ['country', 'political'] },
+              ],
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )) as typeof fetch;
+    // The reverse-geocode module reads VITE_GOOGLE_MAPS_API_KEY at call
+    // time; without a key it short-circuits to a partial outcome and
+    // never hits our fetch stub.
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key');
+
+    try {
+      mock.onGet('/v1/me/addresses').reply(200, { items: [] });
+      let postedBody: Record<string, unknown> = {};
+      mock.onPost('/v1/me/requests').reply((config) => {
+        postedBody = JSON.parse(config.data as string) as Record<string, unknown>;
+        return [200, { id: 'req-clean-city', status: 'PENDING' }];
+      });
+
+      renderWizard();
+      await advanceToStep2();
+      fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
+
+      // Wait for the auto-fill to land — the address field carries the
+      // polluted formatted_address, but geocoded state has captured
+      // the strict locality.
+      await waitFor(() => expect(screen.getByDisplayValue(POLLUTED_ADDRESS)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
+
+      await waitFor(() => expect(postedBody.scheduleType).toBe('ASAP'));
+      const manual = postedBody.manualAddress as Record<string, unknown> | null;
+      expect(manual).not.toBeNull();
+      expect(manual?.city).toBe('Aleppo');
+      expect(manual?.country).toBe('Syria');
+      expect(manual?.lat).toBeCloseTo(36.2012, 4);
+      expect(manual?.lng).toBeCloseTo(37.1612, 4);
+    } finally {
+      globalThis.fetch = origFetch;
+      vi.unstubAllEnvs();
+    }
+  });
+
+  // The "user retyped past recognition" branch: a clean city was
+  // captured, but then the user wholesale replaced the address text
+  // with one that no longer contains the geocoded city. The wizard
+  // must DROP the captured city so the post doesn't silently route
+  // the request to the previously-resolved city's providers.
+  it('clears the captured city when the user retypes the address past recognition', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      value: {
+        getCurrentPosition: (
+          success: (pos: { coords: { latitude: number; longitude: number } }) => void,
+        ) => {
+          success({ coords: { latitude: 36.2012, longitude: 37.1612 } });
+        },
+      },
+      configurable: true,
+    });
+
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          status: 'OK',
+          results: [
+            {
+              formatted_address: 'Some St, Aleppo, Syria',
+              address_components: [
+                { long_name: 'Aleppo', short_name: 'Aleppo', types: ['locality'] },
+                { long_name: 'Syria', short_name: 'SY', types: ['country'] },
+              ],
+            },
+          ],
+        }),
+        { status: 200 },
+      )) as typeof fetch;
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key');
+
+    try {
+      mock.onGet('/v1/me/addresses').reply(200, { items: [] });
+      let postedBody: Record<string, unknown> = {};
+      mock.onPost('/v1/me/requests').reply((config) => {
+        postedBody = JSON.parse(config.data as string) as Record<string, unknown>;
+        return [200, { id: 'req-retyped', status: 'PENDING' }];
+      });
+
+      renderWizard();
+      await advanceToStep2();
+      fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
+      await waitFor(() => expect(screen.getByDisplayValue(/Aleppo/i)).toBeInTheDocument());
+
+      // User wholesale retypes: no "Aleppo" anywhere in the new value.
+      const addressInput = screen.getAllByRole('textbox')[0] as HTMLInputElement;
+      fireEvent.change(addressInput, {
+        target: { value: '789 New Rd, Damascus, Syria' },
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
+
+      await waitFor(() => expect(postedBody.scheduleType).toBe('ASAP'));
+      const manual = postedBody.manualAddress as Record<string, unknown> | null;
+      expect(manual).not.toBeNull();
+      // Geocoded was cleared → comma-pop heuristic took over → city is
+      // the second-to-last chunk of what the user actually typed.
+      expect(manual?.city).toBe('Damascus');
+      expect(manual?.country).toBe('Syria');
+    } finally {
+      globalThis.fetch = origFetch;
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('shows a safe denied-permission message and still posts without lat/lng', async () => {
     Object.defineProperty(navigator, 'geolocation', {
       value: {
