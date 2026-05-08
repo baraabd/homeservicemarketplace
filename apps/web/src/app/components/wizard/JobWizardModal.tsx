@@ -21,12 +21,16 @@ import {
   ChevronDown,
   Maximize2,
   PaintBucket,
-  Navigation,
   Loader2,
+  LocateFixed,
 } from 'lucide-react';
 import { toast } from 'sonner';
+// Leaflet is consumed only for the divIcon factory below — the
+// MapContainer / Marker / TileLayer are mounted inside LocationMap.
+import L from 'leaflet';
 import { Button } from '../ds/Button';
 import { LocationMap } from '../ds/LocationMap';
+import { iconForCategorySlug } from '../../../lib/provider/available-jobs-adapter';
 import { SegmentedTimePicker } from '../ds/SegmentedTimePicker';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
@@ -386,6 +390,27 @@ export function JobWizardModal({
   // typed result so a missing API key, network failure, or "no match"
   // simply produces a `partial` outcome (formatted lat/lng) and a
   // toast asking the user to verify.
+  // Reverse-geocode the captured coords and update the address field.
+  // Shared between the "Use my current location" button (initial
+  // capture) and the marker drag-end (subsequent refinement) so the
+  // address text stays in sync with whatever the pin is pointing at.
+  // Never throws — `reverseGeocode` returns a typed result for every
+  // failure path; the worst case is a formatted lat/lng string and a
+  // toast asking the user to verify.
+  const applyReverseGeocode = async (lat: number, lng: number) => {
+    const result = await reverseGeocode(lat, lng);
+    if (result.status === 'ok') {
+      setAddress(result.formattedAddress);
+      return;
+    }
+    setAddress(result.formattedAddress);
+    toast.warning(
+      lang === 'ar'
+        ? 'تعذّر العثور على عنوان مطابق. تم إدخال الإحداثيات — يرجى التحقق منها.'
+        : "Couldn't resolve a street address. Coordinates were filled in — please verify.",
+    );
+  };
+
   const handleRequestLocation = () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGeo({ status: 'error', reason: 'unsupported' });
@@ -397,19 +422,7 @@ export function JobWizardModal({
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         setGeo({ status: 'success', lat, lng });
-        const result = await reverseGeocode(lat, lng);
-        if (result.status === 'ok') {
-          setAddress(result.formattedAddress);
-        } else {
-          // Best-effort: fill the field with formatted coords + toast
-          // so the user knows to verify.
-          setAddress(result.formattedAddress);
-          toast.warning(
-            lang === 'ar'
-              ? 'تعذّر العثور على عنوان مطابق. تم إدخال الإحداثيات — يرجى التحقق منها.'
-              : "Couldn't resolve a street address. Coordinates were filled in — please verify.",
-          );
-        }
+        await applyReverseGeocode(lat, lng);
       },
       (err) => {
         // 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT.
@@ -422,6 +435,47 @@ export function JobWizardModal({
       { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 },
     );
   };
+
+  // When the user drags the map pin to refine its position, capture
+  // the new coords AND re-trigger the reverse-geocode so the address
+  // input stays bi-directionally synced with the map. Without this,
+  // the text input would only auto-update on initial geolocation;
+  // subsequent pin drags would leave a stale street name.
+  const handleMapCoordsChange = (next: { lat: number; lng: number }) => {
+    setGeo({ status: 'success', lat: next.lat, lng: next.lng });
+    void applyReverseGeocode(next.lat, next.lng);
+  };
+
+  // Aleppo fallback used when the user has not (yet) granted geolocation
+  // and no coords have been captured. The map still renders so the
+  // operator can drop a pin manually instead of seeing a placeholder.
+  const ALEPPO_FALLBACK: [number, number] = [36.2012, 37.1612];
+
+  // Category-specific divIcon. The wizard receives `service` as a
+  // human-readable label ("Plumbing", "AC Repair", …); we lower-case
+  // and dasherise it to derive a slug that the existing
+  // iconForCategorySlug helper can match. Unknown labels fall back
+  // to the generic 🛠️ glyph (handled inside the helper). The icon
+  // is memoised so Leaflet doesn't tear down + re-attach the marker
+  // DOM on every render.
+  const categoryEmoji = useMemo(() => {
+    const slug = (service ?? '').toLowerCase().trim().replace(/\s+/g, '-');
+    return iconForCategorySlug(slug);
+  }, [service]);
+  const categoryIcon = useMemo(
+    () =>
+      L.divIcon({
+        className: 'job-wizard-pin',
+        html: `
+          <div class="relative w-10 h-10 rounded-2xl flex items-center justify-center shadow-xl border-2 border-white" style="background:#f59e0b;">
+            <span style="font-size:18px;line-height:1;">${categoryEmoji}</span>
+          </div>
+        `,
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+      }),
+    [categoryEmoji],
+  );
 
   const handlePost = async (): Promise<void> => {
     // Re-entrancy guard: the submit button already disables in
@@ -834,66 +888,69 @@ export function JobWizardModal({
               <p className="text-slate-700 mb-2.5" style={{ fontSize: '13px', fontWeight: 600 }}>
                 {t('serviceLocation')}
               </p>
-              {/* Phase 4 Feature 4 — interactive map with a draggable
-                  pin. When VITE_GOOGLE_MAPS_API_KEY is unset or the
-                  user hasn't captured coords yet, LocationMap renders
-                  the same kind of static placeholder MapPlaceholder
-                  used to, so dev shells without a key keep working
-                  exactly as before. Drag-end fires onCoordsChange so
-                  the user can refine the pin and the captured lat/lng
-                  flow stays the source of truth for the post payload. */}
-              <LocationMap
-                lat={geo.status === 'success' ? geo.lat : null}
-                lng={geo.status === 'success' ? geo.lng : null}
-                onCoordsChange={(next) => setGeo({ status: 'success', ...next })}
-                ariaLabel={t('serviceLocation')}
-                placeholderLabel={
-                  geo.status === 'success' ? t('locationCaptured') : t('gpsDetected')
-                }
-              />
-
-              {/* Slice 4.1: real geolocation. Button is the only entry
-                  point — the browser's permission prompt fires on
-                  click, not on modal open. Visual idiom matches the
-                  existing amber action treatment used elsewhere in the
-                  wizard. */}
-              <div className="mt-3">
+              {/* Phase 4 Feature 4 (refined) — interactive map.
+                  The map now ALWAYS renders: real captured coords win,
+                  otherwise the Aleppo fallback so the user can drop
+                  a pin manually even when geolocation is denied. The
+                  category-specific divIcon makes the pin visually
+                  match the requested service. Drag-end fires
+                  handleMapCoordsChange which BOTH captures the new
+                  lat/lng AND re-runs reverse-geocode so the address
+                  text input below stays bi-directionally synced.
+                  The floating "Locate Me" button (LocateFixed icon,
+                  z-[1000] over the Leaflet panes) is the in-map
+                  shortcut for triggering geolocation. */}
+              <div className="relative">
+                <LocationMap
+                  lat={geo.status === 'success' ? geo.lat : null}
+                  lng={geo.status === 'success' ? geo.lng : null}
+                  onCoordsChange={handleMapCoordsChange}
+                  ariaLabel={t('serviceLocation')}
+                  placeholderLabel={
+                    geo.status === 'success' ? t('locationCaptured') : t('gpsDetected')
+                  }
+                  centerFallback={ALEPPO_FALLBACK}
+                  icon={categoryIcon}
+                  height={250}
+                />
                 <button
                   type="button"
                   onClick={handleRequestLocation}
                   disabled={geo.status === 'pending'}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-amber-50 border border-amber-100 text-amber-700 active:bg-amber-100 transition-all disabled:opacity-60"
-                  style={{ fontSize: '13px', fontWeight: 700 }}
+                  aria-label={
+                    geo.status === 'success'
+                      ? t('locationCaptured')
+                      : geo.status === 'pending'
+                        ? t('detectingLocation')
+                        : t('useMyCurrentLocation')
+                  }
+                  data-testid="job-wizard-locate-me"
+                  className="absolute top-3 end-3 z-[1000] w-10 h-10 rounded-full bg-white shadow-lg border border-slate-200 flex items-center justify-center active:scale-90 transition-all disabled:opacity-60"
                 >
                   {geo.status === 'pending' ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : geo.status === 'success' ? (
-                    <CheckCircle2 size={14} />
+                    <Loader2 size={16} className="animate-spin text-amber-600" />
                   ) : (
-                    <Navigation size={14} />
+                    <LocateFixed
+                      size={16}
+                      className={geo.status === 'success' ? 'text-amber-600' : 'text-slate-600'}
+                    />
                   )}
-                  <span>
-                    {geo.status === 'pending'
-                      ? t('detectingLocation')
-                      : geo.status === 'success'
-                        ? t('locationCaptured')
-                        : t('useMyCurrentLocation')}
-                  </span>
                 </button>
-                {geo.status === 'error' && (
-                  <p
-                    className="mt-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100 text-red-700"
-                    style={{ fontSize: '12px', fontWeight: 600 }}
-                    role="alert"
-                  >
-                    {geo.reason === 'denied'
-                      ? t('locationDenied')
-                      : geo.reason === 'unsupported'
-                        ? t('locationUnsupported')
-                        : t('locationFailed')}
-                  </p>
-                )}
               </div>
+
+              {geo.status === 'error' && (
+                <p
+                  className="mt-3 px-3 py-2 rounded-xl bg-red-50 border border-red-100 text-red-700"
+                  style={{ fontSize: '12px', fontWeight: 600 }}
+                  role="alert"
+                >
+                  {geo.reason === 'denied'
+                    ? t('locationDenied')
+                    : geo.reason === 'unsupported'
+                      ? t('locationUnsupported')
+                      : t('locationFailed')}
+                </p>
+              )}
 
               <div className="mt-3 mb-4">
                 <TextField
