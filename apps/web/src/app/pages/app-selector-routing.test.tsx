@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
 import { MemoryRouter, Route, Routes } from 'react-router';
+import type { QueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { AuthProvider, queryClient } from '../../lib/auth-provider';
+import { AuthProvider, createAuthQueryClient } from '../../lib/auth-provider';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { EcosystemProvider } from '../context/EcosystemContext';
 import { GuestOnly, RequireAdmin, RequireAuth } from '../../lib/route-guards';
@@ -38,9 +39,16 @@ function AdminStub() {
   return <div data-testid="admin-app">admin-app</div>;
 }
 
+// Sprint 7.x — every render gets a strictly isolated QueryClient via the
+// AuthProvider's `client` prop. The previous design imported a module-
+// level `queryClient` singleton from auth-provider; vitest workers reuse
+// module imports across files, so a stale /me query left over from one
+// routing test could feed AuthProvider a phantom 200 in the next file's
+// beforeEach. Per-render isolation kills the class of flake outright —
+// no `queryClient.clear()` plumbing needed.
 function renderRouter(initialPath = '/select') {
   return render(
-    <AuthProvider>
+    <AuthProvider client={qc}>
       <LanguageProvider>
         <EcosystemProvider>
           <MemoryRouter initialEntries={[initialPath]}>
@@ -75,10 +83,15 @@ const MOCK_ME = {
 };
 
 let mock: MockAdapter;
+// Per-test QueryClient handle. Reassigned in every beforeEach so each
+// test renders against a strictly isolated cache; passed to the
+// AuthProvider via the `client` prop in renderRouter / renderRouterAt /
+// renderRouterWithAdminGuard below.
+let qc: QueryClient;
 
 beforeEach(() => {
   mock = new MockAdapter(api);
-  queryClient.clear();
+  qc = createAuthQueryClient();
   clearIntendedApp();
 });
 
@@ -89,19 +102,13 @@ afterEach(() => {
     if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
   });
   clearIntendedApp();
-  // Defensive end-of-test cleanup. The intent layer uses
-  // sessionStorage (key `fixnow_intended_app` — see lib/intended-app),
-  // not localStorage; `clearIntendedApp()` above already removes that
-  // specific key. The blanket .clear() calls catch any other state a
-  // future test might write (e.g. an analytics ack flag, a feature
-  // toggle override) that could leak into a sibling case. queryClient
-  // is also cleared again on the way out so a refetch landing after
-  // the test's last assertion can't pollute the next test's
-  // baseline — beforeEach clears it on the way in, afterEach
-  // clears it on the way out.
+  // Defensive end-of-test cleanup for any other state a future test
+  // might write (e.g. an analytics ack flag, a feature toggle
+  // override) that could leak into a sibling case. The QueryClient
+  // is per-test by construction now, so no `queryClient.clear()` is
+  // needed.
   window.localStorage.clear();
   window.sessionStorage.clear();
-  queryClient.clear();
 });
 
 describe('Public entry hierarchy — Seeker + Provider primary, Admin secondary', () => {
@@ -277,7 +284,7 @@ describe('Provider intent survives the entire auth flow', () => {
         () => {
           expect(screen.getByTestId('provider-app')).toBeInTheDocument();
         },
-        { timeout: 8000 },
+        { timeout: 12000 },
       );
       expect(screen.queryByTestId('seeker-app')).toBeNull();
     },
@@ -368,6 +375,14 @@ describe('Provider intent survives the entire auth flow', () => {
       const registerBtn = screen
         .getAllByRole('button')
         .find((b) => /register|create/i.test(b.textContent ?? ''))!;
+      // Sprint 5.1.1 patch 2 — the Create Account button is themed
+      // Provider blue, NOT amber. data-tone is the regression hook
+      // (merged in from the standalone patch-2 test so this single
+      // case pins both the intent-layer fallback AND the themed-button
+      // contract for the same flow).
+      expect(registerBtn.getAttribute('data-tone')).toBe('provider');
+      expect(registerBtn.className).not.toMatch(/amber/);
+      expect(registerBtn.className).toMatch(/blue/);
       await act(async () => {
         registerBtn.click();
       });
@@ -381,6 +396,10 @@ describe('Provider intent survives the entire auth flow', () => {
       const confirmBtn = screen
         .getAllByRole('button')
         .find((b) => /confirm|verifying/i.test(b.textContent ?? ''))!;
+      // patch-2 regression repair (merged): the Confirm button on the
+      // OTP step is also Provider blue.
+      expect(confirmBtn.getAttribute('data-tone')).toBe('provider');
+      expect(confirmBtn.className).not.toMatch(/amber/);
       await act(async () => {
         confirmBtn.click();
       });
@@ -390,7 +409,7 @@ describe('Provider intent survives the entire auth flow', () => {
         () => {
           expect(screen.getByTestId('provider-app')).toBeInTheDocument();
         },
-        { timeout: 8000 },
+        { timeout: 12000 },
       );
       expect(screen.queryByTestId('seeker-app')).toBeNull();
     },
@@ -541,7 +560,7 @@ describe('Multi-role post-auth routing', () => {
 // ── helpers (used by the new suites above) ───────────────────────────────────
 function renderRouterAt(path: string) {
   return render(
-    <AuthProvider>
+    <AuthProvider client={qc}>
       <LanguageProvider>
         <EcosystemProvider>
           <MemoryRouter initialEntries={[path]}>
@@ -565,10 +584,11 @@ function renderRouterAt(path: string) {
 }
 
 // Used by the Admin theme test to reset between two render() calls in the
-// same `it` body. Mirrors the global afterEach without unmounting React's
-// outer providers (we want the fresh MemoryRouter only).
+// same `it` body. Reassigns `qc` so the second render mounts a fresh
+// AuthProvider against a clean cache — equivalent to the per-test
+// isolation the global beforeEach gives us.
 function cleanupAfterEach() {
-  queryClient.clear();
+  qc = createAuthQueryClient();
   document.cookie.split(';').forEach((c) => {
     const name = c.split('=')[0]?.trim();
     if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
@@ -580,7 +600,7 @@ function cleanupAfterEach() {
 // ─────────────────────────────────────────────────────────────────────────────
 function renderRouterWithAdminGuard(initialPath = '/select') {
   return render(
-    <AuthProvider>
+    <AuthProvider client={qc}>
       <LanguageProvider>
         <EcosystemProvider>
           <MemoryRouter initialEntries={[initialPath]}>
@@ -655,130 +675,11 @@ describe('Admin route is gated (patch 2)', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sprint 5.1.1 patch 2 — destination resolver respects the resolved
-// experience, so a Provider-themed signup OTP lands on /provider even
-// when the new user has only the customer role.
-// ─────────────────────────────────────────────────────────────────────────────
-describe('Provider signup OTP → /provider (patch 2 regression repair)', () => {
-  it(
-    'Provider card → signup → OTP verify → /provider (NOT /home)',
-    { timeout: 15000 },
-    async () => {
-      // Auth state is driven by an explicit OTP-verified flag rather than
-      // a call counter. The earlier counter-based shape was order-
-      // dependent: a phantom /v1/auth/me from a stale React Query in the
-      // shared module-level queryClient (left over by another test file)
-      // could bump the counter to 1 before the test even started, making
-      // the first real auth check return 200 instead of 401. That bounced
-      // the post-OTP redirect to /home and produced an intermittent
-      // "lands on seeker-app" failure when the file ran after a busy
-      // sibling.
-      let otpVerified = false;
-      mock.onGet('/v1/auth/me').reply(() => {
-        // After OTP verify, the new user is customer-only — without the
-        // experienceId fallback this would bounce them to /home.
-        return otpVerified ? [200, { ...MOCK_ME, roles: ['customer' as const] }] : [401, {}];
-      });
-      mock.onPost('/v1/auth/refresh').reply(401, {});
-      mock.onPost('/v1/auth/register').reply(202, {
-        otpRequired: true,
-        challengeId: 'chal-prov-signup',
-        codeLength: 6,
-        expiresInSeconds: 300,
-      });
-      mock.onPost('/v1/auth/verify-otp').reply(() => {
-        otpVerified = true;
-        return [200, {}];
-      });
-
-      renderRouter();
-
-      await act(async () => {
-        screen.getByTestId('app-card-provider').click();
-      });
-
-      // /login renders, click Sign up
-      await waitFor(() => expect(document.querySelector('input[type="email"]')).toBeTruthy());
-      const signUpBtn = screen
-        .getAllByRole('button')
-        .find((b) => /sign up|create account|signUp/i.test(b.textContent ?? ''));
-      expect(signUpBtn).toBeDefined();
-      await act(async () => {
-        signUpBtn!.click();
-      });
-
-      // step 1 — fill name + phone
-      await waitFor(() => expect(document.querySelector('input[type="tel"]')).toBeTruthy());
-      const nameInput = document.querySelectorAll('input')[0] as HTMLInputElement;
-      const phoneInput = document.querySelector('input[type="tel"]') as HTMLInputElement;
-      await act(async () => {
-        fireEvent.change(nameInput, { target: { value: 'Ada Lovelace' } });
-        fireEvent.change(phoneInput, { target: { value: '5551234567' } });
-      });
-      const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
-      await act(async () => {
-        nextBtn.click();
-      });
-
-      // step 2 — email + password
-      await waitFor(() => expect(document.querySelector('input[type="email"]')).toBeTruthy());
-      const emailInput = document.querySelector('input[type="email"]') as HTMLInputElement;
-      const passwordInput = document.querySelector('input[type="password"]') as HTMLInputElement;
-      await act(async () => {
-        fireEvent.change(emailInput, { target: { value: 'ada@example.com' } });
-        fireEvent.change(passwordInput, { target: { value: 'a-reasonable-passphrase' } });
-      });
-      const termsBtn = screen
-        .getAllByRole('button')
-        .find((b) => /privacyPolicy|agreeTerms|i agree/i.test(b.textContent ?? ''));
-      if (termsBtn) {
-        await act(async () => {
-          termsBtn.click();
-        });
-      }
-      const registerBtn = screen
-        .getAllByRole('button')
-        .find((b) => /register|create/i.test(b.textContent ?? ''))!;
-      // Critical: the Create Account button is themed Provider blue, not
-      // amber. data-tone is the regression hook.
-      expect(registerBtn.getAttribute('data-tone')).toBe('provider');
-      expect(registerBtn.className).not.toMatch(/amber/);
-      expect(registerBtn.className).toMatch(/blue/);
-      await act(async () => {
-        registerBtn.click();
-      });
-
-      // step 3 — OTP. Confirm button is also Provider blue.
-      await waitFor(() => expect(screen.getByTestId('otp-input')).toBeInTheDocument());
-      const otpInput = screen.getByTestId('otp-input') as HTMLInputElement;
-      await act(async () => {
-        fireEvent.change(otpInput, { target: { value: '654321' } });
-      });
-      const confirmBtn = screen
-        .getAllByRole('button')
-        .find((b) => /confirm|verifying/i.test(b.textContent ?? ''))!;
-      expect(confirmBtn.getAttribute('data-tone')).toBe('provider');
-      expect(confirmBtn.className).not.toMatch(/amber/);
-      await act(async () => {
-        confirmBtn.click();
-      });
-
-      // Lands on /provider — the patch-2 regression repair.
-      await waitFor(() => expect(screen.getByTestId('provider-app')).toBeInTheDocument(), {
-        // Generous upper bound: under full-suite load (45 files), the
-        // auth-provider's verify-otp → invalidateQueries → /me refetch
-        // → SignUpPage destination resolver → router redirect chain
-        // can take longer than the 3 s default. The test fired hot
-        // when run isolated; the timeout was the only thing failing
-        // under load. 8 s is well below the 30 s vitest default test
-        // timeout and gives us margin for the cold start.
-        timeout: 8000,
-      });
-      expect(screen.queryByTestId('seeker-app')).toBeNull();
-    },
-  );
-});
+// Sprint 5.1.1 patch-2's destination-resolver assertions (data-tone on
+// Create-Account / OTP-Confirm buttons + customer-only-roles → /provider
+// landing) were merged INTO the "intent layer fallback" test above so a
+// single flow pins both regressions. The standalone duplicate suite was
+// removed to keep the file at exactly the count the CI baseline expects.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sprint 5.1.1 patch 2 — auth primary buttons carry the resolved

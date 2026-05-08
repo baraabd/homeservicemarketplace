@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
 import { MemoryRouter, Route, Routes } from 'react-router';
+import type { QueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
-import { AuthProvider, queryClient } from '../../../lib/auth-provider';
+import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider';
 import { LanguageProvider } from '../../i18n/LanguageContext';
 import { LoginPage, SignUpPage } from '../../pages/AuthPages';
 
@@ -13,6 +14,7 @@ import { LoginPage, SignUpPage } from '../../pages/AuthPages';
 // asserts the network contract plus the final rendered state.
 
 let mock: MockAdapter;
+let qc: QueryClient;
 
 function typeInto(el: HTMLInputElement, value: string) {
   fireEvent.change(el, { target: { value } });
@@ -20,7 +22,7 @@ function typeInto(el: HTMLInputElement, value: string) {
 
 function renderAuth(path: '/login' | '/signup') {
   return render(
-    <AuthProvider>
+    <AuthProvider client={qc}>
       <LanguageProvider>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
@@ -36,7 +38,7 @@ function renderAuth(path: '/login' | '/signup') {
 
 beforeEach(() => {
   mock = new MockAdapter(api);
-  queryClient.clear();
+  qc = createAuthQueryClient();
 });
 
 afterEach(() => {

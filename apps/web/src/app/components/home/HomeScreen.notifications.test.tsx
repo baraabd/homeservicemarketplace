@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
 import { MemoryRouter } from 'react-router';
+import type { QueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
-import { AuthProvider, queryClient } from '../../../lib/auth-provider';
+import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider';
 import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import { HomeScreen } from './HomeScreen';
@@ -17,7 +18,7 @@ import { HomeScreen } from './HomeScreen';
 
 function renderHome() {
   return render(
-    <AuthProvider>
+    <AuthProvider client={qc}>
       <LanguageProvider>
         <EcosystemProvider>
           <MemoryRouter initialEntries={['/home']}>
@@ -30,9 +31,10 @@ function renderHome() {
 }
 
 let mock: MockAdapter;
+let qc: QueryClient;
 beforeEach(() => {
   mock = new MockAdapter(api);
-  queryClient.clear();
+  qc = createAuthQueryClient();
 });
 afterEach(() => {
   mock.restore();

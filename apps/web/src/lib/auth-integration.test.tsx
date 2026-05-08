@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
+import type { QueryClient } from '@tanstack/react-query';
 import { api } from './api';
-import { AuthProvider, queryClient, useAuth } from './auth-provider';
+import { AuthProvider, createAuthQueryClient, useAuth } from './auth-provider';
 import { RequireAuth, GuestOnly } from './route-guards';
 
 // A small debug probe to read router state inside tests.
@@ -59,7 +60,7 @@ function HomeStub() {
 
 function renderApp(initialEntries: Array<string | { pathname: string; state?: unknown }>) {
   return render(
-    <AuthProvider>
+    <AuthProvider client={qc}>
       <MemoryRouter initialEntries={initialEntries}>
         <Routes>
           <Route element={<GuestOnly />}>
@@ -87,13 +88,11 @@ const MOCK_ME = {
 };
 
 let mock: MockAdapter;
+let qc: QueryClient;
 
 beforeEach(() => {
   mock = new MockAdapter(api);
-  // The AuthProvider's QueryClient is a module singleton so we must reset it
-  // between tests — otherwise cached /me data from one case leaks into the
-  // next and observers never refetch.
-  queryClient.clear();
+  qc = createAuthQueryClient();
 });
 
 afterEach(() => {
