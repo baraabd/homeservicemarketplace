@@ -14,9 +14,24 @@ import {
 } from '../../../infrastructure/persistence/requests/service-request.repository';
 import { ServiceCategoryRepository } from '../../../infrastructure/persistence/services/service-category.repository';
 import { AppError } from '../../../shared/errors/app-error';
+import { getBoundingBox, haversineDistance } from '../../../shared/geo/geo';
 import { normaliseCityKey } from '../../requests/requests.service';
 
 const DEFAULT_PAGE_SIZE = 20;
+// Sprint 7.x — fallback radius for providers whose
+// `serviceAreaRadiusKm` column is null. 50 km is generous enough to
+// cover any one city + its near suburbs (Riyadh's diameter is ~30 km,
+// Aleppo's ~10 km) without spilling into the next metro area.
+const DEFAULT_RADIUS_KM = 50;
+// The bbox pre-filter over-includes corners (the bbox is the
+// circumscribed square around the radius circle), so the Haversine
+// post-filter rejects rows beyond the true radius. To keep pagination
+// honest under heavy rejection rates we ask the repository for more
+// candidates than the page size; 4× is the empirically defensible
+// upper bound (the worst-case rejection ratio for a uniformly-
+// distributed candidate set is 1 - π/4 ≈ 21%, so 4× is well over the
+// expected discount).
+const RADIUS_CANDIDATE_MULTIPLIER = 4;
 
 // Sprint 5.2 (canonical) — provider available-requests feed.
 // Sprint 7.x — STRICT location + category match (was: optional).
@@ -81,36 +96,97 @@ export class AvailableRequestsService {
     const explicitCategoryIds = query.category ? [query.category] : null;
     const providerCategoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
     const effectiveCategoryIds = explicitCategoryIds ?? providerCategoryIds;
-    // Case-insensitive city match: normalise the provider's city
-    // (or the explicit `near` override) into the same lowercase
-    // trimmed form the snapshot's `cityKey` carries. Without this
-    // step, a provider profile typed as "Aleppo" would silently miss
-    // requests geocoded as "aleppo" / "ALEPPO".
-    const rawCity = (query.near ?? profile.serviceAreaCity ?? '').trim();
-    const effectiveCity = rawCity ? normaliseCityKey(rawCity) : null;
 
-    // Strict mode: empty profile filter set → empty page. We early-return
-    // with a stable envelope so the client cache doesn't see a global
-    // feed (which would leak unrelated jobs into the provider's UI).
-    if (effectiveCategoryIds.length === 0 || !effectiveCity) {
+    // Sprint 7.x (radius) — location filter resolved to one of:
+    //   - bbox + post-Haversine: when the provider has lat/lng on
+    //     their profile (auto-filled from the city centroid table on
+    //     update — see provider.service.ts CITY_CENTROIDS).
+    //   - cityKey equality: when the provider has a city but no
+    //     coords yet (legacy rows that haven't been touched since the
+    //     auto-geo migration).
+    //   - empty page: when the provider has neither coords nor city.
+    const location = this.resolveLocationFilter(profile, query);
+    if (effectiveCategoryIds.length === 0 || location === null) {
+      // Strict mode: empty profile filter set → empty page. We
+      // early-return with a stable envelope so the client cache
+      // doesn't see a global feed (which would leak unrelated jobs
+      // into the provider's UI).
       return { items: [], nextCursor: null };
     }
 
     const take = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), 100);
+    // Pull a generous candidate window when the bbox path is active:
+    // the post-Haversine filter rejects bbox corners, so asking for
+    // exactly `take + 1` rows can leave us short. With cityKey-only
+    // there's no post-filter so the legacy +1 sizing is enough.
+    const repoTake = location.kind === 'bbox' ? take * RADIUS_CANDIDATE_MULTIPLIER + 1 : take + 1;
     const rows = await this.requests.listAvailableForProvider({
       excludeSeekerUserId: profile.userId ?? null,
       categoryIds: effectiveCategoryIds,
-      city: effectiveCity,
+      city: location.cityKey ?? undefined,
+      bbox: location.kind === 'bbox' ? location.bbox : undefined,
       excludeBidsByProviderId: profile.id,
-      take: take + 1,
+      take: repoTake,
       cursor: query.cursor,
     });
-    const page = rows.slice(0, take);
+    // Haversine post-filter — clip the bbox corners. Rows that came
+    // through the cityKey OR-arm have no lat/lng on the snapshot, so
+    // we let those pass unconditionally; that's the design intent
+    // (cityKey is the legacy fallback for un-geocoded data).
+    const inRadius =
+      location.kind === 'bbox'
+        ? rows.filter((row) => isWithinRadius(row, location.center, location.radiusKm))
+        : rows;
+    const page = inRadius.slice(0, take);
     const requestIds = page.map((r) => r.id);
     const bidCountByRequest = await this.bids.countActiveByRequestIds(requestIds);
     const items = page.map((row) => toSummary(row, bidCountByRequest.get(row.id) ?? 0));
-    const nextCursor = rows.length > take ? items[items.length - 1].id : null;
+    const nextCursor = inRadius.length > take ? items[items.length - 1].id : null;
     return { items, nextCursor };
+  }
+
+  // Resolve the provider's profile + (optional) `near` query override
+  // into the location half of the filter. Returns:
+  //   - null: provider has no coords AND no city → empty feed.
+  //   - { kind: 'bbox', ... }: provider has coords (and optionally a
+  //     city) → bbox + Haversine. cityKey is included on the OR-arm
+  //     so requests without lat/lng still surface via the legacy
+  //     equality match.
+  //   - { kind: 'cityKey', ... }: provider has only a city → legacy
+  //     cityKey equality alone.
+  private resolveLocationFilter(
+    profile: {
+      serviceAreaCity: string | null;
+      serviceAreaLat: number | null;
+      serviceAreaLng: number | null;
+      serviceAreaRadiusKm: number | null;
+    },
+    query: ProviderAvailableRequestsQuery,
+  ): LocationFilter | null {
+    const rawCity = (query.near ?? profile.serviceAreaCity ?? '').trim();
+    const cityKey = rawCity ? normaliseCityKey(rawCity) : null;
+    const hasCoords =
+      profile.serviceAreaLat !== null &&
+      profile.serviceAreaLng !== null &&
+      Number.isFinite(profile.serviceAreaLat) &&
+      Number.isFinite(profile.serviceAreaLng);
+
+    if (hasCoords) {
+      const radiusKm = profile.serviceAreaRadiusKm ?? DEFAULT_RADIUS_KM;
+      const lat = profile.serviceAreaLat as number;
+      const lng = profile.serviceAreaLng as number;
+      return {
+        kind: 'bbox',
+        center: { lat, lng },
+        radiusKm,
+        bbox: getBoundingBox(lat, lng, radiusKm),
+        cityKey,
+      };
+    }
+    if (cityKey) {
+      return { kind: 'cityKey', cityKey };
+    }
+    return null;
   }
 
   async detail(providerUserId: string, requestId: string): Promise<ProviderAvailableRequestDetail> {
@@ -119,20 +195,21 @@ export class AvailableRequestsService {
       throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
     }
     const providerCategoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
-    const providerCityRaw = profile.serviceAreaCity?.trim() || null;
-    const providerCity = providerCityRaw ? normaliseCityKey(providerCityRaw) : null;
     // Sprint 7.x — STRICT detail visibility (mirrors list). A provider
-    // who hasn't onboarded (no city / no categories) cannot fetch
-    // request details either, even by guessing the id. The city
-    // passed to the repo is the lowercase-trimmed key so a manual
-    // "Aleppo" profile matches an "aleppo" or "ALEPPO" snapshot.
-    if (providerCategoryIds.length === 0 || !providerCity) {
+    // who hasn't onboarded (no city / no coords AND no categories)
+    // cannot fetch request details either, even by guessing the id.
+    // The location resolution mirrors `list` exactly so a probing
+    // provider can't fetch a row by id when the list filter would
+    // have hidden it.
+    const location = this.resolveLocationFilter(profile, {});
+    if (providerCategoryIds.length === 0 || location === null) {
       throw new AppError('NOT_FOUND', 'Request not found.', 404);
     }
     const row = await this.requests.findAvailableForProvider(requestId, {
       excludeSeekerUserId: profile.userId ?? null,
       categoryIds: providerCategoryIds,
-      city: providerCity,
+      city: location.cityKey ?? undefined,
+      bbox: location.kind === 'bbox' ? location.bbox : undefined,
       excludeBidsByProviderId: profile.id,
     });
     if (!row) {
@@ -141,9 +218,58 @@ export class AvailableRequestsService {
       // distinguish "not visible to me" from "doesn't exist".
       throw new AppError('NOT_FOUND', 'Request not found.', 404);
     }
+    // Apply the precise Haversine cut on the bbox path. Rows that
+    // matched via cityKey alone (no lat/lng on the snapshot) are
+    // accepted unconditionally — same contract as the list endpoint.
+    if (location.kind === 'bbox' && !isWithinRadius(row, location.center, location.radiusKm)) {
+      throw new AppError('NOT_FOUND', 'Request not found.', 404);
+    }
     const bidCountByRequest = await this.bids.countActiveByRequestIds([row.id]);
     return toSummary(row, bidCountByRequest.get(row.id) ?? 0);
   }
+}
+
+// Internal location-filter ADT — the resolver returns one of these
+// shapes so the list/detail call sites can branch on the exact mode
+// without inspecting individual flags.
+type LocationFilter =
+  | {
+      kind: 'bbox';
+      center: { lat: number; lng: number };
+      radiusKm: number;
+      bbox: { minLat: number; maxLat: number; minLng: number; maxLng: number };
+      // Always the lowercase-trimmed cityKey when the provider has
+      // configured a city alongside their coords. The repository
+      // OR-s it against the bbox arm so geocoded providers still see
+      // un-geocoded requests in their city.
+      cityKey: string | null;
+    }
+  | { kind: 'cityKey'; cityKey: string };
+
+// Haversine post-filter helper. Reads lat/lng out of the snapshot
+// JSON (typed loosely because Prisma surfaces JSON columns as `unknown`
+// at the application layer); rows missing either coordinate fall
+// through unaccepted on the bbox path. Caller already knows the row
+// passed the bbox pre-filter, so a missing coord here means the row
+// matched the cityKey OR-arm — those are accepted unconditionally and
+// must NOT call this helper.
+function isWithinRadius(
+  row: ServiceRequestWithCategory,
+  center: { lat: number; lng: number },
+  radiusKm: number,
+): boolean {
+  const snap = row.addressSnapshot as unknown as { lat?: number | null; lng?: number | null };
+  if (
+    typeof snap?.lat !== 'number' ||
+    typeof snap?.lng !== 'number' ||
+    !Number.isFinite(snap.lat) ||
+    !Number.isFinite(snap.lng)
+  ) {
+    // Row matched the cityKey OR-arm. Let it through — that's the
+    // legacy equality contract and the radius doesn't apply.
+    return true;
+  }
+  return haversineDistance(center.lat, center.lng, snap.lat, snap.lng) <= radiusKm;
 }
 
 function toSummary(

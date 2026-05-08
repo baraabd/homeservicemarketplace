@@ -87,14 +87,25 @@ export class ServiceRequestRepository {
   // an explicit categoryId filter from the query string). When empty,
   // the feed is global.
   //
-  // `city`, when set, filters by the request's snapshotted city. The
-  // snapshot is JSON, so we use Prisma's `path` filter on the
-  // `addressSnapshot` column, equality + case-insensitive.
+  // Location filter (Sprint 7.x): the caller may supply EITHER a city
+  // (cityKey equality on the JSON snapshot — the legacy primitive) OR
+  // a `bbox` (lat/lng range on the JSON snapshot — the new primitive
+  // that powers the Haversine radius match). When both are supplied we
+  // OR them together so requests with no captured lat/lng (legacy rows
+  // or seekers who declined geolocation) still surface via the
+  // cityKey path while geocoded rows participate in the radius match.
+  // When NEITHER is supplied the feed is unscoped by location.
+  //
+  // The bbox is a CHEAP pre-filter — it returns the circumscribed
+  // square around the desired radius, which over-includes corners. The
+  // caller MUST follow up with the exact Haversine check on the
+  // returned rows (see `available-requests.service.ts`).
   listAvailableForProvider(
     args: {
       excludeSeekerUserId: string | null;
       categoryIds?: string[];
       city?: string;
+      bbox?: { minLat: number; maxLat: number; minLng: number; maxLng: number };
       take: number;
       cursor?: string;
       // Sprint 5.2 (canonical): when set, hide every request the
@@ -113,25 +124,7 @@ export class ServiceRequestRepository {
       ...(args.categoryIds && args.categoryIds.length > 0
         ? { categoryId: { in: args.categoryIds } }
         : {}),
-      ...(args.city
-        ? {
-            // Postgres JSON `path` lookup against the snapshotted
-            // `cityKey` — a denormalised lowercase-trimmed mirror of
-            // the original city, written by requests.service.ts
-            // alongside `city`. Filtering on `cityKey` means we get
-            // case-insensitive equality (e.g. "Aleppo" matches
-            // "aleppo" matches "ALEPPO") without losing the original
-            // casing for display, and without the false-positive
-            // risk of `string_contains: insensitive` (e.g. "York"
-            // would match "New York"). Caller MUST pass an
-            // already-normalised value — see normaliseCityKey() in
-            // requests.service.ts.
-            addressSnapshot: {
-              path: ['cityKey'],
-              equals: args.city,
-            },
-          }
-        : {}),
+      ...buildLocationFilter(args.city, args.bbox),
       ...(args.excludeBidsByProviderId
         ? {
             bids: {
@@ -163,8 +156,12 @@ export class ServiceRequestRepository {
     args: {
       excludeSeekerUserId: string | null;
       categoryIds?: string[];
-      // Sprint 7.x — strict city match (mirrors listAvailableForProvider).
+      // Sprint 7.x — bbox-OR-cityKey location match (mirrors
+      // listAvailableForProvider). Detail visibility tracks list
+      // visibility exactly so a probing provider can't fetch the row
+      // by id when the list filter would have hidden it.
       city?: string;
+      bbox?: { minLat: number; maxLat: number; minLng: number; maxLng: number };
       excludeBidsByProviderId?: string;
     },
     tx?: PrismaTx,
@@ -178,18 +175,7 @@ export class ServiceRequestRepository {
         ...(args.categoryIds && args.categoryIds.length > 0
           ? { categoryId: { in: args.categoryIds } }
           : {}),
-        ...(args.city
-          ? {
-              addressSnapshot: {
-                // Same case-insensitive contract as
-                // listAvailableForProvider — caller normalises via
-                // normaliseCityKey() and we filter on the denormalised
-                // lowercase-trimmed `cityKey` field of the snapshot.
-                path: ['cityKey'],
-                equals: args.city,
-              },
-            }
-          : {}),
+        ...buildLocationFilter(args.city, args.bbox),
         ...(args.excludeBidsByProviderId
           ? {
               bids: {
@@ -286,4 +272,59 @@ export class ServiceRequestRepository {
       data: { status: to },
     });
   }
+}
+
+// Build the location half of the available-requests `where` clause.
+//
+// The provider feed accepts EITHER a normalised cityKey (legacy
+// primitive — exact equality on `addressSnapshot.cityKey`) OR a
+// bounding box (the new primitive — lat/lng range on
+// `addressSnapshot.lat/lng`). Whichever the caller supplies, we OR them
+// together so the filter degrades gracefully:
+//
+//   - Geocoded providers + geocoded requests → bbox match (Haversine
+//     post-filter clips the corners in the service layer).
+//   - Geocoded providers + un-geocoded requests → cityKey equality
+//     keeps the legacy match alive.
+//   - Un-geocoded providers → cityKey-only path (legacy behaviour).
+//   - Neither side: no location filter (callers are expected to gate
+//     this on profile completeness — see available-requests.service.ts).
+//
+// Prisma's JSON `path` filter on Postgres supports `gte/lte` for
+// numeric values, so the bbox lookup runs as four index-friendly JSON
+// path comparisons. There's no GIN index on the JSON paths today, so
+// at scale this becomes a sequential scan; future work is to
+// denormalise lat/lng into top-level columns + add a `(lat, lng)`
+// btree (the same pattern the cityKey commit used for the equality
+// path).
+function buildLocationFilter(
+  city: string | undefined,
+  bbox: { minLat: number; maxLat: number; minLng: number; maxLng: number } | undefined,
+): Prisma.ServiceRequestWhereInput {
+  const cityClause: Prisma.ServiceRequestWhereInput | null = city
+    ? {
+        addressSnapshot: {
+          path: ['cityKey'],
+          equals: city,
+        },
+      }
+    : null;
+
+  const bboxClause: Prisma.ServiceRequestWhereInput | null = bbox
+    ? {
+        AND: [
+          { addressSnapshot: { path: ['lat'], gte: bbox.minLat } },
+          { addressSnapshot: { path: ['lat'], lte: bbox.maxLat } },
+          { addressSnapshot: { path: ['lng'], gte: bbox.minLng } },
+          { addressSnapshot: { path: ['lng'], lte: bbox.maxLng } },
+        ],
+      }
+    : null;
+
+  if (cityClause && bboxClause) {
+    return { OR: [cityClause, bboxClause] };
+  }
+  if (bboxClause) return bboxClause;
+  if (cityClause) return cityClause;
+  return {};
 }

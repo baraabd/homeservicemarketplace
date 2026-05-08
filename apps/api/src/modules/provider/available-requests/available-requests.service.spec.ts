@@ -309,6 +309,157 @@ describe('AvailableRequestsService.list', () => {
     expect(calls.map((c) => c.city)).toEqual(['aleppo', 'aleppo', 'aleppo']);
   });
 
+  // ─── Sprint 7.x — radius-based location matching ─────────────────────────
+  // Provider profiles now carry serviceAreaLat/Lng/RadiusKm. When coords
+  // are present the service builds a bbox (cheap pre-filter) AND a
+  // Haversine post-filter (precise clip). When coords are absent we fall
+  // back to the legacy cityKey equality. These tests pin all three modes
+  // and the Aleppo / محافظة-حلب regression hook.
+  describe('radius matching', () => {
+    // Pulled out so the scenarios share a common provider centre. 50 km
+    // is the default radius (provider profile leaves serviceAreaRadiusKm
+    // null in some cases — the service substitutes the default).
+    const ALEPPO_PROVIDER_LAT = 36.2012;
+    const ALEPPO_PROVIDER_LNG = 37.1612;
+
+    function geocodedProvider(
+      categories: ServiceCategory[],
+      over: Partial<ProviderProfileWithCategories> = {},
+    ): ProviderProfileWithCategories {
+      return {
+        ...makeProfile(categories),
+        serviceAreaCity: 'Aleppo',
+        serviceAreaLat: ALEPPO_PROVIDER_LAT,
+        serviceAreaLng: ALEPPO_PROVIDER_LNG,
+        serviceAreaRadiusKm: 50,
+        ...over,
+      } as ProviderProfileWithCategories;
+    }
+
+    function geocodedRequest(
+      id: string,
+      cat: ServiceCategory,
+      lat: number,
+      lng: number,
+      cityKey = 'aleppo',
+    ): ServiceRequestWithCategory {
+      return makeRequest(id, cat, {
+        addressSnapshot: {
+          label: null,
+          line1: '7 Private Street',
+          city: 'Aleppo',
+          cityKey,
+          country: 'SY',
+          lat,
+          lng,
+        },
+      } as unknown as Partial<ServiceRequest>);
+    }
+
+    it('passes a bbox to the repository when the provider has lat/lng', async () => {
+      const cat = makeCategory();
+      const m = makeMocks({ profile: geocodedProvider([cat]), rows: [], catalog: [cat] });
+      await makeService(m).list('user-provider-1', {});
+      const callArgs = (m.requests.listAvailableForProvider as jest.Mock).mock.calls[0][0];
+      expect(callArgs.bbox).toBeDefined();
+      // Centre is inside the bbox.
+      expect(callArgs.bbox.minLat).toBeLessThan(ALEPPO_PROVIDER_LAT);
+      expect(callArgs.bbox.maxLat).toBeGreaterThan(ALEPPO_PROVIDER_LAT);
+      expect(callArgs.bbox.minLng).toBeLessThan(ALEPPO_PROVIDER_LNG);
+      expect(callArgs.bbox.maxLng).toBeGreaterThan(ALEPPO_PROVIDER_LNG);
+      // cityKey ALSO forwarded so legacy un-geocoded requests still surface.
+      expect(callArgs.city).toBe('aleppo');
+    });
+
+    it('keeps requests within the radius and drops the ones beyond it', async () => {
+      const cat = makeCategory();
+      // Aleppo Governorate centroid — ~6 km from the city → KEEP.
+      const inside = geocodedRequest('r-inside', cat, 36.16, 37.17, 'محافظة-حلب-key');
+      // ~110 km north of Aleppo (still in Syria) → DROP.
+      const farAway = geocodedRequest('r-far', cat, 37.1, 37.5, 'aleppo');
+      const m = makeMocks({
+        profile: geocodedProvider([cat]),
+        rows: [inside, farAway],
+        catalog: [cat],
+      });
+      const out = await makeService(m).list('user-provider-1', {});
+      expect(out.items.map((i) => i.id)).toEqual(['r-inside']);
+    });
+
+    it('falls back to cityKey equality when the provider has no coords', async () => {
+      const cat = makeCategory();
+      // No lat/lng on the provider — repository must NOT receive a bbox,
+      // and city must still flow through the legacy path.
+      const profile = {
+        ...makeProfile([cat]),
+        serviceAreaCity: 'Riyadh',
+        serviceAreaLat: null,
+        serviceAreaLng: null,
+      };
+      const m = makeMocks({ profile, rows: [], catalog: [cat] });
+      await makeService(m).list('user-provider-1', {});
+      const callArgs = (m.requests.listAvailableForProvider as jest.Mock).mock.calls[0][0];
+      expect(callArgs.bbox).toBeUndefined();
+      expect(callArgs.city).toBe('riyadh');
+    });
+
+    it('lets requests WITHOUT lat/lng pass the radius filter (matched via cityKey OR-arm)', async () => {
+      // Real-world case: a seeker who declined geolocation. The
+      // request is in the same city as the provider but carries no
+      // coords on the snapshot. The repo OR-clause matches it via
+      // cityKey; the post-Haversine filter must not reject it.
+      const cat = makeCategory();
+      const noCoordsRow = makeRequest('r-no-coords', cat, {
+        addressSnapshot: {
+          label: null,
+          line1: '7 Private Street',
+          city: 'Aleppo',
+          cityKey: 'aleppo',
+          country: 'SY',
+          lat: null,
+          lng: null,
+        },
+      } as unknown as Partial<ServiceRequest>);
+      const m = makeMocks({
+        profile: geocodedProvider([cat]),
+        rows: [noCoordsRow],
+        catalog: [cat],
+      });
+      const out = await makeService(m).list('user-provider-1', {});
+      expect(out.items.map((i) => i.id)).toEqual(['r-no-coords']);
+    });
+
+    it('uses the default 50 km radius when the provider profile leaves serviceAreaRadiusKm null', async () => {
+      const cat = makeCategory();
+      // Request 40 km north of provider — inside the 50 km default.
+      const inside = geocodedRequest('r-40km', cat, 36.5611, 37.1612);
+      // Request 60 km north — outside.
+      const outside = geocodedRequest('r-60km', cat, 36.7414, 37.1612);
+      const profile = geocodedProvider([cat], { serviceAreaRadiusKm: null });
+      const m = makeMocks({ profile, rows: [inside, outside], catalog: [cat] });
+      const out = await makeService(m).list('user-provider-1', {});
+      expect(out.items.map((i) => i.id)).toEqual(['r-40km']);
+    });
+
+    it('detail returns 404 when the candidate row is OUTSIDE the radius (Haversine post-filter)', async () => {
+      // The repository's findAvailableForProvider is best-effort
+      // (bbox + cityKey OR), so it can return a row that's inside
+      // the bbox / matches cityKey but is beyond the radius. The
+      // service must clip with Haversine and 404 the request.
+      const cat = makeCategory();
+      const farRow = geocodedRequest('r-too-far', cat, 37.5, 37.5);
+      const m = makeMocks({
+        profile: geocodedProvider([cat]),
+        detailRow: farRow,
+        catalog: [cat],
+      });
+      await expect(makeService(m).detail('user-provider-1', 'r-too-far')).rejects.toMatchObject({
+        status: 404,
+        code: 'NOT_FOUND',
+      });
+    });
+  });
+
   it('exposes mediaUrls on the wire as `media` (empty array fallback)', async () => {
     const cat = makeCategory();
     const withMedia = makeRequest('r-with-media', cat, {
