@@ -42,7 +42,17 @@ vi.mock('react-leaflet', () => ({
   Popup: ({ children }: { children?: ReactNode }) => (
     <div data-testid="leaflet-popup">{children}</div>
   ),
-  useMap: () => ({ fitBounds: () => {}, setView: () => {} }),
+  // MapResizer (mounted by LocationMap to call `map.invalidateSize()`
+  // on mount + container resize) calls these two extra members. The
+  // stubs satisfy them safely — `getContainer()` returns a real DOM
+  // node so `ResizeObserver.observe(container)` accepts the argument
+  // even on environments that ship a strict implementation.
+  useMap: () => ({
+    fitBounds: () => {},
+    setView: () => {},
+    invalidateSize: () => {},
+    getContainer: () => document.createElement('div'),
+  }),
 }));
 
 // L.divIcon / L.latLngBounds / L.Icon.Default are called from the
@@ -338,9 +348,23 @@ describe('JobWizardModal — address routing', () => {
 
 describe('JobWizardModal — geolocation', () => {
   // Sprint 7.x — when no Google key is present (the default in tests),
-  // applyReverseGeocode now calls Nominatim. Stub global.fetch so the
-  // wizard never makes a real HTTP call out of the test process.
+  // applyReverseGeocode now calls Nominatim. Stub global.fetch in
+  // beforeEach so EVERY geolocation test (initial-capture AND marker-
+  // drag, both of which route through applyReverseGeocode) has a
+  // deterministic, non-network reverse-geocode response. Individual
+  // tests can override globalThis.fetch if they need a different
+  // payload.
   const origFetchGeo = globalThis.fetch;
+  beforeEach(() => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          display_name: 'Auto-Filled St, Riyadh, Saudi Arabia',
+          address: { city: 'Riyadh', country: 'Saudi Arabia' },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )) as typeof fetch;
+  });
   afterEach(() => {
     globalThis.fetch = origFetchGeo;
   });
@@ -356,19 +380,6 @@ describe('JobWizardModal — geolocation', () => {
       },
       configurable: true,
     });
-
-    // Stub the Nominatim reverse-geocode call so the address field
-    // ends up at a deterministic non-empty value once the auto-fill
-    // resolves. Without this the wizard would fire a real network
-    // request to nominatim.openstreetmap.org.
-    globalThis.fetch = (async () =>
-      new Response(
-        JSON.stringify({
-          display_name: 'Auto-Filled St, Riyadh, Saudi Arabia',
-          address: { city: 'Riyadh', country: 'Saudi Arabia' },
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      )) as typeof fetch;
 
     mock.onGet('/v1/me/addresses').reply(200, { items: [] });
     let postedBody: Record<string, unknown> = {};
