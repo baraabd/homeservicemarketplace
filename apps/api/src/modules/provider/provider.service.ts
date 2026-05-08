@@ -27,6 +27,39 @@ import { AppError } from '../../shared/errors/app-error';
 
 const PROVIDER_ROLE_NAME = 'provider';
 
+// Sprint 7.x — city centroid fallback table.
+//
+// When the provider sets `serviceAreaCity` without explicit lat/lng,
+// the provider feed and the LiveJobs map default to a globally-relevant
+// fallback (Riyadh) regardless of where the provider actually works.
+// That ships a wrong-feeling default to providers in cities the
+// platform serves heavily (Aleppo today, Damascus shortly).
+//
+// Solution: a small hand-curated map keyed by lowercased-trimmed city
+// name. When the update payload touches the city and we don't already
+// have coords (neither in the patch NOR on the existing row), we fill
+// them from this table so every market's UX defaults to its own
+// centroid. Coordinates are city-level (no district precision); the
+// `available-requests` filter still matches on `cityKey` exactly, so
+// these fallbacks affect map centering only — not the matching key.
+//
+// Lower-bound principle: only cities the seed / known operators
+// already use. Adding a city here is fine; over-listing risks pretending
+// we serve markets we don't yet, and the lookup is O(n) by design so
+// a wrong entry stays cheap to remove.
+const CITY_CENTROIDS: Readonly<Record<string, [number, number]>> = {
+  riyadh: [24.7136, 46.6753],
+  jeddah: [21.4858, 39.1925],
+  aleppo: [36.2012, 37.1612],
+  damascus: [33.5138, 36.2765],
+  gothenburg: [57.7089, 11.9746],
+};
+
+function lookupCityCentroid(city: string): [number, number] | null {
+  const key = city.trim().toLowerCase();
+  return CITY_CENTROIDS[key] ?? null;
+}
+
 // Sprint 5.1.2: the status the upgrade service stamps onto a freshly
 // created ProviderProfile. The schema default is DRAFT (safe-by-default
 // for any direct INSERT). The /upgrade flow explicitly stamps ACTIVE
@@ -157,6 +190,29 @@ export class ProviderService {
         input.serviceAreaLng !== undefined ||
         input.serviceAreaRadiusKm !== undefined;
 
+      // Sprint 7.x — auto-fill `serviceAreaLat/Lng` from a hand-curated
+      // city centroid table when the patch touches `serviceAreaCity`
+      // without explicit coords AND the row doesn't already carry coords
+      // (so we never overwrite a more-precise lat/lng a previous patch
+      // attached). Keeps the LiveJobs map and any future map-centric UI
+      // defaulting to a centroid in the provider's actual market instead
+      // of the platform-wide Riyadh fallback baked into the frontend.
+      const incomingCity =
+        typeof input.serviceAreaCity === 'string' ? input.serviceAreaCity.trim() : null;
+      const omittedLatLng =
+        input.serviceAreaLat === undefined && input.serviceAreaLng === undefined;
+      const profileMissingLatLng =
+        profile.serviceAreaLat === null || profile.serviceAreaLng === null;
+      let resolvedLat: number | null | undefined = input.serviceAreaLat;
+      let resolvedLng: number | null | undefined = input.serviceAreaLng;
+      if (incomingCity && incomingCity.length > 0 && omittedLatLng && profileMissingLatLng) {
+        const centroid = lookupCityCentroid(incomingCity);
+        if (centroid) {
+          resolvedLat = centroid[0];
+          resolvedLng = centroid[1];
+        }
+      }
+
       if (profileFieldsTouched) {
         await this.providers.updateById(
           profile.id,
@@ -167,8 +223,8 @@ export class ProviderService {
             phoneNumber: input.phoneNumber,
             serviceAreaCity: input.serviceAreaCity,
             serviceAreaCountry: input.serviceAreaCountry,
-            serviceAreaLat: input.serviceAreaLat,
-            serviceAreaLng: input.serviceAreaLng,
+            serviceAreaLat: resolvedLat,
+            serviceAreaLng: resolvedLng,
             serviceAreaRadiusKm: input.serviceAreaRadiusKm,
           },
           tx,

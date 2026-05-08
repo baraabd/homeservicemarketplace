@@ -357,6 +357,87 @@ describe('ProviderService', () => {
       expect(m.providers.updateById).not.toHaveBeenCalled();
       expect(m.providers.replaceServiceCategories).toHaveBeenCalled();
     });
+
+    // Sprint 7.x — city → coords auto-resolution. The provider feed +
+    // LiveJobs map default to Riyadh coordinates regardless of the
+    // provider's actual city when lat/lng aren't on the row. Filling
+    // them from a city centroid table at write time keeps the map
+    // honest without forcing the operator to look up coords.
+    it('auto-fills serviceAreaLat/Lng from the city centroid when lat/lng are omitted', async () => {
+      const m = makeMocks();
+      await makeService(m).update('user-1', { serviceAreaCity: 'Aleppo' });
+      expect(m.providers.updateById).toHaveBeenCalledWith(
+        'pp-1',
+        expect.objectContaining({
+          serviceAreaCity: 'Aleppo',
+          serviceAreaLat: 36.2012,
+          serviceAreaLng: 37.1612,
+        }),
+        undefined,
+      );
+    });
+
+    it('matches the city centroid case-insensitively (lowercase / mixed-case)', async () => {
+      const m = makeMocks();
+      await makeService(m).update('user-1', { serviceAreaCity: 'damascus' });
+      expect(m.providers.updateById).toHaveBeenCalledWith(
+        'pp-1',
+        expect.objectContaining({
+          serviceAreaLat: 33.5138,
+          serviceAreaLng: 36.2765,
+        }),
+        undefined,
+      );
+    });
+
+    it('respects explicit lat/lng — never overrides them with the city centroid', async () => {
+      const m = makeMocks();
+      // Caller passed precise coords (e.g. they dragged the map pin to
+      // their workshop, not the city centre). We MUST forward those
+      // verbatim and never substitute the centroid.
+      await makeService(m).update('user-1', {
+        serviceAreaCity: 'Aleppo',
+        serviceAreaLat: 36.215,
+        serviceAreaLng: 37.155,
+      });
+      expect(m.providers.updateById).toHaveBeenCalledWith(
+        'pp-1',
+        expect.objectContaining({
+          serviceAreaLat: 36.215,
+          serviceAreaLng: 37.155,
+        }),
+        undefined,
+      );
+    });
+
+    it('does not overwrite existing row coords when only the city is patched', async () => {
+      // The row already carries precise coords from a prior PATCH.
+      // The new patch only touches the city — we must leave the
+      // coords alone (passing `undefined` to the repo, which is
+      // its "not touched" sentinel).
+      const m = makeMocks({
+        providers: {
+          findByUserIdWithCategories: jest.fn().mockResolvedValue(
+            makeProviderWithCategories({
+              serviceAreaLat: 36.215,
+              serviceAreaLng: 37.155,
+            }),
+          ),
+        },
+      });
+      await makeService(m).update('user-1', { serviceAreaCity: 'Aleppo' });
+      const call = m.providers.updateById.mock.calls[0][1];
+      expect(call.serviceAreaLat).toBeUndefined();
+      expect(call.serviceAreaLng).toBeUndefined();
+    });
+
+    it('leaves lat/lng untouched when the city is not in the centroid table', async () => {
+      const m = makeMocks();
+      await makeService(m).update('user-1', { serviceAreaCity: 'NotARealCity' });
+      const call = m.providers.updateById.mock.calls[0][1];
+      expect(call.serviceAreaLat).toBeUndefined();
+      expect(call.serviceAreaLng).toBeUndefined();
+    });
   });
 
   // ─── update availability ─────────────────────────────────────────────────

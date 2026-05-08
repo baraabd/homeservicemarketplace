@@ -19,6 +19,7 @@ import { UserProfileRepository } from './profiles/user-profile.repository';
 import { ServiceRequestRepository } from './requests/service-request.repository';
 import { ServiceRequestEventRepository } from './requests/service-request-event.repository';
 import { ServiceCategoryRepository } from './services/service-category.repository';
+import { ProviderCategoryApplicationRepository } from './services/provider-category-application.repository';
 import { DisputeRepository } from './disputes/dispute.repository';
 import { DisputeEventRepository } from './disputes/dispute-event.repository';
 import { PlatformSettingRepository } from './settings/platform-setting.repository';
@@ -48,6 +49,7 @@ import { PlatformSettingRepository } from './settings/platform-setting.repositor
     DisputeRepository,
     DisputeEventRepository,
     PlatformSettingRepository,
+    ProviderCategoryApplicationRepository,
   ],
   exports: [
     UserRepository,
@@ -72,6 +74,7 @@ import { PlatformSettingRepository } from './settings/platform-setting.repositor
     DisputeRepository,
     DisputeEventRepository,
     PlatformSettingRepository,
+    ProviderCategoryApplicationRepository,
   ],
 })
 export class PersistenceModule {}

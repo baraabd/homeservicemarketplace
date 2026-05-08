@@ -19,6 +19,8 @@ import { AdminAuditController } from './audit/admin-audit.controller';
 import { AdminNotificationsController } from './notifications/admin-notifications.controller';
 import { AdminSettingsController } from './settings/admin-settings.controller';
 import { AdminSettingsService } from './settings/admin-settings.service';
+import { AdminCategoryApplicationsController } from './category-applications/admin-category-applications.controller';
+import { AdminCategoryApplicationsService } from './category-applications/admin-category-applications.service';
 
 // Admin module. Hosts every admin-side surface so the
 // AuthenticationModule / AuthorizationModule / AdminAuditService
@@ -51,6 +53,7 @@ import { AdminSettingsService } from './settings/admin-settings.service';
     AdminSettingsController,
     AdminAuditController,
     AdminNotificationsController,
+    AdminCategoryApplicationsController,
   ],
   providers: [
     AdminAuditService,
@@ -60,6 +63,7 @@ import { AdminSettingsService } from './settings/admin-settings.service';
     AdminAnalyticsService,
     AdminFinancialsService,
     AdminSettingsService,
+    AdminCategoryApplicationsService,
   ],
   exports: [AdminAuditService],
 })
