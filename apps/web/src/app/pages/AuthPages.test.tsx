@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, act } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
 import { MemoryRouter, Route, Routes } from 'react-router';
+import type { QueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { AuthProvider, queryClient } from '../../lib/auth-provider';
+import { AuthProvider, createAuthQueryClient } from '../../lib/auth-provider';
 import {
   CheckEmailPage,
   ForgotPasswordPage,
@@ -16,10 +17,11 @@ import {
 // existing auth-integration.test.tsx suite.
 
 let mock: MockAdapter;
+let qc: QueryClient;
 
 beforeEach(() => {
   mock = new MockAdapter(api);
-  queryClient.clear();
+  qc = createAuthQueryClient();
 });
 
 afterEach(() => {
@@ -28,7 +30,7 @@ afterEach(() => {
 
 function renderAt(initialEntry: string) {
   return render(
-    <AuthProvider>
+    <AuthProvider client={qc}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/login" element={<div data-testid="login-stub">login</div>} />
@@ -89,7 +91,7 @@ describe('CheckEmailPage — resend verification', () => {
     mock.onPost('/v1/auth/resend-verification').reply(202, { success: true });
 
     render(
-      <AuthProvider>
+      <AuthProvider client={qc}>
         <MemoryRouter
           initialEntries={[{ pathname: '/check-email', state: { email: 'ada@example.com' } }]}
         >
@@ -123,7 +125,7 @@ describe('CheckEmailPage — resend verification', () => {
     mock.onPost('/v1/auth/resend-verification').reply(503, {});
 
     render(
-      <AuthProvider>
+      <AuthProvider client={qc}>
         <MemoryRouter
           initialEntries={[{ pathname: '/check-email', state: { email: 'ada@example.com' } }]}
         >

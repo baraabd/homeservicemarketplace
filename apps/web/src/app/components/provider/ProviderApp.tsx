@@ -843,16 +843,83 @@ function LiveJobsScreen() {
   // Default center precedence:
   //   1. Provider profile's configured service area (when both lat/lng
   //      are set on /v1/me/provider/profile).
-  //   2. Riyadh — the product's primary market today.
+  //   2. Forward-geocode `serviceAreaCity` via OpenStreetMap Nominatim
+  //      so seeded providers (Aleppo, Damascus, …) whose lat/lng are
+  //      still null get a city-relevant default instead of Riyadh.
+  //   3. Riyadh — the product's primary market today.
   // The MapAutoFit child overrides this with fitBounds when there is at
   // least one geolocated marker; the center matters mainly for the
   // empty-feed and provider-not-yet-onboarded cases.
-  const mapCenter = useMemo<[number, number]>(() => {
+  //
+  // `null` while we wait for the profile query / Nominatim — Leaflet's
+  // MapContainer throws if it mounts against a missing center, so the
+  // gate below the JSX defers the mount until we have a real value.
+  const [dynamicCenter, setDynamicCenter] = useState<[number, number] | null>(null);
+
+  useEffect(() => {
     const profile = profileQuery.data?.profile;
-    if (profile?.serviceAreaLat != null && profile?.serviceAreaLng != null) {
-      return [profile.serviceAreaLat, profile.serviceAreaLng];
+    // Wait for the profile to load before deciding. We don't render the
+    // map either, so the user just sees the loading placeholder for a
+    // beat — strictly better than mounting against a wrong default and
+    // then jumping.
+    if (!profile) return;
+
+    // 1. Explicit coords — use immediately.
+    if (profile.serviceAreaLat != null && profile.serviceAreaLng != null) {
+      setDynamicCenter([profile.serviceAreaLat, profile.serviceAreaLng]);
+      return;
     }
-    return RIYADH_FALLBACK;
+
+    // 2. Forward-geocode the city. Nominatim's usage policy
+    // (https://operations.osmfoundation.org/policies/nominatim/)
+    // accepts ≤1 req/sec/server; one request per profile is well
+    // within budget. We send `Accept-Language: ar,en` so Syrian/Saudi
+    // city names resolve in their native scripts. Production at scale
+    // should switch to a paid geocoder or self-host.
+    const city = profile.serviceAreaCity?.trim() ?? '';
+    if (city.length > 0) {
+      const controller = new AbortController();
+      let cancelled = false;
+      void (async () => {
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(city)}`,
+            { signal: controller.signal, headers: { 'Accept-Language': 'ar,en' } },
+          );
+          if (cancelled) return;
+          if (!res.ok) {
+            setDynamicCenter(RIYADH_FALLBACK);
+            return;
+          }
+          const body = (await res.json()) as Array<{ lat?: string; lon?: string }>;
+          if (cancelled) return;
+          const top = body[0];
+          if (top?.lat && top?.lon) {
+            const lat = Number.parseFloat(top.lat);
+            const lon = Number.parseFloat(top.lon);
+            if (Number.isFinite(lat) && Number.isFinite(lon)) {
+              setDynamicCenter([lat, lon]);
+              return;
+            }
+          }
+          // Empty result OR malformed coords → Riyadh.
+          setDynamicCenter(RIYADH_FALLBACK);
+        } catch {
+          // AbortError (cleanup) lands here too; the cancelled guard
+          // above already prevented a setState on unmount, so a
+          // blanket Riyadh fallback for "anything went wrong" is
+          // safe for the remaining (network / parse) failures.
+          if (!cancelled) setDynamicCenter(RIYADH_FALLBACK);
+        }
+      })();
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
+    }
+
+    // 3. No coords AND no city — Riyadh.
+    setDynamicCenter(RIYADH_FALLBACK);
   }, [profileQuery.data?.profile]);
 
   const L = {
@@ -940,33 +1007,53 @@ function LiveJobsScreen() {
           its z-20 already wins because its stacking context is at the
           parent flex level, not inside Leaflet's pane stack.
         */}
-        <MapContainer
-          center={mapCenter}
-          zoom={DEFAULT_MAP_ZOOM}
-          zoomControl={false}
-          attributionControl
-          scrollWheelZoom
-          style={{ position: 'absolute', inset: 0, zIndex: 0 }}
-          aria-label={lang === 'ar' ? 'خريطة الوظائف الحية' : 'Live jobs map'}
-        >
-          <TileLayer attribution={OSM_ATTRIBUTION} url={OSM_TILE_URL} />
-          <MapAutoFit points={markerPoints} />
-          {geolocatedReqs.map((req) => (
-            <JobMarker
-              key={req.id}
-              req={req}
-              lang={lang}
-              bidLabel={L.bid}
-              // The marker popup's CTA opens the detail overlay first;
-              // the overlay's own "Place Bid" CTA is what actually
-              // sets biddingReq and mounts the BiddingModal.
-              onPlaceBid={(r) => {
-                setSheetOpen(false);
-                setDetailReq(r);
-              }}
-            />
-          ))}
-        </MapContainer>
+        {/*
+          dynamicCenter is null until the profile query AND any
+          Nominatim forward-geocode have resolved. Mounting Leaflet
+          against a null center throws bounds errors; the gate keeps
+          the map unmounted until we have a real coordinate. The
+          loading copy below mirrors the empty-state visuals so the
+          screen never shows raw Leaflet chrome with no tile.
+        */}
+        {dynamicCenter === null ? (
+          <div
+            className="absolute inset-0 flex items-center justify-center bg-slate-50"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="text-slate-400" style={{ fontSize: '13px', fontWeight: 600 }}>
+              {L.loading}
+            </span>
+          </div>
+        ) : (
+          <MapContainer
+            center={dynamicCenter}
+            zoom={DEFAULT_MAP_ZOOM}
+            zoomControl={false}
+            attributionControl
+            scrollWheelZoom
+            style={{ position: 'absolute', inset: 0, zIndex: 0 }}
+            aria-label={lang === 'ar' ? 'خريطة الوظائف الحية' : 'Live jobs map'}
+          >
+            <TileLayer attribution={OSM_ATTRIBUTION} url={OSM_TILE_URL} />
+            <MapAutoFit points={markerPoints} />
+            {geolocatedReqs.map((req) => (
+              <JobMarker
+                key={req.id}
+                req={req}
+                lang={lang}
+                bidLabel={L.bid}
+                // The marker popup's CTA opens the detail overlay first;
+                // the overlay's own "Place Bid" CTA is what actually
+                // sets biddingReq and mounts the BiddingModal.
+                onPlaceBid={(r) => {
+                  setSheetOpen(false);
+                  setDetailReq(r);
+                }}
+              />
+            ))}
+          </MapContainer>
+        )}
 
         {/* Top status bar */}
         <div className="absolute top-4 start-4 end-4 flex items-center justify-between z-[1000]">

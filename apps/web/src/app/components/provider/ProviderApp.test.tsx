@@ -69,8 +69,9 @@ vi.mock('sonner', () => ({
 }));
 
 import { toast } from 'sonner';
+import type { QueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
-import { AuthProvider, queryClient } from '../../../lib/auth-provider';
+import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider';
 import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import { ProviderApp } from './ProviderApp';
@@ -95,7 +96,7 @@ function renderProvider() {
   // initial path even though the bottom-nav drives the in-app route.
   return render(
     <MemoryRouter initialEntries={['/provider']}>
-      <AuthProvider>
+      <AuthProvider client={qc}>
         <LanguageProvider>
           <EcosystemProvider>
             <ProviderApp />
@@ -107,12 +108,28 @@ function renderProvider() {
 }
 
 let mock: MockAdapter;
+let qc: QueryClient;
+const ORIGINAL_FETCH = globalThis.fetch;
 beforeEach(() => {
   mock = new MockAdapter(api);
-  queryClient.clear();
+  qc = createAuthQueryClient();
+  // Sprint 7.x — LiveJobsScreen now forward-geocodes the provider's
+  // serviceAreaCity through Nominatim when lat/lng are null. Stub
+  // global.fetch with an empty-result response so the screen falls
+  // back to the Riyadh default deterministically; tests that want to
+  // assert a non-default centre stub fetch themselves with their own
+  // payload. Without this default, Vitest workers would hit the real
+  // OpenStreetMap servers and pick up whatever coords Nominatim
+  // happens to return today (flaky + slow + offline-breaking).
+  globalThis.fetch = (async () =>
+    new Response('[]', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
 });
 afterEach(() => {
   mock.restore();
+  globalThis.fetch = ORIGINAL_FETCH;
   document.cookie.split(';').forEach((c) => {
     const name = c.split('=')[0]?.trim();
     if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
@@ -823,7 +840,7 @@ describe('ProviderApp — Sprint 7.0 new-job toast', () => {
     // Force a refetch via the queryClient. The provider feed key uses
     // the canonical `providerQueryKeys.availableRequests.list({})`
     // shape — refetching the root invalidates every variant.
-    await queryClient.refetchQueries({ queryKey: ['provider', 'available-requests'] });
+    await qc.refetchQueries({ queryKey: ['provider', 'available-requests'] });
 
     await waitFor(() => expect(screen.getAllByTestId('leaflet-marker')).toHaveLength(2));
     expect(toast.success).toHaveBeenCalledWith('New job nearby!');

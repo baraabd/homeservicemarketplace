@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
@@ -6,9 +6,7 @@ import * as authApi from './auth-api';
 import { getCsrfToken } from './api';
 import { useRealtimeSocket } from './realtime/use-realtime-socket';
 
-// ─── Query client (singleton) ────────────────────────────────────────────────
-// Exported only so test suites can reset it between cases. Production code
-// should keep going through `useQueryClient()` inside the provider tree.
+// ─── Query client factory ────────────────────────────────────────────────────
 //
 // Sprint 7.x — auth-aware defaults:
 //   - retry: false (queries + mutations). 401/403/404 must NEVER be
@@ -25,18 +23,30 @@ import { useRealtimeSocket } from './realtime/use-realtime-socket';
 //     polls at fixed cadences (4 s — 30 s) so a focus-triggered refetch
 //     storm adds no information and makes a 401 cascade noisier than it
 //     needs to be when the access token has just expired.
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000, // 5 min
-      retry: false,
-      refetchOnWindowFocus: false,
+//
+// Why a factory (not a module-level singleton):
+//   The earlier design exported a single QueryClient instance for the
+//   whole module. Vitest workers reuse module imports across test
+//   files, so a stale /me query left over from one routing test could
+//   feed `auth-provider.tsx` a phantom 200 in the next file's
+//   `beforeEach` — a classic singleton-trap CI flake. Making the
+//   client per-component (via `useState` below) gives every Vitest
+//   render its own cache by construction, eliminating the leak class
+//   without per-test `queryClient.clear()` plumbing.
+export function createAuthQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 5 * 60 * 1000, // 5 min
+        retry: false,
+        refetchOnWindowFocus: false,
+      },
+      mutations: {
+        retry: false,
+      },
     },
-    mutations: {
-      retry: false,
-    },
-  },
-});
+  });
+}
 
 // ─── Auth context ────────────────────────────────────────────────────────────
 interface AuthContextValue {
@@ -147,7 +157,18 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     async (challengeId: string, code: string) => {
       await authApi.verifyOtp(challengeId, code);
       // Session cookies are now set; re-fetch /me to populate the context.
-      await qc.invalidateQueries({ queryKey: ['auth', 'me'] });
+      //
+      // refetchQueries (vs invalidateQueries) DEFINITIVELY waits for the
+      // fetch to land in cache before resolving — invalidateQueries only
+      // marks the query stale and starts a refetch in the background.
+      // The SignUpPage / LoginPage `onOtpVerify` callbacks read the user
+      // immediately after this returns to compute the post-auth
+      // destination; without the cache being settled, RequireAuth on
+      // the destination route can briefly see `user === null` and
+      // bounce to /login before the refetch lands. That bounce loses
+      // the intent fallback's strongest signal and lands the user on
+      // the wrong app — the residual routing-test flake we saw.
+      await qc.refetchQueries({ queryKey: ['auth', 'me'] });
     },
     [qc],
   );
@@ -189,9 +210,21 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
 }
 
 // ─── Outer provider wraps with QueryClientProvider ───────────────────────────
-export function AuthProvider({ children }: { children: ReactNode }) {
+//
+// `client` is an escape hatch for tests — pass a freshly-constructed
+// QueryClient per render and the auth provider is fully isolated. In
+// production the optional prop is omitted and `useState` constructs
+// exactly one QueryClient for the lifetime of the AuthProvider mount,
+// matching the singleton's previous behaviour without exporting one.
+export function AuthProvider({ children, client }: { children: ReactNode; client?: QueryClient }) {
+  // useState's lazy initialiser runs ONCE per mount even if React
+  // re-renders the provider — the function is `() => createAuthQueryClient()`
+  // not `createAuthQueryClient()`, so we don't reconstruct a cache on
+  // every prop update.
+  const [internal] = useState(() => createAuthQueryClient());
+  const qc = client ?? internal;
   return (
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={qc}>
       <AuthProviderInner>{children}</AuthProviderInner>
     </QueryClientProvider>
   );

@@ -3,8 +3,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 
+import type { QueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
-import { AuthProvider, queryClient } from '../../../lib/auth-provider';
+import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider';
 import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import { AdminDashboard } from './AdminDashboard';
@@ -64,7 +65,7 @@ const ROLES = {
 function renderAdmin() {
   return render(
     <MemoryRouter>
-      <AuthProvider>
+      <AuthProvider client={qc}>
         <LanguageProvider>
           <EcosystemProvider>
             <AdminDashboard />
@@ -76,9 +77,10 @@ function renderAdmin() {
 }
 
 let mock: MockAdapter;
+let qc: QueryClient;
 beforeEach(() => {
   mock = new MockAdapter(api);
-  queryClient.clear();
+  qc = createAuthQueryClient();
 });
 afterEach(() => {
   mock.restore();

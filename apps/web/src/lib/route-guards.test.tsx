@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
 import { MemoryRouter, Outlet, Route, Routes, useOutletContext } from 'react-router';
+import type { QueryClient } from '@tanstack/react-query';
 import { api } from './api';
-import { AuthProvider, queryClient } from './auth-provider';
+import { AuthProvider, createAuthQueryClient } from './auth-provider';
 import { RequireAuth, GuestOnly } from './route-guards';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,10 +59,11 @@ const MOCK_ME = {
 };
 
 let mock: MockAdapter;
+let qc: QueryClient;
 
 beforeEach(() => {
   mock = new MockAdapter(api);
-  queryClient.clear();
+  qc = createAuthQueryClient();
 });
 
 afterEach(() => {
@@ -79,7 +81,7 @@ describe('RequireAuth forwards outlet context', () => {
     const ctx: TestCtx = { isOffline: true, marker: 'from-root' };
 
     render(
-      <AuthProvider>
+      <AuthProvider client={qc}>
         <MemoryRouter initialEntries={['/home']}>
           <Routes>
             <Route element={<RootLayout ctx={ctx} />}>
@@ -115,7 +117,7 @@ describe('RequireAuth forwards outlet context', () => {
     }
 
     render(
-      <AuthProvider>
+      <AuthProvider client={qc}>
         <MemoryRouter initialEntries={['/home/bookings']}>
           <Routes>
             <Route element={<RootLayout ctx={ctx} />}>
@@ -143,7 +145,7 @@ describe('GuestOnly forwards outlet context', () => {
     const ctx: TestCtx = { isOffline: false, marker: 'guest-branch' };
 
     render(
-      <AuthProvider>
+      <AuthProvider client={qc}>
         <MemoryRouter initialEntries={['/login']}>
           <Routes>
             <Route element={<RootLayout ctx={ctx} />}>
@@ -173,7 +175,7 @@ describe('Login → OTP → /home does not crash on context', () => {
     const ctx: TestCtx = { isOffline: false, marker: 'post-otp-landing' };
 
     const renderResult = render(
-      <AuthProvider>
+      <AuthProvider client={qc}>
         <MemoryRouter initialEntries={['/home']}>
           <Routes>
             <Route element={<RootLayout ctx={ctx} />}>
@@ -202,7 +204,7 @@ describe('Refresh on /home (cold mount under the full layout chain)', () => {
     const ctx: TestCtx = { isOffline: false, marker: 'cold-mount' };
 
     render(
-      <AuthProvider>
+      <AuthProvider client={qc}>
         <MemoryRouter initialEntries={['/home']}>
           <Routes>
             <Route element={<RootLayout ctx={ctx} />}>
@@ -230,7 +232,7 @@ describe('Refresh on /home (cold mount under the full layout chain)', () => {
       const ctx: TestCtx = { isOffline: false, marker: `cold-${path}` };
 
       render(
-        <AuthProvider>
+        <AuthProvider client={qc}>
           <MemoryRouter initialEntries={[path]}>
             <Routes>
               <Route element={<RootLayout ctx={ctx} />}>
