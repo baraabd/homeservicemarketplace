@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import type { AxiosError } from 'axios';
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import * as authApi from './auth-api';
+import { getCsrfToken } from './api';
+import { useRealtimeSocket } from './realtime/use-realtime-socket';
 
 // ─── Query client (singleton) ────────────────────────────────────────────────
 // Exported only so test suites can reset it between cases. Production code
@@ -112,6 +114,21 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     window.addEventListener('auth:session-expired', handler);
     return () => window.removeEventListener('auth:session-expired', handler);
   }, [qc]);
+
+  // Sprint 7.0 — connect the realtime Socket.IO bridge whenever a user
+  // is authenticated. Mounted at the auth-provider scope so a SINGLE
+  // socket serves both Seeker and Provider experiences (the dispatcher
+  // invalidates both query roots on every event — see
+  // dispatchInvalidations). The CSRF cookie is mirrored into the
+  // handshake `auth.token` field so the gateway can bind the connection
+  // to the same session that issued the cookie. When the user is not
+  // authenticated, the hook closes any open socket and returns early —
+  // a logout therefore tears the connection down without any extra
+  // wiring here.
+  useRealtimeSocket({
+    enabled: !!user,
+    getToken: () => getCsrfToken() ?? null,
+  });
 
   const login = useCallback(async (data: authApi.LoginInput): Promise<OtpChallengeResponse> => {
     // NB: cookies are NOT set yet — the backend responds with an OTP

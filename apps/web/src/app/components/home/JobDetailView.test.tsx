@@ -67,8 +67,8 @@ const BOOKING_DETAIL = {
   priceAmount: 35,
   currency: 'USD',
   pricingType: 'HOURLY' as const,
-  createdAt: '2026-04-28T09:00:00.000Z',
-  updatedAt: '2026-04-28T09:00:00.000Z',
+  createdAt: '2026-04-28T10:30:00.000Z',
+  updatedAt: '2026-04-28T10:30:00.000Z',
   description: 'Leaky tap under the kitchen sink',
   bidNote: 'I can be there in 30 minutes.',
   service: {
@@ -115,7 +115,7 @@ const BOOKING_TIMELINE = {
       id: 'bevt-1',
       type: 'BOOKING_CREATED',
       metadata: { requestId: 'req-1', bidId: 'bid-1', providerId: 'pp-omar' },
-      createdAt: '2026-04-28T09:00:00.000Z',
+      createdAt: '2026-04-28T10:30:00.000Z',
     },
   ],
 };

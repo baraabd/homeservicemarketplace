@@ -75,6 +75,25 @@ export interface LocationMapProps {
   ariaLabel?: string;
   /** Copy shown in the no-location placeholder. */
   placeholderLabel?: string;
+  /**
+   * When set, the map renders at this center even before the user has
+   * captured a location — the placeholder is suppressed. The marker
+   * is also placed at this center, so dragging it captures coords for
+   * the parent. Use case: the JobWizardModal location step always
+   * shows a map (no placeholder) so the user can manually drop a pin
+   * even when geolocation is denied or unavailable.
+   */
+  centerFallback?: [number, number];
+  /**
+   * Optional Leaflet icon override. When omitted the marker uses
+   * Leaflet's default icon (whose URLs are fixed up at module scope —
+   * see L.Icon.Default.mergeOptions above). Pass a custom L.divIcon
+   * to render category-specific pins (e.g. an emoji that matches the
+   * requested service slug).
+   */
+  icon?: L.Icon | L.DivIcon;
+  /** Map height override (px). Defaults to 200. */
+  height?: number;
 }
 
 function Placeholder({ label }: { label: string }) {
@@ -97,11 +116,20 @@ export function LocationMap({
   onCoordsChange,
   ariaLabel = 'Location map',
   placeholderLabel = 'Map preview unavailable',
+  centerFallback,
+  icon,
+  height,
 }: LocationMapProps) {
-  const center = useMemo<[number, number] | null>(
+  // Real captured coords win. If not yet captured AND a fallback is
+  // provided, render the map at that fallback (the marker still
+  // captures coords on drag). Without coords AND without fallback we
+  // fall back to the static Placeholder for parity with the
+  // pre-Phase-4 Google-Maps behaviour.
+  const captured = useMemo<[number, number] | null>(
     () => (lat !== null && lng !== null ? [lat, lng] : null),
     [lat, lng],
   );
+  const center = captured ?? centerFallback ?? null;
 
   const markerRef = useRef<L.Marker | null>(null);
 
@@ -116,14 +144,18 @@ export function LocationMap({
     onCoordsChange({ lat: next.lat, lng: next.lng });
   }, [onCoordsChange]);
 
-  // No coordinates → placeholder. Mirrors the previous Google-Maps behaviour
-  // so the parent component's mount logic is unchanged.
   if (center === null) {
     return <Placeholder label={placeholderLabel} />;
   }
 
+  const resolvedHeight = height ?? MAP_HEIGHT;
+  const style: React.CSSProperties = {
+    ...containerStyle,
+    height: `${resolvedHeight}px`,
+  };
+
   return (
-    <div aria-label={ariaLabel} style={containerStyle}>
+    <div aria-label={ariaLabel} style={style}>
       <MapContainer
         center={center}
         zoom={DEFAULT_ZOOM}
@@ -136,6 +168,7 @@ export function LocationMap({
           draggable
           eventHandlers={{ dragend: handleDragEnd }}
           ref={markerRef}
+          {...(icon ? { icon } : {})}
         />
       </MapContainer>
     </div>

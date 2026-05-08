@@ -364,6 +364,11 @@ model ProviderProfile {
   bookings                  Booking[]
   conversationParticipants  ConversationParticipant[]
   serviceCategories         ProviderProfileServiceCategory[]
+  // Pending / historical category applications. Approved rows are mirrored
+  // into ProviderProfileServiceCategory by the admin review workflow; this
+  // table is the audit trail + the source for the provider profile's
+  // pendingCategories surface.
+  categoryApplications      ProviderCategoryApplication[]
   user                      User?                             @relation(fields: [userId], references: [id])
 
   @@index([availability])
@@ -383,19 +388,45 @@ model ProviderProfileServiceCategory {
   @@index([serviceCategoryId])
 }
 
+// Provider applies to add a ServiceCategory to their approved skill set;
+// admin approves or rejects. The PENDING row is what the Provider app's
+// `pendingCategories` surface reads. APPROVED rows mirror into
+// ProviderProfileServiceCategory and serve as the audit trail; REJECTED
+// rows stay so the same admin can see prior decisions on the same
+// category. Uniqueness is enforced in the service layer (one PENDING per
+// provider+category at a time) — Prisma doesn't support partial unique
+// indexes natively, and a strict (providerProfileId, serviceCategoryId)
+// unique would block legitimate retry-after-rejection flows.
+model ProviderCategoryApplication {
+  id                String                              @id @default(cuid())
+  providerProfileId String
+  serviceCategoryId String
+  status            ProviderCategoryApplicationStatus  @default(PENDING)
+  createdAt         DateTime                            @default(now())
+  updatedAt         DateTime                            @updatedAt
+
+  providerProfile   ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  serviceCategory   ServiceCategory @relation(fields: [serviceCategoryId], references: [id], onDelete: Cascade)
+
+  @@index([providerProfileId, status])
+  @@index([serviceCategoryId, status])
+  @@index([status, createdAt])
+}
+
 model ServiceCategory {
-  id                String                           @id @default(cuid())
-  slug              String                           @unique
-  labelEn           String
-  labelAr           String
-  icon              String
-  sortOrder         Int                              @default(0)
-  isActive          Boolean                          @default(true)
-  createdAt         DateTime                         @default(now())
-  updatedAt         DateTime                         @updatedAt
-  deletedAt         DateTime?
-  serviceRequests   ServiceRequest[]
-  providerProfiles  ProviderProfileServiceCategory[]
+  id                    String                           @id @default(cuid())
+  slug                  String                           @unique
+  labelEn               String
+  labelAr               String
+  icon                  String
+  sortOrder             Int                              @default(0)
+  isActive              Boolean                          @default(true)
+  createdAt             DateTime                         @default(now())
+  updatedAt             DateTime                         @updatedAt
+  deletedAt             DateTime?
+  serviceRequests       ServiceRequest[]
+  providerProfiles      ProviderProfileServiceCategory[]
+  categoryApplications  ProviderCategoryApplication[]
 
   @@index([deletedAt])
   @@index([isActive, sortOrder])
@@ -651,6 +682,17 @@ enum ProviderProfileStatus {
   PENDING_REVIEW
   ACTIVE
   SUSPENDED
+  REJECTED
+}
+
+// Lifecycle of a provider's request to add a ServiceCategory to their
+// approved skill set. PENDING rows are what the Provider app surfaces
+// as `pendingCategories`; APPROVED records mirror into
+// ProviderProfileServiceCategory; REJECTED records remain so admins
+// can see prior decisions on retry.
+enum ProviderCategoryApplicationStatus {
+  PENDING
+  APPROVED
   REJECTED
 }
 

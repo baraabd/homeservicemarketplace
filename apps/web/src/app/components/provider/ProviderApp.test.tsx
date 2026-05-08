@@ -56,6 +56,19 @@ vi.mock('leaflet', () => ({
 // time. The stub keeps the import a no-op.
 vi.mock('leaflet/dist/leaflet.css', () => ({}));
 
+// Sprint 7.0 — sonner is imported by BiddingModal (toast.error path)
+// and by LiveJobsScreen (the new-job toast.success path). Mock at
+// module scope so the new-job toast tests can assert on the mock,
+// and so existing BiddingModal tests don't fire real toasts during
+// happy-dom runs.
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+import { toast } from 'sonner';
 import { api } from '../../../lib/api';
 import { AuthProvider, queryClient } from '../../../lib/auth-provider';
 import { LanguageProvider } from '../../i18n/LanguageContext';
@@ -596,5 +609,223 @@ describe('ProviderApp — pending skills (admin approval queue)', () => {
 
     await waitFor(() => expect(screen.getByText('Plumbing')).toBeInTheDocument());
     expect(screen.queryByLabelText(/^pending approval$/i)).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 6 — Job Detail overlay.
+// LiveJobsScreen tap surfaces (bottom-sheet card body, marker popup
+// CTA) now route through a JobDetailOverlay before the BiddingModal.
+// The overlay surfaces the request context (service / description /
+// distance / budget / seeker / urgency); its "Place Bid" CTA is what
+// actually opens the BiddingModal.
+//
+// Wire-data caveat verified by these tests: distance / budget / seeker
+// are NOT on the Sprint 5.2 ProviderAvailableRequestSummary contract.
+// The adapter blanks them; the overlay must render "—" rather than
+// fake values for those rows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProviderApp — Phase 6 Job Detail overlay', () => {
+  function mockBaseFlow() {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/provider/available-requests').reply(200, {
+      items: [SAMPLE_AVAILABLE_REQUEST],
+      nextCursor: null,
+    });
+  }
+
+  it('clicking a bottom-sheet card opens the JobDetailOverlay with the request copy', async () => {
+    mockBaseFlow();
+    renderProvider();
+
+    // Open the bottom sheet first; the cards live inside it.
+    const dragHandle = await screen.findByRole('button', {
+      name: /pull up to see requests|اسحب للأعلى لرؤية الطلبات/i,
+    });
+    fireEvent.click(dragHandle);
+
+    // The card uses role=button + aria-label = service name (English).
+    const card = await screen.findByTestId('job-card-r1');
+    fireEvent.click(card);
+
+    // Overlay mounts with the request's service + description.
+    const overlay = await screen.findByTestId('job-detail-overlay');
+    expect(overlay).toHaveTextContent('Plumbing');
+    expect(overlay).toHaveTextContent('Pipe leak under kitchen sink');
+    // The BiddingModal must NOT yet be open — overlay sits between
+    // feed and bidding.
+    expect(screen.queryByText(/submit offer|تقديم عرض/i)).toBeNull();
+  });
+
+  it('clicking the marker popup CTA opens the JobDetailOverlay (NOT the BiddingModal directly)', async () => {
+    mockBaseFlow();
+    renderProvider();
+
+    // The mocked react-leaflet Popup renders its children eagerly
+    // (no open-on-click affordance under the test stub), so the CTA
+    // is reachable directly.
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+
+    expect(await screen.findByTestId('job-detail-overlay')).toBeInTheDocument();
+    expect(screen.queryByText(/submit offer|تقديم عرض/i)).toBeNull();
+  });
+
+  it('the overlay\'s "Place Bid" CTA closes the overlay and opens the BiddingModal', async () => {
+    mockBaseFlow();
+    renderProvider();
+
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+
+    // Overlay open.
+    const overlayBidBtn = await screen.findByTestId('job-detail-place-bid');
+    fireEvent.click(overlayBidBtn);
+
+    // Overlay closed AND BiddingModal mounted (its title is "Submit Offer").
+    await waitFor(() => expect(screen.queryByTestId('job-detail-overlay')).toBeNull());
+    expect(screen.getByText(/submit offer|تقديم عرض/i)).toBeInTheDocument();
+  });
+
+  it('renders "—" for distance / budget / seeker when the wire fields are blank', async () => {
+    mockBaseFlow();
+    renderProvider();
+
+    // Open overlay via the popup CTA so we land in the overlay context.
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+
+    const overlay = await screen.findByTestId('job-detail-overlay');
+    // The Sprint 5.2 wire shape doesn't carry distance / budget /
+    // seeker name on available-requests; the adapter blanks those
+    // and the overlay must surface "—" rather than zero / empty.
+    // Three em-dash placeholders → one per missing field.
+    const placeholders = Array.from(overlay.querySelectorAll('p')).filter(
+      (p) => p.textContent?.trim() === '—',
+    );
+    expect(placeholders).toHaveLength(3);
+  });
+
+  it('the overlay close button dismisses without opening the BiddingModal', async () => {
+    mockBaseFlow();
+    renderProvider();
+
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+
+    const closeBtn = await screen.findByTestId('job-detail-close');
+    fireEvent.click(closeBtn);
+
+    await waitFor(() => expect(screen.queryByTestId('job-detail-overlay')).toBeNull());
+    expect(screen.queryByText(/submit offer|تقديم عرض/i)).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 7.0 — Live Jobs floating job-count badge + new-job toast.
+// The badge that sits inside the "Pull up to see requests" pill should
+// reflect what the operator will see when they pull the bottom sheet
+// up — i.e. activeReqs after the all/pending/bidding filter is
+// applied. The earlier shape rendered the count of `pending` rows
+// regardless of filter, which drifted from the sheet contents.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProviderApp — Sprint 7.0 floating job-count badge', () => {
+  it('badge reflects filteredReqs.length, not activeReqs pending count', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    // Two pending, one bidding — under filter='all' the badge must
+    // show 3 (the bottom-sheet card count), NOT 2 (the pending count).
+    mock.onGet('/v1/provider/available-requests').reply(200, {
+      items: [
+        { ...SAMPLE_AVAILABLE_REQUEST, id: 'r1' },
+        { ...SAMPLE_AVAILABLE_REQUEST, id: 'r2' },
+        { ...SAMPLE_AVAILABLE_REQUEST, id: 'r3', bidsCount: 2 },
+      ],
+      nextCursor: null,
+    });
+
+    renderProvider();
+
+    // findByTestId resolves on first render — when filteredReqs is
+    // still empty (the feed hasn't landed). Wait for the data to
+    // settle before asserting.
+    const badge = await screen.findByTestId('job-count-badge');
+    await waitFor(() => expect(badge.textContent?.trim()).toBe('3'));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 7.0 — "New job nearby" toast (cache-subscribe pattern).
+// LiveJobsScreen tracks the previously-seen request ids and fires a
+// success toast whenever the next available-requests refetch lands an
+// id that wasn't in the prior set. The first successful fetch is the
+// initial baseline and must NOT toast. (`toast` is mocked at the top
+// of this file alongside the other module-scope mocks.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProviderApp — Sprint 7.0 new-job toast', () => {
+  beforeEach(() => {
+    (toast.success as unknown as { mockClear: () => void }).mockClear();
+  });
+
+  it('does NOT toast on the initial available-requests fetch', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/provider/available-requests').reply(200, {
+      items: [SAMPLE_AVAILABLE_REQUEST],
+      nextCursor: null,
+    });
+
+    renderProvider();
+
+    // Wait for the feed to settle.
+    await screen.findByTestId('leaflet-marker');
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('toasts when a refetch lands a new request id', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    // First fetch: r1 only. Second fetch (same endpoint, different
+    // payload): r1 + r2. The second response is what
+    // queryClient.refetchQueries lands.
+    let call = 0;
+    mock.onGet('/v1/provider/available-requests').reply(() => {
+      call += 1;
+      if (call === 1) {
+        return [200, { items: [SAMPLE_AVAILABLE_REQUEST], nextCursor: null }];
+      }
+      return [
+        200,
+        {
+          items: [
+            SAMPLE_AVAILABLE_REQUEST,
+            {
+              ...SAMPLE_AVAILABLE_REQUEST,
+              id: 'r2',
+              location: { ...SAMPLE_AVAILABLE_REQUEST.location, lat: 24.8112, lng: 46.6298 },
+            },
+          ],
+          nextCursor: null,
+        },
+      ];
+    });
+
+    renderProvider();
+
+    // First fetch settles — baseline established, no toast.
+    await waitFor(() => expect(screen.getAllByTestId('leaflet-marker')).toHaveLength(1));
+    expect(toast.success).not.toHaveBeenCalled();
+
+    // Force a refetch via the queryClient. The provider feed key uses
+    // the canonical `providerQueryKeys.availableRequests.list({})`
+    // shape — refetching the root invalidates every variant.
+    await queryClient.refetchQueries({ queryKey: ['provider', 'available-requests'] });
+
+    await waitFor(() => expect(screen.getAllByTestId('leaflet-marker')).toHaveLength(2));
+    expect(toast.success).toHaveBeenCalledWith('New job nearby!');
   });
 });
