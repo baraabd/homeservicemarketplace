@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
-import { MapContainer, Marker, TileLayer } from 'react-leaflet';
+import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
 import { MapPin } from 'lucide-react';
 
 // ─── Leaflet base styles + default-marker icon fix ───────────────────────────
@@ -96,6 +96,48 @@ export interface LocationMapProps {
   height?: number;
 }
 
+// ─── Resize fix ──────────────────────────────────────────────────────────────
+//
+// Leaflet computes its viewport size from the container's bounding box at
+// mount time. When the map is mounted inside an animating sheet (the
+// JobWizardModal slides in via `translateY`) or inside a step that just
+// became visible (`step === 2`), the bounding box is briefly zero / pre-
+// transition — Leaflet caches that, and the tiles render as gray /
+// misaligned squares until something forces a recompute.
+//
+// The fix: call `map.invalidateSize()` once after mount (delayed enough
+// for the open/transition to settle) AND subscribe a ResizeObserver so the
+// modal's expand/collapse toggle ALSO triggers a recompute. We must mount
+// this inside the <MapContainer> to access `useMap()`.
+function MapResizer() {
+  const map = useMap();
+  useEffect(() => {
+    // 250ms covers the wizard sheet's slide-in transition (400ms is the
+    // sheet animation, but Leaflet only needs the container to be at its
+    // final width — that lands earlier as height/translate animate in
+    // parallel). We use a single trailing call rather than rAF-spam so
+    // we don't fight the transition's per-frame work.
+    const tid = window.setTimeout(() => map.invalidateSize(), 250);
+
+    // Catches subsequent size changes — modal expand/collapse, viewport
+    // resize, orientation change. Without this the user can swipe the
+    // sheet up to fullscreen and the tiles freeze at the original
+    // bounding box.
+    const container = map.getContainer();
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => map.invalidateSize());
+      ro.observe(container);
+    }
+
+    return () => {
+      window.clearTimeout(tid);
+      ro?.disconnect();
+    };
+  }, [map]);
+  return null;
+}
+
 function Placeholder({ label }: { label: string }) {
   return (
     <div
@@ -162,6 +204,7 @@ export function LocationMap({
         scrollWheelZoom={false}
         style={{ width: '100%', height: '100%' }}
       >
+        <MapResizer />
         <TileLayer attribution={OSM_ATTRIBUTION} url={OSM_TILE_URL} />
         <Marker
           position={center}
