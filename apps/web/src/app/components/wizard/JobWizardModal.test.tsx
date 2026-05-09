@@ -337,6 +337,27 @@ describe('JobWizardModal — address routing', () => {
 // ── Geolocation ──────────────────────────────────────────────────────────────
 
 describe('JobWizardModal — geolocation', () => {
+  // CRITICAL fix sprint — `reverseGeocode` is now Nominatim-only. Tests
+  // that DON'T install their own fetch stub still need a default so the
+  // wizard's applyReverseGeocode resolves promptly (otherwise the
+  // submit fires before address is auto-filled and handlePost rejects
+  // with the empty-address validation). Per-test stubs override this
+  // default by reassigning globalThis.fetch.
+  const ORIGINAL_FETCH_GEO = globalThis.fetch;
+  beforeEach(() => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          display_name: 'Auto-Filled St, Aleppo, Syria',
+          address: { city: 'Aleppo', country: 'Syria' },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )) as typeof fetch;
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH_GEO;
+  });
+
   it('attaches lat/lng to manualAddress when navigator.geolocation succeeds', async () => {
     Object.defineProperty(navigator, 'geolocation', {
       value: {
@@ -407,38 +428,27 @@ describe('JobWizardModal — geolocation', () => {
       configurable: true,
     });
 
-    // Google response with the polluted multi-segment formatted_address
-    // PLUS a clean `locality: "Aleppo"` component. The pre-fix wizard
-    // would split the formatted_address and pick "Aleppo Governorate"
-    // as city; the fix uses the locality directly.
+    // Nominatim response with the polluted multi-segment display_name
+    // PLUS a clean `address.city: "Aleppo"`. The pre-fix wizard would
+    // split the display_name and pick "Aleppo Governorate" as city;
+    // the fix uses the strict address.city directly.
     const POLLUTED_ADDRESS = 'King Fahd Rd, Sheikh Maqsood, Aleppo, Aleppo Governorate, Syria';
     const origFetch = globalThis.fetch;
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
-          status: 'OK',
-          results: [
-            {
-              formatted_address: POLLUTED_ADDRESS,
-              address_components: [
-                { long_name: 'King Fahd Rd', short_name: 'King Fahd Rd', types: ['route'] },
-                { long_name: 'Aleppo', short_name: 'Aleppo', types: ['locality', 'political'] },
-                {
-                  long_name: 'Aleppo Governorate',
-                  short_name: 'Aleppo Governorate',
-                  types: ['administrative_area_level_1', 'political'],
-                },
-                { long_name: 'Syria', short_name: 'SY', types: ['country', 'political'] },
-              ],
-            },
-          ],
+          display_name: POLLUTED_ADDRESS,
+          address: {
+            road: 'King Fahd Rd',
+            suburb: 'Sheikh Maqsood',
+            city: 'Aleppo',
+            state: 'Aleppo Governorate',
+            country: 'Syria',
+            country_code: 'sy',
+          },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       )) as typeof fetch;
-    // The reverse-geocode module reads VITE_GOOGLE_MAPS_API_KEY at call
-    // time; without a key it short-circuits to a partial outcome and
-    // never hits our fetch stub.
-    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key');
 
     try {
       mock.onGet('/v1/me/addresses').reply(200, { items: [] });
@@ -468,7 +478,6 @@ describe('JobWizardModal — geolocation', () => {
       expect(manual?.lng).toBeCloseTo(37.1612, 4);
     } finally {
       globalThis.fetch = origFetch;
-      vi.unstubAllEnvs();
     }
   });
 
@@ -493,20 +502,11 @@ describe('JobWizardModal — geolocation', () => {
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
-          status: 'OK',
-          results: [
-            {
-              formatted_address: 'Some St, Aleppo, Syria',
-              address_components: [
-                { long_name: 'Aleppo', short_name: 'Aleppo', types: ['locality'] },
-                { long_name: 'Syria', short_name: 'SY', types: ['country'] },
-              ],
-            },
-          ],
+          display_name: 'Some St, Aleppo, Syria',
+          address: { road: 'Some St', city: 'Aleppo', country: 'Syria' },
         }),
         { status: 200 },
       )) as typeof fetch;
-    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key');
 
     try {
       mock.onGet('/v1/me/addresses').reply(200, { items: [] });
@@ -538,7 +538,6 @@ describe('JobWizardModal — geolocation', () => {
       expect(manual?.country).toBe('Syria');
     } finally {
       globalThis.fetch = origFetch;
-      vi.unstubAllEnvs();
     }
   });
 
