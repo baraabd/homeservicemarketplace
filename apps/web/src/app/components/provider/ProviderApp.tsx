@@ -584,9 +584,14 @@ function JobDetailOverlay({
   // The legacy ServiceRequest type carries these as primitives that
   // the adapter blanks for missing wire fields. Treat 0 / '' as "no
   // value yet" so the overlay never renders a fabricated zero.
-  const hasDistance = req.distance > 0;
+  // Distance moved to a nullable `distanceKm` field — `!== null`
+  // because 0 km is a real value (provider standing on top of the
+  // request); the legacy `req.distance` is no longer the source of
+  // truth and stays 0 from the adapter.
+  const hasDistance = req.distanceKm !== null;
   const hasBudget = Boolean(req.budget && req.budget.trim());
   const hasSeeker = Boolean(req.seekerName && req.seekerName.trim());
+  const hasMedia = req.mediaUrls.length > 0;
 
   return (
     <>
@@ -666,7 +671,7 @@ function JobDetailOverlay({
                 className="text-slate-900 dark:text-white mt-0.5"
                 style={{ fontSize: '13px', fontWeight: 700 }}
               >
-                {hasDistance ? `${req.distance}km` : labels.notSet}
+                {hasDistance ? `${req.distanceKm!.toFixed(1)} km` : labels.notSet}
               </p>
             </div>
             <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
@@ -692,6 +697,28 @@ function JobDetailOverlay({
               </p>
             </div>
           </div>
+
+          {/* Seeker-uploaded photos. Only rendered when the request
+              actually carries media so the layout doesn't reserve dead
+              space. The horizontal scroll keeps the overlay height
+              bounded for galleries with many shots. */}
+          {hasMedia && (
+            <div
+              className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1"
+              style={{ scrollbarWidth: 'none' }}
+              data-testid="job-detail-media"
+            >
+              {req.mediaUrls.map((url) => (
+                <img
+                  key={url}
+                  src={url}
+                  alt=""
+                  loading="lazy"
+                  className="w-16 h-16 object-cover rounded-md border border-slate-200 dark:border-slate-600 flex-shrink-0"
+                />
+              ))}
+            </div>
+          )}
 
           {/* Description */}
           <div>
@@ -1222,33 +1249,78 @@ function LiveJobsScreen() {
                         >
                           {lang === 'ar' ? req.locationAr : req.location}
                         </p>
-                        <div className="flex items-center gap-3 mt-1.5">
-                          <div className="flex items-center gap-1">
-                            <MapPin size={11} className="text-blue-500" />
-                            <span
-                              className="text-blue-600 dark:text-blue-400"
-                              style={{ fontSize: '11px', fontWeight: 600 }}
-                            >
-                              {req.distance}
-                              {L.km}
-                            </span>
+                        {/* Meta row — Distance / Budget / Seeker icons.
+                            Each chip only renders when the underlying
+                            value is real, so the card never shows a
+                            fabricated "0 km" / empty pill / empty
+                            avatar gap when the wire deliberately
+                            omits the field. Distance gates on
+                            `distanceKm !== null` (0 km is a real
+                            value); budget + seekerName gate on a
+                            non-empty string. */}
+                        {(req.distanceKm !== null ||
+                          req.budget.trim().length > 0 ||
+                          req.seekerName.trim().length > 0) && (
+                          <div className="flex items-center gap-3 mt-1.5">
+                            {req.distanceKm !== null && (
+                              <div className="flex items-center gap-1">
+                                <MapPin size={11} className="text-blue-500" />
+                                <span
+                                  className="text-blue-600 dark:text-blue-400"
+                                  style={{ fontSize: '11px', fontWeight: 600 }}
+                                >
+                                  {req.distanceKm.toFixed(1)}
+                                  {L.km}
+                                </span>
+                              </div>
+                            )}
+                            {req.budget.trim().length > 0 && (
+                              <div className="flex items-center gap-1">
+                                <DollarSign size={11} className="text-green-500" />
+                                <span
+                                  className="text-green-600 dark:text-green-400"
+                                  style={{ fontSize: '11px', fontWeight: 600 }}
+                                >
+                                  {req.budget}
+                                </span>
+                              </div>
+                            )}
+                            {req.seekerName.trim().length > 0 && (
+                              <div className="flex items-center gap-1">
+                                <Star size={11} className="text-amber-500 fill-amber-500" />
+                                <span className="text-slate-500" style={{ fontSize: '11px' }}>
+                                  {req.seekerName}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex items-center gap-1">
-                            <DollarSign size={11} className="text-green-500" />
-                            <span
-                              className="text-green-600 dark:text-green-400"
-                              style={{ fontSize: '11px', fontWeight: 600 }}
-                            >
-                              {req.budget}
-                            </span>
+                        )}
+                        {req.mediaUrls.length > 0 && (
+                          <div
+                            className="flex gap-1 mt-2 overflow-x-auto"
+                            style={{ scrollbarWidth: 'none' }}
+                            data-testid={`job-card-media-${req.id}`}
+                          >
+                            {req.mediaUrls.slice(0, 3).map((url) => (
+                              <img
+                                key={url}
+                                src={url}
+                                alt=""
+                                loading="lazy"
+                                className="w-10 h-10 object-cover rounded-md border border-slate-200 dark:border-slate-600 flex-shrink-0"
+                              />
+                            ))}
+                            {req.mediaUrls.length > 3 && (
+                              <div
+                                className="w-10 h-10 rounded-md border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-600 flex items-center justify-center text-slate-500 flex-shrink-0"
+                                style={{ fontSize: '10px', fontWeight: 700 }}
+                                aria-label={`+${req.mediaUrls.length - 3}`}
+                              >
+                                +{req.mediaUrls.length - 3}
+                              </div>
+                            )}
                           </div>
-                          <div className="flex items-center gap-1">
-                            <Star size={11} className="text-amber-500 fill-amber-500" />
-                            <span className="text-slate-500" style={{ fontSize: '11px' }}>
-                              {req.seekerName}
-                            </span>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     </div>
                   </motion.div>

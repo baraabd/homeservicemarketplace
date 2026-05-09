@@ -16,9 +16,16 @@ import type { ServiceRequest } from '../../app/context/EcosystemContext';
 //   - derives `urgency` from `scheduleType === 'ASAP'`.
 //   - maps the category slug to a default emoji; `customServiceText`
 //     requests fall back to a generic icon.
+//   - threads `media` → `mediaUrls` so the JobDetailOverlay can show
+//     the seeker's photos before the provider commits to a bid (Sprint
+//     7.x). The wire field is named `media` on the contract; the
+//     legacy ServiceRequest type uses `mediaUrls`, so we rename here.
 //   - leaves seekerName / seekerRating BLANK (the wire deliberately
 //     does not expose seeker identity until a bid is accepted, per
 //     the Sprint 5.2 security projection).
+//   - leaves `distanceKm` null until the backend Haversine projection
+//     lands; the UI is already wired to gate on `!== null` so the
+//     second pass is type-only when the field starts being populated.
 //
 // Treat the legacy `bids: Bid[]` field as "an array sized to bidsCount
 // for length-only UIs"; the screens that call .map over it have
@@ -71,6 +78,12 @@ export function mapAvailableJobToLegacy(job: AdaptableJob): ServiceRequest {
     })),
     lat: job.location.lat,
     lng: job.location.lng,
+    // The canonical `ProviderAvailableRequestSummary` carries `media`;
+    // the legacy `AvailableJobSummary` does not. The runtime `in`
+    // narrowing keeps both branches type-safe without a cast — the
+    // legacy feed simply renders no thumbnails until it migrates.
+    mediaUrls: 'media' in job ? job.media : [],
+    distanceKm: null,
   };
 }
 
