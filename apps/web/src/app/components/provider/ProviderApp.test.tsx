@@ -706,7 +706,7 @@ describe('ProviderApp — Phase 6 Job Detail overlay', () => {
     expect(screen.getByText(/submit offer|تقديم عرض/i)).toBeInTheDocument();
   });
 
-  it('renders "—" for distance / budget / seeker when the wire fields are blank', async () => {
+  it('hides Budget and Seeker tiles when blank, keeps Distance with "—" until Haversine lands', async () => {
     mockBaseFlow();
     renderProvider();
 
@@ -715,14 +715,22 @@ describe('ProviderApp — Phase 6 Job Detail overlay', () => {
     fireEvent.click(popupCta);
 
     const overlay = await screen.findByTestId('job-detail-overlay');
-    // The Sprint 5.2 wire shape doesn't carry distance / budget /
-    // seeker name on available-requests; the adapter blanks those
-    // and the overlay must surface "—" rather than zero / empty.
-    // Three em-dash placeholders → one per missing field.
+    // Sprint 7.x — Budget and Seeker are permanently empty on the
+    // canonical available-requests wire (no schema column for budget;
+    // seeker identity stays masked per the Sprint 5.2 security
+    // projection), so the overlay collapses those tiles entirely
+    // rather than showing a placeholder em-dash. Distance still falls
+    // back to "—" while `distanceKm` is null on the wire — that
+    // fallback retires once the backend Haversine slice lands.
     const placeholders = Array.from(overlay.querySelectorAll('p')).filter(
       (p) => p.textContent?.trim() === '—',
     );
-    expect(placeholders).toHaveLength(3);
+    expect(placeholders).toHaveLength(1);
+    // Sanity: the Budget and Seeker LABELS should be gone too — if
+    // they were still present with a non-`—` value the assertion
+    // above would silently miss the regression.
+    expect(overlay.textContent).not.toMatch(/Budget|الميزانية/i);
+    expect(overlay.textContent).not.toMatch(/\bSeeker\b|صاحب الطلب/i);
   });
 
   it('the overlay close button dismisses without opening the BiddingModal', async () => {

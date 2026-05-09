@@ -661,9 +661,19 @@ function JobDetailOverlay({
         </div>
 
         <div className="px-5 pb-6 flex flex-col gap-4">
-          {/* Meta row — Distance · Budget · Seeker */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
+          {/* Meta row — Distance / Budget / Seeker.
+              Layout uses flex + flex-1 (instead of a fixed 3-col grid)
+              so the visible tiles split the row evenly regardless of
+              count: 1 tile fills the row, 2 split 50/50, 3 split 33/33/33.
+              Budget and Seeker are permanently empty in the current
+              wire shape (no schema column for budget; seeker identity
+              stays masked per the Sprint 5.2 security projection), so
+              both conditionally render — no dead `—` placeholder.
+              Distance keeps the `labels.notSet` fallback while
+              `distanceKm` is null; the fallback path retires once the
+              backend Haversine slice lands. */}
+          <div className="flex gap-2">
+            <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
               <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
                 {labels.distance}
               </p>
@@ -674,28 +684,32 @@ function JobDetailOverlay({
                 {hasDistance ? `${req.distanceKm!.toFixed(1)} km` : labels.notSet}
               </p>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
-              <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
-                {labels.budget}
-              </p>
-              <p
-                className="text-slate-900 dark:text-white mt-0.5 truncate"
-                style={{ fontSize: '13px', fontWeight: 700 }}
-              >
-                {hasBudget ? req.budget : labels.notSet}
-              </p>
-            </div>
-            <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
-              <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
-                {labels.seeker}
-              </p>
-              <p
-                className="text-slate-900 dark:text-white mt-0.5 truncate"
-                style={{ fontSize: '13px', fontWeight: 700 }}
-              >
-                {hasSeeker ? req.seekerName : labels.notSet}
-              </p>
-            </div>
+            {hasBudget && (
+              <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
+                <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
+                  {labels.budget}
+                </p>
+                <p
+                  className="text-slate-900 dark:text-white mt-0.5 truncate"
+                  style={{ fontSize: '13px', fontWeight: 700 }}
+                >
+                  {req.budget}
+                </p>
+              </div>
+            )}
+            {hasSeeker && (
+              <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
+                <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
+                  {labels.seeker}
+                </p>
+                <p
+                  className="text-slate-900 dark:text-white mt-0.5 truncate"
+                  style={{ fontSize: '13px', fontWeight: 700 }}
+                >
+                  {req.seekerName}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Seeker-uploaded photos. Only rendered when the request

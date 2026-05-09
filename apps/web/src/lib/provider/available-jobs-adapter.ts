@@ -82,7 +82,11 @@ export function mapAvailableJobToLegacy(job: AdaptableJob): ServiceRequest {
     // the legacy `AvailableJobSummary` does not. The runtime `in`
     // narrowing keeps both branches type-safe without a cast — the
     // legacy feed simply renders no thumbnails until it migrates.
-    mediaUrls: 'media' in job ? job.media : [],
+    // The trailing `|| []` is defensive: the contract types `media`
+    // as `string[]`, but a malformed wire payload (e.g. a stale
+    // backend that emitted `null`) would otherwise propagate
+    // undefined/null to the UI's `.length` / `.map` call sites.
+    mediaUrls: ('media' in job ? job.media : []) || [],
     distanceKm: null,
   };
 }
