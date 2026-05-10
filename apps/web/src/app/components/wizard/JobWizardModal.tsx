@@ -456,26 +456,55 @@ export function JobWizardModal({
   const handleRequestLocation = () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGeo({ status: 'error', reason: 'unsupported' });
+      toast.error(
+        lang === 'ar'
+          ? 'متصفحك لا يدعم تحديد الموقع. اكتب العنوان يدوياً.'
+          : 'Your browser does not support geolocation. Type the address manually.',
+      );
       return;
     }
     setGeo({ status: 'pending' });
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        setGeo({ status: 'success', lat, lng });
-        await applyReverseGeocode(lat, lng);
-      },
-      (err) => {
-        // 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT.
-        // We collapse 2/3 into "failed" because they're indistinguishable
-        // to the user and the recovery path is the same: type the
-        // address.
-        if (err.code === 1) setGeo({ status: 'error', reason: 'denied' });
-        else setGeo({ status: 'error', reason: 'failed' });
-      },
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 },
-    );
+    // Job-creation is a write-once flow — we want the seeker's CURRENT
+    // position, not a 60 s-stale fix the UA might have cached from a
+    // different floor / building. enableHighAccuracy: true pulls GPS
+    // (or multi-WiFi triangulation) instead of the coarse cell-tower
+    // fallback. The synchronous `getCurrentPosition` call doesn't
+    // throw, but the defensive try/catch wraps any future change in
+    // the UA's permission gate that could hypothetically synchronously
+    // reject (e.g. Permissions Policy iframe blocks).
+    try {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setGeo({ status: 'success', lat, lng });
+          await applyReverseGeocode(lat, lng);
+        },
+        (err) => {
+          // 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT.
+          // We collapse 2/3 into "failed" because they're indistinguishable
+          // to the user and the recovery path is the same: type the
+          // address. A toast surfaces the error so the user notices
+          // even when the inline `geo` state is off-screen behind the
+          // map preview.
+          if (err.code === 1) setGeo({ status: 'error', reason: 'denied' });
+          else setGeo({ status: 'error', reason: 'failed' });
+          toast.error(
+            lang === 'ar'
+              ? 'تعذّر تحديد موقعك. تحقق من إذن الموقع وحاول مجدداً.'
+              : 'Could not detect location. Please check your permissions.',
+          );
+        },
+        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 },
+      );
+    } catch {
+      setGeo({ status: 'error', reason: 'failed' });
+      toast.error(
+        lang === 'ar'
+          ? 'تعذّر تحديد موقعك. تحقق من إذن الموقع وحاول مجدداً.'
+          : 'Could not detect location. Please check your permissions.',
+      );
+    }
   };
 
   // When the user drags the map pin to refine its position, capture

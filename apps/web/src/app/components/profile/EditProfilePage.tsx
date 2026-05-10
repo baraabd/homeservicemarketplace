@@ -9,8 +9,11 @@ import {
   Mail,
   MapPin,
   CheckCircle2,
+  Crosshair,
+  Loader2,
   Wrench,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useLang } from '../../i18n/LanguageContext';
 import { TextField } from '../ds/TextField';
 import { Button } from '../ds/Button';
@@ -20,6 +23,7 @@ import {
   useUpdateProviderProfile,
 } from '../../hooks/provider/useProviderProfile';
 import { useServiceCategories } from '../../../lib/use-service-categories';
+import { getCurrentLocationAddress } from '../../../lib/reverse-geocode';
 
 // The page is shared between the Seeker app (`/home` → ProfileTab) and
 // the Provider app (`/provider` → ProviderProfileScreen). Originally
@@ -101,6 +105,15 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
   const [bio, setBio] = useState('');
+  // Provider service-area coordinates. Either both numbers or both
+  // null — partial state would confuse the backend's pin/distance
+  // logic. Seeded from the provider profile on mount; rewritten by
+  // the Detect-My-Location button; cleared when the user manually
+  // edits the city text (so a stale Aleppo pin can't ride along with
+  // a freshly typed "Damascus").
+  const [serviceAreaLat, setServiceAreaLat] = useState<number | null>(null);
+  const [serviceAreaLng, setServiceAreaLng] = useState<number | null>(null);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -134,6 +147,14 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
     setPhone(profile.phoneNumber ?? '');
     setCity(providerProfile?.serviceAreaCity ?? profile.city ?? '');
     setBio(bio || (profile.bio ?? ''));
+    // Service-area coordinates only exist on the provider side. When
+    // the user is in Seeker context we deliberately leave them null
+    // even if the dual-role user has provider lat/lng on file —
+    // the Seeker form has no UI for them.
+    if (isProviderContext && providerProfile) {
+      setServiceAreaLat(providerProfile.serviceAreaLat);
+      setServiceAreaLng(providerProfile.serviceAreaLng);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.updatedAt, providerProfile?.updatedAt]);
 
@@ -148,6 +169,71 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
     setSelectedCategoryIds((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
     );
+  };
+
+  // Manual city edits invalidate any captured GPS pin — otherwise a
+  // user who detects "Aleppo", then types "Damascus", would ship the
+  // Aleppo lat/lng along with a Damascus city string, breaking the
+  // provider feed's distance ranking. Re-clicking Detect-My-Location
+  // re-captures coords for the new city.
+  const handleCityChange = (next: string): void => {
+    setCity(next);
+    if (serviceAreaLat !== null || serviceAreaLng !== null) {
+      setServiceAreaLat(null);
+      setServiceAreaLng(null);
+    }
+  };
+
+  // GPS-detect the provider's service area. Browser permission UX
+  // requires a user gesture (we don't auto-fire on mount — the
+  // provider must explicitly click) and a short busy state so the
+  // UA's permission prompt + GPS fix don't look like the page hung.
+  // Outcome shape:
+  //   - `ok`   — wire up city + lat + lng. Rare to land here without
+  //              a city when Nominatim resolves a populated address.
+  //   - `partial` — we have lat/lng but no city; still useful, surface
+  //              a soft warning so the operator types the city by hand.
+  //   - `error` — surface the error toast but don't clobber whatever
+  //              the operator already typed.
+  const handleDetectLocation = async (): Promise<void> => {
+    if (isDetectingLocation) return;
+    setIsDetectingLocation(true);
+    try {
+      const outcome = await getCurrentLocationAddress({
+        enableHighAccuracy: true,
+        timeoutMs: 10_000,
+        maximumAgeMs: 0,
+      });
+      if (outcome.status === 'error') {
+        toast.error(
+          lang === 'ar'
+            ? 'تعذّر تحديد موقعك. تحقق من إذن الموقع وحاول مجدداً.'
+            : 'Could not detect location. Please check your permissions.',
+        );
+        return;
+      }
+      // Both `ok` and `partial` carry real lat/lng — capture them so
+      // the backend pin is populated even when reverse-geocoding
+      // couldn't resolve a city name.
+      setServiceAreaLat(outcome.lat);
+      setServiceAreaLng(outcome.lng);
+      if (outcome.status === 'ok' && outcome.city) {
+        setCity(outcome.city);
+        toast.success(
+          lang === 'ar'
+            ? `تم تحديد موقعك: ${outcome.city}`
+            : `Detected your location: ${outcome.city}`,
+        );
+      } else {
+        toast.warning(
+          lang === 'ar'
+            ? 'تم تحديد إحداثياتك، اكتب اسم المدينة يدوياً.'
+            : 'Captured your coordinates — please type the city name.',
+        );
+      }
+    } finally {
+      setIsDetectingLocation(false);
+    }
   };
 
   // Real PATCH flow. The legacy 1.4s setTimeout animation has been
@@ -181,6 +267,14 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
       // Seeker app must NEVER trigger this PATCH even for a dual-role
       // user, otherwise editing seeker fields would silently overwrite
       // the provider's service categories.
+      //
+      // serviceAreaLat / serviceAreaLng ride along ONLY when both are
+      // populated — the DTO accepts each independently but partial
+      // state (one number + one null) would break the backend's
+      // pin/distance logic. Sending `undefined` lets PATCH semantics
+      // leave the existing value alone; sending an explicit `null`
+      // clears it. We chose "leave alone" so the user can save name
+      // / phone changes without unintentionally wiping their pin.
       const providerSave =
         isProviderContext && providerProfile
           ? updateProviderMut.mutateAsync({
@@ -188,6 +282,9 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
               // accepts string | null.
               serviceAreaCity: trimmedCity === '' ? null : trimmedCity,
               categoryIds: selectedCategoryIds,
+              ...(serviceAreaLat !== null && serviceAreaLng !== null
+                ? { serviceAreaLat, serviceAreaLng }
+                : {}),
             })
           : Promise.resolve(null);
 
@@ -250,6 +347,9 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
     saveBtn: lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes',
     saved: lang === 'ar' ? 'تم الحفظ بنجاح ✓' : 'Saved successfully ✓',
     emailNote: lang === 'ar' ? 'لا يمكن تغيير البريد الإلكتروني' : 'Email cannot be changed',
+    detectLocation: lang === 'ar' ? 'تحديد موقعي' : 'Detect My Location',
+    detectingLocation: lang === 'ar' ? 'جاري التحديد…' : 'Detecting…',
+    locationCaptured: lang === 'ar' ? 'تم تسجيل الإحداثيات' : 'Coordinates captured',
   };
 
   const isLoadingProfile = profileQuery.isLoading && !profileQuery.data;
@@ -341,13 +441,42 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
               </p>
             </div>
           </div>
-          <TextField
-            label={L.city}
-            value={city}
-            onChange={setCity}
-            leadingIcon={<MapPin size={16} />}
-            hint={isProviderContext ? L.cityHint : undefined}
-          />
+          <div className="flex flex-col gap-2">
+            <TextField
+              label={L.city}
+              value={city}
+              onChange={handleCityChange}
+              leadingIcon={<MapPin size={16} />}
+              hint={isProviderContext ? L.cityHint : undefined}
+            />
+            {isProviderContext && (
+              <button
+                type="button"
+                onClick={handleDetectLocation}
+                disabled={isDetectingLocation}
+                data-testid="detect-my-location-btn"
+                className="self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60 disabled:cursor-not-allowed active:scale-95 transition-all"
+                style={{ fontSize: '12px', fontWeight: 600 }}
+                aria-busy={isDetectingLocation}
+              >
+                {isDetectingLocation ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Crosshair size={12} />
+                )}
+                {isDetectingLocation ? L.detectingLocation : L.detectLocation}
+                {serviceAreaLat !== null && serviceAreaLng !== null && !isDetectingLocation && (
+                  <span
+                    className="ms-1 inline-flex items-center gap-1 text-green-600"
+                    aria-label={L.locationCaptured}
+                    title={`${serviceAreaLat.toFixed(5)}, ${serviceAreaLng.toFixed(5)}`}
+                  >
+                    <CheckCircle2 size={11} />
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
 
           {/* Phase 6 Step 2 — provider-only skills picker. Toggleable
               pills mirror the existing visual rhythm of the wizard's

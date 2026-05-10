@@ -250,6 +250,20 @@ export interface GetCurrentLocationOptions {
   timeoutMs?: number;
   /** Forwarded to the geocoding fetch so callers can cancel on unmount. */
   signal?: AbortSignal;
+  /** Hint to the UA to use the most precise positioning available
+   *  (GPS, multi-WiFi triangulation). Costs power + time but produces
+   *  street-accurate coords instead of cell-tower-accuracy. Default
+   *  `false` so casual flows (saved-addresses lookup) stay snappy.
+   *  Set `true` for write-once flows where the value lands in a
+   *  database (job creation, provider service-area pin). */
+  enableHighAccuracy?: boolean;
+  /** Max age of a cached position the UA may return without re-querying.
+   *  Default 60 s lets the UA reuse a fresh fix between consecutive
+   *  reads in the same session. Set `0` for write-once flows that
+   *  must capture the device's CURRENT position (a stale 60 s cache
+   *  could mean the user has since walked into a different building
+   *  by the time the value is persisted). */
+  maximumAgeMs?: number;
 }
 
 /** Wrap `navigator.geolocation.getCurrentPosition` + `reverseGeocode`
@@ -271,7 +285,11 @@ export async function getCurrentLocationAddress(
           else if (err.code === 3) resolve({ reason: 'timeout' });
           else resolve({ reason: 'failed' });
         },
-        { enableHighAccuracy: false, timeout: opts.timeoutMs ?? 10_000, maximumAge: 60_000 },
+        {
+          enableHighAccuracy: opts.enableHighAccuracy ?? false,
+          timeout: opts.timeoutMs ?? 10_000,
+          maximumAge: opts.maximumAgeMs ?? 60_000,
+        },
       );
     },
   );
