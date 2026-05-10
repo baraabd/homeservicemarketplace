@@ -223,9 +223,10 @@ function formatRelativeNotificationTime(iso: string, lang: 'en' | 'ar'): string 
   return lang === 'ar' ? `${days} ي` : `${days}d ago`;
 }
 
-// API row → existing AppNotification render shape. The drawer's
-// jobId path (used by handleNotifTap) is keyed off resourceId now so
-// taps route to the correct request / booking / conversation surface.
+// API row → existing AppNotification render shape. `jobId` (legacy
+// alias) and the explicit `resourceType` / `metadata` are both carried
+// so `handleNotifTap` can dispatch on backend truth rather than
+// reverse-engineering from the icon palette.
 function apiNotifToRender(row: ContractNotificationSummary, lang: 'en' | 'ar'): AppNotification {
   return {
     id: row.id,
@@ -235,6 +236,8 @@ function apiNotifToRender(row: ContractNotificationSummary, lang: 'en' | 'ar'): 
     time: formatRelativeNotificationTime(row.createdAt, lang),
     read: row.readAt !== null,
     jobId: row.resourceId ?? undefined,
+    resourceType: row.resourceType ?? null,
+    metadata: row.metadata ?? null,
   };
 }
 
@@ -391,43 +394,88 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   };
 
   // ── Notification tap ────────────────────────────────────────────────────────
-  // Looks up the referenced row in the loaded `leads` / `bookings`
-  // queries — never against a hardcoded list. If the relevant query
-  // hasn't loaded yet (or the referenced row no longer exists), the
-  // tap is a no-op rather than opening a screen against fake data.
+  // Dispatch is keyed off the backend-truth `resourceType` rather than
+  // the UI icon palette (`n.type`) because multiple notification kinds
+  // collapse onto the same palette (BID_ACCEPTED + BOOKING_CREATED both
+  // render as the green "confirmed" tile, and BID_RECEIVED's resourceId
+  // is the BID id, not the parent request id — looking it up against
+  // `leads` and falling back to "first pending lead" was the original
+  // bug that made notification taps land on a random request).
+  //
+  // Mark-as-read is fired by NotificationDrawer's row click via
+  // `onMarkRead` — we don't re-mark here.
   const handleNotifTap = (n: AppNotification) => {
     setNotifOpen(false);
     setTimeout(() => {
-      if (n.type === 'bid') {
-        const lead =
-          leads.find((l) => l.id === n.jobId) ?? leads.find((l) => l.status === 'pending');
-        if (lead) setBidsLead(lead);
-      } else if (n.type === 'tracking' || n.type === 'confirmed') {
-        const lead = leads.find((l) => l.id === n.jobId);
-        if (lead) {
-          setJobDetail({ kind: 'request', id: lead.id });
-        } else {
-          const bk = bookings.find((b) => b.id === n.jobId);
-          if (bk) setJobDetail({ kind: 'booking', id: bk.id });
+      const resourceType = n.resourceType ?? null;
+      const resourceId = n.jobId ?? null;
+      const meta = n.metadata ?? null;
+      const metaString = (k: string): string | null => {
+        const v = meta?.[k];
+        return typeof v === 'string' && v.length > 0 ? v : null;
+      };
+
+      switch (resourceType) {
+        case 'REQUEST': {
+          if (resourceId) setJobDetail({ kind: 'request', id: resourceId });
+          return;
         }
-      } else if (n.type === 'message') {
-        // Slice 3.3: prefer routing by conversation id when the
-        // notification carries one (future-shape: notifications keyed
-        // to a conversation). Otherwise look up an existing
-        // conversation by booking id from the loaded list. We do NOT
-        // create a conversation from a notification tap — that's an
-        // explicit user action initiated from a booking surface.
-        const conv = conversations.find((c) => c.bookingId === n.jobId);
-        if (conv) {
-          setChatContact({
-            conversationId: conv.id,
-            name: conv.otherParticipant.displayName,
-            initials: conv.otherParticipant.initials,
-            bg: 'bg-amber-100',
-            textColor: 'text-amber-700',
-            status: 'Online',
-          });
+        case 'BOOKING': {
+          if (resourceId) setJobDetail({ kind: 'booking', id: resourceId });
+          return;
         }
+        case 'CONVERSATION': {
+          // The resourceId IS the conversationId. Previously this branch
+          // looked up by `c.bookingId === n.jobId`, which is never true
+          // for a CONVERSATION-typed notification — silent no-op bug.
+          const conv = resourceId ? conversations.find((c) => c.id === resourceId) : undefined;
+          if (conv) {
+            setChatContact({
+              conversationId: conv.id,
+              name: conv.otherParticipant.displayName,
+              initials: conv.otherParticipant.initials,
+              bg: 'bg-amber-100',
+              textColor: 'text-amber-700',
+              status: 'Online',
+            });
+          }
+          return;
+        }
+        case 'BID': {
+          // The resourceId is the bid id, which on its own doesn't tell
+          // us which parent surface to open. Look at writer-controlled
+          // metadata for the parent request (BID_RECEIVED) or the
+          // resulting booking (BID_ACCEPTED, which the same transaction
+          // emits alongside BOOKING_CREATED).
+          const requestId = metaString('requestId');
+          if (requestId) {
+            const lead = leads.find((l) => l.id === requestId);
+            if (lead) {
+              setBidsLead(lead);
+              return;
+            }
+            // Lead row not in the cache (filtered out, paginated past it,
+            // etc.) — still open the request detail by id so the tap
+            // never silently does nothing.
+            setJobDetail({ kind: 'request', id: requestId });
+            return;
+          }
+          const bookingId = metaString('bookingId');
+          if (bookingId) {
+            setJobDetail({ kind: 'booking', id: bookingId });
+            return;
+          }
+          // Neither parent id available — surface the leads list so the
+          // user at least lands somewhere relevant instead of nowhere.
+          setShowAllLeads(true);
+          return;
+        }
+        case 'REVIEW':
+        case null:
+        default:
+          // Reviews slice hasn't shipped a detail surface yet, and
+          // legacy / unknown resource types have no deep-link target.
+          return;
       }
     }, 200);
   };
