@@ -57,19 +57,107 @@ describe('reverseGeocode', () => {
     });
   });
 
-  it('falls back to formatted coords when VITE_GOOGLE_MAPS_API_KEY is missing', async () => {
+  it('falls through to Nominatim when VITE_GOOGLE_MAPS_API_KEY is missing and returns its display_name', async () => {
+    // Sprint 7.x — the no-key path used to return `partial` with
+    // formatted coords. It now hits OpenStreetMap Nominatim (free,
+    // keyless) and surfaces the real street name.
     vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '');
-    const fetchSpy = vi.fn();
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            display_name: 'King Fahd Rd, Riyadh, Saudi Arabia',
+            address: {
+              road: 'King Fahd Rd',
+              city: 'Riyadh',
+              country: 'Saudi Arabia',
+              country_code: 'sa',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+    );
     global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const r = await reverseGeocode(24.7136, 46.6753);
+    expect(r).toEqual({
+      status: 'ok',
+      formattedAddress: 'King Fahd Rd, Riyadh, Saudi Arabia',
+      city: 'Riyadh',
+      country: 'Saudi Arabia',
+      lat: 24.7136,
+      lng: 46.6753,
+    });
+    // The Nominatim path requests Arabic-first localisation per the
+    // page's RTL audience.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [calledUrl, calledInit] = fetchSpy.mock.calls[0] as [string, RequestInit | undefined];
+    expect(calledUrl).toContain('nominatim.openstreetmap.org/reverse');
+    expect(calledUrl).toContain('lat=24.7136');
+    expect(calledUrl).toContain('lon=46.6753');
+    const headers = calledInit?.headers as Record<string, string> | undefined;
+    expect(headers?.['Accept-Language']).toBe('ar,en');
+  });
+
+  it('falls back to formatted coords when Nominatim itself fails (network)', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '');
+    global.fetch = vi.fn(async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
 
     const r = await reverseGeocode(24.7136, 46.6753);
     expect(r.status).toBe('partial');
     if (r.status === 'partial') {
-      expect(r.reason).toBe('no_api_key');
+      expect(r.reason).toBe('network');
       expect(r.formattedAddress).toBe('24.71360, 46.67530');
     }
-    // No network call when there's no key.
-    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('falls back to formatted coords when Nominatim returns an empty / no-match payload', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '');
+    global.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: 'Unable to geocode' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ) as unknown as typeof fetch;
+
+    const r = await reverseGeocode(0, 0);
+    expect(r.status).toBe('partial');
+    if (r.status === 'partial') {
+      expect(r.reason).toBe('no_match');
+      expect(r.formattedAddress).toBe('0.00000, 0.00000');
+    }
+  });
+
+  it('Nominatim picks the most-specific city-like field when `city` is absent', async () => {
+    // Real Nominatim payloads for rural points often surface `town`,
+    // `village`, or `municipality` instead of `city`. The picker
+    // prefers the most-specific field available so downstream
+    // city-keyed filters keep matching.
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '');
+    global.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            display_name: 'Some Village, Aleppo, Syria',
+            address: {
+              village: 'Some Village',
+              state: 'Aleppo',
+              country: 'Syria',
+            },
+          }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+
+    const r = await reverseGeocode(36.2012, 37.1612);
+    expect(r.status).toBe('ok');
+    if (r.status === 'ok') {
+      expect(r.city).toBe('Some Village');
+      expect(r.country).toBe('Syria');
+    }
   });
 
   it('falls back to formatted coords on a non-OK Google status (ZERO_RESULTS)', async () => {
@@ -216,13 +304,18 @@ describe('reverseGeocode', () => {
   });
 
   it('partial outcomes carry city: "" + country: "" so the union stays symmetric', async () => {
-    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '');
+    // Force a partial via a network failure on the Google path (key
+    // present + fetch rejects). The symmetry assertion is independent
+    // of which provider produced the partial.
+    global.fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    }) as typeof fetch;
     const r = await reverseGeocode(1, 2);
     expect(r).toMatchObject({
       status: 'partial',
       city: '',
       country: '',
-      reason: 'no_api_key',
+      reason: 'network',
     });
   });
 });

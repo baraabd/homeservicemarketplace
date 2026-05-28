@@ -18,11 +18,12 @@
 //
 // Graceful fallbacks (per the sprint spec):
 //   - Permission denied → `{ status: 'error', reason: 'denied' }`.
-//   - API key missing  → `{ status: 'partial', address: '<lat,lng>' }`
-//     so the UI can still show *something* useful for testing /
-//     manual-entry recovery.
+//   - Google API key missing → fall through to OpenStreetMap Nominatim
+//     (free, keyless). When Nominatim succeeds we return a normal
+//     `ok` result; when Nominatim itself fails we return a `partial`
+//     with formatted coords as the address fallback.
 //   - Network / non-OK response → `{ status: 'partial', address: '<lat,lng>' }`
-//     same UX as missing key (raw coords > nothing).
+//     raw coords > nothing.
 //   - Empty results array → `{ status: 'partial', address: '<lat,lng>' }`
 //     the geocoder didn't recognise the point but the user still
 //     gets coordinates to work from.
@@ -32,6 +33,7 @@
 // exhaustive at compile time.
 
 const GOOGLE_GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
+const NOMINATIM_REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse';
 
 export type GeoErrorReason = 'denied' | 'unsupported' | 'timeout' | 'failed';
 
@@ -53,7 +55,7 @@ export interface ReverseGeocodePartial {
    *  formatted lat/lng to 5 decimals (~1.1m precision). */
   formattedAddress: string;
   /** Why the lookup couldn't produce a real address. */
-  reason: 'no_api_key' | 'network' | 'no_match';
+  reason: 'network' | 'no_match';
   /** Empty when the lookup failed before parsing. Kept on the type so
    *  the consumer's branches stay symmetric with the OK shape. */
   city: '';
@@ -152,6 +154,100 @@ function extractCountry(results: GoogleGeocodeResult[]): string {
   return pickAcrossResults(results, 'country') ?? '';
 }
 
+// ─── OpenStreetMap Nominatim fallback ────────────────────────────────────────
+//
+// Free, keyless reverse geocoder used when no Google API key is
+// configured. Nominatim's usage policy
+// (https://operations.osmfoundation.org/policies/nominatim/) requires
+// at most one request per second per server and a meaningful
+// User-Agent header. The Job Wizard fires one request per pin drag
+// and we identify ourselves via the Referer the browser already
+// sends; this is well within the policy. Production deployments at
+// scale should switch to a paid geocoder (Mapbox / Google with key /
+// self-hosted Nominatim).
+//
+// Nominatim's `address` payload is locale-keyed: `city`, `town`,
+// `village`, `county`, `state`, `country`, `country_code`, etc. We
+// pick the most-specific available city-like field so the
+// available-requests filter (which keys on `city`) keeps working.
+interface NominatimAddress {
+  city?: string;
+  town?: string;
+  village?: string;
+  hamlet?: string;
+  municipality?: string;
+  county?: string;
+  state?: string;
+  country?: string;
+  country_code?: string;
+}
+
+interface NominatimReverseResponse {
+  display_name?: string;
+  address?: NominatimAddress;
+  error?: string;
+}
+
+function nominatimCity(addr: NominatimAddress): string {
+  return (
+    addr.city ??
+    addr.town ??
+    addr.village ??
+    addr.hamlet ??
+    addr.municipality ??
+    addr.county ??
+    addr.state ??
+    ''
+  );
+}
+
+async function reverseGeocodeViaNominatim(
+  lat: number,
+  lng: number,
+  signal?: AbortSignal,
+): Promise<ReverseGeocodeResult> {
+  const url = `${NOMINATIM_REVERSE_URL}?format=jsonv2&lat=${encodeURIComponent(
+    String(lat),
+  )}&lon=${encodeURIComponent(String(lng))}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      signal,
+      headers: {
+        // Prefer Arabic when the page is in Arabic locale, English as
+        // backup. Nominatim respects the standard language-tag list.
+        'Accept-Language': 'ar,en',
+      },
+    });
+  } catch (err) {
+    console.warn('[reverse-geocode/nominatim] fetch failed:', err);
+    return partial(lat, lng, 'network');
+  }
+  if (!res.ok) {
+    console.warn(`[reverse-geocode/nominatim] HTTP ${res.status}`);
+    return partial(lat, lng, 'network');
+  }
+  let body: NominatimReverseResponse;
+  try {
+    body = (await res.json()) as NominatimReverseResponse;
+  } catch (err) {
+    console.warn('[reverse-geocode/nominatim] response was not JSON:', err);
+    return partial(lat, lng, 'network');
+  }
+  if (body.error || !body.display_name) {
+    return partial(lat, lng, 'no_match');
+  }
+  const addr = body.address ?? {};
+  return {
+    status: 'ok',
+    formattedAddress: body.display_name,
+    city: nominatimCity(addr),
+    country: addr.country ?? '',
+    lat,
+    lng,
+  };
+}
+
 /** Pure HTTP call. Never throws — every failure path returns a
  *  `partial` result with raw coords as the formatted fallback. */
 export async function reverseGeocode(
@@ -161,10 +257,14 @@ export async function reverseGeocode(
 ): Promise<ReverseGeocodeResult> {
   const apiKey = readApiKey();
   if (!apiKey) {
-    console.warn(
-      '[reverse-geocode] VITE_GOOGLE_MAPS_API_KEY not configured — falling back to coordinates.',
-    );
-    return partial(lat, lng, 'no_api_key');
+    // Sprint 7.x — instead of returning a partial here, fall through
+    // to the keyless Nominatim provider so the wizard / saved-address
+    // surfaces show real street names by default. The previous
+    // behaviour (return `partial` with formatted coords) only triggers
+    // when Nominatim itself fails (network down, rate-limited, no
+    // match). The console.warn is gone too — Nominatim handles the
+    // missing-key case gracefully so the warning was noise.
+    return reverseGeocodeViaNominatim(lat, lng, signal);
   }
 
   const url = `${GOOGLE_GEOCODE_URL}?latlng=${encodeURIComponent(`${lat},${lng}`)}&key=${encodeURIComponent(apiKey)}`;
