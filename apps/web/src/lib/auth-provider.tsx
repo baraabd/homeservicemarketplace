@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import type { AxiosError } from 'axios';
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import * as authApi from './auth-api';
+import { clearIntendedApp } from './intended-app';
 import { useRealtimeSocket } from './realtime/use-realtime-socket';
 
 // ─── Query client factory ────────────────────────────────────────────────────
@@ -202,6 +203,16 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     } catch {
       // Server may be down or session already expired — clear anyway
     }
+    // Sprint 7.x — centralise the intended-app cleanup here so EVERY
+    // logout site (provider shell, settings page, admin shell) drops
+    // the per-tab intent in one place. Previously this lived inside
+    // ProviderApp.tsx + LoginPage/SignUpPage's onOtpVerify; the
+    // in-onOtpVerify clear caused a render race where GuestOnly
+    // re-rendered post-refetch with intent already cleared, fell
+    // through to role-inference, and sent customer-only users to
+    // /home instead of /provider. Moving the clear to logout is the
+    // canonical "consumption" point for the intent.
+    clearIntendedApp();
     // Same approach as session-expired: flip auth/me to null for the observer,
     // then drop all other user-scoped queries. Do NOT use qc.clear() — it
     // destroys the auth observer and strands the UI in its last-rendered state.

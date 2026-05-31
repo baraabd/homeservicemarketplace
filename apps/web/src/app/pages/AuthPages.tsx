@@ -4,7 +4,7 @@ import { CheckCircle2, Eye, EyeOff, Lock, Mail, RefreshCcw, XCircle, Loader2 } f
 import { useAuth } from '../../lib/auth-provider';
 import * as authApi from '../../lib/auth-api';
 import { resetPasswordErrorMessage } from '../../lib/auth-errors';
-import { clearIntendedApp, getIntendedApp } from '../../lib/intended-app';
+import { getIntendedApp } from '../../lib/intended-app';
 import { resolveAuthExperience, resolvePostAuthDestination } from '../../lib/auth-experience';
 import { LoginScreen, SignUpScreen, ForgotPasswordScreen } from '../components/auth/AuthScreens';
 import { Button } from '../components/ds/Button';
@@ -79,20 +79,23 @@ export function LoginPage() {
         await verifyOtp(challengeId, code);
         // After OTP verify the auth provider has refetched /me. The
         // destination resolver applies the full precedence chain;
-        // experienceId is the load-bearing fallback when intent has
-        // already been cleared by something earlier in the flow (the
-        // patch-2 regression).
+        // experienceId is the load-bearing fallback when no intent
+        // is present (e.g., a direct /login deep-link without a prior
+        // /select bounce).
+        //
+        // Sprint 7.x — DO NOT call clearIntendedApp() here. The intent
+        // is per-tab sessionStorage; the canonical consumption point
+        // is `useAuth().logout`. Clearing it in-flight introduced a
+        // render race where GuestOnly re-rendered after /me populated
+        // but before navigate landed, found intent already null, fell
+        // through to customer role inference, and sent the user to
+        // /home instead of the intended /provider.
         const dest = resolvePostAuthDestination({
           returnTo,
           intentApp: getIntendedApp(),
           experienceId: experience.id,
           userRoles: user?.roles ?? null,
         });
-        // Drop the recorded intent AFTER we've already captured the
-        // experience and resolved the destination, so a future logout
-        // → login cycle starts clean without yanking the rug out of
-        // the resolver above.
-        clearIntendedApp();
         navigate(dest, { replace: true });
       }}
       onOtpResend={async (challengeId: string) => {
@@ -153,12 +156,19 @@ export function SignUpPage() {
         // patch-2 regression: a brand-new customer-only user signing
         // up from a Provider-themed flow must land on /provider, not
         // /home.
+        //
+        // Sprint 7.x — DO NOT call clearIntendedApp() here. The intent
+        // is per-tab sessionStorage; the canonical consumption point
+        // is `useAuth().logout`. Clearing it in-flight introduced a
+        // render race where GuestOnly re-rendered after /me populated
+        // but before navigate landed, found intent already null, fell
+        // through to customer role inference, and sent the user to
+        // /home instead of the intended /provider.
         const dest = resolvePostAuthDestination({
           intentApp: getIntendedApp(),
           experienceId: experience.id,
           userRoles: user?.roles ?? null,
         });
-        clearIntendedApp();
         navigate(dest, { replace: true });
       }}
       onOtpResend={async (challengeId: string) => {
