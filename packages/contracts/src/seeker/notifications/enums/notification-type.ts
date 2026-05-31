@@ -16,6 +16,9 @@ export const NotificationType = {
   BookingCompleted: 'BOOKING_COMPLETED',
   MessageReceived: 'MESSAGE_RECEIVED',
   ReviewRequested: 'REVIEW_REQUESTED',
+  // Sprint 7.x — emitted to matching providers when a seeker creates
+  // a new service request.
+  RequestAvailable: 'REQUEST_AVAILABLE',
   System: 'SYSTEM',
 } as const;
 export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];

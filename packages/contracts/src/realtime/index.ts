@@ -109,16 +109,21 @@ export interface BookingCreatedRealtimePayload {
 //                        sprint; the type stays string so a future
 //                        seeker-cancel or admin path slots in
 //                        without a contract break.
-//   - actorRole        : Discriminator on the actor. Locked to
-//                        'PROVIDER' for the slice 5.4 + 7.5.1
-//                        endpoints; widens to a union when seeker /
-//                        admin transitions ship.
+//   - actorRole        : Discriminator on the actor. Provider start /
+//                        complete / cancel land as 'PROVIDER'. Sprint
+//                        7.x added 'SEEKER' for the seeker-initiated
+//                        cancel (BookingsService.cancel) so a single
+//                        consumer case handles every transition. The
+//                        recipient-side bridge only needs `actorUserId`
+//                        for anti-echo; `actorRole` is for analytics /
+//                        copy variants and is treated as opaque by
+//                        the cache dispatcher.
 //
 // The shape is intentionally narrow — no booking summary, no
 // timeline event payload. Clients re-fetch through their normal
 // React Query invalidation path, so the realtime event is a
 // notification, not a state replica.
-export type BookingStatusChangedActorRole = 'PROVIDER';
+export type BookingStatusChangedActorRole = 'PROVIDER' | 'SEEKER';
 
 export interface BookingStatusChangedRealtimePayload {
   bookingId: string;

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type {
   AddressSnapshot,
   CreateServiceRequestRequest,
@@ -10,19 +10,35 @@ import type {
   UpdateServiceRequestRequest,
 } from '@homeservicemarketplace/contracts';
 import {
+  NotificationResourceType,
+  NotificationType,
   Prisma,
   ScheduleType,
   ServiceRequestEventType,
   ServiceRequestStatus,
 } from '@homeservicemarketplace/database';
 
+// Sprint 7.x — `REQUEST_AVAILABLE` is added to the NotificationType
+// enum via the 20260531120000 migration. Until the generated Prisma
+// client is regenerated, the runtime `NotificationType` const may not
+// yet include the new value (typeof NotificationType.REQUEST_AVAILABLE
+// === 'undefined' on the stale client). We reference the literal
+// directly + cast to the enum type so the fan-out works the moment
+// the migration is applied — regenerate is purely a TS-side concern.
+const REQUEST_AVAILABLE: NotificationType =
+  (NotificationType as Record<string, NotificationType>).REQUEST_AVAILABLE ??
+  ('REQUEST_AVAILABLE' as NotificationType);
+
 import { AddressRepository } from '../../infrastructure/persistence/addresses/address.repository';
+import { ProviderProfileRepository } from '../../infrastructure/persistence/bids/provider-profile.repository';
 import { ServiceCategoryRepository } from '../../infrastructure/persistence/services/service-category.repository';
 import { ServiceRequestRepository } from '../../infrastructure/persistence/requests/service-request.repository';
 import { ServiceRequestEventRepository } from '../../infrastructure/persistence/requests/service-request-event.repository';
 import { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
 import type { ServiceRequestWithCategory } from '../../infrastructure/persistence/requests/service-request.repository';
+import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 
 // Default page size when the query carries no explicit limit. Matches
 // the upper bound on the addresses module for consistency.
@@ -30,12 +46,19 @@ const DEFAULT_PAGE_SIZE = 50;
 
 @Injectable()
 export class RequestsService {
+  private readonly log = new Logger(RequestsService.name);
+
   constructor(
     private readonly requests: ServiceRequestRepository,
     private readonly events: ServiceRequestEventRepository,
     private readonly addresses: AddressRepository,
     private readonly categories: ServiceCategoryRepository,
     private readonly tx: TransactionRunner,
+    // Sprint 7.x — provider fan-out on request create. Post-commit
+    // only; a failed fan-out must not roll back the request.
+    private readonly providers: ProviderProfileRepository,
+    private readonly notifications: NotificationsService,
+    private readonly realtime: RealtimeEventsPublisher,
   ) {}
 
   // ─── list ──────────────────────────────────────────────────────────────────
@@ -108,7 +131,115 @@ export class RequestsService {
       );
       return row;
     });
+
+    // Sprint 7.x — fan-out matching-provider notifications POST-COMMIT.
+    // Done outside the request-creation tx so:
+    //   1. a slow / failing notification path can never block the
+    //      seeker from getting their request saved
+    //   2. a fan-out failure cannot roll back the request itself
+    // Eligibility mirrors the strict rules in AvailableRequestsService
+    // so a provider only gets a notification for a request that ALSO
+    // surfaces in their feed. See ProviderProfileRepository
+    // .listEligibleUserIdsForRequest for the exact filter set.
+    await this.fanOutRequestAvailable(created, seekerUserId);
+
     return toSummary(created);
+  }
+
+  // Best-effort fan-out — every failure is logged and swallowed so the
+  // seeker-facing create response is never blocked or torn down. Each
+  // provider's notification is created in its own transaction
+  // (NotificationsService.createForUser default behaviour) so a single
+  // failure doesn't poison the rest of the batch.
+  private async fanOutRequestAvailable(
+    request: ServiceRequestWithCategory,
+    seekerUserId: string,
+  ): Promise<void> {
+    try {
+      const snapshot = request.addressSnapshot as unknown as AddressSnapshot;
+      // The cityKey on the snapshot is the canonical lowercase-trimmed
+      // mirror used by the available-requests feed. Fall back to a
+      // computed key from `city` for legacy snapshots that pre-date
+      // the cityKey denormalisation.
+      const cityKey =
+        (snapshot.cityKey && snapshot.cityKey.trim().length > 0
+          ? snapshot.cityKey
+          : normaliseCityKey(snapshot.city ?? '')) ?? '';
+      if (!cityKey) {
+        this.log.warn({
+          msg: 'request.fanout.skipped_no_city',
+          requestId: request.id,
+        });
+        return;
+      }
+      const recipients = await this.providers.listEligibleUserIdsForRequest({
+        categoryId: request.categoryId,
+        cityKey,
+        excludeSeekerUserId: seekerUserId,
+      });
+      if (recipients.length === 0) return;
+
+      const categoryLabel = request.category?.labelEn ?? 'service';
+      const deepLink = `/provider/requests/${request.id}`;
+      const safeMetadata = {
+        requestId: request.id,
+        categoryId: request.categoryId,
+        city: snapshot.city ?? null,
+      };
+
+      for (const { userId } of recipients) {
+        // Skip the safety check covered by the repo filter — defensive
+        // double-check: never deliver to the seeker's own userId.
+        if (!userId || userId === seekerUserId) continue;
+        try {
+          // Persisted notification → drives the drawer + unread badge.
+          // The createForUser path also publishes notification.created
+          // on the realtime bus with the actor metadata so the
+          // recipient's side-effects bridge fires toast + sound (and
+          // a same-account seeker tab is silenced by anti-echo).
+          await this.notifications.createForUser({
+            userId,
+            type: REQUEST_AVAILABLE,
+            title: 'New request available',
+            body: `A new ${categoryLabel} request matches your profile.`,
+            resourceType: NotificationResourceType.REQUEST,
+            resourceId: request.id,
+            deepLink,
+            metadata: safeMetadata,
+            actorUserId: seekerUserId,
+          });
+          // Targeted realtime invalidation event so the provider's
+          // available-requests feed refetches immediately. The cache
+          // dispatcher (use-realtime-socket.ts) maps `request.available`
+          // to invalidate providerQueryKeys.availableRequests.root.
+          this.realtime.publishFor(
+            userId,
+            'request.available',
+            { requestId: request.id },
+            { actorUserId: seekerUserId },
+          );
+        } catch (err) {
+          // Single-recipient failure must not poison the rest. Log and
+          // continue — the notification can also be picked up via the
+          // available-requests polling fallback.
+          this.log.warn({
+            msg: 'request.fanout.recipient_failed',
+            requestId: request.id,
+            recipientUserId: userId,
+            err: String(err),
+          });
+        }
+      }
+    } catch (err) {
+      // Any failure outside per-recipient handling (e.g. repo query
+      // throws) — log and swallow. The request itself is already
+      // committed so the seeker's flow is unaffected.
+      this.log.warn({
+        msg: 'request.fanout.failed',
+        requestId: request.id,
+        err: String(err),
+      });
+    }
   }
 
   // ─── update ────────────────────────────────────────────────────────────────

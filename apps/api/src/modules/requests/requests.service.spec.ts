@@ -6,6 +6,7 @@ import type {
 } from '@homeservicemarketplace/database';
 
 import type { AddressRepository } from '../../infrastructure/persistence/addresses/address.repository';
+import type { ProviderProfileRepository } from '../../infrastructure/persistence/bids/provider-profile.repository';
 import type { ServiceCategoryRepository } from '../../infrastructure/persistence/services/service-category.repository';
 import type {
   ServiceRequestRepository,
@@ -14,6 +15,8 @@ import type {
 import type { ServiceRequestEventRepository } from '../../infrastructure/persistence/requests/service-request-event.repository';
 import type { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
+import type { NotificationsService } from '../notifications/notifications.service';
+import type { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 import { RequestsService } from './requests.service';
 
 // In-memory tx that just calls the supplied callback with `undefined`
@@ -100,6 +103,10 @@ interface Mocks {
   events: { create: jest.Mock; listForRequest: jest.Mock };
   addresses: { findOwned: jest.Mock };
   categories: { findById: jest.Mock };
+  // Sprint 7.x — provider fan-out dependencies.
+  providers: { listEligibleUserIdsForRequest: jest.Mock };
+  notifications: { createForUser: jest.Mock };
+  realtime: { publishFor: jest.Mock; publish: jest.Mock; publishToRoom: jest.Mock };
 }
 
 function makeMocks(over: Partial<Mocks> = {}): Mocks {
@@ -125,6 +132,23 @@ function makeMocks(over: Partial<Mocks> = {}): Mocks {
       findById: jest.fn().mockResolvedValue(makeCategory()),
       ...(over.categories ?? {}),
     },
+    providers: {
+      // Default: no matching providers — keeps existing tests green
+      // since the fan-out becomes a no-op. Tests that need to assert
+      // fan-out behaviour override this to return recipient userIds.
+      listEligibleUserIdsForRequest: jest.fn().mockResolvedValue([]),
+      ...(over.providers ?? {}),
+    },
+    notifications: {
+      createForUser: jest.fn().mockResolvedValue({ id: 'notif-1' }),
+      ...(over.notifications ?? {}),
+    },
+    realtime: {
+      publishFor: jest.fn(),
+      publish: jest.fn(),
+      publishToRoom: jest.fn(),
+      ...(over.realtime ?? {}),
+    },
   };
 }
 
@@ -135,6 +159,9 @@ function makeService(m: Mocks) {
     m.addresses as unknown as AddressRepository,
     m.categories as unknown as ServiceCategoryRepository,
     makeTx(),
+    m.providers as unknown as ProviderProfileRepository,
+    m.notifications as unknown as NotificationsService,
+    m.realtime as unknown as RealtimeEventsPublisher,
   );
 }
 
@@ -534,6 +561,120 @@ describe('RequestsService', () => {
       country: 'SA',
       lat: null,
       lng: null,
+    });
+  });
+
+  // ─── Sprint 7.x — provider fan-out on create ─────────────────────────
+  describe('create (provider fan-out)', () => {
+    it('fans out REQUEST_AVAILABLE notifications to every eligible provider userId', async () => {
+      const m = makeMocks();
+      m.providers.listEligibleUserIdsForRequest = jest
+        .fn()
+        .mockResolvedValue([{ userId: 'user-prov-a' }, { userId: 'user-prov-b' }]);
+      await makeService(m).create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'ASAP',
+        addressId: 'addr-1',
+      });
+      expect(m.providers.listEligibleUserIdsForRequest).toHaveBeenCalledWith({
+        categoryId: 'cat-1',
+        cityKey: 'riyadh',
+        excludeSeekerUserId: 'user-1',
+      });
+      // One notification per eligible provider userId.
+      expect(m.notifications.createForUser).toHaveBeenCalledTimes(2);
+      expect(m.notifications.createForUser).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          userId: 'user-prov-a',
+          type: 'REQUEST_AVAILABLE',
+          resourceType: 'REQUEST',
+          resourceId: 'req-1',
+          deepLink: '/provider/requests/req-1',
+          actorUserId: 'user-1',
+        }),
+      );
+      // Matching realtime invalidation event so the provider's
+      // available-requests feed refreshes immediately.
+      expect(m.realtime.publishFor).toHaveBeenCalledWith(
+        'user-prov-a',
+        'request.available',
+        { requestId: 'req-1' },
+        { actorUserId: 'user-1' },
+      );
+      expect(m.realtime.publishFor).toHaveBeenCalledWith(
+        'user-prov-b',
+        'request.available',
+        { requestId: 'req-1' },
+        { actorUserId: 'user-1' },
+      );
+    });
+
+    it('emits no notifications when no providers match', async () => {
+      const m = makeMocks();
+      m.providers.listEligibleUserIdsForRequest = jest.fn().mockResolvedValue([]);
+      await makeService(m).create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'ASAP',
+        addressId: 'addr-1',
+      });
+      expect(m.notifications.createForUser).not.toHaveBeenCalled();
+      expect(m.realtime.publishFor).not.toHaveBeenCalled();
+    });
+
+    it('NEVER notifies the seekers own userId even if it surfaces in the recipient set', async () => {
+      // Defensive double-check: the repo filter already excludes the
+      // seeker; this test guards against a regression where the
+      // repo gets called with the wrong exclude id and accidentally
+      // includes the seeker in the recipient list.
+      const m = makeMocks();
+      m.providers.listEligibleUserIdsForRequest = jest.fn().mockResolvedValue([
+        { userId: 'user-1' }, // the seeker themselves
+        { userId: 'user-prov-real' },
+      ]);
+      await makeService(m).create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'ASAP',
+        addressId: 'addr-1',
+      });
+      expect(m.notifications.createForUser).toHaveBeenCalledTimes(1);
+      expect(m.notifications.createForUser).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-prov-real' }),
+      );
+    });
+
+    it('SWALLOWS fan-out failures so the request is still created successfully', async () => {
+      const m = makeMocks();
+      m.providers.listEligibleUserIdsForRequest = jest.fn().mockRejectedValue(new Error('db down'));
+      // Must not throw — the request itself is already committed.
+      await expect(
+        makeService(m).create('user-1', {
+          categoryId: 'cat-1',
+          scheduleType: 'ASAP',
+          addressId: 'addr-1',
+        }),
+      ).resolves.toMatchObject({ status: 'OPEN_FOR_BIDS' });
+    });
+
+    it('per-recipient failure does not poison the rest of the batch', async () => {
+      const m = makeMocks();
+      m.providers.listEligibleUserIdsForRequest = jest
+        .fn()
+        .mockResolvedValue([{ userId: 'user-prov-fail' }, { userId: 'user-prov-ok' }]);
+      m.notifications.createForUser = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('db'))
+        .mockResolvedValueOnce({ id: 'notif-2' });
+      await expect(
+        makeService(m).create('user-1', {
+          categoryId: 'cat-1',
+          scheduleType: 'ASAP',
+          addressId: 'addr-1',
+        }),
+      ).resolves.toMatchObject({ status: 'OPEN_FOR_BIDS' });
+      // Both attempts were made — the failure did not short-circuit
+      // the second recipient.
+      expect(m.notifications.createForUser).toHaveBeenCalledTimes(2);
     });
   });
 });

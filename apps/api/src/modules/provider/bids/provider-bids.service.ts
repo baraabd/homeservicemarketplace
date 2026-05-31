@@ -104,6 +104,12 @@ export class ProviderBidsService {
 
       // Notify the seeker that a new bid arrived. Body uses provider's
       // displayName — never the providerUserId.
+      //
+      // Sprint 7.6 — actor metadata threaded so the seeker's side-
+      // effects bridge fires UX (provider is the actor, seeker is the
+      // non-actor recipient → anti-echo passes). resourceId is the
+      // BID id (not the request id) — the seeker UI's tap dispatcher
+      // resolves the parent request from metadata.requestId.
       await this.notifications.createForUser(
         {
           userId: request.seekerUserId,
@@ -114,6 +120,7 @@ export class ProviderBidsService {
           resourceId: created.id,
           deepLink: `/home/requests/${input.requestId}/bids/${created.id}`,
           metadata: { requestId: input.requestId, providerId: profile.id },
+          actorUserId: providerUserId,
         },
         tx,
       );

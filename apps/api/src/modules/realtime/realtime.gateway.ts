@@ -21,6 +21,7 @@ import type {
 
 import { AppConfigService } from '../../config/app-config.service';
 import { TokenService, AccessTokenClaims } from '../iam/authentication/services/token.service';
+import { ACCESS_COOKIE } from '../iam/authentication/helpers/cookies';
 import { ConversationParticipantGate } from './conversation-participant.gate';
 
 // Catches WsException + plain Error in the gateway scope so the
@@ -106,11 +107,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     let claims: AccessTokenClaims;
     try {
-      const token = extractBearerToken(client);
+      const token = extractAccessToken(client);
       if (!token) throw new Error('missing token');
       claims = this.tokens.verifyAccessToken(token);
     } catch {
-      // Stable code on the wire; no internal detail leaks.
+      // Stable code on the wire; no internal detail leaks. Logs are
+      // deliberately silent on the rejection path — never log the
+      // token, cookie value, or claims of a failed handshake.
       client.emit('error', { code: 'AUTH_INVALID_CREDENTIALS' });
       client.disconnect(true);
       return;
@@ -196,17 +199,54 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 }
 
-function extractBearerToken(client: Socket): string | null {
-  // 1) socket.io-client convention: `auth: { token }`
+// Sprint 7.x — extract the access JWT from the handshake. Order
+// matters: the explicit transports (auth.token / Authorization) win
+// over the cookie so a non-web client with a real Bearer token isn't
+// accidentally re-authenticated via a stale browser cookie. The
+// cookie path is the ONLY way web clients authenticate — the access
+// token lives in the httpOnly `hsm_at` cookie that JS can't read, so
+// the gateway must parse it from the handshake cookie header itself.
+function extractAccessToken(client: Socket): string | null {
+  // 1) socket.io-client convention: `auth: { token }` for mobile /
+  //    native / probes that have a real access JWT on hand. Never
+  //    accept this if it's empty or whitespace — an empty string
+  //    here used to come from the web client passing the CSRF token
+  //    in by mistake, which would fail verification with a noisy
+  //    log; a strict trim+length check makes that path silent.
   const auth = client.handshake.auth as { token?: unknown } | undefined;
-  if (typeof auth?.token === 'string' && auth.token.length > 0) return auth.token;
-  // 2) Authorization header (manual probes, native ws)
+  if (typeof auth?.token === 'string' && auth.token.trim().length > 0) {
+    return auth.token.trim();
+  }
+  // 2) Authorization: Bearer header — same audience as auth.token.
   const header = client.handshake.headers['authorization'];
   if (typeof header === 'string' && header.toLowerCase().startsWith('bearer ')) {
-    return header.slice('bearer '.length).trim();
+    return header.slice('bearer '.length).trim() || null;
   }
-  // 3) Cookie path is not exposed here on purpose — web clients use
-  //    the auth.token transport (the auth-provider hook below mints
-  //    it from the same access token cookie).
+  // 3) Cookie — web clients. The Socket.IO handshake re-uses the
+  //    underlying HTTP CONNECT, so the browser sends every cookie
+  //    scoped to the API origin. We read ACCESS_COOKIE (`hsm_at`)
+  //    using the SAME constant the REST cookie helpers use so the
+  //    two surfaces can never drift on the name.
+  return readCookie(client.handshake.headers.cookie, ACCESS_COOKIE);
+}
+
+function readCookie(cookieHeader: string | string[] | undefined, name: string): string | null {
+  const raw = Array.isArray(cookieHeader) ? cookieHeader.join('; ') : cookieHeader;
+  if (!raw) return null;
+  for (const part of raw.split(';')) {
+    const trimmed = part.trim();
+    const eq = trimmed.indexOf('=');
+    if (eq < 0) continue;
+    const key = trimmed.slice(0, eq);
+    if (key !== name) continue;
+    const value = trimmed.slice(eq + 1);
+    if (value.length === 0) return null;
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      // Malformed cookie value — treat as absent rather than throw.
+      return null;
+    }
+  }
   return null;
 }

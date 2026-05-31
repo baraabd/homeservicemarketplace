@@ -669,6 +669,10 @@ enum NotificationType {
   BOOKING_COMPLETED
   MESSAGE_RECEIVED
   REVIEW_REQUESTED
+  // Sprint 7.x — emitted when a seeker creates a new service request
+  // that matches a provider's configured category + service-area.
+  // Drives the provider-side notification drawer + unread badge.
+  REQUEST_AVAILABLE
   SYSTEM
 }
 

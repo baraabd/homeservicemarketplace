@@ -1,4 +1,13 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Header,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import type {
   ProviderAvailableRequestDetailResponse,
   ProviderAvailableRequestListResponse,
@@ -32,7 +41,12 @@ import { AvailableRequestsService } from './available-requests.service';
 export class AvailableRequestsController {
   constructor(private readonly requests: AvailableRequestsService) {}
 
+  // Sprint 7.x — `Cache-Control: no-store` so a 304 Not Modified
+  // can never mask a freshly-published request. A stale list here
+  // means the provider misses a brand-new request that already
+  // surfaced via the realtime `request.available` event.
   @Get()
+  @Header('Cache-Control', 'no-store')
   @HttpCode(HttpStatus.OK)
   list(
     @CurrentUser() user: AuthenticatedUser,
@@ -42,6 +56,7 @@ export class AvailableRequestsController {
   }
 
   @Get(':requestId')
+  @Header('Cache-Control', 'no-store')
   @HttpCode(HttpStatus.OK)
   detail(
     @CurrentUser() user: AuthenticatedUser,
