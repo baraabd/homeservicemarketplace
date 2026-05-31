@@ -14,11 +14,13 @@ import {
   BellOff,
   Wrench,
   CreditCard,
+  ClipboardCheck,
 } from 'lucide-react';
 import { EditProfilePage } from './EditProfilePage';
 import { SavedAddressesPage } from './SavedAddressesPage';
 import { HelpSupportPage } from './HelpSupportPage';
 import { SettingsPage } from './SettingsPage';
+import { CompletedPostsPage } from './CompletedPostsPage';
 import { useLang } from '../../i18n/LanguageContext';
 import { AppNotification } from '../notifications/NotificationDrawer';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
@@ -362,6 +364,15 @@ function ProfileList({
           badge={unreadCount}
           onClick={() => onNavigate('notifications')}
         />
+        {/* Sprint 7.12 — Completed Posts (Seeker bug #9). Reads from
+            /v1/me/bookings?status=COMPLETED so the list is hard-refresh
+            consistent and updates automatically when a booking becomes
+            COMPLETED via the realtime/polling pipeline. */}
+        <MenuItem
+          icon={<ClipboardCheck size={16} />}
+          label={lang === 'ar' ? 'الطلبات المكتملة' : 'Completed Posts'}
+          onClick={() => onNavigate('completedPosts')}
+        />
         <MenuItem
           icon={<MessageCircle size={16} />}
           label={t('helpSupport')}
@@ -420,6 +431,7 @@ export type ProfileView =
   | 'editProfile'
   | 'savedAddresses'
   | 'notifications'
+  | 'completedPosts'
   | 'helpSupport'
   | 'settings'
   | null;
@@ -432,6 +444,11 @@ interface ProfileTabProps {
   onMarkAllRead: () => void;
   onMarkRead: (id: string) => void;
   unreadCount: number;
+  // Sprint 7.12 — tapping a Completed Post opens the SAME JobDetailView
+  // the Bookings tab uses. Optional so existing call sites that don't
+  // wire it still compile (the Completed Posts list still renders;
+  // the tap just becomes a no-op).
+  onOpenBooking?: (bookingId: string) => void;
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
@@ -442,6 +459,7 @@ export function ProfileTab({
   onMarkAllRead,
   onMarkRead,
   unreadCount,
+  onOpenBooking,
 }: ProfileTabProps) {
   const [view, setView] = useState<ProfileView>(null);
 
@@ -477,6 +495,19 @@ export function ProfileTab({
             notifications={notifications}
             onMarkAllRead={onMarkAllRead}
             onMarkRead={onMarkRead}
+          />
+        )}
+        {view === 'completedPosts' && (
+          <CompletedPostsPage
+            key="completed-posts"
+            onBack={() => setView(null)}
+            onOpenBooking={(bookingId) => {
+              // Close the Completed Posts page first so the parent's
+              // JobDetailView overlay slides in over the Profile list,
+              // matching the navigation flow used by the Bookings tab.
+              setView(null);
+              onOpenBooking?.(bookingId);
+            }}
           />
         )}
         {view === 'helpSupport' && <HelpSupportPage key="help" onBack={() => setView(null)} />}

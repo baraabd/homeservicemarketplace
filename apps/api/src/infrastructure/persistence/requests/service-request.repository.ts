@@ -63,6 +63,12 @@ export type ServiceRequestWithCategory = ServiceRequest & {
   // OPTIONAL — only populated by the seeker finders (listForSeeker /
   // findOwned). Provider-side finders don't include it.
   bookings?: { id: string; status: BookingStatus; updatedAt: Date }[];
+  // Sprint 7.12 — Prisma `_count` projection. The seeker finders
+  // request `_count.bids` with a relational `where` so the wire DTO
+  // can expose `bidsCount` (drives the Active Leads "X bids" label)
+  // without N+1. Provider-side finders skip this projection — the
+  // provider feed has its own bid filter.
+  _count?: { bids: number };
 };
 
 // Provider-feed row shape — adds the privacy-safe seeker preview on
@@ -117,6 +123,17 @@ export class ServiceRequestRepository {
           orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
           take: 1,
           select: { id: true, status: true, updatedAt: true },
+        },
+        // Sprint 7.12 — relational bid count, scoped to non-WITHDRAWN
+        // non-deleted bids so the UI label matches the "visible bids"
+        // the seeker actually sees in BidsScreen. One extra Postgres
+        // aggregate per row, no application-side join.
+        _count: {
+          select: {
+            bids: {
+              where: { deletedAt: null, status: { not: 'WITHDRAWN' } },
+            },
+          },
         },
       },
     }) as Promise<ServiceRequestWithCategory[]>;
@@ -282,6 +299,15 @@ export class ServiceRequestRepository {
           orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
           take: 1,
           select: { id: true, status: true, updatedAt: true },
+        },
+        // Sprint 7.12 — same bidsCount projection as the list path so
+        // detail + summary stay in lockstep on a hard refresh.
+        _count: {
+          select: {
+            bids: {
+              where: { deletedAt: null, status: { not: 'WITHDRAWN' } },
+            },
+          },
         },
       },
     }) as Promise<ServiceRequestWithCategory | null>;

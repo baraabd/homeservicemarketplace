@@ -13,4 +13,12 @@ export interface BookingDetail extends BookingListItem {
   // booking row, so a future Bid edit while still PENDING is reflected
   // until the bid is accepted).
   bidNote: string | null;
+  // Sprint 7.12 — the ORIGINAL request's createdAt timestamp. Needed so
+  // the booking-side JobDetailView's "Posted" step can show when the
+  // seeker first posted the job, not when the booking was created (the
+  // booking is created at bid-accept time, which is much later). The
+  // booking already eager-loads the parent ServiceRequest row in the
+  // repository; this just surfaces the timestamp on the wire so the
+  // frontend stays hard-refresh consistent without a second fetch.
+  requestCreatedAt: string;
 }

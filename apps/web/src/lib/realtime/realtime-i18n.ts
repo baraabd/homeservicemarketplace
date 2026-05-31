@@ -74,7 +74,13 @@ type RealtimeStringKey =
   | 'realtime.notif.REQUEST_AVAILABLE.title'
   | 'realtime.notif.REQUEST_AVAILABLE.body'
   | 'realtime.notif.SYSTEM.title'
-  | 'realtime.notif.SYSTEM.body';
+  | 'realtime.notif.SYSTEM.body'
+  // Sprint 7.12 — aggregate toast (login-storm protection + large
+  // polling batch). One toast covers many notifications; the user
+  // taps it to open the drawer.
+  | 'realtime.notif.aggregate.title'
+  | 'realtime.notif.aggregate.body.singular'
+  | 'realtime.notif.aggregate.body.plural';
 
 const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
   en: {
@@ -108,6 +114,13 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.notif.REQUEST_AVAILABLE.body': 'A new service request matches your profile.',
     'realtime.notif.SYSTEM.title': 'Notification',
     'realtime.notif.SYSTEM.body': '',
+    // Aggregate toast copy. Used when the watcher's first poll after
+    // login/baseline carries unread rows OR a single poll batch
+    // delivers more than 3 fresh items — we collapse them all into
+    // one toast so the user is never barraged.
+    'realtime.notif.aggregate.title': 'You have new notifications',
+    'realtime.notif.aggregate.body.singular': 'Tap to review.',
+    'realtime.notif.aggregate.body.plural': '{count} new notifications to review.',
   },
   ar: {
     'realtime.booking.statusChanged': 'تم تحديث حالة الحجز',
@@ -139,6 +152,9 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.notif.REQUEST_AVAILABLE.body': 'يوجد طلب جديد يطابق ملفك الشخصي.',
     'realtime.notif.SYSTEM.title': 'إشعار',
     'realtime.notif.SYSTEM.body': '',
+    'realtime.notif.aggregate.title': 'لديك إشعارات جديدة',
+    'realtime.notif.aggregate.body.singular': 'اضغط للاطلاع عليها.',
+    'realtime.notif.aggregate.body.plural': '{count} إشعارات جديدة للاطلاع عليها.',
   },
 };
 

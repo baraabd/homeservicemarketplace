@@ -53,6 +53,7 @@ import {
   mapServiceCategorySlug,
   mapLeadStatus,
 } from '../../../lib/seeker/request-status-map';
+import { resolveNotificationTarget } from '../../../lib/realtime/notification-target';
 
 // ─── Tab routing ──────────────────────────────────────────────────────────────
 const TAB_PATHS: Record<string, string> = {
@@ -238,6 +239,13 @@ function apiNotifToRender(row: ContractNotificationSummary, lang: 'en' | 'ar'): 
     jobId: row.resourceId ?? undefined,
     resourceType: row.resourceType ?? null,
     metadata: row.metadata ?? null,
+    // Sprint 7.12 — surface the backend type + deepLink so the
+    // shared `resolveNotificationTarget` (used by both the drawer
+    // tap and the toast View action) has the disambiguating fields
+    // it needs. Without backendType, BID_RECEIVED vs. BID_ACCEPTED
+    // collapse into one BID branch and route incorrectly.
+    backendType: row.type as unknown as string,
+    deepLink: row.deepLink ?? null,
   };
 }
 
@@ -300,8 +308,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
       // lifecycle (the request itself stays at BID_ACCEPTED).
       status: mapLeadStatus(r.status, r.activeBookingStatus),
       postedAt: formatRelativeTime(r.createdAt, lang === 'ar' ? 'ar' : 'en'),
-      // bids/price not yet available — those ship with the bids slice.
-      bids: undefined,
+      // Sprint 7.12 — bidsCount now populated by the API (Prisma
+      // _count on the seeker request finders). Drives the dynamic
+      // "Pending Bids" → "N Bids received" label in LeadCard and
+      // survives a hard refresh.
+      bids: r.bidsCount,
       price: undefined,
     }));
   }, [requestsQuery.data, lang]);
@@ -404,41 +415,60 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   };
 
   // ── Notification tap ────────────────────────────────────────────────────────
-  // Dispatch is keyed off the backend-truth `resourceType` rather than
-  // the UI icon palette (`n.type`) because multiple notification kinds
-  // collapse onto the same palette (BID_ACCEPTED + BOOKING_CREATED both
-  // render as the green "confirmed" tile, and BID_RECEIVED's resourceId
-  // is the BID id, not the parent request id — looking it up against
-  // `leads` and falling back to "first pending lead" was the original
-  // bug that made notification taps land on a random request).
+  // Sprint 7.12 — delegates to the shared `resolveNotificationTarget`
+  // so the seeker notification drawer tap, the toast "View" action,
+  // the Profile notifications tap, and the Completed Posts item tap
+  // all converge on the SAME routing logic. The shared resolver
+  // honours metadata.requestId for BID notifications (the
+  // resourceId is the bidId, never the requestId), prefers
+  // backend-supplied deepLinks, and falls back to derived routes
+  // for REQUEST / BOOKING / CONVERSATION.
+  //
+  // The resolver returns a typed `kind`; we map each kind onto the
+  // in-app overlay state setter so we never have to parse the
+  // deepLink string here. Unresolvable notifications (SYSTEM / null /
+  // unknown) deliberately do NOTHING — no fallback to home or All
+  // Leads (the original bug surfaced when the tap silently landed on
+  // a wrong page; now we prefer "nothing happened" over "wrong page
+  // opened").
   //
   // Mark-as-read is fired by NotificationDrawer's row click via
   // `onMarkRead` — we don't re-mark here.
   const handleNotifTap = (n: AppNotification) => {
     setNotifOpen(false);
     setTimeout(() => {
-      const resourceType = n.resourceType ?? null;
-      const resourceId = n.jobId ?? null;
-      const meta = n.metadata ?? null;
-      const metaString = (k: string): string | null => {
-        const v = meta?.[k];
-        return typeof v === 'string' && v.length > 0 ? v : null;
-      };
-
-      switch (resourceType) {
-        case 'REQUEST': {
-          if (resourceId) setJobDetail({ kind: 'request', id: resourceId });
+      const target = resolveNotificationTarget(
+        {
+          type: (n as { backendType?: string }).backendType ?? null,
+          resourceType: n.resourceType ?? null,
+          resourceId: n.jobId ?? null,
+          deepLink: (n as { deepLink?: string | null }).deepLink ?? null,
+          metadata: n.metadata ?? null,
+        },
+        'seeker',
+      );
+      if (!target) return;
+      switch (target.kind) {
+        case 'seeker-request-bids': {
+          // Open the BidsScreen overlay against the matching lead when
+          // we have it in cache — otherwise fall through to the
+          // request detail surface so the tap is never a no-op.
+          const lead = leads.find((l) => l.id === target.requestId);
+          if (lead) {
+            setBidsLead(lead);
+          } else {
+            setJobDetail({ kind: 'request', id: target.requestId });
+          }
           return;
         }
-        case 'BOOKING': {
-          if (resourceId) setJobDetail({ kind: 'booking', id: resourceId });
+        case 'seeker-request-detail':
+          setJobDetail({ kind: 'request', id: target.requestId });
           return;
-        }
-        case 'CONVERSATION': {
-          // The resourceId IS the conversationId. Previously this branch
-          // looked up by `c.bookingId === n.jobId`, which is never true
-          // for a CONVERSATION-typed notification — silent no-op bug.
-          const conv = resourceId ? conversations.find((c) => c.id === resourceId) : undefined;
+        case 'seeker-booking-detail':
+          setJobDetail({ kind: 'booking', id: target.bookingId });
+          return;
+        case 'seeker-conversation': {
+          const conv = conversations.find((c) => c.id === target.conversationId);
           if (conv) {
             setChatContact({
               conversationId: conv.id,
@@ -451,40 +481,14 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
           }
           return;
         }
-        case 'BID': {
-          // The resourceId is the bid id, which on its own doesn't tell
-          // us which parent surface to open. Look at writer-controlled
-          // metadata for the parent request (BID_RECEIVED) or the
-          // resulting booking (BID_ACCEPTED, which the same transaction
-          // emits alongside BOOKING_CREATED).
-          const requestId = metaString('requestId');
-          if (requestId) {
-            const lead = leads.find((l) => l.id === requestId);
-            if (lead) {
-              setBidsLead(lead);
-              return;
-            }
-            // Lead row not in the cache (filtered out, paginated past it,
-            // etc.) — still open the request detail by id so the tap
-            // never silently does nothing.
-            setJobDetail({ kind: 'request', id: requestId });
-            return;
-          }
-          const bookingId = metaString('bookingId');
-          if (bookingId) {
-            setJobDetail({ kind: 'booking', id: bookingId });
-            return;
-          }
-          // Neither parent id available — surface the leads list so the
-          // user at least lands somewhere relevant instead of nowhere.
-          setShowAllLeads(true);
-          return;
-        }
-        case 'REVIEW':
-        case null:
-        default:
-          // Reviews slice hasn't shipped a detail surface yet, and
-          // legacy / unknown resource types have no deep-link target.
+        // Provider-kind targets cannot fire here (we always ask the
+        // resolver for the 'seeker' experience). Listed exhaustively
+        // so a future kind addition becomes a TS error rather than a
+        // silent no-op.
+        case 'provider-bid-detail':
+        case 'provider-booking-detail':
+        case 'provider-request-detail':
+        case 'provider-conversation':
           return;
       }
     }, 200);
@@ -774,9 +778,23 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                   {t('pendingTip')}
                 </p>
               </div>
+              {/* Sprint 7.12 — `touch-action: pan-x` overrides the
+                  parent's `overflow-y-auto` default of pan-y so a
+                  horizontal swipe on mobile actually scrolls the
+                  carousel (Bug #3: carousel was effectively locked
+                  on touch devices because the parent intercepted the
+                  gesture). `-webkit-overflow-scrolling: touch` keeps
+                  iOS momentum scrolling intact. RTL is handled by
+                  Tailwind's logical-property aware `px-4`. */}
               <div
                 className="flex gap-3 overflow-x-auto px-4 pb-2"
-                style={{ scrollbarWidth: 'none' }}
+                style={{
+                  scrollbarWidth: 'none',
+                  touchAction: 'pan-x',
+                  WebkitOverflowScrolling: 'touch',
+                  overscrollBehaviorX: 'contain',
+                }}
+                data-testid="active-leads-carousel"
               >
                 {leads.map((lead) => (
                   <LeadCard
@@ -1151,6 +1169,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
               onMarkAllRead={markAllRead}
               onMarkRead={markRead}
               unreadCount={unreadCount}
+              // Sprint 7.12 — Completed Posts → JobDetailView. The
+              // ProfileTab closes its CompletedPostsPage first then
+              // calls this back so the booking-detail overlay slides
+              // in over the Profile list (same flow as Bookings tab).
+              onOpenBooking={(bookingId) => setJobDetail({ kind: 'booking', id: bookingId })}
             />
           </motion.div>
         );

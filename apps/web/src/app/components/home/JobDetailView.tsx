@@ -223,6 +223,11 @@ function stepsForBooking(
   status: BookingStatus,
   events: { type: string; metadata?: Record<string, unknown> | null; createdAt: string }[],
   lang: 'en' | 'ar',
+  // Sprint 7.12 — the parent ServiceRequest's createdAt timestamp,
+  // surfaced on BookingDetail via the new `requestCreatedAt` field.
+  // When present, drives the "Posted" step's wall-clock time so the
+  // booking-side timeline matches the request-side timeline exactly.
+  requestCreatedAtIso: string | null = null,
 ): StepInfo[] {
   const find = (type: string) => events.find((e) => e.type === type);
   const created = find('BOOKING_CREATED');
@@ -246,13 +251,15 @@ function stepsForBooking(
   const isInProgress = status === 'IN_PROGRESS';
   const isCompleted = status === 'COMPLETED';
   return [
-    // Posted: the request timeline holds REQUEST_CREATED, but a booking
-    // detail does not include the request's events. We mark Posted as
-    // implicitly done (the booking would not exist without a posted request)
-    // and use the booking createdAt as a reasonable upper bound on when the
-    // request was posted. The request-side detail surface gives the exact
-    // time when needed.
-    { done: true, doneAt: null },
+    // Sprint 7.12 — Posted: source priority is now
+    // (1) requestCreatedAt from the BookingDetail DTO (new field),
+    // (2) booking.createdAt as a last-resort upper bound. The
+    // booking detail no longer ships an empty wall-clock for Posted
+    // — the field is non-null on every response.
+    {
+      done: true,
+      doneAt: formatTimeOfDay(requestCreatedAtIso ?? null, lang),
+    },
     // Bids Received: same caveat as the request branch — no event yet.
     // Implicitly done because we have a booking (a bid was accepted).
     { done: true, doneAt: null },
@@ -524,7 +531,15 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
       (langKey === 'ar' ? 'خدمة' : 'Service');
     const labelAr = b.service.categoryLabelAr ?? b.service.customServiceText ?? labelEn;
     const events = (bookingTimeline.data?.items ?? []) as { type: string; createdAt: string }[];
-    const steps = stepsForBooking(b.status, events, langKey);
+    // Sprint 7.12 — pass the new `requestCreatedAt` field through so
+    // the booking-side "Posted" step shows the original post time
+    // (not the booking createdAt, which is much later).
+    const steps = stepsForBooking(
+      b.status,
+      events,
+      langKey,
+      (b as BookingDetail & { requestCreatedAt?: string }).requestCreatedAt ?? null,
+    );
     return {
       jobId: b.id,
       service: serviceKeyFromSlug(b.service.categorySlug, labelEn),

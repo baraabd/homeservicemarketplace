@@ -73,6 +73,10 @@ function makeAddress(): Address {
 function makeRow(
   bookings: { id: string; status: BookingStatus; updatedAt: Date }[] | undefined,
   requestStatus: ServiceRequestStatus = 'BID_ACCEPTED',
+  // Sprint 7.12 — optional `_count.bids` projection. Repository
+  // populates this on the seeker finders; tests pass an explicit
+  // value to assert the wire `bidsCount` mapping.
+  bidsCount: number | undefined = undefined,
 ): ServiceRequestWithCategory {
   const baseDate = new Date('2026-04-28T00:00:00.000Z');
   return {
@@ -100,6 +104,7 @@ function makeRow(
     deletedAt: null,
     category: makeCategory(),
     bookings,
+    ...(bidsCount !== undefined ? { _count: { bids: bidsCount } } : {}),
   } as unknown as ServiceRequestWithCategory;
 }
 
@@ -185,5 +190,31 @@ describe('ServiceRequestSummary.activeBooking* — hard-refresh source-of-truth'
     ]);
     const out = await makeService([row]).detail('user-1', 'req-1');
     expect(out.activeBookingStatus).toBe('COMPLETED');
+  });
+});
+
+// Sprint 7.12 — Bug #6: the Active Leads "Pending Bids" label needs
+// the real bid count. Repository populates `_count.bids` (scoped to
+// non-WITHDRAWN non-deleted bids); the service maps it to
+// `bidsCount` on the wire. Without this, the previous behaviour
+// (hard-coded `bidsCount: 0`) made the label permanently say
+// "Pending Bids" no matter how many bids arrived.
+describe('ServiceRequestSummary.bidsCount — Sprint 7.12 dynamic count', () => {
+  it('surfaces the repository _count.bids on the wire', async () => {
+    const row = makeRow([], 'OPEN_FOR_BIDS', 3);
+    const out = await makeService([row]).list('user-1', {});
+    expect(out.items[0].bidsCount).toBe(3);
+  });
+
+  it('falls back to 0 when the repository projection is absent (defensive)', async () => {
+    const row = makeRow([], 'OPEN_FOR_BIDS', undefined);
+    const out = await makeService([row]).list('user-1', {});
+    expect(out.items[0].bidsCount).toBe(0);
+  });
+
+  it('detail path also surfaces bidsCount', async () => {
+    const row = makeRow([], 'OPEN_FOR_BIDS', 7);
+    const out = await makeService([row]).detail('user-1', 'req-1');
+    expect(out.bidsCount).toBe(7);
   });
 });

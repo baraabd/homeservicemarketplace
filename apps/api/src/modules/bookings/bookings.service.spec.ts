@@ -263,6 +263,23 @@ describe('BookingsService', () => {
       expect(out.description).toBe('Leaky tap under the kitchen sink');
     });
 
+    // Sprint 7.12 — Bug #8: the booking-side JobDetailView's
+    // "Posted" step needs the ORIGINAL request's createdAt (not the
+    // booking createdAt — the booking is created later, at
+    // bid-accept time). BookingDetail.requestCreatedAt is sourced
+    // from the eager-loaded `request` relation; this test pins the
+    // wire contract.
+    it('surfaces requestCreatedAt from the eager-loaded request', async () => {
+      const m = makeMocks();
+      const out = await makeService(m).detail('user-1', 'bk-1');
+      expect(out.requestCreatedAt).toBeDefined();
+      // The mock fixture's makeRequest defaults createdAt to
+      // 2026-04-28T00:00:00.000Z; assert the ISO shape is on the
+      // wire so the frontend formatter never receives undefined.
+      expect(typeof out.requestCreatedAt).toBe('string');
+      expect(out.requestCreatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    });
+
     it('rejects with NOT_FOUND on a foreign bookingId (no leak between FORBIDDEN and NOT_FOUND)', async () => {
       const m = makeMocks({
         bookings: { findOwned: jest.fn().mockResolvedValue(null) },

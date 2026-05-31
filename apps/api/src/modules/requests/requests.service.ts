@@ -634,7 +634,11 @@ function toSummary(row: ServiceRequestWithCategory): ServiceRequestSummary {
     scheduleType: row.scheduleType,
     scheduledAt: row.scheduledAt ? row.scheduledAt.toISOString() : null,
     addressSnapshot: snapshot,
-    bidsCount: 0,
+    // Sprint 7.12 — repository's `_count.bids` projection (scoped to
+    // non-WITHDRAWN non-deleted bids). Falls back to 0 only for rows
+    // that come from finders without the projection — never silently
+    // hides bids on the seeker-side surfaces.
+    bidsCount: row._count?.bids ?? 0,
     activeBookingId: latestBooking?.id ?? null,
     activeBookingStatus: latestBooking?.status ?? null,
     activeBookingUpdatedAt: latestBooking?.updatedAt ? latestBooking.updatedAt.toISOString() : null,

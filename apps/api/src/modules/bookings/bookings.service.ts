@@ -241,6 +241,11 @@ function toDetail(row: BookingWithRelations): BookingDetail {
     updatedAt: row.updatedAt.toISOString(),
     description: row.request.description,
     bidNote: row.bid.note,
+    // Sprint 7.12 — surface the parent request's createdAt so the
+    // booking-side JobDetailView "Posted" step shows the original
+    // post time. The eager-loaded `request` relation already carries
+    // it; no extra query.
+    requestCreatedAt: row.request.createdAt.toISOString(),
   };
 }
 

@@ -8,6 +8,8 @@ import { LanguageProvider, useLang } from './i18n/LanguageContext';
 import { EcosystemProvider } from './context/EcosystemContext';
 import { setRealtimeLang } from '../lib/realtime/realtime-i18n';
 import { setRealtimeNavigator } from '../lib/realtime/realtime-navigator';
+import { setRealtimeExperience } from '../lib/realtime/realtime-experience';
+import './styles/toast-theme.css';
 
 // ─── Shared outlet-context type ───────────────────────────────────────────────
 export interface RootContext {
@@ -38,7 +40,19 @@ function RootInner() {
   const navigation = useNavigation();
   const isHome = location.pathname.startsWith('/home');
   const isSelect = location.pathname === '/select';
+  const isProvider = location.pathname.startsWith('/provider');
   const isLoading = navigation.state === 'loading';
+
+  // Sprint 7.12 — bridge the active experience to realtime-experience
+  // so the side-effects dispatcher (mounted above Router by
+  // AuthProvider) renders toasts with the correct brand variant.
+  // Provider routes → 'provider' (blue). Everything else → 'seeker'
+  // (orange/amber). The bridge runs in an effect so the write
+  // happens on every navigation; the read site is a pure function
+  // call from any callsite.
+  useEffect(() => {
+    setRealtimeExperience(isProvider ? 'provider' : 'seeker');
+  }, [isProvider]);
 
   useEffect(() => {
     const goOnline = () => setIsOffline(false);
@@ -100,7 +114,16 @@ function RootInner() {
     return (
       <>
         <Outlet context={ctx} />
-        <Toaster position="top-center" richColors closeButton />
+        <Toaster
+          position="top-center"
+          richColors
+          closeButton
+          // Sprint 7.12 — even outside the phone shell, constrain
+          // the toast width so the variant tokens land on the same
+          // visual surface as the in-shell mount.
+          className="hsm-toaster-shell"
+          toastOptions={{ className: 'hsm-toast hsm-toast--seeker' }}
+        />
       </>
     );
   }
@@ -167,8 +190,21 @@ function RootInner() {
       {/* Sprint 7.x — toast surface used for graceful error handling
           (e.g. 409 on duplicate bid). Mounted once at the Root so any
           screen can call sonner's `toast.*` helpers without per-screen
-          wiring. */}
-      <Toaster position="top-center" richColors closeButton />
+          wiring.
+          Sprint 7.12 — bounded to the phone-shell width via the
+          `hsm-toaster-shell` viewport class so Provider toasts (and
+          Seeker toasts on wide viewports) never overflow outside the
+          app frame. The `hsm-toast--seeker` default flips to
+          `hsm-toast--provider` per-emit via the side-effects
+          dispatcher (the `experience` bridge picks the right variant
+          for each toast). */}
+      <Toaster
+        position="top-center"
+        richColors
+        closeButton
+        className="hsm-toaster-shell"
+        toastOptions={{ className: 'hsm-toast hsm-toast--seeker' }}
+      />
 
       {/* Desktop label — informational watermark visible only on
           screens wider than the phone container. On mobile it would
