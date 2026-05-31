@@ -1,5 +1,6 @@
 import { toast } from 'sonner';
 import type {
+  BidAcceptedRealtimePayload,
   BookingStatusChangedRealtimePayload,
   NotificationResourceType,
   NotificationType,
@@ -8,6 +9,7 @@ import type {
 
 import { triggerNotificationUX } from './notification-ux';
 import { translateRealtime } from './realtime-i18n';
+import { getRealtimeNavigator } from './realtime-navigator';
 
 // Sprint 7.5.1 — UI side-effects bridge for realtime events.
 // Sprint 7.6 — anti-echo gate (currentUserId vs event.actorUserId).
@@ -96,20 +98,45 @@ export function dispatchRealtimeSideEffects(
 
   switch (event.type) {
     case 'booking.status_changed': {
-      const message = bookingToastMessage(event.payload as BookingStatusChangedRealtimePayload);
-      toast.success(message);
+      const payload = event.payload as BookingStatusChangedRealtimePayload;
+      const message = bookingToastMessage(payload);
+      // Booking transitions deep-link to the seeker's booking detail.
+      // Sprint 7.10 — wire a "View" action button so a tap navigates
+      // straight to the right page (provider tabs also receive the
+      // event for cache invalidation, but their actor-side toast is
+      // already suppressed by anti-echo above).
+      const deepLink = payload.bookingId ? `/home/bookings/${payload.bookingId}` : null;
+      emitToast('success', message, buildToastOptions({ deepLink }));
+      triggerNotificationUX();
+      break;
+    }
+    case 'bid.accepted': {
+      // Sprint 7.10 — toast for bid.accepted. Anti-echo silences the
+      // seeker (they're the actor); the provider (recipient) gets a
+      // clear "Your bid was accepted" with a deep link straight to
+      // the new booking when the payload carries it.
+      const payload = event.payload as Partial<BidAcceptedRealtimePayload> | undefined;
+      const deepLink = payload?.bookingId
+        ? `/provider/bookings/${payload.bookingId}`
+        : payload?.requestId
+          ? `/provider/requests/${payload.requestId}`
+          : null;
+      emitToast(
+        'success',
+        translateRealtime('realtime.bid.accepted'),
+        buildToastOptions({ deepLink }),
+      );
       triggerNotificationUX();
       break;
     }
     case 'notification.created': {
-      const { title, body } = notificationToastCopy(event.payload as NotificationSummaryLike);
-      // Sonner accepts `(title, { description })` for two-line layouts;
-      // a missing body collapses to a single-line toast automatically.
-      if (body) {
-        toast(title, { description: body });
-      } else {
-        toast(title);
-      }
+      const payload = event.payload as NotificationSummaryLike;
+      const { title, body } = notificationToastCopy(payload);
+      const deepLink = resolveNotificationDeepLink(payload);
+      // Sonner accepts `(title, { description, action })`. A missing
+      // body collapses to a single-line toast automatically; a null
+      // deepLink omits the action button.
+      emitToast('default', title, buildToastOptions({ deepLink, description: body }));
       triggerNotificationUX();
       break;
     }
@@ -118,6 +145,97 @@ export function dispatchRealtimeSideEffects(
     // worthy events later is a one-case extension.
     default:
       break;
+  }
+}
+
+// Sonner's `toast()` accepts an optional 2nd-arg options bag. Calling
+// with `{}` is harmless at runtime but inflates the call signature
+// for our tests, which assert on the exact arg list. Skipping the
+// options arg entirely when nothing is set keeps the existing
+// `.toHaveBeenCalledWith(title)` assertions stable AND keeps the
+// runtime DOM identical (no description, no action).
+function emitToast(
+  variant: 'default' | 'success',
+  title: string,
+  options: { description?: string; action?: { label: string; onClick: () => void } },
+): void {
+  const fn = variant === 'success' ? toast.success : toast;
+  if (Object.keys(options).length === 0) {
+    fn(title);
+  } else {
+    fn(title, options);
+  }
+}
+
+// ─── toast options builder ──────────────────────────────────────────
+
+// Builds the sonner options bag. When the navigator bridge is
+// registered AND we have a deepLink, attach an action button labelled
+// "View" that fires the navigation on click. When no navigator is
+// registered (logged-out / pre-mount), the button is omitted entirely
+// so a stale toast can't navigate.
+function buildToastOptions(args: { deepLink: string | null; description?: string | null }): {
+  description?: string;
+  action?: { label: string; onClick: () => void };
+} {
+  const options: { description?: string; action?: { label: string; onClick: () => void } } = {};
+  if (args.description) {
+    options.description = args.description;
+  }
+  if (args.deepLink) {
+    const nav = getRealtimeNavigator();
+    if (nav) {
+      const target = args.deepLink;
+      options.action = {
+        label: translateRealtime('realtime.action.view'),
+        onClick: () => {
+          try {
+            nav(target);
+          } catch {
+            // Navigation failure must never break the toast renderer.
+          }
+        },
+      };
+    }
+  }
+  return options;
+}
+
+// Sprint 7.10 — resolve a deepLink from a notification.created
+// payload. Order:
+//   1. payload.deepLink (backend-supplied; always preferred)
+//   2. resourceType + metadata.requestId — handles the BID case where
+//      resourceId is the BID id (not the request id) and the parent
+//      surface is reached via metadata. Mirrors the existing
+//      NotificationDrawer tap logic in HomeScreen so the toast and
+//      drawer routing stay in lockstep.
+//   3. resourceType + resourceId for REQUEST / BOOKING
+//   4. null (no action button rendered)
+function resolveNotificationDeepLink(payload: NotificationSummaryLike): string | null {
+  if (typeof payload.deepLink === 'string' && payload.deepLink.length > 0) {
+    return payload.deepLink;
+  }
+  const meta = (payload.metadata ?? {}) as Record<string, unknown>;
+  const metaString = (k: string): string | null =>
+    typeof meta[k] === 'string' && (meta[k] as string).length > 0 ? (meta[k] as string) : null;
+  switch (payload.resourceType) {
+    case 'BID': {
+      // Critical Sprint 7.5 invariant — never use resourceId (= bidId)
+      // as the requestId. Pull the parent requestId from metadata.
+      const requestId = metaString('requestId');
+      if (requestId) return `/home/requests/${requestId}`;
+      return null;
+    }
+    case 'BOOKING': {
+      if (payload.resourceId) return `/home/bookings/${payload.resourceId}`;
+      return null;
+    }
+    case 'REQUEST': {
+      if (payload.resourceId) return `/home/requests/${payload.resourceId}`;
+      return null;
+    }
+    default:
+      return null;
   }
 }
 
@@ -133,6 +251,11 @@ interface NotificationSummaryLike {
   body?: string | null;
   resourceType?: NotificationResourceType | string | null;
   resourceId?: string | null;
+  // Sprint 7.10 — backend-supplied deepLink. When present, the toast
+  // action button uses it verbatim. When absent, the dispatcher
+  // falls back to a resourceType + metadata.requestId derivation
+  // (see resolveNotificationDeepLink).
+  deepLink?: string | null;
   metadata?: Record<string, unknown> | null;
 }
 
@@ -163,6 +286,16 @@ function readActorUserId(event: RealtimeEvent): string | null {
 function buildDedupeKey(event: RealtimeEvent, actorUserId: string | null): string | null {
   const actorSuffix = actorUserId ?? 'system';
   switch (event.type) {
+    case 'bid.accepted': {
+      // Sprint 7.10 — keyed by bidId + actor so the paired
+      // notification.created (BID_ACCEPTED, resourceId = bidId)
+      // collapses against the bid.accepted toast and only one
+      // beep+toast fires per accept-bid transition.
+      const p = event.payload as Partial<BidAcceptedRealtimePayload> | undefined;
+      const bidId = p?.bid?.id ?? p?.bookingId ?? null;
+      if (!bidId) return null;
+      return `bid:${bidId}:accepted:${actorSuffix}`;
+    }
     case 'booking.status_changed': {
       const p = event.payload as Partial<BookingStatusChangedRealtimePayload> | undefined;
       if (!p?.bookingId) return null;
@@ -189,6 +322,14 @@ function buildDedupeKey(event: RealtimeEvent, actorUserId: string | null): strin
           p.type ??
           '';
         return `booking:${p.resourceId}:${to}:${actorSuffix}`;
+      }
+      // Sprint 7.10 — BID_ACCEPTED notifications use the bid id as
+      // resourceId. Use the SAME composite the bid.accepted realtime
+      // event uses (`bid:{id}:accepted:{actor}`) so the paired
+      // events collapse into one toast/beep per accept-bid
+      // transition.
+      if (p?.resourceType === 'BID' && p.resourceId && p.type === 'BID_ACCEPTED') {
+        return `bid:${p.resourceId}:accepted:${actorSuffix}`;
       }
       if (p?.id) return `notification:${p.id}:${actorSuffix}`;
       // Unkeyed notification → don't dedupe; let it surface once

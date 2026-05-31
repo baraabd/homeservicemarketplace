@@ -45,6 +45,8 @@ type RealtimeStringKey =
   | 'realtime.booking.completed'
   | 'realtime.booking.cancelled'
   | 'realtime.booking.started'
+  | 'realtime.bid.accepted'
+  | 'realtime.action.view'
   | 'realtime.notification.created'
   // Sprint 7.x — type-specific toast copy so the in-app banner says
   // what actually happened instead of a generic "New notification".
@@ -78,6 +80,8 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.booking.completed': 'Booking completed',
     'realtime.booking.cancelled': 'Booking cancelled',
     'realtime.booking.started': 'Booking started',
+    'realtime.bid.accepted': 'Your bid was accepted',
+    'realtime.action.view': 'View',
     'realtime.notification.created': 'New notification',
     // Sprint 7.x type-specific copy.
     'realtime.notif.BID_RECEIVED.title': 'New bid received',
@@ -106,6 +110,8 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.booking.completed': 'تم إنجاز الحجز',
     'realtime.booking.cancelled': 'تم إلغاء الحجز',
     'realtime.booking.started': 'بدأ تنفيذ الحجز',
+    'realtime.bid.accepted': 'تم قبول عرضك',
+    'realtime.action.view': 'عرض',
     'realtime.notification.created': 'إشعار جديد',
     'realtime.notif.BID_RECEIVED.title': 'عرض جديد',
     'realtime.notif.BID_RECEIVED.body': 'قدّم مقدم خدمة عرضاً على طلبك.',
