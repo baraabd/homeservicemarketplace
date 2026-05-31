@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import type { AxiosError } from 'axios';
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import * as authApi from './auth-api';
-import { getCsrfToken } from './api';
 import { useRealtimeSocket } from './realtime/use-realtime-socket';
 
 // ─── Query client factory ────────────────────────────────────────────────────
@@ -137,7 +136,27 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   // wiring here.
   useRealtimeSocket({
     enabled: !!user,
-    getToken: () => getCsrfToken() ?? null,
+    // Sprint 7.x — the web access JWT lives in the httpOnly `hsm_at`
+    // cookie that JS cannot read. The Socket.IO handshake re-uses
+    // the underlying HTTP CONNECT with `withCredentials: true`, so
+    // the cookie is sent to the gateway automatically and parsed
+    // server-side via the ACCESS_COOKIE helper. We DO NOT send the
+    // CSRF token here — CSRF is a REST-mutation defence, not a
+    // bearer credential, and the gateway would (correctly) reject
+    // it as a malformed JWT.
+    //
+    // `null` here means "no in-memory bearer token" — the client
+    // falls back to the cookie. Mobile / native clients that hold a
+    // real access JWT in memory can swap this to `() => myJwt` to
+    // use the auth.token transport instead.
+    getToken: () => null,
+    // Sprint 7.6 — anti-echo: surface the authenticated user's id so
+    // the side-effects bridge can suppress UX feedback for events
+    // the user themselves triggered. Cache invalidation still runs
+    // regardless (so cross-tab convergence works), and `null` is the
+    // safe default — when no user is loaded the bridge treats every
+    // recipient as a non-actor.
+    currentUserId: user?.id ?? null,
   });
 
   const login = useCallback(async (data: authApi.LoginInput): Promise<OtpChallengeResponse> => {

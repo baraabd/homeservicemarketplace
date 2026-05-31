@@ -106,4 +106,58 @@ describe('RealtimeEventsPublisher', () => {
     const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
     expect(() => pub.publish(makeEvent({ userId: 'user-1' }))).not.toThrow();
   });
+
+  // Sprint 7.6 — actorUserId metadata is hoisted onto the envelope.
+  it('publishFor threads `options.actorUserId` onto the envelope', () => {
+    const gw = makeGateway();
+    const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
+    const received: RealtimeEvent[] = [];
+    pub.subscribe('user-x').subscribe((e) => received.push(e));
+
+    pub.publishFor('user-x', 'bid.accepted', { id: 'bid-1' }, { actorUserId: 'user-actor' });
+    expect(received[0]).toMatchObject({
+      type: 'bid.accepted',
+      userId: 'user-x',
+      actorUserId: 'user-actor',
+      payload: { id: 'bid-1' },
+    });
+    // The same envelope hits the socket room too.
+    expect(gw.emitToRoom).toHaveBeenCalledWith(
+      'user:user-x',
+      expect.objectContaining({ actorUserId: 'user-actor' }),
+    );
+  });
+
+  it('publishFor defaults envelope.actorUserId to null when no options are provided (backward compatible)', () => {
+    const gw = makeGateway();
+    const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
+    const received: RealtimeEvent[] = [];
+    pub.subscribe('user-x').subscribe((e) => received.push(e));
+
+    pub.publishFor('user-x', 'request.available', { requestId: 'r-1' });
+    expect(received[0]).toMatchObject({
+      type: 'request.available',
+      userId: 'user-x',
+      actorUserId: null,
+    });
+  });
+
+  it('publishToRoom threads `options.actorUserId` onto the room envelope', () => {
+    const gw = makeGateway();
+    const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
+    pub.publishToRoom(
+      'conversation:c-7',
+      'message.created',
+      { id: 'm-1' },
+      { actorUserId: 'sender-2' },
+    );
+    expect(gw.emitToRoom).toHaveBeenCalledWith(
+      'conversation:c-7',
+      expect.objectContaining({
+        type: 'message.created',
+        userId: null,
+        actorUserId: 'sender-2',
+      }),
+    );
+  });
 });

@@ -15,25 +15,46 @@ import {
 } from '../../../lib/seeker/notifications-api';
 import { seekerQueryKeys } from '../../../lib/seeker/query-keys';
 
-// React Query hook for the notification drawer feed. 30s stale time
-// matches the requests / bookings / conversations feeds — sub-minute
-// freshness without polling on every render.
+// React Query hook for the notification drawer feed.
+//
+// Sprint 7.x — added refetchInterval + refetchOnWindowFocus so the
+// drawer converges on fresh state even when the realtime Socket.IO
+// channel is offline (handshake failure, network blip, browser tab
+// background-suspended). The realtime bridge is the primary delivery
+// channel; this polling is the safety net.
+//
+//   staleTime               5s   — short enough that any focus / tab
+//                                 switch within seconds of an event
+//                                 picks up the new state.
+//   refetchInterval         20s  — drawer polls quietly while open;
+//                                 well under the typical accept-bid
+//                                 → notification-arrives latency
+//                                 budget.
+//   refetchOnWindowFocus    true — switching back to the tab after
+//                                 inactivity always triggers a fresh
+//                                 fetch.
 export function useNotifications(filter?: { unread?: boolean }) {
   return useQuery<NotificationListResponse>({
     queryKey: seekerQueryKeys.notifications.list(filter),
     queryFn: () => listNotifications(filter ?? {}),
-    staleTime: 30 * 1000,
+    staleTime: 5 * 1000,
+    refetchInterval: 20 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
 // Lightweight count for the bell badge. Separate from the list so the
-// badge can update independently (and a future realtime slice can
-// invalidate just this key).
+// badge can update independently. Same polling fallback semantics as
+// useNotifications, but with a tighter 15s interval — the badge is
+// always visible (drawer doesn't need to be open) and a stale count
+// is the most user-noticeable lag.
 export function useUnreadNotificationsCount() {
   return useQuery<NotificationUnreadCountResponse>({
     queryKey: seekerQueryKeys.notifications.unreadCount(),
     queryFn: () => getUnreadNotificationsCount(),
-    staleTime: 30 * 1000,
+    staleTime: 5 * 1000,
+    refetchInterval: 15 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 

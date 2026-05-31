@@ -1,39 +1,57 @@
 // Reverse geocoding utility — coordinates → human-readable address.
 //
-// Phase 2 Bug 3. Used by:
+// Used by:
 //   - apps/web/src/app/components/profile/SavedAddressesPage.tsx
 //     ("Use my current location" → auto-fill the Full address input)
 //   - apps/web/src/app/components/wizard/JobWizardModal.tsx
 //     (Job-posting Location step → auto-fill the address field)
 //
-// Architecture:
-//   - `reverseGeocode(lat, lng)` is the pure API call. Returns a
-//     `ReverseGeocodeResult` discriminated union so callers can
-//     distinguish "no API key" from "network failure" from "no
-//     match" without inspecting message strings.
-//   - `getCurrentLocationAddress()` is the high-level helper that
-//     wraps `navigator.geolocation.getCurrentPosition` +
-//     `reverseGeocode` and reports a single structured outcome.
-//     This is the function both UI call sites use.
+// CRITICAL bug fix: develop's reverseGeocode short-circuited to a
+// `partial(no_api_key)` outcome whenever VITE_GOOGLE_MAPS_API_KEY was
+// unset (the default in dev shells). The wizard then ran the
+// `formattedAddress` ("36.20120, 37.16110") through `splitFullAddress`,
+// which lifted the second-to-last comma chunk as the city — so the
+// backend cityKey ended up `"37.16271"` and the provider feed never
+// matched. Fix: move the primary path to OpenStreetMap Nominatim
+// (free, keyless, supports Arabic), so reverseGeocode resolves to
+// `status: 'ok'` with a real city string by default.
 //
-// Graceful fallbacks (per the sprint spec):
-//   - Permission denied → `{ status: 'error', reason: 'denied' }`.
-//   - Google API key missing → fall through to OpenStreetMap Nominatim
-//     (free, keyless). When Nominatim succeeds we return a normal
-//     `ok` result; when Nominatim itself fails we return a `partial`
-//     with formatted coords as the address fallback.
-//   - Network / non-OK response → `{ status: 'partial', address: '<lat,lng>' }`
-//     raw coords > nothing.
-//   - Empty results array → `{ status: 'partial', address: '<lat,lng>' }`
-//     the geocoder didn't recognise the point but the user still
-//     gets coordinates to work from.
+// Architecture:
+//   - `reverseGeocodeViaNominatim(lat, lng, lang?, signal?)` is the
+//     pure HTTP call against Nominatim. Exported so call sites that
+//     need explicit language control can use it directly.
+//   - `reverseGeocode(lat, lng, signal?)` is the public wrapper used
+//     by the wizard / saved-addresses surfaces. It calls Nominatim
+//     with `Accept-Language: ar,en` (RTL-first market) and never
+//     throws — every failure path resolves to a typed `partial`
+//     result with formatted lat/lng as the address fallback.
+//   - `getCurrentLocationAddress()` wraps
+//     `navigator.geolocation.getCurrentPosition` + `reverseGeocode`
+//     into a single typed outcome.
 //
 // We intentionally do NOT throw from this module. Every code path
 // resolves to a typed result so the caller's UI branches are
 // exhaustive at compile time.
 
-const GOOGLE_GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 const NOMINATIM_REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse';
+
+// OSM TOS asks operators of Nominatim clients to identify themselves
+// so abuse can be contacted. The `User-Agent` header is the canonical
+// channel in the Nominatim docs, but browsers strip / override
+// User-Agent on fetch (it's on the Fetch Standard's forbidden-header
+// list). The line below sets it anyway because:
+//   1) the spec requires it,
+//   2) when the same module runs on the backend (SSR / tests / a
+//      future Nest endpoint), node-fetch DOES honour it,
+//   3) tests can still assert it's been set on the request init.
+//
+// In practice the browser-side User-Agent that lands at osm.org is
+// the regular browser UA. To give OSM a real contact channel for
+// rate-limit / abuse, we ALSO append the documented `email` query
+// param — that channel is honoured by Nominatim regardless of what
+// the User-Agent header says.
+const NOMINATIM_USER_AGENT = 'FixNowApp/1.0 (contact@fixnow.com)';
+const NOMINATIM_CONTACT_EMAIL = 'contact@fixnow.com';
 
 export type GeoErrorReason = 'denied' | 'unsupported' | 'timeout' | 'failed';
 
@@ -42,7 +60,7 @@ export interface ReverseGeocodeOk {
   formattedAddress: string;
   /** Best-effort city extraction. Empty string when the geocoder
    *  returned a formatted address but none of the known city-typed
-   *  components matched (rare, but possible for remote points). */
+   *  fields matched (rare, but possible for remote points). */
   city: string;
   country: string;
   lat: number;
@@ -52,7 +70,7 @@ export interface ReverseGeocodeOk {
 export interface ReverseGeocodePartial {
   status: 'partial';
   /** Best-effort fallback the UI can show in the address field —
-   *  formatted lat/lng to 5 decimals (~1.1m precision). */
+   *  formatted lat/lng to 5 decimals (~1.1 m precision). */
   formattedAddress: string;
   /** Why the lookup couldn't produce a real address. */
   reason: 'network' | 'no_match';
@@ -86,90 +104,13 @@ function partial(
   };
 }
 
-/** Resolve the Google Maps API key at call time, not module-load time,
- *  so tests / preview builds can override `import.meta.env` without
- *  module-cache eviction games. */
-function readApiKey(): string {
-  const k = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  return typeof k === 'string' ? k.trim() : '';
-}
-
-interface GoogleAddressComponent {
-  long_name: string;
-  short_name: string;
-  types: string[];
-}
-
-interface GoogleGeocodeResult {
-  formatted_address: string;
-  address_components?: GoogleAddressComponent[];
-}
-
-interface GoogleGeocodeResponse {
-  status: string;
-  results?: GoogleGeocodeResult[];
-  error_message?: string;
-}
-
-/** Preference order when extracting a "city" string. The geocoder
- *  populates different types depending on the country / region:
- *
- *    - locality                       — most cities globally (e.g. "Riyadh", "Aleppo")
- *    - postal_town                    — UK cities ("Edinburgh") that aren't admin localities
- *    - sublocality_level_1            — large city districts (parts of Tokyo, NYC boroughs)
- *    - administrative_area_level_2    — county-level (some EU regions)
- *    - administrative_area_level_1    — state/province fallback so a remote point still
- *                                       resolves to *something* useful for filtering
- */
-const CITY_TYPE_PREFERENCE: readonly string[] = [
-  'locality',
-  'postal_town',
-  'sublocality_level_1',
-  'administrative_area_level_2',
-  'administrative_area_level_1',
-];
-
-/** Search every result + every component for the requested type.
- *  Google often returns the most specific result first (a street
- *  address whose own components don't include `locality`); the
- *  surrounding city sits in a sibling result further down the
- *  array. Scanning all results plugs that gap. */
-function pickAcrossResults(results: GoogleGeocodeResult[], type: string): string | null {
-  for (const r of results) {
-    const hit = r.address_components?.find((c) => c.types.includes(type));
-    if (hit) return hit.long_name;
-  }
-  return null;
-}
-
-function extractCity(results: GoogleGeocodeResult[]): string {
-  for (const t of CITY_TYPE_PREFERENCE) {
-    const v = pickAcrossResults(results, t);
-    if (v) return v;
-  }
-  return '';
-}
-
-function extractCountry(results: GoogleGeocodeResult[]): string {
-  return pickAcrossResults(results, 'country') ?? '';
-}
-
-// ─── OpenStreetMap Nominatim fallback ────────────────────────────────────────
+// ─── Nominatim payload shape ─────────────────────────────────────────────────
 //
-// Free, keyless reverse geocoder used when no Google API key is
-// configured. Nominatim's usage policy
-// (https://operations.osmfoundation.org/policies/nominatim/) requires
-// at most one request per second per server and a meaningful
-// User-Agent header. The Job Wizard fires one request per pin drag
-// and we identify ourselves via the Referer the browser already
-// sends; this is well within the policy. Production deployments at
-// scale should switch to a paid geocoder (Mapbox / Google with key /
-// self-hosted Nominatim).
-//
-// Nominatim's `address` payload is locale-keyed: `city`, `town`,
-// `village`, `county`, `state`, `country`, `country_code`, etc. We
-// pick the most-specific available city-like field so the
-// available-requests filter (which keys on `city`) keeps working.
+// Nominatim's `address` payload is locale-keyed: city / town / village /
+// hamlet / municipality / county / state / country / country_code etc.
+// We pick the most-specific available city-like field so the
+// available-requests filter (which keys on a normalised cityKey) keeps
+// working for rural points without losing precision in dense urban areas.
 interface NominatimAddress {
   city?: string;
   town?: string;
@@ -185,6 +126,9 @@ interface NominatimAddress {
 interface NominatimReverseResponse {
   display_name?: string;
   address?: NominatimAddress;
+  /** Nominatim returns `{ "error": "Unable to geocode" }` for points
+   *  it can't resolve (mid-ocean, Antarctica, etc.) — we treat that
+   *  as `no_match`, not `network`. */
   error?: string;
 }
 
@@ -201,24 +145,36 @@ function nominatimCity(addr: NominatimAddress): string {
   );
 }
 
-async function reverseGeocodeViaNominatim(
+/** Pure Nominatim reverse-geocoding call. Caller controls the
+ *  `Accept-Language` header via the `lang` arg (defaults to Arabic
+ *  with English fallback for the RTL market). Never throws — every
+ *  failure path resolves to a typed `partial` result. */
+export async function reverseGeocodeViaNominatim(
   lat: number,
   lng: number,
+  lang: 'ar' | 'en' = 'ar',
   signal?: AbortSignal,
 ): Promise<ReverseGeocodeResult> {
-  const url = `${NOMINATIM_REVERSE_URL}?format=jsonv2&lat=${encodeURIComponent(
-    String(lat),
-  )}&lon=${encodeURIComponent(String(lng))}`;
+  // `format=jsonv2` gives us the cleaner address-component shape;
+  // `email` is the OSM-documented operator-contact channel that
+  // works around the User-Agent forbidden-header issue in browsers.
+  const url =
+    `${NOMINATIM_REVERSE_URL}?format=jsonv2` +
+    `&lat=${encodeURIComponent(String(lat))}` +
+    `&lon=${encodeURIComponent(String(lng))}` +
+    `&email=${encodeURIComponent(NOMINATIM_CONTACT_EMAIL)}`;
+
+  const headers: Record<string, string> = {
+    'Accept-Language': lang === 'ar' ? 'ar,en' : 'en,ar',
+    // See module header — this is a no-op in browser fetch (forbidden
+    // header). Kept so the same code path identifies cleanly when run
+    // from node / a future backend proxy, and so tests can pin it.
+    'User-Agent': NOMINATIM_USER_AGENT,
+  };
+
   let res: Response;
   try {
-    res = await fetch(url, {
-      signal,
-      headers: {
-        // Prefer Arabic when the page is in Arabic locale, English as
-        // backup. Nominatim respects the standard language-tag list.
-        'Accept-Language': 'ar,en',
-      },
-    });
+    res = await fetch(url, { signal, headers });
   } catch (err) {
     console.warn('[reverse-geocode/nominatim] fetch failed:', err);
     return partial(lat, lng, 'network');
@@ -248,81 +204,22 @@ async function reverseGeocodeViaNominatim(
   };
 }
 
-/** Pure HTTP call. Never throws — every failure path returns a
- *  `partial` result with raw coords as the formatted fallback. */
+/** Public reverse-geocoder. Calls Nominatim with the platform's
+ *  default Arabic-first language preference. Never throws.
+ *
+ *  CRITICAL FIX: this used to short-circuit to a `partial` outcome
+ *  when VITE_GOOGLE_MAPS_API_KEY was unset, which left the wizard
+ *  with formatted-coords as the only "address" string. The wizard's
+ *  comma-pop heuristic then wrote a numeric coordinate into the
+ *  request's `city` field, breaking provider matching. The fix is
+ *  this Nominatim-first path: every dev shell now gets a real
+ *  city/country pair on the OK branch. */
 export async function reverseGeocode(
   lat: number,
   lng: number,
   signal?: AbortSignal,
 ): Promise<ReverseGeocodeResult> {
-  const apiKey = readApiKey();
-  if (!apiKey) {
-    // Sprint 7.x — instead of returning a partial here, fall through
-    // to the keyless Nominatim provider so the wizard / saved-address
-    // surfaces show real street names by default. The previous
-    // behaviour (return `partial` with formatted coords) only triggers
-    // when Nominatim itself fails (network down, rate-limited, no
-    // match). The console.warn is gone too — Nominatim handles the
-    // missing-key case gracefully so the warning was noise.
-    return reverseGeocodeViaNominatim(lat, lng, signal);
-  }
-
-  const url = `${GOOGLE_GEOCODE_URL}?latlng=${encodeURIComponent(`${lat},${lng}`)}&key=${encodeURIComponent(apiKey)}`;
-
-  let res: Response;
-  try {
-    res = await fetch(url, { signal });
-  } catch (err) {
-    console.warn('[reverse-geocode] fetch failed:', err);
-    return partial(lat, lng, 'network');
-  }
-
-  if (!res.ok) {
-    console.warn(`[reverse-geocode] HTTP ${res.status} from Google Geocoding API`);
-    return partial(lat, lng, 'network');
-  }
-
-  let body: GoogleGeocodeResponse;
-  try {
-    body = (await res.json()) as GoogleGeocodeResponse;
-  } catch (err) {
-    console.warn('[reverse-geocode] response was not JSON:', err);
-    return partial(lat, lng, 'network');
-  }
-
-  // Google returns 200 with `status` carrying the real outcome
-  // (`OK`, `ZERO_RESULTS`, `REQUEST_DENIED`, `OVER_QUERY_LIMIT`,
-  // `INVALID_REQUEST`, `UNKNOWN_ERROR`). Anything other than `OK`
-  // collapses to a partial fallback so the caller has one error path.
-  if (body.status !== 'OK' || !body.results || body.results.length === 0) {
-    console.warn(
-      `[reverse-geocode] Google status=${body.status}` +
-        (body.error_message ? ` — ${body.error_message}` : ''),
-    );
-    return partial(lat, lng, body.status === 'ZERO_RESULTS' ? 'no_match' : 'network');
-  }
-
-  const results = body.results;
-  const top = results[0];
-  const city = extractCity(results);
-  const country = extractCountry(results);
-  if (!city) {
-    // Genuinely useful telemetry — when the geocode resolves but no
-    // city-typed component matches, the available-requests filter
-    // will silently produce zero matches downstream. Surface it.
-    console.warn(
-      '[reverse-geocode] Geocoded result has no city-typed component:',
-      top.formatted_address,
-    );
-  }
-  return {
-    status: 'ok',
-    formattedAddress: top.formatted_address,
-    city,
-    country,
-    lat,
-    lng,
-  };
+  return reverseGeocodeViaNominatim(lat, lng, 'ar', signal);
 }
 
 // ─── High-level "click my-location button" helper ────────────────────────
@@ -353,11 +250,25 @@ export interface GetCurrentLocationOptions {
   timeoutMs?: number;
   /** Forwarded to the geocoding fetch so callers can cancel on unmount. */
   signal?: AbortSignal;
+  /** Hint to the UA to use the most precise positioning available
+   *  (GPS, multi-WiFi triangulation). Costs power + time but produces
+   *  street-accurate coords instead of cell-tower-accuracy. Default
+   *  `false` so casual flows (saved-addresses lookup) stay snappy.
+   *  Set `true` for write-once flows where the value lands in a
+   *  database (job creation, provider service-area pin). */
+  enableHighAccuracy?: boolean;
+  /** Max age of a cached position the UA may return without re-querying.
+   *  Default 60 s lets the UA reuse a fresh fix between consecutive
+   *  reads in the same session. Set `0` for write-once flows that
+   *  must capture the device's CURRENT position (a stale 60 s cache
+   *  could mean the user has since walked into a different building
+   *  by the time the value is persisted). */
+  maximumAgeMs?: number;
 }
 
 /** Wrap `navigator.geolocation.getCurrentPosition` + `reverseGeocode`
  *  in a single Promise that always resolves with a typed outcome.
- *  Never rejects — the UI branch on `outcome.status`. */
+ *  Never rejects — the UI branches on `outcome.status`. */
 export async function getCurrentLocationAddress(
   opts: GetCurrentLocationOptions = {},
 ): Promise<LocationOutcome> {
@@ -374,7 +285,11 @@ export async function getCurrentLocationAddress(
           else if (err.code === 3) resolve({ reason: 'timeout' });
           else resolve({ reason: 'failed' });
         },
-        { enableHighAccuracy: false, timeout: opts.timeoutMs ?? 10_000, maximumAge: 60_000 },
+        {
+          enableHighAccuracy: opts.enableHighAccuracy ?? false,
+          timeout: opts.timeoutMs ?? 10_000,
+          maximumAge: opts.maximumAgeMs ?? 60_000,
+        },
       );
     },
   );

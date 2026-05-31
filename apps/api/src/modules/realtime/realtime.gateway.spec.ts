@@ -113,6 +113,106 @@ describe('RealtimeGateway', () => {
       // verifyAccessToken must NOT run — the flag check is the door.
       expect(m.tokens.verifyAccessToken).not.toHaveBeenCalled();
     });
+
+    // ─── Sprint 7.x — handshake token extraction order ──────────────
+
+    it('authenticates via auth.token when present (mobile / native clients)', async () => {
+      const m = makeMocks();
+      m.tokens.verifyAccessToken.mockReturnValue({ sub: 'u-1', roles: ['seeker'] });
+      const gw = makeGateway(m);
+      const sock = makeSocket('jwt-from-auth');
+      await gw.handleConnection(sock as never);
+      expect(m.tokens.verifyAccessToken).toHaveBeenCalledWith('jwt-from-auth');
+      expect(sock.disconnected).toBe(false);
+      expect(sock.joined).toContain('user:u-1');
+    });
+
+    it('authenticates via Authorization: Bearer header', async () => {
+      const m = makeMocks();
+      m.tokens.verifyAccessToken.mockReturnValue({ sub: 'u-bear', roles: ['provider'] });
+      const gw = makeGateway(m);
+      const sock = makeSocket(undefined);
+      sock.handshake.headers.authorization = 'Bearer jwt-from-header';
+      await gw.handleConnection(sock as never);
+      expect(m.tokens.verifyAccessToken).toHaveBeenCalledWith('jwt-from-header');
+      expect(sock.disconnected).toBe(false);
+    });
+
+    it('authenticates web clients via the hsm_at cookie (Sprint 7.x)', async () => {
+      const m = makeMocks();
+      m.tokens.verifyAccessToken.mockReturnValue({ sub: 'u-web', roles: ['seeker'] });
+      const gw = makeGateway(m);
+      const sock = makeSocket(undefined);
+      sock.handshake.headers.cookie = 'hsm_csrf=csrftok; hsm_at=jwt-from-cookie; other=x';
+      await gw.handleConnection(sock as never);
+      expect(m.tokens.verifyAccessToken).toHaveBeenCalledWith('jwt-from-cookie');
+      expect(sock.disconnected).toBe(false);
+      expect(sock.joined).toContain('user:u-web');
+    });
+
+    it('treats an empty / whitespace auth.token as absent and falls through to the cookie', async () => {
+      // Repros the Sprint 7.x web bug: the client used to pass the
+      // CSRF token (or empty string) as auth.token. The new helper
+      // skips empty/whitespace tokens so the cookie path takes over.
+      const m = makeMocks();
+      m.tokens.verifyAccessToken.mockReturnValue({ sub: 'u-fall', roles: ['seeker'] });
+      const gw = makeGateway(m);
+      const sock = makeSocket('   '); // whitespace-only
+      sock.handshake.headers.cookie = 'hsm_at=real-jwt';
+      await gw.handleConnection(sock as never);
+      expect(m.tokens.verifyAccessToken).toHaveBeenCalledWith('real-jwt');
+    });
+
+    it('rejects a CSRF token sent as auth.token (verify throws — no fallback to cookie used here)', async () => {
+      // The verifier rejects malformed tokens. The gateway emits the
+      // stable AUTH_INVALID_CREDENTIALS code; the CSRF value never
+      // becomes a session.
+      const m = makeMocks();
+      m.tokens.verifyAccessToken.mockImplementation(() => {
+        throw new Error('jwt malformed');
+      });
+      const gw = makeGateway(m);
+      const sock = makeSocket('hsm_csrf_token_value');
+      await gw.handleConnection(sock as never);
+      expect(sock.disconnected).toBe(true);
+      expect(sock.emitted[0]).toMatchObject({
+        event: 'error',
+        payload: { code: 'AUTH_INVALID_CREDENTIALS' },
+      });
+    });
+
+    it('rejects when neither auth.token nor cookie carries an access token', async () => {
+      const m = makeMocks();
+      const gw = makeGateway(m);
+      const sock = makeSocket(undefined);
+      sock.handshake.headers.cookie = 'hsm_csrf=just-the-csrf';
+      await gw.handleConnection(sock as never);
+      expect(sock.disconnected).toBe(true);
+      expect(m.tokens.verifyAccessToken).not.toHaveBeenCalled();
+    });
+
+    it('cookie path tolerates URL-encoded values and multiple cookies', async () => {
+      const m = makeMocks();
+      m.tokens.verifyAccessToken.mockReturnValue({ sub: 'u-enc', roles: ['seeker'] });
+      const gw = makeGateway(m);
+      const sock = makeSocket(undefined);
+      // Set a benign URL-encoded payload — the decode call should
+      // produce the original on the way out.
+      sock.handshake.headers.cookie = 'unrelated=x; hsm_at=jwt%2Eencoded; trailing=y';
+      await gw.handleConnection(sock as never);
+      expect(m.tokens.verifyAccessToken).toHaveBeenCalledWith('jwt.encoded');
+    });
+
+    it('auth.token wins over cookie when both are present (Bearer-first ordering)', async () => {
+      const m = makeMocks();
+      m.tokens.verifyAccessToken.mockReturnValue({ sub: 'u-pref', roles: ['seeker'] });
+      const gw = makeGateway(m);
+      const sock = makeSocket('jwt-from-auth');
+      sock.handshake.headers.cookie = 'hsm_at=jwt-from-cookie';
+      await gw.handleConnection(sock as never);
+      // auth.token wins — explicit transport over implicit.
+      expect(m.tokens.verifyAccessToken).toHaveBeenCalledWith('jwt-from-auth');
+    });
   });
 
   describe('server-owned room joins', () => {

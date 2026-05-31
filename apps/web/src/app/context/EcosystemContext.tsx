@@ -39,6 +39,20 @@ export interface ServiceRequest {
   // those pins rather than synthesising fake locations.
   lat: number | null;
   lng: number | null;
+  // Sprint 7.x — seeker-uploaded photos surfaced on the provider feed
+  // so a pro can size up the job before bidding. Mirrored from
+  // ProviderAvailableRequestSummary.media. Always an array (never null
+  // / undefined) so call sites can safely .map / .length without a
+  // guard. Empty when the seeker attached nothing.
+  mediaUrls: string[];
+  // Haversine distance from the provider's serviceArea to the
+  // request's snapshot lat/lng, rounded by the backend. Null when
+  // the wire DTO doesn't carry it yet (the backend Haversine work
+  // is a follow-up — the field is wired here so the UI doesn't need
+  // a second pass when it lands). UI MUST gate on `!== null` rather
+  // than truthiness — 0 km is a real value (provider standing on
+  // top of the request).
+  distanceKm: number | null;
 }
 
 export interface CrossAppNotif {
@@ -119,6 +133,8 @@ const SEED_REQUESTS: ServiceRequest[] = [
     ],
     lat: 24.6904,
     lng: 46.6863,
+    mediaUrls: [],
+    distanceKm: 1.2,
   },
   {
     id: 'r2',
@@ -139,6 +155,8 @@ const SEED_REQUESTS: ServiceRequest[] = [
     bids: [],
     lat: 24.8112,
     lng: 46.6298,
+    mediaUrls: [],
+    distanceKm: 2.8,
   },
   {
     id: 'r3',
@@ -159,6 +177,8 @@ const SEED_REQUESTS: ServiceRequest[] = [
     bids: [],
     lat: 24.7268,
     lng: 46.6924,
+    mediaUrls: [],
+    distanceKm: 4.1,
   },
   {
     id: 'r4',
@@ -193,6 +213,8 @@ const SEED_REQUESTS: ServiceRequest[] = [
     ],
     lat: 24.6553,
     lng: 46.6217,
+    mediaUrls: [],
+    distanceKm: 3.5,
   },
   {
     id: 'r5',
@@ -213,6 +235,8 @@ const SEED_REQUESTS: ServiceRequest[] = [
     bids: [],
     lat: 24.7741,
     lng: 46.7382,
+    mediaUrls: [],
+    distanceKm: 5.7,
   },
 ];
 

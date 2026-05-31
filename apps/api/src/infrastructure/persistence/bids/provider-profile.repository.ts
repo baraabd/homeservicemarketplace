@@ -83,6 +83,53 @@ export class ProviderProfileRepository {
     });
   }
 
+  // Sprint 7.x — list provider profiles that should receive a
+  // notification when a seeker creates a new service request.
+  // Eligibility mirrors the rules in `AvailableRequestsService.list`
+  // strict mode so a provider only gets a notification for a request
+  // that ALSO surfaces in their available-requests feed — no surprise
+  // notifications without a matching feed entry.
+  //
+  // Filters (all must be true):
+  //   - status = ACTIVE (DRAFT / PENDING_REVIEW / SUSPENDED / REJECTED
+  //     do not receive notifications)
+  //   - deletedAt IS NULL
+  //   - userId IS NOT NULL (older detached seed rows are skipped —
+  //     no userId means no surface to deliver to)
+  //   - userId != excludeSeekerUserId (a provider who also happens
+  //     to be the request's seeker on the same account must NEVER
+  //     receive a notification for their own request)
+  //   - profile has the request's categoryId in serviceCategories
+  //     (when categoryId is non-null; null-category requests are
+  //     custom-text only and do not target by category)
+  //   - profile.serviceAreaCity (lowercase-trimmed) === cityKey
+  //
+  // Selecting only the userId keeps the projection narrow — the
+  // notification fan-out doesn't need any other field, and a
+  // narrow select is the privacy-safe default.
+  listEligibleUserIdsForRequest(
+    args: { categoryId: string | null; cityKey: string; excludeSeekerUserId: string },
+    tx?: PrismaTx,
+  ): Promise<{ userId: string }[]> {
+    return this.db(tx).providerProfile.findMany({
+      where: {
+        status: 'ACTIVE',
+        deletedAt: null,
+        userId: { not: null, notIn: [args.excludeSeekerUserId] },
+        // Case-insensitive city match: serviceAreaCity is stored in
+        // display casing, so the comparison is done via Prisma's
+        // `mode: 'insensitive'` filter on the equality.
+        serviceAreaCity: { equals: args.cityKey, mode: 'insensitive' },
+        ...(args.categoryId
+          ? {
+              serviceCategories: { some: { serviceCategoryId: args.categoryId } },
+            }
+          : {}),
+      },
+      select: { userId: true },
+    }) as Promise<{ userId: string }[]>;
+  }
+
   // Single source of truth for "the provider profile attached to this
   // user". The `userId` index is unique so only one row can ever match;
   // soft-deleted rows are filtered out so a re-upgrade after delete will

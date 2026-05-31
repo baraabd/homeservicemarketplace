@@ -6,9 +6,18 @@ import type {
   ServiceCategory,
   ServiceRequest,
   ServiceRequestStatus,
+  User,
 } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../prisma/prisma.service';
+
+// Sprint 7.4 — privacy-safe seeker projection eager-loaded for the
+// provider available-requests feed. ONLY first + last name are
+// selected so the mapper can build the public label ("Layla M.")
+// without ever touching email / phone / status / MFA fields. Even a
+// careless future mapper change cannot leak PII because those fields
+// never reach the application layer.
+export type ServiceRequestSeekerPreview = Pick<User, 'id' | 'firstName' | 'lastName'>;
 
 export interface CreateServiceRequestInput {
   seekerUserId: string;
@@ -41,6 +50,15 @@ export interface UpdateServiceRequestInput {
 // labels and we'd rather pay one join than N+1 lookups in the service.
 export type ServiceRequestWithCategory = ServiceRequest & {
   category: ServiceCategory | null;
+};
+
+// Provider-feed row shape — adds the privacy-safe seeker preview on
+// top of the seeker-side projection. Used ONLY by
+// listAvailableForProvider / findAvailableForProvider; the seeker-
+// side surfaces do NOT need the seeker join because the row belongs
+// to them.
+export type ServiceRequestForProvider = ServiceRequestWithCategory & {
+  seeker: ServiceRequestSeekerPreview;
 };
 
 // Service-request persistence. Every read site filters `deletedAt: null`
@@ -105,7 +123,7 @@ export class ServiceRequestRepository {
       excludeBidsByProviderId?: string;
     },
     tx?: PrismaTx,
-  ): Promise<ServiceRequestWithCategory[]> {
+  ): Promise<ServiceRequestForProvider[]> {
     const where: Prisma.ServiceRequestWhereInput = {
       status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
       deletedAt: null,
@@ -149,8 +167,13 @@ export class ServiceRequestRepository {
       take: args.take,
       ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      include: { category: true },
-    });
+      include: {
+        category: true,
+        // Sprint 7.4 — narrow projection: id + first + last only. Email /
+        // phone / status / MFA cannot reach the mapper.
+        seeker: { select: { id: true, firstName: true, lastName: true } },
+      },
+    }) as Promise<ServiceRequestForProvider[]>;
   }
 
   // Sprint 5.2 (canonical): single-row variant of the above. Returns
@@ -168,7 +191,7 @@ export class ServiceRequestRepository {
       excludeBidsByProviderId?: string;
     },
     tx?: PrismaTx,
-  ): Promise<ServiceRequestWithCategory | null> {
+  ): Promise<ServiceRequestForProvider | null> {
     return this.db(tx).serviceRequest.findFirst({
       where: {
         id: requestId,
@@ -202,8 +225,12 @@ export class ServiceRequestRepository {
             }
           : {}),
       },
-      include: { category: true },
-    });
+      include: {
+        category: true,
+        // Same narrow projection as the list variant.
+        seeker: { select: { id: true, firstName: true, lastName: true } },
+      },
+    }) as Promise<ServiceRequestForProvider | null>;
   }
 
   // Returns the row only when it belongs to the given seeker AND is not

@@ -25,6 +25,8 @@ import { BookingEventRepository } from '../../infrastructure/persistence/booking
 import { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
+import type { BookingStatusChangedRealtimePayload } from '@homeservicemarketplace/contracts';
 
 const DEFAULT_PAGE_SIZE = 50;
 
@@ -35,6 +37,11 @@ export class BookingsService {
     private readonly events: BookingEventRepository,
     private readonly notifications: NotificationsService,
     private readonly tx: TransactionRunner,
+    // Sprint 7.x — realtime fan-out on seeker-initiated booking
+    // transitions (today: cancel). Injected via the `@Global`
+    // RealtimeModule; failures are swallowed by the publisher so a
+    // bus outage cannot roll back the REST mutation.
+    private readonly realtime: RealtimeEventsPublisher,
   ) {}
 
   // ─── list ──────────────────────────────────────────────────────────────────
@@ -87,7 +94,7 @@ export class BookingsService {
   // user action that belongs to a future "cancel + repost" flow. Keeping
   // the request at BID_ACCEPTED preserves the original transition record.
   async cancel(seekerUserId: string, bookingId: string): Promise<BookingDetail> {
-    const updated = await this.tx.run(async (tx) => {
+    const committed = await this.tx.run(async (tx) => {
       const existing = await this.bookings.findOwned(bookingId, seekerUserId, tx);
       if (!existing) {
         throw new AppError('NOT_FOUND', 'Booking not found.', 404);
@@ -119,32 +126,81 @@ export class BookingsService {
         tx,
       );
 
-      // Notification fan-out (slice 3.1). Inside the same transaction
-      // so the notification cannot exist without the cancellation that
-      // produced it. Body uses the snapshotted provider name from the
-      // existing relation load — no extra fetch.
-      const providerName = existing.provider.displayName;
-      await this.notifications.createForUser(
-        {
-          userId: seekerUserId,
-          type: NotificationType.BOOKING_CANCELLED,
-          title: 'Booking cancelled',
-          body: `Your booking with ${providerName} was cancelled.`,
-          resourceType: NotificationResourceType.BOOKING,
-          resourceId: bookingId,
-          deepLink: `/home/bookings/${bookingId}`,
-          metadata: { requestId: existing.requestId, providerId: existing.providerId },
-        },
-        tx,
-      );
+      // Sprint 7.x — notify the PROVIDER (non-actor recipient) that
+      // the seeker cancelled. The seeker self-notification that
+      // previously fired here was removed per the Sprint 7.6 anti-
+      // echo rule: the seeker just performed the action and sees an
+      // in-screen confirmation; persisting a notification for them
+      // produced an echo in their drawer. Audit history of the
+      // transition still lives in BookingEvent.
+      //
+      // Only fan out when the provider has a linked userId — older
+      // detached seed profiles have no surface to deliver to.
+      const providerUserId = existing.provider.userId;
+      if (providerUserId) {
+        await this.notifications.createForUser(
+          {
+            userId: providerUserId,
+            type: NotificationType.BOOKING_CANCELLED,
+            title: 'Booking cancelled',
+            // Body intentionally vague — never leak why or who.
+            body: 'The seeker cancelled the booking.',
+            resourceType: NotificationResourceType.BOOKING,
+            resourceId: bookingId,
+            deepLink: `/provider/bookings/${bookingId}`,
+            metadata: {
+              bookingId,
+              requestId: existing.requestId,
+              cancelledBy: 'seeker',
+            },
+            actorUserId: seekerUserId,
+          },
+          tx,
+        );
+      }
 
       const reloaded = await this.bookings.findOwned(bookingId, seekerUserId, tx);
       if (!reloaded) {
         throw new AppError('NOT_FOUND', 'Booking not found.', 404);
       }
-      return reloaded;
+      return {
+        reloaded,
+        prevStatus: existing.status,
+        providerUserId,
+      };
     });
-    return toDetail(updated);
+
+    // Sprint 7.x — POST-COMMIT realtime fan-out. Mirrors the typed
+    // payload used by the provider-side lifecycle service so a
+    // single client dispatcher case handles every booking transition
+    // regardless of who initiated it.
+    //
+    //   - Seeker recipient → cache invalidation only (anti-echo
+    //     silences UX since they're the actor).
+    //   - Provider recipient → cache invalidation + UX feedback
+    //     (toast + sound), gated by the side-effects bridge against
+    //     the envelope's `actorUserId`.
+    const payload: BookingStatusChangedRealtimePayload = {
+      bookingId: committed.reloaded.id,
+      requestId: committed.reloaded.requestId,
+      bidId: committed.reloaded.bidId,
+      from: committed.prevStatus,
+      to: committed.reloaded.status,
+      actorUserId: seekerUserId,
+      actorRole: 'SEEKER',
+    };
+    const actorMeta = { actorUserId: seekerUserId };
+    this.realtime.publishFor(seekerUserId, 'booking.status_changed', payload, actorMeta);
+    if (committed.providerUserId) {
+      this.realtime.publishFor(
+        committed.providerUserId,
+        'booking.status_changed',
+        payload,
+        actorMeta,
+      );
+    }
+
+    return toDetail(committed.reloaded);
   }
 }
 

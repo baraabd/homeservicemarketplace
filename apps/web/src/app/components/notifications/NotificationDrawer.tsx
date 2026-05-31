@@ -15,6 +15,12 @@ import { useSwipe } from '../../hooks/useSwipe';
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type NotifType = 'bid' | 'tracking' | 'confirmed' | 'message' | 'payment' | 'promo';
 
+// Logical resource the notification points at. Mirrors the backend's
+// NotificationResourceType enum (REQUEST / BID / BOOKING / CONVERSATION /
+// REVIEW); kept as a string union here so the drawer + ProfileTab stay
+// decoupled from the contracts package.
+export type NotifResourceType = 'REQUEST' | 'BID' | 'BOOKING' | 'CONVERSATION' | 'REVIEW';
+
 export interface AppNotification {
   id: string;
   type: NotifType;
@@ -24,6 +30,16 @@ export interface AppNotification {
   read: boolean;
   /** Optional: links notification to a specific lead or booking ID */
   jobId?: string;
+  // Resource the tap should deep-link to. Carried separately from the
+  // visual `type` so the dispatcher in HomeScreen can route by the
+  // BACKEND-truth (resourceType) instead of reverse-engineering it from
+  // the icon palette — which collapsed BID_ACCEPTED + BOOKING_CREATED
+  // onto the same UI category and made tap routing ambiguous.
+  resourceType?: NotifResourceType | null;
+  // Writer-controlled blob. The dispatcher reads `metadata.requestId`
+  // for BID notifications (the resourceId is the bid id, which on its
+  // own doesn't tell us which parent request to open).
+  metadata?: Record<string, unknown> | null;
 }
 
 interface NotifConfig {

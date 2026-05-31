@@ -134,11 +134,14 @@ function PriceChart({ bids, selectedId }: { bids: BidSummary[]; selectedId: stri
 interface BidsScreenProps {
   lead: LeadCardProps;
   onBack: () => void;
-  // Slice-2.1 keeps the existing onBookBid prop for parent
-  // compatibility, but the BidsScreen no longer drives a real booking
-  // flow from the bid card — accept-bid ships in slice 2.2. The
-  // parent's snackbar is kept for visual continuity.
-  onBookBid: (bidderName: string) => void;
+  // Fires AFTER the backend confirms the acceptance + the in-screen
+  // success overlay completes. The parent uses the bidder name for
+  // the snackbar copy and the bookingId to wire the "View booking"
+  // CTA on the snackbar action (Sprint 7.5 — post-acceptance UX).
+  // bookingId is always present because the backend response carries
+  // it on a successful accept; we type it as required so the parent
+  // is forced to handle the navigation case.
+  onBookBid: (bidderName: string, bookingId: string) => void;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -189,14 +192,16 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
     if (acceptMut.isPending) return;
     setAcceptError(null);
     acceptMut.mutate(bid.id, {
-      onSuccess: () => {
+      onSuccess: (response) => {
         setAcceptedId(bid.id);
         // Brief overlay so the visual confirmation stays on-screen
         // long enough to be perceived; the parent's snackbar then
-        // takes over and the BidsScreen typically closes.
+        // takes over and the BidsScreen typically closes. The new
+        // booking id is threaded back so the parent can offer a
+        // "View booking" action on the snackbar (Sprint 7.5).
         setTimeout(() => {
           setAcceptedId(null);
-          onBookBid(bid.provider.displayName);
+          onBookBid(bid.provider.displayName, response.booking.id);
         }, 900);
       },
       onError: (err) => {

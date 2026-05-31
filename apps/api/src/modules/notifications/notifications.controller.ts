@@ -2,6 +2,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -43,7 +44,12 @@ import { NotificationsService } from './notifications.service';
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 
+  // Sprint 7.x — `Cache-Control: no-store` on every read so a 304
+  // Not Modified from a stale ETag / browser cache can never mask a
+  // freshly-arrived notification. The list + unread-count feed the
+  // bell badge; staleness here is visible to the user.
   @Get()
+  @Header('Cache-Control', 'no-store')
   @HttpCode(HttpStatus.OK)
   list(
     @CurrentUser() user: AuthenticatedUser,
@@ -53,6 +59,7 @@ export class NotificationsController {
   }
 
   @Get('unread-count')
+  @Header('Cache-Control', 'no-store')
   @HttpCode(HttpStatus.OK)
   unreadCount(
     @CurrentUser() user: AuthenticatedUser,

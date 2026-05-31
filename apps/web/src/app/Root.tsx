@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Outlet, useLocation, useNavigation, useOutletContext } from 'react-router';
+import { Outlet, useLocation, useNavigate, useNavigation, useOutletContext } from 'react-router';
 import { JobWizardModal } from './components/wizard/JobWizardModal';
 import { Snackbar } from './components/ds/Snackbar';
 import { Toaster } from './components/ui/sonner';
 import { LanguageProvider, useLang } from './i18n/LanguageContext';
 import { EcosystemProvider } from './context/EcosystemContext';
+import { setRealtimeLang } from '../lib/realtime/realtime-i18n';
+import { setRealtimeNavigator } from '../lib/realtime/realtime-navigator';
 
 // ─── Shared outlet-context type ───────────────────────────────────────────────
 export interface RootContext {
@@ -51,6 +53,30 @@ function RootInner() {
       window.removeEventListener('offline', goOffline);
     };
   }, []);
+
+  // Sprint 7.5.1 — bridge the active language into the framework-
+  // independent realtime-i18n module so the side-effects dispatcher
+  // (mounted by AuthProvider, OUTSIDE LanguageProvider) can localise
+  // toast copy without calling useLang(). The bridge runs in an
+  // effect so the write happens at mount time and on every flip;
+  // the read site is a pure function call from any callsite.
+  useEffect(() => {
+    setRealtimeLang(lang === 'ar' ? 'ar' : 'en');
+  }, [lang]);
+
+  // Sprint 7.10 — same bridge pattern for navigation. The side-
+  // effects dispatcher needs to navigate when the user clicks a
+  // toast's action button, but the dispatcher is mounted ABOVE the
+  // Router (AuthProvider scope). RootInner sits INSIDE the Router,
+  // so `useNavigate()` works here; we register the navigator in a
+  // module-level holder that the toast onClick reads via
+  // `getRealtimeNavigator()`. Cleanup on unmount clears the holder
+  // so a logged-out app doesn't navigate from a stale toast.
+  const navigate = useNavigate();
+  useEffect(() => {
+    setRealtimeNavigator((deepLink) => navigate(deepLink));
+    return () => setRealtimeNavigator(null);
+  }, [navigate]);
 
   const openWizard = (service: string, categoryId: string | null = null) => {
     setSelectedSvc(service);

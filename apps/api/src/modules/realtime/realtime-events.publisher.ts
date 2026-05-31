@@ -45,11 +45,26 @@ export class RealtimeEventsPublisher {
     }
   }
 
-  publishFor(userId: string, type: RealtimeEventType, payload: unknown): void {
+  // Sprint 7.6 — `options.actorUserId` is the OPTIONAL identity of
+  // the user whose action produced this event. Surfaced on the
+  // envelope so the client side-effects bridge can suppress
+  // self-feedback (the actor's own connected tabs receive the event
+  // for cache invalidation but don't toast / sound / vibrate).
+  //
+  // System-generated events (e.g. matcher emitting request.available)
+  // omit the option; the envelope's `actorUserId` is then `null` and
+  // the bridge treats every recipient as a non-actor.
+  publishFor(
+    userId: string,
+    type: RealtimeEventType,
+    payload: unknown,
+    options?: { actorUserId?: string | null },
+  ): void {
     this.publish({
       v: 1,
       type,
       userId,
+      actorUserId: options?.actorUserId ?? null,
       occurredAt: new Date().toISOString(),
       payload,
     });
@@ -59,12 +74,22 @@ export class RealtimeEventsPublisher {
   // set is bigger than one user (chat threads, admin broadcasts,
   // provider-targeted events). Bus listeners are NOT notified for
   // room-targeted events — the SSE channel is per-user only.
-  publishToRoom(room: string, type: RealtimeEventType, payload: unknown): void {
+  //
+  // Sprint 7.6 — also supports `actorUserId` so room broadcasts that
+  // produce UX side-effects (e.g. chat `message.created`) can still
+  // be anti-echo gated per-recipient by the client bridge.
+  publishToRoom(
+    room: string,
+    type: RealtimeEventType,
+    payload: unknown,
+    options?: { actorUserId?: string | null },
+  ): void {
     try {
       this.gateway.emitToRoom(room, {
         v: 1,
         type,
         userId: null,
+        actorUserId: options?.actorUserId ?? null,
         occurredAt: new Date().toISOString(),
         payload,
       });

@@ -15,7 +15,10 @@ import type { LeadCardProps } from './LeadCard';
 // never expose raw backend error text.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderScreen(lead: LeadCardProps, onBookBid: (name: string) => void = () => {}) {
+function renderScreen(
+  lead: LeadCardProps,
+  onBookBid: (name: string, bookingId: string) => void = () => {},
+) {
   // Fresh QueryClient per test so React Query state never leaks.
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -221,8 +224,11 @@ describe('BidsScreen', () => {
     // Resolve the backend → overlay appears.
     resolveAccept?.();
     await waitFor(() => expect(screen.getByText(/booking confirmed/i)).toBeInTheDocument());
-    // Parent snackbar fires after the brief overlay window.
-    await waitFor(() => expect(bookSpy).toHaveBeenCalledWith('Omar Al-Khalid'));
+    // Parent snackbar fires after the brief overlay window with the
+    // bidder name AND the new bookingId from the backend response —
+    // Sprint 7.5 wires the bookingId so the snackbar can offer a
+    // "View booking" action.
+    await waitFor(() => expect(bookSpy).toHaveBeenCalledWith('Omar Al-Khalid', 'bk-1'));
   });
 
   it('shows a friendly CONFLICT message on 409 (already-accepted) — no raw backend error rendered', async () => {
