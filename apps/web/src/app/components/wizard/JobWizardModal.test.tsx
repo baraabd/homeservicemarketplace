@@ -42,7 +42,17 @@ vi.mock('react-leaflet', () => ({
   Popup: ({ children }: { children?: ReactNode }) => (
     <div data-testid="leaflet-popup">{children}</div>
   ),
-  useMap: () => ({ fitBounds: () => {}, setView: () => {} }),
+  // MapResizer (mounted by LocationMap to call `map.invalidateSize()`
+  // on mount + container resize) calls these two extra members. The
+  // stubs satisfy them safely — `getContainer()` returns a real DOM
+  // node so `ResizeObserver.observe(container)` accepts the argument
+  // even on environments that ship a strict implementation.
+  useMap: () => ({
+    fitBounds: () => {},
+    setView: () => {},
+    invalidateSize: () => {},
+    getContainer: () => document.createElement('div'),
+  }),
 }));
 
 // L.divIcon / L.latLngBounds / L.Icon.Default are called from the
@@ -380,19 +390,14 @@ describe('JobWizardModal — geolocation', () => {
     renderWizard();
     await advanceToStep2();
 
-    // No saved default — type the address. The TextField uses a
-    // floating-label pattern (no htmlFor association), so we target
-    // the only `textbox` rendered on step 2.
-    const addressInput = screen.getAllByRole('textbox')[0] as HTMLInputElement;
-    fireEvent.change(addressInput, {
-      target: { value: '500 Park Lane, Riyadh, Saudi Arabia' },
-    });
-
     fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /location captured/i })).toBeInTheDocument(),
     );
+    // Wait for the Nominatim auto-fill to land — the address field
+    // transitions from "Fetching address..." → real display_name.
+    await waitFor(() => expect(screen.getByDisplayValue(/Auto-Filled St/i)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
 

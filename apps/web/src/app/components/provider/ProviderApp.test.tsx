@@ -35,9 +35,16 @@ vi.mock('react-leaflet', () => ({
   Popup: ({ children }: { children?: ReactNode }) => (
     <div data-testid="leaflet-popup">{children}</div>
   ),
+  // MapResizer (mounted by LocationMap to call `map.invalidateSize()`
+  // on mount + container resize) calls these two extra members. The
+  // stubs satisfy them safely — `getContainer()` returns a real DOM
+  // node so `ResizeObserver.observe(container)` accepts the argument
+  // even on environments that ship a strict implementation.
   useMap: () => ({
     fitBounds: () => {},
     setView: () => {},
+    invalidateSize: () => {},
+    getContainer: () => document.createElement('div'),
   }),
 }));
 
