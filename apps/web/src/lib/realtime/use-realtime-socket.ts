@@ -88,12 +88,27 @@ export function useRealtimeSocket({
 // Pure function exported for the unit test — given an event, fire
 // the right invalidations against a given QueryClient. Tests can
 // drive this directly instead of standing up a real socket.
+// Sprint 7.x — Active Leads sync. The Seeker's "Active Leads"
+// carousel is backed by `seekerQueryKeys.requests.root`. Booking
+// lifecycle events (start / complete / cancel / created) all need
+// to invalidate that root so the lead-card status display stays in
+// sync with the underlying booking — even when the parent
+// ServiceRequest row keeps its `BID_ACCEPTED` status. The cost of
+// one extra refetch per transition is negligible vs. the UX bug
+// where the card visibly lies until the user reloads.
 export function dispatchInvalidations(qc: QueryClient, event: RealtimeEvent): void {
   switch (event.type) {
-    case 'notification.created':
+    case 'notification.created': {
+      // Always-on: refresh the drawer + unread badge.
       qc.invalidateQueries({ queryKey: seekerQueryKeys.notifications.root });
       qc.invalidateQueries({ queryKey: providerQueryKeys.notifications.root });
+      // Sprint 7.x universal domain safety net — if the backend
+      // forgets to publish a paired domain event, the notification's
+      // resourceType still drives the right domain invalidation so
+      // Active Leads / Bookings / Bids feeds converge.
+      invalidateForNotificationResource(qc, event.payload);
       break;
+    }
     case 'message.created': {
       // Payload may carry a conversationId; if it does, target only
       // that conversation's messages slot. Otherwise invalidate the
@@ -121,6 +136,11 @@ export function dispatchInvalidations(qc: QueryClient, event: RealtimeEvent): vo
       qc.invalidateQueries({ queryKey: providerQueryKeys.bids.root });
       qc.invalidateQueries({ queryKey: providerQueryKeys.bookings.root });
       qc.invalidateQueries({ queryKey: seekerQueryKeys.bookings.root });
+      // Sprint 7.x — Active Leads sync. The accepted-bid transition
+      // flips the parent request from OPEN_FOR_BIDS → BID_ACCEPTED;
+      // the lead card must refresh to show "active" instead of
+      // "pending".
+      qc.invalidateQueries({ queryKey: seekerQueryKeys.requests.root });
       break;
     case 'booking.created':
       // Sprint 7.5 publishes booking.created alongside bid.accepted on
@@ -128,11 +148,20 @@ export function dispatchInvalidations(qc: QueryClient, event: RealtimeEvent): vo
       // so the new row appears without a manual refetch.
       qc.invalidateQueries({ queryKey: seekerQueryKeys.bookings.root });
       qc.invalidateQueries({ queryKey: providerQueryKeys.bookings.root });
+      // Sprint 7.x — Active Leads sync (same reason as bid.accepted).
+      qc.invalidateQueries({ queryKey: seekerQueryKeys.requests.root });
       break;
     case 'booking.status_changed':
       qc.invalidateQueries({ queryKey: seekerQueryKeys.bookings.root });
       qc.invalidateQueries({ queryKey: providerQueryKeys.bookings.root });
       qc.invalidateQueries({ queryKey: providerQueryKeys.wallet.root });
+      // Sprint 7.x — Active Leads sync. The parent ServiceRequest
+      // intentionally stays at BID_ACCEPTED across booking
+      // transitions (no auto-revert; see useBookings.ts comments),
+      // but the seeker's Active Leads carousel still needs a
+      // refetch so derived UI (e.g. bidsCount, lifecycle-driven
+      // copy) stays current.
+      qc.invalidateQueries({ queryKey: seekerQueryKeys.requests.root });
       break;
     case 'provider.status_changed':
       qc.invalidateQueries({ queryKey: providerQueryKeys.profile.root });
@@ -144,5 +173,49 @@ export function dispatchInvalidations(qc: QueryClient, event: RealtimeEvent): vo
       const _exhaustive: string = event.type;
       void _exhaustive;
     }
+  }
+}
+
+// Sprint 7.x — universal safety net. Reads the
+// NotificationSummary-shaped payload and invalidates the domain
+// query roots that match its resourceType. This means even if the
+// backend publishes ONLY `notification.created` (and forgets the
+// paired domain event), the Seeker's Active Leads still refreshes
+// when a relevant notification lands.
+//
+// Mapping:
+//   REQUEST  → seeker requests root + provider available-requests root
+//   BID      → seeker requests root (bids are nested under requests)
+//              + provider bids root
+//   BOOKING  → seeker bookings + provider bookings + seeker requests
+//              (Active Leads card status follows the booking
+//              lifecycle even when ServiceRequest.status doesn't
+//              change)
+//   CONVERSATION → conversations root on both sides
+//   SYSTEM / null → notifications root only (handled by the caller)
+function invalidateForNotificationResource(qc: QueryClient, payload: unknown): void {
+  const p = payload as { resourceType?: string | null } | null | undefined;
+  switch (p?.resourceType ?? null) {
+    case 'REQUEST':
+      qc.invalidateQueries({ queryKey: seekerQueryKeys.requests.root });
+      qc.invalidateQueries({ queryKey: providerQueryKeys.availableRequests.root });
+      break;
+    case 'BID':
+      qc.invalidateQueries({ queryKey: seekerQueryKeys.requests.root });
+      qc.invalidateQueries({ queryKey: providerQueryKeys.bids.root });
+      break;
+    case 'BOOKING':
+      qc.invalidateQueries({ queryKey: seekerQueryKeys.bookings.root });
+      qc.invalidateQueries({ queryKey: providerQueryKeys.bookings.root });
+      qc.invalidateQueries({ queryKey: seekerQueryKeys.requests.root });
+      break;
+    case 'CONVERSATION':
+      qc.invalidateQueries({ queryKey: seekerQueryKeys.conversations.root });
+      qc.invalidateQueries({ queryKey: providerQueryKeys.chat.root });
+      break;
+    default:
+      // SYSTEM / null / unknown — no domain refetch needed; the
+      // notifications root + unread count cover the visible state.
+      break;
   }
 }

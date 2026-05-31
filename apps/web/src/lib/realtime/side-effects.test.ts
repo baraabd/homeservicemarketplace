@@ -388,4 +388,141 @@ describe('dispatchRealtimeSideEffects', () => {
     expect(toastDefault).toHaveBeenCalledTimes(1);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
   });
+
+  // ─── Sprint 7.x — type-specific toast copy ──────────────────────
+
+  it('BID_RECEIVED → status-specific title + body, not generic "New notification"', () => {
+    dispatchRealtimeSideEffects(
+      event(
+        'notification.created',
+        {
+          id: 'notif-bid',
+          type: 'BID_RECEIVED',
+          resourceType: 'BID',
+          resourceId: 'bid-1',
+          metadata: { requestId: 'req-1' },
+        },
+        { actorUserId: 'user-prov' },
+      ),
+      { currentUserId: 'user-seeker' },
+    );
+    // Default-toast called with (title, { description: body }) so the
+    // title arg is the first positional. Pin both fields explicitly.
+    expect(toastDefault).toHaveBeenCalledTimes(1);
+    const [title, opts] = toastDefault.mock.calls[0];
+    expect(title).toBe('New bid received');
+    expect((opts as { description?: string }).description).toBe(
+      'A provider sent a bid for your request.',
+    );
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('BOOKING_COMPLETED → "Booking completed" + body', () => {
+    dispatchRealtimeSideEffects(
+      event(
+        'notification.created',
+        {
+          id: 'notif-done',
+          type: 'BOOKING_COMPLETED',
+          resourceType: 'BOOKING',
+          resourceId: 'bk-1',
+        },
+        { actorUserId: 'user-prov' },
+      ),
+      { currentUserId: 'user-seeker' },
+    );
+    expect(toastDefault).toHaveBeenCalledTimes(1);
+    const [title, opts] = toastDefault.mock.calls[0];
+    expect(title).toBe('Booking completed');
+    expect((opts as { description?: string }).description).toBe(
+      'The service has been marked as completed.',
+    );
+  });
+
+  it('BOOKING_CANCELLED with cancelledBy=seeker → seeker-specific body', () => {
+    dispatchRealtimeSideEffects(
+      event(
+        'notification.created',
+        {
+          id: 'notif-cx-1',
+          type: 'BOOKING_CANCELLED',
+          resourceType: 'BOOKING',
+          resourceId: 'bk-1',
+          metadata: { cancelledBy: 'seeker' },
+        },
+        { actorUserId: 'user-seeker' },
+      ),
+      // Recipient is the provider (non-actor → UX fires).
+      { currentUserId: 'user-provider' },
+    );
+    expect(toastDefault).toHaveBeenCalledTimes(1);
+    const [title, opts] = toastDefault.mock.calls[0];
+    expect(title).toBe('Booking cancelled');
+    expect((opts as { description?: string }).description).toBe(
+      'The seeker cancelled the booking.',
+    );
+  });
+
+  it('BOOKING_CANCELLED with cancelledBy=provider → provider-specific body', () => {
+    dispatchRealtimeSideEffects(
+      event(
+        'notification.created',
+        {
+          id: 'notif-cx-2',
+          type: 'BOOKING_CANCELLED',
+          resourceType: 'BOOKING',
+          resourceId: 'bk-2',
+          metadata: { cancelledBy: 'provider' },
+        },
+        { actorUserId: 'user-provider' },
+      ),
+      { currentUserId: 'user-seeker' },
+    );
+    expect(toastDefault).toHaveBeenCalledTimes(1);
+    const [, opts] = toastDefault.mock.calls[0];
+    expect((opts as { description?: string }).description).toBe(
+      'The provider cancelled the booking.',
+    );
+  });
+
+  it('REQUEST_AVAILABLE → "New request available" + body', () => {
+    dispatchRealtimeSideEffects(
+      event(
+        'notification.created',
+        {
+          id: 'notif-avail',
+          type: 'REQUEST_AVAILABLE',
+          resourceType: 'REQUEST',
+          resourceId: 'req-1',
+        },
+        { actorUserId: 'user-seeker' },
+      ),
+      { currentUserId: 'user-provider' },
+    );
+    expect(toastDefault).toHaveBeenCalledTimes(1);
+    const [title] = toastDefault.mock.calls[0];
+    expect(title).toBe('New request available');
+  });
+
+  it('unknown notification type falls back to backend-supplied title / body', () => {
+    dispatchRealtimeSideEffects(
+      event(
+        'notification.created',
+        {
+          id: 'notif-unknown',
+          type: 'FUTURE_TYPE_NOT_IN_I18N' as unknown as 'SYSTEM',
+          title: 'Backend title',
+          body: 'Backend body',
+          resourceType: null,
+          resourceId: null,
+        },
+        { actorUserId: 'someone-else' },
+      ),
+      { currentUserId: 'user-1' },
+    );
+    expect(toastDefault).toHaveBeenCalledTimes(1);
+    const [title, opts] = toastDefault.mock.calls[0];
+    expect(title).toBe('Backend title');
+    expect((opts as { description?: string }).description).toBe('Backend body');
+  });
 });

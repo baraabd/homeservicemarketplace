@@ -1,6 +1,8 @@
 import { toast } from 'sonner';
 import type {
   BookingStatusChangedRealtimePayload,
+  NotificationResourceType,
+  NotificationType,
   RealtimeEvent,
 } from '@homeservicemarketplace/contracts';
 
@@ -9,6 +11,9 @@ import { translateRealtime } from './realtime-i18n';
 
 // Sprint 7.5.1 — UI side-effects bridge for realtime events.
 // Sprint 7.6 — anti-echo gate (currentUserId vs event.actorUserId).
+// Sprint 7.x — type-specific toast copy for notification.created so
+//   the in-app banner says exactly what happened ("New bid received",
+//   "Booking completed", etc.) instead of a generic placeholder.
 //
 // Lives next to `dispatchInvalidations` (the pure cache dispatcher in
 // `use-realtime-socket.ts`) and is invoked from the same hook callback.
@@ -97,7 +102,14 @@ export function dispatchRealtimeSideEffects(
       break;
     }
     case 'notification.created': {
-      toast(translateRealtime('realtime.notification.created'));
+      const { title, body } = notificationToastCopy(event.payload as NotificationSummaryLike);
+      // Sonner accepts `(title, { description })` for two-line layouts;
+      // a missing body collapses to a single-line toast automatically.
+      if (body) {
+        toast(title, { description: body });
+      } else {
+        toast(title);
+      }
       triggerNotificationUX();
       break;
     }
@@ -110,6 +122,19 @@ export function dispatchRealtimeSideEffects(
 }
 
 // ─── helpers ────────────────────────────────────────────────────────
+
+// Narrow shape — mirrors the relevant slice of NotificationSummary so
+// the dispatcher doesn't need to import the full contract just to
+// read a handful of fields.
+interface NotificationSummaryLike {
+  id?: string;
+  type?: NotificationType | string;
+  title?: string | null;
+  body?: string | null;
+  resourceType?: NotificationResourceType | string | null;
+  resourceId?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
 
 // Envelope-first lookup. Falls back to a payload-level field for
 // backward compatibility with older publishers / future room-event
@@ -150,23 +175,19 @@ function buildDedupeKey(event: RealtimeEvent, actorUserId: string | null): strin
       return `booking:${p.bookingId}:${p.to ?? ''}:${actorSuffix}`;
     }
     case 'notification.created': {
-      // Notification payload shape mirrors NotificationSummary —
-      // we read `resourceType` + `resourceId` to align with the
-      // booking dedupe key when the notification is for the same
-      // booking transition.
-      const p = event.payload as
-        | {
-            id?: string;
-            resourceType?: string | null;
-            resourceId?: string | null;
-            // Some emitters surface a richer metadata block —
-            // mirror the same { to } field if present so the
-            // dedupe matches the booking event.
-            metadata?: { to?: string } | null;
-          }
-        | undefined;
+      const p = event.payload as NotificationSummaryLike | undefined;
       if (p?.resourceType === 'BOOKING' && p.resourceId) {
-        const to = p.metadata?.to ?? '';
+        const to =
+          (p.metadata as { to?: string } | null | undefined)?.to ??
+          // Sprint 7.x: BOOKING_COMPLETED / BOOKING_CANCELLED notifications
+          // do not carry an explicit `metadata.to` (the backend writes
+          // requestId/providerId only), so the type itself disambiguates
+          // distinct transitions on the same booking. Falling back to
+          // `type` keeps the dedupe matching the paired
+          // booking.status_changed event for COMPLETED/CANCELLED and
+          // still separates two distinct transitions on the same row.
+          p.type ??
+          '';
         return `booking:${p.resourceId}:${to}:${actorSuffix}`;
       }
       if (p?.id) return `notification:${p.id}:${actorSuffix}`;
@@ -194,6 +215,61 @@ function bookingToastMessage(payload: BookingStatusChangedRealtimePayload): stri
     default:
       return translateRealtime('realtime.booking.statusChanged');
   }
+}
+
+// Sprint 7.x — type-specific toast copy. Prefers the localised
+// realtime-i18n strings over the backend-supplied title/body so the
+// in-app toast stays in the user's active language even when the
+// backend ships English-only copy. Falls back to backend strings,
+// then to a generic "New notification" so an unknown type never
+// produces an empty toast.
+function notificationToastCopy(payload: NotificationSummaryLike): {
+  title: string;
+  body: string | null;
+} {
+  const type = typeof payload.type === 'string' ? payload.type : null;
+  if (type) {
+    const localisedTitle = translateRealtime(
+      `realtime.notif.${type}.title` as Parameters<typeof translateRealtime>[0],
+    );
+    const localisedBody = bodyForNotification(type, payload);
+    // `translateRealtime` returns the key itself when there's no match;
+    // detect that and fall back to the backend-supplied title.
+    const titleHit = localisedTitle && !localisedTitle.startsWith('realtime.notif.');
+    const title = titleHit
+      ? localisedTitle
+      : (payload.title ?? translateRealtime('realtime.notification.created'));
+    return { title, body: localisedBody };
+  }
+  return {
+    title: payload.title ?? translateRealtime('realtime.notification.created'),
+    body: payload.body ?? null,
+  };
+}
+
+// BOOKING_CANCELLED can be initiated by either party — the backend
+// writes `metadata.cancelledBy: 'seeker' | 'provider'` (Sprint 7.x
+// `BookingsService.cancel`). Use it to pick a clearer body string;
+// fall back to the generic copy when absent.
+function bodyForNotification(type: string, payload: NotificationSummaryLike): string | null {
+  if (type === 'BOOKING_CANCELLED') {
+    const by = (payload.metadata as { cancelledBy?: string } | null | undefined)?.cancelledBy;
+    if (by === 'seeker') {
+      return translateRealtime('realtime.notif.BOOKING_CANCELLED.bySeeker.body');
+    }
+    if (by === 'provider') {
+      return translateRealtime('realtime.notif.BOOKING_CANCELLED.byProvider.body');
+    }
+  }
+  const localised = translateRealtime(
+    `realtime.notif.${type}.body` as Parameters<typeof translateRealtime>[0],
+  );
+  // Same key-passthrough check as the title — fall back to the
+  // backend-supplied body when no localisation exists.
+  if (localised && !localised.startsWith('realtime.notif.')) {
+    return localised || null;
+  }
+  return payload.body ?? null;
 }
 
 function nowMs(): number {
