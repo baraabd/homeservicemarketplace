@@ -32,6 +32,13 @@ export interface CreateNotificationForUserInput {
   resourceId?: string | null;
   deepLink?: string | null;
   metadata?: Prisma.InputJsonValue | null;
+  // Sprint 7.6 — actor of the action that triggered this notification.
+  // Threaded into the realtime envelope's `actorUserId` so the
+  // recipient's client bridge can suppress UX feedback when actor ===
+  // self (anti-echo). Persistence is unchanged — `actorUserId` is NOT
+  // a Notification column; the audit trail lives in domain timeline
+  // tables (BookingEvent, ServiceRequestEvent, BidEvent).
+  actorUserId?: string | null;
 }
 
 @Injectable()
@@ -150,7 +157,17 @@ export class NotificationsService {
     // so the SSE client can drop it straight into the React Query
     // notifications cache. The publisher swallows its own errors so
     // a bus failure can never roll back the calling transaction.
-    this.realtime.publishFor(input.userId, 'notification.created', toSummary(created));
+    //
+    // Sprint 7.6 — also threads `actorUserId` onto the envelope when
+    // the caller supplied one (e.g. BidsService.accept passes the
+    // seekerUserId; ProviderBookingsService passes the providerUserId).
+    // The client side-effects bridge uses this to silence UX feedback
+    // when actor === self. The persisted Notification row itself does
+    // NOT carry actorUserId — the realtime envelope is the only
+    // surface that needs it.
+    this.realtime.publishFor(input.userId, 'notification.created', toSummary(created), {
+      actorUserId: input.actorUserId ?? null,
+    });
     return created;
   }
 }

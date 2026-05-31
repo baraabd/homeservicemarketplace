@@ -6,6 +6,7 @@ import { Snackbar } from './components/ds/Snackbar';
 import { Toaster } from './components/ui/sonner';
 import { LanguageProvider, useLang } from './i18n/LanguageContext';
 import { EcosystemProvider } from './context/EcosystemContext';
+import { setRealtimeLang } from '../lib/realtime/realtime-i18n';
 
 // ─── Shared outlet-context type ───────────────────────────────────────────────
 export interface RootContext {
@@ -51,6 +52,16 @@ function RootInner() {
       window.removeEventListener('offline', goOffline);
     };
   }, []);
+
+  // Sprint 7.5.1 — bridge the active language into the framework-
+  // independent realtime-i18n module so the side-effects dispatcher
+  // (mounted by AuthProvider, OUTSIDE LanguageProvider) can localise
+  // toast copy without calling useLang(). The bridge runs in an
+  // effect so the write happens at mount time and on every flip;
+  // the read site is a pure function call from any callsite.
+  useEffect(() => {
+    setRealtimeLang(lang === 'ar' ? 'ar' : 'en');
+  }, [lang]);
 
   const openWizard = (service: string, categoryId: string | null = null) => {
     setSelectedSvc(service);

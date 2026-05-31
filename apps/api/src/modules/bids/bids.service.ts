@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type {
   AcceptBidResponse,
+  BidAcceptedRealtimePayload,
   BidListResponse,
   BidSummary,
+  BookingCreatedRealtimePayload,
   BookingSummary,
   ListBidsQuery,
   ProviderBidSummary,
@@ -28,6 +30,7 @@ import { ServiceRequestEventRepository } from '../../infrastructure/persistence/
 import { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 
 @Injectable()
 export class BidsService {
@@ -39,6 +42,11 @@ export class BidsService {
     private readonly bookingEvents: BookingEventRepository,
     private readonly notifications: NotificationsService,
     private readonly tx: TransactionRunner,
+    // Sprint 7.5 — realtime fan-out for bid.accepted + booking.created.
+    // The publisher is @Global (RealtimeModule) so no module-level import
+    // is required; it swallows its own errors so a bus outage cannot
+    // roll back the REST write.
+    private readonly realtime: RealtimeEventsPublisher,
   ) {}
 
   // List active bids on a Seeker-owned request. Ownership is checked
@@ -190,45 +198,26 @@ export class BidsService {
       );
 
       // 6c. Notification fan-out (slice 3.1; provider-side fan-out
-      //     added in slice 5.5). All four rows are written inside the
-      //     same transaction so a notification can never exist without
-      //     its underlying state change. Body strings are concise +
-      //     name-driven so the drawer renders identical-looking copy
-      //     regardless of locale; future i18n work can swap to a
-      //     server-side template indirection.
-      const providerName = bid.provider.displayName;
-      // Seeker side: confirms what they just did.
-      await this.notifications.createForUser(
-        {
-          userId: seekerUserId,
-          type: NotificationType.BID_ACCEPTED,
-          title: 'Bid accepted',
-          body: `You accepted ${providerName}'s bid.`,
-          resourceType: NotificationResourceType.BID,
-          resourceId: bidId,
-          deepLink: `/home/requests/${requestId}/bids/${bidId}`,
-          metadata: { requestId, bookingId: booking.id, providerId: bid.providerId },
-        },
-        tx,
-      );
-      await this.notifications.createForUser(
-        {
-          userId: seekerUserId,
-          type: NotificationType.BOOKING_CREATED,
-          title: 'Booking confirmed',
-          body: `${providerName} is booked for your request.`,
-          resourceType: NotificationResourceType.BOOKING,
-          resourceId: booking.id,
-          deepLink: `/home/bookings/${booking.id}`,
-          metadata: { requestId, bidId, providerId: bid.providerId },
-        },
-        tx,
-      );
-      // Provider side (slice 5.5): the provider's app needs the same
-      // notifications. We only fan out when ProviderProfile.userId is
-      // set — older seed rows where the profile is detached from a
-      // user account are skipped silently (the provider can't sign in
-      // without a userId, so no surface to notify).
+      //     added in slice 5.5; Sprint 7.6 removed the seeker-side
+      //     self-notifications).
+      //
+      //     Rationale (Sprint 7.6 — anti-echo): the seeker is the
+      //     actor of the accept-bid action and already sees an
+      //     in-screen confirmation (BidsScreen success overlay +
+      //     snackbar with "View booking" CTA). Persisting a
+      //     BID_ACCEPTED / BOOKING_CREATED notification for them
+      //     produced an echo in the notifications drawer for an
+      //     action they had just performed — bad UX. The audit
+      //     history of the transition still lives in the
+      //     ServiceRequestEvent + BookingEvent timelines, so no
+      //     observability is lost.
+      //
+      //     Provider side: KEEPS both notifications (the provider did
+      //     NOT trigger this — they're the non-actor recipient).
+      //     actorUserId = seekerUserId is threaded onto the realtime
+      //     envelope so the provider's client side-effects bridge can
+      //     fire toast / sound while a hypothetical seeker tab with
+      //     the same socket does NOT.
       const providerUserId = bid.provider.userId;
       if (providerUserId) {
         await this.notifications.createForUser(
@@ -241,6 +230,7 @@ export class BidsService {
             resourceId: bidId,
             deepLink: `/provider/bids/${bidId}`,
             metadata: { requestId, bookingId: booking.id },
+            actorUserId: seekerUserId,
           },
           tx,
         );
@@ -254,6 +244,7 @@ export class BidsService {
             resourceId: booking.id,
             deepLink: `/provider/bookings/${booking.id}`,
             metadata: { requestId, bidId },
+            actorUserId: seekerUserId,
           },
           tx,
         );
@@ -265,12 +256,67 @@ export class BidsService {
       if (!reloaded) {
         throw new AppError('NOT_FOUND', 'Bid not found.', 404);
       }
-      return { bid: reloaded, booking };
+      return { bid: reloaded, booking, providerUserId };
     });
 
+    // 8. Realtime fan-out — POST-COMMIT. The events fire only after the
+    //    transaction succeeds so a rolled-back write can never leak a
+    //    "bid.accepted" notification to connected sockets. The seeker
+    //    always receives both events (for cache invalidation across
+    //    their own tabs/devices); the provider side only when their
+    //    profile has a linked userId (older detached profiles have no
+    //    user surface to deliver to).
+    //
+    //    Payload shapes mirror the REST response so a connected client
+    //    can drop them straight into its React Query cache without a
+    //    second fetch:
+    //      - bid.accepted    → BidAcceptedRealtimePayload
+    //      - booking.created → BookingCreatedRealtimePayload
+    //
+    //    Sprint 7.6 — every publish carries `actorUserId: seekerUserId`
+    //    on the envelope so the client side-effects bridge can
+    //    suppress UX feedback for the actor's own tabs (silent
+    //    cache invalidation still runs). The same field is also
+    //    duplicated on the payload for self-contained subscribers.
+    //
+    //    The publisher swallows its own errors; a failure here cannot
+    //    surface to the caller and cannot roll back the REST write.
+    const bidSummary = toSummary(result.bid);
+    const bookingSummary = toBookingSummary(result.booking);
+    const bidAcceptedPayload: BidAcceptedRealtimePayload = {
+      requestId,
+      bid: bidSummary,
+      bookingId: result.booking.id,
+      actorUserId: seekerUserId,
+      actorRole: 'SEEKER',
+    };
+    const bookingCreatedPayload: BookingCreatedRealtimePayload = {
+      requestId,
+      booking: bookingSummary,
+      actorUserId: seekerUserId,
+      actorRole: 'SEEKER',
+    };
+    const actorMeta = { actorUserId: seekerUserId };
+    this.realtime.publishFor(seekerUserId, 'bid.accepted', bidAcceptedPayload, actorMeta);
+    this.realtime.publishFor(seekerUserId, 'booking.created', bookingCreatedPayload, actorMeta);
+    if (result.providerUserId) {
+      this.realtime.publishFor(
+        result.providerUserId,
+        'bid.accepted',
+        bidAcceptedPayload,
+        actorMeta,
+      );
+      this.realtime.publishFor(
+        result.providerUserId,
+        'booking.created',
+        bookingCreatedPayload,
+        actorMeta,
+      );
+    }
+
     return {
-      bid: toSummary(result.bid),
-      booking: toBookingSummary(result.booking),
+      bid: bidSummary,
+      booking: bookingSummary,
       requestStatus: ServiceRequestStatus.BID_ACCEPTED,
     };
   }

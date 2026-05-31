@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type {
   AddressSnapshot,
+  BookingStatusChangedRealtimePayload,
   ListProviderBookingsQuery,
   ListProviderBookingsResponse,
   ProviderBookingDetail,
@@ -24,6 +25,7 @@ import { ProviderProfileRepository } from '../../../infrastructure/persistence/b
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { RealtimeEventsPublisher } from '../../realtime/realtime-events.publisher';
 
 const DEFAULT_PAGE_SIZE = 50;
 
@@ -49,6 +51,13 @@ export class ProviderBookingsService {
     private readonly events: BookingEventRepository,
     private readonly notifications: NotificationsService,
     private readonly tx: TransactionRunner,
+    // Sprint 7.5.1 — realtime fan-out for booking lifecycle. Injected
+    // alongside the existing notification service so the two channels
+    // stay in lockstep. The publisher is `@Global` (RealtimeModule)
+    // and swallows its own errors, so a bus outage cannot roll back
+    // the REST mutation; the publish call is also POST-COMMIT so a
+    // rolled-back transition never leaks an event to subscribers.
+    private readonly realtime: RealtimeEventsPublisher,
   ) {}
 
   async list(
@@ -174,7 +183,10 @@ export class ProviderBookingsService {
     },
     invalidStateMsg: string,
   ): Promise<ProviderBookingMutationResponse> {
-    const result = await this.tx.run(async (tx) => {
+    // Transition runs inside one transaction; the post-commit realtime
+    // publish is deliberately OUTSIDE so a rolled-back transition can
+    // never leak a booking.status_changed event to connected sockets.
+    const committed = await this.tx.run(async (tx) => {
       const profile = await this.providers.findByUserId(providerUserId, tx);
       if (!profile) {
         throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
@@ -207,6 +219,11 @@ export class ProviderBookingsService {
         tx,
       );
       if (notify) {
+        // Sprint 7.6 — seeker is the non-actor recipient for this
+        // provider-initiated transition. actorUserId = providerUserId
+        // is threaded through so the realtime envelope's anti-echo
+        // gate can suppress UX on the provider's own tabs (the seeker
+        // is never the actor here, so they always see the toast).
         await this.notifications.createForUser(
           {
             userId: existing.seekerUserId,
@@ -217,6 +234,7 @@ export class ProviderBookingsService {
             resourceId: bookingId,
             deepLink: `/home/bookings/${bookingId}`,
             metadata: { requestId: existing.requestId, providerId: profile.id },
+            actorUserId: providerUserId,
           },
           tx,
         );
@@ -225,9 +243,39 @@ export class ProviderBookingsService {
       if (!reloaded) {
         throw new AppError('NOT_FOUND', 'Booking not found.', 404);
       }
-      return reloaded;
+      // Carry the pre-flip status + seekerUserId out of the tx so the
+      // post-commit publish can build a typed BookingStatusChangedRealtimePayload.
+      return {
+        reloaded,
+        prevStatus: existing.status,
+        seekerUserId: existing.seekerUserId,
+      };
     });
-    return { booking: toDetail(result) };
+
+    // Post-commit realtime fan-out. Targets BOTH parties:
+    //   - seeker  → /home/bookings list + active overlays refresh
+    //                 (non-actor → toast + sound fire)
+    //   - provider → other tabs/devices on the same account refresh
+    //                 (actor → cache invalidation only; the
+    //                 side-effects bridge silences UX feedback via
+    //                 the envelope's `actorUserId` check)
+    // Provider userId is the caller; we don't need to re-resolve the
+    // profile. The publisher swallows its own errors so a bus outage
+    // cannot surface to the REST caller.
+    const payload: BookingStatusChangedRealtimePayload = {
+      bookingId: committed.reloaded.id,
+      requestId: committed.reloaded.requestId,
+      bidId: committed.reloaded.bidId,
+      from: committed.prevStatus,
+      to: committed.reloaded.status,
+      actorUserId: providerUserId,
+      actorRole: 'PROVIDER',
+    };
+    const actorMeta = { actorUserId: providerUserId };
+    this.realtime.publishFor(committed.seekerUserId, 'booking.status_changed', payload, actorMeta);
+    this.realtime.publishFor(providerUserId, 'booking.status_changed', payload, actorMeta);
+
+    return { booking: toDetail(committed.reloaded) };
   }
 }
 

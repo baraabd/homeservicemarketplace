@@ -313,6 +313,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   }, [bookingsQuery.data, lang]);
   const [bookSnack, setBookSnack] = useState(false);
   const [bookSnackMsg, setBookSnackMsg] = useState('');
+  // Sprint 7.5 — bookingId returned by the just-completed accept-bid
+  // flow. Drives the snackbar's "View booking" action; null when no
+  // accept-bid has fired in this session so the snackbar shows
+  // without an action button.
+  const [bookedBookingId, setBookedBookingId] = useState<string | null>(null);
   const [tabLoading, setTabLoading] = useState(false);
 
   // ── Overlay state ──────────────────────────────────────────────────────────
@@ -495,17 +500,21 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const handleBookingTap = (b: BookingItem) => setJobDetail({ kind: 'booking', id: b.id });
 
   // ── Book bid ────────────────────────────────────────────────────────────────
-  // Bid acceptance is bound to the bids slice (out of scope for slice 3).
-  // For now this is a UI-only acknowledgement: it shows the success
-  // snackbar and closes the BidsScreen overlay so the existing demo
-  // path doesn't regress. Once the bids endpoint ships, this should
-  // call POST /v1/me/requests/:id/bids/:bidId/accept and re-let the
-  // requests query refetch.
-  const handleBookBid = (bidderName: string) => {
+  // Fires after BidsScreen successfully accepts a bid through the real
+  // /v1/me/requests/:id/bids/:bidId/accept endpoint (Sprint 7.5
+  // finished the integration). The snackbar's "View booking" action
+  // navigates the seeker to the freshly created booking detail so the
+  // post-acceptance flow lands them somewhere actionable instead of
+  // just acknowledging the event. The BidsScreen overlay closes
+  // immediately; React Query cache invalidation has already fired
+  // inside useAcceptBid so the Bookings tab is fresh by the time the
+  // user taps through.
+  const handleBookBid = (bidderName: string, bookingId: string) => {
     const fn = bidderName.split(' ')[0];
     setBookSnackMsg(
       lang === 'ar' ? `تم الحجز مع ${fn}! 🎉` : `Booked ${fn}! 🎉 Job is now active.`,
     );
+    setBookedBookingId(bookingId);
     setBookSnack(true);
     setBidsLead(null);
   };
@@ -1352,13 +1361,35 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
         </div>
       </div>
 
-      {/* Success snackbar */}
+      {/* Success snackbar — Sprint 7.5 adds the "View booking" action
+          when an accept-bid has just landed and surfaced a bookingId.
+          Tapping the action opens the JobDetailView for the new
+          booking so the seeker isn't left on the snackbar with no
+          next step. The action is omitted when no bookingId is
+          present (the snackbar is also used for other lifecycle
+          notices in future slices). */}
       <Snackbar
         visible={bookSnack}
         variant="success"
         message={bookSnackMsg}
-        onDismiss={() => setBookSnack(false)}
+        onDismiss={() => {
+          setBookSnack(false);
+          setBookedBookingId(null);
+        }}
         duration={4000}
+        action={
+          bookedBookingId
+            ? {
+                label: lang === 'ar' ? 'عرض الحجز' : 'View booking',
+                onClick: () => {
+                  const id = bookedBookingId;
+                  setBookSnack(false);
+                  setBookedBookingId(null);
+                  if (id) setJobDetail({ kind: 'booking', id });
+                },
+              }
+            : undefined
+        }
       />
     </div>
   );

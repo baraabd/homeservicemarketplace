@@ -5,14 +5,27 @@ import type {
 
 import type { ServiceRequest } from '../../app/context/EcosystemContext';
 
-// Adapter from the API's narrow available-request shape (Sprint 5.2)
-// to the legacy ServiceRequest the ProviderApp screens render. The
-// mapper:
+// Adapter from the API's narrow available-request shape (Sprint 5.2;
+// Sprint 7.4 completed the privacy-safe summary projection) to the
+// legacy ServiceRequest the ProviderApp screens render. The mapper:
 //
 //   - threads `location.lat` / `location.lng` straight through. Either
 //     may be null when the seeker's address has no captured coords;
 //     the LiveJobsScreen's Leaflet layer skips null-coord pins rather
 //     than synthesising fake positions.
+//   - threads `distanceKm` straight through. The legacy `distance`
+//     primitive is left at 0 — call sites have migrated to gate on
+//     `distanceKm !== null` since the field landed in the
+//     EcosystemContext type.
+//   - threads the privacy-safe seeker preview from the canonical wire:
+//     `seekerName` ← `seeker.publicLabel` ("Layla M." or "Customer"),
+//     `seekerRating` ← `seeker.rating ?? 0` (zero just means "no
+//     reputation data yet" — the JobDetailOverlay already gates
+//     visibility on a non-empty name and never on the rating).
+//   - threads the budget label from `budget.label`. When the seeker
+//     hasn't set a budget (today: always) the label is null and we
+//     render an empty string; the JobDetailOverlay then hides the
+//     budget tile entirely.
 //   - derives `urgency` from `scheduleType === 'ASAP'`.
 //   - maps the category slug to a default emoji; `customServiceText`
 //     requests fall back to a generic icon.
@@ -20,12 +33,6 @@ import type { ServiceRequest } from '../../app/context/EcosystemContext';
 //     the seeker's photos before the provider commits to a bid (Sprint
 //     7.x). The wire field is named `media` on the contract; the
 //     legacy ServiceRequest type uses `mediaUrls`, so we rename here.
-//   - leaves seekerName / seekerRating BLANK (the wire deliberately
-//     does not expose seeker identity until a bid is accepted, per
-//     the Sprint 5.2 security projection).
-//   - leaves `distanceKm` null until the backend Haversine projection
-//     lands; the UI is already wired to gate on `!== null` so the
-//     second pass is type-only when the field starts being populated.
 //
 // Treat the legacy `bids: Bid[]` field as "an array sized to bidsCount
 // for length-only UIs"; the screens that call .map over it have
@@ -34,9 +41,10 @@ import type { ServiceRequest } from '../../app/context/EcosystemContext';
 // The function accepts EITHER the older `AvailableJobSummary` (legacy
 // /me/provider/jobs feed) OR the canonical
 // `ProviderAvailableRequestSummary` (Sprint 5.2 `/v1/provider/available-requests`).
-// They differ only in whether the wire emits a `hasOwnBid` flag —
-// the canonical feed hides those rows server-side, so the flag is
-// gone, and the adapter treats both shapes identically.
+// The legacy feed does NOT carry distance / budget / seeker preview;
+// when one of those rows comes through, the mapper falls back to the
+// pre-7.4 empty-string / null defaults so the screens render but
+// never display a fabricated value.
 type AdaptableJob = AvailableJobSummary | ProviderAvailableRequestSummary;
 
 export function mapAvailableJobToLegacy(job: AdaptableJob): ServiceRequest {
@@ -47,6 +55,15 @@ export function mapAvailableJobToLegacy(job: AdaptableJob): ServiceRequest {
   const serviceLabelAr = job.category?.labelAr ?? job.customServiceText ?? 'طلب خدمة';
   const description = job.description ?? job.customServiceText ?? '';
 
+  // Canonical-only fields: present on ProviderAvailableRequestSummary
+  // (Sprint 7.4), absent on the legacy AvailableJobSummary. The `in`
+  // narrowing keeps both branches type-safe.
+  const isCanonical = 'seeker' in job;
+  const seekerName = isCanonical ? job.seeker.publicLabel : '';
+  const seekerRating = isCanonical ? (job.seeker.rating ?? 0) : 0;
+  const budgetLabel = isCanonical ? (job.budget.label ?? '') : '';
+  const distanceKm = isCanonical ? job.distanceKm : null;
+
   return {
     id: job.id,
     service: serviceLabelEn,
@@ -54,11 +71,11 @@ export function mapAvailableJobToLegacy(job: AdaptableJob): ServiceRequest {
     serviceIcon: icon,
     description,
     descriptionAr: description,
-    budget: '',
+    budget: budgetLabel,
     location: job.location.city,
     locationAr: job.location.city,
-    seekerName: '',
-    seekerRating: 0,
+    seekerName,
+    seekerRating,
     distance: 0,
     urgency: isUrgent ? 'urgent' : 'normal',
     postedAt: job.createdAt,
@@ -87,7 +104,7 @@ export function mapAvailableJobToLegacy(job: AdaptableJob): ServiceRequest {
     // backend that emitted `null`) would otherwise propagate
     // undefined/null to the UI's `.length` / `.map` call sites.
     mediaUrls: ('media' in job ? job.media : []) || [],
-    distanceKm: null,
+    distanceKm,
   };
 }
 

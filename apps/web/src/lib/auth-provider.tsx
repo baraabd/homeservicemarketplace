@@ -138,6 +138,13 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   useRealtimeSocket({
     enabled: !!user,
     getToken: () => getCsrfToken() ?? null,
+    // Sprint 7.6 — anti-echo: surface the authenticated user's id so
+    // the side-effects bridge can suppress UX feedback for events
+    // the user themselves triggered. Cache invalidation still runs
+    // regardless (so cross-tab convergence works), and `null` is the
+    // safe default — when no user is loaded the bridge treats every
+    // recipient as a non-actor.
+    currentUserId: user?.id ?? null,
   });
 
   const login = useCallback(async (data: authApi.LoginInput): Promise<OtpChallengeResponse> => {

@@ -4,6 +4,7 @@ import type { RealtimeEvent } from '@homeservicemarketplace/contracts';
 
 import { providerQueryKeys } from '../provider/query-keys';
 import { seekerQueryKeys } from '../seeker/query-keys';
+import { dispatchRealtimeSideEffects } from './side-effects';
 import {
   closeRealtimeSocket,
   openRealtimeSocket,
@@ -28,14 +29,39 @@ interface UseRealtimeSocketOptions {
   // socket-client re-evaluates this on every reconnect so a token
   // rotation surfaces seamlessly.
   getToken: OpenRealtimeSocketOptions['getToken'];
+  // Sprint 7.6 — the authenticated user's id. Used ONLY by the
+  // side-effects bridge to suppress UX feedback for actor-originated
+  // events; the socket connection itself is unaffected. Pass `null`
+  // when no user is loaded (the bridge then treats every recipient
+  // as a non-actor, which is the safe default).
+  currentUserId?: string | null;
 }
 
-export function useRealtimeSocket({ enabled, getToken }: UseRealtimeSocketOptions): void {
+export function useRealtimeSocket({
+  enabled,
+  getToken,
+  currentUserId,
+}: UseRealtimeSocketOptions): void {
   const qc = useQueryClient();
   // Stash the latest dispatcher so we don't tear down the socket
   // every render cycle just because the closure identity changed.
+  // Sprint 7.5.1: every event fans out through TWO pure dispatchers:
+  //   - dispatchInvalidations  → React Query cache refresh
+  //   - dispatchRealtimeSideEffects → toast + sound + vibration (with
+  //                                   built-in dedupe)
+  // Keeping them separate means cache logic stays testable without
+  // mocking sonner, and side-effects stay testable without a
+  // QueryClient.
+  //
+  // Sprint 7.6 anti-echo: the side-effects dispatcher now receives
+  // `currentUserId` so it can early-return when the recipient is the
+  // event's actor. Cache invalidation runs UNCONDITIONALLY so the
+  // actor's own tabs/devices still converge on the new state.
   const dispatchRef = useRef<(event: RealtimeEvent) => void>(() => {});
-  dispatchRef.current = (event) => dispatchInvalidations(qc, event);
+  dispatchRef.current = (event) => {
+    dispatchInvalidations(qc, event);
+    dispatchRealtimeSideEffects(event, { currentUserId: currentUserId ?? null });
+  };
 
   useEffect(() => {
     if (!enabled) {
@@ -52,7 +78,9 @@ export function useRealtimeSocket({ enabled, getToken }: UseRealtimeSocketOption
     // getToken is expected to be a stable reference (a function that
     // reads from a closure, not one allocated per render). The hook
     // otherwise restarts the socket on every render which would lose
-    // every event between renders.
+    // every event between renders. currentUserId intentionally NOT
+    // in the dep list — the latest value is captured via the ref
+    // closure above so a userId change does NOT tear the socket down.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 }
@@ -93,6 +121,13 @@ export function dispatchInvalidations(qc: QueryClient, event: RealtimeEvent): vo
       qc.invalidateQueries({ queryKey: providerQueryKeys.bids.root });
       qc.invalidateQueries({ queryKey: providerQueryKeys.bookings.root });
       qc.invalidateQueries({ queryKey: seekerQueryKeys.bookings.root });
+      break;
+    case 'booking.created':
+      // Sprint 7.5 publishes booking.created alongside bid.accepted on
+      // a successful accept-bid. Invalidate both sides' bookings roots
+      // so the new row appears without a manual refetch.
+      qc.invalidateQueries({ queryKey: seekerQueryKeys.bookings.root });
+      qc.invalidateQueries({ queryKey: providerQueryKeys.bookings.root });
       break;
     case 'booking.status_changed':
       qc.invalidateQueries({ queryKey: seekerQueryKeys.bookings.root });
