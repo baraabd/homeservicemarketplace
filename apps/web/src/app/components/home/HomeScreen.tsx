@@ -51,7 +51,7 @@ import {
 import {
   formatRelativeTime,
   mapServiceCategorySlug,
-  mapServiceRequestStatus,
+  mapLeadStatus,
 } from '../../../lib/seeker/request-status-map';
 
 // ─── Tab routing ──────────────────────────────────────────────────────────────
@@ -293,7 +293,12 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
     return items.map((r) => ({
       id: r.id,
       service: mapServiceCategorySlug(r.category?.slug ?? null),
-      status: mapServiceRequestStatus(r.status),
+      // Sprint 7.x — booking-aware status. activeBookingStatus is
+      // null until the seeker accepts a bid; once a booking exists it
+      // overrides the parent request status for "completed" /
+      // "cancelled" so the card visibly converges with the booking
+      // lifecycle (the request itself stays at BID_ACCEPTED).
+      status: mapLeadStatus(r.status, r.activeBookingStatus),
       postedAt: formatRelativeTime(r.createdAt, lang === 'ar' ? 'ar' : 'en'),
       // bids/price not yet available — those ship with the bids slice.
       bids: undefined,

@@ -221,11 +221,28 @@ function stepsForRequest(
 
 function stepsForBooking(
   status: BookingStatus,
-  events: { type: string; createdAt: string }[],
+  events: { type: string; metadata?: Record<string, unknown> | null; createdAt: string }[],
   lang: 'en' | 'ar',
 ): StepInfo[] {
   const find = (type: string) => events.find((e) => e.type === type);
   const created = find('BOOKING_CREATED');
+  // Sprint 7.x — BOOKING_STATUS_CHANGED events are emitted by the
+  // provider lifecycle service (start / complete) with metadata.to
+  // carrying the target status. There can be MORE THAN ONE — start
+  // writes `to: 'IN_PROGRESS'`, complete writes `to: 'COMPLETED'` —
+  // so the simple `find(type)` would return only the first. We
+  // filter by metadata.to to pull the exact transition timestamp for
+  // each step.
+  const findStatusChange = (to: BookingStatus) =>
+    events.find(
+      (e) =>
+        e.type === 'BOOKING_STATUS_CHANGED' &&
+        e.metadata !== null &&
+        typeof e.metadata === 'object' &&
+        (e.metadata as { to?: unknown }).to === to,
+    );
+  const startedEvent = findStatusChange('IN_PROGRESS');
+  const completedEvent = findStatusChange('COMPLETED');
   const isInProgress = status === 'IN_PROGRESS';
   const isCompleted = status === 'COMPLETED';
   return [
@@ -242,11 +259,18 @@ function stepsForBooking(
     // Pro Assigned: the BOOKING_CREATED event marks the moment the bid
     // was accepted and the booking row was written.
     { done: !!created, doneAt: formatTimeOfDay(created?.createdAt ?? null, lang) },
-    // In Progress: BOOKING_STATUS_CHANGED → IN_PROGRESS — not emitted in
-    // slice 2.3. Done only when status is currently IN_PROGRESS or beyond.
-    { done: isInProgress || isCompleted, doneAt: null },
-    // Completed: same caveat. Done only when status === COMPLETED.
-    { done: isCompleted, doneAt: null },
+    // In Progress: BOOKING_STATUS_CHANGED with metadata.to === 'IN_PROGRESS'.
+    // Sprint 7.x — also surfaces the wall-clock timestamp (e.g. "1:09 PM")
+    // beside the stage when the event row is present.
+    {
+      done: isInProgress || isCompleted || !!startedEvent,
+      doneAt: formatTimeOfDay(startedEvent?.createdAt ?? null, lang),
+    },
+    // Completed: BOOKING_STATUS_CHANGED with metadata.to === 'COMPLETED'.
+    {
+      done: isCompleted || !!completedEvent,
+      doneAt: formatTimeOfDay(completedEvent?.createdAt ?? null, lang),
+    },
   ];
   // BOOKING_CANCELLED events are not surfaced through the 5-step timeline;
   // the top-of-screen status pill ("Cancelled") communicates that. The

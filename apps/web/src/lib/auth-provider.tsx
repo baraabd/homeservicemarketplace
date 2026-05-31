@@ -4,6 +4,7 @@ import type { AxiosError } from 'axios';
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import * as authApi from './auth-api';
 import { clearIntendedApp } from './intended-app';
+import { useNotificationArrivalWatcher } from './realtime/notification-arrival-watcher';
 import { useRealtimeSocket } from './realtime/use-realtime-socket';
 
 // ─── Query client factory ────────────────────────────────────────────────────
@@ -157,6 +158,18 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     // regardless (so cross-tab convergence works), and `null` is the
     // safe default — when no user is loaded the bridge treats every
     // recipient as a non-actor.
+    currentUserId: user?.id ?? null,
+  });
+
+  // Sprint 7.x — polling-parity notification arrival watcher. Mounted
+  // here (above the Router) so it survives page navigation and
+  // user-switch cleanup. Observes the seeker notification list
+  // cache; when REST polling pulls a new row that the socket did NOT
+  // already deliver, this fires the SAME toast / sound / vibration
+  // + cache invalidations the socket would. Shared dedupe collapses
+  // socket+polling duplicates into one UX event.
+  useNotificationArrivalWatcher({
+    enabled: !!user,
     currentUserId: user?.id ?? null,
   });
 

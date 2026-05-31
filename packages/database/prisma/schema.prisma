@@ -665,6 +665,12 @@ enum NotificationType {
   BID_RECEIVED
   BID_ACCEPTED
   BOOKING_CREATED
+  // Sprint 7.x — emitted when the provider starts a scheduled booking
+  // (SCHEDULED → IN_PROGRESS). Required because the polling fallback
+  // cannot surface an IN_PROGRESS toast without a persisted notification
+  // row, and the existing BOOKING_CREATED / BOOKING_COMPLETED
+  // semantics don't cover the start transition cleanly.
+  BOOKING_IN_PROGRESS
   BOOKING_CANCELLED
   BOOKING_COMPLETED
   MESSAGE_RECEIVED

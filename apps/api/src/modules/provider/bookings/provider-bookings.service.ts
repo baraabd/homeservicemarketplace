@@ -16,6 +16,17 @@ import {
   NotificationType,
 } from '@homeservicemarketplace/database';
 
+// Sprint 7.x — defensive lookup mirroring the REQUEST_AVAILABLE
+// pattern. `BOOKING_IN_PROGRESS` lands via the
+// 20260601120000 migration; until the generated Prisma client is
+// regenerated on a clean checkout, the runtime enum object may not
+// yet include the new value. We reference the literal directly + cast
+// so the start-transition fan-out works the moment the migration is
+// applied — regenerate is purely a TS-side concern.
+const BOOKING_IN_PROGRESS_TYPE: NotificationType =
+  (NotificationType as Record<string, NotificationType>).BOOKING_IN_PROGRESS ??
+  ('BOOKING_IN_PROGRESS' as NotificationType);
+
 import { BookingEventRepository } from '../../../infrastructure/persistence/bookings/booking-event.repository';
 import {
   BookingRepository,
@@ -123,10 +134,18 @@ export class ProviderBookingsService {
       [BookingStatus.SCHEDULED],
       BookingStatus.IN_PROGRESS,
       BookingEventType.BOOKING_STATUS_CHANGED,
-      // No notification on start — matches typical marketplace UX
-      // where the provider arriving is signalled via the conversation
-      // surface, not a push notification.
-      null,
+      // Sprint 7.x — reversal of the original "no notification on
+      // start" choice. The polling fallback (when the seeker's socket
+      // is offline) cannot surface an "In Progress" toast without a
+      // persisted notification row; the booking.status_changed event
+      // alone is socket-only. The new BOOKING_IN_PROGRESS type covers
+      // the start transition with a distinct semantic name (vs.
+      // overloading BOOKING_CREATED).
+      {
+        type: BOOKING_IN_PROGRESS_TYPE,
+        title: 'Booking started',
+        body: (booking) => `${booking.provider.displayName} started your booking.`,
+      },
       'Cannot start a booking that is not scheduled.',
     );
   }
@@ -224,6 +243,13 @@ export class ProviderBookingsService {
         // is threaded through so the realtime envelope's anti-echo
         // gate can suppress UX on the provider's own tabs (the seeker
         // is never the actor here, so they always see the toast).
+        //
+        // Sprint 7.x — metadata now carries `from` + `to` + `bookingId`
+        // so the frontend status-normalizer can derive the lifecycle
+        // status from notification.created (REST polling path) WITHOUT
+        // needing the paired booking.status_changed realtime event.
+        // This is what makes polling fallback fire toast + sound +
+        // vibration with the right copy when the socket is offline.
         await this.notifications.createForUser(
           {
             userId: existing.seekerUserId,
@@ -233,7 +259,13 @@ export class ProviderBookingsService {
             resourceType: NotificationResourceType.BOOKING,
             resourceId: bookingId,
             deepLink: `/home/bookings/${bookingId}`,
-            metadata: { requestId: existing.requestId, providerId: profile.id },
+            metadata: {
+              requestId: existing.requestId,
+              providerId: profile.id,
+              bookingId,
+              from: existing.status,
+              to,
+            },
             actorUserId: providerUserId,
           },
           tx,

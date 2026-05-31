@@ -1,4 +1,4 @@
-import type { ServiceRequestStatus } from '@homeservicemarketplace/contracts';
+import type { BookingStatus, ServiceRequestStatus } from '@homeservicemarketplace/contracts';
 
 // Map the backend ServiceRequestStatus enum to the existing
 // LeadCardProps.status string set the UI components key colour /
@@ -34,6 +34,35 @@ export function mapServiceRequestStatus(status: ServiceRequestStatus): LeadStatu
       return 'pending';
     }
   }
+}
+
+// Sprint 7.x — booking-aware lead status. The parent ServiceRequest
+// intentionally stays at BID_ACCEPTED across booking lifecycle
+// (cancel/complete do NOT auto-revert the request — documented in
+// useBookings.ts). Without this overlay, an Active Leads card would
+// visually stay at "active" even after the provider completed or
+// cancelled the booking — the bug the user reported.
+//
+// `activeBookingStatus` ships on ServiceRequestSummary (Sprint 7.x
+// backend) and reflects the latest non-deleted booking's status.
+// When present, the booking lifecycle wins:
+//   SCHEDULED        → keep request status (active when BID_ACCEPTED)
+//   IN_PROGRESS      → active (same pill, but the card / detail
+//                              surfaces the lifecycle)
+//   COMPLETED        → completed
+//   CANCELLED        → cancelled
+//
+// When `activeBookingStatus` is null (no booking yet — request is
+// still OPEN_FOR_BIDS), fall through to the request status mapping.
+export function mapLeadStatus(
+  requestStatus: ServiceRequestStatus,
+  activeBookingStatus: BookingStatus | null | undefined,
+): LeadStatus {
+  if (activeBookingStatus === 'COMPLETED') return 'completed';
+  if (activeBookingStatus === 'CANCELLED') return 'cancelled';
+  // SCHEDULED + IN_PROGRESS both map to "active" — same pill. The
+  // detail surface (JobDetailView) renders the finer-grained stage.
+  return mapServiceRequestStatus(requestStatus);
 }
 
 // Convert the backend category labels (English/Arabic on the wire) to

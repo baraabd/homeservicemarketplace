@@ -152,6 +152,12 @@ export class BookingsService {
               bookingId,
               requestId: existing.requestId,
               cancelledBy: 'seeker',
+              // Sprint 7.x — explicit `to` so the provider-side
+              // frontend status-normalizer can derive the lifecycle
+              // status from this notification.created event without
+              // needing the paired booking.status_changed.
+              from: existing.status,
+              to: BookingStatus.CANCELLED,
             },
             actorUserId: seekerUserId,
           },

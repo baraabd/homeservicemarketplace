@@ -59,6 +59,8 @@ type RealtimeStringKey =
   | 'realtime.notif.BID_ACCEPTED.body'
   | 'realtime.notif.BOOKING_CREATED.title'
   | 'realtime.notif.BOOKING_CREATED.body'
+  | 'realtime.notif.BOOKING_IN_PROGRESS.title'
+  | 'realtime.notif.BOOKING_IN_PROGRESS.body'
   | 'realtime.notif.BOOKING_CANCELLED.title'
   | 'realtime.notif.BOOKING_CANCELLED.body'
   | 'realtime.notif.BOOKING_CANCELLED.bySeeker.body'
@@ -90,6 +92,8 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.notif.BID_ACCEPTED.body': 'Your bid was accepted.',
     'realtime.notif.BOOKING_CREATED.title': 'Booking confirmed',
     'realtime.notif.BOOKING_CREATED.body': 'You have a new scheduled booking.',
+    'realtime.notif.BOOKING_IN_PROGRESS.title': 'Booking started',
+    'realtime.notif.BOOKING_IN_PROGRESS.body': 'The provider started your booking.',
     'realtime.notif.BOOKING_CANCELLED.title': 'Booking cancelled',
     'realtime.notif.BOOKING_CANCELLED.body': 'The booking was cancelled.',
     'realtime.notif.BOOKING_CANCELLED.bySeeker.body': 'The seeker cancelled the booking.',
@@ -119,6 +123,8 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.notif.BID_ACCEPTED.body': 'تم قبول عرضك.',
     'realtime.notif.BOOKING_CREATED.title': 'تم تأكيد الحجز',
     'realtime.notif.BOOKING_CREATED.body': 'لديك حجز جديد مجدول.',
+    'realtime.notif.BOOKING_IN_PROGRESS.title': 'بدأ تنفيذ الحجز',
+    'realtime.notif.BOOKING_IN_PROGRESS.body': 'بدأ مقدم الخدمة تنفيذ حجزك.',
     'realtime.notif.BOOKING_CANCELLED.title': 'تم إلغاء الحجز',
     'realtime.notif.BOOKING_CANCELLED.body': 'تم إلغاء الحجز.',
     'realtime.notif.BOOKING_CANCELLED.bySeeker.body': 'قام العميل بإلغاء الحجز.',

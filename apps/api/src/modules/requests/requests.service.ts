@@ -607,8 +607,17 @@ export function normaliseCityKey(city: string): string {
 
 // Persistence row → wire DTO. Drops infra-only fields and re-shapes the
 // bundled category to the lightweight ref the request views need.
+//
+// Sprint 7.x — also surfaces the latest live booking's id / status /
+// updatedAt onto activeBooking* so the seeker's Active Leads card can
+// derive the lifecycle state (e.g. "In Progress") even after a hard
+// refresh (the parent ServiceRequest stays at BID_ACCEPTED across
+// booking transitions). When no booking exists yet — or the request
+// is still OPEN_FOR_BIDS — all three fields are null and the card
+// falls back to the request status.
 function toSummary(row: ServiceRequestWithCategory): ServiceRequestSummary {
   const snapshot = row.addressSnapshot as unknown as AddressSnapshot;
+  const latestBooking = row.bookings && row.bookings.length > 0 ? row.bookings[0] : null;
   return {
     id: row.id,
     status: row.status,
@@ -626,6 +635,9 @@ function toSummary(row: ServiceRequestWithCategory): ServiceRequestSummary {
     scheduledAt: row.scheduledAt ? row.scheduledAt.toISOString() : null,
     addressSnapshot: snapshot,
     bidsCount: 0,
+    activeBookingId: latestBooking?.id ?? null,
+    activeBookingStatus: latestBooking?.status ?? null,
+    activeBookingUpdatedAt: latestBooking?.updatedAt ? latestBooking.updatedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
