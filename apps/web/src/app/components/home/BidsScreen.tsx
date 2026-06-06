@@ -361,7 +361,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
               {bids.map((bid) => {
                 const badgeCfg = bid.badge ? BADGE_CONFIG[bid.badge] : null;
                 const isAccepted = acceptedId === bid.id;
-                const av = avatarFor(bid.provider.id);
+                const av = avatarFor(bid.provider?.id ?? '');
                 const respText = responseTimeText(
                   bid.responseTimeMinutes,
                   lang === 'ar' ? 'ar' : 'en',
@@ -402,15 +402,15 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                         initials={bid.provider?.initials ?? ''}
                         avatarBg={av.bg}
                         avatarColor={av.color}
-                        avatarUrl={bid.provider.avatarUrl ?? undefined}
-                        rating={bid.provider.ratingAvg}
-                        reviewCount={bid.provider.reviewCount}
-                        jobCount={bid.provider.completedJobs}
+                        avatarUrl={bid.provider?.avatarUrl ?? undefined}
+                        rating={bid.provider?.ratingAvg ?? 0}
+                        reviewCount={bid.provider?.reviewCount ?? 0}
+                        jobCount={bid.provider?.completedJobs ?? 0}
                         price={bid.amount}
                         unit={bid.pricingType === 'HOURLY' ? '/hr' : '/job'}
                         tags={[]}
-                        verified={bid.provider.verified}
-                        topPro={bid.provider.topPro}
+                        verified={bid.provider?.verified ?? false}
+                        topPro={bid.provider?.topPro ?? false}
                         responseTime={respText}
                         showPrice={showHourlyRate}
                         onBook={() => handleBook(bid)}
@@ -447,7 +447,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                   </thead>
                   <tbody>
                     {bids.slice(0, 4).map((bid) => {
-                      const av = avatarFor(bid.provider.id);
+                      const av = avatarFor(bid.provider?.id ?? '');
                       const respText = responseTimeText(
                         bid.responseTimeMinutes,
                         lang === 'ar' ? 'ar' : 'en',
@@ -476,7 +476,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                           </td>
                           <td className="text-center py-2 px-2">
                             <span className="text-amber-600 font-bold">
-                              {bid.provider.ratingAvg.toFixed(1)}
+                              {(bid.provider?.ratingAvg ?? 0).toFixed(1)}
                             </span>
                           </td>
                           {showHourlyRate && (

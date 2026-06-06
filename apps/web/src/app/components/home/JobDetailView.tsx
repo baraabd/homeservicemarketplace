@@ -558,7 +558,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
       // Compact, display-only address (see request branch above).
       address: formatServiceAddressForDisplay(b.addressSnapshot) || null,
       media: (b as BookingDetail & { requestMediaUrls?: string[] }).requestMediaUrls ?? [],
-      provider: b.provider,
+      provider: b.provider ?? null,
       priceAmount: b.priceAmount,
       pricingType: b.pricingType,
       description: b.description,
@@ -586,7 +586,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
   const providerLabel = langKey === 'ar' ? 'مزود الخدمة' : 'Provider';
   const providerNamePrivacy = render?.provider
     ? formatPrivacyDisplayName(
-        { displayName: render.provider.displayName },
+        { displayName: render.provider?.displayName ?? '' },
         { roleFallback: providerLabel },
       )
     : providerLabel;
@@ -787,9 +787,10 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                         {providerNamePrivacy}
                       </p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <Stars rating={render.provider.ratingAvg} />
+                        <Stars rating={render.provider?.ratingAvg ?? 0} />
                         <span className="text-slate-500" style={{ fontSize: '11px' }}>
-                          {render.provider.ratingAvg.toFixed(1)} · {render.provider.reviewCount}{' '}
+                          {(render.provider?.ratingAvg ?? 0).toFixed(1)} ·{' '}
+                          {render.provider?.reviewCount ?? 0}{' '}
                           {langKey === 'ar' ? 'تقييم' : 'reviews'}
                         </span>
                       </div>
