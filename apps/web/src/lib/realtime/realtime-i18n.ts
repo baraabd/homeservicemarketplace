@@ -80,7 +80,11 @@ type RealtimeStringKey =
   // taps it to open the drawer.
   | 'realtime.notif.aggregate.title'
   | 'realtime.notif.aggregate.body.singular'
-  | 'realtime.notif.aggregate.body.plural';
+  | 'realtime.notif.aggregate.body.plural'
+  // Sprint 7.13 — count-less variant shown on the FIRST login on a
+  // device (no prior baseline to diff against). We must NOT claim a
+  // specific "N new" when N is really the historical unread total.
+  | 'realtime.notif.aggregate.body.generic';
 
 const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
   en: {
@@ -121,6 +125,7 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.notif.aggregate.title': 'You have new notifications',
     'realtime.notif.aggregate.body.singular': 'Tap to review.',
     'realtime.notif.aggregate.body.plural': '{count} new notifications to review.',
+    'realtime.notif.aggregate.body.generic': 'You have unread notifications to review.',
   },
   ar: {
     'realtime.booking.statusChanged': 'تم تحديث حالة الحجز',
@@ -155,6 +160,7 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.notif.aggregate.title': 'لديك إشعارات جديدة',
     'realtime.notif.aggregate.body.singular': 'اضغط للاطلاع عليها.',
     'realtime.notif.aggregate.body.plural': '{count} إشعارات جديدة للاطلاع عليها.',
+    'realtime.notif.aggregate.body.generic': 'لديك إشعارات غير مقروءة للاطلاع عليها.',
   },
 };
 

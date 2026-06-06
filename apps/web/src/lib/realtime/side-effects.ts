@@ -446,7 +446,11 @@ export function pruneDedupeStore(now: number = nowMs()): void {
 // (`realtime.notif.aggregate.title` + `.body`).
 export interface EmitAggregateNotificationToastOptions {
   experience: NotificationExperience;
-  count: number;
+  // Genuinely-new notification count to announce ("{count} new …").
+  // Omit / pass null to render the count-less generic body — used on
+  // the first login on a device, where the only number available is
+  // the historical unread total, which must NOT be presented as "new".
+  count?: number | null;
   // When set, the toast renders a "View" action that navigates to the
   // notifications drawer/page for that experience. Defaults to no
   // action — the user can open the drawer themselves.
@@ -466,13 +470,19 @@ export function emitAggregateNotificationToast(
   // (Production: AuthProvider always sets it before the watcher fires.)
   const className = getNotificationToastClassName(experience, 'aggregate');
   const title = translateRealtime('realtime.notif.aggregate.title');
-  const body =
-    options.count > 1
-      ? translateRealtime('realtime.notif.aggregate.body.plural').replace(
-          '{count}',
-          String(options.count),
-        )
-      : translateRealtime('realtime.notif.aggregate.body.singular');
+  const count = options.count;
+  let body: string;
+  if (count == null) {
+    // No reliable "new since last visit" count → generic copy.
+    body = translateRealtime('realtime.notif.aggregate.body.generic');
+  } else if (count > 1) {
+    body = translateRealtime('realtime.notif.aggregate.body.plural').replace(
+      '{count}',
+      String(count),
+    );
+  } else {
+    body = translateRealtime('realtime.notif.aggregate.body.singular');
+  }
   const opts: {
     description: string;
     className: string;

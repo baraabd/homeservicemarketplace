@@ -7,6 +7,8 @@ import {
   __resetNotificationArrivalWatcherForTests,
   useNotificationArrivalWatcher,
 } from './notification-arrival-watcher';
+import { readNotificationBaseline, writeNotificationBaseline } from './notification-baseline';
+import type { NotificationExperience } from './notification-target';
 import { __resetSideEffectsForTests } from './side-effects';
 import { __resetRealtimeI18nForTests } from './realtime-i18n';
 import { __resetNotificationUXForTests } from './notification-ux';
@@ -112,6 +114,33 @@ function notif(over: {
     readAt: null,
     createdAt: over.createdAt,
   } as unknown as NotificationListResponse['items'][number];
+}
+
+// Experience-aware mount used by the Sprint 7.13 baseline tests so we
+// can seed the matching (seeker|provider) list query key.
+function setupExp(args: {
+  userId: string;
+  experience: NotificationExperience;
+  initial: NotificationListResponse;
+}) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  qc.setQueryData([args.experience, 'notifications', 'list', {}], args.initial);
+  function Probe() {
+    useNotificationArrivalWatcher({
+      enabled: true,
+      currentUserId: args.userId,
+      experience: args.experience,
+    });
+    return null;
+  }
+  const view = render(
+    <QueryClientProvider client={qc}>
+      <Probe />
+    </QueryClientProvider>,
+  );
+  return { qc, unmount: view.unmount };
 }
 
 describe('NotificationArrivalWatcher — REGRESSION TARGET', () => {
@@ -432,5 +461,84 @@ describe('NotificationArrivalWatcher — Sprint 7.12 storm protection', () => {
       nextCursor: null,
     });
     expect(toastDefault).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─── Sprint 7.13 — new-count baseline semantics ───
+//
+// The login aggregate must announce only genuinely-NEW unread rows
+// since the last visit — never the historical unread total. On the
+// first login on a device (no prior baseline) we show a count-less
+// generic hint; on a returning login we diff against the persisted
+// cursor.
+describe('NotificationArrivalWatcher — Sprint 7.13 new-count baseline', () => {
+  function manyUnread(n: number): NotificationListResponse {
+    return {
+      items: Array.from({ length: n }, (_, i) =>
+        notif({ id: `hist-${i}`, createdAt: `2026-05-01T10:00:${String(i).padStart(2, '0')}Z` }),
+      ),
+      nextCursor: null,
+    };
+  }
+
+  it('first login with 50 historical unread does NOT claim "50 new" — generic copy only', () => {
+    setupExp({ userId: 'u-seeker', experience: 'seeker', initial: manyUnread(50) });
+    expect(toastDefault).toHaveBeenCalledTimes(1);
+    const [, opts] = toastDefault.mock.calls[0] as [string, { description?: string }];
+    // Generic body, never the historical total.
+    expect(opts.description).toBe('You have unread notifications to review.');
+    expect(opts.description).not.toMatch(/50/);
+  });
+
+  it('first login establishes a persisted baseline (newest createdAt)', () => {
+    setupExp({ userId: 'u-seeker', experience: 'seeker', initial: manyUnread(3) });
+    const baseline = readNotificationBaseline('seeker', 'u-seeker');
+    expect(baseline?.lastSeenCreatedAt).toBe('2026-05-01T10:00:02Z');
+  });
+
+  it('returning login announces only the genuinely-new unread since the baseline', () => {
+    // Simulate a prior visit by seeding the persisted cursor.
+    writeNotificationBaseline('seeker', 'u-seeker', '2026-05-01T10:00:00Z');
+    // Backlog: one OLD unread (<= cursor) + two NEW unread (> cursor).
+    setupExp({
+      userId: 'u-seeker',
+      experience: 'seeker',
+      initial: {
+        items: [
+          notif({ id: 'old', createdAt: '2026-05-01T10:00:00Z' }),
+          notif({ id: 'new-1', createdAt: '2026-05-02T09:00:00Z' }),
+          notif({ id: 'new-2', createdAt: '2026-05-02T09:30:00Z' }),
+        ],
+        nextCursor: null,
+      },
+    });
+    expect(toastDefault).toHaveBeenCalledTimes(1);
+    const [, opts] = toastDefault.mock.calls[0] as [string, { description?: string }];
+    // Exactly "2 new" — not 3 (the old unread row is excluded).
+    expect(opts.description).toBe('2 new notifications to review.');
+  });
+
+  it('returning login with no new rows since the baseline fires NO aggregate', () => {
+    writeNotificationBaseline('seeker', 'u-seeker', '2026-05-02T12:00:00Z');
+    setupExp({
+      userId: 'u-seeker',
+      experience: 'seeker',
+      initial: manyUnread(5), // all created 2026-05-01, older than the cursor
+    });
+    expect(toastDefault).not.toHaveBeenCalled();
+  });
+
+  it('seeker and provider baselines are independent', () => {
+    setupExp({ userId: 'u-1', experience: 'seeker', initial: manyUnread(2) });
+    expect(readNotificationBaseline('seeker', 'u-1')?.lastSeenCreatedAt).toBeTruthy();
+    // Provider baseline for the same user id is still untouched.
+    expect(readNotificationBaseline('provider', 'u-1')).toBeNull();
+  });
+
+  it('user switch does not leak the baseline (keyed per user)', () => {
+    setupExp({ userId: 'u-A', experience: 'seeker', initial: manyUnread(2) });
+    expect(readNotificationBaseline('seeker', 'u-A')?.lastSeenCreatedAt).toBeTruthy();
+    // A different user has no baseline → first-login generic path.
+    expect(readNotificationBaseline('seeker', 'u-B')).toBeNull();
   });
 });

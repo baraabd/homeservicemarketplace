@@ -49,6 +49,11 @@ import {
 } from './side-effects';
 import { setRealtimeExperience } from './realtime-experience';
 import type { NotificationExperience } from './notification-target';
+import {
+  __clearAllNotificationBaselinesForTests,
+  readNotificationBaseline,
+  writeNotificationBaseline,
+} from './notification-baseline';
 
 // Threshold above which a single polling batch collapses to one
 // aggregate toast instead of N individual toasts. Tuned so quick
@@ -198,7 +203,18 @@ function seedBaselineFromCache(
       ? providerQueryKeys.notifications.root
       : seekerQueryKeys.notifications.root;
   const lists = cache.findAll({ queryKey: rootKey });
-  let unreadCount = 0;
+
+  // Sprint 7.13 — diff the current backlog against the PERSISTED
+  // cross-session cursor so we announce only genuinely-new unread rows,
+  // never the historical unread total. `null` means "no prior baseline
+  // on this device" → first login here.
+  const prevBaseline = readNotificationBaseline(experience, userId);
+  const prevCursor = prevBaseline?.lastSeenCreatedAt ?? null;
+
+  let totalUnread = 0;
+  let newUnreadSinceBaseline = 0;
+  let newestCreatedAt: string | null = null;
+
   for (const query of lists) {
     const queryKey = query.queryKey;
     if (
@@ -216,19 +232,48 @@ function seedBaselineFromCache(
       if (!wm.lastSeenCreatedAt || n.createdAt > wm.lastSeenCreatedAt) {
         wm.lastSeenCreatedAt = n.createdAt;
       }
-      if (n.readAt === null) unreadCount += 1;
+      if (!newestCreatedAt || n.createdAt > newestCreatedAt) {
+        newestCreatedAt = n.createdAt;
+      }
+      if (n.readAt === null) {
+        totalUnread += 1;
+        // "New" = unread AND created after the last visit's cursor.
+        if (prevCursor === null || n.createdAt > prevCursor) {
+          newUnreadSinceBaseline += 1;
+        }
+      }
     }
   }
   wm.baselineSet = true;
-  if (unreadCount > 0) {
-    // Briefly switch the experience bridge so the aggregate toast
-    // carries the right brand variant. The bridge is normally set by
-    // RootInner from `location.pathname`; on initial mount RootInner
-    // may not have run its effect yet, so we set it explicitly here.
+
+  // Advance the persisted cursor to the newest row we've now seen so
+  // the NEXT login diffs against this visit — not the account's whole
+  // history. Does NOT mark anything as read; it's a separate concept.
+  writeNotificationBaseline(experience, userId, newestCreatedAt);
+
+  // Decide whether to surface a single aggregate hint.
+  if (prevCursor === null) {
+    // First login on this device: we cannot compute a trustworthy
+    // "new since last visit" count (the only number we have is the
+    // historical unread total), so show a count-less generic hint —
+    // never "50 new notifications".
+    if (totalUnread > 0) {
+      setRealtimeExperience(experience);
+      emitAggregateNotificationToast({
+        experience,
+        count: null,
+        drawerDeepLink: experience === 'provider' ? '/provider/notifications' : '/home/profile',
+      });
+    }
+    return;
+  }
+
+  // Returning visit: announce ONLY the genuinely-new unread rows.
+  if (newUnreadSinceBaseline > 0) {
     setRealtimeExperience(experience);
     emitAggregateNotificationToast({
       experience,
-      count: unreadCount,
+      count: newUnreadSinceBaseline,
       drawerDeepLink: experience === 'provider' ? '/provider/notifications' : '/home/profile',
     });
   }
@@ -269,6 +314,10 @@ function processNotificationBatch(
     }
   }
   wm.lastSeenCreatedAt = nextWatermark;
+  // Keep the cross-session cursor in step with rows seen this session so
+  // notifications that arrived while logged in are not re-counted as
+  // "new" on the next login. writeNotificationBaseline never rewinds.
+  writeNotificationBaseline(experience, userId, nextWatermark);
 
   if (fresh.length === 0) return;
 
@@ -328,4 +377,5 @@ function processNotificationBatch(
 // the user-switch effect handles natural cleanup.
 export function __resetNotificationArrivalWatcherForTests(): void {
   watermarks.clear();
+  __clearAllNotificationBaselinesForTests();
 }
