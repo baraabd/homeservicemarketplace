@@ -36,6 +36,8 @@ import { Snackbar } from '../ds/Snackbar';
 import { ProfileTab } from '../profile/ProfileTab';
 import { TabSkeleton } from '../ui/SkeletonLoader';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
+import { formatServiceAddressForDisplay } from '../../../lib/address-display';
+import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
 import { useEcosystem } from '../../context/EcosystemContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { useServiceCategories } from '../../../lib/use-service-categories';
@@ -146,16 +148,20 @@ function apiBookingToItem(row: BookingListItem, lang: 'en' | 'ar'): BookingItem 
     dateEn: formatBookingDate(row.scheduledAt, 'en'),
     dateAr: formatBookingDate(row.scheduledAt, 'ar'),
     statusKey: statusKeyFor(row.status),
-    proEn: row.provider.displayName,
-    proAr: row.provider.displayName,
+    // Sprint 7.13 — privacy-safe provider name (initial + family name).
+    proEn: formatPrivacyDisplayName(
+      { displayName: row.provider.displayName },
+      { roleFallback: 'Provider' },
+    ),
+    proAr: formatPrivacyDisplayName(
+      { displayName: row.provider.displayName },
+      { roleFallback: 'مزود الخدمة' },
+    ),
     proInitials: row.provider.initials,
     price: row.priceAmount,
-    address: row.addressSnapshot.line1
-      ? `${row.addressSnapshot.line1}, ${row.addressSnapshot.city}`
-      : undefined,
-    addressAr: row.addressSnapshot.line1
-      ? `${row.addressSnapshot.line1}, ${row.addressSnapshot.city}`
-      : undefined,
+    // Sprint 7.13 — compact, display-only address (raw snapshot untouched).
+    address: formatServiceAddressForDisplay(row.addressSnapshot) || undefined,
+    addressAr: formatServiceAddressForDisplay(row.addressSnapshot) || undefined,
   };
 }
 
@@ -265,6 +271,14 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const navigate = useNavigate();
   const { t, lang } = useLang();
   const { showHourlyRate } = useEcosystem();
+
+  // Sprint 7.13 — privacy-safe name for the seeker's chat counterpart
+  // (the provider): given-name initial + full family name.
+  const formatChatName = (displayName: string): string =>
+    formatPrivacyDisplayName(
+      { displayName },
+      { roleFallback: lang === 'ar' ? 'مزود الخدمة' : 'Provider' },
+    );
   // Read the authenticated identity from the existing auth source of truth.
   // Do not duplicate auth state here and do not fall back to hardcoded
   // placeholder copy — we'd rather render nothing than a fake identity.
@@ -472,7 +486,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
           if (conv) {
             setChatContact({
               conversationId: conv.id,
-              name: conv.otherParticipant.displayName,
+              name: formatChatName(conv.otherParticipant.displayName),
               initials: conv.otherParticipant.initials,
               bg: 'bg-amber-100',
               textColor: 'text-amber-700',
@@ -1102,7 +1116,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                     onClick={() =>
                       setChatContact({
                         conversationId: c.id,
-                        name: c.otherParticipant.displayName,
+                        name: formatChatName(c.otherParticipant.displayName),
                         initials: c.otherParticipant.initials,
                         bg: 'bg-amber-100',
                         textColor: 'text-amber-700',
@@ -1124,7 +1138,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                         className="text-slate-900 dark:text-white"
                         style={{ fontSize: '14px', fontWeight: 700 }}
                       >
-                        {c.otherParticipant.displayName}
+                        {formatChatName(c.otherParticipant.displayName)}
                       </p>
                       <p className="text-slate-400 truncate" style={{ fontSize: '12px' }}>
                         {c.lastMessageBody ??

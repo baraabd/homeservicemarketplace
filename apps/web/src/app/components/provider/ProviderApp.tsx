@@ -111,6 +111,7 @@ import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { clearIntendedApp } from '../../../lib/intended-app';
 import { RequestMediaGallery } from '../ds/RequestMediaGallery';
 import { resolveMediaUrl } from '../../../lib/media-url';
+import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
 import { EditProfilePage } from '../profile/EditProfilePage';
 import type {
   ProviderAvailability,
@@ -2745,7 +2746,10 @@ function ProviderChatScreen() {
                         className="text-slate-900 dark:text-white truncate"
                         style={{ fontSize: '13px', fontWeight: 700 }}
                       >
-                        {conv.otherParticipant.displayName || (lang === 'ar' ? 'مستخدم' : 'User')}
+                        {formatPrivacyDisplayName(
+                          { displayName: conv.otherParticipant.displayName },
+                          { roleFallback: lang === 'ar' ? 'مستخدم' : 'User' },
+                        )}
                       </p>
                       <p
                         className="text-slate-500 dark:text-slate-400 truncate"

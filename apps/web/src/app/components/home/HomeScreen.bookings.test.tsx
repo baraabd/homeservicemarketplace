@@ -115,11 +115,12 @@ describe('HomeScreen — Bookings tab (slice 2.3)', () => {
       // Service label from category, not from the old "Plumbing Repair" placeholder.
       expect(screen.getByText('Plumbing')).toBeInTheDocument();
     });
-    // Pro line uses the API displayName. (Some other surfaces — e.g.
-    // the bell-badge notification body — also contain the same string;
-    // we just need at least one occurrence to prove the booking card
-    // rendered against API data.)
-    expect(screen.getAllByText(/Omar Al-Khalid/).length).toBeGreaterThan(0);
+    // Pro line uses the API displayName, rendered privacy-safe
+    // (Sprint 7.13): given-name initial + full family name. The raw
+    // "Omar Al-Khalid" may still appear in a backend-composed
+    // notification body; asserting the masked "O. Al-Khalid" pins the
+    // booking card specifically.
+    expect(screen.getAllByText(/O\. Al-Khalid/).length).toBeGreaterThan(0);
     // Avatar pill carries the API initials, not the slice-2 hardcoded set.
     expect(screen.getByText('OK')).toBeInTheDocument();
 

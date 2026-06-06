@@ -44,6 +44,7 @@ import {
 } from '../../hooks/seeker/useBookings';
 import { formatServiceAddressForDisplay } from '../../../lib/address-display';
 import { RequestMediaGallery } from '../ds/RequestMediaGallery';
+import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
 
 // ─── Source discriminator ────────────────────────────────────────────────────
 // Slice 2.4: JobDetailView is opened with a request id (for OPEN_FOR_BIDS /
@@ -581,6 +582,14 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
       : render.serviceLabel
     : '';
   const displayAddress = render?.address ?? (langKey === 'ar' ? '—' : '—');
+  // Sprint 7.13 — privacy-safe provider name (initial + family name).
+  const providerLabel = langKey === 'ar' ? 'مزود الخدمة' : 'Provider';
+  const providerNamePrivacy = render?.provider
+    ? formatPrivacyDisplayName(
+        { displayName: render.provider.displayName },
+        { roleFallback: providerLabel },
+      )
+    : providerLabel;
   const displayDate = formatScheduledDate(render?.scheduledAtIso ?? null, langKey);
 
   const status: LeadStatus = render?.status ?? 'pending';
@@ -775,7 +784,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                     </div>
                     <div className="flex-1">
                       <p className="text-slate-900" style={{ fontSize: '16px', fontWeight: 800 }}>
-                        {render.provider.displayName}
+                        {providerNamePrivacy}
                       </p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <Stars rating={render.provider.ratingAvg} />
@@ -1148,8 +1157,8 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
               </div>
               <p className="text-slate-900" style={{ fontSize: '18px', fontWeight: 800 }}>
                 {langKey === 'ar'
-                  ? `كيف كانت تجربتك مع ${render.provider?.displayName ?? '—'}؟`
-                  : `Rate your experience with ${render.provider?.displayName ?? '—'}`}
+                  ? `كيف كانت تجربتك مع ${providerNamePrivacy}؟`
+                  : `Rate your experience with ${providerNamePrivacy}`}
               </p>
               <p className="text-slate-400" style={{ fontSize: '13px' }}>
                 {langKey === 'ar' ? 'اضغط على النجوم للتقييم' : 'Tap to rate'}

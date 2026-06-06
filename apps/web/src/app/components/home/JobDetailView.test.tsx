@@ -220,7 +220,7 @@ describe('JobDetailView — booking source', () => {
 
     // Pro card renders with API provider name + initials + real rating.
     expect(screen.getByText(/Assigned Professional/i)).toBeInTheDocument();
-    expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument();
+    expect(screen.getByText('O. Al-Khalid')).toBeInTheDocument();
     expect(screen.getByText(/4\.9 · 312/)).toBeInTheDocument();
 
     // Verified badge renders because provider.verified === true.
@@ -237,7 +237,7 @@ describe('JobDetailView — booking source', () => {
 
     renderDetail({ kind: 'booking', id: 'bk-1' });
 
-    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('O. Al-Khalid')).toBeInTheDocument());
 
     // Both flags are true on the mock, so both pills render.
     expect(screen.getByText('Verified')).toBeInTheDocument();
@@ -256,7 +256,7 @@ describe('JobDetailView — booking source', () => {
 
     renderDetail({ kind: 'booking', id: 'bk-1' });
 
-    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('O. Al-Khalid')).toBeInTheDocument());
 
     const message = screen.getByRole('button', { name: /Message/ });
     const call = screen.getByRole('button', { name: /Call/ });
@@ -274,7 +274,7 @@ describe('JobDetailView — booking source', () => {
 
     renderDetail({ kind: 'booking', id: 'bk-1' });
 
-    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('O. Al-Khalid')).toBeInTheDocument());
     // Slice-2 had hardcoded '9:00 AM' / '9:15 AM' / '9:32 AM' / '3:00 PM' /
     // '5:10 PM' timestamps inside the timeline. Those exact strings should
     // not appear because we now derive timestamps from real events. The
