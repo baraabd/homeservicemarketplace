@@ -1303,13 +1303,13 @@ function LiveJobsScreen() {
                             )}
                           </div>
                         )}
-                        {req.mediaUrls.length > 0 && (
+                        {(req.mediaUrls?.length ?? 0) > 0 && (
                           <div
                             className="flex gap-1 mt-2 overflow-x-auto"
                             style={{ scrollbarWidth: 'none' }}
                             data-testid={`job-card-media-${req.id}`}
                           >
-                            {req.mediaUrls.slice(0, 3).map((url) => (
+                            {(req.mediaUrls ?? []).slice(0, 3).map((url) => (
                               <img
                                 key={url}
                                 src={resolveMediaUrl(url)}
@@ -1318,13 +1318,13 @@ function LiveJobsScreen() {
                                 className="w-10 h-10 object-cover rounded-md border border-slate-200 dark:border-slate-600 flex-shrink-0"
                               />
                             ))}
-                            {req.mediaUrls.length > 3 && (
+                            {(req.mediaUrls?.length ?? 0) > 3 && (
                               <div
                                 className="w-10 h-10 rounded-md border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-600 flex items-center justify-center text-slate-500 flex-shrink-0"
                                 style={{ fontSize: '10px', fontWeight: 700 }}
-                                aria-label={`+${req.mediaUrls.length - 3}`}
+                                aria-label={`+${(req.mediaUrls?.length ?? 0) - 3}`}
                               >
-                                +{req.mediaUrls.length - 3}
+                                +{(req.mediaUrls?.length ?? 0) - 3}
                               </div>
                             )}
                           </div>

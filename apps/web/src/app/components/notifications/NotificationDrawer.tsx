@@ -81,7 +81,9 @@ interface NotificationDrawerProps {
 // ─────────────────────────────────────────────────────────────────────────────
 export function NotificationDrawer({
   isOpen,
-  notifications,
+  // Default to an empty array so a legacy/undefined feed never crashes
+  // the drawer on `.filter`/`.map`/`.length`.
+  notifications = [],
   onClose,
   onMarkAllRead,
   onMarkRead,
