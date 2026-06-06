@@ -1098,9 +1098,16 @@ function LiveJobsScreen() {
           </div>
         </div>
 
-        {/* Drag handle */}
-        {!sheetOpen && (
+        {/* Drag handle — the floating pull-up affordance. It sits at
+            z-[1000] (above Leaflet's popup panes), which is ABOVE the
+            detail overlay / bidding modal (z-40); so we must hide it
+            whenever a blocking surface is open, otherwise it floats over
+            the request detail and covers the Place Bid CTA. Hidden when:
+            the bottom sheet is open, the request-detail overlay is open,
+            or the bidding modal is open. */}
+        {!sheetOpen && !detailReq && !biddingReq && (
           <motion.button
+            data-testid="pull-up-control"
             className="absolute bottom-4 start-1/2 -translate-x-1/2 flex flex-col items-center gap-1 z-[1000]"
             onClick={() => setSheetOpen(true)}
             animate={{ y: [0, -6, 0] }}

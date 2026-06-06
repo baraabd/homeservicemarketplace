@@ -790,6 +790,62 @@ describe('ProviderApp — Sprint 7.0 floating job-count badge', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sprint 7.13 — the floating "pull up" control must never cover a
+// primary action. It sits at z-[1000] (above Leaflet popups), which is
+// ABOVE the detail overlay / bidding modal (z-40); so it has to be
+// hidden whenever a blocking surface is open, or it floats over the
+// request detail and covers the Place Bid CTA.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProviderApp — Sprint 7.13 pull-up control does not cover Place Bid', () => {
+  function mockBaseFlow() {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/provider/available-requests').reply(200, {
+      items: [SAMPLE_AVAILABLE_REQUEST],
+      nextCursor: null,
+    });
+  }
+
+  it('shows the pull-up control when the map is idle (no overlay open)', async () => {
+    mockBaseFlow();
+    renderProvider();
+    expect(await screen.findByTestId('pull-up-control')).toBeInTheDocument();
+  });
+
+  it('hides the pull-up control when the bottom sheet is open', async () => {
+    mockBaseFlow();
+    renderProvider();
+    const control = await screen.findByTestId('pull-up-control');
+    fireEvent.click(control);
+    await waitFor(() => expect(screen.queryByTestId('pull-up-control')).toBeNull());
+  });
+
+  it('hides the pull-up control when the request-detail overlay is open', async () => {
+    mockBaseFlow();
+    renderProvider();
+    // Open the detail overlay via the marker popup CTA.
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+    await screen.findByTestId('job-detail-overlay');
+    expect(screen.queryByTestId('pull-up-control')).toBeNull();
+  });
+
+  it('hides the pull-up control when the bidding modal is open, keeping Place Bid usable', async () => {
+    mockBaseFlow();
+    renderProvider();
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+    // The overlay's Place Bid CTA is reachable (not covered) and opens
+    // the bidding modal.
+    const overlayBidBtn = await screen.findByTestId('job-detail-place-bid');
+    fireEvent.click(overlayBidBtn);
+    await screen.findByText(/submit offer|تقديم عرض/i);
+    expect(screen.queryByTestId('pull-up-control')).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Sprint 7.0 — "New job nearby" toast (cache-subscribe pattern).
 // LiveJobsScreen tracks the previously-seen request ids and fires a
 // success toast whenever the next available-requests refetch lands an
