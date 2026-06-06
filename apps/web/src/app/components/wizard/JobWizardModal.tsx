@@ -39,6 +39,7 @@ import { useAddresses } from '../../hooks/seeker/useAddresses';
 import { useCreateServiceRequest } from '../../hooks/seeker/useRequests';
 import { reverseGeocode } from '../../../lib/reverse-geocode';
 import { uploadAll } from '../../../lib/media-api';
+import { formatServiceAddressForDisplay } from '../../../lib/address-display';
 
 // ─── Service config ───────────────────────────────────────────────────────────
 const SERVICE_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
@@ -1235,7 +1236,17 @@ export function JobWizardModal({
                 </p>
                 {[
                   { label: t('serviceLabel'), val: service },
-                  { label: t('locationLabel'), val: address },
+                  {
+                    label: t('locationLabel'),
+                    // Compact, display-only confirmation of the entered
+                    // address. Raw `address` string is still submitted.
+                    val:
+                      formatServiceAddressForDisplay({
+                        line1: address,
+                        city: geocoded?.city ?? defaultAddress?.city ?? null,
+                        country: geocoded?.country ?? defaultAddress?.country ?? null,
+                      }) || address,
+                  },
                   // Slice 4.1: success summary now uses the user's
                   // actual schedule selection, not the legacy hardcoded
                   // strings.

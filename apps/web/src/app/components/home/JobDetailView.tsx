@@ -42,6 +42,7 @@ import {
   useBookingTimeline,
   useCancelBooking,
 } from '../../hooks/seeker/useBookings';
+import { formatServiceAddressForDisplay } from '../../../lib/address-display';
 
 // ─── Source discriminator ────────────────────────────────────────────────────
 // Slice 2.4: JobDetailView is opened with a request id (for OPEN_FOR_BIDS /
@@ -513,9 +514,9 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
         status: uiStatusFromRequest(r.status),
         postedAt: formatRelative(r.createdAt, langKey),
         scheduledAtIso: r.scheduledAt,
-        address: r.addressSnapshot.line1
-          ? `${r.addressSnapshot.line1}, ${r.addressSnapshot.city}`
-          : null,
+        // Compact, display-only address. The raw snapshot (line1, city,
+        // cityKey, lat/lng) stays untouched for provider matching.
+        address: formatServiceAddressForDisplay(r.addressSnapshot) || null,
         provider: null,
         priceAmount: null,
         pricingType: null,
@@ -548,9 +549,8 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
       status: uiStatusFromBooking(b.status),
       postedAt: formatRelative(b.createdAt, langKey),
       scheduledAtIso: b.scheduledAt,
-      address: b.addressSnapshot.line1
-        ? `${b.addressSnapshot.line1}, ${b.addressSnapshot.city}`
-        : null,
+      // Compact, display-only address (see request branch above).
+      address: formatServiceAddressForDisplay(b.addressSnapshot) || null,
       provider: b.provider,
       priceAmount: b.priceAmount,
       pricingType: b.pricingType,
