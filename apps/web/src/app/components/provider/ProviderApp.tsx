@@ -2739,7 +2739,7 @@ function ProviderChatScreen() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-lg flex-shrink-0">
-                      {conv.otherParticipant.initials || '👤'}
+                      {conv.otherParticipant?.initials || '👤'}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p
@@ -2747,7 +2747,7 @@ function ProviderChatScreen() {
                         style={{ fontSize: '13px', fontWeight: 700 }}
                       >
                         {formatPrivacyDisplayName(
-                          { displayName: conv.otherParticipant.displayName },
+                          { displayName: conv.otherParticipant?.displayName ?? '' },
                           { roleFallback: lang === 'ar' ? 'مستخدم' : 'User' },
                         )}
                       </p>

@@ -210,7 +210,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
         // "View booking" action on the snackbar (Sprint 7.5).
         setTimeout(() => {
           setAcceptedId(null);
-          onBookBid(providerNamePrivacy(bid.provider.displayName), response.booking.id);
+          onBookBid(providerNamePrivacy(bid.provider?.displayName ?? ''), response.booking.id);
         }, 900);
       },
       onError: (err) => {
@@ -398,8 +398,8 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                       className={`transition-all duration-300 ${badgeCfg ? 'mt-3' : ''} ${isAccepted ? 'scale-95 opacity-60' : ''}`}
                     >
                       <ProBidCard
-                        name={providerNamePrivacy(bid.provider.displayName)}
-                        initials={bid.provider.initials}
+                        name={providerNamePrivacy(bid.provider?.displayName ?? '')}
+                        initials={bid.provider?.initials ?? ''}
                         avatarBg={av.bg}
                         avatarColor={av.color}
                         avatarUrl={bid.provider.avatarUrl ?? undefined}
@@ -463,14 +463,14 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                                   className={av.color}
                                   style={{ fontSize: '8px', fontWeight: 800 }}
                                 >
-                                  {bid.provider.initials}
+                                  {bid.provider?.initials ?? ''}
                                 </span>
                               </div>
                               <span
                                 className="text-slate-700 font-semibold truncate"
                                 style={{ maxWidth: '70px' }}
                               >
-                                {providerNamePrivacy(bid.provider.displayName)}
+                                {providerNamePrivacy(bid.provider?.displayName ?? '')}
                               </span>
                             </div>
                           </td>

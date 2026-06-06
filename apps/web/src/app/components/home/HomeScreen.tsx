@@ -150,14 +150,14 @@ function apiBookingToItem(row: BookingListItem, lang: 'en' | 'ar'): BookingItem 
     statusKey: statusKeyFor(row.status),
     // Sprint 7.13 — privacy-safe provider name (initial + family name).
     proEn: formatPrivacyDisplayName(
-      { displayName: row.provider.displayName },
+      { displayName: row.provider?.displayName ?? '' },
       { roleFallback: 'Provider' },
     ),
     proAr: formatPrivacyDisplayName(
-      { displayName: row.provider.displayName },
+      { displayName: row.provider?.displayName ?? '' },
       { roleFallback: 'مزود الخدمة' },
     ),
-    proInitials: row.provider.initials,
+    proInitials: row.provider?.initials ?? '',
     price: row.priceAmount,
     // Sprint 7.13 — compact, display-only address (raw snapshot untouched).
     address: formatServiceAddressForDisplay(row.addressSnapshot) || undefined,
@@ -486,8 +486,8 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
           if (conv) {
             setChatContact({
               conversationId: conv.id,
-              name: formatChatName(conv.otherParticipant.displayName),
-              initials: conv.otherParticipant.initials,
+              name: formatChatName(conv.otherParticipant?.displayName ?? ''),
+              initials: conv.otherParticipant?.initials ?? '',
               bg: 'bg-amber-100',
               textColor: 'text-amber-700',
               status: 'Online',
@@ -1116,8 +1116,8 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                     onClick={() =>
                       setChatContact({
                         conversationId: c.id,
-                        name: formatChatName(c.otherParticipant.displayName),
-                        initials: c.otherParticipant.initials,
+                        name: formatChatName(c.otherParticipant?.displayName ?? ''),
+                        initials: c.otherParticipant?.initials ?? '',
                         bg: 'bg-amber-100',
                         textColor: 'text-amber-700',
                         status: 'Online',
@@ -1130,7 +1130,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                         className="text-amber-700"
                         style={{ fontSize: '12px', fontWeight: 800 }}
                       >
-                        {c.otherParticipant.initials}
+                        {c.otherParticipant?.initials ?? ''}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1138,7 +1138,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                         className="text-slate-900 dark:text-white"
                         style={{ fontSize: '14px', fontWeight: 700 }}
                       >
-                        {formatChatName(c.otherParticipant.displayName)}
+                        {formatChatName(c.otherParticipant?.displayName ?? '')}
                       </p>
                       <p className="text-slate-400 truncate" style={{ fontSize: '12px' }}>
                         {c.lastMessageBody ??
