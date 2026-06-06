@@ -785,7 +785,7 @@ describe('JobWizardModal — segmented time picker', () => {
 //      backed by object URLs (URL.createObjectURL).
 //   3. Clicking the per-thumbnail X button calls URL.revokeObjectURL
 //      and removes the row.
-//   4. The MAX_MEDIA_ITEMS=4 cap is enforced (excess files are dropped
+//   4. The MAX_MEDIA_ITEMS=6 cap is enforced (excess files are dropped
 //      and the toast surface is exercised).
 describe('JobWizardModal — Phase 3 native media upload', () => {
   beforeEach(() => {
@@ -847,25 +847,33 @@ describe('JobWizardModal — Phase 3 native media upload', () => {
     }
   });
 
-  it('caps the total at 4 files (extras are dropped)', async () => {
+  it('accepts up to 6 files', async () => {
     URL.createObjectURL = (() => 'blob:mock') as typeof URL.createObjectURL;
     URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
 
     renderWizard();
     const input = await waitFor(() => getMediaInput());
-    const files = [
-      makeFile('1.jpg', 'image/jpeg'),
-      makeFile('2.jpg', 'image/jpeg'),
-      makeFile('3.jpg', 'image/jpeg'),
-      makeFile('4.jpg', 'image/jpeg'),
-      makeFile('5.jpg', 'image/jpeg'),
-      makeFile('6.jpg', 'image/jpeg'),
-    ];
+    const files = Array.from({ length: 6 }, (_, i) => makeFile(`${i}.jpg`, 'image/jpeg'));
     fireEvent.change(input, { target: { files } });
 
     await waitFor(() => {
       const previews = document.querySelectorAll('img[src^="blob:mock"]');
-      expect(previews.length).toBe(4);
+      expect(previews.length).toBe(6);
+    });
+  });
+
+  it('caps the total at 6 files (a 7th is dropped)', async () => {
+    URL.createObjectURL = (() => 'blob:mock') as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+
+    renderWizard();
+    const input = await waitFor(() => getMediaInput());
+    const files = Array.from({ length: 7 }, (_, i) => makeFile(`${i}.jpg`, 'image/jpeg'));
+    fireEvent.change(input, { target: { files } });
+
+    await waitFor(() => {
+      const previews = document.querySelectorAll('img[src^="blob:mock"]');
+      expect(previews.length).toBe(6);
     });
   });
 

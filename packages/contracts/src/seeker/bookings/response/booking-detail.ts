@@ -21,4 +21,9 @@ export interface BookingDetail extends BookingListItem {
   // repository; this just surfaces the timestamp on the wire so the
   // frontend stays hard-refresh consistent without a second fetch.
   requestCreatedAt: string;
+  // Sprint 7.13 — the parent request's seeker-uploaded media (fileUrls).
+  // Always an array (empty when none). Sourced from the eager-loaded
+  // request relation so the booking-side detail shows the same photos
+  // the seeker attached, hard-refresh consistent without a second fetch.
+  requestMediaUrls: string[];
 }

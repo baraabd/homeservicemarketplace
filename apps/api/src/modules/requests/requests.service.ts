@@ -634,6 +634,9 @@ function toSummary(row: ServiceRequestWithCategory): ServiceRequestSummary {
     scheduleType: row.scheduleType,
     scheduledAt: row.scheduledAt ? row.scheduledAt.toISOString() : null,
     addressSnapshot: snapshot,
+    // Sprint 7.13 — surface the persisted media so the seeker sees
+    // their own photos on request/booking detail after a hard refresh.
+    mediaUrls: row.mediaUrls ?? [],
     // Sprint 7.12 — repository's `_count.bids` projection (scoped to
     // non-WITHDRAWN non-deleted bids). Falls back to 0 only for rows
     // that come from finders without the projection — never silently

@@ -34,8 +34,8 @@ export interface CreateServiceRequestRequest {
    *  fileUrl returned by `POST /v1/media/presigned-url` after the
    *  browser PUTs the binary to its uploadUrl. The backend stores
    *  the array verbatim on `ServiceRequest.mediaUrls` for the
-   *  provider's available-requests feed to render. Cap mirrors the
-   *  wizard's `MAX_MEDIA_ITEMS = 4`. */
+   *  provider's available-requests feed to render. Cap is
+   *  `MAX_REQUEST_MEDIA_ITEMS` (shared constant). */
   mediaUrls?: string[];
   scheduleType: ScheduleType;
   scheduledAt?: string | null;

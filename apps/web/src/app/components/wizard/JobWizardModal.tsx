@@ -40,6 +40,7 @@ import { useCreateServiceRequest } from '../../hooks/seeker/useRequests';
 import { reverseGeocode } from '../../../lib/reverse-geocode';
 import { uploadAll } from '../../../lib/media-api';
 import { formatServiceAddressForDisplay } from '../../../lib/address-display';
+import { MAX_REQUEST_MEDIA_ITEMS } from '@homeservicemarketplace/contracts';
 
 // ─── Service config ───────────────────────────────────────────────────────────
 const SERVICE_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
@@ -216,7 +217,9 @@ interface MediaItem {
   isVideo: boolean;
 }
 
-const MAX_MEDIA_ITEMS = 4;
+// Shared cap (single source of truth in @homeservicemarketplace/contracts),
+// enforced identically by the backend presign + create-request DTOs.
+const MAX_MEDIA_ITEMS = MAX_REQUEST_MEDIA_ITEMS;
 const ACCEPTED_MEDIA = 'image/*,video/*';
 
 function makeMediaItem(file: File): MediaItem {
@@ -366,6 +369,16 @@ export function JobWizardModal({
             : `You can attach up to ${MAX_MEDIA_ITEMS} files.`,
         );
         return prev;
+      }
+      // Truncate to the remaining slots and warn when the picked batch
+      // would have exceeded the cap, so the user understands why not
+      // every selected file appeared.
+      if (list.length > remaining) {
+        toast.warning(
+          lang === 'ar'
+            ? `الحد الأقصى ${MAX_MEDIA_ITEMS} ملفات.`
+            : `You can attach up to ${MAX_MEDIA_ITEMS} files.`,
+        );
       }
       const picked = Array.from(list).slice(0, remaining).map(makeMediaItem);
       return [...prev, ...picked];

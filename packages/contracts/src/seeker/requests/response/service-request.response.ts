@@ -26,6 +26,12 @@ export interface ServiceRequestSummary {
   scheduleType: ScheduleType;
   scheduledAt: string | null;
   addressSnapshot: AddressSnapshot;
+  // Sprint 7.13 — seeker-uploaded media (fileUrls) for this request.
+  // Always an array (empty when none). Surfaced so the seeker can see
+  // their own attached photos on the request/booking detail after a
+  // hard refresh — not just in the wizard's ephemeral preview. Capped
+  // at MAX_REQUEST_MEDIA_ITEMS on write.
+  mediaUrls: string[];
   // Bids are out of scope for this slice. The field exists on the
   // contract so the future Provider-bidding slice doesn't break the
   // wire; until then it is always 0.

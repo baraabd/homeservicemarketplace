@@ -43,6 +43,7 @@ import {
   useCancelBooking,
 } from '../../hooks/seeker/useBookings';
 import { formatServiceAddressForDisplay } from '../../../lib/address-display';
+import { RequestMediaGallery } from '../ds/RequestMediaGallery';
 
 // ─── Source discriminator ────────────────────────────────────────────────────
 // Slice 2.4: JobDetailView is opened with a request id (for OPEN_FOR_BIDS /
@@ -447,6 +448,9 @@ interface RenderState {
   postedAt: string;
   scheduledAtIso: string | null;
   address: string | null;
+  // Seeker-uploaded media (fileUrls) — surfaced so the seeker sees their
+  // own photos after a hard refresh, not just in the wizard preview.
+  media: string[];
   // Booking-side only
   provider: ProviderBidSummary | null;
   priceAmount: number | null;
@@ -517,6 +521,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
         // Compact, display-only address. The raw snapshot (line1, city,
         // cityKey, lat/lng) stays untouched for provider matching.
         address: formatServiceAddressForDisplay(r.addressSnapshot) || null,
+        media: r.mediaUrls ?? [],
         provider: null,
         priceAmount: null,
         pricingType: null,
@@ -551,6 +556,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
       scheduledAtIso: b.scheduledAt,
       // Compact, display-only address (see request branch above).
       address: formatServiceAddressForDisplay(b.addressSnapshot) || null,
+      media: (b as BookingDetail & { requestMediaUrls?: string[] }).requestMediaUrls ?? [],
       provider: b.provider,
       priceAmount: b.priceAmount,
       pricingType: b.pricingType,
@@ -970,6 +976,28 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                   >
                     {render.description}
                   </p>
+                </div>
+              )}
+
+              {/* Photos card — seeker's own uploaded media. Only rendered
+                  when the request actually carries media (the gallery
+                  itself returns null otherwise). Survives hard refresh:
+                  sourced from the persisted mediaUrls on the wire, not a
+                  cache patch. */}
+              {render.media.length > 0 && (
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
+                  <p
+                    className="text-slate-500 mb-3"
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                    }}
+                  >
+                    {langKey === 'ar' ? 'الصور' : 'Photos'}
+                  </p>
+                  <RequestMediaGallery urls={render.media} testId="job-detail-photos" />
                 </div>
               )}
 

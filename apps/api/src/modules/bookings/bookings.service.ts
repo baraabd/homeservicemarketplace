@@ -246,6 +246,10 @@ function toDetail(row: BookingWithRelations): BookingDetail {
     // post time. The eager-loaded `request` relation already carries
     // it; no extra query.
     requestCreatedAt: row.request.createdAt.toISOString(),
+    // Sprint 7.13 — surface the parent request's media from the same
+    // eager-loaded relation so the booking-side detail shows the
+    // seeker's photos after a hard refresh.
+    requestMediaUrls: row.request.mediaUrls ?? [],
   };
 }
 

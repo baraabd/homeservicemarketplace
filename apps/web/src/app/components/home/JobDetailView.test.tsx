@@ -135,8 +135,10 @@ describe('JobDetailView — request source', () => {
     // Status pill reflects the OPEN_FOR_BIDS → 'pending' mapping.
     expect(screen.getByText(/Awaiting Bids/i)).toBeInTheDocument();
 
-    // Address renders from the addressSnapshot, not a placeholder.
-    expect(screen.getByText(/123 Main, Riyadh/)).toBeInTheDocument();
+    // Address renders compactly from the addressSnapshot (Sprint 7.13):
+    // the street line is kept; the redundant city ("Riyadh") is dropped.
+    expect(screen.getByText('123 Main')).toBeInTheDocument();
+    expect(screen.queryByText(/123 Main, Riyadh/)).toBeNull();
 
     // Description renders from API.
     expect(screen.getByText(/Leaky tap under the kitchen sink/)).toBeInTheDocument();
@@ -149,6 +151,31 @@ describe('JobDetailView — request source', () => {
     // slice-2 placeholder).
     expect(screen.queryByText(/4\.8 · 156/)).toBeNull();
     expect(screen.queryByText(/156 reviews/)).toBeNull();
+  });
+
+  it('renders the seeker photo gallery when the request carries media (hard-refresh consistent)', async () => {
+    mock.onGet('/v1/me/requests/req-1').reply(200, {
+      ...REQUEST_DETAIL,
+      mediaUrls: ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg'],
+    });
+    mock.onGet('/v1/me/requests/req-1/timeline').reply(200, REQUEST_TIMELINE);
+
+    renderDetail({ kind: 'request', id: 'req-1' });
+
+    const gallery = await screen.findByTestId('job-detail-photos');
+    const imgs = gallery.querySelectorAll('img');
+    expect(imgs).toHaveLength(2);
+    expect(imgs[0]).toHaveAttribute('src', 'https://cdn.example.com/a.jpg');
+  });
+
+  it('renders no photo gallery when the request has no media', async () => {
+    mock.onGet('/v1/me/requests/req-1').reply(200, { ...REQUEST_DETAIL, mediaUrls: [] });
+    mock.onGet('/v1/me/requests/req-1/timeline').reply(200, REQUEST_TIMELINE);
+
+    renderDetail({ kind: 'request', id: 'req-1' });
+
+    await waitFor(() => expect(screen.getAllByText('Plumbing').length).toBeGreaterThan(0));
+    expect(screen.queryByTestId('job-detail-photos')).toBeNull();
   });
 
   it('shows Cancel Request button on a pending request and calls the API on click', async () => {

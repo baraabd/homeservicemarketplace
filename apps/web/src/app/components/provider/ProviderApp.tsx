@@ -109,6 +109,8 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth-provider';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { clearIntendedApp } from '../../../lib/intended-app';
+import { RequestMediaGallery } from '../ds/RequestMediaGallery';
+import { resolveMediaUrl } from '../../../lib/media-url';
 import { EditProfilePage } from '../profile/EditProfilePage';
 import type {
   ProviderAvailability,
@@ -591,7 +593,6 @@ function JobDetailOverlay({
   const hasDistance = req.distanceKm !== null;
   const hasBudget = Boolean(req.budget && req.budget.trim());
   const hasSeeker = Boolean(req.seekerName && req.seekerName.trim());
-  const hasMedia = req.mediaUrls.length > 0;
 
   return (
     <>
@@ -712,27 +713,12 @@ function JobDetailOverlay({
             )}
           </div>
 
-          {/* Seeker-uploaded photos. Only rendered when the request
-              actually carries media so the layout doesn't reserve dead
-              space. The horizontal scroll keeps the overlay height
-              bounded for galleries with many shots. */}
-          {hasMedia && (
-            <div
-              className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1"
-              style={{ scrollbarWidth: 'none' }}
-              data-testid="job-detail-media"
-            >
-              {req.mediaUrls.map((url) => (
-                <img
-                  key={url}
-                  src={url}
-                  alt=""
-                  loading="lazy"
-                  className="w-16 h-16 object-cover rounded-md border border-slate-200 dark:border-slate-600 flex-shrink-0"
-                />
-              ))}
-            </div>
-          )}
+          {/* Seeker-uploaded photos. RequestMediaGallery normalises the
+              URLs (relative paths / bare keys), renders a bounded
+              horizontal strip, and swaps any failed load for an inline
+              placeholder instead of the browser's broken-image glyph.
+              It renders nothing when there is no media. */}
+          <RequestMediaGallery urls={req.mediaUrls} testId="job-detail-media" />
 
           {/* Description */}
           <div>
@@ -1318,7 +1304,7 @@ function LiveJobsScreen() {
                             {req.mediaUrls.slice(0, 3).map((url) => (
                               <img
                                 key={url}
-                                src={url}
+                                src={resolveMediaUrl(url)}
                                 alt=""
                                 loading="lazy"
                                 className="w-10 h-10 object-cover rounded-md border border-slate-200 dark:border-slate-600 flex-shrink-0"

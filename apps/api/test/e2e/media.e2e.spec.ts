@@ -184,9 +184,22 @@ describe('Media upload pipeline (e2e) — Sprint 7.x', () => {
       expect(res.status).toBe(400);
     });
 
-    it('rejects more than MAX_FILES_PER_REQUEST (4) in one batch', async () => {
+    it('accepts exactly MAX_FILES_PER_REQUEST (6) in one batch', async () => {
       fakeAuthedUser = { id: 'u-1', sessionId: 's', jti: 'j', roles: ['customer'] };
-      const items = Array.from({ length: 5 }, () => ({
+      const items = Array.from({ length: 6 }, () => ({
+        contentType: 'image/jpeg',
+        sizeBytes: 1,
+      }));
+      const res = await request(app.getHttpServer())
+        .post('/v1/media/presigned-url')
+        .send({ items });
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(6);
+    });
+
+    it('rejects more than MAX_FILES_PER_REQUEST (6) in one batch', async () => {
+      fakeAuthedUser = { id: 'u-1', sessionId: 's', jti: 'j', roles: ['customer'] };
+      const items = Array.from({ length: 7 }, () => ({
         contentType: 'image/jpeg',
         sizeBytes: 1,
       }));
