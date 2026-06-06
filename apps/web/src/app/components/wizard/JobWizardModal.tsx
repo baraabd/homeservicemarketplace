@@ -40,16 +40,11 @@ import { useCreateServiceRequest } from '../../hooks/seeker/useRequests';
 import { reverseGeocode } from '../../../lib/reverse-geocode';
 import { uploadAll } from '../../../lib/media-api';
 import { formatServiceAddressForDisplay } from '../../../lib/address-display';
-import * as contracts from '@homeservicemarketplace/contracts';
-
-// contracts ships CJS-only (so the API can `require()` it) and every
-// other web import from it is `import type`, so Rollup can't statically
-// bind a named runtime export off the CJS `dist/index.js` at build time.
-// A computed read off the imported namespace resolves at runtime without
-// a static-resolution error/warning, while keeping the single source of
-// truth — the const is defined once, in contracts/src/media/constants.ts.
-const contractsNs = contracts as unknown as Record<string, number>;
-const MAX_REQUEST_MEDIA_ITEMS = contractsNs['MAX_REQUEST_MEDIA_ITEMS'];
+// Web-safe local constant — NOT imported from contracts. A runtime value
+// import from the CJS contracts package would force its dist into the
+// browser bundle and throw `exports is not defined`. The backend mirrors
+// this cap independently. See lib/request-media/constants.ts.
+import { MAX_REQUEST_MEDIA_ITEMS } from '../../../lib/request-media/constants';
 
 // ─── Service config ───────────────────────────────────────────────────────────
 const SERVICE_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
