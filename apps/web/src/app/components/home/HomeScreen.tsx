@@ -337,6 +337,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
       // survives a hard refresh.
       bids: r.bidsCount,
       price: undefined,
+      // Sprint 7.14 — carry the live booking id so a completed / in-
+      // progress lead opens the BOOKING detail (correct lifecycle) and
+      // not the request-only detail (which can't show Pro Assigned / In
+      // Progress / Completed).
+      activeBookingId: r.activeBookingId,
     }));
   }, [requestsQuery.data, lang]);
 
@@ -580,9 +585,17 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const handleLeadTap = (lead: LeadCardProps) => {
     if (lead.status === 'pending') {
       setBidsLead(lead);
-    } else {
-      setJobDetail({ kind: 'request', id: lead.id });
+      return;
     }
+    // Sprint 7.14 — once a booking exists (Pro Assigned → In Progress →
+    // Completed) open the BOOKING detail so Job Progress reflects the
+    // real lifecycle. Falls back to the request detail only when no
+    // booking has been created yet.
+    if (lead.activeBookingId) {
+      setJobDetail({ kind: 'booking', id: lead.activeBookingId });
+      return;
+    }
+    setJobDetail({ kind: 'request', id: lead.id });
   };
 
   // ── Booking tap ─────────────────────────────────────────────────────────────
@@ -1361,7 +1374,14 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
           }}
           onOpenDetail={(lead) => {
             setShowAllLeads(false);
-            setJobDetail({ kind: 'request', id: lead.id });
+            // Sprint 7.14 — booking-backed leads (assigned / in-progress
+            // / completed) open the booking detail so Job Progress shows
+            // the real lifecycle; pre-booking leads open the request.
+            if (lead.activeBookingId) {
+              setJobDetail({ kind: 'booking', id: lead.activeBookingId });
+            } else {
+              setJobDetail({ kind: 'request', id: lead.id });
+            }
           }}
           onPostNew={() => {
             setShowAllLeads(false);

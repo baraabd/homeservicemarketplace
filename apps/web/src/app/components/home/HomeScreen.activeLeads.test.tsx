@@ -185,4 +185,83 @@ describe('HomeScreen — Active Leads (Sprint 7.14)', () => {
     fireEvent.wheel(carousel, { deltaY: 120, deltaX: 0 });
     expect(carousel.scrollLeft).toBeGreaterThan(before);
   });
+
+  it('Phase 6 — tapping a booking-backed lead opens the BOOKING detail source', async () => {
+    mock.onGet('/v1/me/requests').reply(200, {
+      items: [
+        makeRequest({
+          id: 'req-prog',
+          slug: 'plumbing',
+          status: 'BID_ACCEPTED',
+          activeBookingStatus: 'IN_PROGRESS',
+          activeBookingId: 'bk-prog',
+          bidsCount: 1,
+        }),
+      ],
+      nextCursor: null,
+    });
+    let bookingFetched = false;
+    let requestDetailFetched = false;
+    mock.onGet('/v1/me/bookings/bk-prog').reply(() => {
+      bookingFetched = true;
+      return [200, BOOKING_DETAIL];
+    });
+    mock.onGet('/v1/me/bookings/bk-prog/timeline').reply(200, { items: [] });
+    mock.onGet('/v1/me/requests/req-prog').reply(() => {
+      requestDetailFetched = true;
+      return [200, {}];
+    });
+
+    renderHome();
+    const carousel = await screen.findByTestId('active-leads-carousel');
+    const card = (await waitFor(() => within(carousel).getAllByTestId('lead-card')))[0];
+    fireEvent.click(card);
+
+    // It opens the BOOKING detail (correct lifecycle source), NOT the
+    // request-only detail.
+    await waitFor(() => expect(bookingFetched).toBe(true));
+    expect(requestDetailFetched).toBe(false);
+  });
 });
+
+const BOOKING_DETAIL = {
+  id: 'bk-prog',
+  requestId: 'req-prog',
+  bidId: 'bid-1',
+  status: 'COMPLETED' as const,
+  scheduledAt: '2026-04-29T15:00:00.000Z',
+  priceAmount: 35,
+  currency: 'USD',
+  pricingType: 'HOURLY' as const,
+  createdAt: '2026-04-28T10:30:00.000Z',
+  updatedAt: '2026-04-30T10:30:00.000Z',
+  description: 'Leaky tap',
+  bidNote: null,
+  requestCreatedAt: '2026-04-28T08:00:00.000Z',
+  requestMediaUrls: [],
+  service: {
+    categorySlug: 'plumbing',
+    categoryLabelEn: 'Plumbing',
+    categoryLabelAr: 'سباكة',
+    customServiceText: null,
+  },
+  provider: {
+    id: 'pp-omar',
+    displayName: 'Omar Al-Khalid',
+    initials: 'OK',
+    avatarUrl: null,
+    ratingAvg: 4.9,
+    reviewCount: 312,
+    completedJobs: 540,
+    verified: true,
+    topPro: true,
+  },
+  addressSnapshot: {
+    label: 'Home',
+    line1: '123 Main',
+    city: 'Riyadh',
+    country: 'SA',
+    lat: null,
+    lng: null,
+  },
+};

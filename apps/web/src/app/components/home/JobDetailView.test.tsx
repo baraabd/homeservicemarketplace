@@ -231,6 +231,58 @@ describe('JobDetailView — booking source', () => {
     expect(screen.getAllByText(/In Progress/i).length).toBeGreaterThan(0);
   });
 
+  // Sprint 7.14 — a COMPLETED booking must show the Completed lifecycle
+  // correctly: every step done, Completed current, and Bids Received NOT
+  // wrongly marked as the current step.
+  it('renders a COMPLETED booking with the Completed step done/current', async () => {
+    const COMPLETED_BOOKING = {
+      ...BOOKING_DETAIL,
+      status: 'COMPLETED' as const,
+      updatedAt: '2026-04-30T16:00:00.000Z',
+    };
+    const COMPLETED_TIMELINE = {
+      items: [
+        {
+          id: 'b1',
+          type: 'BOOKING_CREATED',
+          metadata: { requestId: 'req-1', bidId: 'bid-1' },
+          createdAt: '2026-04-28T10:30:00.000Z',
+        },
+        {
+          id: 'b2',
+          type: 'BOOKING_STATUS_CHANGED',
+          metadata: { to: 'IN_PROGRESS' },
+          createdAt: '2026-04-30T13:00:00.000Z',
+        },
+        {
+          id: 'b3',
+          type: 'BOOKING_STATUS_CHANGED',
+          metadata: { to: 'COMPLETED' },
+          createdAt: '2026-04-30T16:00:00.000Z',
+        },
+      ],
+    };
+    mock.onGet('/v1/me/bookings/bk-1').reply(200, COMPLETED_BOOKING);
+    mock.onGet('/v1/me/bookings/bk-1/timeline').reply(200, COMPLETED_TIMELINE);
+
+    renderDetail({ kind: 'booking', id: 'bk-1' });
+
+    // Completed step (index 4) is done AND current.
+    const completedStep = await screen.findByTestId('progress-step-4');
+    expect(completedStep.getAttribute('data-done')).toBe('true');
+    expect(completedStep.getAttribute('data-current')).toBe('true');
+
+    // Every prior step is done too (no-downgrade): Posted(0) Bids(1)
+    // Pro(2) In Progress(3).
+    for (const i of [0, 1, 2, 3]) {
+      expect(screen.getByTestId(`progress-step-${i}`).getAttribute('data-done')).toBe('true');
+    }
+    // Bids Received must NOT be the current step on a completed job.
+    expect(screen.getByTestId('progress-step-1').getAttribute('data-current')).toBe('false');
+    // Header status agrees — "Completed" is shown.
+    expect(screen.getAllByText(/Completed/i).length).toBeGreaterThan(0);
+  });
+
   it('renders only Verified / Top Pro pills — no fake Licensed/Insured fallback', async () => {
     mock.onGet('/v1/me/bookings/bk-1').reply(200, BOOKING_DETAIL);
     mock.onGet('/v1/me/bookings/bk-1/timeline').reply(200, BOOKING_TIMELINE);

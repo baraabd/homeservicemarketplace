@@ -12,6 +12,10 @@ export interface LeadCardProps {
   postedAt: string;
   price?: number;
   bids?: number;
+  // Sprint 7.14 — the live booking id when this request has progressed
+  // past bid-accept. Lets the lead tap open the BOOKING detail (with the
+  // real lifecycle timeline) instead of the request-only detail.
+  activeBookingId?: string | null;
   onClick?: () => void;
   showPrice?: boolean; // admin-controlled
 }

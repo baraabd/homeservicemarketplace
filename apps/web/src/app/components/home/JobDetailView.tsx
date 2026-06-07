@@ -267,8 +267,15 @@ function stepsForBooking(
     // Implicitly done because we have a booking (a bid was accepted).
     { done: true, doneAt: null },
     // Pro Assigned: the BOOKING_CREATED event marks the moment the bid
-    // was accepted and the booking row was written.
-    { done: !!created, doneAt: formatTimeOfDay(created?.createdAt ?? null, lang) },
+    // was accepted and the booking row was written. Sprint 7.14 — a
+    // terminal/in-progress booking necessarily passed through assignment,
+    // so infer it done even if the BOOKING_CREATED event row is missing
+    // from the timeline (no-downgrade: Completed must never sit above an
+    // un-done Pro Assigned).
+    {
+      done: !!created || isInProgress || isCompleted,
+      doneAt: formatTimeOfDay(created?.createdAt ?? null, lang),
+    },
     // In Progress: BOOKING_STATUS_CHANGED with metadata.to === 'IN_PROGRESS'.
     // Sprint 7.x — also surfaces the wall-clock timestamp (e.g. "1:09 PM")
     // beside the stage when the event row is present.
@@ -335,7 +342,13 @@ function StatusTimeline({
           const isCurrent = i === currentIdx;
 
           return (
-            <div key={i} className="relative flex items-start gap-4 mb-4 last:mb-0 z-10">
+            <div
+              key={i}
+              className="relative flex items-start gap-4 mb-4 last:mb-0 z-10"
+              data-testid={`progress-step-${i}`}
+              data-done={isDone ? 'true' : 'false'}
+              data-current={isCurrent ? 'true' : 'false'}
+            >
               {/* Circle */}
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-all ${
