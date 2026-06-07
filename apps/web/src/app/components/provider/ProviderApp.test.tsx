@@ -917,3 +917,43 @@ describe('ProviderApp — Sprint 7.0 new-job toast', () => {
     expect(toast.success).toHaveBeenCalledWith('New job nearby!');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 7.14 — the provider notifications drawer must stay INSIDE the
+// provider app shell (430px phone frame), not escape to the full browser
+// viewport. The regression guard asserts the panel is `absolute`
+// (bounded by the now-`relative` shell root) and never `fixed`.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('ProviderApp — Sprint 7.14 notifications drawer bounds', () => {
+  function mockBase() {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/me/notifications').reply(200, { items: [], nextCursor: null });
+    mock.onGet('/v1/me/notifications/unread-count').reply(200, { count: 0 });
+    mock.onPost('/v1/me/notifications/read-all').reply(200, { updated: 0 });
+  }
+
+  it('opens the drawer with shell-bounded (absolute, not fixed) positioning', async () => {
+    mockBase();
+    renderProvider();
+    openProfileTab();
+    fireEvent.click(await screen.findByRole('button', { name: /open notifications/i }));
+    const dialog = await screen.findByRole('dialog', { name: /notifications|الإشعارات/i });
+    // The panel must be absolutely positioned within the shell — never
+    // fixed against the viewport (that's the bug this fixes).
+    expect(dialog.className).toContain('absolute');
+    expect(dialog.className).not.toContain('fixed');
+  });
+
+  it('closes the drawer via the close button', async () => {
+    mockBase();
+    renderProvider();
+    openProfileTab();
+    fireEvent.click(await screen.findByRole('button', { name: /open notifications/i }));
+    await screen.findByRole('dialog', { name: /notifications|الإشعارات/i });
+    fireEvent.click(screen.getByRole('button', { name: /^close$/i }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /notifications|الإشعارات/i })).toBeNull(),
+    );
+  });
+});

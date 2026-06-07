@@ -2559,15 +2559,20 @@ function ProviderNotificationsDrawer({ onClose }: { onClose: () => void }) {
 
   return (
     <>
+      {/* Sprint 7.14 — `absolute` (NOT `fixed`) so the drawer is bounded
+          by the provider app shell (the root div is now `relative`)
+          exactly like the seeker drawer, instead of escaping to the full
+          browser viewport on wide screens. z-indices sit above the
+          top-bar / bottom-nav (z-20). */}
       <motion.div
-        className="fixed inset-0 bg-slate-900/40 z-30"
+        className="absolute inset-0 bg-slate-900/40 z-40"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
       />
       <motion.div
-        className="fixed top-0 end-0 bottom-0 w-full sm:w-[400px] bg-white dark:bg-slate-800 z-40 flex flex-col shadow-2xl"
+        className="absolute top-0 end-0 bottom-0 w-full sm:w-[400px] bg-white dark:bg-slate-800 z-50 flex flex-col shadow-2xl"
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
@@ -3000,7 +3005,7 @@ export function ProviderApp() {
 
   return (
     <div
-      className={`flex flex-col ${darkMode ? 'dark bg-slate-900' : 'bg-white'}`}
+      className={`relative overflow-hidden flex flex-col ${darkMode ? 'dark bg-slate-900' : 'bg-white'}`}
       style={{ height: '100svh', fontFamily, direction: dir }}
       dir={dir}
     >
