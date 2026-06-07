@@ -111,6 +111,8 @@ export function LeadCard({
   return (
     <div
       onClick={onClick}
+      data-testid="lead-card"
+      data-status={status}
       className="flex-shrink-0 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden active:scale-95 transition-all cursor-pointer"
       style={{ width: '168px' }}
     >

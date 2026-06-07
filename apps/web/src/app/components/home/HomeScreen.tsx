@@ -335,6 +335,14 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
     }));
   }, [requestsQuery.data, lang]);
 
+  // Sprint 7.14 — Active Leads excludes completed jobs (they move to
+  // Profile → Completed Posts). This matches the existing badge-count
+  // filter so the carousel and the count agree. The status is
+  // booking-aware (mapLeadStatus reads activeBookingStatus) so a request
+  // whose booking has completed is excluded after a hard refresh, not
+  // just via a cache patch.
+  const activeLeads = useMemo(() => leads.filter((l) => l.status !== 'completed'), [leads]);
+
   // Live "my bookings" feed (slice 2.3). Drives the Bookings tab list
   // and the notification-tap fallback for tracking / confirmed / message
   // notifications. Empty array on first load / 401 / network error so
@@ -807,7 +815,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                     className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center"
                     style={{ fontSize: '10px', fontWeight: 800 }}
                   >
-                    {leads.filter((l) => l.status !== 'completed').length}
+                    {activeLeads.length}
                   </span>
                 </div>
                 <button
@@ -842,7 +850,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                 }}
                 data-testid="active-leads-carousel"
               >
-                {leads.map((lead) => (
+                {activeLeads.map((lead) => (
                   <LeadCard
                     key={lead.id}
                     {...lead}
