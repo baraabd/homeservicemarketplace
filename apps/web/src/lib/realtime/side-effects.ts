@@ -11,7 +11,12 @@ import { triggerNotificationUX } from './notification-ux';
 import { translateRealtime } from './realtime-i18n';
 import { getRealtimeNavigator } from './realtime-navigator';
 import { getRealtimeExperience } from './realtime-experience';
-import { resolveNotificationTarget, type NotificationExperience } from './notification-target';
+import {
+  resolveNotificationTarget,
+  type NotificationExperience,
+  type NotificationTarget,
+} from './notification-target';
+import { getNotificationTargetHandler } from './notification-target-handler';
 
 // Sprint 7.5.1 — UI side-effects bridge for realtime events.
 // Sprint 7.6 — anti-echo gate (currentUserId vs event.actorUserId).
@@ -107,8 +112,8 @@ export function dispatchRealtimeSideEffects(
       // straight to the right page (provider tabs also receive the
       // event for cache invalidation, but their actor-side toast is
       // already suppressed by anti-echo above).
-      const deepLink = payload.bookingId ? `/home/bookings/${payload.bookingId}` : null;
-      emitToast('success', message, buildToastOptions({ deepLink }));
+      const target = bookingTargetForToast(payload.bookingId);
+      emitToast('success', message, buildToastOptions({ target }));
       triggerNotificationUX();
       break;
     }
@@ -118,15 +123,36 @@ export function dispatchRealtimeSideEffects(
       // clear "Your bid was accepted" with a deep link straight to
       // the new booking when the payload carries it.
       const payload = event.payload as Partial<BidAcceptedRealtimePayload> | undefined;
-      const deepLink = payload?.bookingId
-        ? `/provider/bookings/${payload.bookingId}`
+      // The recipient of a bid.accepted is ALWAYS the provider whose bid
+      // was accepted (the seeker actor is silenced by anti-echo), so we
+      // resolve the target for the provider experience explicitly.
+      const target = payload?.bookingId
+        ? resolveNotificationTarget(
+            {
+              type: null,
+              resourceType: 'BOOKING',
+              resourceId: payload.bookingId,
+              deepLink: null,
+              metadata: null,
+            },
+            'provider',
+          )
         : payload?.requestId
-          ? `/provider/requests/${payload.requestId}`
+          ? resolveNotificationTarget(
+              {
+                type: null,
+                resourceType: 'REQUEST',
+                resourceId: payload.requestId,
+                deepLink: null,
+                metadata: null,
+              },
+              'provider',
+            )
           : null;
       emitToast(
         'success',
         translateRealtime('realtime.bid.accepted'),
-        buildToastOptions({ deepLink }),
+        buildToastOptions({ target }),
       );
       triggerNotificationUX();
       break;
@@ -134,11 +160,11 @@ export function dispatchRealtimeSideEffects(
     case 'notification.created': {
       const payload = event.payload as NotificationSummaryLike;
       const { title, body } = notificationToastCopy(payload);
-      const deepLink = resolveNotificationDeepLink(payload);
+      const target = resolveNotificationTargetForToast(payload);
       // Sonner accepts `(title, { description, action })`. A missing
       // body collapses to a single-line toast automatically; a null
-      // deepLink omits the action button.
-      emitToast('default', title, buildToastOptions({ deepLink, description: body }));
+      // target omits the action button.
+      emitToast('default', title, buildToastOptions({ target, description: body }));
       triggerNotificationUX();
       break;
     }
@@ -187,12 +213,19 @@ export function getNotificationToastClassName(
 
 // ─── toast options builder ──────────────────────────────────────────
 
-// Builds the sonner options bag. When the navigator bridge is
-// registered AND we have a deepLink, attach an action button labelled
-// "View" that fires the navigation on click. When no navigator is
-// registered (logged-out / pre-mount), the button is omitted entirely
-// so a stale toast can't navigate.
-function buildToastOptions(args: { deepLink: string | null; description?: string | null }): {
+// Builds the sonner options bag. When we have an actionable target,
+// attach a "View" action whose onClick opens it EXACTLY like the
+// notification drawer: first try the in-app overlay handler (registered
+// by the seeker home router) so we never navigate to a non-existent
+// deepLink route (which redirected to /select — the original bug);
+// fall back to URL navigation via the realtime-navigator when no
+// in-app handler is registered (e.g. the target's experience surface
+// isn't mounted). The button is omitted entirely when neither a handler
+// nor a navigator is available so a stale toast can't act.
+function buildToastOptions(args: {
+  target: NotificationTarget | null;
+  description?: string | null;
+}): {
   description?: string;
   action?: { label: string; onClick: () => void };
 } {
@@ -200,15 +233,21 @@ function buildToastOptions(args: { deepLink: string | null; description?: string
   if (args.description) {
     options.description = args.description;
   }
-  if (args.deepLink) {
-    const nav = getRealtimeNavigator();
-    if (nav) {
-      const target = args.deepLink;
+  const target = args.target;
+  if (target) {
+    const hasHandler = getNotificationTargetHandler() !== null;
+    const hasNav = getRealtimeNavigator() !== null;
+    if (hasHandler || hasNav) {
       options.action = {
         label: translateRealtime('realtime.action.view'),
         onClick: () => {
           try {
-            nav(target);
+            // Prefer the in-app overlay router (same path as the drawer).
+            const handler = getNotificationTargetHandler();
+            if (handler && handler(target)) return;
+            // Fallback: URL navigation for surfaces without a handler.
+            const nav = getRealtimeNavigator();
+            if (nav) nav(target.deepLink);
           } catch {
             // Navigation failure must never break the toast renderer.
           }
@@ -225,9 +264,11 @@ function buildToastOptions(args: { deepLink: string | null; description?: string
 // tap ALL route to the same destination. The experience argument
 // drives the seeker-vs-provider split (BID_ACCEPTED → /home/bookings
 // for seeker, /provider/bookings for provider).
-function resolveNotificationDeepLink(payload: NotificationSummaryLike): string | null {
+function resolveNotificationTargetForToast(
+  payload: NotificationSummaryLike,
+): NotificationTarget | null {
   const experience = getRealtimeExperience();
-  const target = resolveNotificationTarget(
+  return resolveNotificationTarget(
     {
       type: payload.type ?? null,
       resourceType: payload.resourceType ?? null,
@@ -237,7 +278,17 @@ function resolveNotificationDeepLink(payload: NotificationSummaryLike): string |
     },
     experience,
   );
-  return target?.deepLink ?? null;
+}
+
+// Build a BOOKING target for the booking.* realtime events, which carry
+// a bookingId directly rather than a full notification payload. Routes
+// experience-aware (seeker → /home/bookings, provider → /provider/...).
+function bookingTargetForToast(bookingId: string | null | undefined): NotificationTarget | null {
+  if (!bookingId) return null;
+  return resolveNotificationTarget(
+    { type: null, resourceType: 'BOOKING', resourceId: bookingId, deepLink: null, metadata: null },
+    getRealtimeExperience(),
+  );
 }
 
 // ─── helpers ────────────────────────────────────────────────────────

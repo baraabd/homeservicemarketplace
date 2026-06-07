@@ -55,7 +55,11 @@ import {
   mapServiceCategorySlug,
   mapLeadStatus,
 } from '../../../lib/seeker/request-status-map';
-import { resolveNotificationTarget } from '../../../lib/realtime/notification-target';
+import {
+  resolveNotificationTarget,
+  type NotificationTarget,
+} from '../../../lib/realtime/notification-target';
+import { setNotificationTargetHandler } from '../../../lib/realtime/notification-target-handler';
 
 // ─── Tab routing ──────────────────────────────────────────────────────────────
 const TAB_PATHS: Record<string, string> = {
@@ -448,6 +452,76 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   //
   // Mark-as-read is fired by NotificationDrawer's row click via
   // `onMarkRead` — we don't re-mark here.
+  // Opens the in-app overlay for a resolved notification target. Shared
+  // by the drawer tap AND the toast "View" action (registered as the
+  // global notification-target handler below) so both surfaces produce
+  // the exact same navigation with zero duplicated routing. Returns
+  // `true` when handled in-app (the toast then skips URL navigation).
+  const handleNotificationTarget = (target: NotificationTarget): boolean => {
+    switch (target.kind) {
+      case 'seeker-request-bids': {
+        // Open the BidsScreen overlay against the matching lead when
+        // we have it in cache — otherwise fall through to the
+        // request detail surface so the tap is never a no-op.
+        const lead = leads.find((l) => l.id === target.requestId);
+        if (lead) {
+          setBidsLead(lead);
+        } else {
+          setJobDetail({ kind: 'request', id: target.requestId });
+        }
+        return true;
+      }
+      case 'seeker-request-detail':
+        setJobDetail({ kind: 'request', id: target.requestId });
+        return true;
+      case 'seeker-booking-detail':
+        setJobDetail({ kind: 'booking', id: target.bookingId });
+        return true;
+      case 'seeker-conversation': {
+        const conv = conversations.find((c) => c.id === target.conversationId);
+        if (conv) {
+          setChatContact({
+            conversationId: conv.id,
+            name: formatChatName(conv.otherParticipant?.displayName ?? ''),
+            initials: conv.otherParticipant?.initials ?? '',
+            bg: 'bg-amber-100',
+            textColor: 'text-amber-700',
+            status: 'Online',
+          });
+        }
+        return true;
+      }
+      // Provider-kind targets aren't handled by the seeker home; let the
+      // toast fall back to URL navigation. Listed exhaustively so a
+      // future kind addition becomes a TS error rather than a silent
+      // no-op.
+      case 'provider-bid-detail':
+      case 'provider-booking-detail':
+      case 'provider-request-detail':
+      case 'provider-conversation':
+        return false;
+    }
+  };
+
+  // Keep a fresh reference so the (mount-once) registered handler always
+  // sees the latest `leads` / `conversations` closures without
+  // re-registering on every data change. The ref is updated in an effect
+  // (never during render) per the rules-of-refs lint.
+  const targetHandlerRef = useRef(handleNotificationTarget);
+  useEffect(() => {
+    targetHandlerRef.current = handleNotificationTarget;
+  });
+
+  // Register the in-app overlay router so the toast "View" action opens
+  // notifications exactly like the drawer instead of navigating to a
+  // non-existent deepLink route (which redirected to /select). Cleared
+  // on unmount so a backgrounded seeker app can't capture provider
+  // toasts.
+  useEffect(() => {
+    setNotificationTargetHandler((target) => targetHandlerRef.current(target));
+    return () => setNotificationTargetHandler(null);
+  }, []);
+
   const handleNotifTap = (n: AppNotification) => {
     setNotifOpen(false);
     setTimeout(() => {
@@ -462,49 +536,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
         'seeker',
       );
       if (!target) return;
-      switch (target.kind) {
-        case 'seeker-request-bids': {
-          // Open the BidsScreen overlay against the matching lead when
-          // we have it in cache — otherwise fall through to the
-          // request detail surface so the tap is never a no-op.
-          const lead = leads.find((l) => l.id === target.requestId);
-          if (lead) {
-            setBidsLead(lead);
-          } else {
-            setJobDetail({ kind: 'request', id: target.requestId });
-          }
-          return;
-        }
-        case 'seeker-request-detail':
-          setJobDetail({ kind: 'request', id: target.requestId });
-          return;
-        case 'seeker-booking-detail':
-          setJobDetail({ kind: 'booking', id: target.bookingId });
-          return;
-        case 'seeker-conversation': {
-          const conv = conversations.find((c) => c.id === target.conversationId);
-          if (conv) {
-            setChatContact({
-              conversationId: conv.id,
-              name: formatChatName(conv.otherParticipant?.displayName ?? ''),
-              initials: conv.otherParticipant?.initials ?? '',
-              bg: 'bg-amber-100',
-              textColor: 'text-amber-700',
-              status: 'Online',
-            });
-          }
-          return;
-        }
-        // Provider-kind targets cannot fire here (we always ask the
-        // resolver for the 'seeker' experience). Listed exhaustively
-        // so a future kind addition becomes a TS error rather than a
-        // silent no-op.
-        case 'provider-bid-detail':
-        case 'provider-booking-detail':
-        case 'provider-request-detail':
-        case 'provider-conversation':
-          return;
-      }
+      handleNotificationTarget(target);
     }, 200);
   };
 

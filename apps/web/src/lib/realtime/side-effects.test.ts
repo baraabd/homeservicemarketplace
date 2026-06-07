@@ -5,6 +5,10 @@ import { __resetSideEffectsForTests, dispatchRealtimeSideEffects } from './side-
 import { __resetRealtimeI18nForTests, setRealtimeLang } from './realtime-i18n';
 import { __resetNotificationUXForTests } from './notification-ux';
 import { __resetRealtimeNavigatorForTests, setRealtimeNavigator } from './realtime-navigator';
+import {
+  __resetNotificationTargetHandlerForTests,
+  setNotificationTargetHandler,
+} from './notification-target-handler';
 
 // Sprint 7.5.1 — side-effects bridge tests.
 // Sprint 7.6 — anti-echo gate via envelope.actorUserId.
@@ -60,6 +64,7 @@ beforeEach(() => {
   __resetRealtimeI18nForTests();
   __resetNotificationUXForTests();
   __resetRealtimeNavigatorForTests();
+  __resetNotificationTargetHandlerForTests();
 });
 
 afterEach(() => {
@@ -765,6 +770,55 @@ describe('dispatchRealtimeSideEffects', () => {
     // critical regression (never use bidId as requestId) still holds
     // — the routed path uses metadata.requestId, not resourceId.
     expect(navSpy).toHaveBeenCalledWith('/home/requests/req-correct/bids');
+  });
+
+  // ─── Sprint 7.14 — toast View converges with the in-app overlay ───
+
+  it('toast View → uses the in-app target handler (no URL navigation) when registered', () => {
+    const handlerSpy = vi.fn().mockReturnValue(true);
+    const navSpy = vi.fn();
+    setNotificationTargetHandler(handlerSpy);
+    setRealtimeNavigator(navSpy);
+    dispatchRealtimeSideEffects(
+      event(
+        'notification.created',
+        { id: 'n1', type: 'BOOKING_COMPLETED', resourceType: 'BOOKING', resourceId: 'bk-77' },
+        { actorUserId: 'user-prov' },
+      ),
+      { currentUserId: 'user-seeker' },
+    );
+    const [, opts] = toastDefault.mock.calls[0];
+    const action = (opts as { action?: { onClick: () => void } }).action;
+    action?.onClick();
+    // The handler received the SAME resolved target the drawer uses; the
+    // URL navigator (which would have hit the /select catch-all) is
+    // never called.
+    expect(handlerSpy).toHaveBeenCalledTimes(1);
+    expect(handlerSpy.mock.calls[0][0]).toMatchObject({
+      kind: 'seeker-booking-detail',
+      bookingId: 'bk-77',
+    });
+    expect(navSpy).not.toHaveBeenCalled();
+  });
+
+  it('toast View → falls back to URL navigation when the in-app handler declines', () => {
+    const handlerSpy = vi.fn().mockReturnValue(false);
+    const navSpy = vi.fn();
+    setNotificationTargetHandler(handlerSpy);
+    setRealtimeNavigator(navSpy);
+    dispatchRealtimeSideEffects(
+      event(
+        'notification.created',
+        { id: 'n2', type: 'BOOKING_COMPLETED', resourceType: 'BOOKING', resourceId: 'bk-88' },
+        { actorUserId: 'user-prov' },
+      ),
+      { currentUserId: 'user-seeker' },
+    );
+    const [, opts] = toastDefault.mock.calls[0];
+    const action = (opts as { action?: { onClick: () => void } }).action;
+    action?.onClick();
+    expect(handlerSpy).toHaveBeenCalledTimes(1);
+    expect(navSpy).toHaveBeenCalledWith('/home/bookings/bk-88');
   });
 
   it('BID notification.created with NO metadata.requestId → no action button (safe fallback)', () => {
