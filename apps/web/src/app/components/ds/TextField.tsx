@@ -8,6 +8,11 @@ export interface TextFieldProps {
   value?: string;
   defaultValue?: string;
   onChange?: (val: string) => void;
+  /** Optional focus/blur hooks. The component still tracks its own
+   *  `focused` state for styling; these let a parent react (e.g. show a
+   *  compact display value at rest and the raw value while editing). */
+  onFocus?: () => void;
+  onBlur?: () => void;
   leadingIcon?: ReactNode;
   trailingIcon?: ReactNode;
   disabled?: boolean;
@@ -37,6 +42,8 @@ export function TextField({
   value: controlledValue,
   defaultValue = '',
   onChange,
+  onFocus,
+  onBlur,
   leadingIcon,
   trailingIcon,
   disabled = false,
@@ -166,8 +173,14 @@ export function TextField({
             value={value}
             placeholder={floated ? placeholder : undefined}
             onChange={handleTextareaChange}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
+            onFocus={() => {
+              setFocused(true);
+              onFocus?.();
+            }}
+            onBlur={() => {
+              setFocused(false);
+              onBlur?.();
+            }}
             disabled={disabled}
             rows={minRows}
             className={[
@@ -185,8 +198,14 @@ export function TextField({
             value={value}
             placeholder={floated ? placeholder : undefined}
             onChange={handleInputChange}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
+            onFocus={() => {
+              setFocused(true);
+              onFocus?.();
+            }}
+            onBlur={() => {
+              setFocused(false);
+              onBlur?.();
+            }}
             disabled={disabled}
             className={[
               'w-full bg-transparent outline-none text-slate-900 pt-6 pb-2.5',

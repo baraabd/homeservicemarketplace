@@ -467,10 +467,12 @@ describe('JobWizardModal — geolocation', () => {
       await advanceToStep2();
       fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
 
-      // Wait for the auto-fill to land — the address field carries the
-      // polluted formatted_address, but geocoded state has captured
-      // the strict locality.
-      await waitFor(() => expect(screen.getByDisplayValue(POLLUTED_ADDRESS)).toBeInTheDocument());
+      // Wait for the auto-fill to land. Sprint 7.14 — the field now
+      // shows a COMPACT display at rest (admin tiers + city/country
+      // stripped), so we match the retained street part rather than the
+      // full polluted string. The raw value is still submitted (asserted
+      // below via the strict city/country on manualAddress).
+      await waitFor(() => expect(screen.getByDisplayValue(/King Fahd Rd/)).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
 
@@ -524,7 +526,9 @@ describe('JobWizardModal — geolocation', () => {
       renderWizard();
       await advanceToStep2();
       fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
-      await waitFor(() => expect(screen.getByDisplayValue(/Aleppo/i)).toBeInTheDocument());
+      // Sprint 7.14 — compact display strips the city; wait on the
+      // retained street part to confirm the geocode auto-fill landed.
+      await waitFor(() => expect(screen.getByDisplayValue(/Some St/i)).toBeInTheDocument());
 
       // User wholesale retypes: no "Aleppo" anywhere in the new value.
       const addressInput = screen.getAllByRole('textbox')[0] as HTMLInputElement;
@@ -541,6 +545,51 @@ describe('JobWizardModal — geolocation', () => {
       // the second-to-last chunk of what the user actually typed.
       expect(manual?.city).toBe('Damascus');
       expect(manual?.country).toBe('Syria');
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  // Sprint 7.14 — the address box shows a COMPACT local address at rest
+  // (admin tiers + city/country stripped) but reveals the full raw value
+  // while editing, and submits the raw string unchanged.
+  it('shows a compact address at rest and the full raw value while editing', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      value: {
+        getCurrentPosition: (
+          success: (pos: { coords: { latitude: number; longitude: number } }) => void,
+        ) => success({ coords: { latitude: 36.2012, longitude: 37.1612 } }),
+      },
+      configurable: true,
+    });
+
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          display_name: 'حي البياضة, حلب, ناحية مركز جبل سمعان, منطقة جبل سمعان, محافظة حلب, سوريا',
+          address: { city: 'حلب', country: 'سوريا' },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )) as typeof fetch;
+
+    try {
+      mock.onGet('/v1/me/addresses').reply(200, { items: [] });
+      renderWizard();
+      await advanceToStep2();
+      fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
+
+      // At rest: compact neighbourhood only, no administrative tiers.
+      const input = (await waitFor(() =>
+        screen.getByDisplayValue('حي البياضة'),
+      )) as HTMLInputElement;
+      expect(input.value).not.toMatch(/ناحية|منطقة|محافظة|سوريا/);
+
+      // Focus reveals the full raw address so the user edits the real
+      // string (and the geocoded-city retention check still works).
+      fireEvent.focus(input);
+      await waitFor(() => expect(input.value).toMatch(/محافظة حلب/));
+      expect(input.value).toMatch(/سوريا/);
     } finally {
       globalThis.fetch = origFetch;
     }

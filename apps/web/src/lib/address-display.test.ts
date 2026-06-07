@@ -3,6 +3,30 @@ import { describe, expect, it } from 'vitest';
 import { formatServiceAddressForDisplay } from './address-display';
 
 describe('formatServiceAddressForDisplay', () => {
+  // Sprint 7.14 — exact job-posting examples from the bug report.
+  it('reduces a full Aleppo geocoder line to the neighbourhood only', () => {
+    const out = formatServiceAddressForDisplay({
+      line1: 'حي البياضة, حلب, ناحية مركز جبل سمعان, منطقة جبل سمعان, محافظة حلب, سوريا',
+      city: 'حلب',
+      country: 'سوريا',
+    });
+    expect(out).toBe('حي البياضة');
+    // None of the redundant administrative tiers survive.
+    expect(out).not.toMatch(/حلب|ناحية|منطقة|محافظة|سوريا/);
+  });
+
+  it('keeps street + neighbourhood from a mixed-script Aleppo line', () => {
+    const out = formatServiceAddressForDisplay({
+      line1:
+        'شارع السجن, Bayadah district, حي قلعة الشريف, حلب, ناحية مركز جبل سمعان, منطقة جبل سمعان, محافظة حلب, سوريا',
+      city: 'حلب',
+      country: 'سوريا',
+    });
+    expect(out).toContain('شارع السجن');
+    expect(out).not.toMatch(/ناحية|منطقة|محافظة|سوريا/);
+    expect(out.length).toBeGreaterThan(0);
+  });
+
   it('shortens a long Arabic geocoder address to local parts only', () => {
     const snapshot = {
       line1:

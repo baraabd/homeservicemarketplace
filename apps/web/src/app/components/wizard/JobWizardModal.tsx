@@ -264,7 +264,13 @@ export function JobWizardModal({
 
   const [step, setStep] = useState(1);
   const [notes, setNotes] = useState('');
+  // `address` is ALWAYS the full raw string (the geocoder's
+  // formattedAddress or the user's typed text). It is what gets
+  // submitted as line1 and what the geocoded-city retention check reads,
+  // so it stays untouched for DB / provider matching. Only the DISPLAYED
+  // value is compacted at rest (see `addressFocused` below) — Sprint 7.14.
   const [address, setAddress] = useState('');
+  const [addressFocused, setAddressFocused] = useState(false);
   const [schedule, setSchedule] = useState<'asap' | 'later'>('asap');
   // Slice 4.1 fix (defect: static "Mar 15, 2026" / "10:00 AM"): the
   // user now picks real date + time via HTML5 inputs. The two pieces
@@ -1050,8 +1056,27 @@ export function JobWizardModal({
               <div className="mt-3 mb-4">
                 <TextField
                   label={t('address')}
-                  value={address}
+                  // Compact display at rest — ONLY for geocoder-sourced
+                  // addresses (the verbose "…حلب, محافظة حلب, سوريا"
+                  // chains). Strips country/governorate/region/nahia/city
+                  // using the geocoder's authoritative city/country. The
+                  // raw `address` is revealed while editing so the user
+                  // edits the real string and the geocoded-city retention
+                  // check stays intact; the submitted value is always the
+                  // raw `address`. Saved/typed addresses (geocoded=null)
+                  // render verbatim.
+                  value={
+                    !addressFocused && geocoded
+                      ? formatServiceAddressForDisplay({
+                          line1: address,
+                          city: geocoded.city,
+                          country: geocoded.country,
+                        }) || address
+                      : address
+                  }
                   onChange={handleAddressChange}
+                  onFocus={() => setAddressFocused(true)}
+                  onBlur={() => setAddressFocused(false)}
                   leadingIcon={<MapPin size={16} />}
                   hint={t('addressHint')}
                 />
