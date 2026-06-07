@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
 import { MemoryRouter } from 'react-router';
 import type { QueryClient } from '@tanstack/react-query';
@@ -158,5 +158,31 @@ describe('HomeScreen — Active Leads (Sprint 7.14)', () => {
     // Give the feed a tick to settle, then assert no lead cards.
     await waitFor(() => expect(screen.getByTestId('active-leads-carousel')).toBeInTheDocument());
     expect(within(carousel).queryAllByTestId('lead-card')).toHaveLength(0);
+  });
+
+  it('Phase 5 — the carousel is horizontally scrollable and a vertical wheel scrolls it sideways', async () => {
+    mock.onGet('/v1/me/requests').reply(200, {
+      items: [
+        makeRequest({ id: 'r1', slug: 'plumbing' }),
+        makeRequest({ id: 'r2', slug: 'electrical' }),
+        makeRequest({ id: 'r3', slug: 'cleaning' }),
+        makeRequest({ id: 'r4', slug: 'carpentry' }),
+      ],
+      nextCursor: null,
+    });
+
+    renderHome();
+    const carousel = await screen.findByTestId('active-leads-carousel');
+    await waitFor(() =>
+      expect(within(carousel).getAllByTestId('lead-card').length).toBeGreaterThan(0),
+    );
+    // Scroll-enabling layout is present.
+    expect(carousel.className).toContain('overflow-x-auto');
+    expect(carousel.style.touchAction).toBe('pan-x');
+
+    // A vertical mouse wheel is translated into horizontal scrolling.
+    const before = carousel.scrollLeft;
+    fireEvent.wheel(carousel, { deltaY: 120, deltaX: 0 });
+    expect(carousel.scrollLeft).toBeGreaterThan(before);
   });
 });

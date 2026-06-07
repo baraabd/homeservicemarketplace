@@ -290,6 +290,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const activeTab = tabFromPath(location.pathname);
   const prevTab = useRef(activeTab);
   const micTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Sprint 7.14 — Active Leads carousel. Touch (touch-action: pan-x) and
+  // trackpad-horizontal (overflow-x-auto) already scroll it; this ref
+  // adds desktop mouse-wheel support (a vertical wheel can't scroll a
+  // horizontal container natively).
+  const activeLeadsRef = useRef<HTMLDivElement | null>(null);
 
   // ── Core state ─────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
@@ -342,6 +347,29 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   // whose booking has completed is excluded after a hard refresh, not
   // just via a cache patch.
   const activeLeads = useMemo(() => leads.filter((l) => l.status !== 'completed'), [leads]);
+
+  // Translate a vertical mouse wheel into horizontal scrolling so the
+  // Active Leads carousel is browsable with a plain mouse (touch +
+  // trackpad already work). Attached as a non-passive listener so we can
+  // preventDefault ONLY when the carousel actually moved — at the edges
+  // the wheel falls through to the page's vertical scroll. Direction-
+  // agnostic (works in LTR and RTL) because it keys off whether
+  // scrollLeft changed rather than a hardcoded sign. Re-runs on tab
+  // change since the carousel only mounts on the home tab.
+  useEffect(() => {
+    const el = activeLeadsRef.current;
+    if (!el) return undefined;
+    const onWheel = (e: WheelEvent) => {
+      // Leave genuine horizontal trackpad gestures (deltaX) to native
+      // scrolling; only remap predominantly-vertical wheels.
+      if (e.deltaY === 0 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      const before = el.scrollLeft;
+      el.scrollLeft += e.deltaY;
+      if (el.scrollLeft !== before) e.preventDefault();
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [activeTab]);
 
   // Live "my bookings" feed (slice 2.3). Drives the Bookings tab list
   // and the notification-tap fallback for tracking / confirmed / message
@@ -841,6 +869,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                   iOS momentum scrolling intact. RTL is handled by
                   Tailwind's logical-property aware `px-4`. */}
               <div
+                ref={activeLeadsRef}
                 className="flex gap-3 overflow-x-auto px-4 pb-2"
                 style={{
                   scrollbarWidth: 'none',
