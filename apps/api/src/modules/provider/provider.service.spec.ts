@@ -184,8 +184,10 @@ describe('ProviderService', () => {
         providers: {
           // No existing profile yet — service should create one.
           findByUserIdWithCategories: jest.fn().mockResolvedValue(null),
-          createForUser: jest.fn().mockResolvedValue(makeProvider()),
-          findByIdWithCategories: jest.fn().mockResolvedValue(makeProviderWithCategories()),
+          createForUser: jest.fn().mockResolvedValue(makeProvider({ status: 'PENDING_REVIEW' })),
+          findByIdWithCategories: jest
+            .fn()
+            .mockResolvedValue(makeProviderWithCategories({ status: 'PENDING_REVIEW' })),
         },
       });
       const out = await makeService(m).upgrade('user-1');
@@ -195,18 +197,20 @@ describe('ProviderService', () => {
           userId: 'user-1',
           displayName: 'Ada Lovelace',
           initials: 'AL',
-          // Sprint 5.1.2: upgrade stamps ACTIVE on the local/dev path so
-          // the Provider app drops the user straight into the live
-          // shell. Asserting it here pins the dev product decision so a
-          // refactor cannot silently flip new providers to DRAFT and
-          // leave them stuck on the onboarding screen.
-          status: 'ACTIVE',
+          // Sprint 01 hardening: a freshly upgraded provider is NOT
+          // active. It lands in PENDING_REVIEW and must clear admin
+          // moderation before ProviderActiveGuard lets it reach the
+          // marketplace surfaces (feed, bids, bookings, wallet,
+          // earnings, provider conversations). Asserting it here pins
+          // the rule so a refactor cannot silently auto-activate new
+          // providers again.
+          status: 'PENDING_REVIEW',
         }),
         undefined,
       );
       expect(out.profile.id).toBe('pp-1');
       expect(out.profile.availability).toBe('OFFLINE');
-      expect(out.profile.status).toBe('ACTIVE');
+      expect(out.profile.status).toBe('PENDING_REVIEW');
       // Wire fields are ISO strings.
       expect(typeof out.profile.createdAt).toBe('string');
     });

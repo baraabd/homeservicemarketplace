@@ -60,14 +60,17 @@ function lookupCityCentroid(city: string): [number, number] | null {
   return CITY_CENTROIDS[key] ?? null;
 }
 
-// Sprint 5.1.2: the status the upgrade service stamps onto a freshly
-// created ProviderProfile. The schema default is DRAFT (safe-by-default
-// for any direct INSERT). The /upgrade flow explicitly stamps ACTIVE
-// here for local/dev so the onboarding UX drops the user straight into
-// the live Provider shell. Production will flip this single constant to
-// `'PENDING_REVIEW'` once the admin moderation surface ships — no other
-// call-site touches the column.
-const UPGRADE_DEFAULT_STATUS: ProviderProfileStatus = 'ACTIVE';
+// Sprint 01 hardening: the status the upgrade service stamps onto a
+// freshly created ProviderProfile. The schema default is DRAFT
+// (safe-by-default for any direct INSERT). The /upgrade flow stamps
+// PENDING_REVIEW so a new provider is NEVER auto-activated: it must
+// clear the admin moderation surface (which flips it to ACTIVE) before
+// ProviderActiveGuard lets it reach any marketplace surface — the
+// available-requests feed, jobs feed, bids, bookings, wallet, earnings,
+// or provider conversations. Previously this stamped ACTIVE, which made
+// the ProviderActiveGuard a no-op for every self-upgraded provider.
+// No other call-site touches the column.
+const UPGRADE_DEFAULT_STATUS: ProviderProfileStatus = 'PENDING_REVIEW';
 
 // Provider profile service. Drives the four endpoints in slice 5.1:
 //   POST  /v1/me/provider/upgrade     — deliberate role + profile creation
