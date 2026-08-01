@@ -14,6 +14,7 @@ import { RoleRepository } from '../../../../infrastructure/persistence/iam/role.
 import { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
 import { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
 import { AuditService } from '../../audit/audit.service';
+import { isInGoodStanding } from '../helpers/account-standing';
 import { LoginAttemptService } from './login-attempt.service';
 import { OTP_CODE_LENGTH, OTP_TTL_MINUTES, OtpService } from './otp.service';
 import { PasswordService } from './password.service';
@@ -405,6 +406,18 @@ export class AuthenticationService {
   }): Promise<{ issued: IssuedSession; roles: string[]; userId: string }> {
     const peek = await this.sessions.peekByRefreshRaw(params.refreshTokenRaw);
     if (!peek) throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
+
+    // Sprint 01 hardening: load the current user and reject any account
+    // that is no longer in good standing BEFORE minting a new access
+    // token. Rotating roles alone let a still-live refresh token keep
+    // issuing access tokens for a user who was since deleted,
+    // deactivated, suspended, or locked. All bad states collapse to the
+    // same AUTH_REFRESH_INVALID code so refresh never leaks the reason —
+    // the client re-authenticates and login surfaces the precise state.
+    const currentUser = await this.users.findById(peek.userId);
+    if (!isInGoodStanding(currentUser)) {
+      throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
+    }
 
     const roleRows = await this.users.listRoles(peek.userId);
     const roles = roleRows.map((r) => r.role.name);

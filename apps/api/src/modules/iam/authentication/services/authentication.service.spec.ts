@@ -516,6 +516,89 @@ describe('AuthenticationService', () => {
     });
   });
 
+  describe('refresh', () => {
+    // Sprint 01 hardening: refresh must load the current user and reject
+    // any account that is no longer in good standing, so a stolen or
+    // still-live refresh token cannot mint fresh access tokens for a
+    // deleted / deactivated / suspended / locked user. All bad states
+    // collapse to the same stable AUTH_REFRESH_INVALID code so refresh
+    // never leaks *why* the account is gone — the client re-logs in and
+    // login surfaces the precise reason.
+    const refreshParams = {
+      refreshTokenRaw: 'r'.repeat(43),
+      device: ctx.device,
+      requestId: ctx.requestId,
+    };
+
+    function primeGoodStanding(h: ReturnType<typeof makeHarness>) {
+      h.sessions.peekByRefreshRaw.mockResolvedValue({ userId: 'u-1' } as never);
+      h.sessions.rotate.mockResolvedValue({
+        session: { id: 's-2', userId: 'u-1' },
+        access: { token: 'a', jti: 'j', ttlSeconds: 900, expiresAt: new Date() },
+        refresh: { raw: 'r2', hash: 'h2', expiresAt: new Date() },
+      } as never);
+    }
+
+    it('rotates for a user in good standing (ACTIVE, not deleted)', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(makeUser({ id: 'u-1', status: 'ACTIVE' }));
+      const out = await h.svc.refresh(refreshParams);
+      expect(out.userId).toBe('u-1');
+      expect(h.sessions.rotate).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects when the user no longer exists', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(null);
+      await expect(h.svc.refresh(refreshParams)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_REFRESH_INVALID' }),
+      });
+      expect(h.sessions.rotate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a soft-deleted user (deletedAt set)', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(makeUser({ id: 'u-1', deletedAt: new Date() }));
+      await expect(h.svc.refresh(refreshParams)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_REFRESH_INVALID' }),
+      });
+      expect(h.sessions.rotate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a deactivated user (isActive=false)', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(makeUser({ id: 'u-1', isActive: false }));
+      await expect(h.svc.refresh(refreshParams)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_REFRESH_INVALID' }),
+      });
+      expect(h.sessions.rotate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a SUSPENDED user', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(makeUser({ id: 'u-1', status: 'SUSPENDED' }));
+      await expect(h.svc.refresh(refreshParams)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_REFRESH_INVALID' }),
+      });
+      expect(h.sessions.rotate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a LOCKED user', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(makeUser({ id: 'u-1', status: 'LOCKED' }));
+      await expect(h.svc.refresh(refreshParams)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_REFRESH_INVALID' }),
+      });
+      expect(h.sessions.rotate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('logout / logoutAll', () => {
     it('logout revokes the current session and audits LOGOUT', async () => {
       const h = makeHarness();
