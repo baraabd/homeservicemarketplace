@@ -10,6 +10,7 @@ import type {
 
 import type { BookingEventRepository } from '../../infrastructure/persistence/bookings/booking-event.repository';
 import type { NotificationsService } from '../notifications/notifications.service';
+import type { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 import type {
   BookingRepository,
   BookingWithRelations,
@@ -154,6 +155,7 @@ interface Mocks {
   };
   events: { create: jest.Mock; listForBooking: jest.Mock };
   notifications: { createForUser: jest.Mock };
+  realtime: { publishFor: jest.Mock; publish: jest.Mock; publishToRoom: jest.Mock };
 }
 
 type MocksOverride = { [K in keyof Mocks]?: Partial<Mocks[K]> };
@@ -175,6 +177,12 @@ function makeMocks(over: MocksOverride = {}): Mocks {
       createForUser: jest.fn().mockResolvedValue({ id: 'notif-1' }),
       ...(over.notifications ?? {}),
     },
+    realtime: {
+      publishFor: jest.fn(),
+      publish: jest.fn(),
+      publishToRoom: jest.fn(),
+      ...(over.realtime ?? {}),
+    },
   };
 }
 
@@ -184,6 +192,7 @@ function makeService(m: Mocks) {
     m.events as unknown as BookingEventRepository,
     m.notifications as unknown as NotificationsService,
     makeTx(),
+    m.realtime as unknown as RealtimeEventsPublisher,
   );
 }
 
@@ -252,6 +261,23 @@ describe('BookingsService', () => {
       expect(out.id).toBe('bk-1');
       expect(out.bidNote).toBe('I can be there in 30 minutes.');
       expect(out.description).toBe('Leaky tap under the kitchen sink');
+    });
+
+    // Sprint 7.12 — Bug #8: the booking-side JobDetailView's
+    // "Posted" step needs the ORIGINAL request's createdAt (not the
+    // booking createdAt — the booking is created later, at
+    // bid-accept time). BookingDetail.requestCreatedAt is sourced
+    // from the eager-loaded `request` relation; this test pins the
+    // wire contract.
+    it('surfaces requestCreatedAt from the eager-loaded request', async () => {
+      const m = makeMocks();
+      const out = await makeService(m).detail('user-1', 'bk-1');
+      expect(out.requestCreatedAt).toBeDefined();
+      // The mock fixture's makeRequest defaults createdAt to
+      // 2026-04-28T00:00:00.000Z; assert the ISO shape is on the
+      // wire so the frontend formatter never receives undefined.
+      expect(typeof out.requestCreatedAt).toBe('string');
+      expect(out.requestCreatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
     it('rejects with NOT_FOUND on a foreign bookingId (no leak between FORBIDDEN and NOT_FOUND)', async () => {
@@ -335,20 +361,116 @@ describe('BookingsService', () => {
         }),
         undefined,
       );
-      // Notification fan-out (slice 3.1): a BOOKING_CANCELLED row is
-      // created inside the same transaction so the notification can
-      // never exist without the cancellation that produced it.
+      // Sprint 7.x — provider profile in the default fixture has
+      // userId: null, so no notification recipient. The seeker
+      // self-notification (echo) was removed in this sprint.
+      expect(m.notifications.createForUser).not.toHaveBeenCalled();
+      expect(out.status).toBe('CANCELLED');
+    });
+
+    // Sprint 7.x — provider-side notification when the provider profile
+    // has a linked userId. Body / metadata mirror the provider-cancel
+    // path so the provider's notification drawer treats the row
+    // uniformly regardless of who initiated.
+    it('notifies the PROVIDER (not the seeker self) when the provider has a linked userId', async () => {
+      const linkedProvider = makeProvider({ userId: 'user-prov-1' });
+      const owned = { ...makeBooking(), provider: linkedProvider } as BookingWithRelations;
+      const reloaded = {
+        ...makeBooking({ status: 'CANCELLED' as BookingStatus }),
+        provider: linkedProvider,
+      } as BookingWithRelations;
+      const m = makeMocks({
+        bookings: {
+          findOwned: jest.fn().mockResolvedValueOnce(owned).mockResolvedValueOnce(reloaded),
+          setStatusOwned: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      });
+      await makeService(m).cancel('user-1', 'bk-1');
+      // Exactly ONE notification — and it goes to the PROVIDER.
+      expect(m.notifications.createForUser).toHaveBeenCalledTimes(1);
       expect(m.notifications.createForUser).toHaveBeenCalledWith(
         expect.objectContaining({
-          userId: 'user-1',
+          userId: 'user-prov-1',
           type: 'BOOKING_CANCELLED',
           resourceType: 'BOOKING',
           resourceId: 'bk-1',
-          deepLink: '/home/bookings/bk-1',
+          deepLink: '/provider/bookings/bk-1',
+          metadata: expect.objectContaining({
+            bookingId: 'bk-1',
+            requestId: 'req-1',
+            cancelledBy: 'seeker',
+          }),
+          actorUserId: 'user-1',
         }),
         undefined,
       );
-      expect(out.status).toBe('CANCELLED');
+    });
+
+    // Sprint 7.x — POST-COMMIT realtime fan-out. Both parties receive
+    // booking.status_changed; envelope's actorUserId silences UX on
+    // the seeker's own tabs while the provider gets toast + sound.
+    it('publishes booking.status_changed to BOTH seeker and provider (with actor metadata)', async () => {
+      const linkedProvider = makeProvider({ userId: 'user-prov-1' });
+      const owned = { ...makeBooking(), provider: linkedProvider } as BookingWithRelations;
+      const reloaded = {
+        ...makeBooking({ status: 'CANCELLED' as BookingStatus }),
+        provider: linkedProvider,
+      } as BookingWithRelations;
+      const m = makeMocks({
+        bookings: {
+          findOwned: jest.fn().mockResolvedValueOnce(owned).mockResolvedValueOnce(reloaded),
+          setStatusOwned: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      });
+      await makeService(m).cancel('user-1', 'bk-1');
+      const expectedPayload = expect.objectContaining({
+        bookingId: 'bk-1',
+        requestId: 'req-1',
+        from: 'SCHEDULED',
+        to: 'CANCELLED',
+        actorUserId: 'user-1',
+        actorRole: 'SEEKER',
+      });
+      const expectedMeta = { actorUserId: 'user-1' };
+      expect(m.realtime.publishFor).toHaveBeenCalledWith(
+        'user-1',
+        'booking.status_changed',
+        expectedPayload,
+        expectedMeta,
+      );
+      expect(m.realtime.publishFor).toHaveBeenCalledWith(
+        'user-prov-1',
+        'booking.status_changed',
+        expectedPayload,
+        expectedMeta,
+      );
+    });
+
+    it('skips the provider notification when the provider profile has no linked userId', async () => {
+      // Default fixture provider has userId: null — the unlinked
+      // (legacy seed) case. The seeker still receives realtime
+      // invalidation; the provider has no surface to deliver to.
+      const m = makeMocks({
+        bookings: {
+          findOwned: jest
+            .fn()
+            .mockResolvedValueOnce(makeBooking())
+            .mockResolvedValueOnce(makeBooking({ status: 'CANCELLED' as BookingStatus })),
+          setStatusOwned: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      });
+      await makeService(m).cancel('user-1', 'bk-1');
+      expect(m.notifications.createForUser).not.toHaveBeenCalled();
+      // Seeker still gets the realtime publish for cross-tab cache
+      // invalidation.
+      expect(m.realtime.publishFor).toHaveBeenCalledWith(
+        'user-1',
+        'booking.status_changed',
+        expect.any(Object),
+        { actorUserId: 'user-1' },
+      );
+      // Exactly ONE publish — no provider recipient.
+      expect(m.realtime.publishFor).toHaveBeenCalledTimes(1);
     });
 
     it('rejects with NOT_FOUND on a foreign bookingId (no event or notification written)', async () => {

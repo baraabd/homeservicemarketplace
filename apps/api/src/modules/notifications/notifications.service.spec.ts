@@ -243,6 +243,96 @@ describe('NotificationsService', () => {
     );
   });
 
+  // Sprint 7.6 — actorUserId on the input threads onto the realtime
+  // envelope (NOT onto the persisted Notification row). The persisted
+  // row's audit purpose is satisfied by the domain timeline tables;
+  // the realtime envelope is the only surface that needs the actor.
+  it('createForUser threads actorUserId onto the realtime envelope without persisting it', async () => {
+    // Construct a service with a publisher we can spy on directly.
+    const create = jest.fn().mockResolvedValue({
+      id: 'notif-1',
+      userId: 'recipient-1',
+      type: 'BOOKING_COMPLETED' as NotificationType,
+      title: 'x',
+      body: 'y',
+      resourceType: 'BOOKING',
+      resourceId: 'bk-1',
+      deepLink: null,
+      metadata: null,
+      readAt: null,
+      createdAt: new Date('2026-05-30T10:00:00Z'),
+      deletedAt: null,
+    });
+    const publishFor = jest.fn();
+    const service = new NotificationsService(
+      { create } as unknown as NotificationRepository,
+      {
+        publish: jest.fn(),
+        publishFor,
+        subscribe: jest.fn(),
+      } as unknown as import('../realtime/realtime-events.publisher').RealtimeEventsPublisher,
+    );
+    await service.createForUser({
+      userId: 'recipient-1',
+      type: 'BOOKING_COMPLETED' as NotificationType,
+      title: 'x',
+      body: 'y',
+      resourceType: 'BOOKING',
+      resourceId: 'bk-1',
+      actorUserId: 'actor-2',
+    });
+    // The 4th publish arg is the actor metadata bag that gets
+    // hoisted onto the envelope by the publisher.
+    expect(publishFor).toHaveBeenCalledWith(
+      'recipient-1',
+      'notification.created',
+      expect.objectContaining({ type: 'BOOKING_COMPLETED' }),
+      { actorUserId: 'actor-2' },
+    );
+    // The persisted row MUST NOT carry actorUserId — the domain
+    // audit history is the canonical actor trail.
+    const persisted = create.mock.calls[0]?.[0];
+    expect(persisted).not.toHaveProperty('actorUserId');
+  });
+
+  it('createForUser passes actorUserId: null when omitted (backward compatibility for system notifications)', async () => {
+    const create = jest.fn().mockResolvedValue({
+      id: 'notif-2',
+      userId: 'recipient-1',
+      type: 'BID_RECEIVED' as NotificationType,
+      title: 't',
+      body: 'b',
+      resourceType: null,
+      resourceId: null,
+      deepLink: null,
+      metadata: null,
+      readAt: null,
+      createdAt: new Date(),
+      deletedAt: null,
+    });
+    const publishFor = jest.fn();
+    const service = new NotificationsService(
+      { create } as unknown as NotificationRepository,
+      {
+        publish: jest.fn(),
+        publishFor,
+        subscribe: jest.fn(),
+      } as unknown as import('../realtime/realtime-events.publisher').RealtimeEventsPublisher,
+    );
+    await service.createForUser({
+      userId: 'recipient-1',
+      type: 'BID_RECEIVED' as NotificationType,
+      title: 't',
+      body: 'b',
+    });
+    expect(publishFor).toHaveBeenCalledWith(
+      'recipient-1',
+      'notification.created',
+      expect.any(Object),
+      { actorUserId: null },
+    );
+  });
+
   // ─── error contract ────────────────────────────────────────────────────
   it('throws AppError on every error path (no raw Prisma errors leak)', async () => {
     const m = makeMocks({

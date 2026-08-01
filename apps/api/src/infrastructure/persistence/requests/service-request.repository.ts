@@ -1,14 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import type {
+  BookingStatus,
   Prisma,
   PrismaTx,
   ScheduleType,
   ServiceCategory,
   ServiceRequest,
   ServiceRequestStatus,
+  User,
 } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../prisma/prisma.service';
+
+// Sprint 7.4 — privacy-safe seeker projection eager-loaded for the
+// provider available-requests feed. ONLY first + last name are
+// selected so the mapper can build the public label ("Layla M.")
+// without ever touching email / phone / status / MFA fields. Even a
+// careless future mapper change cannot leak PII because those fields
+// never reach the application layer.
+export type ServiceRequestSeekerPreview = Pick<User, 'id' | 'firstName' | 'lastName'>;
 
 export interface CreateServiceRequestInput {
   seekerUserId: string;
@@ -39,8 +49,35 @@ export interface UpdateServiceRequestInput {
 // Row shape returned by the listing/detail finders. Includes the
 // related ServiceCategory because the response DTO needs the category
 // labels and we'd rather pay one join than N+1 lookups in the service.
+//
+// Sprint 7.x — seeker-side reads also eager-load the LATEST live
+// booking row (one row max; ordered by updatedAt desc) so the wire
+// DTO can surface activeBookingStatus + activeBookingUpdatedAt.
+// Without this, Active Leads cards stay visually stuck at
+// "Pro Assigned" (BID_ACCEPTED) after the provider transitions the
+// booking to IN_PROGRESS / COMPLETED / CANCELLED, because the
+// parent ServiceRequest.status intentionally never changes across
+// booking lifecycle.
 export type ServiceRequestWithCategory = ServiceRequest & {
   category: ServiceCategory | null;
+  // OPTIONAL — only populated by the seeker finders (listForSeeker /
+  // findOwned). Provider-side finders don't include it.
+  bookings?: { id: string; status: BookingStatus; updatedAt: Date }[];
+  // Sprint 7.12 — Prisma `_count` projection. The seeker finders
+  // request `_count.bids` with a relational `where` so the wire DTO
+  // can expose `bidsCount` (drives the Active Leads "X bids" label)
+  // without N+1. Provider-side finders skip this projection — the
+  // provider feed has its own bid filter.
+  _count?: { bids: number };
+};
+
+// Provider-feed row shape — adds the privacy-safe seeker preview on
+// top of the seeker-side projection. Used ONLY by
+// listAvailableForProvider / findAvailableForProvider; the seeker-
+// side surfaces do NOT need the seeker join because the row belongs
+// to them.
+export type ServiceRequestForProvider = ServiceRequestWithCategory & {
+  seeker: ServiceRequestSeekerPreview;
 };
 
 // Service-request persistence. Every read site filters `deletedAt: null`
@@ -73,8 +110,33 @@ export class ServiceRequestRepository {
       // createdAt — without the secondary key, cursor pagination can
       // skip or duplicate rows.
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      include: { category: true },
-    });
+      include: {
+        category: true,
+        // Sprint 7.x — latest non-deleted booking, projected narrowly
+        // (id / status / updatedAt only). The service maps this onto
+        // ServiceRequestSummary.activeBooking* so the seeker's Active
+        // Leads carousel renders the booking lifecycle status (e.g.
+        // "In Progress") even though the parent ServiceRequest stays
+        // at BID_ACCEPTED across the booking transitions.
+        bookings: {
+          where: { deletedAt: null },
+          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+          take: 1,
+          select: { id: true, status: true, updatedAt: true },
+        },
+        // Sprint 7.12 — relational bid count, scoped to non-WITHDRAWN
+        // non-deleted bids so the UI label matches the "visible bids"
+        // the seeker actually sees in BidsScreen. One extra Postgres
+        // aggregate per row, no application-side join.
+        _count: {
+          select: {
+            bids: {
+              where: { deletedAt: null, status: { not: 'WITHDRAWN' } },
+            },
+          },
+        },
+      },
+    }) as Promise<ServiceRequestWithCategory[]>;
   }
 
   // Provider-side feed. Returns only OPEN_FOR_BIDS rows, scoped away
@@ -105,7 +167,7 @@ export class ServiceRequestRepository {
       excludeBidsByProviderId?: string;
     },
     tx?: PrismaTx,
-  ): Promise<ServiceRequestWithCategory[]> {
+  ): Promise<ServiceRequestForProvider[]> {
     const where: Prisma.ServiceRequestWhereInput = {
       status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
       deletedAt: null,
@@ -149,8 +211,13 @@ export class ServiceRequestRepository {
       take: args.take,
       ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      include: { category: true },
-    });
+      include: {
+        category: true,
+        // Sprint 7.4 — narrow projection: id + first + last only. Email /
+        // phone / status / MFA cannot reach the mapper.
+        seeker: { select: { id: true, firstName: true, lastName: true } },
+      },
+    }) as Promise<ServiceRequestForProvider[]>;
   }
 
   // Sprint 5.2 (canonical): single-row variant of the above. Returns
@@ -168,7 +235,7 @@ export class ServiceRequestRepository {
       excludeBidsByProviderId?: string;
     },
     tx?: PrismaTx,
-  ): Promise<ServiceRequestWithCategory | null> {
+  ): Promise<ServiceRequestForProvider | null> {
     return this.db(tx).serviceRequest.findFirst({
       where: {
         id: requestId,
@@ -202,12 +269,22 @@ export class ServiceRequestRepository {
             }
           : {}),
       },
-      include: { category: true },
-    });
+      include: {
+        category: true,
+        // Same narrow projection as the list variant.
+        seeker: { select: { id: true, firstName: true, lastName: true } },
+      },
+    }) as Promise<ServiceRequestForProvider | null>;
   }
 
   // Returns the row only when it belongs to the given seeker AND is not
   // soft-deleted. Used at every ownership-checked call site.
+  //
+  // Sprint 7.x — also includes the latest live booking for the
+  // ServiceRequestSummary.activeBooking* mapping. Identical to the
+  // listForSeeker include block so the wire DTO is uniform across
+  // list + detail (Active Leads card → detail overlay both see the
+  // same status without the second fetch returning stale data).
   findOwned(
     requestId: string,
     seekerUserId: string,
@@ -215,8 +292,25 @@ export class ServiceRequestRepository {
   ): Promise<ServiceRequestWithCategory | null> {
     return this.db(tx).serviceRequest.findFirst({
       where: { id: requestId, seekerUserId, deletedAt: null },
-      include: { category: true },
-    });
+      include: {
+        category: true,
+        bookings: {
+          where: { deletedAt: null },
+          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+          take: 1,
+          select: { id: true, status: true, updatedAt: true },
+        },
+        // Sprint 7.12 — same bidsCount projection as the list path so
+        // detail + summary stay in lockstep on a hard refresh.
+        _count: {
+          select: {
+            bids: {
+              where: { deletedAt: null, status: { not: 'WITHDRAWN' } },
+            },
+          },
+        },
+      },
+    }) as Promise<ServiceRequestWithCategory | null>;
   }
 
   // Plain non-ownership-scoped finder. Used on the provider side

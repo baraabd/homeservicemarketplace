@@ -109,6 +109,9 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth-provider';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { clearIntendedApp } from '../../../lib/intended-app';
+import { RequestMediaGallery } from '../ds/RequestMediaGallery';
+import { resolveMediaUrl } from '../../../lib/media-url';
+import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
 import { EditProfilePage } from '../profile/EditProfilePage';
 import type {
   ProviderAvailability,
@@ -584,7 +587,11 @@ function JobDetailOverlay({
   // The legacy ServiceRequest type carries these as primitives that
   // the adapter blanks for missing wire fields. Treat 0 / '' as "no
   // value yet" so the overlay never renders a fabricated zero.
-  const hasDistance = req.distance > 0;
+  // Distance moved to a nullable `distanceKm` field — `!== null`
+  // because 0 km is a real value (provider standing on top of the
+  // request); the legacy `req.distance` is no longer the source of
+  // truth and stays 0 from the adapter.
+  const hasDistance = req.distanceKm !== null;
   const hasBudget = Boolean(req.budget && req.budget.trim());
   const hasSeeker = Boolean(req.seekerName && req.seekerName.trim());
 
@@ -656,9 +663,19 @@ function JobDetailOverlay({
         </div>
 
         <div className="px-5 pb-6 flex flex-col gap-4">
-          {/* Meta row — Distance · Budget · Seeker */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
+          {/* Meta row — Distance / Budget / Seeker.
+              Layout uses flex + flex-1 (instead of a fixed 3-col grid)
+              so the visible tiles split the row evenly regardless of
+              count: 1 tile fills the row, 2 split 50/50, 3 split 33/33/33.
+              Budget and Seeker are permanently empty in the current
+              wire shape (no schema column for budget; seeker identity
+              stays masked per the Sprint 5.2 security projection), so
+              both conditionally render — no dead `—` placeholder.
+              Distance keeps the `labels.notSet` fallback while
+              `distanceKm` is null; the fallback path retires once the
+              backend Haversine slice lands. */}
+          <div className="flex gap-2">
+            <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
               <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
                 {labels.distance}
               </p>
@@ -666,32 +683,43 @@ function JobDetailOverlay({
                 className="text-slate-900 dark:text-white mt-0.5"
                 style={{ fontSize: '13px', fontWeight: 700 }}
               >
-                {hasDistance ? `${req.distance}km` : labels.notSet}
+                {hasDistance ? `${req.distanceKm!.toFixed(1)} km` : labels.notSet}
               </p>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
-              <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
-                {labels.budget}
-              </p>
-              <p
-                className="text-slate-900 dark:text-white mt-0.5 truncate"
-                style={{ fontSize: '13px', fontWeight: 700 }}
-              >
-                {hasBudget ? req.budget : labels.notSet}
-              </p>
-            </div>
-            <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
-              <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
-                {labels.seeker}
-              </p>
-              <p
-                className="text-slate-900 dark:text-white mt-0.5 truncate"
-                style={{ fontSize: '13px', fontWeight: 700 }}
-              >
-                {hasSeeker ? req.seekerName : labels.notSet}
-              </p>
-            </div>
+            {hasBudget && (
+              <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
+                <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
+                  {labels.budget}
+                </p>
+                <p
+                  className="text-slate-900 dark:text-white mt-0.5 truncate"
+                  style={{ fontSize: '13px', fontWeight: 700 }}
+                >
+                  {req.budget}
+                </p>
+              </div>
+            )}
+            {hasSeeker && (
+              <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
+                <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
+                  {labels.seeker}
+                </p>
+                <p
+                  className="text-slate-900 dark:text-white mt-0.5 truncate"
+                  style={{ fontSize: '13px', fontWeight: 700 }}
+                >
+                  {req.seekerName}
+                </p>
+              </div>
+            )}
           </div>
+
+          {/* Seeker-uploaded photos. RequestMediaGallery normalises the
+              URLs (relative paths / bare keys), renders a bounded
+              horizontal strip, and swaps any failed load for an inline
+              placeholder instead of the browser's broken-image glyph.
+              It renders nothing when there is no media. */}
+          <RequestMediaGallery urls={req.mediaUrls} testId="job-detail-media" />
 
           {/* Description */}
           <div>
@@ -1071,9 +1099,16 @@ function LiveJobsScreen() {
           </div>
         </div>
 
-        {/* Drag handle */}
-        {!sheetOpen && (
+        {/* Drag handle — the floating pull-up affordance. It sits at
+            z-[1000] (above Leaflet's popup panes), which is ABOVE the
+            detail overlay / bidding modal (z-40); so we must hide it
+            whenever a blocking surface is open, otherwise it floats over
+            the request detail and covers the Place Bid CTA. Hidden when:
+            the bottom sheet is open, the request-detail overlay is open,
+            or the bidding modal is open. */}
+        {!sheetOpen && !detailReq && !biddingReq && (
           <motion.button
+            data-testid="pull-up-control"
             className="absolute bottom-4 start-1/2 -translate-x-1/2 flex flex-col items-center gap-1 z-[1000]"
             onClick={() => setSheetOpen(true)}
             animate={{ y: [0, -6, 0] }}
@@ -1222,33 +1257,78 @@ function LiveJobsScreen() {
                         >
                           {lang === 'ar' ? req.locationAr : req.location}
                         </p>
-                        <div className="flex items-center gap-3 mt-1.5">
-                          <div className="flex items-center gap-1">
-                            <MapPin size={11} className="text-blue-500" />
-                            <span
-                              className="text-blue-600 dark:text-blue-400"
-                              style={{ fontSize: '11px', fontWeight: 600 }}
-                            >
-                              {req.distance}
-                              {L.km}
-                            </span>
+                        {/* Meta row — Distance / Budget / Seeker icons.
+                            Each chip only renders when the underlying
+                            value is real, so the card never shows a
+                            fabricated "0 km" / empty pill / empty
+                            avatar gap when the wire deliberately
+                            omits the field. Distance gates on
+                            `distanceKm !== null` (0 km is a real
+                            value); budget + seekerName gate on a
+                            non-empty string. */}
+                        {(req.distanceKm !== null ||
+                          req.budget.trim().length > 0 ||
+                          req.seekerName.trim().length > 0) && (
+                          <div className="flex items-center gap-3 mt-1.5">
+                            {req.distanceKm !== null && (
+                              <div className="flex items-center gap-1">
+                                <MapPin size={11} className="text-blue-500" />
+                                <span
+                                  className="text-blue-600 dark:text-blue-400"
+                                  style={{ fontSize: '11px', fontWeight: 600 }}
+                                >
+                                  {req.distanceKm.toFixed(1)}
+                                  {L.km}
+                                </span>
+                              </div>
+                            )}
+                            {req.budget.trim().length > 0 && (
+                              <div className="flex items-center gap-1">
+                                <DollarSign size={11} className="text-green-500" />
+                                <span
+                                  className="text-green-600 dark:text-green-400"
+                                  style={{ fontSize: '11px', fontWeight: 600 }}
+                                >
+                                  {req.budget}
+                                </span>
+                              </div>
+                            )}
+                            {req.seekerName.trim().length > 0 && (
+                              <div className="flex items-center gap-1">
+                                <Star size={11} className="text-amber-500 fill-amber-500" />
+                                <span className="text-slate-500" style={{ fontSize: '11px' }}>
+                                  {req.seekerName}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex items-center gap-1">
-                            <DollarSign size={11} className="text-green-500" />
-                            <span
-                              className="text-green-600 dark:text-green-400"
-                              style={{ fontSize: '11px', fontWeight: 600 }}
-                            >
-                              {req.budget}
-                            </span>
+                        )}
+                        {(req.mediaUrls?.length ?? 0) > 0 && (
+                          <div
+                            className="flex gap-1 mt-2 overflow-x-auto"
+                            style={{ scrollbarWidth: 'none' }}
+                            data-testid={`job-card-media-${req.id}`}
+                          >
+                            {(req.mediaUrls ?? []).slice(0, 3).map((url) => (
+                              <img
+                                key={url}
+                                src={resolveMediaUrl(url)}
+                                alt=""
+                                loading="lazy"
+                                className="w-10 h-10 object-cover rounded-md border border-slate-200 dark:border-slate-600 flex-shrink-0"
+                              />
+                            ))}
+                            {(req.mediaUrls?.length ?? 0) > 3 && (
+                              <div
+                                className="w-10 h-10 rounded-md border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-600 flex items-center justify-center text-slate-500 flex-shrink-0"
+                                style={{ fontSize: '10px', fontWeight: 700 }}
+                                aria-label={`+${(req.mediaUrls?.length ?? 0) - 3}`}
+                              >
+                                +{(req.mediaUrls?.length ?? 0) - 3}
+                              </div>
+                            )}
                           </div>
-                          <div className="flex items-center gap-1">
-                            <Star size={11} className="text-amber-500 fill-amber-500" />
-                            <span className="text-slate-500" style={{ fontSize: '11px' }}>
-                              {req.seekerName}
-                            </span>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     </div>
                   </motion.div>
@@ -2479,15 +2559,20 @@ function ProviderNotificationsDrawer({ onClose }: { onClose: () => void }) {
 
   return (
     <>
+      {/* Sprint 7.14 — `absolute` (NOT `fixed`) so the drawer is bounded
+          by the provider app shell (the root div is now `relative`)
+          exactly like the seeker drawer, instead of escaping to the full
+          browser viewport on wide screens. z-indices sit above the
+          top-bar / bottom-nav (z-20). */}
       <motion.div
-        className="fixed inset-0 bg-slate-900/40 z-30"
+        className="absolute inset-0 bg-slate-900/40 z-40"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
       />
       <motion.div
-        className="fixed top-0 end-0 bottom-0 w-full sm:w-[400px] bg-white dark:bg-slate-800 z-40 flex flex-col shadow-2xl"
+        className="absolute top-0 end-0 bottom-0 w-full sm:w-[400px] bg-white dark:bg-slate-800 z-50 flex flex-col shadow-2xl"
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
@@ -2659,14 +2744,17 @@ function ProviderChatScreen() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-lg flex-shrink-0">
-                      {conv.otherParticipant.initials || '👤'}
+                      {conv.otherParticipant?.initials || '👤'}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p
                         className="text-slate-900 dark:text-white truncate"
                         style={{ fontSize: '13px', fontWeight: 700 }}
                       >
-                        {conv.otherParticipant.displayName || (lang === 'ar' ? 'مستخدم' : 'User')}
+                        {formatPrivacyDisplayName(
+                          { displayName: conv.otherParticipant?.displayName ?? '' },
+                          { roleFallback: lang === 'ar' ? 'مستخدم' : 'User' },
+                        )}
                       </p>
                       <p
                         className="text-slate-500 dark:text-slate-400 truncate"
@@ -2917,7 +3005,7 @@ export function ProviderApp() {
 
   return (
     <div
-      className={`flex flex-col ${darkMode ? 'dark bg-slate-900' : 'bg-white'}`}
+      className={`relative overflow-hidden flex flex-col ${darkMode ? 'dark bg-slate-900' : 'bg-white'}`}
       style={{ height: '100svh', fontFamily, direction: dir }}
       dir={dir}
     >

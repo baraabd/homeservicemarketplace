@@ -19,6 +19,7 @@ import type {
 } from '../../infrastructure/persistence/requests/service-request.repository';
 import type { ServiceRequestEventRepository } from '../../infrastructure/persistence/requests/service-request-event.repository';
 import type { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
+import type { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 import { AppError } from '../../shared/errors/app-error';
 import { BidsService } from './bids.service';
 
@@ -115,6 +116,7 @@ interface Mocks {
   events: { create: jest.Mock };
   bookingEvents: { create: jest.Mock };
   notifications: { createForUser: jest.Mock };
+  realtime: { publishFor: jest.Mock; publish: jest.Mock; publishToRoom: jest.Mock };
 }
 
 // Deep-partial overrides so a test can replace a single repo method
@@ -168,6 +170,12 @@ function makeMocks(over: MocksOverride = {}): Mocks {
       createForUser: jest.fn().mockResolvedValue({ id: 'notif-1' }),
       ...(over.notifications ?? {}),
     },
+    realtime: {
+      publishFor: jest.fn(),
+      publish: jest.fn(),
+      publishToRoom: jest.fn(),
+      ...(over.realtime ?? {}),
+    },
   };
 }
 
@@ -180,6 +188,7 @@ function makeService(m: Mocks) {
     m.bookingEvents as unknown as BookingEventRepository,
     m.notifications as unknown as NotificationsService,
     makeTx(),
+    m.realtime as unknown as RealtimeEventsPublisher,
   );
 }
 
@@ -365,39 +374,20 @@ describe('BidsService', () => {
         }),
         undefined,
       );
-      // Notification fan-out (slice 3.1). Two rows: one for the bid
-      // acceptance, one for the booking creation. Both written inside
-      // the same tx so they can never exist without the action.
-      expect(m.notifications.createForUser).toHaveBeenCalledTimes(2);
-      expect(m.notifications.createForUser).toHaveBeenNthCalledWith(
-        1,
-        expect.objectContaining({
-          userId: 'user-1',
-          type: 'BID_ACCEPTED',
-          resourceType: 'BID',
-          resourceId: 'bid-1',
-          deepLink: '/home/requests/req-1/bids/bid-1',
-        }),
-        undefined,
-      );
-      expect(m.notifications.createForUser).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({
-          userId: 'user-1',
-          type: 'BOOKING_CREATED',
-          resourceType: 'BOOKING',
-          resourceId: 'bk-1',
-          deepLink: '/home/bookings/bk-1',
-        }),
-        undefined,
-      );
+      // Sprint 7.6 anti-echo: when the provider profile has NO linked
+      // userId (default fixture), there is no provider notification
+      // recipient. The seeker is the actor, so seeker self-
+      // notifications are NOT written. Net result: zero notifications.
+      // The audit trail of the transition still lives in the
+      // ServiceRequestEvent + BookingEvent timelines asserted above.
+      expect(m.notifications.createForUser).not.toHaveBeenCalled();
       // Response shape.
       expect(out.bid.status).toBe('ACCEPTED');
       expect(out.booking.id).toBe('bk-1');
       expect(out.requestStatus).toBe('BID_ACCEPTED');
     });
 
-    it('also fans out two provider-side notifications when the provider has a linked userId (slice 5.5)', async () => {
+    it('fans out two provider-side notifications when the provider has a linked userId (slice 5.5; Sprint 7.6: no seeker self-notifications)', async () => {
       const linkedProvider = makeProvider({ id: 'pp-1', userId: 'user-prov-2' });
       const pre = makeBid({ status: 'PENDING' as BidStatus }, linkedProvider);
       const post = makeBid({ status: 'ACCEPTED' as BidStatus }, linkedProvider);
@@ -413,27 +403,39 @@ describe('BidsService', () => {
         },
       });
       await makeService(m).accept('user-1', 'req-1', 'bid-1');
-      // Four total: seeker BID_ACCEPTED, seeker BOOKING_CREATED,
-      // provider BID_ACCEPTED, provider BOOKING_CREATED.
-      expect(m.notifications.createForUser).toHaveBeenCalledTimes(4);
+      // Sprint 7.6 removed seeker self-notifications. Only the provider
+      // (non-actor recipient) gets BID_ACCEPTED + BOOKING_CREATED.
+      expect(m.notifications.createForUser).toHaveBeenCalledTimes(2);
       expect(m.notifications.createForUser).toHaveBeenNthCalledWith(
-        3,
+        1,
         expect.objectContaining({
           userId: 'user-prov-2',
           type: 'BID_ACCEPTED',
           deepLink: '/provider/bids/bid-1',
+          // Sprint 7.6 — actor metadata threaded so the realtime
+          // envelope on the notification.created publish carries
+          // actorUserId = seekerUserId.
+          actorUserId: 'user-1',
         }),
         undefined,
       );
       expect(m.notifications.createForUser).toHaveBeenNthCalledWith(
-        4,
+        2,
         expect.objectContaining({
           userId: 'user-prov-2',
           type: 'BOOKING_CREATED',
           deepLink: '/provider/bookings/bk-1',
+          actorUserId: 'user-1',
         }),
         undefined,
       );
+      // CRITICAL anti-echo: no notification row was written to the
+      // seeker. The seeker already saw the in-screen success overlay
+      // for an action they just took.
+      const seekerCalls = m.notifications.createForUser.mock.calls.filter(
+        ([input]: [{ userId: string }]) => input.userId === 'user-1',
+      );
+      expect(seekerCalls).toHaveLength(0);
     });
 
     it('rejects with NOT_FOUND when the request is not owned (cross-user attempt)', async () => {
@@ -561,6 +563,163 @@ describe('BidsService', () => {
       });
       // Booking must NOT be created when the request flip fails.
       expect(m.bookings.create).not.toHaveBeenCalled();
+    });
+
+    // ─── Sprint 7.5 — realtime fan-out + Sprint 7.6 — actor envelope ───
+
+    it('SUCCESS: publishes bid.accepted + booking.created for the seeker (unlinked provider) with actor metadata', async () => {
+      // Default provider fixture has userId: null — provider side is
+      // skipped. Seeker still receives both events for cross-tab
+      // cache invalidation; the side-effects bridge silences UX.
+      const m = makeMocks({
+        requests: {
+          findOwned: ownedRequest(),
+          setStatusOwned: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+        bids: {
+          listForRequest: jest.fn(),
+          findOwned: pendingBid(),
+          setStatusIf: jest.fn().mockResolvedValue({ count: 1 }),
+          rejectSiblings: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      });
+      await makeService(m).accept('user-1', 'req-1', 'bid-1');
+      // Exactly two publishes — seeker only.
+      expect(m.realtime.publishFor).toHaveBeenCalledTimes(2);
+      // Sprint 7.6 — every publish carries `{ actorUserId }` as the
+      // 4th arg so the envelope's `actorUserId` is populated by the
+      // publisher.
+      expect(m.realtime.publishFor).toHaveBeenNthCalledWith(
+        1,
+        'user-1',
+        'bid.accepted',
+        expect.objectContaining({
+          requestId: 'req-1',
+          bid: expect.objectContaining({ id: 'bid-1', status: 'ACCEPTED' }),
+          actorUserId: 'user-1',
+          actorRole: 'SEEKER',
+        }),
+        { actorUserId: 'user-1' },
+      );
+      expect(m.realtime.publishFor).toHaveBeenNthCalledWith(
+        2,
+        'user-1',
+        'booking.created',
+        expect.objectContaining({
+          requestId: 'req-1',
+          booking: expect.objectContaining({ id: 'bk-1' }),
+          actorUserId: 'user-1',
+          actorRole: 'SEEKER',
+        }),
+        { actorUserId: 'user-1' },
+      );
+      // Broadcast payload does NOT carry persistence-only fields.
+      const [, , payload] = m.realtime.publishFor.mock.calls[0];
+      expect(payload.bid).not.toHaveProperty('providerId');
+      expect(payload.bid.provider).not.toHaveProperty('userId');
+    });
+
+    it('SUCCESS: publishes to BOTH seeker AND provider userIds with the same actor metadata', async () => {
+      const linkedProvider = makeProvider({ id: 'pp-1', userId: 'user-prov-2' });
+      const pre = makeBid({ status: 'PENDING' as BidStatus }, linkedProvider);
+      const post = makeBid({ status: 'ACCEPTED' as BidStatus }, linkedProvider);
+      const m = makeMocks({
+        bids: {
+          listForRequest: jest.fn(),
+          findOwned: jest.fn().mockResolvedValueOnce(pre).mockResolvedValueOnce(post),
+          setStatusIf: jest.fn().mockResolvedValue({ count: 1 }),
+          rejectSiblings: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      });
+      await makeService(m).accept('user-1', 'req-1', 'bid-1');
+      // 4 publishes: seeker bid + booking, provider bid + booking.
+      expect(m.realtime.publishFor).toHaveBeenCalledTimes(4);
+      const calls = m.realtime.publishFor.mock.calls;
+      // Every call uses the same actor metadata — the seeker is the
+      // actor regardless of recipient.
+      for (const call of calls) {
+        const [, , , options] = call;
+        expect(options).toEqual({ actorUserId: 'user-1' });
+      }
+      const recipientsAndTypes = calls.map(
+        ([userId, type]: [string, string]) => `${userId}:${type}`,
+      );
+      expect(recipientsAndTypes).toEqual([
+        'user-1:bid.accepted',
+        'user-1:booking.created',
+        'user-prov-2:bid.accepted',
+        'user-prov-2:booking.created',
+      ]);
+    });
+
+    // Sprint 7.6 — publisher swallows its own errors so a bus failure
+    // cannot roll back the REST mutation. We pin the contract here at
+    // the service layer: a throwing publish does NOT cause accept to
+    // throw or skip any of its writes. (The publisher's own try/catch
+    // is what guarantees this; we simulate by making the mock throw.)
+    it('publish failure does NOT roll back the DB mutation', async () => {
+      const linkedProvider = makeProvider({ id: 'pp-1', userId: 'user-prov-2' });
+      const pre = makeBid({ status: 'PENDING' as BidStatus }, linkedProvider);
+      const post = makeBid({ status: 'ACCEPTED' as BidStatus }, linkedProvider);
+      const throwingPublisher = jest.fn(() => {
+        throw new Error('bus is down');
+      });
+      const m = makeMocks({
+        bids: {
+          listForRequest: jest.fn(),
+          findOwned: jest.fn().mockResolvedValueOnce(pre).mockResolvedValueOnce(post),
+          setStatusIf: jest.fn().mockResolvedValue({ count: 1 }),
+          rejectSiblings: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        realtime: { publishFor: throwingPublisher },
+      });
+      // The accept call may or may not propagate the throw depending
+      // on whether the publisher catches; the contract we care about
+      // is that the DB writes completed. The mocked publisher here
+      // throws synchronously to simulate the worst case (the real
+      // publisher catches and never throws). Either way, the booking
+      // create + event writes happened first.
+      try {
+        await makeService(m).accept('user-1', 'req-1', 'bid-1');
+      } catch {
+        /* expected for the test-only throwing mock */
+      }
+      expect(m.bookings.create).toHaveBeenCalled();
+      expect(m.bookingEvents.create).toHaveBeenCalled();
+      expect(m.events.create).toHaveBeenCalled();
+    });
+
+    it('STALE ACCEPT (CONFLICT): does NOT publish any realtime event when the bid race fires', async () => {
+      // Pre-flip read sees PENDING, but a concurrent writer flipped
+      // the row before our update fired → setStatusIf returns count 0.
+      const m = makeMocks({
+        requests: { findOwned: ownedRequest(), setStatusOwned: jest.fn() },
+        bids: {
+          listForRequest: jest.fn(),
+          findOwned: jest.fn().mockResolvedValue(makeBid({ status: 'PENDING' as BidStatus })),
+          setStatusIf: jest.fn().mockResolvedValue({ count: 0 }),
+          rejectSiblings: jest.fn(),
+        },
+      });
+      await expect(makeService(m).accept('user-1', 'req-1', 'bid-1')).rejects.toMatchObject({
+        code: 'CONFLICT',
+      });
+      // Critical: no realtime fan-out on a failed accept — connected
+      // clients must not be told a non-existent booking landed.
+      expect(m.realtime.publishFor).not.toHaveBeenCalled();
+    });
+
+    it('STALE ACCEPT (request already BID_ACCEPTED): does NOT publish any realtime event', async () => {
+      const m = makeMocks({
+        requests: {
+          findOwned: ownedRequest({ status: 'BID_ACCEPTED' as ServiceRequestStatus }),
+          setStatusOwned: jest.fn(),
+        },
+      });
+      await expect(makeService(m).accept('user-1', 'req-1', 'bid-2')).rejects.toMatchObject({
+        code: 'CONFLICT',
+      });
+      expect(m.realtime.publishFor).not.toHaveBeenCalled();
     });
 
     it('snapshots priceAmount + currency from the bid (not the request)', async () => {

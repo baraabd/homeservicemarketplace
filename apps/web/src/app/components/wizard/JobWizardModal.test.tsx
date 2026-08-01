@@ -42,7 +42,17 @@ vi.mock('react-leaflet', () => ({
   Popup: ({ children }: { children?: ReactNode }) => (
     <div data-testid="leaflet-popup">{children}</div>
   ),
-  useMap: () => ({ fitBounds: () => {}, setView: () => {} }),
+  // MapResizer (mounted by LocationMap to call `map.invalidateSize()`
+  // on mount + container resize) calls these two extra members. The
+  // stubs satisfy them safely — `getContainer()` returns a real DOM
+  // node so `ResizeObserver.observe(container)` accepts the argument
+  // even on environments that ship a strict implementation.
+  useMap: () => ({
+    fitBounds: () => {},
+    setView: () => {},
+    invalidateSize: () => {},
+    getContainer: () => document.createElement('div'),
+  }),
 }));
 
 // L.divIcon / L.latLngBounds / L.Icon.Default are called from the
@@ -337,6 +347,27 @@ describe('JobWizardModal — address routing', () => {
 // ── Geolocation ──────────────────────────────────────────────────────────────
 
 describe('JobWizardModal — geolocation', () => {
+  // CRITICAL fix sprint — `reverseGeocode` is now Nominatim-only. Tests
+  // that DON'T install their own fetch stub still need a default so the
+  // wizard's applyReverseGeocode resolves promptly (otherwise the
+  // submit fires before address is auto-filled and handlePost rejects
+  // with the empty-address validation). Per-test stubs override this
+  // default by reassigning globalThis.fetch.
+  const ORIGINAL_FETCH_GEO = globalThis.fetch;
+  beforeEach(() => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          display_name: 'Auto-Filled St, Aleppo, Syria',
+          address: { city: 'Aleppo', country: 'Syria' },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )) as typeof fetch;
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH_GEO;
+  });
+
   it('attaches lat/lng to manualAddress when navigator.geolocation succeeds', async () => {
     Object.defineProperty(navigator, 'geolocation', {
       value: {
@@ -359,19 +390,14 @@ describe('JobWizardModal — geolocation', () => {
     renderWizard();
     await advanceToStep2();
 
-    // No saved default — type the address. The TextField uses a
-    // floating-label pattern (no htmlFor association), so we target
-    // the only `textbox` rendered on step 2.
-    const addressInput = screen.getAllByRole('textbox')[0] as HTMLInputElement;
-    fireEvent.change(addressInput, {
-      target: { value: '500 Park Lane, Riyadh, Saudi Arabia' },
-    });
-
     fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /location captured/i })).toBeInTheDocument(),
     );
+    // Wait for the Nominatim auto-fill to land — the address field
+    // transitions from "Fetching address..." → real display_name.
+    await waitFor(() => expect(screen.getByDisplayValue(/Auto-Filled St/i)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
 
@@ -407,38 +433,27 @@ describe('JobWizardModal — geolocation', () => {
       configurable: true,
     });
 
-    // Google response with the polluted multi-segment formatted_address
-    // PLUS a clean `locality: "Aleppo"` component. The pre-fix wizard
-    // would split the formatted_address and pick "Aleppo Governorate"
-    // as city; the fix uses the locality directly.
+    // Nominatim response with the polluted multi-segment display_name
+    // PLUS a clean `address.city: "Aleppo"`. The pre-fix wizard would
+    // split the display_name and pick "Aleppo Governorate" as city;
+    // the fix uses the strict address.city directly.
     const POLLUTED_ADDRESS = 'King Fahd Rd, Sheikh Maqsood, Aleppo, Aleppo Governorate, Syria';
     const origFetch = globalThis.fetch;
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
-          status: 'OK',
-          results: [
-            {
-              formatted_address: POLLUTED_ADDRESS,
-              address_components: [
-                { long_name: 'King Fahd Rd', short_name: 'King Fahd Rd', types: ['route'] },
-                { long_name: 'Aleppo', short_name: 'Aleppo', types: ['locality', 'political'] },
-                {
-                  long_name: 'Aleppo Governorate',
-                  short_name: 'Aleppo Governorate',
-                  types: ['administrative_area_level_1', 'political'],
-                },
-                { long_name: 'Syria', short_name: 'SY', types: ['country', 'political'] },
-              ],
-            },
-          ],
+          display_name: POLLUTED_ADDRESS,
+          address: {
+            road: 'King Fahd Rd',
+            suburb: 'Sheikh Maqsood',
+            city: 'Aleppo',
+            state: 'Aleppo Governorate',
+            country: 'Syria',
+            country_code: 'sy',
+          },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       )) as typeof fetch;
-    // The reverse-geocode module reads VITE_GOOGLE_MAPS_API_KEY at call
-    // time; without a key it short-circuits to a partial outcome and
-    // never hits our fetch stub.
-    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key');
 
     try {
       mock.onGet('/v1/me/addresses').reply(200, { items: [] });
@@ -452,10 +467,12 @@ describe('JobWizardModal — geolocation', () => {
       await advanceToStep2();
       fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
 
-      // Wait for the auto-fill to land — the address field carries the
-      // polluted formatted_address, but geocoded state has captured
-      // the strict locality.
-      await waitFor(() => expect(screen.getByDisplayValue(POLLUTED_ADDRESS)).toBeInTheDocument());
+      // Wait for the auto-fill to land. Sprint 7.14 — the field now
+      // shows a COMPACT display at rest (admin tiers + city/country
+      // stripped), so we match the retained street part rather than the
+      // full polluted string. The raw value is still submitted (asserted
+      // below via the strict city/country on manualAddress).
+      await waitFor(() => expect(screen.getByDisplayValue(/King Fahd Rd/)).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
 
@@ -468,7 +485,6 @@ describe('JobWizardModal — geolocation', () => {
       expect(manual?.lng).toBeCloseTo(37.1612, 4);
     } finally {
       globalThis.fetch = origFetch;
-      vi.unstubAllEnvs();
     }
   });
 
@@ -493,20 +509,11 @@ describe('JobWizardModal — geolocation', () => {
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
-          status: 'OK',
-          results: [
-            {
-              formatted_address: 'Some St, Aleppo, Syria',
-              address_components: [
-                { long_name: 'Aleppo', short_name: 'Aleppo', types: ['locality'] },
-                { long_name: 'Syria', short_name: 'SY', types: ['country'] },
-              ],
-            },
-          ],
+          display_name: 'Some St, Aleppo, Syria',
+          address: { road: 'Some St', city: 'Aleppo', country: 'Syria' },
         }),
         { status: 200 },
       )) as typeof fetch;
-    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key');
 
     try {
       mock.onGet('/v1/me/addresses').reply(200, { items: [] });
@@ -519,7 +526,9 @@ describe('JobWizardModal — geolocation', () => {
       renderWizard();
       await advanceToStep2();
       fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
-      await waitFor(() => expect(screen.getByDisplayValue(/Aleppo/i)).toBeInTheDocument());
+      // Sprint 7.14 — compact display strips the city; wait on the
+      // retained street part to confirm the geocode auto-fill landed.
+      await waitFor(() => expect(screen.getByDisplayValue(/Some St/i)).toBeInTheDocument());
 
       // User wholesale retypes: no "Aleppo" anywhere in the new value.
       const addressInput = screen.getAllByRole('textbox')[0] as HTMLInputElement;
@@ -538,7 +547,51 @@ describe('JobWizardModal — geolocation', () => {
       expect(manual?.country).toBe('Syria');
     } finally {
       globalThis.fetch = origFetch;
-      vi.unstubAllEnvs();
+    }
+  });
+
+  // Sprint 7.14 — the address box shows a COMPACT local address at rest
+  // (admin tiers + city/country stripped) but reveals the full raw value
+  // while editing, and submits the raw string unchanged.
+  it('shows a compact address at rest and the full raw value while editing', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      value: {
+        getCurrentPosition: (
+          success: (pos: { coords: { latitude: number; longitude: number } }) => void,
+        ) => success({ coords: { latitude: 36.2012, longitude: 37.1612 } }),
+      },
+      configurable: true,
+    });
+
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          display_name: 'حي البياضة, حلب, ناحية مركز جبل سمعان, منطقة جبل سمعان, محافظة حلب, سوريا',
+          address: { city: 'حلب', country: 'سوريا' },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )) as typeof fetch;
+
+    try {
+      mock.onGet('/v1/me/addresses').reply(200, { items: [] });
+      renderWizard();
+      await advanceToStep2();
+      fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
+
+      // At rest: compact neighbourhood only, no administrative tiers.
+      const input = (await waitFor(() =>
+        screen.getByDisplayValue('حي البياضة'),
+      )) as HTMLInputElement;
+      expect(input.value).not.toMatch(/ناحية|منطقة|محافظة|سوريا/);
+
+      // Focus reveals the full raw address so the user edits the real
+      // string (and the geocoded-city retention check still works).
+      fireEvent.focus(input);
+      await waitFor(() => expect(input.value).toMatch(/محافظة حلب/));
+      expect(input.value).toMatch(/سوريا/);
+    } finally {
+      globalThis.fetch = origFetch;
     }
   });
 
@@ -781,7 +834,7 @@ describe('JobWizardModal — segmented time picker', () => {
 //      backed by object URLs (URL.createObjectURL).
 //   3. Clicking the per-thumbnail X button calls URL.revokeObjectURL
 //      and removes the row.
-//   4. The MAX_MEDIA_ITEMS=4 cap is enforced (excess files are dropped
+//   4. The MAX_MEDIA_ITEMS=6 cap is enforced (excess files are dropped
 //      and the toast surface is exercised).
 describe('JobWizardModal — Phase 3 native media upload', () => {
   beforeEach(() => {
@@ -843,25 +896,33 @@ describe('JobWizardModal — Phase 3 native media upload', () => {
     }
   });
 
-  it('caps the total at 4 files (extras are dropped)', async () => {
+  it('accepts up to 6 files', async () => {
     URL.createObjectURL = (() => 'blob:mock') as typeof URL.createObjectURL;
     URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
 
     renderWizard();
     const input = await waitFor(() => getMediaInput());
-    const files = [
-      makeFile('1.jpg', 'image/jpeg'),
-      makeFile('2.jpg', 'image/jpeg'),
-      makeFile('3.jpg', 'image/jpeg'),
-      makeFile('4.jpg', 'image/jpeg'),
-      makeFile('5.jpg', 'image/jpeg'),
-      makeFile('6.jpg', 'image/jpeg'),
-    ];
+    const files = Array.from({ length: 6 }, (_, i) => makeFile(`${i}.jpg`, 'image/jpeg'));
     fireEvent.change(input, { target: { files } });
 
     await waitFor(() => {
       const previews = document.querySelectorAll('img[src^="blob:mock"]');
-      expect(previews.length).toBe(4);
+      expect(previews.length).toBe(6);
+    });
+  });
+
+  it('caps the total at 6 files (a 7th is dropped)', async () => {
+    URL.createObjectURL = (() => 'blob:mock') as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+
+    renderWizard();
+    const input = await waitFor(() => getMediaInput());
+    const files = Array.from({ length: 7 }, (_, i) => makeFile(`${i}.jpg`, 'image/jpeg'));
+    fireEvent.change(input, { target: { files } });
+
+    await waitFor(() => {
+      const previews = document.querySelectorAll('img[src^="blob:mock"]');
+      expect(previews.length).toBe(6);
     });
   });
 

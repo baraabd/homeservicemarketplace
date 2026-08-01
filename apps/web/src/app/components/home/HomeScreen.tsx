@@ -36,6 +36,8 @@ import { Snackbar } from '../ds/Snackbar';
 import { ProfileTab } from '../profile/ProfileTab';
 import { TabSkeleton } from '../ui/SkeletonLoader';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
+import { formatServiceAddressForDisplay } from '../../../lib/address-display';
+import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
 import { useEcosystem } from '../../context/EcosystemContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { useServiceCategories } from '../../../lib/use-service-categories';
@@ -51,8 +53,13 @@ import {
 import {
   formatRelativeTime,
   mapServiceCategorySlug,
-  mapServiceRequestStatus,
+  mapLeadStatus,
 } from '../../../lib/seeker/request-status-map';
+import {
+  resolveNotificationTarget,
+  type NotificationTarget,
+} from '../../../lib/realtime/notification-target';
+import { setNotificationTargetHandler } from '../../../lib/realtime/notification-target-handler';
 
 // ─── Tab routing ──────────────────────────────────────────────────────────────
 const TAB_PATHS: Record<string, string> = {
@@ -145,16 +152,20 @@ function apiBookingToItem(row: BookingListItem, lang: 'en' | 'ar'): BookingItem 
     dateEn: formatBookingDate(row.scheduledAt, 'en'),
     dateAr: formatBookingDate(row.scheduledAt, 'ar'),
     statusKey: statusKeyFor(row.status),
-    proEn: row.provider.displayName,
-    proAr: row.provider.displayName,
-    proInitials: row.provider.initials,
+    // Sprint 7.13 — privacy-safe provider name (initial + family name).
+    proEn: formatPrivacyDisplayName(
+      { displayName: row.provider?.displayName ?? '' },
+      { roleFallback: 'Provider' },
+    ),
+    proAr: formatPrivacyDisplayName(
+      { displayName: row.provider?.displayName ?? '' },
+      { roleFallback: 'مزود الخدمة' },
+    ),
+    proInitials: row.provider?.initials ?? '',
     price: row.priceAmount,
-    address: row.addressSnapshot.line1
-      ? `${row.addressSnapshot.line1}, ${row.addressSnapshot.city}`
-      : undefined,
-    addressAr: row.addressSnapshot.line1
-      ? `${row.addressSnapshot.line1}, ${row.addressSnapshot.city}`
-      : undefined,
+    // Sprint 7.13 — compact, display-only address (raw snapshot untouched).
+    address: formatServiceAddressForDisplay(row.addressSnapshot) || undefined,
+    addressAr: formatServiceAddressForDisplay(row.addressSnapshot) || undefined,
   };
 }
 
@@ -223,9 +234,10 @@ function formatRelativeNotificationTime(iso: string, lang: 'en' | 'ar'): string 
   return lang === 'ar' ? `${days} ي` : `${days}d ago`;
 }
 
-// API row → existing AppNotification render shape. The drawer's
-// jobId path (used by handleNotifTap) is keyed off resourceId now so
-// taps route to the correct request / booking / conversation surface.
+// API row → existing AppNotification render shape. `jobId` (legacy
+// alias) and the explicit `resourceType` / `metadata` are both carried
+// so `handleNotifTap` can dispatch on backend truth rather than
+// reverse-engineering from the icon palette.
 function apiNotifToRender(row: ContractNotificationSummary, lang: 'en' | 'ar'): AppNotification {
   return {
     id: row.id,
@@ -235,6 +247,15 @@ function apiNotifToRender(row: ContractNotificationSummary, lang: 'en' | 'ar'): 
     time: formatRelativeNotificationTime(row.createdAt, lang),
     read: row.readAt !== null,
     jobId: row.resourceId ?? undefined,
+    resourceType: row.resourceType ?? null,
+    metadata: row.metadata ?? null,
+    // Sprint 7.12 — surface the backend type + deepLink so the
+    // shared `resolveNotificationTarget` (used by both the drawer
+    // tap and the toast View action) has the disambiguating fields
+    // it needs. Without backendType, BID_RECEIVED vs. BID_ACCEPTED
+    // collapse into one BID branch and route incorrectly.
+    backendType: row.type as unknown as string,
+    deepLink: row.deepLink ?? null,
   };
 }
 
@@ -254,6 +275,14 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const navigate = useNavigate();
   const { t, lang } = useLang();
   const { showHourlyRate } = useEcosystem();
+
+  // Sprint 7.13 — privacy-safe name for the seeker's chat counterpart
+  // (the provider): given-name initial + full family name.
+  const formatChatName = (displayName: string): string =>
+    formatPrivacyDisplayName(
+      { displayName },
+      { roleFallback: lang === 'ar' ? 'مزود الخدمة' : 'Provider' },
+    );
   // Read the authenticated identity from the existing auth source of truth.
   // Do not duplicate auth state here and do not fall back to hardcoded
   // placeholder copy — we'd rather render nothing than a fake identity.
@@ -261,6 +290,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const activeTab = tabFromPath(location.pathname);
   const prevTab = useRef(activeTab);
   const micTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Sprint 7.14 — Active Leads carousel. Touch (touch-action: pan-x) and
+  // trackpad-horizontal (overflow-x-auto) already scroll it; this ref
+  // adds desktop mouse-wheel support (a vertical wheel can't scroll a
+  // horizontal container natively).
+  const activeLeadsRef = useRef<HTMLDivElement | null>(null);
 
   // ── Core state ─────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
@@ -290,13 +324,57 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
     return items.map((r) => ({
       id: r.id,
       service: mapServiceCategorySlug(r.category?.slug ?? null),
-      status: mapServiceRequestStatus(r.status),
+      // Sprint 7.x — booking-aware status. activeBookingStatus is
+      // null until the seeker accepts a bid; once a booking exists it
+      // overrides the parent request status for "completed" /
+      // "cancelled" so the card visibly converges with the booking
+      // lifecycle (the request itself stays at BID_ACCEPTED).
+      status: mapLeadStatus(r.status, r.activeBookingStatus),
       postedAt: formatRelativeTime(r.createdAt, lang === 'ar' ? 'ar' : 'en'),
-      // bids/price not yet available — those ship with the bids slice.
-      bids: undefined,
+      // Sprint 7.12 — bidsCount now populated by the API (Prisma
+      // _count on the seeker request finders). Drives the dynamic
+      // "Pending Bids" → "N Bids received" label in LeadCard and
+      // survives a hard refresh.
+      bids: r.bidsCount,
       price: undefined,
+      // Sprint 7.14 — carry the live booking id so a completed / in-
+      // progress lead opens the BOOKING detail (correct lifecycle) and
+      // not the request-only detail (which can't show Pro Assigned / In
+      // Progress / Completed).
+      activeBookingId: r.activeBookingId,
     }));
   }, [requestsQuery.data, lang]);
+
+  // Sprint 7.14 — Active Leads excludes completed jobs (they move to
+  // Profile → Completed Posts). This matches the existing badge-count
+  // filter so the carousel and the count agree. The status is
+  // booking-aware (mapLeadStatus reads activeBookingStatus) so a request
+  // whose booking has completed is excluded after a hard refresh, not
+  // just via a cache patch.
+  const activeLeads = useMemo(() => leads.filter((l) => l.status !== 'completed'), [leads]);
+
+  // Translate a vertical mouse wheel into horizontal scrolling so the
+  // Active Leads carousel is browsable with a plain mouse (touch +
+  // trackpad already work). Attached as a non-passive listener so we can
+  // preventDefault ONLY when the carousel actually moved — at the edges
+  // the wheel falls through to the page's vertical scroll. Direction-
+  // agnostic (works in LTR and RTL) because it keys off whether
+  // scrollLeft changed rather than a hardcoded sign. Re-runs on tab
+  // change since the carousel only mounts on the home tab.
+  useEffect(() => {
+    const el = activeLeadsRef.current;
+    if (!el) return undefined;
+    const onWheel = (e: WheelEvent) => {
+      // Leave genuine horizontal trackpad gestures (deltaX) to native
+      // scrolling; only remap predominantly-vertical wheels.
+      if (e.deltaY === 0 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      const before = el.scrollLeft;
+      el.scrollLeft += e.deltaY;
+      if (el.scrollLeft !== before) e.preventDefault();
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [activeTab]);
 
   // Live "my bookings" feed (slice 2.3). Drives the Bookings tab list
   // and the notification-tap fallback for tracking / confirmed / message
@@ -310,6 +388,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   }, [bookingsQuery.data, lang]);
   const [bookSnack, setBookSnack] = useState(false);
   const [bookSnackMsg, setBookSnackMsg] = useState('');
+  // Sprint 7.5 — bookingId returned by the just-completed accept-bid
+  // flow. Drives the snackbar's "View booking" action; null when no
+  // accept-bid has fired in this session so the snackbar shows
+  // without an action button.
+  const [bookedBookingId, setBookedBookingId] = useState<string | null>(null);
   const [tabLoading, setTabLoading] = useState(false);
 
   // ── Overlay state ──────────────────────────────────────────────────────────
@@ -391,44 +474,110 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   };
 
   // ── Notification tap ────────────────────────────────────────────────────────
-  // Looks up the referenced row in the loaded `leads` / `bookings`
-  // queries — never against a hardcoded list. If the relevant query
-  // hasn't loaded yet (or the referenced row no longer exists), the
-  // tap is a no-op rather than opening a screen against fake data.
-  const handleNotifTap = (n: AppNotification) => {
-    setNotifOpen(false);
-    setTimeout(() => {
-      if (n.type === 'bid') {
-        const lead =
-          leads.find((l) => l.id === n.jobId) ?? leads.find((l) => l.status === 'pending');
-        if (lead) setBidsLead(lead);
-      } else if (n.type === 'tracking' || n.type === 'confirmed') {
-        const lead = leads.find((l) => l.id === n.jobId);
+  // Sprint 7.12 — delegates to the shared `resolveNotificationTarget`
+  // so the seeker notification drawer tap, the toast "View" action,
+  // the Profile notifications tap, and the Completed Posts item tap
+  // all converge on the SAME routing logic. The shared resolver
+  // honours metadata.requestId for BID notifications (the
+  // resourceId is the bidId, never the requestId), prefers
+  // backend-supplied deepLinks, and falls back to derived routes
+  // for REQUEST / BOOKING / CONVERSATION.
+  //
+  // The resolver returns a typed `kind`; we map each kind onto the
+  // in-app overlay state setter so we never have to parse the
+  // deepLink string here. Unresolvable notifications (SYSTEM / null /
+  // unknown) deliberately do NOTHING — no fallback to home or All
+  // Leads (the original bug surfaced when the tap silently landed on
+  // a wrong page; now we prefer "nothing happened" over "wrong page
+  // opened").
+  //
+  // Mark-as-read is fired by NotificationDrawer's row click via
+  // `onMarkRead` — we don't re-mark here.
+  // Opens the in-app overlay for a resolved notification target. Shared
+  // by the drawer tap AND the toast "View" action (registered as the
+  // global notification-target handler below) so both surfaces produce
+  // the exact same navigation with zero duplicated routing. Returns
+  // `true` when handled in-app (the toast then skips URL navigation).
+  const handleNotificationTarget = (target: NotificationTarget): boolean => {
+    switch (target.kind) {
+      case 'seeker-request-bids': {
+        // Open the BidsScreen overlay against the matching lead when
+        // we have it in cache — otherwise fall through to the
+        // request detail surface so the tap is never a no-op.
+        const lead = leads.find((l) => l.id === target.requestId);
         if (lead) {
-          setJobDetail({ kind: 'request', id: lead.id });
+          setBidsLead(lead);
         } else {
-          const bk = bookings.find((b) => b.id === n.jobId);
-          if (bk) setJobDetail({ kind: 'booking', id: bk.id });
+          setJobDetail({ kind: 'request', id: target.requestId });
         }
-      } else if (n.type === 'message') {
-        // Slice 3.3: prefer routing by conversation id when the
-        // notification carries one (future-shape: notifications keyed
-        // to a conversation). Otherwise look up an existing
-        // conversation by booking id from the loaded list. We do NOT
-        // create a conversation from a notification tap — that's an
-        // explicit user action initiated from a booking surface.
-        const conv = conversations.find((c) => c.bookingId === n.jobId);
+        return true;
+      }
+      case 'seeker-request-detail':
+        setJobDetail({ kind: 'request', id: target.requestId });
+        return true;
+      case 'seeker-booking-detail':
+        setJobDetail({ kind: 'booking', id: target.bookingId });
+        return true;
+      case 'seeker-conversation': {
+        const conv = conversations.find((c) => c.id === target.conversationId);
         if (conv) {
           setChatContact({
             conversationId: conv.id,
-            name: conv.otherParticipant.displayName,
-            initials: conv.otherParticipant.initials,
+            name: formatChatName(conv.otherParticipant?.displayName ?? ''),
+            initials: conv.otherParticipant?.initials ?? '',
             bg: 'bg-amber-100',
             textColor: 'text-amber-700',
             status: 'Online',
           });
         }
+        return true;
       }
+      // Provider-kind targets aren't handled by the seeker home; let the
+      // toast fall back to URL navigation. Listed exhaustively so a
+      // future kind addition becomes a TS error rather than a silent
+      // no-op.
+      case 'provider-bid-detail':
+      case 'provider-booking-detail':
+      case 'provider-request-detail':
+      case 'provider-conversation':
+        return false;
+    }
+  };
+
+  // Keep a fresh reference so the (mount-once) registered handler always
+  // sees the latest `leads` / `conversations` closures without
+  // re-registering on every data change. The ref is updated in an effect
+  // (never during render) per the rules-of-refs lint.
+  const targetHandlerRef = useRef(handleNotificationTarget);
+  useEffect(() => {
+    targetHandlerRef.current = handleNotificationTarget;
+  });
+
+  // Register the in-app overlay router so the toast "View" action opens
+  // notifications exactly like the drawer instead of navigating to a
+  // non-existent deepLink route (which redirected to /select). Cleared
+  // on unmount so a backgrounded seeker app can't capture provider
+  // toasts.
+  useEffect(() => {
+    setNotificationTargetHandler((target) => targetHandlerRef.current(target));
+    return () => setNotificationTargetHandler(null);
+  }, []);
+
+  const handleNotifTap = (n: AppNotification) => {
+    setNotifOpen(false);
+    setTimeout(() => {
+      const target = resolveNotificationTarget(
+        {
+          type: (n as { backendType?: string }).backendType ?? null,
+          resourceType: n.resourceType ?? null,
+          resourceId: n.jobId ?? null,
+          deepLink: (n as { deepLink?: string | null }).deepLink ?? null,
+          metadata: n.metadata ?? null,
+        },
+        'seeker',
+      );
+      if (!target) return;
+      handleNotificationTarget(target);
     }, 200);
   };
 
@@ -436,9 +585,17 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const handleLeadTap = (lead: LeadCardProps) => {
     if (lead.status === 'pending') {
       setBidsLead(lead);
-    } else {
-      setJobDetail({ kind: 'request', id: lead.id });
+      return;
     }
+    // Sprint 7.14 — once a booking exists (Pro Assigned → In Progress →
+    // Completed) open the BOOKING detail so Job Progress reflects the
+    // real lifecycle. Falls back to the request detail only when no
+    // booking has been created yet.
+    if (lead.activeBookingId) {
+      setJobDetail({ kind: 'booking', id: lead.activeBookingId });
+      return;
+    }
+    setJobDetail({ kind: 'request', id: lead.id });
   };
 
   // ── Booking tap ─────────────────────────────────────────────────────────────
@@ -447,17 +604,21 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const handleBookingTap = (b: BookingItem) => setJobDetail({ kind: 'booking', id: b.id });
 
   // ── Book bid ────────────────────────────────────────────────────────────────
-  // Bid acceptance is bound to the bids slice (out of scope for slice 3).
-  // For now this is a UI-only acknowledgement: it shows the success
-  // snackbar and closes the BidsScreen overlay so the existing demo
-  // path doesn't regress. Once the bids endpoint ships, this should
-  // call POST /v1/me/requests/:id/bids/:bidId/accept and re-let the
-  // requests query refetch.
-  const handleBookBid = (bidderName: string) => {
+  // Fires after BidsScreen successfully accepts a bid through the real
+  // /v1/me/requests/:id/bids/:bidId/accept endpoint (Sprint 7.5
+  // finished the integration). The snackbar's "View booking" action
+  // navigates the seeker to the freshly created booking detail so the
+  // post-acceptance flow lands them somewhere actionable instead of
+  // just acknowledging the event. The BidsScreen overlay closes
+  // immediately; React Query cache invalidation has already fired
+  // inside useAcceptBid so the Bookings tab is fresh by the time the
+  // user taps through.
+  const handleBookBid = (bidderName: string, bookingId: string) => {
     const fn = bidderName.split(' ')[0];
     setBookSnackMsg(
       lang === 'ar' ? `تم الحجز مع ${fn}! 🎉` : `Booked ${fn}! 🎉 Job is now active.`,
     );
+    setBookedBookingId(bookingId);
     setBookSnack(true);
     setBidsLead(null);
   };
@@ -695,7 +856,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                     className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center"
                     style={{ fontSize: '10px', fontWeight: 800 }}
                   >
-                    {leads.filter((l) => l.status !== 'completed').length}
+                    {activeLeads.length}
                   </span>
                 </div>
                 <button
@@ -712,11 +873,26 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                   {t('pendingTip')}
                 </p>
               </div>
+              {/* Sprint 7.12 — `touch-action: pan-x` overrides the
+                  parent's `overflow-y-auto` default of pan-y so a
+                  horizontal swipe on mobile actually scrolls the
+                  carousel (Bug #3: carousel was effectively locked
+                  on touch devices because the parent intercepted the
+                  gesture). `-webkit-overflow-scrolling: touch` keeps
+                  iOS momentum scrolling intact. RTL is handled by
+                  Tailwind's logical-property aware `px-4`. */}
               <div
+                ref={activeLeadsRef}
                 className="flex gap-3 overflow-x-auto px-4 pb-2"
-                style={{ scrollbarWidth: 'none' }}
+                style={{
+                  scrollbarWidth: 'none',
+                  touchAction: 'pan-x',
+                  WebkitOverflowScrolling: 'touch',
+                  overscrollBehaviorX: 'contain',
+                }}
+                data-testid="active-leads-carousel"
               >
-                {leads.map((lead) => (
+                {activeLeads.map((lead) => (
                   <LeadCard
                     key={lead.id}
                     {...lead}
@@ -1022,8 +1198,8 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                     onClick={() =>
                       setChatContact({
                         conversationId: c.id,
-                        name: c.otherParticipant.displayName,
-                        initials: c.otherParticipant.initials,
+                        name: formatChatName(c.otherParticipant?.displayName ?? ''),
+                        initials: c.otherParticipant?.initials ?? '',
                         bg: 'bg-amber-100',
                         textColor: 'text-amber-700',
                         status: 'Online',
@@ -1036,7 +1212,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                         className="text-amber-700"
                         style={{ fontSize: '12px', fontWeight: 800 }}
                       >
-                        {c.otherParticipant.initials}
+                        {c.otherParticipant?.initials ?? ''}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1044,7 +1220,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                         className="text-slate-900 dark:text-white"
                         style={{ fontSize: '14px', fontWeight: 700 }}
                       >
-                        {c.otherParticipant.displayName}
+                        {formatChatName(c.otherParticipant?.displayName ?? '')}
                       </p>
                       <p className="text-slate-400 truncate" style={{ fontSize: '12px' }}>
                         {c.lastMessageBody ??
@@ -1089,6 +1265,11 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
               onMarkAllRead={markAllRead}
               onMarkRead={markRead}
               unreadCount={unreadCount}
+              // Sprint 7.12 — Completed Posts → JobDetailView. The
+              // ProfileTab closes its CompletedPostsPage first then
+              // calls this back so the booking-detail overlay slides
+              // in over the Profile list (same flow as Bookings tab).
+              onOpenBooking={(bookingId) => setJobDetail({ kind: 'booking', id: bookingId })}
             />
           </motion.div>
         );
@@ -1193,7 +1374,14 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
           }}
           onOpenDetail={(lead) => {
             setShowAllLeads(false);
-            setJobDetail({ kind: 'request', id: lead.id });
+            // Sprint 7.14 — booking-backed leads (assigned / in-progress
+            // / completed) open the booking detail so Job Progress shows
+            // the real lifecycle; pre-booking leads open the request.
+            if (lead.activeBookingId) {
+              setJobDetail({ kind: 'booking', id: lead.activeBookingId });
+            } else {
+              setJobDetail({ kind: 'request', id: lead.id });
+            }
           }}
           onPostNew={() => {
             setShowAllLeads(false);
@@ -1304,13 +1492,35 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
         </div>
       </div>
 
-      {/* Success snackbar */}
+      {/* Success snackbar — Sprint 7.5 adds the "View booking" action
+          when an accept-bid has just landed and surfaced a bookingId.
+          Tapping the action opens the JobDetailView for the new
+          booking so the seeker isn't left on the snackbar with no
+          next step. The action is omitted when no bookingId is
+          present (the snackbar is also used for other lifecycle
+          notices in future slices). */}
       <Snackbar
         visible={bookSnack}
         variant="success"
         message={bookSnackMsg}
-        onDismiss={() => setBookSnack(false)}
+        onDismiss={() => {
+          setBookSnack(false);
+          setBookedBookingId(null);
+        }}
         duration={4000}
+        action={
+          bookedBookingId
+            ? {
+                label: lang === 'ar' ? 'عرض الحجز' : 'View booking',
+                onClick: () => {
+                  const id = bookedBookingId;
+                  setBookSnack(false);
+                  setBookedBookingId(null);
+                  if (id) setJobDetail({ kind: 'booking', id });
+                },
+              }
+            : undefined
+        }
       />
     </div>
   );

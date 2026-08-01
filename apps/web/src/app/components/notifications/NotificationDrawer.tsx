@@ -15,6 +15,12 @@ import { useSwipe } from '../../hooks/useSwipe';
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type NotifType = 'bid' | 'tracking' | 'confirmed' | 'message' | 'payment' | 'promo';
 
+// Logical resource the notification points at. Mirrors the backend's
+// NotificationResourceType enum (REQUEST / BID / BOOKING / CONVERSATION /
+// REVIEW); kept as a string union here so the drawer + ProfileTab stay
+// decoupled from the contracts package.
+export type NotifResourceType = 'REQUEST' | 'BID' | 'BOOKING' | 'CONVERSATION' | 'REVIEW';
+
 export interface AppNotification {
   id: string;
   type: NotifType;
@@ -24,6 +30,27 @@ export interface AppNotification {
   read: boolean;
   /** Optional: links notification to a specific lead or booking ID */
   jobId?: string;
+  // Resource the tap should deep-link to. Carried separately from the
+  // visual `type` so the dispatcher in HomeScreen can route by the
+  // BACKEND-truth (resourceType) instead of reverse-engineering it from
+  // the icon palette — which collapsed BID_ACCEPTED + BOOKING_CREATED
+  // onto the same UI category and made tap routing ambiguous.
+  resourceType?: NotifResourceType | null;
+  // Writer-controlled blob. The dispatcher reads `metadata.requestId`
+  // for BID notifications (the resourceId is the bid id, which on its
+  // own doesn't tell us which parent request to open).
+  metadata?: Record<string, unknown> | null;
+  // Sprint 7.12 — backend NotificationType (raw enum string from the
+  // wire — `BID_RECEIVED`, `BID_ACCEPTED`, `BOOKING_IN_PROGRESS`,
+  // etc.). The shared `resolveNotificationTarget` needs this to
+  // disambiguate BID notifications (the seeker-side BID_RECEIVED
+  // opens the bids comparison view, while BID_ACCEPTED opens the
+  // resulting booking detail).
+  backendType?: string | null;
+  // Sprint 7.12 — backend-supplied deepLink, used verbatim by the
+  // resolver when present so a backend route change wins without a
+  // frontend deploy.
+  deepLink?: string | null;
 }
 
 interface NotifConfig {
@@ -54,7 +81,9 @@ interface NotificationDrawerProps {
 // ─────────────────────────────────────────────────────────────────────────────
 export function NotificationDrawer({
   isOpen,
-  notifications,
+  // Default to an empty array so a legacy/undefined feed never crashes
+  // the drawer on `.filter`/`.map`/`.length`.
+  notifications = [],
   onClose,
   onMarkAllRead,
   onMarkRead,

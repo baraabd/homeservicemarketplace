@@ -16,9 +16,14 @@ function resolveApiBaseUrl(): string {
   throw new Error('VITE_API_URL is required in production builds but was not set at build time.');
 }
 
+// Exported so non-axios consumers (e.g. the media-URL resolver, which
+// PUTs/GETs raw binary via native fetch and renders <img src>) can
+// prefix relative API paths with the same origin.
+export const API_BASE_URL = resolveApiBaseUrl();
+
 // ─── Axios instance ──────────────────────────────────────────────────────────
 export const api = axios.create({
-  baseURL: resolveApiBaseUrl(),
+  baseURL: API_BASE_URL,
   withCredentials: true,
   headers: {
     'X-Client-Kind': 'web',

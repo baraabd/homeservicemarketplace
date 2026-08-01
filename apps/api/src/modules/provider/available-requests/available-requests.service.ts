@@ -1,16 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import type {
+  ProviderAvailableRequestBudget,
   ProviderAvailableRequestDetail,
   ProviderAvailableRequestListResponse,
+  ProviderAvailableRequestSeekerPreview,
   ProviderAvailableRequestSummary,
   ProviderAvailableRequestsQuery,
 } from '@homeservicemarketplace/contracts';
 
 import { BidRepository } from '../../../infrastructure/persistence/bids/bid.repository';
-import { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
+import {
+  ProviderProfileRepository,
+  type ProviderProfileWithCategories,
+} from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import {
   ServiceRequestRepository,
-  type ServiceRequestWithCategory,
+  type ServiceRequestForProvider,
 } from '../../../infrastructure/persistence/requests/service-request.repository';
 import { ServiceCategoryRepository } from '../../../infrastructure/persistence/services/service-category.repository';
 import { AppError } from '../../../shared/errors/app-error';
@@ -20,6 +25,8 @@ const DEFAULT_PAGE_SIZE = 20;
 
 // Sprint 5.2 (canonical) — provider available-requests feed.
 // Sprint 7.x — STRICT location + category match (was: optional).
+// Sprint 7.4 — completed the privacy-safe summary projection
+//   (distanceKm, budget, seekerPublicLabel, seekerRating).
 //
 // Visibility rules applied (in this order):
 //   1. status = OPEN_FOR_BIDS, deletedAt = null (always)
@@ -38,10 +45,11 @@ const DEFAULT_PAGE_SIZE = 20;
 //      "hide-already-bid" semantics in this slice replace the older
 //      `hasOwnBid` flag the legacy /me/provider/jobs surface emitted.
 //
-// The wire DTO is a NARROW projection — see `toSummary` for what's
-// stripped (seekerUserId, line1, etc.). Sprint 7.x adds `media[]` to
-// the projection so the provider can see seeker-uploaded photos when
-// deciding to bid.
+// The wire DTO is a NARROW privacy projection — see `toSummary` for
+// what is intentionally stripped (seekerUserId, line1, last name,
+// email, phone). Sprint 7.4 added the seeker preview + budget + distance
+// fields on top of the existing media/location surface; nothing in the
+// new shape exposes the seeker's identifying information.
 @Injectable()
 export class AvailableRequestsService {
   constructor(
@@ -108,7 +116,7 @@ export class AvailableRequestsService {
     const page = rows.slice(0, take);
     const requestIds = page.map((r) => r.id);
     const bidCountByRequest = await this.bids.countActiveByRequestIds(requestIds);
-    const items = page.map((row) => toSummary(row, bidCountByRequest.get(row.id) ?? 0));
+    const items = page.map((row) => toSummary(row, bidCountByRequest.get(row.id) ?? 0, profile));
     const nextCursor = rows.length > take ? items[items.length - 1].id : null;
     return { items, nextCursor };
   }
@@ -142,13 +150,14 @@ export class AvailableRequestsService {
       throw new AppError('NOT_FOUND', 'Request not found.', 404);
     }
     const bidCountByRequest = await this.bids.countActiveByRequestIds([row.id]);
-    return toSummary(row, bidCountByRequest.get(row.id) ?? 0);
+    return toSummary(row, bidCountByRequest.get(row.id) ?? 0, profile);
   }
 }
 
 function toSummary(
-  row: ServiceRequestWithCategory,
+  row: ServiceRequestForProvider,
   bidsCount: number,
+  provider: ProviderProfileWithCategories,
 ): ProviderAvailableRequestSummary {
   const snapshot = row.addressSnapshot as unknown as {
     city: string;
@@ -160,7 +169,33 @@ function toSummary(
   // of '{}', so it's always an array on the wire (never null). Defensive
   // `?? []` covers a hypothetical Prisma client returning undefined for
   // a row that was inserted via raw SQL bypassing the default.
-  const media = (row as ServiceRequestWithCategory & { mediaUrls?: string[] }).mediaUrls ?? [];
+  const media = (row as ServiceRequestForProvider & { mediaUrls?: string[] }).mediaUrls ?? [];
+
+  // Sprint 7.4 — privacy-safe seeker preview. NEVER exposes userId,
+  // last name, email, phone, or avatar; matches the conversation
+  // summary's seeker projection so the provider sees the same label
+  // across both surfaces.
+  const seeker = toSeekerPreview(row.seeker);
+
+  // Sprint 7.4 — budget passthrough. No seeker-side budget input
+  // exists today, so every field is `null`. The mapper signature is
+  // shaped so a future migration adding `budgetAmountMin`/`Max`/
+  // `Currency` columns to ServiceRequest can be threaded in with a
+  // single-line change — no contract churn required.
+  const budget = toBudget(row);
+
+  // Sprint 7.4 — Haversine distance from the provider's service-area
+  // centre to the request snapshot. Null when either end is missing
+  // coordinates (legacy address, coarse-city-only profile). The
+  // helper rounds to 0.1 km so the wire value is stable across
+  // requests (the UI renders to one decimal place either way).
+  const distanceKm = computeDistanceKm(
+    provider.serviceAreaLat,
+    provider.serviceAreaLng,
+    snapshot.lat,
+    snapshot.lng,
+  );
+
   return {
     id: row.id,
     category: row.category
@@ -182,7 +217,84 @@ function toSummary(
       lat: snapshot.lat,
       lng: snapshot.lng,
     },
+    distanceKm,
+    budget,
+    seeker,
     bidsCount,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+// ─── helpers ───────────────────────────────────────────────────────────────
+
+// First name + last initial. Identical to the conversation summary's
+// seeker projection so a provider sees the same label across surfaces.
+// "Customer" fallback when the User row has no usable name.
+function toSeekerPreview(
+  user: ServiceRequestForProvider['seeker'],
+): ProviderAvailableRequestSeekerPreview {
+  const first = (user.firstName ?? '').trim();
+  const last = (user.lastName ?? '').trim();
+  const lastInitial = last.length > 0 ? `${last[0].toUpperCase()}.` : '';
+  const publicLabel = [first, lastInitial].filter(Boolean).join(' ') || 'Customer';
+  return {
+    publicLabel,
+    // Reputation source not implemented yet — explicit null on the
+    // wire so the UI doesn't render a fabricated zero.
+    rating: null,
+  };
+}
+
+// Budget passthrough. Today the ServiceRequest row has no budget
+// columns, so we emit an all-null shape. The mapper kept on a row
+// reference (rather than a hardcoded constant) so a future schema
+// change adding the columns becomes a one-line read.
+function toBudget(_row: ServiceRequestForProvider): ProviderAvailableRequestBudget {
+  // Touch the row reference so a future `_row.budgetAmountMin` read
+  // is a one-line diff. Today every branch returns nulls; the
+  // pre-formatted `label` is left null so the client renders its
+  // own locale-appropriate "Open budget" copy.
+  return {
+    amountMin: null,
+    amountMax: null,
+    currency: null,
+    label: null,
+  };
+}
+
+// Haversine distance in kilometres, rounded to one decimal place.
+// Returns null when either end is missing a coordinate so the wire
+// is unambiguous about "we don't know" vs "we know it's zero".
+export function computeDistanceKm(
+  fromLat: number | null,
+  fromLng: number | null,
+  toLat: number | null,
+  toLng: number | null,
+): number | null {
+  if (fromLat == null || fromLng == null || toLat == null || toLng == null) {
+    return null;
+  }
+  // Guard against the obvious garbage. Out-of-range lat/lng → null
+  // so a malformed snapshot can't poison the renderer with NaN.
+  if (
+    Math.abs(fromLat) > 90 ||
+    Math.abs(toLat) > 90 ||
+    Math.abs(fromLng) > 180 ||
+    Math.abs(toLng) > 180
+  ) {
+    return null;
+  }
+  const R_KM = 6371; // Earth radius
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(toLat - fromLat);
+  const dLng = toRad(toLng - fromLng);
+  const lat1 = toRad(fromLat);
+  const lat2 = toRad(toLat);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const km = R_KM * c;
+  // One decimal place: enough precision for a "1.2 km" / "12.4 km"
+  // chip, stable enough that floating-point noise doesn't churn the
+  // displayed value between renders.
+  return Math.round(km * 10) / 10;
 }

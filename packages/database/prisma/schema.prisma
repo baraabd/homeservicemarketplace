@@ -289,6 +289,12 @@ model Conversation {
   request      ServiceRequest?           @relation(fields: [requestId], references: [id])
   messages     Message[]
 
+  // A live booking has at most one live conversation. Postgres-side this
+  // is a partial unique index (`WHERE "bookingId" IS NOT NULL AND
+  // "deletedAt" IS NULL`) created in the Sprint 7.3 migration — Prisma's
+  // `@@unique` cannot express the `WHERE` clause, so the unique is
+  // enforced exclusively by the DB and surfaced through Prisma's
+  // P2002 path; the service re-fetches the existing row on conflict.
   @@index([bookingId])
   @@index([deletedAt])
   @@index([requestId])
@@ -659,10 +665,20 @@ enum NotificationType {
   BID_RECEIVED
   BID_ACCEPTED
   BOOKING_CREATED
+  // Sprint 7.x — emitted when the provider starts a scheduled booking
+  // (SCHEDULED → IN_PROGRESS). Required because the polling fallback
+  // cannot surface an IN_PROGRESS toast without a persisted notification
+  // row, and the existing BOOKING_CREATED / BOOKING_COMPLETED
+  // semantics don't cover the start transition cleanly.
+  BOOKING_IN_PROGRESS
   BOOKING_CANCELLED
   BOOKING_COMPLETED
   MESSAGE_RECEIVED
   REVIEW_REQUESTED
+  // Sprint 7.x — emitted when a seeker creates a new service request
+  // that matches a provider's configured category + service-area.
+  // Drives the provider-side notification drawer + unread badge.
+  REQUEST_AVAILABLE
   SYSTEM
 }
 

@@ -6,17 +6,34 @@ import type {
   Prisma,
   PrismaTx,
   ProviderProfile,
+  User,
 } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../prisma/prisma.service';
+
+// Lightweight User projection eager-loaded onto each participant so the
+// role-aware summary mapper can render a seeker label / initials for
+// the provider-side view without a second fetch. Only the fields needed
+// for the avatar pill are selected — email / passwordHash / status etc.
+// are NOT loaded so the projection cannot leak PII into the wire DTO
+// even if a future mapper change is careless.
+export type ParticipantUserSummary = Pick<User, 'id' | 'firstName' | 'lastName'>;
 
 // Eager-loaded shape returned by the list / detail finders. Carries the
 // participants (so the renderer can find the "other" party for the
 // avatar pill) and the most recent message (for the preview line).
 export type ConversationWithRelations = Conversation & {
-  participants: (ConversationParticipant & { provider: ProviderProfile | null })[];
+  participants: (ConversationParticipant & {
+    provider: ProviderProfile | null;
+    user: ParticipantUserSummary | null;
+  })[];
   messages: Message[];
 };
+
+const PARTICIPANT_INCLUDE = {
+  provider: true,
+  user: { select: { id: true, firstName: true, lastName: true } },
+} as const;
 
 export interface CreateConversationInput {
   bookingId: string | null;
@@ -55,7 +72,7 @@ export class ConversationRepository {
         participants: { some: { userId, conversationId } },
       },
       include: {
-        participants: { include: { provider: true } },
+        participants: { include: PARTICIPANT_INCLUDE },
         // Most recent message powers the list preview line; only one
         // is needed.
         messages: {
@@ -79,7 +96,7 @@ export class ConversationRepository {
         participants: { some: { userId } },
       },
       include: {
-        participants: { include: { provider: true } },
+        participants: { include: PARTICIPANT_INCLUDE },
         messages: {
           where: { deletedAt: null },
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -110,7 +127,7 @@ export class ConversationRepository {
       ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       include: {
-        participants: { include: { provider: true } },
+        participants: { include: PARTICIPANT_INCLUDE },
         messages: {
           where: { deletedAt: null },
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

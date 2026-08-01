@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Outlet, useLocation, useNavigation, useOutletContext } from 'react-router';
+import { Outlet, useLocation, useNavigate, useNavigation, useOutletContext } from 'react-router';
 import { JobWizardModal } from './components/wizard/JobWizardModal';
 import { Snackbar } from './components/ds/Snackbar';
 import { Toaster } from './components/ui/sonner';
 import { LanguageProvider, useLang } from './i18n/LanguageContext';
 import { EcosystemProvider } from './context/EcosystemContext';
+import { setRealtimeLang } from '../lib/realtime/realtime-i18n';
+import { setRealtimeNavigator } from '../lib/realtime/realtime-navigator';
+import { setRealtimeExperience } from '../lib/realtime/realtime-experience';
+import './styles/toast-theme.css';
 
 // ─── Shared outlet-context type ───────────────────────────────────────────────
 export interface RootContext {
@@ -36,7 +40,19 @@ function RootInner() {
   const navigation = useNavigation();
   const isHome = location.pathname.startsWith('/home');
   const isSelect = location.pathname === '/select';
+  const isProvider = location.pathname.startsWith('/provider');
   const isLoading = navigation.state === 'loading';
+
+  // Sprint 7.12 — bridge the active experience to realtime-experience
+  // so the side-effects dispatcher (mounted above Router by
+  // AuthProvider) renders toasts with the correct brand variant.
+  // Provider routes → 'provider' (blue). Everything else → 'seeker'
+  // (orange/amber). The bridge runs in an effect so the write
+  // happens on every navigation; the read site is a pure function
+  // call from any callsite.
+  useEffect(() => {
+    setRealtimeExperience(isProvider ? 'provider' : 'seeker');
+  }, [isProvider]);
 
   useEffect(() => {
     const goOnline = () => setIsOffline(false);
@@ -51,6 +67,30 @@ function RootInner() {
       window.removeEventListener('offline', goOffline);
     };
   }, []);
+
+  // Sprint 7.5.1 — bridge the active language into the framework-
+  // independent realtime-i18n module so the side-effects dispatcher
+  // (mounted by AuthProvider, OUTSIDE LanguageProvider) can localise
+  // toast copy without calling useLang(). The bridge runs in an
+  // effect so the write happens at mount time and on every flip;
+  // the read site is a pure function call from any callsite.
+  useEffect(() => {
+    setRealtimeLang(lang === 'ar' ? 'ar' : 'en');
+  }, [lang]);
+
+  // Sprint 7.10 — same bridge pattern for navigation. The side-
+  // effects dispatcher needs to navigate when the user clicks a
+  // toast's action button, but the dispatcher is mounted ABOVE the
+  // Router (AuthProvider scope). RootInner sits INSIDE the Router,
+  // so `useNavigate()` works here; we register the navigator in a
+  // module-level holder that the toast onClick reads via
+  // `getRealtimeNavigator()`. Cleanup on unmount clears the holder
+  // so a logged-out app doesn't navigate from a stale toast.
+  const navigate = useNavigate();
+  useEffect(() => {
+    setRealtimeNavigator((deepLink) => navigate(deepLink));
+    return () => setRealtimeNavigator(null);
+  }, [navigate]);
 
   const openWizard = (service: string, categoryId: string | null = null) => {
     setSelectedSvc(service);
@@ -74,7 +114,16 @@ function RootInner() {
     return (
       <>
         <Outlet context={ctx} />
-        <Toaster position="top-center" richColors closeButton />
+        <Toaster
+          position="top-center"
+          richColors
+          closeButton
+          // Sprint 7.12 — even outside the phone shell, constrain
+          // the toast width so the variant tokens land on the same
+          // visual surface as the in-shell mount.
+          className="hsm-toaster-shell"
+          toastOptions={{ className: 'hsm-toast hsm-toast--seeker' }}
+        />
       </>
     );
   }
@@ -141,25 +190,27 @@ function RootInner() {
       {/* Sprint 7.x — toast surface used for graceful error handling
           (e.g. 409 on duplicate bid). Mounted once at the Root so any
           screen can call sonner's `toast.*` helpers without per-screen
-          wiring. */}
-      <Toaster position="top-center" richColors closeButton />
+          wiring.
+          Sprint 7.12 — bounded to the phone-shell width via the
+          `hsm-toaster-shell` viewport class so Provider toasts (and
+          Seeker toasts on wide viewports) never overflow outside the
+          app frame. The `hsm-toast--seeker` default flips to
+          `hsm-toast--provider` per-emit via the side-effects
+          dispatcher (the `experience` bridge picks the right variant
+          for each toast). */}
+      <Toaster
+        position="top-center"
+        richColors
+        closeButton
+        className="hsm-toaster-shell"
+        toastOptions={{ className: 'hsm-toast hsm-toast--seeker' }}
+      />
 
       {/* Desktop label — informational watermark visible only on
           screens wider than the phone container. On mobile it would
           overlay the bottom of the phone shell (auth signup's Next
           button + "Already have an account? Log in" link, the wizard's
           submit button, etc.) so we hide it below the md breakpoint. */}
-      <div className="fixed bottom-6 left-0 right-0 hidden md:flex justify-center pointer-events-none">
-        <div className="flex items-center gap-2 bg-white/10 backdrop-blur rounded-full px-4 py-2 border border-white/10">
-          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-          <span
-            className="text-white/60"
-            style={{ fontSize: '11px', fontWeight: 500, fontFamily: "'Inter', sans-serif" }}
-          >
-            FixNow · Mobile PWA · 430px
-          </span>
-        </div>
-      </div>
     </div>
   );
 }

@@ -135,8 +135,10 @@ describe('JobDetailView — request source', () => {
     // Status pill reflects the OPEN_FOR_BIDS → 'pending' mapping.
     expect(screen.getByText(/Awaiting Bids/i)).toBeInTheDocument();
 
-    // Address renders from the addressSnapshot, not a placeholder.
-    expect(screen.getByText(/123 Main, Riyadh/)).toBeInTheDocument();
+    // Address renders compactly from the addressSnapshot (Sprint 7.13):
+    // the street line is kept; the redundant city ("Riyadh") is dropped.
+    expect(screen.getByText('123 Main')).toBeInTheDocument();
+    expect(screen.queryByText(/123 Main, Riyadh/)).toBeNull();
 
     // Description renders from API.
     expect(screen.getByText(/Leaky tap under the kitchen sink/)).toBeInTheDocument();
@@ -149,6 +151,31 @@ describe('JobDetailView — request source', () => {
     // slice-2 placeholder).
     expect(screen.queryByText(/4\.8 · 156/)).toBeNull();
     expect(screen.queryByText(/156 reviews/)).toBeNull();
+  });
+
+  it('renders the seeker photo gallery when the request carries media (hard-refresh consistent)', async () => {
+    mock.onGet('/v1/me/requests/req-1').reply(200, {
+      ...REQUEST_DETAIL,
+      mediaUrls: ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg'],
+    });
+    mock.onGet('/v1/me/requests/req-1/timeline').reply(200, REQUEST_TIMELINE);
+
+    renderDetail({ kind: 'request', id: 'req-1' });
+
+    const gallery = await screen.findByTestId('job-detail-photos');
+    const imgs = gallery.querySelectorAll('img');
+    expect(imgs).toHaveLength(2);
+    expect(imgs[0]).toHaveAttribute('src', 'https://cdn.example.com/a.jpg');
+  });
+
+  it('renders no photo gallery when the request has no media', async () => {
+    mock.onGet('/v1/me/requests/req-1').reply(200, { ...REQUEST_DETAIL, mediaUrls: [] });
+    mock.onGet('/v1/me/requests/req-1/timeline').reply(200, REQUEST_TIMELINE);
+
+    renderDetail({ kind: 'request', id: 'req-1' });
+
+    await waitFor(() => expect(screen.getAllByText('Plumbing').length).toBeGreaterThan(0));
+    expect(screen.queryByTestId('job-detail-photos')).toBeNull();
   });
 
   it('shows Cancel Request button on a pending request and calls the API on click', async () => {
@@ -193,7 +220,7 @@ describe('JobDetailView — booking source', () => {
 
     // Pro card renders with API provider name + initials + real rating.
     expect(screen.getByText(/Assigned Professional/i)).toBeInTheDocument();
-    expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument();
+    expect(screen.getByText('O. Al-Khalid')).toBeInTheDocument();
     expect(screen.getByText(/4\.9 · 312/)).toBeInTheDocument();
 
     // Verified badge renders because provider.verified === true.
@@ -204,13 +231,65 @@ describe('JobDetailView — booking source', () => {
     expect(screen.getAllByText(/In Progress/i).length).toBeGreaterThan(0);
   });
 
+  // Sprint 7.14 — a COMPLETED booking must show the Completed lifecycle
+  // correctly: every step done, Completed current, and Bids Received NOT
+  // wrongly marked as the current step.
+  it('renders a COMPLETED booking with the Completed step done/current', async () => {
+    const COMPLETED_BOOKING = {
+      ...BOOKING_DETAIL,
+      status: 'COMPLETED' as const,
+      updatedAt: '2026-04-30T16:00:00.000Z',
+    };
+    const COMPLETED_TIMELINE = {
+      items: [
+        {
+          id: 'b1',
+          type: 'BOOKING_CREATED',
+          metadata: { requestId: 'req-1', bidId: 'bid-1' },
+          createdAt: '2026-04-28T10:30:00.000Z',
+        },
+        {
+          id: 'b2',
+          type: 'BOOKING_STATUS_CHANGED',
+          metadata: { to: 'IN_PROGRESS' },
+          createdAt: '2026-04-30T13:00:00.000Z',
+        },
+        {
+          id: 'b3',
+          type: 'BOOKING_STATUS_CHANGED',
+          metadata: { to: 'COMPLETED' },
+          createdAt: '2026-04-30T16:00:00.000Z',
+        },
+      ],
+    };
+    mock.onGet('/v1/me/bookings/bk-1').reply(200, COMPLETED_BOOKING);
+    mock.onGet('/v1/me/bookings/bk-1/timeline').reply(200, COMPLETED_TIMELINE);
+
+    renderDetail({ kind: 'booking', id: 'bk-1' });
+
+    // Completed step (index 4) is done AND current.
+    const completedStep = await screen.findByTestId('progress-step-4');
+    expect(completedStep.getAttribute('data-done')).toBe('true');
+    expect(completedStep.getAttribute('data-current')).toBe('true');
+
+    // Every prior step is done too (no-downgrade): Posted(0) Bids(1)
+    // Pro(2) In Progress(3).
+    for (const i of [0, 1, 2, 3]) {
+      expect(screen.getByTestId(`progress-step-${i}`).getAttribute('data-done')).toBe('true');
+    }
+    // Bids Received must NOT be the current step on a completed job.
+    expect(screen.getByTestId('progress-step-1').getAttribute('data-current')).toBe('false');
+    // Header status agrees — "Completed" is shown.
+    expect(screen.getAllByText(/Completed/i).length).toBeGreaterThan(0);
+  });
+
   it('renders only Verified / Top Pro pills — no fake Licensed/Insured fallback', async () => {
     mock.onGet('/v1/me/bookings/bk-1').reply(200, BOOKING_DETAIL);
     mock.onGet('/v1/me/bookings/bk-1/timeline').reply(200, BOOKING_TIMELINE);
 
     renderDetail({ kind: 'booking', id: 'bk-1' });
 
-    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('O. Al-Khalid')).toBeInTheDocument());
 
     // Both flags are true on the mock, so both pills render.
     expect(screen.getByText('Verified')).toBeInTheDocument();
@@ -229,7 +308,7 @@ describe('JobDetailView — booking source', () => {
 
     renderDetail({ kind: 'booking', id: 'bk-1' });
 
-    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('O. Al-Khalid')).toBeInTheDocument());
 
     const message = screen.getByRole('button', { name: /Message/ });
     const call = screen.getByRole('button', { name: /Call/ });
@@ -247,7 +326,7 @@ describe('JobDetailView — booking source', () => {
 
     renderDetail({ kind: 'booking', id: 'bk-1' });
 
-    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('O. Al-Khalid')).toBeInTheDocument());
     // Slice-2 had hardcoded '9:00 AM' / '9:15 AM' / '9:32 AM' / '3:00 PM' /
     // '5:10 PM' timestamps inside the timeline. Those exact strings should
     // not appear because we now derive timestamps from real events. The

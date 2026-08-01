@@ -5,6 +5,7 @@ import type {
   Message,
   ProviderProfile,
 } from '@homeservicemarketplace/database';
+import { Prisma } from '@homeservicemarketplace/database';
 
 import type { BookingRepository } from '../../infrastructure/persistence/bookings/booking.repository';
 import type { ProviderProfileRepository } from '../../infrastructure/persistence/bids/provider-profile.repository';
@@ -15,6 +16,7 @@ import type {
 import type { ConversationParticipantRepository } from '../../infrastructure/persistence/conversations/conversation-participant.repository';
 import type { MessageRepository } from '../../infrastructure/persistence/conversations/message.repository';
 import type { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
+import type { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 import { AppError } from '../../shared/errors/app-error';
 import { ConversationsService } from './conversations.service';
 
@@ -50,6 +52,19 @@ function makeProvider(over: Partial<ProviderProfile> = {}): ProviderProfile {
     createdAt: new Date('2026-04-29T00:00:00.000Z'),
     updatedAt: new Date('2026-04-29T00:00:00.000Z'),
     deletedAt: null,
+    ...over,
+  };
+}
+
+function makeSeekerUser(over: Partial<{ id: string; firstName: string; lastName: string }> = {}): {
+  id: string;
+  firstName: string;
+  lastName: string;
+} {
+  return {
+    id: 'user-1',
+    firstName: 'Layla',
+    lastName: 'Mansour',
     ...over,
   };
 }
@@ -97,6 +112,9 @@ function makeParticipant(over: Partial<ConversationParticipant> = {}): Conversat
   } as ConversationParticipant;
 }
 
+// Default fixture: a SEEKER and PROVIDER both participate, the
+// provider has a linked userId (slice 5.5 onwards), and the seeker's
+// User row is loaded onto the participant for the role-aware summary.
 function makeConvWithRels(
   over: Partial<Conversation> = {},
   messages: Message[] = [],
@@ -104,7 +122,37 @@ function makeConvWithRels(
   return {
     ...makeConversation(over),
     participants: [
-      { ...makeParticipant({ id: 'p-self', userId: 'user-1', role: 'SEEKER' }), provider: null },
+      {
+        ...makeParticipant({ id: 'p-self', userId: 'user-1', role: 'SEEKER' }),
+        provider: null,
+        user: makeSeekerUser(),
+      },
+      {
+        ...makeParticipant({
+          id: 'p-prov',
+          userId: 'user-prov-2',
+          providerProfileId: 'pp-omar',
+          role: 'PROVIDER',
+        }),
+        provider: makeProvider({ userId: 'user-prov-2' }),
+        user: { id: 'user-prov-2', firstName: 'Omar', lastName: 'Al-Khalid' },
+      },
+    ],
+    messages,
+  } as unknown as ConversationWithRelations;
+}
+
+// Variant where the provider participant has NO linked userId — used
+// for the legacy / unbacked branch of the toSummary mapper.
+function makeConvWithUnlinkedProvider(): ConversationWithRelations {
+  return {
+    ...makeConversation(),
+    participants: [
+      {
+        ...makeParticipant({ id: 'p-self', userId: 'user-1', role: 'SEEKER' }),
+        provider: null,
+        user: makeSeekerUser(),
+      },
       {
         ...makeParticipant({
           id: 'p-prov',
@@ -113,9 +161,10 @@ function makeConvWithRels(
           role: 'PROVIDER',
         }),
         provider: makeProvider(),
+        user: null,
       },
     ],
-    messages,
+    messages: [],
   } as unknown as ConversationWithRelations;
 }
 
@@ -143,6 +192,11 @@ interface Mocks {
   };
   providers: {
     findByUserId: jest.Mock;
+  };
+  realtime: {
+    publishToRoom: jest.Mock;
+    publishFor: jest.Mock;
+    publish: jest.Mock;
   };
 }
 
@@ -190,6 +244,12 @@ function makeMocks(over: MocksOverride = {}): Mocks {
       findByUserId: jest.fn().mockResolvedValue(null),
       ...(over.providers ?? {}),
     },
+    realtime: {
+      publishToRoom: jest.fn(),
+      publishFor: jest.fn(),
+      publish: jest.fn(),
+      ...(over.realtime ?? {}),
+    },
   };
 }
 
@@ -201,13 +261,14 @@ function makeService(m: Mocks) {
     m.bookings as unknown as BookingRepository,
     m.providers as unknown as ProviderProfileRepository,
     makeTx(),
+    m.realtime as unknown as RealtimeEventsPublisher,
   );
 }
 
 describe('ConversationsService', () => {
   // ─── list ──────────────────────────────────────────────────────────────
   describe('list', () => {
-    it('maps conversations with the other participants provider summary + unread count', async () => {
+    it('seeker viewer sees the provider profile as the other participant', async () => {
       const m = makeMocks({
         conversations: { listForUser: jest.fn().mockResolvedValue([makeConvWithRels()]) },
         messages: { countUnreadForParticipant: jest.fn().mockResolvedValue(2) },
@@ -218,9 +279,37 @@ describe('ConversationsService', () => {
       expect(dto.otherParticipant.displayName).toBe('Omar Al-Khalid');
       expect(dto.otherParticipant.initials).toBe('OK');
       expect(dto.unreadCount).toBe(2);
-      // No userId / participants / raw fields leak.
       expect(dto).not.toHaveProperty('participants');
       expect(dto.otherParticipant).not.toHaveProperty('userId');
+    });
+
+    it('provider viewer sees a seeker label (first name + last initial), not a provider placeholder', async () => {
+      const m = makeMocks({
+        conversations: { listForUser: jest.fn().mockResolvedValue([makeConvWithRels()]) },
+      });
+      const out = await makeService(m).list('user-prov-2');
+      expect(out.items).toHaveLength(1);
+      const dto = out.items[0];
+      // Seeker is Layla Mansour — provider sees a privacy-friendly
+      // "Layla M." label, NOT the legacy "Provider" placeholder and
+      // NOT the seeker's full last name.
+      expect(dto.otherParticipant.displayName).toBe('Layla M.');
+      expect(dto.otherParticipant.initials).toBe('LM');
+      expect(dto.otherParticipant.avatarUrl).toBeNull();
+      // The seeker user's id and email are never on the wire.
+      expect(dto.otherParticipant).not.toHaveProperty('userId');
+      expect(dto.otherParticipant).not.toHaveProperty('email');
+    });
+
+    it('legacy unlinked provider participant still maps to provider profile for the seeker', async () => {
+      const m = makeMocks({
+        conversations: {
+          listForUser: jest.fn().mockResolvedValue([makeConvWithUnlinkedProvider()]),
+        },
+      });
+      const out = await makeService(m).list('user-1');
+      const dto = out.items[0];
+      expect(dto.otherParticipant.displayName).toBe('Omar Al-Khalid');
     });
 
     it('empty list returns 200-shape with empty items', async () => {
@@ -239,7 +328,6 @@ describe('ConversationsService', () => {
       });
       const out = await makeService(m).getOrCreateForBooking('user-1', 'bk-1');
       expect(out.conversation.id).toBe('conv-1');
-      // Must NOT create a new row when one already exists.
       expect(m.conversations.create).not.toHaveBeenCalled();
       expect(m.participants.create).not.toHaveBeenCalled();
     });
@@ -248,7 +336,6 @@ describe('ConversationsService', () => {
       const m = makeMocks();
       const out = await makeService(m).getOrCreateForBooking('user-1', 'bk-1');
       expect(out.conversation.id).toBe('conv-1');
-      // The seeker participant uses the session userId, NOT the wire.
       expect(m.participants.create).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-1',
@@ -257,8 +344,7 @@ describe('ConversationsService', () => {
         }),
         undefined,
       );
-      // The provider participant has a null userId (Provider app out
-      // of scope) but a real providerProfileId.
+      // Default provider fixture has no linked userId — null is OK.
       expect(m.participants.create).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: null,
@@ -281,14 +367,11 @@ describe('ConversationsService', () => {
       await expect(
         makeService(m).getOrCreateForBooking('user-attacker', 'bk-victim'),
       ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
-      // Critical: no conversation / participants are written when
-      // ownership fails.
       expect(m.conversations.create).not.toHaveBeenCalled();
       expect(m.participants.create).not.toHaveBeenCalled();
     });
 
     it('seeker-initiated: provider participant userId tracks the provider profiles userId (slice 5.5)', async () => {
-      // Booking returns a provider that IS linked to a user account.
       const linkedProvider = makeProvider({ id: 'pp-linked', userId: 'user-prov-2' });
       const m = makeMocks({
         bookings: {
@@ -299,8 +382,6 @@ describe('ConversationsService', () => {
         },
       });
       await makeService(m).getOrCreateForBooking('user-1', 'bk-1');
-      // The provider participant now carries userId: 'user-prov-2'
-      // so /v1/me/conversations on the provider side surfaces it.
       expect(m.participants.create).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-prov-2',
@@ -312,7 +393,6 @@ describe('ConversationsService', () => {
     });
 
     it('provider-initiated: resolves the booking via providerProfile and creates participants', async () => {
-      // Seeker side returns nothing for this user.
       const linkedProvider = makeProvider({ id: 'pp-prov', userId: 'user-prov-2' });
       const m = makeMocks({
         bookings: {
@@ -329,9 +409,6 @@ describe('ConversationsService', () => {
       const out = await makeService(m).getOrCreateForBooking('user-prov-2', 'bk-1');
       expect(out.conversation.id).toBe('conv-1');
       expect(m.bookings.findOwnedByProvider).toHaveBeenCalledWith('bk-1', 'pp-prov', undefined);
-      // Both participants are linked to the right userIds — seeker
-      // gets the booking's seekerUserId, provider gets the calling
-      // userId.
       expect(m.participants.create).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'user-1', role: 'SEEKER' }),
         undefined,
@@ -344,6 +421,61 @@ describe('ConversationsService', () => {
         }),
         undefined,
       );
+    });
+
+    // Sprint 7.3 — DB-level race protection. Two concurrent
+    // getOrCreate requests pass the fast-path existence check; the
+    // loser's INSERT fires P2002 on the partial unique index and the
+    // service re-fetches the winner instead of bubbling a Prisma
+    // error to the client.
+    it('resolves the concurrent-create race by re-fetching the winner on P2002', async () => {
+      const winner = makeConvWithRels();
+      // First call: existence check finds nothing (we're racing).
+      // Second call: post-conflict re-fetch finds the winner.
+      const findExisting = jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(winner);
+
+      // The conversation.create raises Prisma's unique-constraint
+      // error tagged with the partial index name from the migration.
+      const conflict = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: 'Conversation_bookingId_live_unique' },
+      });
+      const createConv = jest.fn().mockRejectedValue(conflict);
+
+      const m = makeMocks({
+        conversations: {
+          findExistingForBooking: findExisting,
+          create: createConv,
+        },
+      });
+
+      const out = await makeService(m).getOrCreateForBooking('user-1', 'bk-1');
+      expect(out.conversation.id).toBe('conv-1');
+      // Loser must NOT call participants.create on the second pass —
+      // the create call raised before participants were inserted.
+      // We also expect the existence check to have run twice (fast
+      // path + post-conflict re-fetch).
+      expect(findExisting).toHaveBeenCalledTimes(2);
+    });
+
+    it('falls back to a stable CONFLICT when the post-race re-fetch returns nothing', async () => {
+      const findExisting = jest.fn().mockResolvedValue(null);
+      const conflict = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: 'Conversation_bookingId_live_unique' },
+      });
+      const m = makeMocks({
+        conversations: {
+          findExistingForBooking: findExisting,
+          create: jest.fn().mockRejectedValue(conflict),
+        },
+      });
+      await expect(makeService(m).getOrCreateForBooking('user-1', 'bk-1')).rejects.toMatchObject({
+        code: 'CONFLICT',
+        status: 409,
+      });
     });
   });
 
@@ -384,12 +516,9 @@ describe('ConversationsService', () => {
         messages: { listForConversation: jest.fn().mockResolvedValue(messages) },
       });
       const out = await makeService(m).listMessages('user-1', 'conv-1', {});
-      // Repository returned newest-first; service reversed to oldest-first.
       expect(out.items.map((x) => x.id)).toEqual(['m-1', 'm-2']);
-      // sentByMe set only for the seeker's own message.
       expect(out.items[0].sentByMe).toBe(false);
       expect(out.items[1].sentByMe).toBe(true);
-      // No raw senderUserId leak.
       expect(out.items[0]).not.toHaveProperty('senderUserId');
     });
   });
@@ -405,10 +534,29 @@ describe('ConversationsService', () => {
       ).rejects.toMatchObject({ code: 'NOT_FOUND' });
       expect(m.messages.create).not.toHaveBeenCalled();
       expect(m.conversations.bumpUpdatedAt).not.toHaveBeenCalled();
+      // No realtime fan-out on the rejection path.
+      expect(m.realtime.publishToRoom).not.toHaveBeenCalled();
     });
 
-    it('persists the message with senderUserId from the session, NOT the wire', async () => {
-      const m = makeMocks();
+    it('seeker send: persists with senderRole=SEEKER derived from participant + publishes message.created', async () => {
+      const m = makeMocks({
+        participants: {
+          findByConversationAndUser: jest
+            .fn()
+            .mockResolvedValue(makeParticipant({ userId: 'user-1', role: 'SEEKER' })),
+        },
+        messages: {
+          create: jest.fn().mockResolvedValue({
+            id: 'msg-1',
+            conversationId: 'conv-1',
+            senderUserId: 'user-1',
+            senderRole: 'SEEKER',
+            body: 'hi from seeker',
+            createdAt: new Date('2026-04-29T03:00:00.000Z'),
+            deletedAt: null,
+          } as unknown as Message),
+        },
+      });
       const out = await makeService(m).sendMessage('user-1', 'conv-1', 'hi from seeker');
       expect(m.messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -419,10 +567,72 @@ describe('ConversationsService', () => {
         }),
         undefined,
       );
-      // Conversation.updatedAt is bumped so the conversations list
-      // reflects the new activity.
       expect(m.conversations.bumpUpdatedAt).toHaveBeenCalledWith('conv-1', undefined);
       expect(out.message.sentByMe).toBe(true);
+      // Realtime fan-out targets the conversation room, not a user
+      // room (so both seeker + provider sockets receive it).
+      expect(m.realtime.publishToRoom).toHaveBeenCalledWith(
+        'conversation:conv-1',
+        'message.created',
+        expect.objectContaining({
+          conversationId: 'conv-1',
+          message: expect.objectContaining({
+            id: 'msg-1',
+            senderRole: 'SEEKER',
+            body: 'hi from seeker',
+          }),
+        }),
+      );
+      // Broadcast payload MUST NOT leak senderUserId (PII boundary).
+      const [, , payload] = m.realtime.publishToRoom.mock.calls[0];
+      expect(payload.message).not.toHaveProperty('senderUserId');
+      // Broadcast also drops sentByMe — receivers derive it client-side.
+      expect(payload.message).not.toHaveProperty('sentByMe');
+    });
+
+    it('provider send: persists with senderRole=PROVIDER (NOT hardcoded SEEKER)', async () => {
+      const providerParticipant = makeParticipant({
+        id: 'p-prov',
+        userId: 'user-prov-2',
+        providerProfileId: 'pp-omar',
+        role: 'PROVIDER',
+      });
+      const m = makeMocks({
+        participants: {
+          findByConversationAndUser: jest.fn().mockResolvedValue(providerParticipant),
+        },
+        messages: {
+          create: jest.fn().mockResolvedValue({
+            id: 'msg-prov-1',
+            conversationId: 'conv-1',
+            senderUserId: 'user-prov-2',
+            senderRole: 'PROVIDER',
+            body: 'on my way',
+            createdAt: new Date('2026-04-29T03:30:00.000Z'),
+            deletedAt: null,
+          } as unknown as Message),
+        },
+      });
+      const out = await makeService(m).sendMessage('user-prov-2', 'conv-1', 'on my way');
+      expect(m.messages.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: 'conv-1',
+          senderUserId: 'user-prov-2',
+          senderRole: 'PROVIDER',
+          body: 'on my way',
+        }),
+        undefined,
+      );
+      expect(out.message.sentByMe).toBe(true);
+      expect(out.message.senderRole).toBe('PROVIDER');
+      // Realtime envelope reflects the provider role.
+      expect(m.realtime.publishToRoom).toHaveBeenCalledWith(
+        'conversation:conv-1',
+        'message.created',
+        expect.objectContaining({
+          message: expect.objectContaining({ senderRole: 'PROVIDER' }),
+        }),
+      );
     });
   });
 

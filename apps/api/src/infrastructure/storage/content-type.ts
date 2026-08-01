@@ -48,11 +48,12 @@ export function extensionForContentType(ct: ContentType): string {
   }
 }
 
-/** Per-file size cap for the presign endpoint. Matches the wizard's
- *  `MAX_MEDIA_ITEMS=4` × this value as the practical upper bound on
- *  one create-request flow. */
+/** Per-file size cap for the presign endpoint. Combined with
+ *  `MAX_FILES_PER_REQUEST` this bounds the practical upload size of one
+ *  create-request flow. */
 export const MAX_BYTES_PER_FILE = 10 * 1024 * 1024; // 10 MB
-/** Mirror of apps/web/src/app/components/wizard/JobWizardModal.tsx
- *  `MAX_MEDIA_ITEMS`. Backend enforces independently so a malicious
- *  client can't bypass the frontend cap. */
-export const MAX_FILES_PER_REQUEST = 4;
+/** Re-export of the shared `MAX_REQUEST_MEDIA_ITEMS` contract constant
+ *  (single source of truth shared with the web wizard). Backend
+ *  enforces it independently in the presign + create-request DTOs so a
+ *  malicious client can't bypass the frontend cap. */
+export { MAX_REQUEST_MEDIA_ITEMS as MAX_FILES_PER_REQUEST } from '@homeservicemarketplace/contracts';

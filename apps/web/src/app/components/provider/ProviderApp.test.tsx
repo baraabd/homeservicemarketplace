@@ -35,9 +35,16 @@ vi.mock('react-leaflet', () => ({
   Popup: ({ children }: { children?: ReactNode }) => (
     <div data-testid="leaflet-popup">{children}</div>
   ),
+  // MapResizer (mounted by LocationMap to call `map.invalidateSize()`
+  // on mount + container resize) calls these two extra members. The
+  // stubs satisfy them safely — `getContainer()` returns a real DOM
+  // node so `ResizeObserver.observe(container)` accepts the argument
+  // even on environments that ship a strict implementation.
   useMap: () => ({
     fitBounds: () => {},
     setView: () => {},
+    invalidateSize: () => {},
+    getContainer: () => document.createElement('div'),
   }),
 }));
 
@@ -706,7 +713,7 @@ describe('ProviderApp — Phase 6 Job Detail overlay', () => {
     expect(screen.getByText(/submit offer|تقديم عرض/i)).toBeInTheDocument();
   });
 
-  it('renders "—" for distance / budget / seeker when the wire fields are blank', async () => {
+  it('hides Budget and Seeker tiles when blank, keeps Distance with "—" until Haversine lands', async () => {
     mockBaseFlow();
     renderProvider();
 
@@ -715,14 +722,22 @@ describe('ProviderApp — Phase 6 Job Detail overlay', () => {
     fireEvent.click(popupCta);
 
     const overlay = await screen.findByTestId('job-detail-overlay');
-    // The Sprint 5.2 wire shape doesn't carry distance / budget /
-    // seeker name on available-requests; the adapter blanks those
-    // and the overlay must surface "—" rather than zero / empty.
-    // Three em-dash placeholders → one per missing field.
+    // Sprint 7.x — Budget and Seeker are permanently empty on the
+    // canonical available-requests wire (no schema column for budget;
+    // seeker identity stays masked per the Sprint 5.2 security
+    // projection), so the overlay collapses those tiles entirely
+    // rather than showing a placeholder em-dash. Distance still falls
+    // back to "—" while `distanceKm` is null on the wire — that
+    // fallback retires once the backend Haversine slice lands.
     const placeholders = Array.from(overlay.querySelectorAll('p')).filter(
       (p) => p.textContent?.trim() === '—',
     );
-    expect(placeholders).toHaveLength(3);
+    expect(placeholders).toHaveLength(1);
+    // Sanity: the Budget and Seeker LABELS should be gone too — if
+    // they were still present with a non-`—` value the assertion
+    // above would silently miss the regression.
+    expect(overlay.textContent).not.toMatch(/Budget|الميزانية/i);
+    expect(overlay.textContent).not.toMatch(/\bSeeker\b|صاحب الطلب/i);
   });
 
   it('the overlay close button dismisses without opening the BiddingModal', async () => {
@@ -771,6 +786,62 @@ describe('ProviderApp — Sprint 7.0 floating job-count badge', () => {
     // settle before asserting.
     const badge = await screen.findByTestId('job-count-badge');
     await waitFor(() => expect(badge.textContent?.trim()).toBe('3'));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 7.13 — the floating "pull up" control must never cover a
+// primary action. It sits at z-[1000] (above Leaflet popups), which is
+// ABOVE the detail overlay / bidding modal (z-40); so it has to be
+// hidden whenever a blocking surface is open, or it floats over the
+// request detail and covers the Place Bid CTA.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProviderApp — Sprint 7.13 pull-up control does not cover Place Bid', () => {
+  function mockBaseFlow() {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/provider/available-requests').reply(200, {
+      items: [SAMPLE_AVAILABLE_REQUEST],
+      nextCursor: null,
+    });
+  }
+
+  it('shows the pull-up control when the map is idle (no overlay open)', async () => {
+    mockBaseFlow();
+    renderProvider();
+    expect(await screen.findByTestId('pull-up-control')).toBeInTheDocument();
+  });
+
+  it('hides the pull-up control when the bottom sheet is open', async () => {
+    mockBaseFlow();
+    renderProvider();
+    const control = await screen.findByTestId('pull-up-control');
+    fireEvent.click(control);
+    await waitFor(() => expect(screen.queryByTestId('pull-up-control')).toBeNull());
+  });
+
+  it('hides the pull-up control when the request-detail overlay is open', async () => {
+    mockBaseFlow();
+    renderProvider();
+    // Open the detail overlay via the marker popup CTA.
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+    await screen.findByTestId('job-detail-overlay');
+    expect(screen.queryByTestId('pull-up-control')).toBeNull();
+  });
+
+  it('hides the pull-up control when the bidding modal is open, keeping Place Bid usable', async () => {
+    mockBaseFlow();
+    renderProvider();
+    const popupCta = await screen.findByRole('button', { name: /place bid|قدم عرض/i });
+    fireEvent.click(popupCta);
+    // The overlay's Place Bid CTA is reachable (not covered) and opens
+    // the bidding modal.
+    const overlayBidBtn = await screen.findByTestId('job-detail-place-bid');
+    fireEvent.click(overlayBidBtn);
+    await screen.findByText(/submit offer|تقديم عرض/i);
+    expect(screen.queryByTestId('pull-up-control')).toBeNull();
   });
 });
 
@@ -844,5 +915,45 @@ describe('ProviderApp — Sprint 7.0 new-job toast', () => {
 
     await waitFor(() => expect(screen.getAllByTestId('leaflet-marker')).toHaveLength(2));
     expect(toast.success).toHaveBeenCalledWith('New job nearby!');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 7.14 — the provider notifications drawer must stay INSIDE the
+// provider app shell (430px phone frame), not escape to the full browser
+// viewport. The regression guard asserts the panel is `absolute`
+// (bounded by the now-`relative` shell root) and never `fixed`.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('ProviderApp — Sprint 7.14 notifications drawer bounds', () => {
+  function mockBase() {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/me/notifications').reply(200, { items: [], nextCursor: null });
+    mock.onGet('/v1/me/notifications/unread-count').reply(200, { count: 0 });
+    mock.onPost('/v1/me/notifications/read-all').reply(200, { updated: 0 });
+  }
+
+  it('opens the drawer with shell-bounded (absolute, not fixed) positioning', async () => {
+    mockBase();
+    renderProvider();
+    openProfileTab();
+    fireEvent.click(await screen.findByRole('button', { name: /open notifications/i }));
+    const dialog = await screen.findByRole('dialog', { name: /notifications|الإشعارات/i });
+    // The panel must be absolutely positioned within the shell — never
+    // fixed against the viewport (that's the bug this fixes).
+    expect(dialog.className).toContain('absolute');
+    expect(dialog.className).not.toContain('fixed');
+  });
+
+  it('closes the drawer via the close button', async () => {
+    mockBase();
+    renderProvider();
+    openProfileTab();
+    fireEvent.click(await screen.findByRole('button', { name: /open notifications/i }));
+    await screen.findByRole('dialog', { name: /notifications|الإشعارات/i });
+    fireEvent.click(screen.getByRole('button', { name: /^close$/i }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /notifications|الإشعارات/i })).toBeNull(),
+    );
   });
 });

@@ -12,10 +12,17 @@ export const NotificationType = {
   BidReceived: 'BID_RECEIVED',
   BidAccepted: 'BID_ACCEPTED',
   BookingCreated: 'BOOKING_CREATED',
+  // Sprint 7.x — emitted when the provider starts a scheduled booking.
+  // Polling fallback depends on this row existing; without it the
+  // seeker's IN_PROGRESS toast can't surface offline-socket.
+  BookingInProgress: 'BOOKING_IN_PROGRESS',
   BookingCancelled: 'BOOKING_CANCELLED',
   BookingCompleted: 'BOOKING_COMPLETED',
   MessageReceived: 'MESSAGE_RECEIVED',
   ReviewRequested: 'REVIEW_REQUESTED',
+  // Sprint 7.x — emitted to matching providers when a seeker creates
+  // a new service request.
+  RequestAvailable: 'REQUEST_AVAILABLE',
   System: 'SYSTEM',
 } as const;
 export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];

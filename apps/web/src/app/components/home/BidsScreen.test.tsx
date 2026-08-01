@@ -15,7 +15,10 @@ import type { LeadCardProps } from './LeadCard';
 // never expose raw backend error text.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderScreen(lead: LeadCardProps, onBookBid: (name: string) => void = () => {}) {
+function renderScreen(
+  lead: LeadCardProps,
+  onBookBid: (name: string, bookingId: string) => void = () => {},
+) {
   // Fresh QueryClient per test so React Query state never leaks.
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -98,9 +101,9 @@ describe('BidsScreen', () => {
     // The mock SEED_BIDS list is no longer baked in — these names come
     // from the API response only.
     await waitFor(() => {
-      expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument();
+      expect(screen.getAllByText('O. Al-Khalid').length).toBeGreaterThan(0);
     });
-    expect(screen.getByText('Khalid Hassan')).toBeInTheDocument();
+    expect(screen.getAllByText('K. Hassan').length).toBeGreaterThan(0);
     // The pre-API mock had bids like "Faisal Al-Nasser" (LIVE_BID) and
     // "Ali Al-Rashid" / "Mohammed Al-Zahra" / "Hassan Mustafa". None of
     // those should appear unless the API actually returned them.
@@ -158,7 +161,7 @@ describe('BidsScreen', () => {
       return [200, { items: [BID_OMAR, BID_KHALID], nextCursor: null }];
     });
     renderScreen(LEAD);
-    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('O. Al-Khalid').length).toBeGreaterThan(0));
     // The Best Value tab posts sort=price — the second tab in the row.
     // Disambiguate via role since "Best Value" also appears as a badge.
     fireEvent.click(screen.getByRole('button', { name: /best value/i }));
@@ -171,7 +174,7 @@ describe('BidsScreen', () => {
       nextCursor: null,
     });
     renderScreen(LEAD);
-    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('O. Al-Khalid').length).toBeGreaterThan(0));
     // Wait long enough that the slice-1 setTimeout (8s/11s) WOULD have
     // fired if it still existed, then assert no fake-arrival UI.
     expect(screen.queryByText(/a new bid is arriving/i)).toBeNull();
@@ -211,7 +214,7 @@ describe('BidsScreen', () => {
     });
     const bookSpy = vi.fn();
     renderScreen(LEAD, bookSpy);
-    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('O. Al-Khalid').length).toBeGreaterThan(0));
 
     // Click Book Now → POST is in flight, NO success overlay yet.
     fireEvent.click(screen.getByRole('button', { name: /book now/i }));
@@ -221,8 +224,11 @@ describe('BidsScreen', () => {
     // Resolve the backend → overlay appears.
     resolveAccept?.();
     await waitFor(() => expect(screen.getByText(/booking confirmed/i)).toBeInTheDocument());
-    // Parent snackbar fires after the brief overlay window.
-    await waitFor(() => expect(bookSpy).toHaveBeenCalledWith('Omar Al-Khalid'));
+    // Parent snackbar fires after the brief overlay window with the
+    // bidder name AND the new bookingId from the backend response —
+    // Sprint 7.5 wires the bookingId so the snackbar can offer a
+    // "View booking" action.
+    await waitFor(() => expect(bookSpy).toHaveBeenCalledWith('O. Al-Khalid', 'bk-1'));
   });
 
   it('shows a friendly CONFLICT message on 409 (already-accepted) — no raw backend error rendered', async () => {
@@ -237,7 +243,7 @@ describe('BidsScreen', () => {
       },
     });
     renderScreen(LEAD);
-    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('O. Al-Khalid').length).toBeGreaterThan(0));
 
     fireEvent.click(screen.getByRole('button', { name: /book now/i }));
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
@@ -257,7 +263,7 @@ describe('BidsScreen', () => {
       error: { code: 'INTERNAL_ERROR', message: 'PrismaClientUnknownRequestError: kaboom' },
     });
     renderScreen(LEAD);
-    await waitFor(() => expect(screen.getByText('Omar Al-Khalid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('O. Al-Khalid').length).toBeGreaterThan(0));
 
     fireEvent.click(screen.getByRole('button', { name: /book now/i }));
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
