@@ -211,17 +211,6 @@ function RootInner() {
           overlay the bottom of the phone shell (auth signup's Next
           button + "Already have an account? Log in" link, the wizard's
           submit button, etc.) so we hide it below the md breakpoint. */}
-      <div className="fixed bottom-6 left-0 right-0 hidden md:flex justify-center pointer-events-none">
-        <div className="flex items-center gap-2 bg-white/10 backdrop-blur rounded-full px-4 py-2 border border-white/10">
-          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-          <span
-            className="text-white/60"
-            style={{ fontSize: '11px', fontWeight: 500, fontFamily: "'Inter', sans-serif" }}
-          >
-            FixNow · Mobile PWA · 430px
-          </span>
-        </div>
-      </div>
     </div>
   );
 }
