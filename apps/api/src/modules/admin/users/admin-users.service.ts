@@ -13,6 +13,7 @@ import { RoleRepository } from '../../../infrastructure/persistence/iam/role.rep
 import { SessionRepository } from '../../../infrastructure/persistence/iam/session.repository';
 import { UserRepository } from '../../../infrastructure/persistence/iam/user.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
+import { SessionValidationService } from '../../iam/authentication/services/session-validation.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { AdminAuditService } from '../admin-audit.service';
 
@@ -32,6 +33,7 @@ export class AdminUsersService {
     private readonly audit: AdminAuditService,
     private readonly tx: TransactionRunner,
     private readonly sessions: SessionRepository,
+    private readonly sessionValidation: SessionValidationService,
   ) {}
 
   async list(query: ListAdminUsersQuery): Promise<ListAdminUsersResponse> {
@@ -135,6 +137,13 @@ export class AdminUsersService {
       );
       return { ...existing, isActive, status: nextStatus };
     });
+    // Sprint 01 hardening: drop the cached "in good standing" flag AFTER
+    // the status flip + session revoke commit, so the very next
+    // authenticated request re-reads the DB and the new status takes
+    // effect immediately — an already-issued access token cannot outlive
+    // the suspension by up to its TTL. Invalidated on every transition
+    // (including restore) so a stale flag never lingers either way.
+    await this.sessionValidation.invalidate(targetUserId);
     return { user: await this.toSummary(updated) };
   }
 
@@ -170,6 +179,7 @@ export class AdminUsersService {
       );
       return { ...next, status: 'SUSPENDED' as AccountStatus };
     });
+    await this.sessionValidation.invalidate(targetUserId);
     return { user: await this.toSummary(updated) };
   }
 
@@ -196,6 +206,7 @@ export class AdminUsersService {
       );
       return { ...next, status: 'ACTIVE' as AccountStatus };
     });
+    await this.sessionValidation.invalidate(targetUserId);
     return { user: await this.toSummary(updated) };
   }
 
