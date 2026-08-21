@@ -3,10 +3,28 @@
 // which isn't always visible through pnpm peer symlinks in this repo.
 // Using the underlying `matchers` subpath + `expect.extend` is the
 // documented vitest-agnostic way and avoids that resolution edge case.
-import { expect, vi } from 'vitest';
+import { afterEach, expect, vi } from 'vitest';
 import * as matchers from '@testing-library/jest-dom/matchers';
 
 expect.extend(matchers);
+
+// Reset browser-persisted preferences between tests.
+//
+// The language choice is now persisted (Phase 12: it has to survive navigation
+// and reload), and happy-dom keeps one localStorage for the whole test FILE.
+// Without this, a test that switches to Arabic left every later test in the
+// same file rendering Arabic — which surfaced as three unrelated provider
+// tests asserting on English copy and receiving 'سباكة'.
+//
+// Wrapped because localStorage is designed to be able to throw (blocked site
+// data), and a teardown hook must never be the thing that fails a suite.
+afterEach(() => {
+  try {
+    window.localStorage.clear();
+  } catch {
+    // Storage unavailable in this environment — nothing to reset.
+  }
+});
 
 // Sprint 7.0 — globally stub the realtime socket client. AuthProvider
 // calls useRealtimeSocket whenever the user is authenticated; without

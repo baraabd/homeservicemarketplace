@@ -2967,16 +2967,59 @@ export function ProviderApp() {
     [profileQuery.data, authIdentity],
   );
 
-  // Sprint 5.1.2 status gate: a provider whose profile is not ACTIVE
-  // gets a focused status surface in place of the live shell — the live
-  // map / bids / wallet are intentionally NOT mounted so the user
-  // cannot bid before approval. The 'profile' tab still owns the
-  // initial onboarding-when-no-profile flow (handled by
-  // ProviderProfileScreen). The 'profile' route is exposed as a deep
-  // link for DRAFT users via onContinueOnboarding so they can jump to
-  // the upgrade button without losing the status surface as a back
-  // stop.
+  // Status gate: a provider whose profile is not ACTIVE gets a focused status
+  // surface in place of the live shell — the live map / bids / wallet are
+  // intentionally NOT mounted so the user cannot bid before approval.
+  //
+  // Phase 4 fix — the LOADING case used to fall through.
+  //
+  // The gate was `if (profile && profile.status !== 'ACTIVE')`, and while the
+  // profile query is in flight `profile` is null, so the condition was false
+  // and the LIVE SHELL mounted. A DRAFT or SUSPENDED provider therefore saw
+  // the marketplace map flash up for a moment before being replaced by their
+  // status surface — and every marketplace call it fired during that moment
+  // came back 403. Resolving the profile BEFORE deciding what to mount removes
+  // the flash entirely.
   const profile = profileQuery.data?.profile ?? null;
+
+  // Gate on the FIRST resolution only.
+  //
+  // `isFetched` flips true the first time the query settles — success OR
+  // error — and stays true. Both of the more obvious predicates are wrong
+  // here:
+  //
+  //   isPending                          also true for an idle/disabled query
+  //                                      that will never fetch, so the
+  //                                      placeholder can hang forever.
+  //
+  //   isPending && fetchStatus==='fetching'
+  //                                      LOOPS. The placeholder replaces the
+  //                                      whole subtree, so the child
+  //                                      components' own useProviderProfile
+  //                                      observers unmount; when the query
+  //                                      settles and the subtree remounts,
+  //                                      those observers re-subscribe to an
+  //                                      errored query, TanStack refetches,
+  //                                      the gate re-opens, and round it goes.
+  //
+  // Gating on "have we ever had an answer?" cannot re-open, so a later
+  // background refetch never tears down the mounted shell.
+  if (!profileQuery.isFetched) {
+    return (
+      <div
+        className={`flex items-center justify-center ${darkMode ? 'dark bg-slate-900' : 'bg-white'}`}
+        style={{ minHeight: '100svh', fontFamily, direction: dir }}
+        dir={dir}
+        data-testid="provider-shell-loading"
+        role="status"
+        aria-live="polite"
+      >
+        <span className="sr-only">{lang === 'ar' ? 'جارٍ التحميل…' : 'Loading…'}</span>
+        <div className="w-10 h-10 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
+      </div>
+    );
+  }
+
   if (profile && profile.status !== 'ACTIVE') {
     return (
       <ProviderStatusState
@@ -2986,8 +3029,16 @@ export function ProviderApp() {
     );
   }
 
+  // Provider role but NO profile row. Onboarding owns this screen: mounting
+  // the live map/bids here would fire marketplace calls that all 403 and paint
+  // a broken marketplace over what is really an unfinished signup.
+  //
+  // `activeTab` is still what a deliberate tab press sets, so once the
+  // provider upgrades (profile appears) they land wherever they navigated.
+  const effectiveTab = profile ? activeTab : 'profile';
+
   const renderTab = () => {
-    switch (activeTab) {
+    switch (effectiveTab) {
       case 'jobs':
         return <LiveJobsScreen />;
       case 'bids':

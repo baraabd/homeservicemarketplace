@@ -63,12 +63,15 @@ RUN pnpm --filter @homeservicemarketplace/api exec nest build
 # the same self-contained bundle.
 RUN pnpm --filter @homeservicemarketplace/api deploy --prod --legacy /out
 
-# Fail the BUILD — not the first request — on the two regressions this image
+# Fail the BUILD — not the first request — on the regressions this image
 # previously shipped:
 #   D-7  `Cannot find module 'express'`: express was only a transitive
 #        dependency of @nestjs/platform-express, which pnpm's strict layout
 #        does not expose to the app.
 #   D-8  a missing Prisma client / query engine in the deployed bundle.
+#   D-8  application SOURCES and the TypeScript toolchain shipped in the
+#        runtime image: apps/api had no `files` field, so `pnpm deploy`
+#        copied src/, test/, and the tsconfigs alongside dist/.
 #
 # The Prisma client is generated into packages/database/generated (see the
 # generator `output` in schema.prisma) rather than into pnpm's virtual store,
@@ -79,7 +82,11 @@ RUN set -eux; \
     GEN=/out/node_modules/@homeservicemarketplace/database/generated/prisma; \
     test -f "$GEN/index.js"; \
     ls "$GEN" | grep -q 'libquery_engine.*\.node'; \
-    node -e "require('$GEN'); console.log('prisma client + engine load from the deployed bundle')"
+    node -e "require('$GEN'); console.log('prisma client + engine load from the deployed bundle')"; \
+    test ! -d /out/src; \
+    test ! -d /out/test; \
+    test ! -d /out/node_modules/typescript; \
+    echo "deployed bundle carries no sources and no TypeScript toolchain"
 
 # ---------------------------------------------------------------------------
 # runner — non-root, production dependencies only, no sources, no toolchain.

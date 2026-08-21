@@ -31,6 +31,7 @@ import { SettingsSection } from './SettingsSection';
 import { AuditLogsSection } from './AuditLogsSection';
 import { AdminNotificationsBell } from './AdminNotificationsBell';
 import type {
+  AdminAccessRequestStatus,
   AdminUserStatus,
   AdminUserSummary,
   UpdateUserStatusRequest,
@@ -60,6 +61,51 @@ const STATUS_OPTIONS: ReadonlyArray<AdminUserStatus | 'ALL'> = [
   'LOCKED',
   'PENDING_VERIFICATION',
 ];
+
+// Phase 4 — the ADMIN-ACCESS-REQUEST axis, rendered as its own badge.
+//
+// This is deliberately a different colour family from the account-status
+// badge: a reader must not be able to mistake "asked for admin access" for
+// "the account is active". Null (never asked) renders nothing at all — an
+// empty cell is honest, whereas a "NONE" badge invites reading it as a state
+// the user is in.
+function adminAccessBadgeClass(status: AdminAccessRequestStatus): string {
+  // Deliberately a DIFFERENT colour family from statusBadgeClass below.
+  //
+  // A suspended account and a rejected admin request are different facts about
+  // different axes, and they frequently appear in the same row. Painting both
+  // rose made the row say "red, red" and told the reader nothing about which
+  // axis was in trouble — a real defect the browser tests caught by comparing
+  // the two computed backgrounds.
+  switch (status) {
+    case 'PENDING':
+      return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300';
+    case 'APPROVED':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
+    case 'REJECTED':
+      // Purple, not rose: rose is reserved for the ACCOUNT axis (SUSPENDED).
+      return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300';
+    case 'CANCELLED':
+      return 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
+    default:
+      return 'bg-slate-100 text-slate-600';
+  }
+}
+
+function adminAccessLabel(status: AdminAccessRequestStatus, isAr: boolean): string {
+  switch (status) {
+    case 'PENDING':
+      return isAr ? 'قيد المراجعة' : 'Pending';
+    case 'APPROVED':
+      return isAr ? 'مُعتمد' : 'Approved';
+    case 'REJECTED':
+      return isAr ? 'مرفوض' : 'Rejected';
+    case 'CANCELLED':
+      return isAr ? 'ملغى' : 'Cancelled';
+    default:
+      return status;
+  }
+}
 
 function statusBadgeClass(status: AdminUserStatus): string {
   switch (status) {
@@ -108,6 +154,9 @@ function UsersSection({ lang }: { lang: string }) {
       name: isAr ? 'المستخدم' : 'User',
       roles: isAr ? 'الأدوار' : 'Roles',
       status: isAr ? 'الحالة' : 'Status',
+      // Phase 4: a THIRD column, because admin standing is a separate axis
+      // from the account status next to it.
+      adminAccess: isAr ? 'وصول الإدارة' : 'Admin access',
       created: isAr ? 'منذ' : 'Created',
     },
     loading: isAr ? 'جارٍ التحميل…' : 'Loading…',
@@ -239,6 +288,13 @@ function UsersSection({ lang }: { lang: string }) {
                 <th
                   className="px-4 py-3 text-slate-500 text-start"
                   style={{ fontSize: '11px', fontWeight: 700 }}
+                  data-testid="col-admin-access"
+                >
+                  {L.columns.adminAccess}
+                </th>
+                <th
+                  className="px-4 py-3 text-slate-500 text-start"
+                  style={{ fontSize: '11px', fontWeight: 700 }}
                 >
                   {L.columns.created}
                 </th>
@@ -262,11 +318,12 @@ function UsersSection({ lang }: { lang: string }) {
                       {u.email}
                     </p>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" data-testid="cell-roles">
                     <div className="flex flex-wrap gap-1">
                       {u.roles.map((r) => (
                         <span
                           key={r}
+                          data-testid="badge-role"
                           className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
                           style={{ fontSize: '10px', fontWeight: 600 }}
                         >
@@ -275,13 +332,33 @@ function UsersSection({ lang }: { lang: string }) {
                       ))}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" data-testid="cell-account-status">
                     <span
+                      data-testid="badge-account-status"
                       className={`px-2 py-1 rounded-full ${statusBadgeClass(u.status)}`}
                       style={{ fontSize: '10px', fontWeight: 700 }}
                     >
                       {u.status}
                     </span>
+                  </td>
+                  <td className="px-4 py-3" data-testid="cell-admin-access">
+                    {u.adminAccessRequestStatus ? (
+                      <span
+                        data-testid="badge-admin-access"
+                        className={`px-2 py-1 rounded-full ${adminAccessBadgeClass(
+                          u.adminAccessRequestStatus,
+                        )}`}
+                        style={{ fontSize: '10px', fontWeight: 700 }}
+                      >
+                        {adminAccessLabel(u.adminAccessRequestStatus, isAr)}
+                      </span>
+                    ) : (
+                      // Never asked. An empty cell is honest; a "NONE" badge
+                      // would read as a state the user is in.
+                      <span className="text-slate-300 dark:text-slate-600" aria-hidden="true">
+                        —
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-500" style={{ fontSize: '11px' }}>
                     {new Date(u.createdAt).toLocaleDateString(isAr ? 'ar' : 'en')}
@@ -553,6 +630,10 @@ export function AdminDashboard() {
                 return (
                   <motion.button
                     key={id}
+                    // Keyed by the SECTION ID, not the translated label, so a
+                    // test (or an automation) targets the same control in
+                    // English and Arabic.
+                    data-testid={`nav-${id}`}
                     onClick={() => setActiveSection(id)}
                     whileTap={{ scale: 0.97 }}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-start transition-all ${

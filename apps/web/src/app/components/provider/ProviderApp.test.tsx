@@ -182,11 +182,15 @@ const MOCK_PROFILE = {
   updatedAt: '2026-04-30T00:00:00.000Z',
 };
 
-// Switch to the Profile tab (the bottom-nav button is matched by its
-// label). The Live Jobs tab renders by default; the slice's profile
-// surface lives behind one click.
-function openProfileTab() {
-  fireEvent.click(screen.getByRole('button', { name: /^profile|ملفي/i }));
+// Switch to the Profile tab (the bottom-nav button is matched by its label).
+//
+// Phase 4: the shell no longer mounts until the provider profile query has
+// SETTLED — previously it rendered immediately and a non-ACTIVE provider saw
+// the live marketplace flash before being replaced. So the tab bar has to be
+// awaited rather than assumed present on the first tick.
+async function openProfileTab() {
+  const tab = await screen.findByRole('button', { name: /^profile|ملفي/i }, { timeout: 5000 });
+  fireEvent.click(tab);
 }
 
 describe('ProviderApp — provider with profile', () => {
@@ -195,12 +199,12 @@ describe('ProviderApp — provider with profile', () => {
     mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
 
     await waitFor(() => expect(screen.getAllByText('Grace Hopper').length).toBeGreaterThan(0));
     expect(screen.getAllByText('GH').length).toBeGreaterThan(0);
     // Real stats from the backend.
-    expect(screen.getByText('540')).toBeInTheDocument();
+    expect(await screen.findByText('540')).toBeInTheDocument();
     expect(screen.getByText('4.9★')).toBeInTheDocument();
     // Service area pill — stays on jobs tab when we open it; for now,
     // confirm the city/country roundtrip is in the rendered profile.
@@ -214,9 +218,9 @@ describe('ProviderApp — provider with profile', () => {
     mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
 
-    await waitFor(() => expect(screen.getByText('Plumbing')).toBeInTheDocument());
+    expect(await screen.findByText('Plumbing')).toBeInTheDocument();
     expect(screen.getByText('Electrical')).toBeInTheDocument();
     // The legacy hardcoded list also included AC Repair / Carpentry —
     // those should NOT appear because the backend rows don't include them.
@@ -234,11 +238,13 @@ describe('ProviderApp — provider with profile', () => {
     });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
     await waitFor(() => expect(screen.getAllByText('Grace Hopper').length).toBeGreaterThan(0));
 
     // The toggle button has aria-label = the current availability label.
-    const toggle = screen.getByRole('button', { name: /unavailable|غير متاح/i });
+    // Awaited, not synchronous: "Grace Hopper" above also matches the top bar,
+    // so it resolves before the Profile tab's own content has rendered.
+    const toggle = await screen.findByRole('button', { name: /unavailable|غير متاح/i });
     fireEvent.click(toggle);
 
     await waitFor(() => expect(postedBody.availability).toBe('ONLINE'));
@@ -252,9 +258,9 @@ describe('ProviderApp — provider with profile', () => {
     });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
     await waitFor(() => expect(screen.getAllByText('Grace Hopper').length).toBeGreaterThan(0));
-    fireEvent.click(screen.getByRole('button', { name: /unavailable|غير متاح/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /unavailable|غير متاح/i }));
 
     await waitFor(() =>
       expect(
@@ -274,7 +280,7 @@ describe('ProviderApp — non-provider onboarding', () => {
     });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
 
     await waitFor(() =>
       expect(
@@ -300,7 +306,7 @@ describe('ProviderApp — non-provider onboarding', () => {
     });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
     const activate = await screen.findByRole('button', {
       name: /activate provider account|تفعيل حساب المحترف/i,
     });
@@ -326,7 +332,7 @@ describe('ProviderApp — non-provider onboarding', () => {
     });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
     await waitFor(() =>
       expect(
         screen.getByRole('button', { name: /activate provider account|تفعيل حساب المحترف/i }),
@@ -353,7 +359,9 @@ describe('ProviderApp — shell top bar identity', () => {
 
     renderProvider();
     // The Bids tab renders the top bar (Live Jobs hides it).
-    fireEvent.click(screen.getByRole('button', { name: /^my bids|عروضي/i }));
+    // Phase 4: the shell mounts only once the provider profile query has
+    // settled (no marketplace flash), so the tab bar must be AWAITED.
+    fireEvent.click(await screen.findByRole('button', { name: /^my bids|عروضي/i }));
 
     await waitFor(() => expect(screen.getAllByText('Grace Hopper').length).toBeGreaterThan(0));
     expect(screen.queryByText(/Omar Al-Khalid/i)).toBeNull();
@@ -370,7 +378,9 @@ describe('ProviderApp — shell top bar identity', () => {
     mock.onGet('/v1/me/provider/profile').reply(200, { profile: profileWithDifferentIdentity });
 
     renderProvider();
-    fireEvent.click(screen.getByRole('button', { name: /^my bids|عروضي/i }));
+    // Phase 4: the shell mounts only once the provider profile query has
+    // settled (no marketplace flash), so the tab bar must be AWAITED.
+    fireEvent.click(await screen.findByRole('button', { name: /^my bids|عروضي/i }));
 
     await waitFor(() => expect(screen.getAllByText('Trade Name LLC').length).toBeGreaterThan(0));
     // Auth identity (Grace Hopper) is overridden.
@@ -394,7 +404,7 @@ describe('ProviderApp — Phase 5 profile actions', () => {
     });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
 
     const signOut = await screen.findByTestId('provider-sign-out');
     fireEvent.click(signOut);
@@ -418,7 +428,7 @@ describe('ProviderApp — Phase 5 profile actions', () => {
     });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
 
     const edit = await screen.findByTestId('provider-menu-edit-profile');
     fireEvent.click(edit);
@@ -569,7 +579,7 @@ describe('ProviderApp — pending skills (admin approval queue)', () => {
     });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
 
     // The pending pill is the only element labelled "Pending approval"
     // (aria-label) — that's the canonical handle for the assertion.
@@ -590,7 +600,7 @@ describe('ProviderApp — pending skills (admin approval queue)', () => {
     });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
 
     // Approved categories from MOCK_PROFILE — rendered without the
     // dashed-border / pending affordance.
@@ -613,7 +623,7 @@ describe('ProviderApp — pending skills (admin approval queue)', () => {
     // default Live Jobs tab. Switch to Profile first so the toggle
     // is mountable, then flip to Arabic, then assert the localised
     // pending tooltip copy.
-    openProfileTab();
+    await openProfileTab();
     const langToggle = await screen.findByRole('button', { name: /switch language/i });
     fireEvent.click(langToggle);
 
@@ -629,7 +639,7 @@ describe('ProviderApp — pending skills (admin approval queue)', () => {
     mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
 
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
 
     await waitFor(() => expect(screen.getByText('Plumbing')).toBeInTheDocument());
     expect(screen.queryByLabelText(/^pending approval$/i)).toBeNull();
@@ -936,7 +946,7 @@ describe('ProviderApp — Sprint 7.14 notifications drawer bounds', () => {
   it('opens the drawer with shell-bounded (absolute, not fixed) positioning', async () => {
     mockBase();
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
     fireEvent.click(await screen.findByRole('button', { name: /open notifications/i }));
     const dialog = await screen.findByRole('dialog', { name: /notifications|الإشعارات/i });
     // The panel must be absolutely positioned within the shell — never
@@ -948,7 +958,7 @@ describe('ProviderApp — Sprint 7.14 notifications drawer bounds', () => {
   it('closes the drawer via the close button', async () => {
     mockBase();
     renderProvider();
-    openProfileTab();
+    await openProfileTab();
     fireEvent.click(await screen.findByRole('button', { name: /open notifications/i }));
     await screen.findByRole('dialog', { name: /notifications|الإشعارات/i });
     fireEvent.click(screen.getByRole('button', { name: /^close$/i }));

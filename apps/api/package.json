@@ -2,6 +2,9 @@
   "name": "@homeservicemarketplace/api",
   "private": true,
   "version": "0.1.0",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "pnpm build:deps && nest start --watch",
     "build": "pnpm build:deps && nest build",

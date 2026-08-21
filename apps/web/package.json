@@ -10,7 +10,11 @@
     "lint": "eslint .",
     "typecheck": "pnpm build:deps && tsc --noEmit",
     "test": "pnpm build:deps && vitest run",
-    "build:deps": "pnpm --filter @homeservicemarketplace/contracts build"
+    "build:deps": "pnpm --filter @homeservicemarketplace/contracts build",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:install": "playwright install --with-deps chromium",
+    "test:e2e:update-snapshots": "playwright test --update-snapshots"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -75,6 +79,7 @@
     "vaul": "1.1.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.50.0",
     "@tailwindcss/vite": "4.1.12",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

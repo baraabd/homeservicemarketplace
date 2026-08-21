@@ -58,3 +58,8 @@ Thumbs.db
 # `output` in packages/database/prisma/schema.prisma). Build output, not
 # source: regenerate with `pnpm --filter @homeservicemarketplace/database generate`.
 packages/database/generated/
+
+# Playwright (Phase 12 browser suite)
+apps/web/playwright-report/
+apps/web/test-results/
+apps/web/blob-report/
