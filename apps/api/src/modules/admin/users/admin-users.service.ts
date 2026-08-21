@@ -9,6 +9,7 @@ import type {
 } from '@homeservicemarketplace/contracts';
 import type { AccountStatus, AuditEventType, User } from '@homeservicemarketplace/database';
 
+import { AdminAccessRequestRepository } from '../../../infrastructure/persistence/iam/admin-access-request.repository';
 import { RoleRepository } from '../../../infrastructure/persistence/iam/role.repository';
 import { SessionRepository } from '../../../infrastructure/persistence/iam/session.repository';
 import { UserRepository } from '../../../infrastructure/persistence/iam/user.repository';
@@ -33,6 +34,9 @@ export class AdminUsersService {
     private readonly audit: AdminAuditService,
     private readonly tx: TransactionRunner,
     private readonly sessions: SessionRepository,
+    // Phase 4 — axis 3. Read alongside status and roles so the dashboard
+    // renders three columns instead of inferring admin standing from one.
+    private readonly adminAccessRequests: AdminAccessRequestRepository,
     // D-2/D-4: the per-request session check reads Postgres directly, so no
     // cache needs busting after a status flip — the in-transaction session
     // revoke below is immediately authoritative on every instance. What the
@@ -227,7 +231,10 @@ export class AdminUsersService {
   }
 
   private async toSummary(u: User): Promise<AdminUserSummary> {
-    const userRoles = await this.users.listRoles(u.id);
+    const [userRoles, latestAccessRequest] = await Promise.all([
+      this.users.listRoles(u.id),
+      this.adminAccessRequests.findLatestByUserId(u.id),
+    ]);
     return {
       id: u.id,
       email: u.email,
@@ -238,6 +245,12 @@ export class AdminUsersService {
       emailVerifiedAt: u.emailVerifiedAt ? u.emailVerifiedAt.toISOString() : null,
       mfaEnabled: u.mfaEnabled,
       roles: userRoles.map((r) => r.role.name),
+      // Axis 3, reported independently of the two above. Null means the user
+      // has never asked for admin access — which is NOT the same as having
+      // been refused, and the dashboard renders the two differently.
+      adminAccessRequestStatus: latestAccessRequest
+        ? (latestAccessRequest.status as AdminUserSummary['adminAccessRequestStatus'])
+        : null,
       createdAt: u.createdAt.toISOString(),
       updatedAt: u.updatedAt.toISOString(),
     };

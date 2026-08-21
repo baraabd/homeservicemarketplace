@@ -51,6 +51,12 @@ function makeProvider(over: Partial<ProviderProfile> = {}): ProviderProfile {
     availability: 'OFFLINE',
     status: 'ACTIVE',
     reviewNotes: null,
+    // Phase 4 onboarding lifecycle columns. An ACTIVE fixture is a provider
+    // that already went through submit → approve, so it carries both stamps.
+    submittedForReviewAt: new Date('2026-04-28T00:00:00.000Z'),
+    reviewedAt: new Date('2026-04-28T00:00:00.000Z'),
+    reviewedByUserId: null,
+    rejectionReason: null,
     createdAt: new Date('2026-04-28T00:00:00.000Z'),
     updatedAt: new Date('2026-04-28T00:00:00.000Z'),
     deletedAt: null,

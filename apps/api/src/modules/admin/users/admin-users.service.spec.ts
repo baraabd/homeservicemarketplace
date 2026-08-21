@@ -4,6 +4,7 @@ import type { RoleRepository } from '../../../infrastructure/persistence/iam/rol
 import type { SessionRepository } from '../../../infrastructure/persistence/iam/session.repository';
 import type { UserRepository } from '../../../infrastructure/persistence/iam/user.repository';
 import type { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
+import type { AdminAccessRequestRepository } from '../../../infrastructure/persistence/iam/admin-access-request.repository';
 import { SecurityEventsBus } from '../../../shared/security-events/security-events.bus';
 import type { AdminAuditService } from '../admin-audit.service';
 import { AdminUsersService } from './admin-users.service';
@@ -41,6 +42,7 @@ interface Mocks {
   audit: AdminAuditService;
   sessions: SessionRepository;
   securityEvents: SecurityEventsBus;
+  adminAccessRequests: AdminAccessRequestRepository;
 }
 
 function makeMocks(
@@ -88,14 +90,60 @@ function makeMocks(
     audit: {
       record: jest.fn().mockResolvedValue(undefined),
     } as unknown as AdminAuditService,
+    // Phase 4 — axis 3. Default: this user has never asked for admin access.
+    adminAccessRequests: {
+      findLatestByUserId: jest.fn().mockResolvedValue(null),
+    } as unknown as AdminAccessRequestRepository,
   };
 }
 
 function makeService(m: Mocks): AdminUsersService {
-  return new AdminUsersService(m.users, m.roles, m.audit, tx, m.sessions, m.securityEvents);
+  return new AdminUsersService(
+    m.users,
+    m.roles,
+    m.audit,
+    tx,
+    m.sessions,
+    m.adminAccessRequests,
+    m.securityEvents,
+  );
 }
 
 describe('AdminUsersService', () => {
+  // Phase 4 — the dashboard must be able to render THREE separate columns.
+  // These tests pin that the summary reports them independently, so no screen
+  // has to infer admin standing from the account status.
+  describe('the three account axes are reported separately', () => {
+    it('an ACTIVE customer is not described as an admin in any field', async () => {
+      const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
+      const [row] = (await makeService(m).list({})).items;
+      expect(row.status).toBe('ACTIVE');
+      expect(row.roles).toEqual(['customer']);
+      expect(row.adminAccessRequestStatus).toBeNull();
+    });
+
+    it('reports a PENDING admin-access request without granting any role', async () => {
+      const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
+      (m.adminAccessRequests.findLatestByUserId as jest.Mock).mockResolvedValue({
+        status: 'PENDING',
+      });
+      const [row] = (await makeService(m).list({})).items;
+      expect(row.adminAccessRequestStatus).toBe('PENDING');
+      // Asked is not granted.
+      expect(row.roles).not.toContain('admin');
+    });
+
+    it('distinguishes "never asked" (null) from "asked and refused" (REJECTED)', async () => {
+      const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
+      expect((await makeService(m).list({})).items[0].adminAccessRequestStatus).toBeNull();
+
+      (m.adminAccessRequests.findLatestByUserId as jest.Mock).mockResolvedValue({
+        status: 'REJECTED',
+      });
+      expect((await makeService(m).list({})).items[0].adminAccessRequestStatus).toBe('REJECTED');
+    });
+  });
+
   it('lists users with cursor pagination', async () => {
     const m = makeMocks({ rows: ['a', 'b'].map((id) => makeUser({ id })) });
     const out = await makeService(m).list({ limit: 50 });
@@ -124,6 +172,7 @@ describe('AdminUsersService', () => {
       m.audit,
       txWithUser,
       m.sessions,
+      m.adminAccessRequests,
       m.securityEvents,
     );
     await svc.suspend('admin-1', 'u-1');
@@ -153,6 +202,7 @@ describe('AdminUsersService', () => {
       m.audit,
       txWithUser,
       m.sessions,
+      m.adminAccessRequests,
       m.securityEvents,
     );
     await svc.restore('admin-1', 'u-1');
@@ -187,6 +237,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       const out = await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED', reason: 'fraud' });
@@ -216,6 +267,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       const out = await svc.setStatus('admin-1', 'u-1', { status: 'ACTIVE' });
@@ -235,6 +287,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       await expect(svc.setStatus('u-1', 'u-1', { status: 'SUSPENDED' })).rejects.toMatchObject({
@@ -252,6 +305,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       await expect(svc.setStatus('u-1', 'u-1', { status: 'ACTIVE' })).resolves.toBeDefined();
@@ -265,6 +319,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       await expect(
@@ -280,6 +335,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
@@ -307,6 +363,7 @@ describe('AdminUsersService', () => {
         m.audit,
         tx,
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
@@ -326,6 +383,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'LOCKED' });
@@ -340,6 +398,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'ACTIVE' });
@@ -354,6 +413,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
@@ -374,6 +434,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
@@ -398,6 +459,7 @@ describe('AdminUsersService', () => {
         m.audit,
         txWithUser,
         m.sessions,
+        m.adminAccessRequests,
         m.securityEvents,
       );
       await svc.suspend('admin-1', 'u-1');

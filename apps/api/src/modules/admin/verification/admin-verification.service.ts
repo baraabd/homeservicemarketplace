@@ -21,6 +21,7 @@ import { ProviderProfileRepository } from '../../../infrastructure/persistence/b
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { SecurityEventsBus } from '../../../shared/security-events/security-events.bus';
 import { AdminAuditService } from '../admin-audit.service';
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -35,6 +36,9 @@ export class AdminVerificationService {
     private readonly audit: AdminAuditService,
     private readonly auditEvents: AuditEventRepository,
     private readonly tx: TransactionRunner,
+    // Phase 4 / D-4: a status change withdraws marketplace access, so any
+    // socket already sitting in `provider:{id}` must be evicted post-commit.
+    private readonly securityEvents: SecurityEventsBus,
   ) {}
 
   async list(query: ListAdminProvidersQuery): Promise<ListAdminProvidersResponse> {
@@ -65,7 +69,14 @@ export class AdminVerificationService {
     return this.transition({
       adminUserId,
       providerProfileId,
-      from: ['DRAFT', 'PENDING_REVIEW'] as ProviderProfileStatus[],
+      // Phase 4: DRAFT is NO LONGER an approvable source state.
+      //
+      // A DRAFT profile has not been submitted, so nothing has been checked
+      // against the onboarding completeness policy — approving one activates a
+      // provider with no headline, no service area, and no categories, and
+      // makes the whole submit-for-review gate optional. Approval now requires
+      // a submitted application.
+      from: ['PENDING_REVIEW'] as ProviderProfileStatus[],
       to: 'ACTIVE' as ProviderProfileStatus,
       auditType: 'ADMIN_PROVIDER_APPROVED' as AuditEventType,
       auditMetadata: note ? { note } : {},
@@ -74,7 +85,8 @@ export class AdminVerificationService {
         title: 'You are approved',
         body: 'Your provider account is now active.',
       },
-      conflictMessage: 'Only DRAFT or PENDING_REVIEW providers can be approved.',
+      conflictMessage:
+        'Only a provider who has submitted an application for review can be approved.',
     });
   }
 
@@ -91,6 +103,10 @@ export class AdminVerificationService {
       to: 'REJECTED' as ProviderProfileStatus,
       auditType: 'ADMIN_PROVIDER_REJECTED' as AuditEventType,
       auditMetadata: reasonText ? { reason: reasonText } : {},
+      // Persisted on the profile so the Provider app can tell a rejected
+      // applicant WHAT TO FIX, instead of showing a generic account-problem
+      // message that conflates provider standing with account standing.
+      rejectionReason: reasonText,
       notification: {
         type: NotificationType.SYSTEM,
         title: 'Provider account rejected',
@@ -166,6 +182,7 @@ export class AdminVerificationService {
     auditMetadata: Record<string, unknown>;
     notification: { type: NotificationType; title: string; body: string };
     conflictMessage: string;
+    rejectionReason?: string | null;
   }): Promise<AdminProviderMutationResponse> {
     const result = await this.tx.run(async (tx) => {
       const existing = await this.providers.findByIdForAdmin(args.providerProfileId, tx);
@@ -173,7 +190,29 @@ export class AdminVerificationService {
       if (!args.from.includes(existing.status as ProviderProfileStatus)) {
         throw new AppError('CONFLICT', args.conflictMessage, 409);
       }
-      await this.providers.updateStatusById(args.providerProfileId, args.to, tx);
+
+      // Phase 4 — the state-machine edge is enforced by the WRITE, not by the
+      // read above. Prisma's interactive transactions run at READ COMMITTED,
+      // so two reviewers acting at once could both read ACTIVE and both
+      // proceed; scoping the UPDATE to the legal source statuses makes exactly
+      // one of them win. The read stays for the 404 and for the friendly
+      // per-source-state conflict message.
+      const moved = await this.providers.decideIfInStatus(
+        args.providerProfileId,
+        {
+          from: args.from,
+          to: args.to,
+          reviewedByUserId: args.adminUserId,
+          // Cleared on any non-rejection so a provider is never shown a stale
+          // rejection reason after being approved or reactivated.
+          rejectionReason: args.to === 'REJECTED' ? (args.rejectionReason ?? null) : null,
+        },
+        tx,
+      );
+      if (moved === 0) {
+        throw new AppError('CONFLICT', args.conflictMessage, 409);
+      }
+
       await this.audit.record(
         {
           adminUserId: args.adminUserId,
@@ -207,6 +246,21 @@ export class AdminVerificationService {
       if (!reloaded) throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
       return reloaded;
     });
+
+    // Phase 4 / D-4 — post-commit, never inside the transaction.
+    //
+    // Losing marketplace approval must NOT log the person out: a suspended or
+    // rejected provider who is also a customer keeps their Customer access.
+    // The gateway therefore evicts them from `provider:{id}` rather than
+    // disconnecting the socket. Publishing on every transition (including
+    // promotion to ACTIVE, which the handler ignores) keeps the call site
+    // free of policy.
+    this.securityEvents.emitProviderStatusChanged({
+      userId: result.user?.id ?? null,
+      providerProfileId: args.providerProfileId,
+      status: args.to as 'DRAFT' | 'PENDING_REVIEW' | 'ACTIVE' | 'SUSPENDED' | 'REJECTED',
+    });
+
     return { provider: toSummary(result) };
   }
 

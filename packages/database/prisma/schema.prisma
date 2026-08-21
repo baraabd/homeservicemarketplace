@@ -1,5 +1,19 @@
 generator client {
   provider = "prisma-client-js"
+  // D-8 — generate INTO the workspace package instead of the default
+  // node_modules/.prisma/client.
+  //
+  // With pnpm's virtual store the default output lands in
+  // node_modules/.pnpm/@prisma+client@<ver>/node_modules/.prisma/client, which
+  // `pnpm deploy` does not carry into the production bundle. The image then
+  // booted (or failed to boot) depending on whether a copy of that directory
+  // had been hand-stitched into the right place — fragile, and it broke as
+  // soon as the store layout changed.
+  //
+  // Generating into packages/database/generated/prisma makes the client part
+  // of the package's own files, so `pnpm deploy` copies it like any other
+  // source. One location, same in local dev, CI, and the container.
+  output   = "../generated/prisma"
 }
 
 datasource db {
@@ -8,43 +22,45 @@ datasource db {
 }
 
 model User {
-  id                        String                    @id @default(cuid())
-  email                     String                    @unique
-  passwordHash              String?
-  firstName                 String
-  lastName                  String
-  isActive                  Boolean                   @default(true)
-  createdAt                 DateTime                  @default(now())
-  updatedAt                 DateTime                  @updatedAt
-  deletedAt                 DateTime?
-  emailVerifiedAt           DateTime?
-  failedLoginCount          Int                       @default(0)
-  lockedUntil               DateTime?
-  mfaEnabled                Boolean                   @default(false)
-  mfaEnrolledAt             DateTime?
-  mfaSecret                 Bytes?
-  passwordUpdatedAt         DateTime?
-  status                    AccountStatus             @default(PENDING_VERIFICATION)
-  addresses                 Address[]
-  auditEvents              AuditEvent[]
-  bookingEvents            BookingEvent[]
-  bookings                 Booking[]
-  conversationParticipants ConversationParticipant[]
-  messages                 Message[]
-  mfaBackupCodes           MfaBackupCode[]
-  notifications            Notification[]
-  oauthAccounts            OauthAccount[]
-  providerProfile          ProviderProfile?
-  serviceRequestEvents     ServiceRequestEvent[]
-  serviceRequests          ServiceRequest[]
-  sessions                 Session[]
-  userProfile              UserProfile?
-  userRoles                UserRole[]
-  verificationTokens       VerificationToken[]
-  disputesOpened           Dispute[]                 @relation("DisputeOpenedBy")
-  disputesResolved         Dispute[]                 @relation("DisputeResolvedBy")
-  disputeEvents            DisputeEvent[]            @relation("DisputeEventActor")
-  platformSettings         PlatformSetting[]
+  id                         String                    @id @default(cuid())
+  email                      String                    @unique
+  passwordHash               String?
+  firstName                  String
+  lastName                   String
+  isActive                   Boolean                   @default(true)
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  deletedAt                  DateTime?
+  emailVerifiedAt            DateTime?
+  failedLoginCount           Int                       @default(0)
+  lockedUntil                DateTime?
+  mfaEnabled                 Boolean                   @default(false)
+  mfaEnrolledAt              DateTime?
+  mfaSecret                  Bytes?
+  passwordUpdatedAt          DateTime?
+  status                     AccountStatus             @default(PENDING_VERIFICATION)
+  addresses                  Address[]
+  auditEvents                AuditEvent[]
+  bookingEvents              BookingEvent[]
+  bookings                   Booking[]
+  conversationParticipants   ConversationParticipant[]
+  messages                   Message[]
+  mfaBackupCodes             MfaBackupCode[]
+  notifications              Notification[]
+  oauthAccounts              OauthAccount[]
+  providerProfile            ProviderProfile?
+  serviceRequestEvents       ServiceRequestEvent[]
+  serviceRequests            ServiceRequest[]
+  sessions                   Session[]
+  userProfile                UserProfile?
+  userRoles                  UserRole[]
+  verificationTokens         VerificationToken[]
+  disputesOpened             Dispute[]                 @relation("DisputeOpenedBy")
+  disputesResolved           Dispute[]                 @relation("DisputeResolvedBy")
+  disputeEvents              DisputeEvent[]            @relation("DisputeEventActor")
+  platformSettings           PlatformSetting[]
+  adminAccessRequests        AdminAccessRequest[]      @relation("AdminAccessRequestApplicant")
+  adminAccessRequestsDecided AdminAccessRequest[]      @relation("AdminAccessRequestReviewer")
 
   @@index([deletedAt])
   @@index([status])
@@ -116,6 +132,44 @@ model Session {
   @@index([expiresAt])
 }
 
+// Phase 4 — the Admin ACCESS-REQUEST axis.
+//
+// A public signup must never grant the admin role. Signing up through the
+// Admin-themed entry point creates an ordinary verified User identity and,
+// only when the person explicitly submits one, a PENDING AdminAccessRequest.
+// The request is a request: it grants nothing until a DIFFERENT, currently
+// authorized administrator approves it.
+//
+// This is deliberately a THIRD axis, separate from User.status (may this
+// identity authenticate?) and UserRole (what may it do?). Conflating them is
+// what produced screens calling a user "Admin active" purely because
+// User.status === ACTIVE.
+//
+// One PENDING request per user at a time is enforced in the service layer —
+// Prisma has no partial unique index, and a strict unique on userId would
+// block a legitimate re-application after a rejection.
+model AdminAccessRequest {
+  id              String                   @id @default(cuid())
+  userId          String
+  status          AdminAccessRequestStatus @default(PENDING)
+  /// Why the applicant believes they need admin access. Operator-facing only.
+  justification   String?                  @db.Text
+  /// Admin who approved or rejected. Never the applicant themselves — the
+  /// service refuses self-review.
+  decidedByUserId String?
+  decidedAt       DateTime?
+  /// Reviewer's note on the decision. Surfaced to the applicant on rejection.
+  decisionNote    String?                  @db.Text
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  user      User  @relation("AdminAccessRequestApplicant", fields: [userId], references: [id], onDelete: Cascade)
+  decidedBy User? @relation("AdminAccessRequestReviewer", fields: [decidedByUserId], references: [id])
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}
+
 model VerificationToken {
   id           String       @id @default(cuid())
   userId       String
@@ -172,21 +226,21 @@ model AuditEvent {
 }
 
 model Address {
-  id               String           @id @default(cuid())
-  userId           String
-  label            String
-  city             String
-  country          String
-  isDefault        Boolean          @default(false)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  type             AddressType
-  line1            String
-  lat              Float?
-  lng              Float?
-  deletedAt        DateTime?
-  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  serviceRequests  ServiceRequest[]
+  id              String           @id @default(cuid())
+  userId          String
+  label           String
+  city            String
+  country         String
+  isDefault       Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  type            AddressType
+  line1           String
+  lat             Float?
+  lng             Float?
+  deletedAt       DateTime?
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceRequests ServiceRequest[]
 
   @@index([deletedAt])
   @@index([userId, deletedAt])
@@ -234,25 +288,25 @@ model BookingEvent {
 }
 
 model Booking {
-  id                String          @id @default(cuid())
-  requestId         String
-  bidId             String          @unique
-  seekerUserId      String
-  providerId        String
-  status            BookingStatus   @default(SCHEDULED)
-  scheduledAt       DateTime?
-  priceAmount       Int
-  currency          String          @default("USD")
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  deletedAt         DateTime?
-  events            BookingEvent[]
-  bid               Bid             @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  provider          ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  request           ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  seeker            User            @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
-  conversations     Conversation[]
-  disputes          Dispute[]
+  id            String          @id @default(cuid())
+  requestId     String
+  bidId         String          @unique
+  seekerUserId  String
+  providerId    String
+  status        BookingStatus   @default(SCHEDULED)
+  scheduledAt   DateTime?
+  priceAmount   Int
+  currency      String          @default("USD")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  deletedAt     DateTime?
+  events        BookingEvent[]
+  bid           Bid             @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  provider      ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  request       ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  seeker        User            @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  disputes      Dispute[]
 
   @@index([deletedAt])
   @@index([providerId, status])
@@ -338,44 +392,57 @@ model Notification {
 }
 
 model ProviderProfile {
-  id                        String                            @id @default(cuid())
-  userId                    String?                           @unique
-  displayName               String
-  initials                  String
-  avatarUrl                 String?
-  ratingAvg                 Float                             @default(0)
-  reviewCount               Int                               @default(0)
-  completedJobs             Int                               @default(0)
-  verified                  Boolean                           @default(false)
-  topPro                    Boolean                           @default(false)
-  bio                       String?
-  headline                  String?
-  phoneNumber               String?
-  serviceAreaCity           String?
-  serviceAreaCountry        String?
-  serviceAreaLat            Float?
-  serviceAreaLng            Float?
-  serviceAreaRadiusKm       Int?
-  availability              ProviderAvailability              @default(OFFLINE)
-  status                    ProviderProfileStatus             @default(DRAFT)
+  id                       String                           @id @default(cuid())
+  userId                   String?                          @unique
+  displayName              String
+  initials                 String
+  avatarUrl                String?
+  ratingAvg                Float                            @default(0)
+  reviewCount              Int                              @default(0)
+  completedJobs            Int                              @default(0)
+  verified                 Boolean                          @default(false)
+  topPro                   Boolean                          @default(false)
+  bio                      String?
+  headline                 String?
+  phoneNumber              String?
+  serviceAreaCity          String?
+  serviceAreaCountry       String?
+  serviceAreaLat           Float?
+  serviceAreaLng           Float?
+  serviceAreaRadiusKm      Int?
+  availability             ProviderAvailability             @default(OFFLINE)
+  status                   ProviderProfileStatus            @default(DRAFT)
+  // Phase 4 — provider onboarding lifecycle timestamps.
+  //
+  // `POST /v1/me/provider/upgrade` creates a DRAFT profile; it no longer
+  // stamps PENDING_REVIEW, because an upgrade is not an application. The
+  // provider completes onboarding in DRAFT and then explicitly submits, which
+  // is what sets submittedForReviewAt and moves the row to PENDING_REVIEW.
+  submittedForReviewAt     DateTime?
+  // When an admin approved / rejected / suspended, and why. rejectionReason is
+  // surfaced to the provider so a REJECTED applicant is told what to fix,
+  // rather than seeing a generic "account problem" message.
+  reviewedAt               DateTime?
+  reviewedByUserId         String?
+  rejectionReason          String?                          @db.Text
   // Sprint 6.2 — admin-facing review notes. Free-text, persisted
   // separately from the audit history so a reviewer can pin context
   // without scanning every prior decision. Mutated only via
   // PATCH /v1/admin/providers/:id/review-notes (admin role required).
-  reviewNotes               String?                           @db.Text
-  createdAt                 DateTime                          @default(now())
-  updatedAt                 DateTime                          @updatedAt
-  deletedAt                 DateTime?
-  bids                      Bid[]
-  bookings                  Booking[]
-  conversationParticipants  ConversationParticipant[]
-  serviceCategories         ProviderProfileServiceCategory[]
+  reviewNotes              String?                          @db.Text
+  createdAt                DateTime                         @default(now())
+  updatedAt                DateTime                         @updatedAt
+  deletedAt                DateTime?
+  bids                     Bid[]
+  bookings                 Booking[]
+  conversationParticipants ConversationParticipant[]
+  serviceCategories        ProviderProfileServiceCategory[]
   // Pending / historical category applications. Approved rows are mirrored
   // into ProviderProfileServiceCategory by the admin review workflow; this
   // table is the audit trail + the source for the provider profile's
   // pendingCategories surface.
-  categoryApplications      ProviderCategoryApplication[]
-  user                      User?                             @relation(fields: [userId], references: [id])
+  categoryApplications     ProviderCategoryApplication[]
+  user                     User?                            @relation(fields: [userId], references: [id])
 
   @@index([availability])
   @@index([deletedAt])
@@ -404,15 +471,15 @@ model ProviderProfileServiceCategory {
 // indexes natively, and a strict (providerProfileId, serviceCategoryId)
 // unique would block legitimate retry-after-rejection flows.
 model ProviderCategoryApplication {
-  id                String                              @id @default(cuid())
+  id                String                            @id @default(cuid())
   providerProfileId String
   serviceCategoryId String
-  status            ProviderCategoryApplicationStatus  @default(PENDING)
-  createdAt         DateTime                            @default(now())
-  updatedAt         DateTime                            @updatedAt
+  status            ProviderCategoryApplicationStatus @default(PENDING)
+  createdAt         DateTime                          @default(now())
+  updatedAt         DateTime                          @updatedAt
 
-  providerProfile   ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
-  serviceCategory   ServiceCategory @relation(fields: [serviceCategoryId], references: [id], onDelete: Cascade)
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  serviceCategory ServiceCategory @relation(fields: [serviceCategoryId], references: [id], onDelete: Cascade)
 
   @@index([providerProfileId, status])
   @@index([serviceCategoryId, status])
@@ -420,66 +487,66 @@ model ProviderCategoryApplication {
 }
 
 model ServiceCategory {
-  id                    String                           @id @default(cuid())
-  slug                  String                           @unique
-  labelEn               String
-  labelAr               String
-  icon                  String
-  sortOrder             Int                              @default(0)
-  isActive              Boolean                          @default(true)
-  createdAt             DateTime                         @default(now())
-  updatedAt             DateTime                         @updatedAt
-  deletedAt             DateTime?
-  serviceRequests       ServiceRequest[]
-  providerProfiles      ProviderProfileServiceCategory[]
-  categoryApplications  ProviderCategoryApplication[]
+  id                   String                           @id @default(cuid())
+  slug                 String                           @unique
+  labelEn              String
+  labelAr              String
+  icon                 String
+  sortOrder            Int                              @default(0)
+  isActive             Boolean                          @default(true)
+  createdAt            DateTime                         @default(now())
+  updatedAt            DateTime                         @updatedAt
+  deletedAt            DateTime?
+  serviceRequests      ServiceRequest[]
+  providerProfiles     ProviderProfileServiceCategory[]
+  categoryApplications ProviderCategoryApplication[]
 
   @@index([deletedAt])
   @@index([isActive, sortOrder])
 }
 
 model ServiceRequestEvent {
-  id               String                  @id @default(cuid())
-  requestId        String
-  actorUserId      String?
-  type             ServiceRequestEventType
-  metadata         Json?
-  createdAt        DateTime                @default(now())
-  actor            User?                   @relation(fields: [actorUserId], references: [id])
-  request          ServiceRequest          @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id          String                  @id @default(cuid())
+  requestId   String
+  actorUserId String?
+  type        ServiceRequestEventType
+  metadata    Json?
+  createdAt   DateTime                @default(now())
+  actor       User?                   @relation(fields: [actorUserId], references: [id])
+  request     ServiceRequest          @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId, createdAt])
   @@index([type, createdAt])
 }
 
 model ServiceRequest {
-  id                     String                @id @default(cuid())
-  seekerUserId           String
-  categoryId             String?
-  customServiceText      String?
-  description            String?
+  id                String                @id @default(cuid())
+  seekerUserId      String
+  categoryId        String?
+  customServiceText String?
+  description       String?
   // Sprint 7.x — seeker-uploaded photos of the issue (e.g. broken pipe,
   // leaky faucet). Stored as a Postgres `text[]` so the JSON wire shape
   // stays a flat string array. Empty by default; existing rows backfill
   // to `'{}'` via the @default clause without data movement. The upload
   // pipeline (presigned URLs) is a later slice — this column is the
   // receiving end of the wire.
-  mediaUrls              String[]              @default([])
-  status                 ServiceRequestStatus  @default(OPEN_FOR_BIDS)
-  scheduleType           ScheduleType
-  scheduledAt            DateTime?
-  addressId              String?
-  addressSnapshot        Json
-  createdAt              DateTime              @default(now())
-  updatedAt              DateTime              @updatedAt
-  deletedAt              DateTime?
-  bids                   Bid[]
-  bookings               Booking[]
-  conversations          Conversation[]
-  events                 ServiceRequestEvent[]
-  address                Address?              @relation(fields: [addressId], references: [id])
-  category               ServiceCategory?      @relation(fields: [categoryId], references: [id])
-  seeker                 User                  @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
+  mediaUrls         String[]              @default([])
+  status            ServiceRequestStatus  @default(OPEN_FOR_BIDS)
+  scheduleType      ScheduleType
+  scheduledAt       DateTime?
+  addressId         String?
+  addressSnapshot   Json
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  deletedAt         DateTime?
+  bids              Bid[]
+  bookings          Booking[]
+  conversations     Conversation[]
+  events            ServiceRequestEvent[]
+  address           Address?              @relation(fields: [addressId], references: [id])
+  category          ServiceCategory?      @relation(fields: [categoryId], references: [id])
+  seeker            User                  @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
 
   @@index([categoryId])
   @@index([createdAt])
@@ -489,13 +556,13 @@ model ServiceRequest {
 }
 
 model Dispute {
-  id           String           @id @default(cuid())
+  id           String          @id @default(cuid())
   bookingId    String
   openedById   String
-  status       DisputeStatus    @default(OPEN)
+  status       DisputeStatus   @default(OPEN)
   // Sprint 6.3 — admin triage priority. Defaults to MEDIUM so existing
   // rows backfill cleanly without a separate UPDATE.
-  priority     DisputePriority  @default(MEDIUM)
+  priority     DisputePriority @default(MEDIUM)
   reason       String
   // Sprint 6.3 — long-form description. The original `reason` is the
   // short headline (kept for back-compat with the open-dispute flow);
@@ -504,12 +571,12 @@ model Dispute {
   resolution   String?
   resolvedAt   DateTime?
   resolvedById String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
   deletedAt    DateTime?
-  booking      Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  openedBy     User             @relation("DisputeOpenedBy", fields: [openedById], references: [id])
-  resolvedBy   User?            @relation("DisputeResolvedBy", fields: [resolvedById], references: [id])
+  booking      Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  openedBy     User            @relation("DisputeOpenedBy", fields: [openedById], references: [id])
+  resolvedBy   User?           @relation("DisputeResolvedBy", fields: [resolvedById], references: [id])
   events       DisputeEvent[]
 
   @@index([bookingId])
@@ -523,27 +590,27 @@ model Dispute {
 // the AuditEvent shape but is dispute-scoped + carries before/after
 // JSON snapshots so the operator can reconstruct each transition.
 model DisputeEvent {
-  id           String           @id @default(cuid())
-  disputeId    String
-  actorUserId  String?
-  type         DisputeEventType
-  before       Json?
-  after        Json?
-  message      String?
-  createdAt    DateTime         @default(now())
-  dispute      Dispute          @relation(fields: [disputeId], references: [id], onDelete: Cascade)
-  actor        User?            @relation("DisputeEventActor", fields: [actorUserId], references: [id])
+  id          String           @id @default(cuid())
+  disputeId   String
+  actorUserId String?
+  type        DisputeEventType
+  before      Json?
+  after       Json?
+  message     String?
+  createdAt   DateTime         @default(now())
+  dispute     Dispute          @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  actor       User?            @relation("DisputeEventActor", fields: [actorUserId], references: [id])
 
   @@index([disputeId, createdAt])
   @@index([type, createdAt])
 }
 
 model PlatformSetting {
-  key        String   @id
-  value      Json
-  updatedAt  DateTime @updatedAt
-  updatedBy  String?
-  updatedByUser User?  @relation(fields: [updatedBy], references: [id])
+  key           String   @id
+  value         Json
+  updatedAt     DateTime @updatedAt
+  updatedBy     String?
+  updatedByUser User?    @relation(fields: [updatedBy], references: [id])
 
   @@index([updatedBy])
 }
@@ -612,6 +679,16 @@ enum AuditEventType {
   ADMIN_DISPUTE_RESOLVED
   ADMIN_DISPUTE_UPDATED
   ADMIN_SETTING_UPDATED
+  // Phase 4 — admin access-request lifecycle. Every transition is audited so
+  // "who granted this person admin, and when" is always answerable.
+  ADMIN_ACCESS_REQUESTED
+  ADMIN_ACCESS_APPROVED
+  ADMIN_ACCESS_REJECTED
+  ADMIN_ACCESS_CANCELLED
+  // Phase 4 — provider onboarding submission (provider-initiated, as distinct
+  // from the ADMIN_PROVIDER_* decisions an admin makes).
+  PROVIDER_UPGRADE_REQUESTED
+  PROVIDER_ONBOARDING_SUBMITTED
 }
 
 enum AddressType {
@@ -706,6 +783,20 @@ enum ProviderProfileStatus {
 // as `pendingCategories`; APPROVED records mirror into
 // ProviderProfileServiceCategory; REJECTED records remain so admins
 // can see prior decisions on retry.
+// Lifecycle of a request for platform-admin access.
+//   PENDING   — submitted, awaiting review by a different authorized admin
+//   APPROVED  — the minimum admin role has been granted
+//   REJECTED  — refused; the applicant keeps their ordinary account
+//   CANCELLED — withdrawn by the applicant before a decision
+// APPROVED / REJECTED / CANCELLED are terminal for that row; re-applying
+// creates a NEW row so the history is preserved.
+enum AdminAccessRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum ProviderCategoryApplicationStatus {
   PENDING
   APPROVED

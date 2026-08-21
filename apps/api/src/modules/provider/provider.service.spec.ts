@@ -184,10 +184,10 @@ describe('ProviderService', () => {
         providers: {
           // No existing profile yet — service should create one.
           findByUserIdWithCategories: jest.fn().mockResolvedValue(null),
-          createForUser: jest.fn().mockResolvedValue(makeProvider({ status: 'PENDING_REVIEW' })),
+          createForUser: jest.fn().mockResolvedValue(makeProvider({ status: 'DRAFT' })),
           findByIdWithCategories: jest
             .fn()
-            .mockResolvedValue(makeProviderWithCategories({ status: 'PENDING_REVIEW' })),
+            .mockResolvedValue(makeProviderWithCategories({ status: 'DRAFT' })),
         },
       });
       const out = await makeService(m).upgrade('user-1');
@@ -197,20 +197,27 @@ describe('ProviderService', () => {
           userId: 'user-1',
           displayName: 'Ada Lovelace',
           initials: 'AL',
-          // Sprint 01 hardening: a freshly upgraded provider is NOT
-          // active. It lands in PENDING_REVIEW and must clear admin
-          // moderation before ProviderActiveGuard lets it reach the
-          // marketplace surfaces (feed, bids, bookings, wallet,
-          // earnings, provider conversations). Asserting it here pins
-          // the rule so a refactor cannot silently auto-activate new
-          // providers again.
-          status: 'PENDING_REVIEW',
+          // Phase 4: a freshly upgraded provider is NEITHER active NOR
+          // queued for review. It lands in DRAFT.
+          //
+          // Two rules are pinned by this one value:
+          //   - it must never be ACTIVE, or ProviderActiveGuard becomes a
+          //     no-op for every self-upgraded provider (the original defect);
+          //   - it must never be PENDING_REVIEW either, or an EMPTY profile
+          //     enters the admin review queue the instant someone clicks
+          //     "become a provider", and PENDING_REVIEW stops meaning "a
+          //     complete application was submitted".
+          // Reaching PENDING_REVIEW requires POST /submit-for-review, which
+          // enforces the completeness policy first.
+          status: 'DRAFT',
         }),
         undefined,
       );
       expect(out.profile.id).toBe('pp-1');
       expect(out.profile.availability).toBe('OFFLINE');
-      expect(out.profile.status).toBe('PENDING_REVIEW');
+      expect(out.profile.status).toBe('DRAFT');
+      // An upgrade is not an application: nothing has been submitted yet.
+      expect(out.profile.submittedForReviewAt).toBeNull();
       // Wire fields are ISO strings.
       expect(typeof out.profile.createdAt).toBe('string');
     });

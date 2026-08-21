@@ -52,6 +52,15 @@ export interface ProviderProfileSummary {
   // queue may omit the field; consumers must treat `undefined` and
   // `[]` identically.
   pendingCategories?: ProviderServiceCategoryRef[];
+  // Phase 4 — onboarding lifecycle stamps. `submittedForReviewAt` is what
+  // distinguishes "a complete application was submitted and is queued" from
+  // "someone pressed Upgrade": an upgrade creates a DRAFT with no stamp.
+  // `rejectionReason` is surfaced so a REJECTED provider is told what to fix
+  // rather than seeing a generic account-problem message — provider standing
+  // is a different axis from account standing.
+  submittedForReviewAt?: string | null;
+  reviewedAt?: string | null;
+  rejectionReason?: string | null;
   createdAt: string;
   updatedAt: string;
 }

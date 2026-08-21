@@ -10,6 +10,8 @@ import {
 } from '@nestjs/common';
 import type {
   GetProviderProfileResponse,
+  ProviderOnboardingStatus,
+  SubmitProviderForReviewResponse,
   UpdateProviderAvailabilityResponse,
   UpdateProviderProfileResponse,
   UpgradeToProviderResponse,
@@ -24,6 +26,8 @@ import { RolesGuard } from '../iam/authorization/guards/roles.guard';
 import { UpdateProviderAvailabilityDto } from './dto/update-provider-availability.dto';
 import { UpdateProviderProfileDto } from './dto/update-provider-profile.dto';
 import { UpgradeToProviderDto } from './dto/upgrade-to-provider.dto';
+import { SubmitProviderForReviewDto } from './dto/submit-provider-for-review.dto';
+import { ProviderOnboardingService } from './onboarding/provider-onboarding.service';
 import { ProviderService } from './provider.service';
 
 // /v1/me/provider/* — Provider-facing profile surface (Sprint 5 slice 5.1).
@@ -41,8 +45,15 @@ import { ProviderService } from './provider.service';
 @UseGuards(JwtAuthGuard)
 @Controller({ path: 'me/provider', version: '1' })
 export class ProviderController {
-  constructor(private readonly provider: ProviderService) {}
+  constructor(
+    private readonly provider: ProviderService,
+    private readonly onboarding: ProviderOnboardingService,
+  ) {}
 
+  // Phase 4 — an upgrade is NOT an application. It grants the provider role
+  // and opens a DRAFT profile. Reaching the admin review queue requires the
+  // explicit submit-for-review call below, which enforces the completeness
+  // policy first. Idempotent: calling it twice returns the existing profile.
   @UseGuards(CsrfGuard)
   @Post('upgrade')
   @HttpCode(HttpStatus.OK)
@@ -54,6 +65,43 @@ export class ProviderController {
     @Body() _body: UpgradeToProviderDto,
   ): Promise<UpgradeToProviderResponse> {
     return this.provider.upgrade(user.id);
+  }
+
+  // Phase 4 — what the Provider app reads to decide whether Submit is
+  // enabled, so it never re-derives the server's completeness policy.
+  @UseGuards(RolesGuard)
+  @Roles('provider')
+  @Get('onboarding')
+  @HttpCode(HttpStatus.OK)
+  getOnboarding(@CurrentUser() user: AuthenticatedUser): Promise<ProviderOnboardingStatus> {
+    return this.onboarding.getStatus(user.id);
+  }
+
+  // Phase 4 — DRAFT → PENDING_REVIEW. Returns 422 with machine-readable
+  // missing-field codes when the application is incomplete.
+  @UseGuards(CsrfGuard, RolesGuard)
+  @Roles('provider')
+  @Post('submit-for-review')
+  @HttpCode(HttpStatus.OK)
+  submitForReview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() _body: SubmitProviderForReviewDto,
+  ): Promise<SubmitProviderForReviewResponse> {
+    return this.onboarding.submitForReview(user.id);
+  }
+
+  // Phase 4 — PENDING_REVIEW → DRAFT. The counterpart to the edit lock: a
+  // queued application cannot be edited, so the provider needs a visible way
+  // out of the queue.
+  @UseGuards(CsrfGuard, RolesGuard)
+  @Roles('provider')
+  @Post('withdraw-review')
+  @HttpCode(HttpStatus.OK)
+  withdrawFromReview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() _body: SubmitProviderForReviewDto,
+  ): Promise<SubmitProviderForReviewResponse> {
+    return this.onboarding.withdrawFromReview(user.id);
   }
 
   @UseGuards(RolesGuard)

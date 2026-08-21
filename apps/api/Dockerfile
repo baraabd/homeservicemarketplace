@@ -63,25 +63,23 @@ RUN pnpm --filter @homeservicemarketplace/api exec nest build
 # the same self-contained bundle.
 RUN pnpm --filter @homeservicemarketplace/api deploy --prod --legacy /out
 
-# The generated Prisma client + query engine live under pnpm's virtual store
-# (node_modules/.pnpm/@prisma+client@*/node_modules/.prisma), which
-# `pnpm deploy` does not carry across. Copy it into the deployed bundle next
-# to the @prisma packages so the runner never reaches back into /workspace.
-# Fails the BUILD, not the boot, if codegen produced nothing.
+# Fail the BUILD — not the first request — on the two regressions this image
+# previously shipped:
+#   D-7  `Cannot find module 'express'`: express was only a transitive
+#        dependency of @nestjs/platform-express, which pnpm's strict layout
+#        does not expose to the app.
+#   D-8  a missing Prisma client / query engine in the deployed bundle.
+#
+# The Prisma client is generated into packages/database/generated (see the
+# generator `output` in schema.prisma) rather than into pnpm's virtual store,
+# so `pnpm deploy` carries it as ordinary package files and nothing has to be
+# stitched into node_modules by hand.
 RUN set -eux; \
-    SRC="$(find /workspace/node_modules/.pnpm -maxdepth 5 -type d -path '*/node_modules/.prisma/client' | head -n1)"; \
-    test -n "$SRC"; test -f "$SRC/index.js"; \
-    for PRISMA_DIR in $(find /out/node_modules -type d -name '@prisma' -path '*/node_modules/@prisma'); do \
-      TARGET="$(dirname "$PRISMA_DIR")/.prisma"; \
-      rm -rf "$TARGET/client"; mkdir -p "$TARGET"; cp -R "$SRC" "$TARGET/client"; \
-    done; \
-    rm -rf /out/node_modules/.prisma/client; mkdir -p /out/node_modules/.prisma; \
-    cp -R "$SRC" /out/node_modules/.prisma/client; \
-    node -e "require('/out/node_modules/.prisma/client')" >/dev/null
-
-# Fail the build — not the first request — if `express` cannot be resolved
-# from the deployed bundle under pnpm's strict layout (D-7 regression guard).
-RUN node -e "console.log('express resolves at', require.resolve('express', { paths: ['/out'] }))"
+    node -e "console.log('express resolves at', require.resolve('express', { paths: ['/out'] }))"; \
+    GEN=/out/node_modules/@homeservicemarketplace/database/generated/prisma; \
+    test -f "$GEN/index.js"; \
+    ls "$GEN" | grep -q 'libquery_engine.*\.node'; \
+    node -e "require('$GEN'); console.log('prisma client + engine load from the deployed bundle')"
 
 # ---------------------------------------------------------------------------
 # runner — non-root, production dependencies only, no sources, no toolchain.

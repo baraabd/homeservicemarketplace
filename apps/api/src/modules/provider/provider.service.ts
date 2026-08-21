@@ -1,8 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type {
   GetProviderProfileResponse,
-  ProviderProfileSummary,
-  ProviderServiceCategoryRef,
   UpdateProviderAvailabilityRequest,
   UpdateProviderAvailabilityResponse,
   UpdateProviderProfileRequest,
@@ -18,12 +16,10 @@ import type {
 import { ServiceCategoryRepository } from '../../infrastructure/persistence/services/service-category.repository';
 import { RoleRepository } from '../../infrastructure/persistence/iam/role.repository';
 import { UserRepository } from '../../infrastructure/persistence/iam/user.repository';
-import {
-  ProviderProfileRepository,
-  type ProviderProfileWithCategories,
-} from '../../infrastructure/persistence/bids/provider-profile.repository';
+import { ProviderProfileRepository } from '../../infrastructure/persistence/bids/provider-profile.repository';
 import { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
+import { toProviderProfileSummary as toSummary } from './provider-profile.mapper';
 
 const PROVIDER_ROLE_NAME = 'provider';
 
@@ -60,17 +56,25 @@ function lookupCityCentroid(city: string): [number, number] | null {
   return CITY_CENTROIDS[key] ?? null;
 }
 
-// Sprint 01 hardening: the status the upgrade service stamps onto a
-// freshly created ProviderProfile. The schema default is DRAFT
-// (safe-by-default for any direct INSERT). The /upgrade flow stamps
-// PENDING_REVIEW so a new provider is NEVER auto-activated: it must
-// clear the admin moderation surface (which flips it to ACTIVE) before
-// ProviderActiveGuard lets it reach any marketplace surface — the
-// available-requests feed, jobs feed, bids, bookings, wallet, earnings,
-// or provider conversations. Previously this stamped ACTIVE, which made
-// the ProviderActiveGuard a no-op for every self-upgraded provider.
-// No other call-site touches the column.
-const UPGRADE_DEFAULT_STATUS: ProviderProfileStatus = 'PENDING_REVIEW';
+// Phase 4 — the status /upgrade stamps onto a freshly created
+// ProviderProfile.
+//
+// History of this line, because both previous values were wrong in different
+// directions:
+//   ACTIVE          — auto-approved every self-upgraded provider, which made
+//                     ProviderActiveGuard a no-op.
+//   PENDING_REVIEW  — no longer auto-approves, but puts an EMPTY profile into
+//                     the admin review queue the instant someone clicks
+//                     "become a provider". Reviewers then look at a row with
+//                     no headline, no bio, no service area, and no categories,
+//                     and PENDING_REVIEW stops meaning "a complete application
+//                     was submitted".
+//
+// An upgrade is not an application. It grants the provider role and opens a
+// DRAFT profile the provider fills in; PENDING_REVIEW is reached only through
+// the explicit POST /v1/me/provider/submit-for-review, which enforces the
+// completeness policy first. No other call-site touches the column.
+const UPGRADE_DEFAULT_STATUS: ProviderProfileStatus = 'DRAFT';
 
 // Provider profile service. Drives the four endpoints in slice 5.1:
 //   POST  /v1/me/provider/upgrade     — deliberate role + profile creation
@@ -176,6 +180,22 @@ export class ProviderService {
       const profile = await this.providers.findByUserIdWithCategories(userId, tx);
       if (!profile) {
         throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
+      }
+
+      // Phase 4 — a submitted application is LOCKED while it sits in the
+      // review queue.
+      //
+      // The alternative the spec allows (edit silently returns it to DRAFT)
+      // was rejected: it makes the provider's application vanish from the
+      // queue without telling them, and lets someone change what a reviewer is
+      // currently looking at. Blocking is visible and reversible — the
+      // provider withdraws, edits, resubmits.
+      if (profile.status === 'PENDING_REVIEW') {
+        throw new AppError(
+          'CONFLICT',
+          'Your application is being reviewed and cannot be edited. Withdraw it first if you need to make changes.',
+          409,
+        );
       }
 
       if (input.categoryIds !== undefined) {
@@ -288,41 +308,6 @@ export class ProviderService {
       }
     }
   }
-}
-
-// ─── DTO mapper ──────────────────────────────────────────────────────────────
-function toSummary(row: ProviderProfileWithCategories): ProviderProfileSummary {
-  const categories: ProviderServiceCategoryRef[] = row.serviceCategories.map((link) => ({
-    id: link.serviceCategory.id,
-    slug: link.serviceCategory.slug,
-    labelEn: link.serviceCategory.labelEn,
-    labelAr: link.serviceCategory.labelAr,
-    icon: link.serviceCategory.icon,
-  }));
-  return {
-    id: row.id,
-    displayName: row.displayName,
-    initials: row.initials,
-    avatarUrl: row.avatarUrl,
-    bio: row.bio,
-    headline: row.headline,
-    phoneNumber: row.phoneNumber,
-    ratingAvg: row.ratingAvg,
-    reviewCount: row.reviewCount,
-    completedJobs: row.completedJobs,
-    verified: row.verified,
-    topPro: row.topPro,
-    availability: row.availability,
-    status: row.status,
-    serviceAreaCity: row.serviceAreaCity,
-    serviceAreaCountry: row.serviceAreaCountry,
-    serviceAreaLat: row.serviceAreaLat,
-    serviceAreaLng: row.serviceAreaLng,
-    serviceAreaRadiusKm: row.serviceAreaRadiusKm,
-    serviceCategories: categories,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
 }
 
 // Match the existing seeker / auth derivers so a user who upgrades sees

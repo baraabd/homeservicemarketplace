@@ -15,7 +15,9 @@ import { ProviderBookingsController } from './bookings/provider-bookings.control
 import { ProviderBookingsService } from './bookings/provider-bookings.service';
 import { ProviderJobsController } from './feed/provider-jobs.controller';
 import { ProviderJobsService } from './feed/provider-jobs.service';
+import { AuditModule } from '../iam/audit/audit.module';
 import { ProviderActiveGuard } from './guards/provider-active.guard';
+import { ProviderOnboardingService } from './onboarding/provider-onboarding.service';
 import { ProviderController } from './provider.controller';
 import { ProviderService } from './provider.service';
 import { ProviderEarningsController } from './wallet/provider-earnings.controller';
@@ -39,7 +41,9 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
 // PersistenceModule; TransactionRunner by PrismaModule;
 // NotificationsService by NotificationsModule.
 @Module({
-  imports: [AuthenticationModule, AuthorizationModule, NotificationsModule],
+  // AuditModule: the onboarding service writes a PROVIDER_ONBOARDING_SUBMITTED
+  // audit row inside the same transaction as the state transition.
+  imports: [AuthenticationModule, AuthorizationModule, NotificationsModule, AuditModule],
   controllers: [
     ProviderController,
     ProviderJobsController,
@@ -60,7 +64,9 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderWalletService,
     ProviderEarningsService,
     ProviderActiveGuard,
+    // Phase 4 — DRAFT → submit-for-review → PENDING_REVIEW.
+    ProviderOnboardingService,
   ],
-  exports: [ProviderService, ProviderActiveGuard],
+  exports: [ProviderService, ProviderActiveGuard, ProviderOnboardingService],
 })
 export class ProviderModule {}

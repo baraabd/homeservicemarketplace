@@ -1,12 +1,23 @@
-// Unit tests for grantAdminProviderAccess. Drives the routine against a fake
-// Prisma TransactionClient so we can pin idempotency, role-attachment
-// behaviour, and ProviderProfile upsert semantics without a live Postgres.
+// Unit tests for the operator bootstrap grants. Drives them against a fake
+// Prisma TransactionClient so idempotency, role attachment, and ProviderProfile
+// semantics are pinned without a live Postgres.
 //
-// The companion script `packages/database/scripts/grant-admin-provider-access.ts`
-// is the only sanctioned path that grants the admin role; pinning the routine
-// here is what stops a future refactor from quietly weakening the rule.
+// Phase 4 replaced ONE combined `grantWithTx` (customer + provider + admin, and
+// force-activate the ProviderProfile) with two least-privilege routines. The
+// assertions that matter most here are the negative ones: granting admin must
+// not touch the provider axis, and granting provider must not attach admin.
+//
+// These routines remain the BOOTSTRAP path only. In-app admin access goes
+// through the reviewed AdminAccessRequest lifecycle; in-app provider access
+// goes through upgrade -> onboarding -> submit-for-review -> admin approval.
+// Pinning them here is what stops a future refactor from quietly re-welding
+// the axes together.
 
-import { grantWithTx } from '@homeservicemarketplace/database';
+import {
+  assertGrantNotProductionUnsafe,
+  grantAdminWithTx,
+  grantProviderWithTx,
+} from '@homeservicemarketplace/database';
 
 interface FakeUser {
   id: string;
@@ -125,84 +136,185 @@ const SYSTEM_ROLES = [
   { id: 'role-admin', name: 'admin' },
 ];
 
-describe('grantAdminProviderAccess — grantWithTx', () => {
-  it('attaches all three roles and creates an ACTIVE ProviderProfile when the user exists with no roles', async () => {
-    const tx = makeFakeTx({
-      users: [
-        {
-          id: 'u-1',
-          email: 'admin@admin.com',
-          firstName: 'Admin',
-          lastName: 'Admin',
-          status: 'ACTIVE',
-          emailVerifiedAt: new Date(),
-          passwordHash: null,
-          deletedAt: null,
-        },
-      ],
-      roles: SYSTEM_ROLES,
-    });
-    const summary = await grantWithTx(tx as never, 'admin@admin.com', false);
+// ─── shared fixtures ─────────────────────────────────────────────────────────
+
+const ACTIVE_USER: FakeUser = {
+  id: 'u-1',
+  email: 'operator@example.com',
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+  status: 'ACTIVE',
+  emailVerifiedAt: new Date(),
+  passwordHash: null,
+  deletedAt: null,
+};
+
+const withUser = () => makeFakeTx({ users: [{ ...ACTIVE_USER }], roles: SYSTEM_ROLES });
+
+describe('grantAdminWithTx — admin axis only', () => {
+  it('attaches customer + admin and NEVER creates a ProviderProfile', async () => {
+    // This is the whole point of the Phase 4 split: granting administration
+    // must not also mint an approved marketplace seller.
+    const tx = withUser();
+    const summary = await grantAdminWithTx(tx as never, 'operator@example.com', false);
+
+    expect(summary.kind).toBe('admin');
     expect(summary.userExisted).toBe(true);
-    expect(summary.userCreated).toBe(false);
     expect(summary.userId).toBe('u-1');
-    expect(summary.rolesAttached.sort()).toEqual(['admin', 'customer', 'provider']);
-    expect(summary.rolesAlreadyPresent).toEqual([]);
-    expect(summary.providerProfileCreated).toBe(true);
-    expect(summary.providerProfilePromotedToActive).toBe(false);
-    // The user-roles table now has one row per system role for this user.
-    expect(tx._state.userRoles).toHaveLength(3);
-    // The ProviderProfile is ACTIVE — so the marketplace surface immediately
-    // accepts the user.
-    expect(tx._state.providerProfiles).toHaveLength(1);
-    expect(tx._state.providerProfiles[0]!.status).toBe('ACTIVE');
-    expect(tx._state.providerProfiles[0]!.userId).toBe('u-1');
+    expect(summary.rolesAttached.sort()).toEqual(['admin', 'customer']);
+    expect(summary.rolesAttached).not.toContain('provider');
+    expect(tx._state.userRoles.map((ur) => ur.roleId)).not.toContain('role-provider');
+    expect(tx._state.providerProfiles).toHaveLength(0);
+    expect(tx.providerProfile.create).not.toHaveBeenCalled();
+    expect(tx.providerProfile.update).not.toHaveBeenCalled();
   });
 
-  it('is idempotent — a second run produces no new role rows or profiles', async () => {
+  it('leaves an EXISTING provider profile untouched — it never approves one', async () => {
     const tx = makeFakeTx({
-      users: [
-        {
-          id: 'u-1',
-          email: 'admin@admin.com',
-          firstName: 'Admin',
-          lastName: 'Admin',
-          status: 'ACTIVE',
-          emailVerifiedAt: new Date(),
-          passwordHash: null,
-          deletedAt: null,
-        },
-      ],
+      users: [{ ...ACTIVE_USER }],
       roles: SYSTEM_ROLES,
-    });
-    await grantWithTx(tx as never, 'admin@admin.com', false);
-    const userRolesAfter1 = tx._state.userRoles.length;
-    const providerProfilesAfter1 = tx._state.providerProfiles.length;
-
-    const summary = await grantWithTx(tx as never, 'admin@admin.com', false);
-
-    expect(summary.rolesAttached).toEqual([]);
-    expect(summary.rolesAlreadyPresent.sort()).toEqual(['admin', 'customer', 'provider']);
-    expect(summary.providerProfileCreated).toBe(false);
-    expect(summary.providerProfilePromotedToActive).toBe(false);
-    expect(tx._state.userRoles).toHaveLength(userRolesAfter1);
-    expect(tx._state.providerProfiles).toHaveLength(providerProfilesAfter1);
-  });
-
-  it('promotes an existing DRAFT ProviderProfile to ACTIVE without rewriting other fields', async () => {
-    const tx = makeFakeTx({
-      users: [
+      providerProfiles: [
         {
-          id: 'u-1',
-          email: 'admin@admin.com',
-          firstName: 'Admin',
-          lastName: 'Admin',
-          status: 'ACTIVE',
-          emailVerifiedAt: new Date(),
-          passwordHash: null,
-          deletedAt: null,
+          id: 'pp-1',
+          userId: 'u-1',
+          displayName: 'Operator Display',
+          initials: 'OD',
+          status: 'PENDING_REVIEW',
+          availability: 'OFFLINE',
+          bio: null,
+          headline: null,
         },
       ],
+    });
+    await grantAdminWithTx(tx as never, 'operator@example.com', false);
+    // Still awaiting review. Becoming an admin is not a provider approval.
+    expect(tx._state.providerProfiles[0]!.status).toBe('PENDING_REVIEW');
+    expect(tx.providerProfile.update).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent — a second run produces no new rows', async () => {
+    const tx = withUser();
+    await grantAdminWithTx(tx as never, 'operator@example.com', false);
+    const rolesAfterFirst = tx._state.userRoles.length;
+
+    const summary = await grantAdminWithTx(tx as never, 'operator@example.com', false);
+    expect(summary.rolesAttached).toEqual([]);
+    expect(summary.rolesAlreadyPresent.sort()).toEqual(['admin', 'customer']);
+    expect(tx._state.userRoles).toHaveLength(rolesAfterFirst);
+  });
+
+  it('changes nothing when the user is missing and createIfMissing is false', async () => {
+    const tx = makeFakeTx({ users: [], roles: SYSTEM_ROLES });
+    const summary = await grantAdminWithTx(tx as never, 'ghost@example.com', false);
+    expect(summary.userExisted).toBe(false);
+    expect(summary.userCreated).toBe(false);
+    expect(summary.userId).toBeNull();
+    expect(summary.rolesAttached).toEqual([]);
+    expect(tx._state.users).toHaveLength(0);
+    expect(tx._state.userRoles).toHaveLength(0);
+  });
+
+  it('creates a PASSWORDLESS placeholder when createIfMissing is true', async () => {
+    const tx = makeFakeTx({ users: [], roles: SYSTEM_ROLES });
+    const summary = await grantAdminWithTx(tx as never, 'operator@example.com', true);
+
+    expect(summary.userCreated).toBe(true);
+    const created = tx._state.users[0]!;
+    // The routine must never write a password hash — the operator uses the
+    // normal forgot-password flow.
+    expect(created.passwordHash).toBeNull();
+    expect(created.email).toBe('operator@example.com');
+    expect(created.status).toBe('ACTIVE');
+    expect(created.emailVerifiedAt).not.toBeNull();
+    expect(summary.rolesAttached.sort()).toEqual(['admin', 'customer']);
+    // Still no provider profile.
+    expect(tx._state.providerProfiles).toHaveLength(0);
+  });
+
+  it('throws a clear error if the admin role is not seeded', async () => {
+    const tx = makeFakeTx({
+      users: [{ ...ACTIVE_USER }],
+      roles: [{ id: 'role-customer', name: 'customer' }],
+    });
+    await expect(grantAdminWithTx(tx as never, 'operator@example.com', false)).rejects.toThrow(
+      /system role "admin" is not seeded/,
+    );
+  });
+
+  it('never creates a duplicate identity for a case-variant email', async () => {
+    const tx = withUser();
+    const summary = await grantAdminWithTx(
+      tx as never,
+      'Operator@EXAMPLE.com'.toLowerCase(),
+      false,
+    );
+    expect(summary.userExisted).toBe(true);
+    expect(summary.userId).toBe('u-1');
+    expect(tx._state.users).toHaveLength(1);
+  });
+});
+
+describe('grantProviderWithTx — provider axis only', () => {
+  it('attaches customer + provider and NEVER attaches admin', async () => {
+    const tx = withUser();
+    const summary = await grantProviderWithTx(tx as never, 'operator@example.com', false, false);
+
+    expect(summary.kind).toBe('provider');
+    expect(summary.rolesAttached.sort()).toEqual(['customer', 'provider']);
+    expect(summary.rolesAttached).not.toContain('admin');
+    expect(tx._state.userRoles.map((ur) => ur.roleId)).not.toContain('role-admin');
+  });
+
+  it('creates the profile as DRAFT by default — an operator grant is not an approval', async () => {
+    // A bootstrap script that activates by default is exactly how
+    // "DRAFT/PENDING_REVIEW means nothing" creeps back in.
+    const tx = withUser();
+    const summary = await grantProviderWithTx(tx as never, 'operator@example.com', false, false);
+
+    expect(summary.providerProfileCreated).toBe(true);
+    expect(summary.providerProfileStatus).toBe('DRAFT');
+    expect(summary.providerProfilePromotedToActive).toBe(false);
+    expect(tx._state.providerProfiles).toHaveLength(1);
+    expect(tx._state.providerProfiles[0]!.status).toBe('DRAFT');
+  });
+
+  it('creates the profile as ACTIVE only when activation is EXPLICITLY requested', async () => {
+    const tx = withUser();
+    const summary = await grantProviderWithTx(tx as never, 'operator@example.com', false, true);
+    expect(summary.providerProfileStatus).toBe('ACTIVE');
+    expect(tx._state.providerProfiles[0]!.status).toBe('ACTIVE');
+  });
+
+  it.each(['DRAFT', 'PENDING_REVIEW', 'SUSPENDED', 'REJECTED'] as const)(
+    'leaves an existing %s profile alone unless activation is requested',
+    async (status) => {
+      const tx = makeFakeTx({
+        users: [{ ...ACTIVE_USER }],
+        roles: SYSTEM_ROLES,
+        providerProfiles: [
+          {
+            id: 'pp-1',
+            userId: 'u-1',
+            displayName: 'Operator Display',
+            initials: 'OD',
+            status,
+            availability: 'OFFLINE',
+            bio: 'preserved bio',
+            headline: 'preserved headline',
+          },
+        ],
+      });
+      const summary = await grantProviderWithTx(tx as never, 'operator@example.com', false, false);
+      expect(summary.providerProfileCreated).toBe(false);
+      expect(summary.providerProfilePromotedToActive).toBe(false);
+      expect(tx._state.providerProfiles[0]!.status).toBe(status);
+      expect(tx.providerProfile.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('promotes an existing DRAFT profile to ACTIVE without rewriting editable fields', async () => {
+    const tx = makeFakeTx({
+      users: [{ ...ACTIVE_USER }],
       roles: SYSTEM_ROLES,
       userRoles: [
         { userId: 'u-1', roleId: 'role-customer' },
@@ -221,97 +333,91 @@ describe('grantAdminProviderAccess — grantWithTx', () => {
         },
       ],
     });
-    const summary = await grantWithTx(tx as never, 'admin@admin.com', false);
-    expect(summary.providerProfileCreated).toBe(false);
+    const summary = await grantProviderWithTx(tx as never, 'operator@example.com', false, true);
+
     expect(summary.providerProfilePromotedToActive).toBe(true);
     const updated = tx._state.providerProfiles[0]!;
     expect(updated.status).toBe('ACTIVE');
-    // Editable fields are preserved — we did not overwrite them.
+    // Editable fields survive — the routine only moves the status.
     expect(updated.displayName).toBe('Operator Display');
     expect(updated.initials).toBe('OD');
     expect(updated.bio).toBe('preserved bio');
     expect(updated.headline).toBe('preserved headline');
-    // The admin role is the missing piece; it should now be attached.
-    expect(summary.rolesAttached).toEqual(['admin']);
+    expect(summary.rolesAttached).toEqual([]);
     expect(summary.rolesAlreadyPresent.sort()).toEqual(['customer', 'provider']);
   });
 
-  it('returns userExisted=false and changes nothing when the user is missing and createIfMissing is false', async () => {
-    const tx = makeFakeTx({ users: [], roles: SYSTEM_ROLES });
-    const summary = await grantWithTx(tx as never, 'ghost@example.com', false);
-    expect(summary.userExisted).toBe(false);
-    expect(summary.userCreated).toBe(false);
-    expect(summary.userId).toBeNull();
+  it('is idempotent — a second run produces no new roles or profiles', async () => {
+    const tx = withUser();
+    await grantProviderWithTx(tx as never, 'operator@example.com', false, false);
+    const roles = tx._state.userRoles.length;
+    const profiles = tx._state.providerProfiles.length;
+
+    const summary = await grantProviderWithTx(tx as never, 'operator@example.com', false, false);
     expect(summary.rolesAttached).toEqual([]);
-    expect(tx._state.users).toHaveLength(0);
-    expect(tx._state.userRoles).toHaveLength(0);
+    expect(summary.providerProfileCreated).toBe(false);
+    expect(tx._state.userRoles).toHaveLength(roles);
+    expect(tx._state.providerProfiles).toHaveLength(profiles);
+  });
+
+  it('changes nothing when the user is missing and createIfMissing is false', async () => {
+    const tx = makeFakeTx({ users: [], roles: SYSTEM_ROLES });
+    const summary = await grantProviderWithTx(tx as never, 'ghost@example.com', false, false);
+    expect(summary.userExisted).toBe(false);
+    expect(summary.userId).toBeNull();
     expect(tx._state.providerProfiles).toHaveLength(0);
   });
 
-  it('creates a passwordless placeholder user and attaches all roles when createIfMissing is true', async () => {
-    const tx = makeFakeTx({ users: [], roles: SYSTEM_ROLES });
-    const summary = await grantWithTx(tx as never, 'admin@admin.com', true);
-    expect(summary.userCreated).toBe(true);
-    expect(summary.userExisted).toBe(false);
-    expect(summary.userId).toBeTruthy();
-    const created = tx._state.users[0]!;
-    // No password is set — the operator must use the forgot-password flow
-    // before login. The script never writes a password hash.
-    expect(created.passwordHash).toBeNull();
-    expect(created.email).toBe('admin@admin.com');
-    expect(created.status).toBe('ACTIVE');
-    expect(created.emailVerifiedAt).not.toBeNull();
-    expect(summary.rolesAttached.sort()).toEqual(['admin', 'customer', 'provider']);
-    expect(tx._state.providerProfiles).toHaveLength(1);
+  it('throws a clear error if the provider role is not seeded', async () => {
+    const tx = makeFakeTx({
+      users: [{ ...ACTIVE_USER }],
+      roles: [{ id: 'role-customer', name: 'customer' }],
+    });
+    await expect(
+      grantProviderWithTx(tx as never, 'operator@example.com', false, false),
+    ).rejects.toThrow(/system role "provider" is not seeded/);
+  });
+});
+
+describe('the two axes stay separate when both are granted', () => {
+  it('running both routines yields all three roles and an explicitly-activated profile', async () => {
+    // The combined routine this replaced did all of this in one call, with no
+    // way to grant one without the other.
+    const tx = withUser();
+    await grantAdminWithTx(tx as never, 'operator@example.com', false);
+    await grantProviderWithTx(tx as never, 'operator@example.com', false, true);
+
+    const roleIds = tx._state.userRoles.map((ur) => ur.roleId).sort();
+    expect(roleIds).toEqual(['role-admin', 'role-customer', 'role-provider']);
     expect(tx._state.providerProfiles[0]!.status).toBe('ACTIVE');
   });
 
-  it('throws a clear error if a system role is not seeded', async () => {
-    const tx = makeFakeTx({
-      users: [
-        {
-          id: 'u-1',
-          email: 'admin@admin.com',
-          firstName: 'A',
-          lastName: 'A',
-          status: 'ACTIVE',
-          emailVerifiedAt: new Date(),
-          passwordHash: null,
-          deletedAt: null,
-        },
-      ],
-      // Missing the 'admin' role — the seed has not run.
-      roles: [
-        { id: 'role-customer', name: 'customer' },
-        { id: 'role-provider', name: 'provider' },
-      ],
-    });
-    await expect(grantWithTx(tx as never, 'admin@admin.com', false)).rejects.toThrow(
-      /system role "admin" is not seeded/,
+  it('granting admin alone leaves the provider axis completely empty', async () => {
+    const tx = withUser();
+    await grantAdminWithTx(tx as never, 'operator@example.com', false);
+    expect(tx._state.providerProfiles).toHaveLength(0);
+    expect(tx._state.userRoles.map((ur) => ur.roleId).sort()).toEqual([
+      'role-admin',
+      'role-customer',
+    ]);
+  });
+});
+
+describe('assertGrantNotProductionUnsafe', () => {
+  it('refuses to run in production without the explicit override', () => {
+    expect(() => assertGrantNotProductionUnsafe({ NODE_ENV: 'production' })).toThrow(
+      /ALLOW_PROD_GRANT/,
     );
   });
 
-  it('normalises email case before lookup (admin@admin.com matches Admin@ADMIN.com)', async () => {
-    const tx = makeFakeTx({
-      users: [
-        {
-          id: 'u-1',
-          email: 'admin@admin.com',
-          firstName: 'A',
-          lastName: 'A',
-          status: 'ACTIVE',
-          emailVerifiedAt: new Date(),
-          passwordHash: null,
-          deletedAt: null,
-        },
-      ],
-      roles: SYSTEM_ROLES,
-    });
-    // Mixed-case email should still find the existing lowercase row — never
-    // create a duplicate identity.
-    const summary = await grantWithTx(tx as never, 'Admin@ADMIN.com'.toLowerCase(), false);
-    expect(summary.userExisted).toBe(true);
-    expect(summary.userId).toBe('u-1');
-    expect(tx._state.users).toHaveLength(1);
+  it('allows production only with the explicit override', () => {
+    expect(() =>
+      assertGrantNotProductionUnsafe({ NODE_ENV: 'production', ALLOW_PROD_GRANT: 'true' }),
+    ).not.toThrow();
+  });
+
+  it('is a no-op outside production', () => {
+    expect(() => assertGrantNotProductionUnsafe({ NODE_ENV: 'development' })).not.toThrow();
+    expect(() => assertGrantNotProductionUnsafe({ NODE_ENV: 'test' })).not.toThrow();
   });
 });
