@@ -13,7 +13,12 @@ import { defineConfig, devices } from '@playwright/test';
 // does, with no manual "start the app first" step to forget.
 
 const PORT = Number(process.env.E2E_PORT ?? 4173);
-const BASE_URL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${PORT}`;
+const HOST = process.env.E2E_HOST ?? '127.0.0.1';
+const BASE_URL = process.env.E2E_BASE_URL ?? `http://${HOST}:${PORT}`;
+
+// CI builds the app in its own step so the build does not eat the server's
+// startup budget (and so a build failure is reported as a build failure).
+const PREBUILT = process.env.E2E_PREBUILT === '1';
 
 // The three viewports the acceptance criteria name. Declared once so a
 // scenario cannot silently run at only one size.
@@ -77,10 +82,32 @@ export default defineConfig({
   webServer: {
     // `vite preview` serves the production build, so these tests exercise what
     // ships rather than the dev server's transformed output.
-    command: `pnpm build && pnpm exec vite preview --port ${PORT} --strictPort`,
+    //
+    // `--host ${HOST}` is load-bearing. Without an explicit host, vite preview
+    // binds `localhost`, which on the CI runner resolves to the IPv6 loopback
+    // and listens on [::1] ONLY. Playwright then polled `http://127.0.0.1:4173`
+    // — a different interface — got connection-refused every time, and gave up
+    // with "Timed out waiting 300000ms from config.webServer" while a perfectly
+    // healthy server sat there answering on [::1]. Binding the same host the
+    // `url` below names removes the mismatch entirely.
+    command: [
+      PREBUILT ? null : 'pnpm build',
+      `pnpm exec vite preview --host ${HOST} --port ${PORT} --strictPort`,
+    ]
+      .filter(Boolean)
+      .join(' && '),
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
-    timeout: 300_000,
+    // Serving an already-built app is a couple of seconds, so CI gets a tight
+    // budget: a bad bind now reports itself in one minute instead of taking the
+    // full five it used to. The local path still compiles the app inside this
+    // window, so it keeps the generous budget a cold build needs.
+    timeout: PREBUILT ? 60_000 : 300_000,
+    // Surface vite's own output. Previously the timeout message was all CI
+    // printed, so "which port did it actually bind?" was unanswerable from the
+    // log — the single fact needed to diagnose this.
+    stdout: 'pipe',
+    stderr: 'pipe',
     env: {
       // The production build refuses to run without this (see vite.config.ts).
       // The UI-level scenarios never reach the network; the persona workflow

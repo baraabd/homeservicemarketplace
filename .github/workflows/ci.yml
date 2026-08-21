@@ -210,6 +210,39 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
+      - name: Wait until Postgres, Redis and Mongo actually serve queries
+        # The runner's own health gate is necessary but not sufficient.
+        # Postgres answers pg_isready while initdb is still finishing and then
+        # drops the connection; Mongo reports healthy before it will accept a
+        # write. Both windows are short, which is why this shows up as an
+        # intermittent first-migration failure rather than a clean one.
+        #
+        # Each probe below is a real round trip, and it fails HERE with an
+        # obvious message instead of surfacing as an inscrutable prisma or jest
+        # error three steps later. Postgres is probed from the runner, so the
+        # check also proves the published port; Redis and Mongo have no client
+        # on the runner, so their own containers run the probe.
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          # Each attempt is evaluated inside an `if`, so `set -e` cannot abort
+          # the retry loop on the first (entirely expected) miss.
+          await_service() {
+            local name="$1"; shift
+            for _ in $(seq 1 60); do
+              if "$@" >/dev/null 2>&1; then
+                echo "$name is serving"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "::error::$name did not become ready within 120s"
+            return 1
+          }
+          await_service Postgres psql -h localhost -U postgres -d homeservicemarketplace -c 'SELECT 1'
+          await_service Redis docker exec ${{ job.services.redis.id }} redis-cli ping
+          await_service Mongo docker exec ${{ job.services.mongo.id }} mongosh --quiet --eval "db.runCommand({ ping: 1 })"
       - name: Write .env for the dotenv-wrapped prisma scripts
         run: |
           {
@@ -277,12 +310,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install Chromium
         run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
-      - name: Run the browser suite (mobile / tablet / desktop)
+      - name: Build the web app
+        # Hoisted out of playwright.config.ts's webServer command. It used to run
+        # inside the 300s server-startup budget, so a slow cold build and a
+        # server that failed to bind produced the identical "Timed out waiting
+        # for config.webServer" message. As its own step it has its own timing,
+        # its own log, and its own failure.
         env:
           # The suite stubs every /v1/** call; this only satisfies the
           # production build's required-env check.
           VITE_API_URL: https://api.example.com
+        run: pnpm --filter @homeservicemarketplace/web build
+      - name: Run the browser suite (mobile / tablet / desktop)
+        env:
+          VITE_API_URL: https://api.example.com
           E2E_API_URL: https://api.example.com
+          # Serve the artefact the step above produced.
+          E2E_PREBUILT: '1'
         run: pnpm --filter @homeservicemarketplace/web test:e2e
       # Traces, screenshots, and videos are configured retain-on-failure, so a
       # green run uploads nothing.
@@ -434,7 +478,12 @@ jobs:
         run: docker build -f apps/api/Dockerfile -t hsm-api:scan .
 
       - name: Container image scan (fail on unmitigated CRITICAL/HIGH)
-        uses: aquasecurity/trivy-action@0.28.0
+        # aquasecurity/trivy-action publishes `v`-prefixed tags only, so the bare
+        # `0.28.0` this pointed at never resolved ("Unable to resolve action").
+        # Pinned to the commit SHA behind v0.36.0 rather than the tag: a mutable
+        # tag on a third-party action is a write primitive into this pipeline,
+        # and this action's tags have been rewritten in the past.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: hsm-api:scan
           format: table
