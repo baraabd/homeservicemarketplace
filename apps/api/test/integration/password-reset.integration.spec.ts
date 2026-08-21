@@ -123,9 +123,14 @@ d('Password reset flow (real Postgres)', () => {
     const {
       LoginAttemptService,
     } = require('../../src/modules/iam/authentication/services/login-attempt.service');
-    const {
-      AuthenticationService,
-    } = require('../../src/modules/iam/authentication/services/authentication.service');
+    const { SecurityEventsBus } = require('../../src/shared/security-events/security-events.bus');
+    // Typed via `typeof import(...)`, which erases at runtime. Without it the
+    // required class is `any` and a constructor change silently shifts these
+    // positional arguments instead of failing typecheck.
+    const { AuthenticationService } =
+      require('../../src/modules/iam/authentication/services/authentication.service') as {
+        AuthenticationService: typeof import('../../src/modules/iam/authentication/services/authentication.service').AuthenticationService;
+      };
     const { AuditService } = require('../../src/modules/iam/audit/audit.service');
     const { InMemoryMailAdapter } = require('../../src/infrastructure/mail/in-memory-mail.adapter');
 
@@ -150,7 +155,11 @@ d('Password reset flow (real Postgres)', () => {
       get isProduction() {
         return false;
       },
-    };
+      // Structural double: only the members these services actually read. The
+      // cast is needed now that the AuthenticationService constructor is
+      // type-checked (see the `typeof import(...)` require below) — before
+      // that it was `any` and nothing verified this shape at all.
+    } as unknown as import('../../src/config/app-config.service').AppConfigService;
 
     const prismaSvc = { client: prisma, isReady: () => true, ping: async () => true };
     const tx = new TransactionRunner(prismaSvc);
@@ -175,6 +184,9 @@ d('Password reset flow (real Postgres)', () => {
     const otp = new OtpService(verifRepo, config);
     const attempts = new LoginAttemptService(prismaSvc, config);
     const mail = new InMemoryMailAdapter();
+    // Real bus with no subscribers: publishing is fire-and-forget, and the
+    // realtime gateway is not part of this graph.
+    const securityEvents = new SecurityEventsBus();
 
     const auth = new AuthenticationService(
       users,
@@ -187,6 +199,7 @@ d('Password reset flow (real Postgres)', () => {
       tx,
       audit,
       config,
+      securityEvents,
       mail,
     );
 
