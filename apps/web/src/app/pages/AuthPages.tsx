@@ -439,6 +439,10 @@ export function ResetPasswordPage() {
   const [error, setError] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(false);
   const [done, setDone] = useState(false);
+  // Synchronous in-flight latch. State (`isLoading`) can't guard against two
+  // clicks fired in the same tick — both read the same stale render closure.
+  // A ref flips synchronously, so the second click is dropped immediately.
+  const inFlight = useRef(false);
 
   const validate = (): string | undefined => {
     if (!token) return 'This reset link is missing a token.';
@@ -448,11 +452,13 @@ export function ResetPasswordPage() {
   };
 
   const onSubmit = async () => {
+    if (inFlight.current) return; // exactly one request per submit
     const err = validate();
     if (err) {
       setError(err);
       return;
     }
+    inFlight.current = true;
     setError(undefined);
     setIsLoading(true);
     try {
@@ -461,6 +467,7 @@ export function ResetPasswordPage() {
     } catch (e: unknown) {
       setError(resetPasswordErrorMessage(e));
     } finally {
+      inFlight.current = false;
       setIsLoading(false);
     }
   };

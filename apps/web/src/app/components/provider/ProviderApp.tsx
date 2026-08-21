@@ -109,6 +109,9 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth-provider';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { clearIntendedApp } from '../../../lib/intended-app';
+import { RequestMediaGallery } from '../ds/RequestMediaGallery';
+import { resolveMediaUrl } from '../../../lib/media-url';
+import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
 import { EditProfilePage } from '../profile/EditProfilePage';
 import type {
   ProviderAvailability,
@@ -591,7 +594,6 @@ function JobDetailOverlay({
   const hasDistance = req.distanceKm !== null;
   const hasBudget = Boolean(req.budget && req.budget.trim());
   const hasSeeker = Boolean(req.seekerName && req.seekerName.trim());
-  const hasMedia = req.mediaUrls.length > 0;
 
   return (
     <>
@@ -712,27 +714,12 @@ function JobDetailOverlay({
             )}
           </div>
 
-          {/* Seeker-uploaded photos. Only rendered when the request
-              actually carries media so the layout doesn't reserve dead
-              space. The horizontal scroll keeps the overlay height
-              bounded for galleries with many shots. */}
-          {hasMedia && (
-            <div
-              className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1"
-              style={{ scrollbarWidth: 'none' }}
-              data-testid="job-detail-media"
-            >
-              {req.mediaUrls.map((url) => (
-                <img
-                  key={url}
-                  src={url}
-                  alt=""
-                  loading="lazy"
-                  className="w-16 h-16 object-cover rounded-md border border-slate-200 dark:border-slate-600 flex-shrink-0"
-                />
-              ))}
-            </div>
-          )}
+          {/* Seeker-uploaded photos. RequestMediaGallery normalises the
+              URLs (relative paths / bare keys), renders a bounded
+              horizontal strip, and swaps any failed load for an inline
+              placeholder instead of the browser's broken-image glyph.
+              It renders nothing when there is no media. */}
+          <RequestMediaGallery urls={req.mediaUrls} testId="job-detail-media" />
 
           {/* Description */}
           <div>
@@ -1112,9 +1099,16 @@ function LiveJobsScreen() {
           </div>
         </div>
 
-        {/* Drag handle */}
-        {!sheetOpen && (
+        {/* Drag handle — the floating pull-up affordance. It sits at
+            z-[1000] (above Leaflet's popup panes), which is ABOVE the
+            detail overlay / bidding modal (z-40); so we must hide it
+            whenever a blocking surface is open, otherwise it floats over
+            the request detail and covers the Place Bid CTA. Hidden when:
+            the bottom sheet is open, the request-detail overlay is open,
+            or the bidding modal is open. */}
+        {!sheetOpen && !detailReq && !biddingReq && (
           <motion.button
+            data-testid="pull-up-control"
             className="absolute bottom-4 start-1/2 -translate-x-1/2 flex flex-col items-center gap-1 z-[1000]"
             onClick={() => setSheetOpen(true)}
             animate={{ y: [0, -6, 0] }}
@@ -1309,28 +1303,28 @@ function LiveJobsScreen() {
                             )}
                           </div>
                         )}
-                        {req.mediaUrls.length > 0 && (
+                        {(req.mediaUrls?.length ?? 0) > 0 && (
                           <div
                             className="flex gap-1 mt-2 overflow-x-auto"
                             style={{ scrollbarWidth: 'none' }}
                             data-testid={`job-card-media-${req.id}`}
                           >
-                            {req.mediaUrls.slice(0, 3).map((url) => (
+                            {(req.mediaUrls ?? []).slice(0, 3).map((url) => (
                               <img
                                 key={url}
-                                src={url}
+                                src={resolveMediaUrl(url)}
                                 alt=""
                                 loading="lazy"
                                 className="w-10 h-10 object-cover rounded-md border border-slate-200 dark:border-slate-600 flex-shrink-0"
                               />
                             ))}
-                            {req.mediaUrls.length > 3 && (
+                            {(req.mediaUrls?.length ?? 0) > 3 && (
                               <div
                                 className="w-10 h-10 rounded-md border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-600 flex items-center justify-center text-slate-500 flex-shrink-0"
                                 style={{ fontSize: '10px', fontWeight: 700 }}
-                                aria-label={`+${req.mediaUrls.length - 3}`}
+                                aria-label={`+${(req.mediaUrls?.length ?? 0) - 3}`}
                               >
-                                +{req.mediaUrls.length - 3}
+                                +{(req.mediaUrls?.length ?? 0) - 3}
                               </div>
                             )}
                           </div>
@@ -2565,15 +2559,20 @@ function ProviderNotificationsDrawer({ onClose }: { onClose: () => void }) {
 
   return (
     <>
+      {/* Sprint 7.14 — `absolute` (NOT `fixed`) so the drawer is bounded
+          by the provider app shell (the root div is now `relative`)
+          exactly like the seeker drawer, instead of escaping to the full
+          browser viewport on wide screens. z-indices sit above the
+          top-bar / bottom-nav (z-20). */}
       <motion.div
-        className="fixed inset-0 bg-slate-900/40 z-30"
+        className="absolute inset-0 bg-slate-900/40 z-40"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
       />
       <motion.div
-        className="fixed top-0 end-0 bottom-0 w-full sm:w-[400px] bg-white dark:bg-slate-800 z-40 flex flex-col shadow-2xl"
+        className="absolute top-0 end-0 bottom-0 w-full sm:w-[400px] bg-white dark:bg-slate-800 z-50 flex flex-col shadow-2xl"
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
@@ -2745,14 +2744,17 @@ function ProviderChatScreen() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-lg flex-shrink-0">
-                      {conv.otherParticipant.initials || '👤'}
+                      {conv.otherParticipant?.initials || '👤'}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p
                         className="text-slate-900 dark:text-white truncate"
                         style={{ fontSize: '13px', fontWeight: 700 }}
                       >
-                        {conv.otherParticipant.displayName || (lang === 'ar' ? 'مستخدم' : 'User')}
+                        {formatPrivacyDisplayName(
+                          { displayName: conv.otherParticipant?.displayName ?? '' },
+                          { roleFallback: lang === 'ar' ? 'مستخدم' : 'User' },
+                        )}
                       </p>
                       <p
                         className="text-slate-500 dark:text-slate-400 truncate"
@@ -3003,7 +3005,7 @@ export function ProviderApp() {
 
   return (
     <div
-      className={`flex flex-col ${darkMode ? 'dark bg-slate-900' : 'bg-white'}`}
+      className={`relative overflow-hidden flex flex-col ${darkMode ? 'dark bg-slate-900' : 'bg-white'}`}
       style={{ height: '100svh', fontFamily, direction: dir }}
       dir={dir}
     >

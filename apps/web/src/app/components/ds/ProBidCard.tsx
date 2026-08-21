@@ -124,9 +124,9 @@ export function ProBidCard({
               )}
             </div>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <RatingStars rating={rating} />
+              <RatingStars rating={rating ?? 0} />
               <span className="text-slate-500" style={{ fontSize: '11px' }}>
-                {rating.toFixed(1)} ({reviewCount})
+                {(rating ?? 0).toFixed(1)} ({reviewCount ?? 0})
               </span>
             </div>
             <p className="text-slate-400 mt-0.5" style={{ fontSize: '11px' }}>

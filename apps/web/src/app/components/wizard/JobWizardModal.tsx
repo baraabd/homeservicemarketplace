@@ -39,6 +39,12 @@ import { useAddresses } from '../../hooks/seeker/useAddresses';
 import { useCreateServiceRequest } from '../../hooks/seeker/useRequests';
 import { reverseGeocode } from '../../../lib/reverse-geocode';
 import { uploadAll } from '../../../lib/media-api';
+import { formatServiceAddressForDisplay } from '../../../lib/address-display';
+// Web-safe local constant — NOT imported from contracts. A runtime value
+// import from the CJS contracts package would force its dist into the
+// browser bundle and throw `exports is not defined`. The backend mirrors
+// this cap independently. See lib/request-media/constants.ts.
+import { MAX_REQUEST_MEDIA_ITEMS } from '../../../lib/request-media/constants';
 
 // ─── Service config ───────────────────────────────────────────────────────────
 const SERVICE_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
@@ -215,7 +221,9 @@ interface MediaItem {
   isVideo: boolean;
 }
 
-const MAX_MEDIA_ITEMS = 4;
+// Shared cap (single source of truth in @homeservicemarketplace/contracts),
+// enforced identically by the backend presign + create-request DTOs.
+const MAX_MEDIA_ITEMS = MAX_REQUEST_MEDIA_ITEMS;
 const ACCEPTED_MEDIA = 'image/*,video/*';
 
 function makeMediaItem(file: File): MediaItem {
@@ -256,7 +264,13 @@ export function JobWizardModal({
 
   const [step, setStep] = useState(1);
   const [notes, setNotes] = useState('');
+  // `address` is ALWAYS the full raw string (the geocoder's
+  // formattedAddress or the user's typed text). It is what gets
+  // submitted as line1 and what the geocoded-city retention check reads,
+  // so it stays untouched for DB / provider matching. Only the DISPLAYED
+  // value is compacted at rest (see `addressFocused` below) — Sprint 7.14.
   const [address, setAddress] = useState('');
+  const [addressFocused, setAddressFocused] = useState(false);
   const [schedule, setSchedule] = useState<'asap' | 'later'>('asap');
   // Slice 4.1 fix (defect: static "Mar 15, 2026" / "10:00 AM"): the
   // user now picks real date + time via HTML5 inputs. The two pieces
@@ -365,6 +379,16 @@ export function JobWizardModal({
             : `You can attach up to ${MAX_MEDIA_ITEMS} files.`,
         );
         return prev;
+      }
+      // Truncate to the remaining slots and warn when the picked batch
+      // would have exceeded the cap, so the user understands why not
+      // every selected file appeared.
+      if (list.length > remaining) {
+        toast.warning(
+          lang === 'ar'
+            ? `الحد الأقصى ${MAX_MEDIA_ITEMS} ملفات.`
+            : `You can attach up to ${MAX_MEDIA_ITEMS} files.`,
+        );
       }
       const picked = Array.from(list).slice(0, remaining).map(makeMediaItem);
       return [...prev, ...picked];
@@ -1032,8 +1056,27 @@ export function JobWizardModal({
               <div className="mt-3 mb-4">
                 <TextField
                   label={t('address')}
-                  value={address}
+                  // Compact display at rest — ONLY for geocoder-sourced
+                  // addresses (the verbose "…حلب, محافظة حلب, سوريا"
+                  // chains). Strips country/governorate/region/nahia/city
+                  // using the geocoder's authoritative city/country. The
+                  // raw `address` is revealed while editing so the user
+                  // edits the real string and the geocoded-city retention
+                  // check stays intact; the submitted value is always the
+                  // raw `address`. Saved/typed addresses (geocoded=null)
+                  // render verbatim.
+                  value={
+                    !addressFocused && geocoded
+                      ? formatServiceAddressForDisplay({
+                          line1: address,
+                          city: geocoded.city,
+                          country: geocoded.country,
+                        }) || address
+                      : address
+                  }
                   onChange={handleAddressChange}
+                  onFocus={() => setAddressFocused(true)}
+                  onBlur={() => setAddressFocused(false)}
                   leadingIcon={<MapPin size={16} />}
                   hint={t('addressHint')}
                 />
@@ -1235,7 +1278,17 @@ export function JobWizardModal({
                 </p>
                 {[
                   { label: t('serviceLabel'), val: service },
-                  { label: t('locationLabel'), val: address },
+                  {
+                    label: t('locationLabel'),
+                    // Compact, display-only confirmation of the entered
+                    // address. Raw `address` string is still submitted.
+                    val:
+                      formatServiceAddressForDisplay({
+                        line1: address,
+                        city: geocoded?.city ?? defaultAddress?.city ?? null,
+                        country: geocoded?.country ?? defaultAddress?.country ?? null,
+                      }) || address,
+                  },
                   // Slice 4.1: success summary now uses the user's
                   // actual schedule selection, not the legacy hardcoded
                   // strings.

@@ -1,4 +1,5 @@
 import { Wrench, Zap, Wind, Sparkles, Hammer, Clock, ChevronRight } from 'lucide-react';
+import { useLang } from '../../i18n/LanguageContext';
 
 export type LeadStatus = 'pending' | 'active' | 'completed' | 'cancelled';
 
@@ -11,8 +12,34 @@ export interface LeadCardProps {
   postedAt: string;
   price?: number;
   bids?: number;
+  // Sprint 7.14 — the live booking id when this request has progressed
+  // past bid-accept. Lets the lead tap open the BOOKING detail (with the
+  // real lifecycle timeline) instead of the request-only detail.
+  activeBookingId?: string | null;
   onClick?: () => void;
   showPrice?: boolean; // admin-controlled
+}
+
+// Sprint 7.12 — dynamic Pending Bids label, localised. Replaces the
+// previous static "Pending Bids" badge that never reflected bid
+// arrival. Source-of-truth is ServiceRequestSummary.bidsCount (now
+// populated by the API; previously hard-coded to 0).
+//
+//   0 → "Pending Bids" / "بانتظار العروض"
+//   1 → "1 Bid received" / "لديك عرض واحد"
+//   2+ → "{count} Bids received" / "لديك {count} عروض"
+//
+// CTA copy (Bids/Track/View) stays in the parent — this only drives
+// the status badge label when status === 'pending'.
+export function pendingBidsLabel(bids: number | undefined, lang: 'en' | 'ar'): string {
+  const n = typeof bids === 'number' && bids > 0 ? bids : 0;
+  if (n === 0) {
+    return lang === 'ar' ? 'بانتظار العروض' : 'Pending Bids';
+  }
+  if (n === 1) {
+    return lang === 'ar' ? 'لديك عرض واحد' : '1 Bid received';
+  }
+  return lang === 'ar' ? `لديك ${n} عروض` : `${n} Bids received`;
 }
 
 const serviceIcons: Record<string, React.ReactNode> = {
@@ -74,13 +101,22 @@ export function LeadCard({
   onClick,
   showPrice = true,
 }: LeadCardProps) {
+  const { lang } = useLang();
+  const langKey: 'en' | 'ar' = lang === 'ar' ? 'ar' : 'en';
   const svc = serviceColors[service] ?? serviceColors.General;
   const ico = serviceIcons[service] ?? serviceIcons.General;
   const cfg = statusConfig[status];
+  // Sprint 7.12 — for pending leads, prefer the dynamic bids-count
+  // label over the static "Pending Bids" string so users see "2 Bids
+  // received" the moment a second bid lands. Other statuses keep
+  // their canonical label.
+  const statusLabel = status === 'pending' ? pendingBidsLabel(bids, langKey) : cfg.label;
 
   return (
     <div
       onClick={onClick}
+      data-testid="lead-card"
+      data-status={status}
       className="flex-shrink-0 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden active:scale-95 transition-all cursor-pointer"
       style={{ width: '168px' }}
     >
@@ -114,7 +150,7 @@ export function LeadCard({
         >
           <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
           <span className={cfg.text} style={{ fontSize: '10px', fontWeight: 700 }}>
-            {cfg.label}
+            {statusLabel}
           </span>
         </div>
 
@@ -130,13 +166,6 @@ export function LeadCard({
               {proName}
             </span>
           </div>
-        )}
-
-        {/* Bids if pending */}
-        {status === 'pending' && bids !== undefined && (
-          <p className="text-amber-600 mb-2" style={{ fontSize: '11px', fontWeight: 600 }}>
-            {bids} bid{bids !== 1 ? 's' : ''} received
-          </p>
         )}
 
         {/* Price — hidden when admin disables hourly rate */}
@@ -160,7 +189,13 @@ export function LeadCard({
           </div>
           <div className={`flex items-center gap-0.5 rounded-xl px-2 py-1 ${svc.bg}`}>
             <span className={svc.icon} style={{ fontSize: '11px', fontWeight: 700 }}>
-              {status === 'completed' ? 'View' : status === 'active' ? 'Track' : 'Bids'}
+              {status === 'completed'
+                ? 'View'
+                : status === 'active'
+                  ? 'Track'
+                  : typeof bids === 'number' && bids > 0
+                    ? `Bids (${bids})`
+                    : 'Bids'}
             </span>
             <ChevronRight size={10} className={svc.icon} />
           </div>

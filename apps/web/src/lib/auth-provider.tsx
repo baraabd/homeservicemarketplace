@@ -4,6 +4,7 @@ import type { AxiosError } from 'axios';
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import * as authApi from './auth-api';
 import { clearIntendedApp } from './intended-app';
+import { useNotificationArrivalWatcher } from './realtime/notification-arrival-watcher';
 import { useRealtimeSocket } from './realtime/use-realtime-socket';
 
 // ─── Query client factory ────────────────────────────────────────────────────
@@ -158,6 +159,33 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     // safe default — when no user is loaded the bridge treats every
     // recipient as a non-actor.
     currentUserId: user?.id ?? null,
+  });
+
+  // Sprint 7.x — polling-parity notification arrival watcher.
+  // Sprint 7.12 — TWO mounts, one per experience. Mounted here
+  // (above the Router) so each watcher survives page navigation
+  // and user-switch cleanup.
+  //
+  //   - seeker watcher: observes the seeker notifications list cache.
+  //   - provider watcher: observes the provider notifications list cache.
+  //
+  // Each fires the matching brand variant toast (orange/amber for
+  // seeker, light-blue for provider). The active experience is
+  // determined by the active route, bridged into realtime-experience
+  // by RootInner; the watcher's own batch processor also pushes its
+  // own experience before emitting so a toast that fires AT login
+  // time (before RootInner's effect has run) still picks the right
+  // brand. Shared dedupe collapses socket+polling duplicates into
+  // one UX event.
+  useNotificationArrivalWatcher({
+    enabled: !!user,
+    currentUserId: user?.id ?? null,
+    experience: 'seeker',
+  });
+  useNotificationArrivalWatcher({
+    enabled: !!user,
+    currentUserId: user?.id ?? null,
+    experience: 'provider',
   });
 
   const login = useCallback(async (data: authApi.LoginInput): Promise<OtpChallengeResponse> => {

@@ -5,6 +5,10 @@ import { __resetSideEffectsForTests, dispatchRealtimeSideEffects } from './side-
 import { __resetRealtimeI18nForTests, setRealtimeLang } from './realtime-i18n';
 import { __resetNotificationUXForTests } from './notification-ux';
 import { __resetRealtimeNavigatorForTests, setRealtimeNavigator } from './realtime-navigator';
+import {
+  __resetNotificationTargetHandlerForTests,
+  setNotificationTargetHandler,
+} from './notification-target-handler';
 
 // Sprint 7.5.1 — side-effects bridge tests.
 // Sprint 7.6 — anti-echo gate via envelope.actorUserId.
@@ -60,6 +64,7 @@ beforeEach(() => {
   __resetRealtimeI18nForTests();
   __resetNotificationUXForTests();
   __resetRealtimeNavigatorForTests();
+  __resetNotificationTargetHandlerForTests();
 });
 
 afterEach(() => {
@@ -86,7 +91,13 @@ describe('dispatchRealtimeSideEffects', () => {
       { currentUserId: 'user-seeker-1' },
     );
     expect(toastSuccess).toHaveBeenCalledTimes(1);
-    expect(toastSuccess).toHaveBeenCalledWith('Booking started');
+    // Sprint 7.12 — `emitToast` now ALWAYS threads a className for
+    // the experience-aware brand variant. Existing assertions on the
+    // single-arg form expand to (title, { ...opts, className }).
+    expect(toastSuccess).toHaveBeenCalledWith(
+      'Booking started',
+      expect.objectContaining({ className: expect.stringContaining('hsm-toast--seeker') }),
+    );
     expect(triggerSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -108,7 +119,10 @@ describe('dispatchRealtimeSideEffects', () => {
       ),
       { currentUserId: 'user-seeker-1' },
     );
-    expect(toastSuccess).toHaveBeenCalledWith('تم إنجاز الحجز');
+    expect(toastSuccess).toHaveBeenCalledWith(
+      'تم إنجاز الحجز',
+      expect.objectContaining({ className: expect.stringContaining('hsm-toast') }),
+    );
   });
 
   it('falls back to the generic "Booking status updated" copy for unrecognised target status', () => {
@@ -130,7 +144,10 @@ describe('dispatchRealtimeSideEffects', () => {
       ),
       { currentUserId: 'user-seeker-1' },
     );
-    expect(toastSuccess).toHaveBeenCalledWith('Booking status updated');
+    expect(toastSuccess).toHaveBeenCalledWith(
+      'Booking status updated',
+      expect.objectContaining({ className: expect.stringContaining('hsm-toast') }),
+    );
   });
 
   // ─── Sprint 7.6 — anti-echo gate ────────────────────────────────
@@ -365,7 +382,10 @@ describe('dispatchRealtimeSideEffects', () => {
       { currentUserId: 'user-1' },
     );
     expect(toastDefault).toHaveBeenCalledTimes(1);
-    expect(toastDefault).toHaveBeenCalledWith('New notification');
+    expect(toastDefault).toHaveBeenCalledWith(
+      'New notification',
+      expect.objectContaining({ className: expect.stringContaining('hsm-toast') }),
+    );
     expect(triggerSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -686,10 +706,14 @@ describe('dispatchRealtimeSideEffects', () => {
       { currentUserId: 'user-seeker' },
     );
     // The toast still fires (sound + vibration too). The action
-    // button is absent — `emitToast` collapses an empty options bag
-    // to the single-arg form, so the existing 1-arg assertions
-    // continue to hold.
-    expect(toastSuccess).toHaveBeenCalledWith('Booking completed');
+    // button is absent (no navigator registered) — Sprint 7.12 keeps
+    // a className arg on every emit so the brand variant lands, so
+    // we assert the 2-arg form WITHOUT `action`.
+    const [, opts] = toastSuccess.mock.calls[0];
+    expect(opts).toEqual(
+      expect.objectContaining({ className: expect.stringContaining('hsm-toast') }),
+    );
+    expect((opts as { action?: unknown }).action).toBeUndefined();
   });
 
   it('navigator onClick failure does not throw out of the toast', () => {
@@ -740,8 +764,61 @@ describe('dispatchRealtimeSideEffects', () => {
     const action = (opts as { action?: { label: string; onClick: () => void } }).action;
     expect(action).toBeDefined();
     action?.onClick();
-    // Correct request id from metadata — NOT the bid id.
-    expect(navSpy).toHaveBeenCalledWith('/home/requests/req-correct');
+    // Sprint 7.12 — BID_RECEIVED now routes to the bids comparison
+    // view for the parent request (the surface the seeker actually
+    // wants to land on when they see "new bid received"). The
+    // critical regression (never use bidId as requestId) still holds
+    // — the routed path uses metadata.requestId, not resourceId.
+    expect(navSpy).toHaveBeenCalledWith('/home/requests/req-correct/bids');
+  });
+
+  // ─── Sprint 7.14 — toast View converges with the in-app overlay ───
+
+  it('toast View → uses the in-app target handler (no URL navigation) when registered', () => {
+    const handlerSpy = vi.fn().mockReturnValue(true);
+    const navSpy = vi.fn();
+    setNotificationTargetHandler(handlerSpy);
+    setRealtimeNavigator(navSpy);
+    dispatchRealtimeSideEffects(
+      event(
+        'notification.created',
+        { id: 'n1', type: 'BOOKING_COMPLETED', resourceType: 'BOOKING', resourceId: 'bk-77' },
+        { actorUserId: 'user-prov' },
+      ),
+      { currentUserId: 'user-seeker' },
+    );
+    const [, opts] = toastDefault.mock.calls[0];
+    const action = (opts as { action?: { onClick: () => void } }).action;
+    action?.onClick();
+    // The handler received the SAME resolved target the drawer uses; the
+    // URL navigator (which would have hit the /select catch-all) is
+    // never called.
+    expect(handlerSpy).toHaveBeenCalledTimes(1);
+    expect(handlerSpy.mock.calls[0][0]).toMatchObject({
+      kind: 'seeker-booking-detail',
+      bookingId: 'bk-77',
+    });
+    expect(navSpy).not.toHaveBeenCalled();
+  });
+
+  it('toast View → falls back to URL navigation when the in-app handler declines', () => {
+    const handlerSpy = vi.fn().mockReturnValue(false);
+    const navSpy = vi.fn();
+    setNotificationTargetHandler(handlerSpy);
+    setRealtimeNavigator(navSpy);
+    dispatchRealtimeSideEffects(
+      event(
+        'notification.created',
+        { id: 'n2', type: 'BOOKING_COMPLETED', resourceType: 'BOOKING', resourceId: 'bk-88' },
+        { actorUserId: 'user-prov' },
+      ),
+      { currentUserId: 'user-seeker' },
+    );
+    const [, opts] = toastDefault.mock.calls[0];
+    const action = (opts as { action?: { onClick: () => void } }).action;
+    action?.onClick();
+    expect(handlerSpy).toHaveBeenCalledTimes(1);
+    expect(navSpy).toHaveBeenCalledWith('/home/bookings/bk-88');
   });
 
   it('BID notification.created with NO metadata.requestId → no action button (safe fallback)', () => {

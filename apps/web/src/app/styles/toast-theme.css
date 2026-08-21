@@ -1,0 +1,101 @@
+/* Sprint 7.12 — Toast brand theme + viewport bounding.
+ *
+ * The single Sonner Toaster mount at Root renders BOTH Seeker and
+ * Provider toasts; the side-effects dispatcher writes a brand
+ * variant className per toast (hsm-toast--seeker / hsm-toast--provider).
+ *
+ * Two responsibilities:
+ *   1. Constrain the toast viewport to the phone-shell width (430 px)
+ *      so toasts never overflow outside the app frame. Sonner mounts
+ *      its container directly under <body>, so the bounding has to
+ *      target the `<ol>` Sonner creates inside the `hsm-toaster-shell`
+ *      wrapper.
+ *   2. Apply the brand variant (orange/amber for Seeker, light-blue
+ *      for Provider). richColors gives us the success/error
+ *      auto-styling; we layer the brand tint on top of the default
+ *      neutral toast via CSS variables Sonner already exposes
+ *      (`--normal-bg`, `--normal-text`, `--normal-border`).
+ *
+ * Reduced-motion is honoured globally — toasts use the browser's
+ * default transitions, which respect `prefers-reduced-motion` via
+ * Sonner's internal animations.
+ */
+
+/* ── Viewport bounding ──────────────────────────────────────────── */
+/* Sonner v2 renders its list as `<ol data-sonner-toaster>` inside
+ * the element with the user-supplied `className`. Constrain the
+ * inner list to the phone-shell width and centre it horizontally so
+ * the toast never floats beyond the visible app frame.
+ */
+.hsm-toaster-shell,
+ol[data-sonner-toaster].hsm-toaster-shell {
+  max-width: 430px;
+  /* Anchor the list to the centre of the viewport so it visually
+   * sits inside the phone container even when Sonner positions it at
+   * top-center. The list itself already gets its translate from
+   * Sonner; we additionally cap its width so no toast can render
+   * wider than the shell.
+   */
+  width: min(100%, 430px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Individual toast: keep the bubble narrower than the list bound so
+ * shadow/border isn't clipped by the viewport edge on the smallest
+ * mobile devices. */
+li[data-sonner-toast].hsm-toast {
+  max-width: calc(430px - 24px);
+  width: calc(100vw - 32px);
+  margin-inline: auto;
+}
+
+/* ── Seeker variant (orange/amber) ──────────────────────────────── */
+li[data-sonner-toast].hsm-toast--seeker {
+  --normal-bg: #fff7ed;        /* amber-50 */
+  --normal-text: #7c2d12;      /* orange-900 — high contrast on amber-50 */
+  --normal-border: #fcd34d;    /* amber-300 */
+}
+
+/* Default-channel emit (notification.created) — visually distinct
+ * from the success-channel (booking.status_changed) but keeps the
+ * brand family. */
+li[data-sonner-toast].hsm-toast--seeker[data-type='success'] {
+  --success-bg: #fff7ed;
+  --success-text: #7c2d12;
+  --success-border: #fb923c;   /* orange-400 */
+}
+
+/* ── Provider variant (light-blue) ──────────────────────────────── */
+li[data-sonner-toast].hsm-toast--provider {
+  --normal-bg: #eff6ff;        /* blue-50 */
+  --normal-text: #1e3a8a;      /* blue-900 */
+  --normal-border: #93c5fd;    /* blue-300 */
+}
+
+li[data-sonner-toast].hsm-toast--provider[data-type='success'] {
+  --success-bg: #eff6ff;
+  --success-text: #1e3a8a;
+  --success-border: #3b82f6;   /* blue-500 */
+}
+
+/* ── Aggregate variant ──────────────────────────────────────────── */
+/* Slightly less saturated — communicates "informational" so the
+ * user doesn't think a critical event just happened.
+ */
+li[data-sonner-toast].hsm-toast--aggregate.hsm-toast--seeker {
+  --normal-border: #fde68a;    /* amber-200 */
+}
+li[data-sonner-toast].hsm-toast--aggregate.hsm-toast--provider {
+  --normal-border: #bfdbfe;    /* blue-200 */
+}
+
+/* ── Action button (View) ───────────────────────────────────────── */
+li[data-sonner-toast].hsm-toast--seeker [data-button] {
+  background: #f59e0b;          /* amber-500 */
+  color: #ffffff;
+}
+li[data-sonner-toast].hsm-toast--provider [data-button] {
+  background: #2563eb;          /* blue-600 */
+  color: #ffffff;
+}

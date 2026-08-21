@@ -10,8 +10,10 @@ import type {
 import type { AccountStatus, AuditEventType, User } from '@homeservicemarketplace/database';
 
 import { RoleRepository } from '../../../infrastructure/persistence/iam/role.repository';
+import { SessionRepository } from '../../../infrastructure/persistence/iam/session.repository';
 import { UserRepository } from '../../../infrastructure/persistence/iam/user.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
+import { SessionValidationService } from '../../iam/authentication/services/session-validation.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { AdminAuditService } from '../admin-audit.service';
 
@@ -30,6 +32,8 @@ export class AdminUsersService {
     private readonly roles: RoleRepository,
     private readonly audit: AdminAuditService,
     private readonly tx: TransactionRunner,
+    private readonly sessions: SessionRepository,
+    private readonly sessionValidation: SessionValidationService,
   ) {}
 
   async list(query: ListAdminUsersQuery): Promise<ListAdminUsersResponse> {
@@ -93,6 +97,20 @@ export class AdminUsersService {
           data: { status: nextStatus },
         });
       }
+      // Sprint 01 hardening: locking someone out must also kill their
+      // live access. Flipping the status alone left every issued refresh
+      // token AND every unexpired access token usable. Revoke every
+      // session inside THIS transaction so the account flip and the
+      // session kill commit atomically — an admin can never observe a
+      // half-applied suspension where the row says SUSPENDED but a
+      // session survives. Runs whenever the target lands in a locked-out
+      // state (SUSPENDED / LOCKED), including a re-suspend, so stale
+      // sessions from a prior partial state are cleaned up too.
+      let revokedSessionCount: number | undefined;
+      if (nextStatus === 'SUSPENDED' || nextStatus === 'LOCKED') {
+        const { count } = await this.sessions.revokeAllForUser(targetUserId, tx);
+        revokedSessionCount = count;
+      }
       // Reuse the existing audit types so dashboards / queries that
       // group by event type don't have to learn a new one. We pick
       // RESTORED when flipping to ACTIVE and SUSPENDED otherwise; the
@@ -111,6 +129,7 @@ export class AdminUsersService {
             targetStatus: nextStatus,
             previousStatus: existing.status,
             previousIsActive: existing.isActive,
+            ...(revokedSessionCount !== undefined ? { revokedSessionCount } : {}),
             ...(body.reason ? { reason: body.reason } : {}),
           },
         },
@@ -118,6 +137,13 @@ export class AdminUsersService {
       );
       return { ...existing, isActive, status: nextStatus };
     });
+    // Sprint 01 hardening: drop the cached "in good standing" flag AFTER
+    // the status flip + session revoke commit, so the very next
+    // authenticated request re-reads the DB and the new status takes
+    // effect immediately — an already-issued access token cannot outlive
+    // the suspension by up to its TTL. Invalidated on every transition
+    // (including restore) so a stale flag never lingers either way.
+    await this.sessionValidation.invalidate(targetUserId);
     return { user: await this.toSummary(updated) };
   }
 
@@ -135,6 +161,9 @@ export class AdminUsersService {
         where: { id: targetUserId, deletedAt: null },
         data: { status: 'SUSPENDED' as AccountStatus },
       });
+      // Sprint 01 hardening: revoke every session in the same transaction
+      // so the suspension and the session kill are atomic (see setStatus).
+      const { count: revokedSessionCount } = await this.sessions.revokeAllForUser(targetUserId, tx);
       await this.audit.record(
         {
           adminUserId,
@@ -143,12 +172,14 @@ export class AdminUsersService {
             targetUserId,
             previousStatus: existing.status,
             previousIsActive: existing.isActive,
+            revokedSessionCount,
           },
         },
         tx,
       );
       return { ...next, status: 'SUSPENDED' as AccountStatus };
     });
+    await this.sessionValidation.invalidate(targetUserId);
     return { user: await this.toSummary(updated) };
   }
 
@@ -175,6 +206,7 @@ export class AdminUsersService {
       );
       return { ...next, status: 'ACTIVE' as AccountStatus };
     });
+    await this.sessionValidation.invalidate(targetUserId);
     return { user: await this.toSummary(updated) };
   }
 

@@ -16,6 +16,7 @@ import { useSwipe } from '../../hooks/useSwipe';
 import { useLang } from '../../i18n/LanguageContext';
 import { useEcosystem } from '../../context/EcosystemContext';
 import { useAcceptBid, useBids } from '../../hooks/seeker/useBids';
+import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
 
 // ─── Badge config ─────────────────────────────────────────────────────────────
 // Keyed on the contract enum value so the API → UI mapping is direct.
@@ -166,6 +167,14 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
 
   const BADGE_CONFIG = lang === 'ar' ? BADGE_CONFIG_AR : BADGE_CONFIG_EN;
 
+  // Sprint 7.13 — privacy-safe provider name (initial + family name)
+  // for the seeker-facing bid surfaces.
+  const providerNamePrivacy = (displayName: string): string =>
+    formatPrivacyDisplayName(
+      { displayName },
+      { roleFallback: lang === 'ar' ? 'مزود الخدمة' : 'Provider' },
+    );
+
   // ── Swipe right (LTR) or left (RTL) → back ───────────────────────────────
   const { onTouchStart, onTouchMove, onTouchEnd, dragX } = useSwipe({
     onSwipeRight: dir === 'ltr' ? onBack : undefined,
@@ -201,7 +210,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
         // "View booking" action on the snackbar (Sprint 7.5).
         setTimeout(() => {
           setAcceptedId(null);
-          onBookBid(bid.provider.displayName, response.booking.id);
+          onBookBid(providerNamePrivacy(bid.provider?.displayName ?? ''), response.booking.id);
         }, 900);
       },
       onError: (err) => {
@@ -352,7 +361,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
               {bids.map((bid) => {
                 const badgeCfg = bid.badge ? BADGE_CONFIG[bid.badge] : null;
                 const isAccepted = acceptedId === bid.id;
-                const av = avatarFor(bid.provider.id);
+                const av = avatarFor(bid.provider?.id ?? '');
                 const respText = responseTimeText(
                   bid.responseTimeMinutes,
                   lang === 'ar' ? 'ar' : 'en',
@@ -389,19 +398,19 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                       className={`transition-all duration-300 ${badgeCfg ? 'mt-3' : ''} ${isAccepted ? 'scale-95 opacity-60' : ''}`}
                     >
                       <ProBidCard
-                        name={bid.provider.displayName}
-                        initials={bid.provider.initials}
+                        name={providerNamePrivacy(bid.provider?.displayName ?? '')}
+                        initials={bid.provider?.initials ?? ''}
                         avatarBg={av.bg}
                         avatarColor={av.color}
-                        avatarUrl={bid.provider.avatarUrl ?? undefined}
-                        rating={bid.provider.ratingAvg}
-                        reviewCount={bid.provider.reviewCount}
-                        jobCount={bid.provider.completedJobs}
+                        avatarUrl={bid.provider?.avatarUrl ?? undefined}
+                        rating={bid.provider?.ratingAvg ?? 0}
+                        reviewCount={bid.provider?.reviewCount ?? 0}
+                        jobCount={bid.provider?.completedJobs ?? 0}
                         price={bid.amount}
                         unit={bid.pricingType === 'HOURLY' ? '/hr' : '/job'}
                         tags={[]}
-                        verified={bid.provider.verified}
-                        topPro={bid.provider.topPro}
+                        verified={bid.provider?.verified ?? false}
+                        topPro={bid.provider?.topPro ?? false}
                         responseTime={respText}
                         showPrice={showHourlyRate}
                         onBook={() => handleBook(bid)}
@@ -438,7 +447,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                   </thead>
                   <tbody>
                     {bids.slice(0, 4).map((bid) => {
-                      const av = avatarFor(bid.provider.id);
+                      const av = avatarFor(bid.provider?.id ?? '');
                       const respText = responseTimeText(
                         bid.responseTimeMinutes,
                         lang === 'ar' ? 'ar' : 'en',
@@ -454,20 +463,20 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                                   className={av.color}
                                   style={{ fontSize: '8px', fontWeight: 800 }}
                                 >
-                                  {bid.provider.initials}
+                                  {bid.provider?.initials ?? ''}
                                 </span>
                               </div>
                               <span
                                 className="text-slate-700 font-semibold truncate"
                                 style={{ maxWidth: '70px' }}
                               >
-                                {bid.provider.displayName.split(' ')[0]}
+                                {providerNamePrivacy(bid.provider?.displayName ?? '')}
                               </span>
                             </div>
                           </td>
                           <td className="text-center py-2 px-2">
                             <span className="text-amber-600 font-bold">
-                              {bid.provider.ratingAvg.toFixed(1)}
+                              {(bid.provider?.ratingAvg ?? 0).toFixed(1)}
                             </span>
                           </td>
                           {showHourlyRate && (

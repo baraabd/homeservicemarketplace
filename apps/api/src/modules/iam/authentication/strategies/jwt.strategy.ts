@@ -5,6 +5,7 @@ import type { Request } from 'express';
 
 import { AppConfigService } from '../../../../config/app-config.service';
 import { ACCESS_COOKIE } from '../helpers/cookies';
+import { SessionValidationService } from '../services/session-validation.service';
 import type { AuthenticatedUser } from '../types/authenticated-user';
 // The global Express.Request augmentation in ../types/express.d.ts is
 // picked up automatically because the .d.ts file is inside the tsconfig
@@ -24,7 +25,10 @@ interface JwtPayload {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
-  constructor(config: AppConfigService) {
+  constructor(
+    config: AppConfigService,
+    private readonly sessionValidation: SessionValidationService,
+  ) {
     super({
       // Single authoritative extractor. See precedence rules in docs/iam.md.
       jwtFromRequest: (req: Request) => resolveAccessToken(req),
@@ -36,10 +40,19 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  validate(payload: JwtPayload): AuthenticatedUser {
+  // Sprint 01 hardening: this is the single chokepoint every
+  // JwtAuthGuard-protected route passes through. Beyond the stateless
+  // signature/shape check, we consult a short-TTL cached "is this account
+  // still in good standing?" flag so a deleted / deactivated / suspended
+  // / locked user is blocked immediately (on the next request after an
+  // admin action busts the cache), not only once their access token
+  // expires. See SessionValidationService for the caching + fail-closed
+  // semantics.
+  async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
     if (!payload?.sub || !payload?.sid || !payload?.jti) {
       throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
     }
+    await this.sessionValidation.assertInGoodStanding(payload.sub);
     return {
       id: payload.sub,
       sessionId: payload.sid,

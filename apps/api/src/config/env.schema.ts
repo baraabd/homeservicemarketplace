@@ -59,6 +59,17 @@ export const envSchema = z.object({
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(600),
   JWT_REFRESH_TTL_DAYS: z.coerce.number().int().positive().default(30),
 
+  // Sprint 01 hardening — TTL of the per-user "in good standing" cache
+  // consulted on every authenticated request for immediate access-token
+  // blocking. A short window bounds how long an already-issued access
+  // token can outlive an admin suspend/lock when explicit cache
+  // invalidation cannot reach the node; suspend/lock/logout-all/reset
+  // also delete the key for immediate revocation. Keep it well below
+  // JWT_ACCESS_TTL_SECONDS. The DB is always the source of truth on a
+  // cache miss, so this only trades staleness for read load, never
+  // correctness.
+  AUTH_SESSION_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+
   EMAIL_VERIFICATION_TTL_HOURS: z.coerce.number().int().positive().default(24),
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(15),
 

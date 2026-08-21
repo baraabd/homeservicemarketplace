@@ -237,7 +237,17 @@ describe('SessionService', () => {
       const h = makeHarness();
       h.sessions.revokeAllForUser.mockResolvedValueOnce({ count: 3 });
       await expect(h.svc.revokeAllForUser('user-1')).resolves.toBe(3);
-      expect(h.sessions.revokeAllForUser).toHaveBeenCalledWith('user-1');
+      // The optional tx is forwarded to the repo (undefined for standalone
+      // revocation, a Prisma tx client when called inside a transaction).
+      expect(h.sessions.revokeAllForUser).toHaveBeenCalledWith('user-1', undefined);
+    });
+
+    it('revokeAllForUser forwards the transaction client when given one (atomic reset path)', async () => {
+      const h = makeHarness();
+      h.sessions.revokeAllForUser.mockResolvedValueOnce({ count: 2 });
+      const fakeTx = { marker: 'tx' } as never;
+      await expect(h.svc.revokeAllForUser('user-1', fakeTx)).resolves.toBe(2);
+      expect(h.sessions.revokeAllForUser).toHaveBeenCalledWith('user-1', fakeTx);
     });
 
     it('peekByRefreshRaw hashes the raw token before looking up — plaintext never hits the DB', async () => {

@@ -36,16 +36,16 @@ const BOT_REPLIES: Record<string, { en: string; ar: string }> = {
     ar: 'يمكنك إلغاء الحجز قبل ساعتين من الموعد المحدد من تبويب الحجوزات. قد تُفرض رسوم على الإلغاء المتأخر.',
   },
   paid: {
-    en: 'Professionals receive payment within 24 hours of job completion after the customer confirms. We use secure bank transfers.',
-    ar: 'يحصل المحترفون على المدفوعات خلال 24 ساعة من اكتمال العمل بعد تأكيد العميل. نستخدم تحويلات بنكية آمنة.',
+    en: "Payment is arranged directly between you and the professional for each job. FixNow helps you find, book, and keep track of jobs, but it doesn't process payments or hold your money.",
+    ar: 'يتم الدفع مباشرةً بينك وبين المحترف لكل مهمة. يساعدك فيكس ناو في العثور على المحترفين وحجزهم وتتبّع مهامك، لكنه لا يعالج المدفوعات ولا يحتفظ بأموالك.',
   },
   price: {
     en: "Pricing is based on the pro's hourly rate. You'll always see the total estimate before confirming a booking.",
     ar: 'يعتمد التسعير على السعر بالساعة للمحترف. ستتمكن دائماً من رؤية التقدير الكلي قبل تأكيد الحجز.',
   },
   satisfied: {
-    en: "Your satisfaction is our priority! If you're not happy, contact us within 48 hours and we'll arrange a re-service or full refund.",
-    ar: 'رضاك أولويتنا! إذا لم تكن راضياً، تواصل معنا خلال 48 ساعة وسنرتب لك خدمة مجانية أو استرداداً كاملاً.',
+    en: "If something isn't right, contact support and open a dispute from the booking. Our team reviews every case and works with you and the professional to sort it out.",
+    ar: 'إذا لم تكن راضياً، تواصل مع الدعم وافتح نزاعاً من صفحة الحجز. يراجع فريقنا كل حالة ويعمل معك ومع المحترف لإيجاد حل مناسب.',
   },
   default: {
     en: 'Thanks for reaching out! A support agent will respond shortly. Our usual response time is under 5 minutes. 🙂',
@@ -53,7 +53,7 @@ const BOT_REPLIES: Record<string, { en: string; ar: string }> = {
   },
 };
 
-function getBotReply(text: string, lang: string): string {
+export function getBotReply(text: string, lang: string): string {
   const lower = text.toLowerCase();
   const key =
     lower.includes('cancel') || lower.includes('إلغ')

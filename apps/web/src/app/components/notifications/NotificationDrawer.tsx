@@ -40,6 +40,17 @@ export interface AppNotification {
   // for BID notifications (the resourceId is the bid id, which on its
   // own doesn't tell us which parent request to open).
   metadata?: Record<string, unknown> | null;
+  // Sprint 7.12 — backend NotificationType (raw enum string from the
+  // wire — `BID_RECEIVED`, `BID_ACCEPTED`, `BOOKING_IN_PROGRESS`,
+  // etc.). The shared `resolveNotificationTarget` needs this to
+  // disambiguate BID notifications (the seeker-side BID_RECEIVED
+  // opens the bids comparison view, while BID_ACCEPTED opens the
+  // resulting booking detail).
+  backendType?: string | null;
+  // Sprint 7.12 — backend-supplied deepLink, used verbatim by the
+  // resolver when present so a backend route change wins without a
+  // frontend deploy.
+  deepLink?: string | null;
 }
 
 interface NotifConfig {
@@ -70,7 +81,9 @@ interface NotificationDrawerProps {
 // ─────────────────────────────────────────────────────────────────────────────
 export function NotificationDrawer({
   isOpen,
-  notifications,
+  // Default to an empty array so a legacy/undefined feed never crashes
+  // the drawer on `.filter`/`.map`/`.length`.
+  notifications = [],
   onClose,
   onMarkAllRead,
   onMarkRead,

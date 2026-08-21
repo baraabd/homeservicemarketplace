@@ -152,6 +152,12 @@ export class BookingsService {
               bookingId,
               requestId: existing.requestId,
               cancelledBy: 'seeker',
+              // Sprint 7.x — explicit `to` so the provider-side
+              // frontend status-normalizer can derive the lifecycle
+              // status from this notification.created event without
+              // needing the paired booking.status_changed.
+              from: existing.status,
+              to: BookingStatus.CANCELLED,
             },
             actorUserId: seekerUserId,
           },
@@ -235,6 +241,15 @@ function toDetail(row: BookingWithRelations): BookingDetail {
     updatedAt: row.updatedAt.toISOString(),
     description: row.request.description,
     bidNote: row.bid.note,
+    // Sprint 7.12 — surface the parent request's createdAt so the
+    // booking-side JobDetailView "Posted" step shows the original
+    // post time. The eager-loaded `request` relation already carries
+    // it; no extra query.
+    requestCreatedAt: row.request.createdAt.toISOString(),
+    // Sprint 7.13 — surface the parent request's media from the same
+    // eager-loaded relation so the booking-side detail shows the
+    // seeker's photos after a hard refresh.
+    requestMediaUrls: row.request.mediaUrls ?? [],
   };
 }
 

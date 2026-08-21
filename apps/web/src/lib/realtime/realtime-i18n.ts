@@ -59,6 +59,8 @@ type RealtimeStringKey =
   | 'realtime.notif.BID_ACCEPTED.body'
   | 'realtime.notif.BOOKING_CREATED.title'
   | 'realtime.notif.BOOKING_CREATED.body'
+  | 'realtime.notif.BOOKING_IN_PROGRESS.title'
+  | 'realtime.notif.BOOKING_IN_PROGRESS.body'
   | 'realtime.notif.BOOKING_CANCELLED.title'
   | 'realtime.notif.BOOKING_CANCELLED.body'
   | 'realtime.notif.BOOKING_CANCELLED.bySeeker.body'
@@ -72,7 +74,17 @@ type RealtimeStringKey =
   | 'realtime.notif.REQUEST_AVAILABLE.title'
   | 'realtime.notif.REQUEST_AVAILABLE.body'
   | 'realtime.notif.SYSTEM.title'
-  | 'realtime.notif.SYSTEM.body';
+  | 'realtime.notif.SYSTEM.body'
+  // Sprint 7.12 — aggregate toast (login-storm protection + large
+  // polling batch). One toast covers many notifications; the user
+  // taps it to open the drawer.
+  | 'realtime.notif.aggregate.title'
+  | 'realtime.notif.aggregate.body.singular'
+  | 'realtime.notif.aggregate.body.plural'
+  // Sprint 7.13 — count-less variant shown on the FIRST login on a
+  // device (no prior baseline to diff against). We must NOT claim a
+  // specific "N new" when N is really the historical unread total.
+  | 'realtime.notif.aggregate.body.generic';
 
 const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
   en: {
@@ -90,6 +102,8 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.notif.BID_ACCEPTED.body': 'Your bid was accepted.',
     'realtime.notif.BOOKING_CREATED.title': 'Booking confirmed',
     'realtime.notif.BOOKING_CREATED.body': 'You have a new scheduled booking.',
+    'realtime.notif.BOOKING_IN_PROGRESS.title': 'Booking started',
+    'realtime.notif.BOOKING_IN_PROGRESS.body': 'The provider started your booking.',
     'realtime.notif.BOOKING_CANCELLED.title': 'Booking cancelled',
     'realtime.notif.BOOKING_CANCELLED.body': 'The booking was cancelled.',
     'realtime.notif.BOOKING_CANCELLED.bySeeker.body': 'The seeker cancelled the booking.',
@@ -104,6 +118,14 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.notif.REQUEST_AVAILABLE.body': 'A new service request matches your profile.',
     'realtime.notif.SYSTEM.title': 'Notification',
     'realtime.notif.SYSTEM.body': '',
+    // Aggregate toast copy. Used when the watcher's first poll after
+    // login/baseline carries unread rows OR a single poll batch
+    // delivers more than 3 fresh items — we collapse them all into
+    // one toast so the user is never barraged.
+    'realtime.notif.aggregate.title': 'You have new notifications',
+    'realtime.notif.aggregate.body.singular': 'Tap to review.',
+    'realtime.notif.aggregate.body.plural': '{count} new notifications to review.',
+    'realtime.notif.aggregate.body.generic': 'You have unread notifications to review.',
   },
   ar: {
     'realtime.booking.statusChanged': 'تم تحديث حالة الحجز',
@@ -119,6 +141,8 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.notif.BID_ACCEPTED.body': 'تم قبول عرضك.',
     'realtime.notif.BOOKING_CREATED.title': 'تم تأكيد الحجز',
     'realtime.notif.BOOKING_CREATED.body': 'لديك حجز جديد مجدول.',
+    'realtime.notif.BOOKING_IN_PROGRESS.title': 'بدأ تنفيذ الحجز',
+    'realtime.notif.BOOKING_IN_PROGRESS.body': 'بدأ مقدم الخدمة تنفيذ حجزك.',
     'realtime.notif.BOOKING_CANCELLED.title': 'تم إلغاء الحجز',
     'realtime.notif.BOOKING_CANCELLED.body': 'تم إلغاء الحجز.',
     'realtime.notif.BOOKING_CANCELLED.bySeeker.body': 'قام العميل بإلغاء الحجز.',
@@ -133,6 +157,10 @@ const STRINGS: Record<RealtimeLang, Record<RealtimeStringKey, string>> = {
     'realtime.notif.REQUEST_AVAILABLE.body': 'يوجد طلب جديد يطابق ملفك الشخصي.',
     'realtime.notif.SYSTEM.title': 'إشعار',
     'realtime.notif.SYSTEM.body': '',
+    'realtime.notif.aggregate.title': 'لديك إشعارات جديدة',
+    'realtime.notif.aggregate.body.singular': 'اضغط للاطلاع عليها.',
+    'realtime.notif.aggregate.body.plural': '{count} إشعارات جديدة للاطلاع عليها.',
+    'realtime.notif.aggregate.body.generic': 'لديك إشعارات غير مقروءة للاطلاع عليها.',
   },
 };
 

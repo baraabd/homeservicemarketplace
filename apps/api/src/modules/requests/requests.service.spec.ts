@@ -345,6 +345,18 @@ describe('RequestsService', () => {
       expect(out.id).toBe('req-1');
     });
 
+    it('detail/list surface the persisted mediaUrls (always an array)', async () => {
+      const m = makeMocks();
+      const media = ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg'];
+      m.requests.findOwned.mockResolvedValue(makeRequest({ mediaUrls: media }));
+      const detail = await makeService(m).detail('user-1', 'req-1');
+      expect(detail.mediaUrls).toEqual(media);
+
+      m.requests.listForSeeker.mockResolvedValue([makeRequest({ mediaUrls: [] })]);
+      const list = await makeService(m).list('user-1', {});
+      expect(list.items[0]!.mediaUrls).toEqual([]);
+    });
+
     it('detail rejects with NOT_FOUND when the request is not owned', async () => {
       const m = makeMocks();
       m.requests.findOwned.mockResolvedValue(null);

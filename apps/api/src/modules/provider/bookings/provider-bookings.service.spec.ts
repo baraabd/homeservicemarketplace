@@ -240,7 +240,7 @@ describe('ProviderBookingsService', () => {
   });
 
   describe('start (SCHEDULED → IN_PROGRESS)', () => {
-    it('flips status, emits event, and does NOT send a notification', async () => {
+    it('flips status, emits event, and writes a BOOKING_IN_PROGRESS notification to the seeker (Sprint 7.x)', async () => {
       const owned = makeBookingRow('SCHEDULED');
       const reloaded = makeBookingRow('IN_PROGRESS');
       const mocks = makeMocks({ ownedRow: owned, reloadedRow: reloaded });
@@ -254,7 +254,27 @@ describe('ProviderBookingsService', () => {
         undefined,
       );
       expect(mocks.events.create).toHaveBeenCalledTimes(1);
-      expect(mocks.notifications.createForUser).not.toHaveBeenCalled();
+      // Sprint 7.x — start now writes a seeker notification so the
+      // polling fallback can surface an "In Progress" toast even when
+      // the realtime socket is offline.
+      expect(mocks.notifications.createForUser).toHaveBeenCalledTimes(1);
+      expect(mocks.notifications.createForUser).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-seeker-1',
+          type: 'BOOKING_IN_PROGRESS',
+          resourceType: 'BOOKING',
+          resourceId: 'bk-1',
+          deepLink: '/home/bookings/bk-1',
+          actorUserId: 'user-provider-1',
+          metadata: expect.objectContaining({
+            requestId: 'req-1',
+            bookingId: 'bk-1',
+            from: 'SCHEDULED',
+            to: 'IN_PROGRESS',
+          }),
+        }),
+        undefined,
+      );
     });
 
     // Sprint 7.5.1 — booking.status_changed realtime fan-out.
@@ -357,13 +377,23 @@ describe('ProviderBookingsService', () => {
         { actorUserId: 'user-provider-1' },
       );
       // Seeker-only notification — provider does NOT receive a
-      // self-notification for an action they triggered.
+      // self-notification for an action they triggered. Sprint 7.x —
+      // metadata carries `from` + `to` + `bookingId` so the frontend
+      // status-normalizer can derive the lifecycle status from this
+      // notification.created event WITHOUT needing the paired
+      // booking.status_changed (the polling fallback path).
       expect(mocks.notifications.createForUser).toHaveBeenCalledTimes(1);
       expect(mocks.notifications.createForUser).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-seeker-1',
           type: 'BOOKING_COMPLETED',
           actorUserId: 'user-provider-1',
+          metadata: expect.objectContaining({
+            requestId: 'req-1',
+            bookingId: 'bk-1',
+            from: 'IN_PROGRESS',
+            to: 'COMPLETED',
+          }),
         }),
         undefined,
       );
@@ -413,12 +443,21 @@ describe('ProviderBookingsService', () => {
         { actorUserId: 'user-provider-1' },
       );
       // Seeker-only notification — no provider self-notification.
+      // Sprint 7.x — metadata.to carries the target status so the
+      // frontend status-normalizer can resolve "this is a cancel"
+      // from the notification alone (polling path).
       expect(mocks.notifications.createForUser).toHaveBeenCalledTimes(1);
       expect(mocks.notifications.createForUser).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-seeker-1',
           type: 'BOOKING_CANCELLED',
           actorUserId: 'user-provider-1',
+          metadata: expect.objectContaining({
+            requestId: 'req-1',
+            bookingId: 'bk-1',
+            from: 'SCHEDULED',
+            to: 'CANCELLED',
+          }),
         }),
         undefined,
       );

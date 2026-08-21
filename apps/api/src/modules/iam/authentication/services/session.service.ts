@@ -134,8 +134,15 @@ export class SessionService {
     await this.sessions.revokeById(sessionId);
   }
 
-  async revokeAllForUser(userId: string): Promise<number> {
-    const { count } = await this.sessions.revokeAllForUser(userId);
+  // `tx` lets a caller revoke every session as part of a larger atomic unit
+  // (e.g. password reset revokes sessions in the SAME transaction that
+  // consumes the token and rewrites the password hash). Omit it for
+  // standalone revocation (logout-all).
+  async revokeAllForUser(
+    userId: string,
+    tx?: Parameters<SessionRepository['revokeAllForUser']>[1],
+  ): Promise<number> {
+    const { count } = await this.sessions.revokeAllForUser(userId, tx);
     return count;
   }
 

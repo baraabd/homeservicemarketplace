@@ -65,7 +65,7 @@ export class AuthenticationController {
 
   // --- Registration -------------------------------------------------------
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
+  @Throttle({ default: { limit: 500, ttl: 60 * 60 * 1000 } })
   @Post('register')
   @HttpCode(HttpStatus.ACCEPTED)
   async register(@Body() body: RegisterDto, @Req() req: Request): Promise<OtpChallengeResponse> {
@@ -212,7 +212,13 @@ export class AuthenticationController {
     return { success: true };
   }
 
+  // Throttled like forgot-password: reset-password consumes an opaque token,
+  // so this is defence-in-depth against link brute-forcing / abuse (the token
+  // itself is 32 bytes of entropy, but an unthrottled endpoint is still an
+  // avoidable amplification surface). Legitimate users submit a handful of
+  // times at most (password-policy typos), well under the limit.
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60 * 60 * 1000 } })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   async reset(@Body() body: ResetPasswordDto, @Req() req: Request): Promise<{ success: true }> {

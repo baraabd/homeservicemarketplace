@@ -1,8 +1,10 @@
 import type { Role, User, UserRole } from '@homeservicemarketplace/database';
 
 import type { RoleRepository } from '../../../infrastructure/persistence/iam/role.repository';
+import type { SessionRepository } from '../../../infrastructure/persistence/iam/session.repository';
 import type { UserRepository } from '../../../infrastructure/persistence/iam/user.repository';
 import type { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
+import type { SessionValidationService } from '../../iam/authentication/services/session-validation.service';
 import type { AdminAuditService } from '../admin-audit.service';
 import { AdminUsersService } from './admin-users.service';
 
@@ -37,6 +39,8 @@ interface Mocks {
   users: UserRepository;
   roles: RoleRepository;
   audit: AdminAuditService;
+  sessions: SessionRepository;
+  sessionValidation: SessionValidationService;
 }
 
 function makeMocks(
@@ -47,6 +51,13 @@ function makeMocks(
   } = {},
 ): Mocks {
   return {
+    sessions: {
+      revokeAllForUser: jest.fn().mockResolvedValue({ count: 2 }),
+    } as unknown as SessionRepository,
+    sessionValidation: {
+      invalidate: jest.fn().mockResolvedValue(undefined),
+      assertInGoodStanding: jest.fn().mockResolvedValue(undefined),
+    } as unknown as SessionValidationService,
     users: {
       findById: jest.fn().mockResolvedValue(over.user === undefined ? makeUser() : over.user),
       searchForAdmin: jest.fn().mockResolvedValue(over.rows ?? [makeUser()]),
@@ -76,7 +87,7 @@ function makeMocks(
 }
 
 function makeService(m: Mocks): AdminUsersService {
-  return new AdminUsersService(m.users, m.roles, m.audit, tx);
+  return new AdminUsersService(m.users, m.roles, m.audit, tx, m.sessions, m.sessionValidation);
 }
 
 describe('AdminUsersService', () => {
@@ -102,7 +113,14 @@ describe('AdminUsersService', () => {
       run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
         fn({ user: { update: jest.fn().mockResolvedValue(makeUser()) } }),
     } as unknown as TransactionRunner;
-    const svc = new AdminUsersService(m.users, m.roles, m.audit, txWithUser);
+    const svc = new AdminUsersService(
+      m.users,
+      m.roles,
+      m.audit,
+      txWithUser,
+      m.sessions,
+      m.sessionValidation,
+    );
     await svc.suspend('admin-1', 'u-1');
     expect(m.audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ adminUserId: 'admin-1', type: 'ADMIN_USER_SUSPENDED' }),
@@ -124,7 +142,14 @@ describe('AdminUsersService', () => {
       run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
         fn({ user: { update: jest.fn().mockResolvedValue(makeUser()) } }),
     } as unknown as TransactionRunner;
-    const svc = new AdminUsersService(m.users, m.roles, m.audit, txWithUser);
+    const svc = new AdminUsersService(
+      m.users,
+      m.roles,
+      m.audit,
+      txWithUser,
+      m.sessions,
+      m.sessionValidation,
+    );
     await svc.restore('admin-1', 'u-1');
     expect(m.audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ adminUserId: 'admin-1', type: 'ADMIN_USER_RESTORED' }),
@@ -151,7 +176,14 @@ describe('AdminUsersService', () => {
 
     it('flips ACTIVE → SUSPENDED + audits + sets isActive=false', async () => {
       const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
-      const svc = new AdminUsersService(m.users, m.roles, m.audit, makeTxWithUserUpdate());
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        makeTxWithUserUpdate(),
+        m.sessions,
+        m.sessionValidation,
+      );
       const out = await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED', reason: 'fraud' });
       expect(out.user.status).toBe('SUSPENDED');
       expect(out.user.isActive).toBe(false);
@@ -173,7 +205,14 @@ describe('AdminUsersService', () => {
 
     it('flips SUSPENDED → ACTIVE + records the RESTORED audit type', async () => {
       const m = makeMocks({ user: makeUser({ status: 'SUSPENDED', isActive: false }) });
-      const svc = new AdminUsersService(m.users, m.roles, m.audit, makeTxWithUserUpdate());
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        makeTxWithUserUpdate(),
+        m.sessions,
+        m.sessionValidation,
+      );
       const out = await svc.setStatus('admin-1', 'u-1', { status: 'ACTIVE' });
       expect(out.user.status).toBe('ACTIVE');
       expect(out.user.isActive).toBe(true);
@@ -185,7 +224,14 @@ describe('AdminUsersService', () => {
 
     it('refuses to disable self (admin-1 → SUSPENDED on own row)', async () => {
       const m = makeMocks();
-      const svc = new AdminUsersService(m.users, m.roles, m.audit, makeTxWithUserUpdate());
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        makeTxWithUserUpdate(),
+        m.sessions,
+        m.sessionValidation,
+      );
       await expect(svc.setStatus('u-1', 'u-1', { status: 'SUSPENDED' })).rejects.toMatchObject({
         status: 400,
         code: 'VALIDATION_ERROR',
@@ -195,13 +241,27 @@ describe('AdminUsersService', () => {
 
     it('lets self → ACTIVE pass (no-op idempotent self-restore)', async () => {
       const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
-      const svc = new AdminUsersService(m.users, m.roles, m.audit, makeTxWithUserUpdate());
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        makeTxWithUserUpdate(),
+        m.sessions,
+        m.sessionValidation,
+      );
       await expect(svc.setStatus('u-1', 'u-1', { status: 'ACTIVE' })).resolves.toBeDefined();
     });
 
     it('returns 404 when the target user does not exist', async () => {
       const m = makeMocks({ user: null });
-      const svc = new AdminUsersService(m.users, m.roles, m.audit, makeTxWithUserUpdate());
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        makeTxWithUserUpdate(),
+        m.sessions,
+        m.sessionValidation,
+      );
       await expect(
         svc.setStatus('admin-1', 'missing', { status: 'SUSPENDED' }),
       ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
@@ -209,11 +269,130 @@ describe('AdminUsersService', () => {
 
     it('skips the DB write when status is already at the target (idempotent)', async () => {
       const m = makeMocks({ user: makeUser({ status: 'SUSPENDED', isActive: false }) });
-      const svc = new AdminUsersService(m.users, m.roles, m.audit, makeTxWithUserUpdate());
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        makeTxWithUserUpdate(),
+        m.sessions,
+        m.sessionValidation,
+      );
       await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
       expect(m.users.update).not.toHaveBeenCalled();
       // Audit row still emitted so the operator's intent is captured.
       expect(m.audit.record).toHaveBeenCalled();
+    });
+  });
+
+  // ── Sprint 01 — revoke sessions on suspend / lock (one transaction) ──
+  describe('session revocation on suspend / lock', () => {
+    function makeTxWithUserUpdate() {
+      return {
+        run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
+          fn({ user: { update: jest.fn().mockResolvedValue(makeUser()) } }),
+      } as unknown as TransactionRunner;
+    }
+
+    it('setStatus → SUSPENDED revokes every session inside the same transaction', async () => {
+      const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
+      const tx = makeTxWithUserUpdate();
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        tx,
+        m.sessions,
+        m.sessionValidation,
+      );
+      await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
+      // Called with the target user id AND the transaction handle (2nd arg
+      // present) so the status flip and the revoke commit atomically.
+      expect(m.sessions.revokeAllForUser).toHaveBeenCalledTimes(1);
+      const [uid, txArg] = (m.sessions.revokeAllForUser as jest.Mock).mock.calls[0];
+      expect(uid).toBe('u-1');
+      expect(txArg).toBeDefined();
+    });
+
+    it('setStatus → LOCKED revokes every session', async () => {
+      const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        makeTxWithUserUpdate(),
+        m.sessions,
+        m.sessionValidation,
+      );
+      await svc.setStatus('admin-1', 'u-1', { status: 'LOCKED' });
+      expect(m.sessions.revokeAllForUser).toHaveBeenCalledWith('u-1', expect.anything());
+    });
+
+    it('setStatus → ACTIVE (restore) does NOT revoke sessions', async () => {
+      const m = makeMocks({ user: makeUser({ status: 'SUSPENDED', isActive: false }) });
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        makeTxWithUserUpdate(),
+        m.sessions,
+        m.sessionValidation,
+      );
+      await svc.setStatus('admin-1', 'u-1', { status: 'ACTIVE' });
+      expect(m.sessions.revokeAllForUser).not.toHaveBeenCalled();
+    });
+
+    it('setStatus → SUSPENDED invalidates the session-standing cache for immediate blocking', async () => {
+      const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        makeTxWithUserUpdate(),
+        m.sessions,
+        m.sessionValidation,
+      );
+      await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
+      // Busting the cached "in good standing" flag is what makes an
+      // already-issued access token stop working on the very next request.
+      expect(m.sessionValidation.invalidate).toHaveBeenCalledWith('u-1');
+    });
+
+    it('records the revoked session count in the suspend audit metadata', async () => {
+      const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        makeTxWithUserUpdate(),
+        m.sessions,
+        m.sessionValidation,
+      );
+      await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
+      expect(m.audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'ADMIN_USER_SUSPENDED',
+          metadata: expect.objectContaining({ revokedSessionCount: 2 }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('legacy suspend() revokes every session inside the same transaction', async () => {
+      const m = makeMocks();
+      const txWithUser = {
+        run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
+          fn({ user: { update: jest.fn().mockResolvedValue(makeUser()) } }),
+      } as unknown as TransactionRunner;
+      const svc = new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        txWithUser,
+        m.sessions,
+        m.sessionValidation,
+      );
+      await svc.suspend('admin-1', 'u-1');
+      expect(m.sessions.revokeAllForUser).toHaveBeenCalledWith('u-1', expect.anything());
     });
   });
 

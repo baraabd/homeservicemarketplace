@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
@@ -14,6 +15,7 @@ import { RoleRepository } from '../../../../infrastructure/persistence/iam/role.
 import { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
 import { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
 import { AuditService } from '../../audit/audit.service';
+import { isInGoodStanding } from '../helpers/account-standing';
 import { LoginAttemptService } from './login-attempt.service';
 import { OTP_CODE_LENGTH, OTP_TTL_MINUTES, OtpService } from './otp.service';
 import { PasswordService } from './password.service';
@@ -54,6 +56,8 @@ export interface OtpChallengeIssuance {
 
 @Injectable()
 export class AuthenticationService {
+  private readonly logger = new Logger(AuthenticationService.name);
+
   constructor(
     private readonly users: UserRepository,
     private readonly roles: RoleRepository,
@@ -406,6 +410,18 @@ export class AuthenticationService {
     const peek = await this.sessions.peekByRefreshRaw(params.refreshTokenRaw);
     if (!peek) throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
 
+    // Sprint 01 hardening: load the current user and reject any account
+    // that is no longer in good standing BEFORE minting a new access
+    // token. Rotating roles alone let a still-live refresh token keep
+    // issuing access tokens for a user who was since deleted,
+    // deactivated, suspended, or locked. All bad states collapse to the
+    // same AUTH_REFRESH_INVALID code so refresh never leaks the reason —
+    // the client re-authenticates and login surfaces the precise state.
+    const currentUser = await this.users.findById(peek.userId);
+    if (!isInGoodStanding(currentUser)) {
+      throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
+    }
+
     const roleRows = await this.users.listRoles(peek.userId);
     const roles = roleRows.map((r) => r.role.name);
 
@@ -442,15 +458,32 @@ export class AuthenticationService {
   }
 
   // --- Password reset -----------------------------------------------------
+  // Two hard boundaries here, both fixing production defects:
+  //
+  //  1. SMTP delivery happens strictly AFTER the DB transaction commits.
+  //     Sending inside the transaction produced "phantom" reset emails: the
+  //     ~8s SMTP round trip blew past Prisma's 5s interactive-transaction
+  //     timeout, the trailing audit write threw P2028, and the token row
+  //     rolled back — while the email (with a now-nonexistent token) had
+  //     already been delivered. Result: forgot-password 500 + reset-password
+  //     400 on the emailed link. Network I/O never belongs in a DB tx.
+  //
+  //  2. Anti-enumeration: known and unknown emails must return the SAME
+  //     public 202. A DB or SMTP failure on the known-email path must not
+  //     surface as a 500 while an unknown email returns 202 — that gap is an
+  //     account-existence oracle. Internal failures are logged (redacted)
+  //     and swallowed so the public contract is identical either way.
   async forgotPassword(email: string, ctx: ClientContext): Promise<void> {
     const startedAt = Date.now();
     const normalized = normalizeEmail(email);
     try {
-      await this.tx.run(async (trx) => {
+      // Phase 1 — DB only, no external I/O. Returns the minimum delivery
+      // payload (recipient + raw token) needed AFTER commit, or null for the
+      // unknown-email / anti-enum path.
+      const delivery = await this.tx.run(async (trx) => {
         const user = await this.users.findByEmail(normalized, trx);
-        if (!user) return; // silent anti-enum
+        if (!user) return null; // silent anti-enum
         const token = await this.verification.issue(user.id, 'PASSWORD_RESET', trx);
-        await this.sendPasswordResetEmail(user.email, token.raw);
         await this.audit.record(
           {
             type: 'PASSWORD_RESET_REQUESTED',
@@ -461,21 +494,54 @@ export class AuthenticationService {
           },
           trx,
         );
+        return { email: user.email, rawToken: token.raw };
+      });
+
+      // Phase 2 — deliver the (now committed) token out-of-transaction. A
+      // delivery failure here leaves a valid committed token behind, so a
+      // retry can re-send; it must not change the public response.
+      if (delivery) {
+        try {
+          await this.sendPasswordResetEmail(delivery.email, delivery.rawToken);
+        } catch (err) {
+          this.logger.error({
+            msg: 'password-reset.delivery.failed',
+            requestId: ctx.requestId ?? undefined,
+            err: (err as Error).message,
+          });
+        }
+      }
+    } catch (err) {
+      // The DB transaction failed (e.g. Postgres unavailable). Do NOT leak
+      // existence via a 500 on the known-email path — log and fall through to
+      // the same 202 the unknown-email path returns.
+      this.logger.error({
+        msg: 'password-reset.request.failed',
+        requestId: ctx.requestId ?? undefined,
+        err: (err as Error).message,
       });
     } finally {
       await this.padAntiEnum(startedAt);
     }
   }
 
+  // Token consumption, password rewrite, lockout reset, session revocation and
+  // the completion audit are ONE atomic PostgreSQL transaction. Previously
+  // session revocation ran after commit: if it failed, the password was
+  // already changed and the token already consumed while the endpoint
+  // returned an error, so a retry hit "invalid/expired link". Argon2 hashing
+  // (CPU-bound, no I/O) is done before the tx opens to keep the transaction
+  // short and well inside the interactive-transaction timeout.
   async resetPassword(rawToken: string, newPassword: string, ctx: ClientContext): Promise<void> {
-    const userId = await this.tx.run(async (trx) => {
+    const newHash = await this.passwords.hash(newPassword);
+
+    await this.tx.run(async (trx) => {
       const id = await this.verification.consume(rawToken, 'PASSWORD_RESET', trx);
       if (!id) throw new BadRequestException({ code: 'AUTH_INVALID_CREDENTIALS' });
-      const hash = await this.passwords.hash(newPassword);
       await trx.user.update({
         where: { id },
         data: {
-          passwordHash: hash,
+          passwordHash: newHash,
           passwordUpdatedAt: new Date(),
           // A password reset is the canonical recovery path for a user who
           // got locked out of their account. Leaving `lockedUntil` /
@@ -488,6 +554,10 @@ export class AuthenticationService {
           lockedUntil: null,
         },
       });
+      // Revoke every outstanding session in the SAME transaction — if this
+      // (or the audit below) throws, the password change and token
+      // consumption roll back together, so the link stays retryable.
+      await this.sessions.revokeAllForUser(id, trx);
       await this.audit.record(
         {
           type: 'PASSWORD_RESET_COMPLETED',
@@ -498,11 +568,7 @@ export class AuthenticationService {
         },
         trx,
       );
-      return id;
     });
-
-    // Security: completing a password reset revokes every outstanding session.
-    await this.sessions.revokeAllForUser(userId);
   }
 
   // --- Helpers ------------------------------------------------------------

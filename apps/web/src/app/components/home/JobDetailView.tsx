@@ -42,6 +42,9 @@ import {
   useBookingTimeline,
   useCancelBooking,
 } from '../../hooks/seeker/useBookings';
+import { formatServiceAddressForDisplay } from '../../../lib/address-display';
+import { RequestMediaGallery } from '../ds/RequestMediaGallery';
+import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
 
 // ─── Source discriminator ────────────────────────────────────────────────────
 // Slice 2.4: JobDetailView is opened with a request id (for OPEN_FOR_BIDS /
@@ -221,32 +224,70 @@ function stepsForRequest(
 
 function stepsForBooking(
   status: BookingStatus,
-  events: { type: string; createdAt: string }[],
+  events: { type: string; metadata?: Record<string, unknown> | null; createdAt: string }[],
   lang: 'en' | 'ar',
+  // Sprint 7.12 — the parent ServiceRequest's createdAt timestamp,
+  // surfaced on BookingDetail via the new `requestCreatedAt` field.
+  // When present, drives the "Posted" step's wall-clock time so the
+  // booking-side timeline matches the request-side timeline exactly.
+  requestCreatedAtIso: string | null = null,
 ): StepInfo[] {
   const find = (type: string) => events.find((e) => e.type === type);
   const created = find('BOOKING_CREATED');
+  // Sprint 7.x — BOOKING_STATUS_CHANGED events are emitted by the
+  // provider lifecycle service (start / complete) with metadata.to
+  // carrying the target status. There can be MORE THAN ONE — start
+  // writes `to: 'IN_PROGRESS'`, complete writes `to: 'COMPLETED'` —
+  // so the simple `find(type)` would return only the first. We
+  // filter by metadata.to to pull the exact transition timestamp for
+  // each step.
+  const findStatusChange = (to: BookingStatus) =>
+    events.find(
+      (e) =>
+        e.type === 'BOOKING_STATUS_CHANGED' &&
+        e.metadata !== null &&
+        typeof e.metadata === 'object' &&
+        (e.metadata as { to?: unknown }).to === to,
+    );
+  const startedEvent = findStatusChange('IN_PROGRESS');
+  const completedEvent = findStatusChange('COMPLETED');
   const isInProgress = status === 'IN_PROGRESS';
   const isCompleted = status === 'COMPLETED';
   return [
-    // Posted: the request timeline holds REQUEST_CREATED, but a booking
-    // detail does not include the request's events. We mark Posted as
-    // implicitly done (the booking would not exist without a posted request)
-    // and use the booking createdAt as a reasonable upper bound on when the
-    // request was posted. The request-side detail surface gives the exact
-    // time when needed.
-    { done: true, doneAt: null },
+    // Sprint 7.12 — Posted: source priority is now
+    // (1) requestCreatedAt from the BookingDetail DTO (new field),
+    // (2) booking.createdAt as a last-resort upper bound. The
+    // booking detail no longer ships an empty wall-clock for Posted
+    // — the field is non-null on every response.
+    {
+      done: true,
+      doneAt: formatTimeOfDay(requestCreatedAtIso ?? null, lang),
+    },
     // Bids Received: same caveat as the request branch — no event yet.
     // Implicitly done because we have a booking (a bid was accepted).
     { done: true, doneAt: null },
     // Pro Assigned: the BOOKING_CREATED event marks the moment the bid
-    // was accepted and the booking row was written.
-    { done: !!created, doneAt: formatTimeOfDay(created?.createdAt ?? null, lang) },
-    // In Progress: BOOKING_STATUS_CHANGED → IN_PROGRESS — not emitted in
-    // slice 2.3. Done only when status is currently IN_PROGRESS or beyond.
-    { done: isInProgress || isCompleted, doneAt: null },
-    // Completed: same caveat. Done only when status === COMPLETED.
-    { done: isCompleted, doneAt: null },
+    // was accepted and the booking row was written. Sprint 7.14 — a
+    // terminal/in-progress booking necessarily passed through assignment,
+    // so infer it done even if the BOOKING_CREATED event row is missing
+    // from the timeline (no-downgrade: Completed must never sit above an
+    // un-done Pro Assigned).
+    {
+      done: !!created || isInProgress || isCompleted,
+      doneAt: formatTimeOfDay(created?.createdAt ?? null, lang),
+    },
+    // In Progress: BOOKING_STATUS_CHANGED with metadata.to === 'IN_PROGRESS'.
+    // Sprint 7.x — also surfaces the wall-clock timestamp (e.g. "1:09 PM")
+    // beside the stage when the event row is present.
+    {
+      done: isInProgress || isCompleted || !!startedEvent,
+      doneAt: formatTimeOfDay(startedEvent?.createdAt ?? null, lang),
+    },
+    // Completed: BOOKING_STATUS_CHANGED with metadata.to === 'COMPLETED'.
+    {
+      done: isCompleted || !!completedEvent,
+      doneAt: formatTimeOfDay(completedEvent?.createdAt ?? null, lang),
+    },
   ];
   // BOOKING_CANCELLED events are not surfaced through the 5-step timeline;
   // the top-of-screen status pill ("Cancelled") communicates that. The
@@ -301,7 +342,13 @@ function StatusTimeline({
           const isCurrent = i === currentIdx;
 
           return (
-            <div key={i} className="relative flex items-start gap-4 mb-4 last:mb-0 z-10">
+            <div
+              key={i}
+              className="relative flex items-start gap-4 mb-4 last:mb-0 z-10"
+              data-testid={`progress-step-${i}`}
+              data-done={isDone ? 'true' : 'false'}
+              data-current={isCurrent ? 'true' : 'false'}
+            >
               {/* Circle */}
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-all ${
@@ -415,6 +462,9 @@ interface RenderState {
   postedAt: string;
   scheduledAtIso: string | null;
   address: string | null;
+  // Seeker-uploaded media (fileUrls) — surfaced so the seeker sees their
+  // own photos after a hard refresh, not just in the wizard preview.
+  media: string[];
   // Booking-side only
   provider: ProviderBidSummary | null;
   priceAmount: number | null;
@@ -482,9 +532,10 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
         status: uiStatusFromRequest(r.status),
         postedAt: formatRelative(r.createdAt, langKey),
         scheduledAtIso: r.scheduledAt,
-        address: r.addressSnapshot.line1
-          ? `${r.addressSnapshot.line1}, ${r.addressSnapshot.city}`
-          : null,
+        // Compact, display-only address. The raw snapshot (line1, city,
+        // cityKey, lat/lng) stays untouched for provider matching.
+        address: formatServiceAddressForDisplay(r.addressSnapshot) || null,
+        media: r.mediaUrls ?? [],
         provider: null,
         priceAmount: null,
         pricingType: null,
@@ -500,7 +551,15 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
       (langKey === 'ar' ? 'خدمة' : 'Service');
     const labelAr = b.service.categoryLabelAr ?? b.service.customServiceText ?? labelEn;
     const events = (bookingTimeline.data?.items ?? []) as { type: string; createdAt: string }[];
-    const steps = stepsForBooking(b.status, events, langKey);
+    // Sprint 7.12 — pass the new `requestCreatedAt` field through so
+    // the booking-side "Posted" step shows the original post time
+    // (not the booking createdAt, which is much later).
+    const steps = stepsForBooking(
+      b.status,
+      events,
+      langKey,
+      (b as BookingDetail & { requestCreatedAt?: string }).requestCreatedAt ?? null,
+    );
     return {
       jobId: b.id,
       service: serviceKeyFromSlug(b.service.categorySlug, labelEn),
@@ -509,10 +568,10 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
       status: uiStatusFromBooking(b.status),
       postedAt: formatRelative(b.createdAt, langKey),
       scheduledAtIso: b.scheduledAt,
-      address: b.addressSnapshot.line1
-        ? `${b.addressSnapshot.line1}, ${b.addressSnapshot.city}`
-        : null,
-      provider: b.provider,
+      // Compact, display-only address (see request branch above).
+      address: formatServiceAddressForDisplay(b.addressSnapshot) || null,
+      media: (b as BookingDetail & { requestMediaUrls?: string[] }).requestMediaUrls ?? [],
+      provider: b.provider ?? null,
       priceAmount: b.priceAmount,
       pricingType: b.pricingType,
       description: b.description,
@@ -536,6 +595,14 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
       : render.serviceLabel
     : '';
   const displayAddress = render?.address ?? (langKey === 'ar' ? '—' : '—');
+  // Sprint 7.13 — privacy-safe provider name (initial + family name).
+  const providerLabel = langKey === 'ar' ? 'مزود الخدمة' : 'Provider';
+  const providerNamePrivacy = render?.provider
+    ? formatPrivacyDisplayName(
+        { displayName: render.provider?.displayName ?? '' },
+        { roleFallback: providerLabel },
+      )
+    : providerLabel;
   const displayDate = formatScheduledDate(render?.scheduledAtIso ?? null, langKey);
 
   const status: LeadStatus = render?.status ?? 'pending';
@@ -730,12 +797,13 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                     </div>
                     <div className="flex-1">
                       <p className="text-slate-900" style={{ fontSize: '16px', fontWeight: 800 }}>
-                        {render.provider.displayName}
+                        {providerNamePrivacy}
                       </p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <Stars rating={render.provider.ratingAvg} />
+                        <Stars rating={render.provider?.ratingAvg ?? 0} />
                         <span className="text-slate-500" style={{ fontSize: '11px' }}>
-                          {render.provider.ratingAvg.toFixed(1)} · {render.provider.reviewCount}{' '}
+                          {(render.provider?.ratingAvg ?? 0).toFixed(1)} ·{' '}
+                          {render.provider?.reviewCount ?? 0}{' '}
                           {langKey === 'ar' ? 'تقييم' : 'reviews'}
                         </span>
                       </div>
@@ -934,6 +1002,28 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                 </div>
               )}
 
+              {/* Photos card — seeker's own uploaded media. Only rendered
+                  when the request actually carries media (the gallery
+                  itself returns null otherwise). Survives hard refresh:
+                  sourced from the persisted mediaUrls on the wire, not a
+                  cache patch. */}
+              {render.media.length > 0 && (
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
+                  <p
+                    className="text-slate-500 mb-3"
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                    }}
+                  >
+                    {langKey === 'ar' ? 'الصور' : 'Photos'}
+                  </p>
+                  <RequestMediaGallery urls={render.media} testId="job-detail-photos" />
+                </div>
+              )}
+
               {/* Price Breakdown — booking-side only (priceAmount comes from
                   the snapshotted bid amount). */}
               {showHourlyRate && render.priceAmount !== null && (
@@ -1081,8 +1171,8 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
               </div>
               <p className="text-slate-900" style={{ fontSize: '18px', fontWeight: 800 }}>
                 {langKey === 'ar'
-                  ? `كيف كانت تجربتك مع ${render.provider?.displayName ?? '—'}؟`
-                  : `Rate your experience with ${render.provider?.displayName ?? '—'}`}
+                  ? `كيف كانت تجربتك مع ${providerNamePrivacy}؟`
+                  : `Rate your experience with ${providerNamePrivacy}`}
               </p>
               <p className="text-slate-400" style={{ fontSize: '13px' }}>
                 {langKey === 'ar' ? 'اضغط على النجوم للتقييم' : 'Tap to rate'}

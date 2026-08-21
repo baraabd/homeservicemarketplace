@@ -465,6 +465,61 @@ describe('AuthenticationService', () => {
         expect.anything(),
       );
     });
+
+    // Regression (phantom reset email). SMTP delivery must NEVER happen inside
+    // the token/audit transaction. Root cause of the production 500: mail.send
+    // (an ~8s SMTP round trip) ran inside tx.run, blew past Prisma's 5s
+    // interactive-transaction timeout, and the trailing audit write threw
+    // P2028 — the token row rolled back AFTER the email was already delivered,
+    // so the emailed link pointed at a token that did not exist (=> 400).
+    it('does NOT send the reset email if the reset transaction fails (no phantom email)', async () => {
+      const h = makeHarness();
+      h.users.findByEmail.mockResolvedValueOnce(makeUser());
+      // Simulate the in-transaction audit/commit failure.
+      (h.audit.record as jest.Mock).mockRejectedValueOnce(new Error('P2028 tx expired'));
+
+      await h.svc.forgotPassword('ada@example.com', ctx);
+
+      // The email must not escape a transaction that rolled back.
+      expect(h.mail.send).not.toHaveBeenCalled();
+    });
+
+    it('sends the reset email only AFTER the token transaction has committed', async () => {
+      const h = makeHarness();
+      h.users.findByEmail.mockResolvedValueOnce(makeUser());
+      const order: string[] = [];
+      // Record when the transaction actually commits (fn resolved).
+      (h.tx.run as jest.Mock).mockImplementationOnce(
+        async (fn: (t: unknown) => Promise<unknown>) => {
+          const r = await fn(h.fakeTx);
+          order.push('commit');
+          return r;
+        },
+      );
+      (h.mail.send as jest.Mock).mockImplementationOnce(async () => {
+        order.push('mail');
+      });
+
+      await h.svc.forgotPassword('ada@example.com', ctx);
+
+      expect(order).toEqual(['commit', 'mail']);
+    });
+
+    it('anti-enumeration: an internal failure still resolves (same public 202 as unknown email)', async () => {
+      const h = makeHarness();
+      h.users.findByEmail.mockResolvedValueOnce(makeUser());
+      (h.audit.record as jest.Mock).mockRejectedValueOnce(new Error('db down'));
+      // Must NOT throw — a 500 for a known email vs 202 for an unknown one is
+      // an account-existence oracle.
+      await expect(h.svc.forgotPassword('ada@example.com', ctx)).resolves.toBeUndefined();
+    });
+
+    it('anti-enumeration: a delivery failure after commit still resolves (no oracle)', async () => {
+      const h = makeHarness();
+      h.users.findByEmail.mockResolvedValueOnce(makeUser());
+      (h.mail.send as jest.Mock).mockRejectedValueOnce(new Error('smtp down'));
+      await expect(h.svc.forgotPassword('ada@example.com', ctx)).resolves.toBeUndefined();
+    });
   });
 
   describe('resetPassword', () => {
@@ -479,8 +534,35 @@ describe('AuthenticationService', () => {
         where: { id: 'u-1' },
         data: expect.objectContaining({ passwordHash: '$argon2id$hashed' }),
       });
-      expect(h.sessions.revokeAllForUser).toHaveBeenCalledWith('u-1');
+      // Session revocation now runs INSIDE the reset transaction, so it is
+      // handed the same Prisma tx client (second arg) rather than the base
+      // client. This is what makes password-update + token-consume +
+      // session-revoke + audit atomic.
+      expect(h.sessions.revokeAllForUser).toHaveBeenCalledWith('u-1', expect.anything());
       expect(h.audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'PASSWORD_RESET_COMPLETED' }),
+        expect.anything(),
+      );
+    });
+
+    // Regression (second atomicity defect). Session revocation used to run
+    // AFTER the transaction committed. If revocation failed, the password was
+    // already changed and the token already consumed while the endpoint
+    // returned an error — a retry then hit "invalid/expired link". Revocation
+    // must be inside the transaction: if it throws, the completion audit is
+    // never written and the whole unit rolls back.
+    it('runs session revocation inside the reset transaction (rolls back on failure)', async () => {
+      const h = makeHarness();
+      h.verification.consume.mockResolvedValueOnce('u-1');
+      (h.sessions.revokeAllForUser as jest.Mock).mockRejectedValueOnce(new Error('revoke failed'));
+
+      await expect(
+        h.svc.resetPassword('tok'.repeat(8), 'a-brand-new-passphrase', ctx),
+      ).rejects.toThrow();
+
+      // The completion audit is written AFTER revocation in the same tx, so a
+      // revocation failure must prevent it — proving the two are atomic.
+      expect(h.audit.record).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'PASSWORD_RESET_COMPLETED' }),
         expect.anything(),
       );
@@ -513,6 +595,89 @@ describe('AuthenticationService', () => {
       h.verification.consume.mockResolvedValueOnce(null);
       await expect(h.svc.resetPassword('bad', 'new-password-12', ctx)).rejects.toThrow();
       expect(h.sessions.revokeAllForUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('refresh', () => {
+    // Sprint 01 hardening: refresh must load the current user and reject
+    // any account that is no longer in good standing, so a stolen or
+    // still-live refresh token cannot mint fresh access tokens for a
+    // deleted / deactivated / suspended / locked user. All bad states
+    // collapse to the same stable AUTH_REFRESH_INVALID code so refresh
+    // never leaks *why* the account is gone — the client re-logs in and
+    // login surfaces the precise reason.
+    const refreshParams = {
+      refreshTokenRaw: 'r'.repeat(43),
+      device: ctx.device,
+      requestId: ctx.requestId,
+    };
+
+    function primeGoodStanding(h: ReturnType<typeof makeHarness>) {
+      h.sessions.peekByRefreshRaw.mockResolvedValue({ userId: 'u-1' } as never);
+      h.sessions.rotate.mockResolvedValue({
+        session: { id: 's-2', userId: 'u-1' },
+        access: { token: 'a', jti: 'j', ttlSeconds: 900, expiresAt: new Date() },
+        refresh: { raw: 'r2', hash: 'h2', expiresAt: new Date() },
+      } as never);
+    }
+
+    it('rotates for a user in good standing (ACTIVE, not deleted)', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(makeUser({ id: 'u-1', status: 'ACTIVE' }));
+      const out = await h.svc.refresh(refreshParams);
+      expect(out.userId).toBe('u-1');
+      expect(h.sessions.rotate).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects when the user no longer exists', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(null);
+      await expect(h.svc.refresh(refreshParams)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_REFRESH_INVALID' }),
+      });
+      expect(h.sessions.rotate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a soft-deleted user (deletedAt set)', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(makeUser({ id: 'u-1', deletedAt: new Date() }));
+      await expect(h.svc.refresh(refreshParams)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_REFRESH_INVALID' }),
+      });
+      expect(h.sessions.rotate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a deactivated user (isActive=false)', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(makeUser({ id: 'u-1', isActive: false }));
+      await expect(h.svc.refresh(refreshParams)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_REFRESH_INVALID' }),
+      });
+      expect(h.sessions.rotate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a SUSPENDED user', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(makeUser({ id: 'u-1', status: 'SUSPENDED' }));
+      await expect(h.svc.refresh(refreshParams)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_REFRESH_INVALID' }),
+      });
+      expect(h.sessions.rotate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a LOCKED user', async () => {
+      const h = makeHarness();
+      primeGoodStanding(h);
+      h.users.findById.mockResolvedValue(makeUser({ id: 'u-1', status: 'LOCKED' }));
+      await expect(h.svc.refresh(refreshParams)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AUTH_REFRESH_INVALID' }),
+      });
+      expect(h.sessions.rotate).not.toHaveBeenCalled();
     });
   });
 

@@ -11,6 +11,7 @@ import { LoginAttemptService } from './services/login-attempt.service';
 import { OtpService } from './services/otp.service';
 import { PasswordService } from './services/password.service';
 import { SessionService } from './services/session.service';
+import { SessionValidationService } from './services/session-validation.service';
 import { TokenService } from './services/token.service';
 import { VerificationService } from './services/verification.service';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -48,6 +49,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     VerificationService,
     OtpService,
     LoginAttemptService,
+    SessionValidationService,
     JwtStrategy,
     JwtAuthGuard,
     CsrfGuard,
@@ -56,6 +58,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     AuthenticationService,
     TokenService,
     SessionService,
+    SessionValidationService,
     JwtAuthGuard,
     CsrfGuard,
     PassportModule,

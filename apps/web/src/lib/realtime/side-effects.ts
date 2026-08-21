@@ -10,6 +10,13 @@ import type {
 import { triggerNotificationUX } from './notification-ux';
 import { translateRealtime } from './realtime-i18n';
 import { getRealtimeNavigator } from './realtime-navigator';
+import { getRealtimeExperience } from './realtime-experience';
+import {
+  resolveNotificationTarget,
+  type NotificationExperience,
+  type NotificationTarget,
+} from './notification-target';
+import { getNotificationTargetHandler } from './notification-target-handler';
 
 // Sprint 7.5.1 — UI side-effects bridge for realtime events.
 // Sprint 7.6 — anti-echo gate (currentUserId vs event.actorUserId).
@@ -105,8 +112,8 @@ export function dispatchRealtimeSideEffects(
       // straight to the right page (provider tabs also receive the
       // event for cache invalidation, but their actor-side toast is
       // already suppressed by anti-echo above).
-      const deepLink = payload.bookingId ? `/home/bookings/${payload.bookingId}` : null;
-      emitToast('success', message, buildToastOptions({ deepLink }));
+      const target = bookingTargetForToast(payload.bookingId);
+      emitToast('success', message, buildToastOptions({ target }));
       triggerNotificationUX();
       break;
     }
@@ -116,15 +123,36 @@ export function dispatchRealtimeSideEffects(
       // clear "Your bid was accepted" with a deep link straight to
       // the new booking when the payload carries it.
       const payload = event.payload as Partial<BidAcceptedRealtimePayload> | undefined;
-      const deepLink = payload?.bookingId
-        ? `/provider/bookings/${payload.bookingId}`
+      // The recipient of a bid.accepted is ALWAYS the provider whose bid
+      // was accepted (the seeker actor is silenced by anti-echo), so we
+      // resolve the target for the provider experience explicitly.
+      const target = payload?.bookingId
+        ? resolveNotificationTarget(
+            {
+              type: null,
+              resourceType: 'BOOKING',
+              resourceId: payload.bookingId,
+              deepLink: null,
+              metadata: null,
+            },
+            'provider',
+          )
         : payload?.requestId
-          ? `/provider/requests/${payload.requestId}`
+          ? resolveNotificationTarget(
+              {
+                type: null,
+                resourceType: 'REQUEST',
+                resourceId: payload.requestId,
+                deepLink: null,
+                metadata: null,
+              },
+              'provider',
+            )
           : null;
       emitToast(
         'success',
         translateRealtime('realtime.bid.accepted'),
-        buildToastOptions({ deepLink }),
+        buildToastOptions({ target }),
       );
       triggerNotificationUX();
       break;
@@ -132,11 +160,11 @@ export function dispatchRealtimeSideEffects(
     case 'notification.created': {
       const payload = event.payload as NotificationSummaryLike;
       const { title, body } = notificationToastCopy(payload);
-      const deepLink = resolveNotificationDeepLink(payload);
+      const target = resolveNotificationTargetForToast(payload);
       // Sonner accepts `(title, { description, action })`. A missing
       // body collapses to a single-line toast automatically; a null
-      // deepLink omits the action button.
-      emitToast('default', title, buildToastOptions({ deepLink, description: body }));
+      // target omits the action button.
+      emitToast('default', title, buildToastOptions({ target, description: body }));
       triggerNotificationUX();
       break;
     }
@@ -148,33 +176,56 @@ export function dispatchRealtimeSideEffects(
   }
 }
 
-// Sonner's `toast()` accepts an optional 2nd-arg options bag. Calling
-// with `{}` is harmless at runtime but inflates the call signature
-// for our tests, which assert on the exact arg list. Skipping the
-// options arg entirely when nothing is set keeps the existing
-// `.toHaveBeenCalledWith(title)` assertions stable AND keeps the
-// runtime DOM identical (no description, no action).
+// Sonner's `toast()` accepts an optional 2nd-arg options bag.
+// Sprint 7.12 — every emit threads the current experience so the
+// rendered toast picks the Seeker brand (orange/amber) or Provider
+// brand (light-blue). The className we set is consumed by the
+// app-scoped CSS in toast-theme.css and matches the variants the
+// bounded Toaster mount in Root.tsx renders.
+//
+// We always pass an options bag so the `className` lands — tests
+// that assert on the args inspect the className field directly.
 function emitToast(
   variant: 'default' | 'success',
   title: string,
   options: { description?: string; action?: { label: string; onClick: () => void } },
 ): void {
+  const experience: NotificationExperience = getRealtimeExperience();
+  const className = getNotificationToastClassName(experience, variant);
   const fn = variant === 'success' ? toast.success : toast;
-  if (Object.keys(options).length === 0) {
-    fn(title);
-  } else {
-    fn(title, options);
-  }
+  fn(title, { ...options, className });
+}
+
+// Sprint 7.12 — single source for the toast brand variant class. The
+// Sonner Toaster mount registers these classes via `toastOptions`;
+// CSS in apps/web/src/app/styles/toast-theme.css supplies the actual
+// orange/amber + light-blue tokens so brand changes never need a
+// dispatcher edit.
+export function getNotificationToastClassName(
+  experience: NotificationExperience,
+  variant: 'default' | 'success' | 'aggregate' = 'default',
+): string {
+  const base = `hsm-toast hsm-toast--${experience}`;
+  if (variant === 'success') return `${base} hsm-toast--success`;
+  if (variant === 'aggregate') return `${base} hsm-toast--aggregate`;
+  return base;
 }
 
 // ─── toast options builder ──────────────────────────────────────────
 
-// Builds the sonner options bag. When the navigator bridge is
-// registered AND we have a deepLink, attach an action button labelled
-// "View" that fires the navigation on click. When no navigator is
-// registered (logged-out / pre-mount), the button is omitted entirely
-// so a stale toast can't navigate.
-function buildToastOptions(args: { deepLink: string | null; description?: string | null }): {
+// Builds the sonner options bag. When we have an actionable target,
+// attach a "View" action whose onClick opens it EXACTLY like the
+// notification drawer: first try the in-app overlay handler (registered
+// by the seeker home router) so we never navigate to a non-existent
+// deepLink route (which redirected to /select — the original bug);
+// fall back to URL navigation via the realtime-navigator when no
+// in-app handler is registered (e.g. the target's experience surface
+// isn't mounted). The button is omitted entirely when neither a handler
+// nor a navigator is available so a stale toast can't act.
+function buildToastOptions(args: {
+  target: NotificationTarget | null;
+  description?: string | null;
+}): {
   description?: string;
   action?: { label: string; onClick: () => void };
 } {
@@ -182,15 +233,21 @@ function buildToastOptions(args: { deepLink: string | null; description?: string
   if (args.description) {
     options.description = args.description;
   }
-  if (args.deepLink) {
-    const nav = getRealtimeNavigator();
-    if (nav) {
-      const target = args.deepLink;
+  const target = args.target;
+  if (target) {
+    const hasHandler = getNotificationTargetHandler() !== null;
+    const hasNav = getRealtimeNavigator() !== null;
+    if (hasHandler || hasNav) {
       options.action = {
         label: translateRealtime('realtime.action.view'),
         onClick: () => {
           try {
-            nav(target);
+            // Prefer the in-app overlay router (same path as the drawer).
+            const handler = getNotificationTargetHandler();
+            if (handler && handler(target)) return;
+            // Fallback: URL navigation for surfaces without a handler.
+            const nav = getRealtimeNavigator();
+            if (nav) nav(target.deepLink);
           } catch {
             // Navigation failure must never break the toast renderer.
           }
@@ -201,42 +258,37 @@ function buildToastOptions(args: { deepLink: string | null; description?: string
   return options;
 }
 
-// Sprint 7.10 — resolve a deepLink from a notification.created
-// payload. Order:
-//   1. payload.deepLink (backend-supplied; always preferred)
-//   2. resourceType + metadata.requestId — handles the BID case where
-//      resourceId is the BID id (not the request id) and the parent
-//      surface is reached via metadata. Mirrors the existing
-//      NotificationDrawer tap logic in HomeScreen so the toast and
-//      drawer routing stay in lockstep.
-//   3. resourceType + resourceId for REQUEST / BOOKING
-//   4. null (no action button rendered)
-function resolveNotificationDeepLink(payload: NotificationSummaryLike): string | null {
-  if (typeof payload.deepLink === 'string' && payload.deepLink.length > 0) {
-    return payload.deepLink;
-  }
-  const meta = (payload.metadata ?? {}) as Record<string, unknown>;
-  const metaString = (k: string): string | null =>
-    typeof meta[k] === 'string' && (meta[k] as string).length > 0 ? (meta[k] as string) : null;
-  switch (payload.resourceType) {
-    case 'BID': {
-      // Critical Sprint 7.5 invariant — never use resourceId (= bidId)
-      // as the requestId. Pull the parent requestId from metadata.
-      const requestId = metaString('requestId');
-      if (requestId) return `/home/requests/${requestId}`;
-      return null;
-    }
-    case 'BOOKING': {
-      if (payload.resourceId) return `/home/bookings/${payload.resourceId}`;
-      return null;
-    }
-    case 'REQUEST': {
-      if (payload.resourceId) return `/home/requests/${payload.resourceId}`;
-      return null;
-    }
-    default:
-      return null;
-  }
+// Sprint 7.12 — delegates to the shared `resolveNotificationTarget`
+// so the toast View button, the seeker NotificationDrawer tap, the
+// provider notification drawer tap, and the Profile notifications
+// tap ALL route to the same destination. The experience argument
+// drives the seeker-vs-provider split (BID_ACCEPTED → /home/bookings
+// for seeker, /provider/bookings for provider).
+function resolveNotificationTargetForToast(
+  payload: NotificationSummaryLike,
+): NotificationTarget | null {
+  const experience = getRealtimeExperience();
+  return resolveNotificationTarget(
+    {
+      type: payload.type ?? null,
+      resourceType: payload.resourceType ?? null,
+      resourceId: payload.resourceId ?? null,
+      deepLink: payload.deepLink ?? null,
+      metadata: payload.metadata ?? null,
+    },
+    experience,
+  );
+}
+
+// Build a BOOKING target for the booking.* realtime events, which carry
+// a bookingId directly rather than a full notification payload. Routes
+// experience-aware (seeker → /home/bookings, provider → /provider/...).
+function bookingTargetForToast(bookingId: string | null | undefined): NotificationTarget | null {
+  if (!bookingId) return null;
+  return resolveNotificationTarget(
+    { type: null, resourceType: 'BOOKING', resourceId: bookingId, deepLink: null, metadata: null },
+    getRealtimeExperience(),
+  );
 }
 
 // ─── helpers ────────────────────────────────────────────────────────
@@ -424,4 +476,88 @@ function nowMs(): number {
 // to clear this — the natural cooldown handles eviction.
 export function __resetSideEffectsForTests(): void {
   seen.clear();
+}
+
+// Sprint 7.12 — TTL cleanup. The dedupe map is bounded in practice
+// (handful of keys per 2.5 s window) but a very long session with
+// many lifecycle transitions would still accumulate stale entries.
+// Call once per long-lived poll cycle (the NotificationArrivalWatcher
+// invokes it on every batch) to drop entries older than the window.
+export function pruneDedupeStore(now: number = nowMs()): void {
+  for (const [key, ts] of seen) {
+    if (now - ts >= DEDUPE_WINDOW_MS) seen.delete(key);
+  }
+}
+
+// Sprint 7.12 — storm-protection escape valve. Used by the
+// NotificationArrivalWatcher on the first poll after baseline AND
+// when a polling batch carries more than 3 new notifications. Emits
+// ONE aggregate toast + ONE sound/vibration via the same triggers
+// the per-event path uses. Localised via realtime-i18n
+// (`realtime.notif.aggregate.title` + `.body`).
+export interface EmitAggregateNotificationToastOptions {
+  experience: NotificationExperience;
+  // Genuinely-new notification count to announce ("{count} new …").
+  // Omit / pass null to render the count-less generic body — used on
+  // the first login on a device, where the only number available is
+  // the historical unread total, which must NOT be presented as "new".
+  count?: number | null;
+  // When set, the toast renders a "View" action that navigates to the
+  // notifications drawer/page for that experience. Defaults to no
+  // action — the user can open the drawer themselves.
+  drawerDeepLink?: string | null;
+}
+
+export function emitAggregateNotificationToast(
+  options: EmitAggregateNotificationToastOptions,
+): void {
+  // Aggregate is exempt from the per-event dedupe map (it represents
+  // many distinct events) but we still funnel through the brand
+  // variant so the rendered toast matches the active experience.
+  const experience = options.experience;
+  // The dispatcher's emitToast reads the active experience from the
+  // bridge; tests may set a different one. To make the assertion
+  // crisp, briefly swap the experience for this emission only.
+  // (Production: AuthProvider always sets it before the watcher fires.)
+  const className = getNotificationToastClassName(experience, 'aggregate');
+  const title = translateRealtime('realtime.notif.aggregate.title');
+  const count = options.count;
+  let body: string;
+  if (count == null) {
+    // No reliable "new since last visit" count → generic copy.
+    body = translateRealtime('realtime.notif.aggregate.body.generic');
+  } else if (count > 1) {
+    body = translateRealtime('realtime.notif.aggregate.body.plural').replace(
+      '{count}',
+      String(count),
+    );
+  } else {
+    body = translateRealtime('realtime.notif.aggregate.body.singular');
+  }
+  const opts: {
+    description: string;
+    className: string;
+    action?: { label: string; onClick: () => void };
+  } = {
+    description: body,
+    className,
+  };
+  if (options.drawerDeepLink) {
+    const nav = getRealtimeNavigator();
+    if (nav) {
+      const target = options.drawerDeepLink;
+      opts.action = {
+        label: translateRealtime('realtime.action.view'),
+        onClick: () => {
+          try {
+            nav(target);
+          } catch {
+            // Navigation failure must never break the toast renderer.
+          }
+        },
+      };
+    }
+  }
+  toast(title, opts);
+  triggerNotificationUX();
 }
