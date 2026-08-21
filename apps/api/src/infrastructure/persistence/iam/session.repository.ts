@@ -1,7 +1,27 @@
 import { Injectable } from '@nestjs/common';
-import type { ClientKind, PrismaTx, Session } from '@homeservicemarketplace/database';
+import type {
+  AccountStatus,
+  ClientKind,
+  PrismaTx,
+  Session,
+} from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../prisma/prisma.service';
+
+// Narrow projection used by the per-request session check (D-2).
+export interface SessionWithUserStanding {
+  id: string;
+  userId: string;
+  currentJti: string;
+  revokedAt: Date | null;
+  expiresAt: Date;
+  user: {
+    id: string;
+    status: AccountStatus;
+    isActive: boolean;
+    deletedAt: Date | null;
+  } | null;
+}
 
 export interface CreateSessionInput {
   userId: string;
@@ -33,6 +53,31 @@ export class SessionRepository {
 
   findById(id: string, tx?: PrismaTx): Promise<Session | null> {
     return this.db(tx).session.findUnique({ where: { id } });
+  }
+
+  // D-2 — the authoritative per-request session check.
+  //
+  // ONE query, keyed on the primary key, that returns everything
+  // SessionValidationService.assertSessionActive needs: the session row's
+  // ownership / jti / revocation / expiry AND the owning user's standing.
+  // Pulling the user through the relation avoids a second round trip (and the
+  // N+1 that a naive "load session, then load user" would become).
+  //
+  // The user selection is deliberately narrow — only the columns that decide
+  // standing — so this hot path never drags passwordHash / mfaSecret into
+  // memory on every authenticated request.
+  findByIdWithUserStanding(id: string, tx?: PrismaTx): Promise<SessionWithUserStanding | null> {
+    return this.db(tx).session.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        userId: true,
+        currentJti: true,
+        revokedAt: true,
+        expiresAt: true,
+        user: { select: { id: true, status: true, isActive: true, deletedAt: true } },
+      },
+    });
   }
 
   listActiveByUser(userId: string, tx?: PrismaTx): Promise<Session[]> {

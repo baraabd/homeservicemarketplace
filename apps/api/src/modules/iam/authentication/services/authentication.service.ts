@@ -14,6 +14,7 @@ import { MAIL_PORT, MailPort } from '../../../../infrastructure/mail/mail.port';
 import { RoleRepository } from '../../../../infrastructure/persistence/iam/role.repository';
 import { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
 import { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
+import { SecurityEventsBus } from '../../../../shared/security-events/security-events.bus';
 import { AuditService } from '../../audit/audit.service';
 import { isInGoodStanding } from '../helpers/account-standing';
 import { LoginAttemptService } from './login-attempt.service';
@@ -69,6 +70,10 @@ export class AuthenticationService {
     private readonly tx: TransactionRunner,
     private readonly audit: AuditService,
     private readonly config: AppConfigService,
+    // D-2/D-4: post-commit notification so already-connected sockets are torn
+    // down when a session dies. Publishing through a bus rather than injecting
+    // the gateway keeps IAM free of a dependency on the realtime transport.
+    private readonly securityEvents: SecurityEventsBus,
     @Inject(MAIL_PORT) private readonly mail: MailPort,
   ) {}
 
@@ -434,26 +439,56 @@ export class AuthenticationService {
     return { issued, roles, userId: issued.session.userId };
   }
 
-  async logout(sessionId: string, ctx: ClientContext): Promise<void> {
-    await this.sessions.revokeById(sessionId);
-    await this.audit.record({
-      type: 'LOGOUT',
-      ipAddress: ctx.device.ipAddress,
-      userAgent: ctx.device.userAgent,
-      requestId: ctx.requestId,
-      metadata: { sessionId },
+  // D-2 — logout kills exactly ONE session.
+  //
+  // The Session row's revokedAt is what JwtStrategy now consults on every
+  // request, so the access token that belonged to this session stops working
+  // immediately rather than surviving until `exp`. Any OTHER session the user
+  // holds (a second device) is deliberately untouched.
+  //
+  // The revoke and the audit row are written in one transaction so an
+  // operator can never see a LOGOUT event for a session that is still live, or
+  // a revoked session with no record of who ended it.
+  async logout(userId: string, sessionId: string, ctx: ClientContext): Promise<void> {
+    await this.tx.run(async (trx) => {
+      await this.sessions.revokeById(sessionId, trx);
+      await this.audit.record(
+        {
+          type: 'LOGOUT',
+          userId,
+          ipAddress: ctx.device.ipAddress,
+          userAgent: ctx.device.userAgent,
+          requestId: ctx.requestId,
+          metadata: { sessionId },
+        },
+        trx,
+      );
     });
+    // D-4 — post-commit: tear down any WebSocket still attached to this
+    // session. Only after commit, so a socket is never disconnected for a
+    // revocation that then rolled back.
+    this.securityEvents.emitSessionRevoked({ userId, sessionId });
   }
 
+  // D-2 — logout-all kills EVERY session for the user, so every access token
+  // and every refresh token the account holds is dead on the next request.
   async logoutAll(userId: string, ctx: ClientContext): Promise<number> {
-    const count = await this.sessions.revokeAllForUser(userId);
-    await this.audit.record({
-      type: 'LOGOUT_ALL',
-      userId,
-      ipAddress: ctx.device.ipAddress,
-      userAgent: ctx.device.userAgent,
-      requestId: ctx.requestId,
+    const count = await this.tx.run(async (trx) => {
+      const revoked = await this.sessions.revokeAllForUser(userId, trx);
+      await this.audit.record(
+        {
+          type: 'LOGOUT_ALL',
+          userId,
+          ipAddress: ctx.device.ipAddress,
+          userAgent: ctx.device.userAgent,
+          requestId: ctx.requestId,
+          metadata: { revokedSessionCount: revoked },
+        },
+        trx,
+      );
+      return revoked;
     });
+    this.securityEvents.emitAllSessionsRevoked({ userId, reason: 'logout-all' });
     return count;
   }
 
@@ -535,7 +570,7 @@ export class AuthenticationService {
   async resetPassword(rawToken: string, newPassword: string, ctx: ClientContext): Promise<void> {
     const newHash = await this.passwords.hash(newPassword);
 
-    await this.tx.run(async (trx) => {
+    const userId = await this.tx.run(async (trx) => {
       const id = await this.verification.consume(rawToken, 'PASSWORD_RESET', trx);
       if (!id) throw new BadRequestException({ code: 'AUTH_INVALID_CREDENTIALS' });
       await trx.user.update({
@@ -568,7 +603,14 @@ export class AuthenticationService {
         },
         trx,
       );
+      return id;
     });
+
+    // D-2/D-4 — post-commit. Every session was revoked inside the transaction
+    // above, so every access AND refresh token the account held is already
+    // dead for REST. This additionally tears down any live WebSocket, which
+    // has no per-message re-auth and would otherwise stay attached.
+    this.securityEvents.emitAllSessionsRevoked({ userId, reason: 'password-reset' });
   }
 
   // --- Helpers ------------------------------------------------------------

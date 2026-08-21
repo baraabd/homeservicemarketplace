@@ -2,6 +2,7 @@ import 'reflect-metadata';
 
 import { Logger as NestLogger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import helmet from 'helmet';
@@ -9,7 +10,6 @@ import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
-import { RedisService } from './infrastructure/redis/redis.service';
 import { RealtimeSocketAdapter } from './modules/realtime/realtime-socket.adapter';
 
 async function bootstrap(): Promise<void> {
@@ -19,7 +19,9 @@ async function bootstrap(): Promise<void> {
     // we can wire raw + JSON parsers independently below — the raw
     // parser MUST win for /v1/media/uploads/* so the upload Buffer
     // doesn't get mis-decoded as JSON.
-    const app = await NestFactory.create(AppModule, {
+    // Typed as NestExpressApplication so `app.set('trust proxy', …)` — the
+    // Express-only knob the rate limiter depends on — is available.
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
       bufferLogs: true,
       bodyParser: false,
     });
@@ -32,6 +34,23 @@ async function bootstrap(): Promise<void> {
     const extraOrigins = config.get('CORS_ORIGINS');
     const origins = Array.from(
       new Set([...(frontendUrl ? [frontendUrl] : []), ...extraOrigins].filter(Boolean)),
+    );
+
+    // D-1 — trusted reverse proxies. Express only derives `req.ip` from
+    // X-Forwarded-For when `trust proxy` is set, and setting it to `true`
+    // trusts the ENTIRE chain, which lets any client prepend a forged address
+    // and mint a fresh rate-limit bucket per request. Setting it to a NUMBER
+    // means "skip exactly N proxies from the right", so the resolved IP is the
+    // one written by the hop we actually control. TRUST_PROXY_HOPS=0 (default)
+    // leaves trust proxy off entirely and `req.ip` is the socket peer.
+    const trustProxyHops = config.get('TRUST_PROXY_HOPS');
+    if (trustProxyHops > 0) {
+      app.set('trust proxy', trustProxyHops);
+    } else {
+      app.set('trust proxy', false);
+    }
+    bootstrapLogger.log(
+      `Trust proxy: ${trustProxyHops > 0 ? `${trustProxyHops} hop(s)` : 'disabled (X-Forwarded-For ignored)'}`,
     );
 
     app.use(helmet());
@@ -67,9 +86,19 @@ async function bootstrap(): Promise<void> {
     // when Redis is not ready (or REALTIME_SOCKET_IO=off) the gateway
     // still serves the local instance.
     if (config.get('REALTIME_SOCKET_IO')) {
-      const wsAdapter = new RealtimeSocketAdapter(app, config, app.get(RedisService));
+      // The adapter owns its own pub/sub connections rather than borrowing the
+      // shared RedisService: this runs BEFORE app.listen() triggers Nest's
+      // onModuleInit, so RedisService has not connected yet and any readiness
+      // check against it would always be false here.
+      const wsAdapter = new RealtimeSocketAdapter(app, config);
       await wsAdapter.connectToRedis();
       app.useWebSocketAdapter(wsAdapter);
+      // Close the pub/sub pair on a graceful shutdown so SIGTERM does not
+      // leave two open connections behind.
+      app.enableShutdownHooks();
+      process.once('SIGTERM', () => {
+        void wsAdapter.close();
+      });
     }
 
     for (const sig of ['SIGINT', 'SIGTERM'] as const) {
@@ -79,7 +108,21 @@ async function bootstrap(): Promise<void> {
     await app.listen(port);
     bootstrapLogger.log(`API listening on :${port} (env=${config.get('NODE_ENV')})`);
   } catch (err) {
-    bootstrapLogger.error(`Fatal bootstrap error: ${(err as Error).message}`, (err as Error).stack);
+    // Write to stderr DIRECTLY, not through the Nest logger.
+    //
+    // NestFactory.create is called with `bufferLogs: true`, which holds every
+    // log line until `app.useLogger()` runs. If the failure happens before
+    // that — a rejected env schema, an unreachable database, a failed
+    // Socket.IO Redis adapter — the buffer is never flushed and `process.exit`
+    // discards it, so the container died with an EXIT CODE AND NO MESSAGE.
+    // A fatal boot error is the one log that must never be buffered.
+    const error = err as Error;
+    process.stderr.write(`[Bootstrap] Fatal bootstrap error: ${error?.message ?? String(err)}
+`);
+    if (error?.stack)
+      process.stderr.write(`${error.stack}
+`);
+    bootstrapLogger.error(`Fatal bootstrap error: ${error?.message}`, error?.stack);
     process.exit(1);
   }
 }

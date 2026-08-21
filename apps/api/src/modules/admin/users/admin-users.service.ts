@@ -9,11 +9,12 @@ import type {
 } from '@homeservicemarketplace/contracts';
 import type { AccountStatus, AuditEventType, User } from '@homeservicemarketplace/database';
 
+import { AdminAccessRequestRepository } from '../../../infrastructure/persistence/iam/admin-access-request.repository';
 import { RoleRepository } from '../../../infrastructure/persistence/iam/role.repository';
 import { SessionRepository } from '../../../infrastructure/persistence/iam/session.repository';
 import { UserRepository } from '../../../infrastructure/persistence/iam/user.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
-import { SessionValidationService } from '../../iam/authentication/services/session-validation.service';
+import { SecurityEventsBus } from '../../../shared/security-events/security-events.bus';
 import { AppError } from '../../../shared/errors/app-error';
 import { AdminAuditService } from '../admin-audit.service';
 
@@ -33,7 +34,15 @@ export class AdminUsersService {
     private readonly audit: AdminAuditService,
     private readonly tx: TransactionRunner,
     private readonly sessions: SessionRepository,
-    private readonly sessionValidation: SessionValidationService,
+    // Phase 4 — axis 3. Read alongside status and roles so the dashboard
+    // renders three columns instead of inferring admin standing from one.
+    private readonly adminAccessRequests: AdminAccessRequestRepository,
+    // D-2/D-4: the per-request session check reads Postgres directly, so no
+    // cache needs busting after a status flip — the in-transaction session
+    // revoke below is immediately authoritative on every instance. What the
+    // bus is still needed for is tearing down live WebSockets, which have no
+    // per-message re-auth.
+    private readonly securityEvents: SecurityEventsBus,
   ) {}
 
   async list(query: ListAdminUsersQuery): Promise<ListAdminUsersResponse> {
@@ -137,13 +146,18 @@ export class AdminUsersService {
       );
       return { ...existing, isActive, status: nextStatus };
     });
-    // Sprint 01 hardening: drop the cached "in good standing" flag AFTER
-    // the status flip + session revoke commit, so the very next
-    // authenticated request re-reads the DB and the new status takes
-    // effect immediately — an already-issued access token cannot outlive
-    // the suspension by up to its TTL. Invalidated on every transition
-    // (including restore) so a stale flag never lingers either way.
-    await this.sessionValidation.invalidate(targetUserId);
+    // D-2/D-4 — post-commit. REST-side revocation is already durable: the
+    // status flip AND the session revoke committed together above, and
+    // SessionValidationService reads the Session row on every request, so no
+    // already-issued access token survives the suspension anywhere.
+    // What still needs doing is evicting sockets that completed their
+    // handshake before this ran.
+    if (nextStatus !== 'ACTIVE') {
+      this.securityEvents.emitAllSessionsRevoked({
+        userId: targetUserId,
+        reason: 'account-suspended',
+      });
+    }
     return { user: await this.toSummary(updated) };
   }
 
@@ -179,7 +193,11 @@ export class AdminUsersService {
       );
       return { ...next, status: 'SUSPENDED' as AccountStatus };
     });
-    await this.sessionValidation.invalidate(targetUserId);
+    // Post-commit socket teardown; see setStatus for why REST needs nothing.
+    this.securityEvents.emitAllSessionsRevoked({
+      userId: targetUserId,
+      reason: 'account-suspended',
+    });
     return { user: await this.toSummary(updated) };
   }
 
@@ -206,12 +224,17 @@ export class AdminUsersService {
       );
       return { ...next, status: 'ACTIVE' as AccountStatus };
     });
-    await this.sessionValidation.invalidate(targetUserId);
+    // Restore does NOT resurrect sessions: they were revoked when the account
+    // was suspended and stay revoked. The user signs in again, which is the
+    // correct outcome — nothing to publish here.
     return { user: await this.toSummary(updated) };
   }
 
   private async toSummary(u: User): Promise<AdminUserSummary> {
-    const userRoles = await this.users.listRoles(u.id);
+    const [userRoles, latestAccessRequest] = await Promise.all([
+      this.users.listRoles(u.id),
+      this.adminAccessRequests.findLatestByUserId(u.id),
+    ]);
     return {
       id: u.id,
       email: u.email,
@@ -222,6 +245,12 @@ export class AdminUsersService {
       emailVerifiedAt: u.emailVerifiedAt ? u.emailVerifiedAt.toISOString() : null,
       mfaEnabled: u.mfaEnabled,
       roles: userRoles.map((r) => r.role.name),
+      // Axis 3, reported independently of the two above. Null means the user
+      // has never asked for admin access — which is NOT the same as having
+      // been refused, and the dashboard renders the two differently.
+      adminAccessRequestStatus: latestAccessRequest
+        ? (latestAccessRequest.status as AdminUserSummary['adminAccessRequestStatus'])
+        : null,
       createdAt: u.createdAt.toISOString(),
       updatedAt: u.updatedAt.toISOString(),
     };

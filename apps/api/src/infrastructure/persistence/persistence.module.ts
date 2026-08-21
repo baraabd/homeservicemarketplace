@@ -5,6 +5,7 @@ import { BidRepository } from './bids/bid.repository';
 import { ProviderProfileRepository } from './bids/provider-profile.repository';
 import { BookingEventRepository } from './bookings/booking-event.repository';
 import { BookingRepository } from './bookings/booking.repository';
+import { AdminAccessRequestRepository } from './iam/admin-access-request.repository';
 import { AuditEventRepository } from './iam/audit-event.repository';
 import { PermissionRepository } from './iam/permission.repository';
 import { RoleRepository } from './iam/role.repository';
@@ -33,6 +34,7 @@ import { PlatformSettingRepository } from './settings/platform-setting.repositor
     SessionRepository,
     VerificationTokenRepository,
     AuditEventRepository,
+    AdminAccessRequestRepository,
     ServiceCategoryRepository,
     AddressRepository,
     ServiceRequestRepository,
@@ -58,6 +60,7 @@ import { PlatformSettingRepository } from './settings/platform-setting.repositor
     SessionRepository,
     VerificationTokenRepository,
     AuditEventRepository,
+    AdminAccessRequestRepository,
     ServiceCategoryRepository,
     AddressRepository,
     ServiceRequestRepository,

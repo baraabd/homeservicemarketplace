@@ -8,6 +8,7 @@ import type { AuditEventRepository } from '../../../infrastructure/persistence/i
 import type { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import type { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import type { NotificationsService } from '../../notifications/notifications.service';
+import { SecurityEventsBus } from '../../../shared/security-events/security-events.bus';
 import type { AdminAuditService } from '../admin-audit.service';
 import { AdminVerificationService } from './admin-verification.service';
 
@@ -52,6 +53,7 @@ interface Mocks {
   notifications: NotificationsService;
   audit: AdminAuditService;
   auditEvents: AuditEventRepository;
+  securityEvents: SecurityEventsBus;
 }
 
 function makeMocks(
@@ -68,6 +70,10 @@ function makeMocks(
       }),
       listForAdmin: jest.fn().mockResolvedValue(profile ? [profile] : []),
       updateStatusById: jest.fn().mockResolvedValue(profile),
+      // Phase 4: the state-machine edge is now enforced by a status-scoped
+      // updateMany, so the write reports how many rows it actually moved.
+      // 1 = this caller won; 0 = a concurrent reviewer got there first.
+      decideIfInStatus: jest.fn().mockResolvedValue(1),
       updateReviewNotesById: jest
         .fn()
         .mockImplementation((_id, notes) =>
@@ -83,18 +89,31 @@ function makeMocks(
     auditEvents: {
       listForProviderProfile: jest.fn().mockResolvedValue(auditRows),
     } as unknown as AuditEventRepository,
+    // D-4: real bus, so the emitted payloads can be asserted directly.
+    securityEvents: new SecurityEventsBus(),
   };
 }
 
 function makeService(m: Mocks): AdminVerificationService {
-  return new AdminVerificationService(m.providers, m.notifications, m.audit, m.auditEvents, tx);
+  return new AdminVerificationService(
+    m.providers,
+    m.notifications,
+    m.audit,
+    m.auditEvents,
+    tx,
+    m.securityEvents,
+  );
 }
 
 describe('AdminVerificationService', () => {
   it('approve: PENDING_REVIEW → ACTIVE writes audit + notifies provider', async () => {
     const m = makeMocks(makeProfile({ status: 'PENDING_REVIEW' }));
     await makeService(m).approve('admin-1', 'pp-1', 'looks good');
-    expect(m.providers.updateStatusById).toHaveBeenCalledWith('pp-1', 'ACTIVE', undefined);
+    expect(m.providers.decideIfInStatus).toHaveBeenCalledWith(
+      'pp-1',
+      expect.objectContaining({ to: 'ACTIVE', reviewedByUserId: 'admin-1' }),
+      undefined,
+    );
     expect(m.audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'ADMIN_PROVIDER_APPROVED' }),
       undefined,
@@ -171,7 +190,18 @@ describe('AdminVerificationService', () => {
   it('reactivate: SUSPENDED → ACTIVE writes audit + notifies (Sprint 5.1.4)', async () => {
     const m = makeMocks(makeProfile({ status: 'SUSPENDED' }));
     await makeService(m).reactivate('admin-1', 'pp-1');
-    expect(m.providers.updateStatusById).toHaveBeenCalledWith('pp-1', 'ACTIVE', undefined);
+    expect(m.providers.decideIfInStatus).toHaveBeenCalledWith(
+      'pp-1',
+      expect.objectContaining({
+        from: ['SUSPENDED'],
+        to: 'ACTIVE',
+        reviewedByUserId: 'admin-1',
+        // Lifting a suspension must clear any stale rejection reason so the
+        // reactivated provider is not shown a message about a past decision.
+        rejectionReason: null,
+      }),
+      undefined,
+    );
     expect(m.audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'ADMIN_PROVIDER_APPROVED',

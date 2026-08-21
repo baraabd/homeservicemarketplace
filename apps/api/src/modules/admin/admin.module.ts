@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { AdminAccessModule } from '../iam/admin-access/admin-access.module';
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
 import { AuthorizationModule } from '../iam/authorization/authorization.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -21,6 +22,7 @@ import { AdminSettingsController } from './settings/admin-settings.controller';
 import { AdminSettingsService } from './settings/admin-settings.service';
 import { AdminCategoryApplicationsController } from './category-applications/admin-category-applications.controller';
 import { AdminCategoryApplicationsService } from './category-applications/admin-category-applications.service';
+import { AdminAccessRequestsController } from './access-requests/admin-access-requests.controller';
 
 // Admin module. Hosts every admin-side surface so the
 // AuthenticationModule / AuthorizationModule / AdminAuditService
@@ -41,7 +43,9 @@ import { AdminCategoryApplicationsService } from './category-applications/admin-
 // mutations can fan out user-facing notifications (e.g. provider
 // approved → notify provider).
 @Module({
-  imports: [AuthenticationModule, AuthorizationModule, NotificationsModule],
+  // AdminAccessModule exports the AdminAccessService the review controller
+  // below reuses — one lifecycle implementation for both sides of the axis.
+  imports: [AuthenticationModule, AuthorizationModule, NotificationsModule, AdminAccessModule],
   controllers: [
     AdminController,
     AdminUsersController,
@@ -54,6 +58,8 @@ import { AdminCategoryApplicationsService } from './category-applications/admin-
     AdminAuditController,
     AdminNotificationsController,
     AdminCategoryApplicationsController,
+    // Phase 4 — admin access-request review queue.
+    AdminAccessRequestsController,
   ],
   providers: [
     AdminAuditService,

@@ -22,6 +22,24 @@ interface ErrorBody {
   };
 }
 
+interface NormalizedError {
+  status: number;
+  code: AppErrorCode | string;
+  message: string;
+  details?: unknown;
+  /**
+   * True when `details` was AUTHORED by our own domain code (an AppError we
+   * constructed) rather than harvested from a framework/driver exception.
+   *
+   * Framework details are suppressed in production because they can carry
+   * internal shapes; authored details are part of the API contract. Collapsing
+   * the two is why POST /v1/me/provider/submit-for-review would have returned
+   * its 422 with an EMPTY missing-field list in production — exactly the
+   * machine-readable payload the client needs to tell the user what to fix.
+   */
+  detailsAreAuthored?: boolean;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -33,7 +51,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const req = ctx.getRequest<Request>();
     const res = ctx.getResponse<Response>();
 
-    const { status, code, message, details } = this.normalize(exception);
+    const { status, code, message, details, detailsAreAuthored } = this.normalize(exception);
     const headerId = req.header(REQUEST_ID_HEADER);
     const requestId = req.id != null ? String(req.id) : (headerId ?? undefined);
 
@@ -43,7 +61,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         code,
         message,
         requestId,
-        ...(details !== undefined && !this.config.isProduction ? { details } : {}),
+        ...(details !== undefined && (detailsAreAuthored || !this.config.isProduction)
+          ? { details }
+          : {}),
       },
     };
 
@@ -63,18 +83,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
     res.status(status).json(body);
   }
 
-  private normalize(exception: unknown): {
-    status: number;
-    code: AppErrorCode | string;
-    message: string;
-    details?: unknown;
-  } {
+  private normalize(exception: unknown): NormalizedError {
     if (exception instanceof AppError) {
       return {
         status: exception.status,
         code: exception.code,
         message: exception.message,
         details: exception.details,
+        // AppError details are hand-built by domain code (e.g. the provider
+        // onboarding 422's machine-readable missing-field list), never a raw
+        // driver payload, so they are part of the contract in every
+        // environment. Anything that could leak internals must not be put
+        // here in the first place.
+        detailsAreAuthored: true,
       };
     }
 

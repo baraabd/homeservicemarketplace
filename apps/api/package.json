@@ -2,6 +2,9 @@
   "name": "@homeservicemarketplace/api",
   "private": true,
   "version": "0.1.0",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "pnpm build:deps && nest start --watch",
     "build": "pnpm build:deps && nest build",
@@ -47,11 +50,12 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "cookie-parser": "^1.4.7",
+    "express": "^5.1.0",
     "helmet": "^8.1.0",
     "ioredis": "^5.4.1",
     "mongoose": "^8.8.0",
     "nestjs-pino": "^4.6.1",
-    "nodemailer": "^8.0.5",
+    "nodemailer": "^9.0.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pino": "^10.3.1",

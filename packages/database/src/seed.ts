@@ -1,6 +1,6 @@
 import * as argon2 from 'argon2';
 
-import { grantWithTx } from './admin-access-grant';
+import { grantAdminWithTx, grantProviderWithTx } from './admin-access-grant';
 import { Prisma, prisma } from './index';
 
 // Safe development seed:
@@ -159,6 +159,12 @@ const PERMISSIONS: PermissionSpec[] = [
   { key: 'role:write', description: 'Manage roles (admin)' },
   { key: 'permission:read', description: 'Read permissions' },
   { key: 'permission:write', description: 'Manage permissions (admin)' },
+  // Phase 4 — granting admin access is a NARROWER capability than "is an
+  // admin". It gates POST /v1/admin/access-requests/:id/approve|reject, so the
+  // ability to mint new administrators can later be withheld from a day-to-day
+  // admin role without touching the controller. Seeded onto `admin` today
+  // because there is only one admin role.
+  { key: 'admin:access:grant', description: 'Approve or reject admin access requests' },
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -329,18 +335,25 @@ async function upsertServiceCategories(tx: Prisma.TransactionClient): Promise<vo
 //
 // Idempotent: re-runs upsert on email; password is rehashed every
 // call so an operator who doesn't remember the value can simply
-// `pnpm seed` again. Roles + ProviderProfile attachment delegate to
-// the already-tested `grantWithTx` routine in admin-access-grant.ts
-// so this block has no separate authz logic to maintain.
+// `pnpm seed` again. Role attachment delegates to the already-tested
+// least-privilege routines in admin-access-grant.ts so this block has no
+// separate authz logic to maintain.
+//
+// Phase 4: admin and provider are attached SEPARATELY. Previously every
+// dev user that needed either role went through one combined routine, so an
+// admin-only account also received the provider role and an ACTIVE
+// ProviderProfile — the exact axis conflation this sprint is removing. An
+// admin-only dev user now has no provider profile at all.
 
 interface DevUserSpec {
   email: string;
   firstName: string;
   lastName: string;
   password: string;
-  /** Pass `true` only for the canonical "marketplace seller" account so it
-   * gets the provider role + ACTIVE ProviderProfile via grantWithTx.
-   * `false` keeps the user admin-only (no provider profile attached). */
+  /** Pass `true` for the canonical "marketplace seller" accounts. These get
+   * the provider role and an ACTIVE ProviderProfile so local runs can reach
+   * the live Provider shell without walking the review flow. `false` means
+   * NO provider role and NO ProviderProfile — not "a profile nobody looks at". */
   attachProviderRole: boolean;
   /** Pass `true` for accounts that should reach /v1/admin/**. */
   attachAdminRole: boolean;
@@ -442,19 +455,17 @@ async function upsertDevUsers(tx: Prisma.TransactionClient): Promise<void> {
       });
     }
 
-    // Provider + admin paths use grantWithTx so the role-attachment +
-    // ProviderProfile-promote-to-ACTIVE logic stays in one place.
-    if (spec.attachProviderRole || spec.attachAdminRole) {
-      // grantWithTx attaches all three roles + ensures ACTIVE
-      // ProviderProfile. For an admin-only user (attachProviderRole=false)
-      // we still call it because:
-      //   - it's idempotent: an existing customer role is already a no-op,
-      //   - the resulting ProviderProfile is harmless (the test1 admin
-      //     never opens the Provider app),
-      //   - we avoid duplicating role-attachment logic for one edge case.
-      // If a future need arises to keep an admin from getting the provider
-      // role, refactor grantWithTx to accept a roles allowlist.
-      await grantWithTx(tx, spec.email, false);
+    // Phase 4 — the two axes are granted independently. An admin-only dev
+    // user gets the admin role and NOTHING on the provider axis; a
+    // provider-only dev user gets no admin role. Both routines are idempotent.
+    if (spec.attachAdminRole) {
+      await grantAdminWithTx(tx, spec.email, false);
+    }
+    if (spec.attachProviderRole) {
+      // `activate: true` is the deliberate local-sandbox shortcut so seeded
+      // provider accounts can reach the live Provider shell immediately. Real
+      // providers reach ACTIVE only through submit-for-review + admin approval.
+      await grantProviderWithTx(tx, spec.email, false, true);
     }
 
     // Sprint 7.x — ensure the dev provider profile is "fully onboarded"

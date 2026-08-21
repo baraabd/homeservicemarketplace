@@ -1,19 +1,35 @@
 name: CI
 
-# CI verification on the production branch (`main`). This workflow does
-# NOT deploy. There are no production deployment secrets, no image
-# pushes, no environment bindings. A green run means "the code is safe
-# to merge to main"; promotion to a hosted environment is a manual,
-# out-of-band action.
+# Verification for pull requests into BOTH long-lived branches, and for pushes
+# to them. This workflow does NOT deploy: no production secrets, no image
+# pushes, no environment bindings. A green run means "safe to merge"; promotion
+# to a hosted environment stays a manual, out-of-band action.
+#
+# Sprint 01 remediation (Phase 8) added the permanent gates that keep the
+# findings closed:
+#
+#   integration-e2e   real Postgres / Redis / Mongo, so the D-1 cross-instance
+#                     rate-limit proof and the session integration tests
+#                     actually run rather than being skipped.
+#   browser-e2e       Playwright in a real Chromium — the RTL, badge, and
+#                     geometry assertions that a DOM shim cannot make.
+#   docker-image      a COLD `--no-cache` build plus a production boot, health
+#                     check, and graceful SIGTERM. D-7 and D-8 were both
+#                     "the image does not start" defects; only building and
+#                     booting it catches them.
+#   security-scan     dependency audit, secret scan, and a container image
+#                     scan that FAILS on unmitigated critical/high findings.
 
 on:
   pull_request:
-    branches: ['main']
+    branches: ['main', 'develop']
   push:
-    branches: ['main']
+    branches: ['main', 'develop']
   workflow_dispatch:
 
-# Least privilege: read-only checkout, nothing else.
+# Least privilege: read-only checkout, nothing else. `security-events: write`
+# is deliberately NOT granted — the scan jobs fail the build directly instead
+# of uploading SARIF, so a fork PR cannot write to the security tab.
 permissions:
   contents: read
 
@@ -23,23 +39,46 @@ concurrency:
 
 env:
   NODE_VERSION: '20'
+  # Placeholder values used only to satisfy zod env validation and Prisma's
+  # schema loader in jobs that never open a real connection. Any job that DOES
+  # need a live service declares its own.
+  CI_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_db
+  CI_MONGODB_URI: mongodb://localhost:27017/ci_db
+  CI_JWT_SECRET: ci_only_dummy_secret_at_least_32_chars_long
 
 jobs:
-  verify-contracts:
-    name: Verify Contracts
+  # ── install / lockfile integrity ──────────────────────────────────────────
+  # Separate and FIRST so a lockfile that does not match the manifests fails
+  # in one obvious place rather than as a confusing error inside a later job.
+  install:
+    name: Install & lockfile integrity
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
-      - name: Install
+      - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
+      - name: Assert the lockfile is unchanged by install
+        # `--frozen-lockfile` already fails on a mismatch; this catches the
+        # subtler case of an install that rewrites the file in place.
+        run: git diff --exit-code -- pnpm-lock.yaml
+
+  verify-contracts:
+    name: Verify Contracts
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
       - name: Build contracts
         run: pnpm --filter @homeservicemarketplace/contracts build
 
@@ -48,23 +87,17 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify-contracts
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
-      - name: Install
-        run: pnpm install --frozen-lockfile
-      # The database package scripts (prisma:validate / generate) wrap
-      # `dotenv -e ../../.env -- prisma <cmd>`. The CI runner has no
-      # .env file, so write a stub with a placeholder DATABASE_URL.
-      # Neither command connects to a real database.
+      - run: pnpm install --frozen-lockfile
+      # The database package scripts wrap `dotenv -e ../../.env -- prisma`.
+      # Neither command below connects to a real database.
       - name: Stub DATABASE_URL for prisma
-        run: echo "DATABASE_URL=postgresql://ci:ci@localhost:5432/ci_db" > .env
+        run: echo "DATABASE_URL=${{ env.CI_DATABASE_URL }}" > .env
       - name: Validate prisma schema
         run: pnpm --filter @homeservicemarketplace/database prisma:validate
       - name: Generate prisma client
@@ -75,40 +108,26 @@ jobs:
         run: pnpm --filter @homeservicemarketplace/database build
 
   verify-api:
-    name: Verify API
+    name: Verify API (lint / typecheck / unit / build)
     runs-on: ubuntu-latest
     needs: verify-database
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
-      - name: Install
-        run: pnpm install --frozen-lockfile
-      # CI-runtime stub for env validation. The api ConfigModule loads at
-      # test/build time and zod-validates the environment; DATABASE_URL,
-      # MONGODB_URI and a ≥32-char JWT_ACCESS_SECRET are the minimum the
-      # schema requires. The values are placeholders — no command in this
-      # job opens a real DB / Mongo / signs a real token. The .env file
-      # is workflow-scoped and never reaches the repo.
+      - run: pnpm install --frozen-lockfile
       - name: Stub env for prisma + nest config validation
         run: |
           {
-            echo "DATABASE_URL=postgresql://ci:ci@localhost:5432/ci_db"
-            echo "MONGODB_URI=mongodb://ci:ci@localhost:27017/ci_db"
-            echo "JWT_ACCESS_SECRET=ci_only_dummy_secret_at_least_32_chars_long"
+            echo "DATABASE_URL=${{ env.CI_DATABASE_URL }}"
+            echo "MONGODB_URI=${{ env.CI_MONGODB_URI }}"
+            echo "JWT_ACCESS_SECRET=${{ env.CI_JWT_SECRET }}"
           } > .env
-      # GitHub Actions jobs run on isolated runners — the generated Prisma
-      # client produced by `verify-database` does NOT carry into this job.
-      # The api package's `build:deps` builds the database package, which
-      # imports from @prisma/client; without a generated client tsc fails
-      # with "Module '@prisma/client' has no exported member 'PrismaClient'".
-      # Generate the client locally inside this job so it's self-contained.
+      # Runners are isolated: the client generated by verify-database does not
+      # carry across, and the api's build:deps needs it.
       - name: Generate prisma client (job-local)
         run: pnpm --filter @homeservicemarketplace/database generate
       - name: Lint api
@@ -121,30 +140,385 @@ jobs:
         run: pnpm --filter @homeservicemarketplace/api build
 
   verify-web:
-    name: Verify Web
+    name: Verify Web (lint / typecheck / unit / build)
     runs-on: ubuntu-latest
     needs: verify-contracts
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
-      - name: Install
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - name: Lint web
         run: pnpm --filter @homeservicemarketplace/web lint
       - name: Typecheck web
         run: pnpm --filter @homeservicemarketplace/web typecheck
       - name: Test web
         run: pnpm --filter @homeservicemarketplace/web test
-      # VITE_API_URL is required at build time by apps/web/vite.config.ts.
-      # The bundle is NOT deployed by this workflow.
       - name: Build web
         env:
           VITE_API_URL: https://api.example.com
         run: pnpm --filter @homeservicemarketplace/web build
+
+  # ── integration / E2E against REAL services ───────────────────────────────
+  # Without these containers the DB- and Redis-gated suites skip themselves,
+  # which is exactly how a cross-instance rate-limit defect survives a green
+  # pipeline.
+  integration-e2e:
+    name: Integration & E2E (real Postgres / Redis / Mongo)
+    runs-on: ubuntu-latest
+    needs: verify-api
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: homeservicemarketplace
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      mongo:
+        image: mongo:7
+        ports: ['27017:27017']
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/homeservicemarketplace
+      MONGODB_URI: mongodb://localhost:27017/homeservicemarketplace
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      JWT_ACCESS_SECRET: ci_only_dummy_secret_at_least_32_chars_long
+      # The gates the suites read to decide whether to run for real.
+      RUN_DB_INTEGRATION: '1'
+      RUN_REDIS_INTEGRATION: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Wait until Postgres, Redis and Mongo actually serve queries
+        # The runner's own health gate is necessary but not sufficient.
+        # Postgres answers pg_isready while initdb is still finishing and then
+        # drops the connection; Mongo reports healthy before it will accept a
+        # write. Both windows are short, which is why this shows up as an
+        # intermittent first-migration failure rather than a clean one.
+        #
+        # Each probe below is a real round trip, and it fails HERE with an
+        # obvious message instead of surfacing as an inscrutable prisma or jest
+        # error three steps later. Postgres is probed from the runner, so the
+        # check also proves the published port; Redis and Mongo have no client
+        # on the runner, so their own containers run the probe.
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          # Each attempt is evaluated inside an `if`, so `set -e` cannot abort
+          # the retry loop on the first (entirely expected) miss.
+          await_service() {
+            local name="$1"; shift
+            for _ in $(seq 1 60); do
+              if "$@" >/dev/null 2>&1; then
+                echo "$name is serving"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "::error::$name did not become ready within 120s"
+            return 1
+          }
+          await_service Postgres psql -h localhost -U postgres -d homeservicemarketplace -c 'SELECT 1'
+          await_service Redis docker exec ${{ job.services.redis.id }} redis-cli ping
+          await_service Mongo docker exec ${{ job.services.mongo.id }} mongosh --quiet --eval "db.runCommand({ ping: 1 })"
+      - name: Write .env for the dotenv-wrapped prisma scripts
+        run: |
+          {
+            echo "DATABASE_URL=$DATABASE_URL"
+            echo "MONGODB_URI=$MONGODB_URI"
+            echo "REDIS_HOST=$REDIS_HOST"
+            echo "REDIS_PORT=$REDIS_PORT"
+            echo "JWT_ACCESS_SECRET=$JWT_ACCESS_SECRET"
+          } > .env
+      - name: Generate prisma client
+        run: pnpm --filter @homeservicemarketplace/database generate
+      - name: Assert migrations and schema.prisma agree
+        # Catches "the schema was edited but no migration was written", which is
+        # how the Dispute FK drift went unnoticed for a whole sprint. It needs a
+        # real shadow database, which is why it lives in this job.
+        env:
+          PGPASSWORD: postgres
+        run: |
+          # Prisma replays the migrations into this database; it must exist and
+          # must not be the one the app uses.
+          psql -h localhost -U postgres -c 'DROP DATABASE IF EXISTS hsm_shadow'
+          psql -h localhost -U postgres -c 'CREATE DATABASE hsm_shadow'
+          cd packages/database
+          DIFF=$(pnpm exec prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "postgresql://postgres:postgres@localhost:5432/hsm_shadow" \
+            --script 2>&1)
+          echo "$DIFF"
+          if ! echo "$DIFF" | grep -q "This is an empty migration"; then
+            echo "::error::schema.prisma and prisma/migrations disagree - a migration is missing"
+            exit 1
+          fi
+      - name: Apply migrations
+        run: pnpm --filter @homeservicemarketplace/database migrate:deploy
+      - name: Build database package
+        run: pnpm --filter @homeservicemarketplace/database build
+      - name: Seed baseline roles / permissions
+        run: pnpm --filter @homeservicemarketplace/database seed
+      - name: Run the API suite with the DB- and Redis-gated specs ENABLED
+        run: pnpm --filter @homeservicemarketplace/api test
+      - name: Upload API logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-logs
+          path: |
+            apps/api/*.log
+            npm-debug.log*
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ── real browser ──────────────────────────────────────────────────────────
+  browser-e2e:
+    name: Browser E2E (Playwright / Chromium)
+    runs-on: ubuntu-latest
+    needs: verify-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Build the web app
+        # Hoisted out of playwright.config.ts's webServer command. It used to run
+        # inside the 300s server-startup budget, so a slow cold build and a
+        # server that failed to bind produced the identical "Timed out waiting
+        # for config.webServer" message. As its own step it has its own timing,
+        # its own log, and its own failure.
+        env:
+          # The suite stubs every /v1/** call; this only satisfies the
+          # production build's required-env check.
+          VITE_API_URL: https://api.example.com
+        run: pnpm --filter @homeservicemarketplace/web build
+      - name: Run the browser suite (mobile / tablet / desktop)
+        env:
+          VITE_API_URL: https://api.example.com
+          E2E_API_URL: https://api.example.com
+          # Serve the artefact the step above produced.
+          E2E_PREBUILT: '1'
+        run: pnpm --filter @homeservicemarketplace/web test:e2e
+      # Traces, screenshots, and videos are configured retain-on-failure, so a
+      # green run uploads nothing.
+      - name: Upload Playwright traces and report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ── the image actually builds, boots, serves, and stops ───────────────────
+  docker-image:
+    name: Docker cold build + production boot
+    runs-on: ubuntu-latest
+    needs: verify-api
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: homeservicemarketplace
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      mongo:
+        image: mongo:7
+        ports: ['27017:27017']
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cold build (no cache)
+        # --no-cache is the point: D-8 was a stage-ordering defect that a warm
+        # cache would have hidden. The Dockerfile also asserts, at BUILD time,
+        # that express and the Prisma client resolve in the deployed bundle and
+        # that no sources or TypeScript toolchain shipped.
+        run: docker build --no-cache -f apps/api/Dockerfile -t hsm-api:ci .
+
+      - name: Prepare the database the container will boot against
+        uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Migrate + seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/homeservicemarketplace
+        run: |
+          echo "DATABASE_URL=$DATABASE_URL" > .env
+          pnpm --filter @homeservicemarketplace/database generate
+          pnpm --filter @homeservicemarketplace/database migrate:deploy
+          pnpm --filter @homeservicemarketplace/database build
+
+      - name: Boot the production image
+        run: |
+          docker run -d --name hsm-api-ci --network host \
+            -e NODE_ENV=production -e APP_ENV=prod -e PORT=4000 -e LOG_LEVEL=info \
+            -e DATABASE_URL="postgresql://postgres:postgres@localhost:5432/homeservicemarketplace" \
+            -e MONGODB_URI="mongodb://localhost:27017/homeservicemarketplace" \
+            -e REDIS_HOST=localhost -e REDIS_PORT=6379 \
+            -e JWT_ACCESS_SECRET="ci_only_dummy_secret_at_least_32_chars_long" \
+            -e REALTIME_SOCKET_IO=true \
+            hsm-api:ci
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:4000/health/live >/dev/null 2>&1; then
+              echo "healthy after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the production container never became healthy"
+          docker logs hsm-api-ci
+          exit 1
+
+      - name: Readiness probe
+        run: curl -fsS http://localhost:4000/health/ready
+
+      - name: Assert the image runs as a non-root user
+        run: |
+          UID_OUT=$(docker exec hsm-api-ci id -u)
+          echo "container uid: $UID_OUT"
+          test "$UID_OUT" != "0"
+
+      - name: Assert no boot-time module resolution failures
+        run: |
+          if docker logs hsm-api-ci 2>&1 | grep -qE "Cannot find module|MODULE_NOT_FOUND"; then
+            echo "::error::the container logged a module resolution failure"
+            docker logs hsm-api-ci
+            exit 1
+          fi
+
+      - name: Graceful SIGTERM
+        run: |
+          docker stop -t 30 hsm-api-ci
+          CODE=$(docker inspect hsm-api-ci --format '{{.State.ExitCode}}')
+          echo "exit code: $CODE"
+          docker logs hsm-api-ci 2>&1 | tail -20
+          test "$CODE" = "0"
+
+      - name: Upload container logs on failure
+        if: failure()
+        run: docker logs hsm-api-ci 2>&1 | tail -200 || true
+
+  # ── security ──────────────────────────────────────────────────────────────
+  security-scan:
+    name: Dependency, secret, and container scans
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the secret scan can diff the whole branch, not
+          # just the tip commit.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+
+      - name: Production dependency audit (fail on high or critical)
+        # --prod: a dev-only advisory should not block a merge, since it never
+        # reaches a deployed artifact.
+        run: pnpm audit --prod --audit-level high
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the image to scan
+        run: docker build -f apps/api/Dockerfile -t hsm-api:scan .
+
+      - name: Container image scan (fail on unmitigated CRITICAL/HIGH)
+        # aquasecurity/trivy-action publishes `v`-prefixed tags only, so the bare
+        # `0.28.0` this pointed at never resolved ("Unable to resolve action").
+        # Pinned to the commit SHA behind v0.36.0 rather than the tag: a mutable
+        # tag on a third-party action is a write primitive into this pipeline,
+        # and this action's tags have been rewritten in the past.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: hsm-api:scan
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+          # Unfixed OS-package advisories cannot be actioned by this repo — a
+          # base-image bump is the remedy and is tracked separately. Anything
+          # with a fix available still fails the build.
+          ignore-unfixed: true
+          vuln-type: os,library
+
+  # ── single required check ─────────────────────────────────────────────────
+  # Branch protection points at THIS job. Adding a gate above automatically
+  # tightens the requirement without anyone having to remember to update the
+  # protection rule.
+  ci-gate:
+    name: CI gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - install
+      - verify-contracts
+      - verify-database
+      - verify-api
+      - verify-web
+      - integration-e2e
+      - browser-e2e
+      - docker-image
+      - security-scan
+    steps:
+      - name: Fail if any required job did not succeed
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if echo '${{ toJSON(needs) }}' | grep -q '"result": *"\(failure\|cancelled\|skipped\)"'; then
+            echo "::error::one or more required CI jobs did not succeed"
+            exit 1
+          fi
+          echo "all required jobs succeeded"

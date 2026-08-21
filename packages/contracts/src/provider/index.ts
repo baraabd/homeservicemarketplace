@@ -10,6 +10,8 @@
 // Subdomains mirror the planned backend modules and follow the same
 // request/, response/, enums/ shape used under seeker/.
 export * from './profile';
+// Phase 4 — onboarding lifecycle (DRAFT → submit-for-review → PENDING_REVIEW).
+export * from './onboarding';
 export * from './feed';
 export * from './requests';
 export * from './bids';

@@ -177,9 +177,8 @@ export class ProviderProfileRepository {
     });
   }
 
-  // Used by an admin moderation surface (out of scope for this slice;
-  // shipped now so the field has a single repository owner). Bypasses
-  // `availability` — operators flip status, providers flip availability.
+  // Used by an admin moderation surface. Bypasses `availability` — operators
+  // flip status, providers flip availability.
   updateStatusById(
     id: string,
     status: ProviderProfileStatus,
@@ -189,6 +188,70 @@ export class ProviderProfileRepository {
       where: { id, deletedAt: null },
       data: { status },
     });
+  }
+
+  // Phase 4 — provider-initiated submission for review.
+  //
+  // Scoped to `status: 'DRAFT'` so the DRAFT → PENDING_REVIEW edge is atomic:
+  // two concurrent submissions produce exactly one winner, and a profile an
+  // admin has since suspended or rejected cannot be dragged back into the
+  // queue by a stale client. Returns the affected row count; the caller treats
+  // 0 as "not in a submittable state".
+  async submitForReviewIfDraft(id: string, tx?: PrismaTx): Promise<number> {
+    const result = await this.db(tx).providerProfile.updateMany({
+      where: { id, status: 'DRAFT', deletedAt: null },
+      data: {
+        status: 'PENDING_REVIEW',
+        submittedForReviewAt: new Date(),
+        // A resubmission clears the previous rejection so the provider is not
+        // shown a stale reason while their new application is queued.
+        rejectionReason: null,
+      },
+    });
+    return result.count;
+  }
+
+  // Phase 4 — provider withdraws their own queued application.
+  //
+  // The counterpart to the edit lock: because a PENDING_REVIEW profile cannot
+  // be edited, the provider needs a visible way OUT of the queue. Scoped to
+  // PENDING_REVIEW so it can never pull an already-approved or already-rejected
+  // profile backwards.
+  async withdrawFromReviewIfPending(id: string, tx?: PrismaTx): Promise<number> {
+    const result = await this.db(tx).providerProfile.updateMany({
+      where: { id, status: 'PENDING_REVIEW', deletedAt: null },
+      data: { status: 'DRAFT', submittedForReviewAt: null },
+    });
+    return result.count;
+  }
+
+  // Phase 4 — admin decision on a submitted application.
+  //
+  // Scoped to the statuses each decision is legal from, so the state machine
+  // is enforced by the WRITE rather than by a read-then-write that can race:
+  //   DRAFT | PENDING_REVIEW | SUSPENDED  → REJECTED
+  //   PENDING_REVIEW | SUSPENDED          → ACTIVE
+  //   ACTIVE                              → SUSPENDED
+  async decideIfInStatus(
+    id: string,
+    input: {
+      from: ProviderProfileStatus[];
+      to: ProviderProfileStatus;
+      reviewedByUserId: string;
+      rejectionReason: string | null;
+    },
+    tx?: PrismaTx,
+  ): Promise<number> {
+    const result = await this.db(tx).providerProfile.updateMany({
+      where: { id, status: { in: input.from }, deletedAt: null },
+      data: {
+        status: input.to,
+        reviewedAt: new Date(),
+        reviewedByUserId: input.reviewedByUserId,
+        rejectionReason: input.rejectionReason,
+      },
+    });
+    return result.count;
   }
 
   // Sprint 6.2 — admin-facing review notes upsert. Takes the new

@@ -139,8 +139,10 @@ const TX_FIXTURE = {
   city: 'Riyadh',
 };
 
-function openWalletTab() {
-  fireEvent.click(screen.getByRole('button', { name: /^wallet|المحفظة/i }));
+async function openWalletTab() {
+  // Phase 4: the shell mounts only once the provider profile query has
+  // settled (no marketplace flash), so the tab bar must be AWAITED.
+  fireEvent.click(await screen.findByRole('button', { name: /^wallet|المحفظة/i }));
 }
 
 describe('WalletScreen — Sprint 5.6 (refined)', () => {
@@ -152,7 +154,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     mock.onGet('/v1/provider/earnings/chart').reply(200, CHART);
 
     renderProvider();
-    openWalletTab();
+    await openWalletTab();
 
     // Available balance: 10_800_00 cents → $10,800 (no fractional digits).
     await waitFor(() => expect(screen.getByText('$10,800')).toBeInTheDocument());
@@ -181,7 +183,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     mock.onGet('/v1/provider/earnings/chart').reply(200, { ...CHART, buckets: [] });
 
     renderProvider();
-    openWalletTab();
+    await openWalletTab();
 
     await waitFor(() =>
       expect(screen.getByText(/No transactions yet|لا توجد معاملات بعد/i)).toBeInTheDocument(),
@@ -199,7 +201,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     mock.onGet('/v1/provider/earnings/chart').reply(200, CHART);
 
     renderProvider();
-    openWalletTab();
+    await openWalletTab();
 
     await waitFor(() => expect(screen.getByText('Plumbing')).toBeInTheDocument());
     // Net is the +-prefixed headline value.
@@ -216,7 +218,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     mock.onGet('/v1/provider/earnings/chart').reply(200, CHART);
 
     renderProvider();
-    openWalletTab();
+    await openWalletTab();
 
     await waitFor(() => expect(screen.getByText('$10,800')).toBeInTheDocument());
 
@@ -241,7 +243,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     });
 
     renderProvider();
-    openWalletTab();
+    await openWalletTab();
 
     await waitFor(() => expect(chartUrls.length).toBeGreaterThanOrEqual(1));
     // Default range hit on first paint.
@@ -260,7 +262,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     mock.onGet('/v1/provider/earnings/chart').reply(200, CHART);
 
     renderProvider();
-    openWalletTab();
+    await openWalletTab();
 
     await waitFor(() =>
       expect(screen.getByText(/Could not load earnings|تعذّر تحميل الأرباح/i)).toBeInTheDocument(),
@@ -281,7 +283,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     mock.onGet('/v1/provider/earnings/chart').reply(200, CHART);
 
     renderProvider();
-    openWalletTab();
+    await openWalletTab();
 
     const headline = await screen.findByText('$10,800');
     expect(headline).toBeInTheDocument();

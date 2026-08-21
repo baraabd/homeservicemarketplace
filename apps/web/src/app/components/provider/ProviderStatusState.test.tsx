@@ -143,16 +143,29 @@ describe('ProviderApp — status gate', () => {
   });
 
   it('falls back to onboarding (not the status state) when no profile exists', async () => {
-    // 403 → onboarding flow inside the live shell's Profile tab. The
-    // status gate must not engage when there is no profile at all.
+    // 403 → onboarding, NOT a status surface: there is no ProviderProfile to
+    // have a status. The status gate must not engage here.
     mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
     mock.onGet('/v1/me/provider/profile').reply(403, { error: { code: 'FORBIDDEN' } });
 
     renderProvider();
 
-    // No status-state surface — instead, the live shell mounts (with
-    // its bottom-tab nav) and the Profile tab shows the upgrade CTA.
-    await waitFor(() => expect(screen.getByText(/Pull up to see requests/i)).toBeInTheDocument());
+    // Phase 4 change: the shell opens on the ONBOARDING tab rather than the
+    // live map.
+    //
+    // It used to land on Live Jobs, which meant a user who has the provider
+    // role but no profile row saw the marketplace — every call it fired came
+    // back 403, painting a broken marketplace over what is really an
+    // unfinished signup. The upgrade CTA was one tab click away and easy to
+    // miss. This assertion tracks the same INTENT the original comment stated
+    // ("the Profile tab shows the upgrade CTA"); only the number of clicks to
+    // reach it changed.
+    expect(
+      await screen.findByRole('button', { name: /activate provider account|تفعيل/i }),
+    ).toBeInTheDocument();
+
+    // Still no status surface, and the live map is not mounted.
     expect(screen.queryByTestId(/^provider-status-/)).toBeNull();
+    expect(screen.queryByText(/Pull up to see requests/i)).toBeNull();
   });
 });

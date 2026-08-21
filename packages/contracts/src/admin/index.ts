@@ -20,3 +20,5 @@ export * from './financials';
 export * from './settings';
 export * from './audit';
 export * from './category-applications';
+// Phase 4 — admin access-request review queue.
+export * from './access-requests';

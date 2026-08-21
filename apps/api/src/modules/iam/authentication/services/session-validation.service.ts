@@ -1,97 +1,113 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 
-import { AppConfigService } from '../../../../config/app-config.service';
-import { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
-import { RedisService } from '../../../../infrastructure/redis/redis.service';
+import { SessionRepository } from '../../../../infrastructure/persistence/iam/session.repository';
 import { isInGoodStanding } from '../helpers/account-standing';
 
-// Sprint 01 hardening — immediate access-token blocking.
+// D-2 — immediate access-token revocation.
 //
-// The JWT access token is stateless: once signed it stays cryptographically
-// valid until it expires, so without a per-request check a user who is
-// deleted / deactivated / suspended / locked keeps sailing through every
-// guard until their token's TTL runs out (up to JWT_ACCESS_TTL_SECONDS).
+// ── What was wrong ───────────────────────────────────────────────────────────
+// `JwtStrategy.validate()` used to call `assertInGoodStanding(userId)`, which
+// only asked "is this ACCOUNT allowed to hold a session?". It never looked at
+// the Session row the token was minted for. Consequences:
 //
-// Decision (see docs/adr/0001-immediate-access-token-blocking.md): a
-// "measured cached session check" rather than a tokenVersion column.
-//   - JwtStrategy.validate() calls assertInGoodStanding() on every
-//     authenticated request.
-//   - A per-user "in good standing" flag is cached in Redis with a short
-//     TTL (AUTH_SESSION_CACHE_TTL_SECONDS) so the hot path is a single
-//     GET, not a DB read.
-//   - Only the POSITIVE result is cached. A bad account is never cached,
-//     so it is re-checked against the DB on every request and can never
-//     be let back in by a stale cache entry.
-//   - Suspend / lock / logout-all / password-reset call invalidate() to
-//     drop the positive flag, so revocation is effective on the very next
-//     request. The TTL is only a safety net for when explicit
-//     invalidation cannot reach a node.
-//   - The DB is always the source of truth: on a cache miss OR any Redis
-//     error we fall through to a DB read and enforce the result. We fail
-//     toward correctness (re-check), never open.
+//   - logout revoked the Session row, but the access token it belonged to kept
+//     passing every guard until `exp` (up to JWT_ACCESS_TTL_SECONDS).
+//   - logout-all and password reset had the same hole: refresh was killed, but
+//     already-issued access tokens survived.
+//   - a token from a session that had been rotated away by refresh stayed
+//     valid alongside its replacement.
+//
+// Only the admin suspend/lock path was immediate, and only because it changed
+// account standing — the one thing the check actually looked at.
+//
+// ── What it does now ─────────────────────────────────────────────────────────
+// `assertSessionActive` is the single authority. It verifies, on every
+// authenticated request (REST *and* the Socket.IO handshake — same method, so
+// the two surfaces cannot drift):
+//
+//   1. the Session row exists;
+//   2. `Session.userId === payload.sub`   (token is not being replayed against
+//      another user's session);
+//   3. `Session.id === payload.sid`       (trivially true by lookup key, but
+//      asserted so the invariant is explicit and tested);
+//   4. `Session.currentJti === payload.jti` (the token is the CURRENT one for
+//      this session — a token replaced by refresh rotation is rejected);
+//   5. `Session.revokedAt === null`       (logout / logout-all / reset /
+//      suspend / family-revoke all set this);
+//   6. the Session has not passed `expiresAt`;
+//   7. the owning User is still in good standing (exists, not soft-deleted,
+//      active, status ACTIVE).
+//
+// ── Why there is no positive cache ───────────────────────────────────────────
+// The previous design cached a per-USER "in good standing" flag in Redis for
+// AUTH_SESSION_CACHE_TTL_SECONDS. Two problems: it was keyed by the wrong
+// thing (a user can hold many sessions, and logging one out must not affect
+// the others), and a positive entry that outlived a failed invalidation kept a
+// revoked session usable for the rest of the TTL.
+//
+// The requirement is that a revoked session is dead on the NEXT request, on
+// EVERY instance, with no window — so the check reads the shared source of
+// truth. That is ONE indexed primary-key lookup that also pulls the four user
+// columns standing depends on through the relation, so it is a single round
+// trip and adds no N+1. Correctness here is worth more than a Redis GET, and
+// it removes an entire class of stale-cache bug rather than bounding it.
+//
+// ── Failure policy: FAIL CLOSED ──────────────────────────────────────────────
+// If the lookup cannot be completed, the request is REJECTED. A token is never
+// admitted because the infrastructure that would have refused it was
+// unavailable — that would turn a database blip into an authorization bypass.
 @Injectable()
 export class SessionValidationService {
   private readonly logger = new Logger(SessionValidationService.name);
-  private readonly keyPrefix = 'iam:session:standing:';
 
-  constructor(
-    private readonly users: UserRepository,
-    private readonly redis: RedisService,
-    private readonly config: AppConfigService,
-  ) {}
+  constructor(private readonly sessions: SessionRepository) {}
 
-  // Throws UnauthorizedException when the user backing the presented
-  // access token is no longer allowed to hold a live session. Resolves
-  // silently when the user is in good standing.
-  async assertInGoodStanding(userId: string): Promise<void> {
-    const key = this.keyPrefix + userId;
+  /**
+   * Authoritative per-request session check. Resolves silently when the
+   * presented token still corresponds to a live session held by a user in good
+   * standing; throws 401 otherwise.
+   *
+   * Every rejection collapses to the SAME opaque code. The caller must not be
+   * able to tell "that session was revoked" from "that session never existed"
+   * from "that account is suspended" — each distinction is an oracle.
+   */
+  async assertSessionActive(params: {
+    userId: string;
+    sessionId: string;
+    jti: string;
+  }): Promise<void> {
+    const { userId, sessionId, jti } = params;
 
-    let cached: string | null = null;
+    if (!userId || !sessionId || !jti) {
+      throw unauthorized();
+    }
+
+    let session;
     try {
-      cached = await this.redis.getClient().get(key);
+      session = await this.sessions.findByIdWithUserStanding(sessionId);
     } catch (err) {
-      this.logger.warn({
-        msg: 'session-standing-cache.get.failed',
+      // FAIL CLOSED. Never admit on infrastructure failure.
+      this.logger.error({
+        msg: 'session-validation.lookup.failed.fail-closed',
+        sessionId,
         err: (err as Error).message,
       });
+      throw unauthorized();
     }
 
-    // Fast path: a fresh positive flag means the account was in good
-    // standing within the TTL window. Bad accounts are never cached, so a
-    // hit is always safe to trust.
-    if (cached === '1') return;
+    if (!session) throw unauthorized(); // session row gone (hard-deleted user, bogus sid)
+    if (session.id !== sessionId) throw unauthorized(); // invariant guard
+    if (session.userId !== userId) throw unauthorized(); // token/session owner mismatch
+    if (session.currentJti !== jti) throw unauthorized(); // superseded by refresh rotation
+    if (session.revokedAt !== null) throw unauthorized(); // logout / logout-all / reset / suspend
+    if (session.expiresAt.getTime() <= Date.now()) throw unauthorized(); // session lifetime over
+    if (!isInGoodStanding(session.user)) throw unauthorized(); // deleted/inactive/suspended/locked
 
-    // Miss (or Redis down): consult the source of truth.
-    const user = await this.users.findById(userId);
-    if (!isInGoodStanding(user)) {
-      throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
-    }
-
-    const ttl = this.config.get('AUTH_SESSION_CACHE_TTL_SECONDS');
-    try {
-      await this.redis.getClient().setex(key, ttl, '1');
-    } catch (err) {
-      this.logger.warn({
-        msg: 'session-standing-cache.setex.failed',
-        userId,
-        err: (err as Error).message,
-      });
-    }
+    return;
   }
+}
 
-  // Drop the cached positive flag so the next request re-checks the DB.
-  // Called after suspend / lock / logout-all / password-reset. Never
-  // throws — a failed invalidation degrades to TTL-bounded staleness, not
-  // a broken mutation.
-  async invalidate(userId: string): Promise<void> {
-    try {
-      await this.redis.getClient().del(this.keyPrefix + userId);
-    } catch (err) {
-      this.logger.warn({
-        msg: 'session-standing-cache.del.failed',
-        userId,
-        err: (err as Error).message,
-      });
-    }
-  }
+// One shape, one code, for every rejection reason.
+function unauthorized(): UnauthorizedException {
+  return new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
 }

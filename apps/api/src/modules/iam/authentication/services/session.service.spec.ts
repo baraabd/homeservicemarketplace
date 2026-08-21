@@ -15,6 +15,7 @@ import type { AppConfigService } from '../../../../config/app-config.service';
 import type { SessionRepository } from '../../../../infrastructure/persistence/iam/session.repository';
 import type { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
 import type { AuditService } from '../../audit/audit.service';
+import { SecurityEventsBus } from '../../../../shared/security-events/security-events.bus';
 import { SessionService } from './session.service';
 import { TokenService } from './token.service';
 
@@ -72,16 +73,58 @@ function makeHarness() {
 
   // The tx param is used by the service to call session.update inline.
   const fakeTx = { session: { update: jest.fn().mockResolvedValue(undefined) } };
+
+  // A transaction double that models ROLLBACK.
+  //
+  // The previous double just invoked the callback, so a write followed by a
+  // throw inside the same `tx.run` looked identical to a write that
+  // committed. That is precisely how the replay-detection bug survived: the
+  // service revoked the compromised family and then threw out of the same
+  // transaction, discarding the revocation, while this spec happily asserted
+  // "revokeFamily was called" and passed.
+  //
+  // Every write now records which run it belonged to, and a run is marked
+  // committed only if its callback RESOLVED. `committedWrites` therefore
+  // contains only writes that would actually have survived.
+  let runSeq = 0;
+  let activeRun = 0;
+  const committedRuns = new Set<number>();
+  const writes: Array<{ run: number; op: string }> = [];
+  const recordWrite = (op: string) => writes.push({ run: activeRun, op });
+  const committedWrites = () => writes.filter((w) => committedRuns.has(w.run)).map((w) => w.op);
+
   const tx = {
-    run: jest.fn(async <T>(fn: (t: unknown) => Promise<T>) => fn(fakeTx)),
+    run: jest.fn(async <T>(fn: (t: unknown) => Promise<T>) => {
+      const id = ++runSeq;
+      const previous = activeRun;
+      activeRun = id;
+      try {
+        const result = await fn(fakeTx);
+        committedRuns.add(id); // resolved → COMMIT
+        return result;
+      } finally {
+        activeRun = previous; // threw → no commit, writes discarded
+      }
+    }),
   } as unknown as TransactionRunner;
 
+  // Route the writes whose durability matters through the journal.
+  (sessions.revokeFamily as jest.Mock).mockImplementation(async () => {
+    recordWrite('revokeFamily');
+    return { count: 1 };
+  });
+
   const audit = {
-    record: jest.fn().mockResolvedValue(undefined),
+    record: jest.fn(async (input: { type: string }) => {
+      recordWrite(`audit:${input.type}`);
+    }),
   } as unknown as jest.Mocked<AuditService>;
 
-  const svc = new SessionService(sessions, tokens, tx, audit);
-  return { svc, sessions, tokens, tx, audit, fakeTx };
+  // Real bus so the replay path's post-commit teardown can be asserted.
+  const securityEvents = new SecurityEventsBus();
+
+  const svc = new SessionService(sessions, tokens, tx, audit, securityEvents);
+  return { svc, sessions, tokens, tx, audit, securityEvents, fakeTx, committedWrites };
 }
 
 describe('SessionService', () => {
@@ -165,6 +208,37 @@ describe('SessionService', () => {
         expect.anything(),
       );
       expect(h.sessions.create).not.toHaveBeenCalled();
+
+      // The point of the whole mechanism: the family revocation and the audit
+      // row must SURVIVE. Rotation used to perform both inside the
+      // transaction it then threw out of, so Prisma rolled them straight back
+      // — detection returned a 401 and otherwise did nothing, leaving the
+      // compromised family live and no record of the theft.
+      expect(h.committedWrites()).toEqual(
+        expect.arrayContaining(['revokeFamily', 'audit:REFRESH_REPLAY']),
+      );
+    });
+
+    it('tears down live sockets for the compromised family after the revocation commits', async () => {
+      const h = makeHarness();
+      const revokedAll = jest.fn();
+      h.securityEvents.onAllSessionsRevoked(revokedAll);
+
+      const refresh = h.tokens.mintRefreshToken();
+      const revoked = makeSessionRow({ tokenHash: refresh.hash, revokedAt: new Date() });
+      h.sessions.findByTokenHash.mockResolvedValueOnce(revoked);
+
+      await expect(
+        h.svc.rotate({
+          presentedRefreshRaw: refresh.raw,
+          roles: [],
+          device: { ipAddress: '1.1.1.1', userAgent: 'ua', clientKind: 'WEB' },
+          requestId: 'req-replay',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      await new Promise((r) => setImmediate(r));
+      expect(revokedAll).toHaveBeenCalledWith(expect.objectContaining({ userId: revoked.userId }));
     });
   });
 

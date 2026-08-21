@@ -189,4 +189,89 @@ describe('validateEnv', () => {
       expect(env.MONGODB_URI).toBe('nope');
     });
   });
+
+  // D-1 — the registration abuse budget is a security control, so a
+  // permissive value must be unreachable in production/staging no matter what
+  // an operator puts in the environment.
+  describe('registration throttle hardening', () => {
+    const prodEnv = { ...baseEnv, NODE_ENV: 'production' };
+
+    it('defaults to 5 submissions per rolling hour', () => {
+      const env = validateEnv({ ...baseEnv });
+      expect(env.AUTH_REGISTER_THROTTLE_LIMIT).toBe(5);
+      expect(env.AUTH_REGISTER_THROTTLE_TTL_SECONDS).toBe(3600);
+    });
+
+    it('accepts the maximum allowed limit in production', () => {
+      const env = validateEnv({ ...prodEnv, AUTH_REGISTER_THROTTLE_LIMIT: '5' });
+      expect(env.AUTH_REGISTER_THROTTLE_LIMIT).toBe(5);
+    });
+
+    it('accepts a TIGHTER limit in production', () => {
+      const env = validateEnv({ ...prodEnv, AUTH_REGISTER_THROTTLE_LIMIT: '3' });
+      expect(env.AUTH_REGISTER_THROTTLE_LIMIT).toBe(3);
+    });
+
+    it.each(['6', '50', '500'])(
+      'REFUSES to boot production with AUTH_REGISTER_THROTTLE_LIMIT=%s',
+      (limit) => {
+        expect(() => validateEnv({ ...prodEnv, AUTH_REGISTER_THROTTLE_LIMIT: limit })).toThrow(
+          /AUTH_REGISTER_THROTTLE_LIMIT/,
+        );
+      },
+    );
+
+    it('REFUSES to boot staging with a widened limit', () => {
+      expect(() =>
+        validateEnv({ ...baseEnv, NODE_ENV: 'staging', AUTH_REGISTER_THROTTLE_LIMIT: '500' }),
+      ).toThrow(/AUTH_REGISTER_THROTTLE_LIMIT/);
+    });
+
+    it('allows a widened limit in development and test so suites are not throttled', () => {
+      for (const nodeEnv of ['development', 'test']) {
+        const env = validateEnv({
+          ...baseEnv,
+          NODE_ENV: nodeEnv,
+          AUTH_REGISTER_THROTTLE_LIMIT: '500',
+        });
+        expect(env.AUTH_REGISTER_THROTTLE_LIMIT).toBe(500);
+      }
+    });
+
+    it('REFUSES a production window shorter than an hour (an effectively disabled limit)', () => {
+      expect(() => validateEnv({ ...prodEnv, AUTH_REGISTER_THROTTLE_TTL_SECONDS: '1' })).toThrow(
+        /AUTH_REGISTER_THROTTLE_TTL_SECONDS/,
+      );
+    });
+
+    it('REFUSES production with a per-instance (non-shared) throttle store', () => {
+      expect(() => validateEnv({ ...prodEnv, THROTTLE_REDIS_REQUIRED: 'false' })).toThrow(
+        /THROTTLE_REDIS_REQUIRED/,
+      );
+    });
+
+    it('defaults the throttle store to the shared Redis one', () => {
+      expect(validateEnv({ ...baseEnv }).THROTTLE_REDIS_REQUIRED).toBe(true);
+    });
+  });
+
+  // D-1 — X-Forwarded-For must never be trusted blindly: each trusted hop
+  // lets a client prepend one forged address and escape its rate-limit bucket.
+  describe('trusted proxy depth', () => {
+    it('defaults to 0 hops (X-Forwarded-For ignored)', () => {
+      expect(validateEnv({ ...baseEnv }).TRUST_PROXY_HOPS).toBe(0);
+    });
+
+    it('accepts an explicit hop count', () => {
+      expect(validateEnv({ ...baseEnv, TRUST_PROXY_HOPS: '2' }).TRUST_PROXY_HOPS).toBe(2);
+    });
+
+    it('rejects a negative hop count', () => {
+      expect(() => validateEnv({ ...baseEnv, TRUST_PROXY_HOPS: '-1' })).toThrow(/TRUST_PROXY_HOPS/);
+    });
+
+    it('rejects an implausibly deep proxy chain', () => {
+      expect(() => validateEnv({ ...baseEnv, TRUST_PROXY_HOPS: '99' })).toThrow(/TRUST_PROXY_HOPS/);
+    });
+  });
 });

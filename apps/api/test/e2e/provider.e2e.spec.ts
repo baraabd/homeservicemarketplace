@@ -31,6 +31,7 @@ import request from 'supertest';
 import { AppConfigService } from '../../src/config/app-config.service';
 import { AllExceptionsFilter } from '../../src/infrastructure/http/all-exceptions.filter';
 import { ProviderController } from '../../src/modules/provider/provider.controller';
+import { ProviderOnboardingService } from '../../src/modules/provider/onboarding/provider-onboarding.service';
 import { ProviderService } from '../../src/modules/provider/provider.service';
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
@@ -51,6 +52,13 @@ const providerService = {
   get: jest.fn(),
   update: jest.fn(),
   updateAvailability: jest.fn(),
+};
+
+const onboardingService = {
+  getStatus: jest.fn(),
+  submitForReview: jest.fn(),
+  withdrawFromReview: jest.fn(),
+  assertEditable: jest.fn(),
 };
 
 let fakeAuthedUser: { id: string; sessionId: string; jti: string; roles: string[] } | null = null;
@@ -85,6 +93,12 @@ async function bootApp(): Promise<INestApplication> {
     providers: [
       Reflector,
       { provide: ProviderService, useValue: providerService },
+      // Phase 4: the controller also exposes the onboarding routes
+      // (GET /onboarding, POST /submit-for-review, POST /withdraw-review).
+      // Their behaviour is covered by
+      // src/modules/provider/onboarding/*.spec.ts; here the double just
+      // satisfies the constructor so the pre-existing route assertions run.
+      { provide: ProviderOnboardingService, useValue: onboardingService },
       { provide: AppConfigService, useValue: config },
       { provide: APP_FILTER, useFactory: () => new AllExceptionsFilter(config) },
     ],
