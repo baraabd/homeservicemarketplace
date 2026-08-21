@@ -232,6 +232,108 @@ describe('ResetPasswordPage', () => {
     await waitFor(() => expect(screen.getByText(/Password updated/i)).toBeInTheDocument());
   });
 
+  it('reads the exact ?token= query param and sends it unchanged', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/reset-password').reply(200, { success: true });
+
+    // A token with URL-safe base64 characters (-, _) must survive verbatim.
+    const rawToken = 'abc-DEF_123-xyz';
+    renderAt(`/reset-password?token=${rawToken}`);
+    await waitFor(() => expect(screen.getByText(/Choose a new password/i)).toBeInTheDocument());
+
+    const [pw, confirm] = Array.from(
+      document.querySelectorAll('input[type="password"]'),
+    ) as HTMLInputElement[];
+    await act(async () => {
+      fireEvent.change(pw!, { target: { value: 'a-reasonable-passphrase' } });
+      fireEvent.change(confirm!, { target: { value: 'a-reasonable-passphrase' } });
+    });
+    const submit = screen
+      .getAllByRole('button')
+      .find((b) => /update password|updating/i.test(b.textContent ?? ''));
+    await act(async () => {
+      submit!.click();
+    });
+
+    await waitFor(() => {
+      const post = mock.history.post.find((r) => r.url === '/v1/auth/reset-password');
+      expect(post).toBeDefined();
+      expect(JSON.parse(post!.data).token).toBe(rawToken);
+    });
+  });
+
+  it('shows the invalid/expired message on a backend 400 AUTH_INVALID_CREDENTIALS', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/reset-password').reply(400, {
+      error: { code: 'AUTH_INVALID_CREDENTIALS' },
+    });
+
+    renderAt('/reset-password?token=expired-or-consumed');
+    await waitFor(() => expect(screen.getByText(/Choose a new password/i)).toBeInTheDocument());
+
+    const [pw, confirm] = Array.from(
+      document.querySelectorAll('input[type="password"]'),
+    ) as HTMLInputElement[];
+    await act(async () => {
+      fireEvent.change(pw!, { target: { value: 'a-reasonable-passphrase' } });
+      fireEvent.change(confirm!, { target: { value: 'a-reasonable-passphrase' } });
+    });
+    const submit = screen
+      .getAllByRole('button')
+      .find((b) => /update password|updating/i.test(b.textContent ?? ''));
+    await act(async () => {
+      submit!.click();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText(/reset link is invalid or expired/i)).toBeInTheDocument(),
+    );
+    // Must NOT falsely show the success state on an error.
+    expect(screen.queryByText(/Password updated/i)).not.toBeInTheDocument();
+  });
+
+  it('does not issue a duplicate reset request while one is in flight', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    // Hold the response open so the button stays in its loading state.
+    let release: (v: unknown) => void = () => {};
+    const pending = new Promise((resolve) => {
+      release = resolve;
+    });
+    mock
+      .onPost('/v1/auth/reset-password')
+      .reply(() => pending.then(() => [200, { success: true }]));
+
+    renderAt('/reset-password?token=reset-once');
+    await waitFor(() => expect(screen.getByText(/Choose a new password/i)).toBeInTheDocument());
+
+    const [pw, confirm] = Array.from(
+      document.querySelectorAll('input[type="password"]'),
+    ) as HTMLInputElement[];
+    await act(async () => {
+      fireEvent.change(pw!, { target: { value: 'a-reasonable-passphrase' } });
+      fireEvent.change(confirm!, { target: { value: 'a-reasonable-passphrase' } });
+    });
+    const submit = screen
+      .getAllByRole('button')
+      .find((b) => /update password|updating/i.test(b.textContent ?? ''));
+
+    // Two rapid clicks while the first request is still pending.
+    await act(async () => {
+      submit!.click();
+      submit!.click();
+    });
+
+    // Only one request should have been dispatched.
+    expect(mock.history.post.filter((r) => r.url === '/v1/auth/reset-password')).toHaveLength(1);
+
+    // Release and let it settle.
+    await act(async () => {
+      release([200, { success: true }]);
+      await pending;
+    });
+    await waitFor(() => expect(screen.getByText(/Password updated/i)).toBeInTheDocument());
+  });
+
   it('rejects short passwords before hitting the backend', async () => {
     mock.onGet('/v1/auth/me').reply(401, {});
 
