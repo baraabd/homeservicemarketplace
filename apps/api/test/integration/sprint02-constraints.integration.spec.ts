@@ -254,6 +254,168 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
     });
   });
 
+  // ── the whole loop, against a real database ──────────────────────────────
+  describe('apply -> admin approves -> the skill is actually granted', () => {
+    let adminCategories: any;
+    let providerService: any;
+
+    beforeAll(() => {
+      const {
+        ProviderProfileRepository,
+      } = require('../../src/infrastructure/persistence/bids/provider-profile.repository');
+      const {
+        ProviderCategoryApplicationRepository,
+      } = require('../../src/infrastructure/persistence/services/provider-category-application.repository');
+      const {
+        ServiceCategoryRepository,
+      } = require('../../src/infrastructure/persistence/services/service-category.repository');
+      const {
+        AuditEventRepository,
+      } = require('../../src/infrastructure/persistence/iam/audit-event.repository');
+      const {
+        UserRepository,
+      } = require('../../src/infrastructure/persistence/iam/user.repository');
+      const {
+        RoleRepository,
+      } = require('../../src/infrastructure/persistence/iam/role.repository');
+      const { TransactionRunner } = require('../../src/infrastructure/prisma/transaction.runner');
+      const { AuditService } = require('../../src/modules/iam/audit/audit.service');
+      const { AdminAuditService } = require('../../src/modules/admin/admin-audit.service');
+      const {
+        AdminCategoryApplicationsService,
+      } = require('../../src/modules/admin/category-applications/admin-category-applications.service');
+      const { ProviderService } = require('../../src/modules/provider/provider.service');
+
+      const prismaSvc = { client: prisma, isReady: () => true, ping: async () => true };
+      const tx = new TransactionRunner(prismaSvc);
+      adminCategories = new AdminCategoryApplicationsService(
+        new ProviderCategoryApplicationRepository(prismaSvc),
+        tx,
+        new AdminAuditService(new AuditEventRepository(prismaSvc)),
+      );
+      providerService = new ProviderService(
+        new UserRepository(prismaSvc),
+        new RoleRepository(prismaSvc),
+        new ProviderProfileRepository(prismaSvc),
+        new ServiceCategoryRepository(prismaSvc),
+        tx,
+        new AuditService(new AuditEventRepository(prismaSvc)),
+      );
+    });
+
+    it('a provider cannot self-grant, but an approved application does grant', async () => {
+      const { user, profile } = await makeProvider('lifecycle');
+      const admin = await makeProvider('lifecycle-admin');
+
+      // 1. Self-granting through the profile PATCH is refused. This is the
+      //    defect Sprint 2 exists to close, asserted against a real database
+      //    rather than a mocked repository.
+      await expect(
+        providerService.update(user.id, { categoryIds: [categories.a.id] }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+
+      let links = await prisma.providerProfileServiceCategory.count({
+        where: { providerProfileId: profile.id },
+      });
+      expect(links).toBe(0);
+
+      // 2. Applying puts it in the queue and grants nothing.
+      const applied = await providerCategories.apply(user.id, { categoryId: categories.a.id });
+      links = await prisma.providerProfileServiceCategory.count({
+        where: { providerProfileId: profile.id },
+      });
+      expect(links).toBe(0);
+
+      // The profile advertises it as pending, and NOT as approved.
+      const pendingView = await providerService.get(user.id);
+      expect(pendingView.profile.pendingCategories.map((c: any) => c.id)).toEqual([
+        categories.a.id,
+      ]);
+      expect(pendingView.profile.serviceCategories).toEqual([]);
+
+      // 3. The admin approves. Now — and only now — the skill exists.
+      await adminCategories.review(admin.user.id, applied.application.id, { action: 'APPROVE' });
+
+      const granted = await providerService.get(user.id);
+      expect(granted.profile.serviceCategories.map((c: any) => c.id)).toEqual([categories.a.id]);
+      // And it leaves pendingCategories, so the Skills screen shows one chip.
+      expect(granted.profile.pendingCategories).toEqual([]);
+
+      // Exactly one join row — approval cannot double it.
+      links = await prisma.providerProfileServiceCategory.count({
+        where: { providerProfileId: profile.id },
+      });
+      expect(links).toBe(1);
+
+      // 4. The decision is on record, attributed to the admin who made it.
+      const decision = await prisma.auditEvent.findFirst({
+        where: { userId: admin.user.id, type: 'ADMIN_CATEGORY_APPLICATION_APPROVED' },
+      });
+      expect(decision).not.toBeNull();
+      expect(decision.metadata).toMatchObject({
+        applicationId: applied.application.id,
+        providerProfileId: profile.id,
+        serviceCategoryId: categories.a.id,
+      });
+    });
+
+    it('removal is self-service, audited, and requires a fresh approval to undo', async () => {
+      const { user, profile } = await makeProvider('removal');
+      const admin = await makeProvider('removal-admin');
+
+      const applied = await providerCategories.apply(user.id, { categoryId: categories.b.id });
+      await adminCategories.review(admin.user.id, applied.application.id, { action: 'APPROVE' });
+
+      // Remove it — allowed, no admin involved.
+      await providerService.update(user.id, { categoryIds: [] });
+      const after = await providerService.get(user.id);
+      expect(after.profile.serviceCategories).toEqual([]);
+
+      const removal = await prisma.auditEvent.findFirst({
+        where: { userId: user.id, type: 'PROVIDER_CATEGORY_REMOVED' },
+      });
+      expect(removal).not.toBeNull();
+
+      // Putting it back is NOT self-service: the old APPROVED row is history,
+      // not a credit the provider can spend.
+      await expect(
+        providerService.update(user.id, { categoryIds: [categories.b.id] }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+
+      // A fresh application IS permitted, because the previous one is APPROVED
+      // rather than live-pending — the partial index leaves the slot free.
+      const reapplied = await providerCategories.apply(user.id, { categoryId: categories.b.id });
+      expect(reapplied.application.status).toBe('PENDING');
+
+      const links = await prisma.providerProfileServiceCategory.count({
+        where: { providerProfileId: profile.id },
+      });
+      expect(links).toBe(0);
+    });
+
+    it('a rejected application grants nothing and leaves no join row', async () => {
+      const { user, profile } = await makeProvider('rejected');
+      const admin = await makeProvider('rejected-admin');
+
+      const applied = await providerCategories.apply(user.id, { categoryId: categories.a.id });
+      await adminCategories.review(admin.user.id, applied.application.id, { action: 'REJECT' });
+
+      const links = await prisma.providerProfileServiceCategory.count({
+        where: { providerProfileId: profile.id },
+      });
+      expect(links).toBe(0);
+
+      const view = await providerService.get(user.id);
+      expect(view.profile.serviceCategories).toEqual([]);
+      expect(view.profile.pendingCategories).toEqual([]);
+
+      const decision = await prisma.auditEvent.findFirst({
+        where: { userId: admin.user.id, type: 'ADMIN_CATEGORY_APPLICATION_REJECTED' },
+      });
+      expect(decision).not.toBeNull();
+    });
+  });
+
   // ── C2: case-insensitive unique email ────────────────────────────────────
   describe('case-insensitive unique email', () => {
     it('rejects an address that differs only in case', async () => {
