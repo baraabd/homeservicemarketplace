@@ -100,6 +100,28 @@ WORKDIR /app
 RUN apk add --no-cache tini openssl \
   && addgroup -S app \
   && adduser -S -G app app
+
+# Remove the npm / corepack toolchain the base image bundles.
+#
+# The container's only job is `node dist/main.js`; it never installs
+# anything. But the bundled npm ships its own vendored dependency tree
+# (node-tar, sigstore, glob, minimatch, cross-spawn, ip-address, ...) and an
+# image scanner reports every advisory in it — a long tail of CRITICAL/HIGH
+# findings for code that can never execute here. Deleting it removes those
+# findings honestly (the code is gone, not suppressed), takes a package
+# manager off the attack surface of a production container, and shrinks the
+# image. The final `command -v npm` check fails the build if a future base
+# image puts it back somewhere else.
+RUN rm -rf \
+      /usr/local/lib/node_modules/npm \
+      /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm \
+      /usr/local/bin/npx \
+      /usr/local/bin/corepack \
+      /opt/yarn-* \
+      /usr/local/bin/yarn \
+      /usr/local/bin/yarnpkg \
+  && ! command -v npm
 COPY --from=builder --chown=app:app /out ./
 USER app
 EXPOSE 4000
