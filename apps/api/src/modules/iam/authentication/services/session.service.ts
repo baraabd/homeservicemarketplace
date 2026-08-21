@@ -4,6 +4,7 @@ import type { ClientKind, Session } from '@homeservicemarketplace/database';
 
 import { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
 import { SessionRepository } from '../../../../infrastructure/persistence/iam/session.repository';
+import { SecurityEventsBus } from '../../../../shared/security-events/security-events.bus';
 import { AuditService } from '../../audit/audit.service';
 import { TokenService, type IssuedAccessToken, type IssuedRefreshToken } from './token.service';
 
@@ -12,6 +13,19 @@ export interface IssuedSession {
   access: IssuedAccessToken;
   refresh: IssuedRefreshToken;
 }
+
+// Verdict returned by the rotation transaction. Returning a value rather
+// than throwing is what lets that transaction COMMIT — see rotate().
+type RotateOutcome =
+  | { kind: 'ok'; issued: IssuedSession }
+  | { kind: 'invalid' }
+  | {
+      kind: 'replay';
+      familyId: string;
+      userId: string;
+      sessionId: string;
+      reason?: 'race';
+    };
 
 export interface DeviceMetadata {
   ipAddress: string;
@@ -26,6 +40,9 @@ export class SessionService {
     private readonly tokens: TokenService,
     private readonly tx: TransactionRunner,
     private readonly audit: AuditService,
+    // Post-commit socket teardown when a replayed refresh token forces a
+    // family revocation.
+    private readonly securityEvents: SecurityEventsBus,
   ) {}
 
   // Brand-new login = new family + first session row in the family.
@@ -40,8 +57,29 @@ export class SessionService {
   }
 
   // Refresh rotation: atomically revoke the presented refresh token's session
-  // row and issue a new row inside the same family. Replay (presenting a
-  // refresh token we already revoked) revokes the entire family and 401s.
+  // row and issue a new row inside the same family.
+  //
+  // ── Why this is split into two transactions ─────────────────────────────
+  // Replay detection used to do its work INSIDE the rotation transaction and
+  // then throw:
+  //
+  //     return this.tx.run(async (trx) => {
+  //       if (row.revokedAt !== null) {
+  //         await this.sessions.revokeFamily(row.familyId, trx);   // written…
+  //         await this.audit.record({ type: 'REFRESH_REPLAY' }, trx);
+  //         throw new UnauthorizedException(...);                  // …and rolled back
+  //       }
+  //
+  // Throwing out of a Prisma interactive transaction rolls it back, so the
+  // family revocation and the REFRESH_REPLAY audit row were both discarded the
+  // instant they were written. Replay detection returned a 401 and otherwise
+  // did NOTHING: the compromised family stayed live and no forensic record of
+  // the theft survived. Refresh-token rotation exists precisely to contain a
+  // stolen token, so this made the whole mechanism decorative.
+  //
+  // The transaction below now RETURNS a verdict instead of throwing, so it
+  // commits normally. The punitive write then happens in its own transaction,
+  // which commits, and only then does the caller get their 401.
   async rotate(params: {
     presentedRefreshRaw: string;
     roles: string[];
@@ -50,52 +88,30 @@ export class SessionService {
   }): Promise<IssuedSession> {
     const presentedHash = this.tokens.hashRefreshToken(params.presentedRefreshRaw);
 
-    return this.tx.run(async (trx) => {
+    const outcome = await this.tx.run<RotateOutcome>(async (trx) => {
       const row = await this.sessions.findByTokenHash(presentedHash, trx);
-      if (!row) {
-        throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
-      }
+      if (!row) return { kind: 'invalid' };
 
-      // Replay: the row exists but is already revoked. Kill the entire family
-      // — any live sibling is compromised — and audit.
+      // Replay: the row exists but is already revoked. Any live sibling in the
+      // family is compromised.
       if (row.revokedAt !== null) {
-        await this.sessions.revokeFamily(row.familyId, trx);
-        await this.audit.record(
-          {
-            type: 'REFRESH_REPLAY',
-            userId: row.userId,
-            ipAddress: params.device.ipAddress,
-            userAgent: params.device.userAgent,
-            requestId: params.requestId,
-            metadata: { familyId: row.familyId, sessionId: row.id },
-          },
-          trx,
-        );
-        throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
+        return { kind: 'replay', familyId: row.familyId, userId: row.userId, sessionId: row.id };
       }
 
-      if (row.expiresAt.getTime() <= Date.now()) {
-        throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
-      }
+      if (row.expiresAt.getTime() <= Date.now()) return { kind: 'invalid' };
 
       // Atomic revoke-if-active closes the concurrent-refresh race: two
       // parallel callers with the same refresh token will have exactly one
       // winner; the loser sees count=0 and is treated as replay.
       const revoked = await this.sessions.markRevokedIfActive(row.id, trx);
       if (revoked === 0) {
-        await this.sessions.revokeFamily(row.familyId, trx);
-        await this.audit.record(
-          {
-            type: 'REFRESH_REPLAY',
-            userId: row.userId,
-            ipAddress: params.device.ipAddress,
-            userAgent: params.device.userAgent,
-            requestId: params.requestId,
-            metadata: { familyId: row.familyId, sessionId: row.id, reason: 'race' },
-          },
-          trx,
-        );
-        throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
+        return {
+          kind: 'replay',
+          familyId: row.familyId,
+          userId: row.userId,
+          sessionId: row.id,
+          reason: 'race',
+        };
       }
 
       const issued = await this.mintAndStoreWithinTx({
@@ -119,8 +135,44 @@ export class SessionService {
         trx,
       );
 
-      return issued;
+      return { kind: 'ok', issued };
     });
+
+    if (outcome.kind === 'ok') return outcome.issued;
+
+    if (outcome.kind === 'replay') {
+      // Second, INDEPENDENT transaction. The one above returned normally, so
+      // nothing it wrote is at risk, and this one commits before we throw.
+      await this.tx.run(async (trx) => {
+        await this.sessions.revokeFamily(outcome.familyId, trx);
+        await this.audit.record(
+          {
+            type: 'REFRESH_REPLAY',
+            userId: outcome.userId,
+            ipAddress: params.device.ipAddress,
+            userAgent: params.device.userAgent,
+            requestId: params.requestId,
+            metadata: {
+              familyId: outcome.familyId,
+              sessionId: outcome.sessionId,
+              ...(outcome.reason ? { reason: outcome.reason } : {}),
+            },
+          },
+          trx,
+        );
+      });
+
+      // Post-commit: a detected token theft must also tear down any socket
+      // still riding one of those sessions — they have no per-message re-auth.
+      this.securityEvents.emitAllSessionsRevoked({
+        userId: outcome.userId,
+        reason: 'roles-changed',
+      });
+
+      throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
+    }
+
+    throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
   }
 
   // Read-only lookup used by AuthenticationService.refresh to resolve
