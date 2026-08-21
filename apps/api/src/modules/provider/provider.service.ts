@@ -19,6 +19,7 @@ import { UserRepository } from '../../infrastructure/persistence/iam/user.reposi
 import { ProviderProfileRepository } from '../../infrastructure/persistence/bids/provider-profile.repository';
 import { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
+import { AuditService } from '../iam/audit/audit.service';
 import { toProviderProfileSummary as toSummary } from './provider-profile.mapper';
 
 const PROVIDER_ROLE_NAME = 'provider';
@@ -94,6 +95,9 @@ export class ProviderService {
     private readonly providers: ProviderProfileRepository,
     private readonly categories: ServiceCategoryRepository,
     private readonly tx: TransactionRunner,
+    // Sprint 2 — a skill leaving a profile is a change to what the provider is
+    // matched for, so it is recorded like every other change to standing.
+    private readonly audit: AuditService,
   ) {}
 
   // ─── upgrade ───────────────────────────────────────────────────────────────
@@ -198,8 +202,15 @@ export class ProviderService {
         );
       }
 
+      // Validate AND authorize the requested skill change before anything is
+      // written. The transaction would roll a refused write back anyway, but
+      // "check first, then mutate" is the shape that makes the guarantee
+      // testable without leaning on rollback — and it keeps a 403 from ever
+      // having touched a row.
+      let categoryRemovals: string[] = [];
       if (input.categoryIds !== undefined) {
         await this.assertCategoryIdsValid(input.categoryIds, tx);
+        categoryRemovals = this.authorizeCategoryDiff(profile, input.categoryIds);
       }
 
       const profileFieldsTouched =
@@ -254,8 +265,16 @@ export class ProviderService {
         );
       }
 
-      if (input.categoryIds !== undefined) {
-        await this.providers.replaceServiceCategories(profile.id, input.categoryIds, tx);
+      if (categoryRemovals.length > 0) {
+        await this.providers.removeServiceCategories(profile.id, categoryRemovals, tx);
+        await this.audit.record(
+          {
+            type: 'PROVIDER_CATEGORY_REMOVED',
+            userId,
+            metadata: { providerProfileId: profile.id, removedCategoryIds: categoryRemovals },
+          },
+          tx,
+        );
       }
 
       const fresh = await this.providers.findByIdWithCategories(profile.id, tx);
@@ -286,6 +305,64 @@ export class ProviderService {
       return fresh;
     });
     return { profile: toSummary(result) };
+  }
+
+  // ─── skill changes ─────────────────────────────────────────────────────────
+  //
+  // `categoryIds` is the provider's desired FINAL skill set, and this method
+  // decides which parts of that wish are theirs to grant.
+  //
+  // Before Sprint 2 the whole array went straight to the join table, so a
+  // provider could add any active category to themselves and be matched for
+  // jobs in it on the next request — no application, no admin, no audit. The
+  // moderation queue existed the entire time; nothing routed through it.
+  //
+  // ADDING a skill is an admin decision. Attempting one here is a 403 naming
+  // the endpoint that does the right thing, rather than a silent no-op: a
+  // provider who ticks a box and sees it quietly revert learns nothing, and a
+  // client that cannot tell "refused" from "saved" will happily display a
+  // skill the provider does not have.
+  //
+  // ── REMOVAL POLICY ────────────────────────────────────────────────────────
+  // Removal is self-service and immediate. The asymmetry is the point:
+  // approval exists to stop a provider CLAIMING competence they have not
+  // demonstrated, and giving a skill up claims nothing. Requiring an admin to
+  // un-list someone would mean a provider who no longer does a job keeps
+  // being sent it until a human gets round to them.
+  //
+  // Its consequences, all deliberate:
+  //   - It is recorded (PROVIDER_CATEGORY_REMOVED), so a skill set that
+  //     changed is answerable after the fact.
+  //   - It is NOT retroactive. Existing bids and bookings in that category
+  //     stand. The provider took those jobs while listed, and a seeker who
+  //     accepted a bid should not have it evaporate because the provider
+  //     edited their profile afterwards. Removal governs future matching only.
+  //   - Getting the skill back means applying again and being approved again.
+  //     A previous APPROVED application is history, not a credit — otherwise
+  //     remove-then-restore becomes a way to shed an admin's later decision.
+  //   - It is blocked while the profile sits in PENDING_REVIEW, by the same
+  //     edit lock that blocks every other profile change (see `update`), so a
+  //     reviewer is never looking at a moving target.
+  // Pure: throws on an attempted grant, otherwise returns the ids to detach.
+  // No writes and no `tx`, so it can be reasoned about — and tested — without
+  // a database in the picture at all.
+  private authorizeCategoryDiff(
+    profile: { serviceCategories: { serviceCategoryId: string }[] },
+    desiredIds: string[],
+  ): string[] {
+    const current = new Set(profile.serviceCategories.map((link) => link.serviceCategoryId));
+    const desired = new Set(desiredIds);
+
+    const additions = [...desired].filter((id) => !current.has(id));
+    if (additions.length > 0) {
+      throw new AppError(
+        'FORBIDDEN',
+        'Service categories cannot be added from your profile. Apply for the category and an admin will review it.',
+        403,
+      );
+    }
+
+    return [...current].filter((id) => !desired.has(id));
   }
 
   // ─── helpers ───────────────────────────────────────────────────────────────

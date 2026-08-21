@@ -466,15 +466,44 @@ model ProviderProfileServiceCategory {
 // `pendingCategories` surface reads. APPROVED rows mirror into
 // ProviderProfileServiceCategory and serve as the audit trail; REJECTED
 // rows stay so the same admin can see prior decisions on the same
-// category. Uniqueness is enforced in the service layer (one PENDING per
-// provider+category at a time) — Prisma doesn't support partial unique
-// indexes natively, and a strict (providerProfileId, serviceCategoryId)
-// unique would block legitimate retry-after-rejection flows.
+// category.
+//
+// Sprint 2 — the "one PENDING per (provider, category)" rule is now a REAL
+// database constraint, not a service-layer convention:
+//
+//   provider_category_application_one_pending_uniq
+//     UNIQUE (providerProfileId, serviceCategoryId)
+//     WHERE status = 'PENDING' AND supersededAt IS NULL
+//
+// It is a partial unique index, so it cannot be expressed in this schema and
+// lives in a raw forward-only migration. Prisma's diff engine ignores partial
+// indexes entirely, which is what lets the CI drift gate stay green — but it
+// also means Prisma will never recreate this index for you. It is created
+// once, forward-only, and must never be dropped by a schema edit.
+//
+// A plain (providerProfileId, serviceCategoryId) unique would have been
+// expressible here but is wrong: it would block the legitimate
+// apply → rejected → re-apply flow.
 model ProviderCategoryApplication {
   id                String                            @id @default(cuid())
   providerProfileId String
   serviceCategoryId String
   status            ProviderCategoryApplicationStatus @default(PENDING)
+  // Set when this PENDING row was displaced by an identical earlier
+  // application rather than decided by an admin.
+  //
+  // The distinction matters. Collapsing duplicates by flipping them to
+  // REJECTED would fabricate an admin decision that nobody made and would
+  // poison the audit trail the REJECTED state exists to carry. A superseded
+  // row keeps status=PENDING — which is what it honestly was — and drops out
+  // of the partial unique index and out of `pendingCategories` because of
+  // this column. Nothing is deleted; the row stays queryable forever.
+  supersededAt      DateTime?
+  // Which application displaced it, so the chain is walkable in both
+  // directions. Deliberately a bare id, not a relation: a self-relation here
+  // would add a foreign key whose only purpose is provenance, and the target
+  // row must survive independently of it.
+  supersededById    String?
   createdAt         DateTime                          @default(now())
   updatedAt         DateTime                          @updatedAt
 
@@ -484,6 +513,7 @@ model ProviderCategoryApplication {
   @@index([providerProfileId, status])
   @@index([serviceCategoryId, status])
   @@index([status, createdAt])
+  @@index([supersededAt])
 }
 
 model ServiceCategory {
@@ -589,6 +619,46 @@ model Dispute {
 // Sprint 6.3 — verification timeline for a single dispute. Mirrors
 // the AuditEvent shape but is dispute-scoped + carries before/after
 // JSON snapshots so the operator can reconstruct each transition.
+// Sprint 2 — the receipt a constraint migration leaves behind.
+//
+// Adding a uniqueness constraint to a table that already has duplicates has
+// exactly three possible outcomes: refuse to migrate, mutate rows, or delete
+// rows. The third is never acceptable here, and the second is only acceptable
+// if it is reversible and visible — which requires writing down what was
+// touched BEFORE touching it.
+//
+// Every automatic remediation performed by a Sprint 2 constraint migration
+// writes one row here first, capturing the pre-change values in `before`.
+// That makes each remediation individually reversible from data that lives in
+// the same database, with no dependency on a backup, and it means "what did
+// that migration do to my rows?" is a query rather than an excavation.
+//
+// Constraints whose conflicts CANNOT be resolved without judgement — merging
+// two real user accounts, retracting a live commercial bid — do not write here
+// at all. They refuse to migrate and hand the decision to an operator.
+model DataRemediationLog {
+  id         String   @id @default(cuid())
+  // The migration directory name, so a row is traceable to the exact
+  // forward-only step that wrote it.
+  migration  String
+  // The invariant being established, e.g. "one_default_address_per_user".
+  constraintName String
+  entity     String
+  entityId   String
+  // What was done: SUPERSEDED, DEMOTED, ... Free-text by design; these rows
+  // are read by operators and tests, never branched on by application code.
+  action     String
+  // The pre-change column values for the affected row. This is the part that
+  // makes the change reversible.
+  before     Json?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([migration])
+  @@index([constraintName])
+  @@index([entity, entityId])
+}
+
 model DisputeEvent {
   id          String           @id @default(cuid())
   disputeId   String
@@ -689,6 +759,14 @@ enum AuditEventType {
   // from the ADMIN_PROVIDER_* decisions an admin makes).
   PROVIDER_UPGRADE_REQUESTED
   PROVIDER_ONBOARDING_SUBMITTED
+  // Sprint 2 — provider skill (service-category) moderation. Acquiring a
+  // skill is an admin decision, so every step of it is auditable: who asked,
+  // who decided, and who gave one up.
+  PROVIDER_CATEGORY_APPLIED
+  PROVIDER_CATEGORY_WITHDRAWN
+  PROVIDER_CATEGORY_REMOVED
+  ADMIN_CATEGORY_APPLICATION_APPROVED
+  ADMIN_CATEGORY_APPLICATION_REJECTED
 }
 
 enum AddressType {

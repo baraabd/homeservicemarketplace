@@ -63,10 +63,29 @@ export type ProviderProfileWithCategories = ProviderProfile & {
   serviceCategories: (ProviderProfileServiceCategory & {
     serviceCategory: ServiceCategory;
   })[];
+  // Live PENDING category applications, eager-loaded so every provider-profile
+  // response can carry `pendingCategories`.
+  //
+  // It hangs off the shared include rather than being fetched separately by
+  // whichever endpoint remembers to, because "the profile shows what's pending"
+  // is a property of the profile read-model, not of one route. Attaching it
+  // here means GET, PATCH, availability, and the onboarding responses all
+  // report the same thing without four chances to diverge.
+  categoryApplications: { serviceCategory: ServiceCategory }[];
 };
 
 const PROFILE_INCLUDE = {
   serviceCategories: { include: { serviceCategory: true } },
+  // "Live pending" is narrower than status=PENDING: a superseded row is still
+  // PENDING (no admin ever decided it) but it lost its slot to an identical
+  // earlier application, so showing it would put two identical chips on the
+  // provider's Skills screen. Same predicate as the partial unique index in
+  // 20260822091000_sprint02_one_pending_category_application.
+  categoryApplications: {
+    where: { status: 'PENDING', supersededAt: null },
+    include: { serviceCategory: true },
+    orderBy: { createdAt: 'asc' },
+  },
 } as const;
 
 @Injectable()
@@ -302,20 +321,34 @@ export class ProviderProfileRepository {
   // semantics — sending an empty array clears all categories. Done as
   // delete-all-then-create-many inside the caller's transaction so the
   // join table is never partially updated.
-  async replaceServiceCategories(
+  // Sprint 2 — detach approved skills. REMOVAL ONLY, by design.
+  //
+  // This replaces `replaceServiceCategories`, which took the desired final set
+  // and made it so. That primitive was the whole of the self-grant defect: the
+  // profile PATCH handed it a client-supplied `categoryIds` array, so any
+  // provider could award themselves any active category and appear in that
+  // category's match results immediately, with no application and no admin
+  // ever involved. The moderation queue sat beside it, unused and unenforced.
+  //
+  // Deleting the primitive rather than adding a check above it is deliberate.
+  // A guarded write is only as good as every future caller remembering the
+  // guard; a repository that has no method capable of granting a skill cannot
+  // be talked into granting one. The only path that inserts into this join
+  // table is now the admin approval in
+  // AdminCategoryApplicationsService.review.
+  //
+  // No-ops on an empty list, and on ids the provider does not hold — removal is
+  // idempotent so a double-submit from a flaky connection is not an error.
+  async removeServiceCategories(
     providerProfileId: string,
     categoryIds: string[],
     tx?: PrismaTx,
-  ): Promise<void> {
-    const db = this.db(tx);
-    await db.providerProfileServiceCategory.deleteMany({ where: { providerProfileId } });
-    if (categoryIds.length === 0) return;
-    await db.providerProfileServiceCategory.createMany({
-      data: categoryIds.map((serviceCategoryId) => ({
-        providerProfileId,
-        serviceCategoryId,
-      })),
+  ): Promise<number> {
+    if (categoryIds.length === 0) return 0;
+    const { count } = await this.db(tx).providerProfileServiceCategory.deleteMany({
+      where: { providerProfileId, serviceCategoryId: { in: categoryIds } },
     });
+    return count;
   }
 
   // Sprint 6.2: cursor-paginated list for admin verification queue.

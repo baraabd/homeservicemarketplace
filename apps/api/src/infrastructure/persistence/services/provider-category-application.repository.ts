@@ -3,6 +3,7 @@ import type {
   PrismaTx,
   ProviderCategoryApplication,
   ProviderCategoryApplicationStatus,
+  ServiceCategory,
 } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../prisma/prisma.service';
@@ -31,6 +32,13 @@ export type ProviderCategoryApplicationWithJoins = ProviderCategoryApplication &
     labelEn: string;
     labelAr: string;
   };
+};
+
+// The provider's own view. Carries the category (for the chip) and nothing
+// about the provider — a provider reading their own applications already knows
+// who they are.
+export type ProviderCategoryApplicationWithCategory = ProviderCategoryApplication & {
+  serviceCategory: ServiceCategory;
 };
 
 const ADMIN_INCLUDE = {
@@ -87,6 +95,65 @@ export class ProviderCategoryApplicationRepository {
       data: { status },
       include: ADMIN_INCLUDE,
     }) as Promise<ProviderCategoryApplicationWithJoins>;
+  }
+
+  // ── provider-scoped reads and writes (Sprint 2) ────────────────────────
+  //
+  // Every method below takes providerProfileId as its FIRST argument and
+  // filters on it, rather than accepting an application id and checking
+  // ownership afterwards. Ownership is therefore part of the query, not a
+  // separate step a caller can forget: a provider asking for someone else's
+  // application gets an empty result from the database, not a row plus a
+  // reminder to check who it belongs to.
+
+  // The provider's whole application history, newest first. Superseded rows
+  // are included — the provider should be able to see why a duplicate
+  // application of theirs is not holding a queue slot.
+  listForProvider(
+    providerProfileId: string,
+    args: { status?: ProviderCategoryApplicationStatus } = {},
+    tx?: PrismaTx,
+  ): Promise<ProviderCategoryApplicationWithCategory[]> {
+    return this.db(tx).providerCategoryApplication.findMany({
+      where: {
+        providerProfileId,
+        ...(args.status ? { status: args.status } : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: { serviceCategory: true },
+    }) as Promise<ProviderCategoryApplicationWithCategory[]>;
+  }
+
+  // The one application currently occupying this provider's pending slot for
+  // this category, if any.
+  //
+  // The predicate matches the partial unique index
+  // `provider_category_application_one_pending_uniq` exactly. That is not a
+  // coincidence to preserve casually: this read exists to turn what would
+  // otherwise be a raw unique-violation into a friendly 409, so if the two
+  // predicates drift, the friendly path stops covering the constraint and
+  // providers start seeing 500s instead.
+  findLivePending(
+    providerProfileId: string,
+    serviceCategoryId: string,
+    tx?: PrismaTx,
+  ): Promise<ProviderCategoryApplication | null> {
+    return this.db(tx).providerCategoryApplication.findFirst({
+      where: { providerProfileId, serviceCategoryId, status: 'PENDING', supersededAt: null },
+    });
+  }
+
+  createPending(
+    providerProfileId: string,
+    serviceCategoryId: string,
+    tx?: PrismaTx,
+  ): Promise<ProviderCategoryApplicationWithCategory> {
+    return this.db(tx).providerCategoryApplication.create({
+      // `status` is not accepted from anywhere — a new application is PENDING
+      // by definition, and the column default is the only thing that sets it.
+      data: { providerProfileId, serviceCategoryId },
+      include: { serviceCategory: true },
+    }) as Promise<ProviderCategoryApplicationWithCategory>;
   }
 
   // Idempotent join-row insert. Used when an application is APPROVED to

@@ -43,15 +43,21 @@ export interface ProviderProfileSummary {
   serviceAreaLat: number | null;
   serviceAreaLng: number | null;
   serviceAreaRadiusKm: number | null;
+  // The provider's APPROVED skills — what they may actually be matched
+  // and bid on. Sprint 2 made this admin-granted only: it changes in
+  // response to an approval or an explicit removal, never as a side
+  // effect of a profile PATCH.
   serviceCategories: ProviderServiceCategoryRef[];
-  // Categories the provider has applied for that are still awaiting
-  // admin approval. The Provider app renders these in the Skills
-  // section with a distinct "pending review" affordance so the
-  // operator can see what's in flight without polling the admin queue.
-  // Optional on the wire — backend slices that pre-date the approval
-  // queue may omit the field; consumers must treat `undefined` and
-  // `[]` identically.
-  pendingCategories?: ProviderServiceCategoryRef[];
+  // Categories the provider has applied for that are still awaiting admin
+  // approval, so the Skills UI can show what is in flight without polling the
+  // admin queue.
+  //
+  // Sprint 2 made this REQUIRED. It was optional while no endpoint populated
+  // it, and an optional field that is always absent is indistinguishable from
+  // one that is absent because the provider has nothing pending — which is
+  // exactly the distinction the Skills screen needs to make. Every provider
+  // profile response now carries it, empty array included.
+  pendingCategories: ProviderServiceCategoryRef[];
   // Phase 4 — onboarding lifecycle stamps. `submittedForReviewAt` is what
   // distinguishes "a complete application was submitted and is queued" from
   // "someone pressed Upgrade": an upgrade creates a DRAFT with no stamp.

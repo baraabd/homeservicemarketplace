@@ -16,6 +16,14 @@ const ALLOWED_METADATA_KEYS = new Set<string>([
   'previousStatus',
   'newStatus',
   'roleName',
+  // Sprint 2 — provider skill moderation. Ids and a slug only: enough to
+  // answer "which provider, which category, which application" from the
+  // timeline, with nothing free-text that could carry a payload in.
+  'applicationId',
+  'providerProfileId',
+  'serviceCategoryId',
+  'categorySlug',
+  'removedCategoryIds',
 ]);
 
 export interface AuditInput {
