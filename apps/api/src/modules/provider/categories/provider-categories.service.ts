@@ -178,21 +178,30 @@ export function toApplicationSummary(
 }
 
 // True when the error is `provider_category_application_one_pending_uniq`
-// firing. Matched on Prisma's stable P2002 code plus the index name from
-// 20260822091000, so an unrelated unique violation elsewhere in the
-// transaction is never misreported as "you already applied".
+// firing (see migration 20260822091000).
+//
+// `meta.target` comes in two shapes and BOTH have to be handled. Against a
+// real Postgres, Prisma reports the COLUMN LIST — `["providerProfileId",
+// "serviceCategoryId"]` — not the index name; some engine versions and some
+// error paths report the constraint name as a string instead. An earlier
+// version of this function only understood the name form, so the mapping
+// silently never fired: the unit test fabricated a `meta` shape the database
+// does not actually produce, passed, and the integration suite caught the real
+// behaviour. The array branch is the one that runs in production.
 function isDuplicatePendingApplication(err: unknown): boolean {
   if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
   if (err.code !== 'P2002') return false;
   const target = (err.meta as { target?: string | string[] } | undefined)?.target;
+
   if (typeof target === 'string') {
     return target.includes('provider_category_application_one_pending');
   }
   if (Array.isArray(target)) {
-    return target.some((t) => t.includes('provider_category_application_one_pending'));
+    // Both columns, so this cannot be confused with any other unique on the
+    // table that a future migration might add.
+    return target.includes('providerProfileId') && target.includes('serviceCategoryId');
   }
-  // Some engine versions omit the constraint name for partial indexes. This
-  // service's only unique-constrained insert is the application row, so a
-  // P2002 reaching here with no target can only be that index.
+  // No metadata at all. The only unique-constrained insert this service makes
+  // is the application row, so a P2002 arriving here can only be that index.
   return true;
 }
