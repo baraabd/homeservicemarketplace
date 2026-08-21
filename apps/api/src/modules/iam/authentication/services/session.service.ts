@@ -130,8 +130,14 @@ export class SessionService {
     return this.sessions.findByTokenHash(this.tokens.hashRefreshToken(raw));
   }
 
-  async revokeById(sessionId: string): Promise<void> {
-    await this.sessions.revokeById(sessionId);
+  // `tx` lets logout revoke the session in the SAME transaction that writes
+  // the LOGOUT audit row, so an operator never sees one without the other
+  // (D-2).
+  async revokeById(
+    sessionId: string,
+    tx?: Parameters<SessionRepository['revokeById']>[1],
+  ): Promise<void> {
+    await this.sessions.revokeById(sessionId, tx);
   }
 
   // `tx` lets a caller revoke every session as part of a larger atomic unit

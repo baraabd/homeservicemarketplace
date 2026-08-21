@@ -32,6 +32,10 @@ import { AllExceptionsFilter } from '../../src/infrastructure/http/all-exception
 import { UserRepository } from '../../src/infrastructure/persistence/iam/user.repository';
 import { AuthenticationController } from '../../src/modules/iam/authentication/controllers/authentication.controller';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
+import {
+  RegistrationThrottleService,
+  RegistrationThrottledError,
+} from '../../src/infrastructure/throttle/registration-throttle.service';
 import { AuthenticationService } from '../../src/modules/iam/authentication/services/authentication.service';
 import { TokenService } from '../../src/modules/iam/authentication/services/token.service';
 
@@ -73,6 +77,12 @@ const authService = {
 
 const userRepo = { findById: jest.fn(), listRoles: jest.fn() };
 
+// D-1 registration limiter double. Default behaviour is "within budget" so the
+// pre-existing register assertions are unchanged; the dedicated D-1 suite
+// (registration-throttle.*.spec.ts) exercises the real limiter, and the
+// throttled-response test below makes this double reject.
+const registrationThrottle = { assertWithinBudget: jest.fn() };
+
 // Minimal JwtAuthGuard double: honors a test-controlled toggle.
 let fakeAuthedUser: { id: string; sessionId: string; jti: string; roles: string[] } | null = null;
 class FakeJwtAuthGuard {
@@ -96,6 +106,7 @@ async function bootApp(configOverrides: Record<string, unknown> = {}): Promise<I
       { provide: AuthenticationService, useValue: authService },
       { provide: TokenService, useValue: {} },
       { provide: UserRepository, useValue: userRepo },
+      { provide: RegistrationThrottleService, useValue: registrationThrottle },
       { provide: AppConfigService, useValue: config },
       { provide: JwtAuthGuard, useClass: FakeJwtAuthGuard },
       { provide: APP_FILTER, useFactory: () => new AllExceptionsFilter(config) },
@@ -267,6 +278,58 @@ describe('Authentication controller (e2e)', () => {
       expect(res.body.success).toBe(false);
       expect(JSON.stringify(res.body)).not.toMatch(/at JSON\.parse|node_modules|body-parser/);
       expect(authService.register).not.toHaveBeenCalled();
+    });
+
+    // D-1 — over-budget submissions must be rejected at the wire with a
+    // stable envelope and an actionable Retry-After, and must never reach the
+    // service (so they cost nothing and cannot be used to probe for accounts).
+    it('returns a stable 429 + Retry-After when the registration budget is exhausted', async () => {
+      app = await bootApp();
+      registrationThrottle.assertWithinBudget.mockRejectedValueOnce(
+        new RegistrationThrottledError(1800),
+      );
+
+      const res = await request(app.getHttpServer()).post('/v1/auth/register').send({
+        email: 'ada@example.com',
+        password: 'Str0ng!Passw0rd',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+      });
+
+      expect(res.status).toBe(429);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('RATE_LIMITED');
+      // Retry-After must be a positive integer number of seconds — a client
+      // that reads 0 retries immediately and hammers the endpoint.
+      expect(res.headers['retry-after']).toBe('1800');
+      expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+      // No framework artefact ("ThrottlerException") on the wire.
+      expect(JSON.stringify(res.body)).not.toMatch(/ThrottlerException|node_modules/);
+      expect(authService.register).not.toHaveBeenCalled();
+    });
+
+    // Anti-enumeration: the limiter charges its buckets before the service
+    // knows whether the address exists, so a known and an unknown address are
+    // rejected identically once the budget is gone.
+    it('throttles a known and an unknown email indistinguishably', async () => {
+      app = await bootApp();
+      const send = (email: string) =>
+        request(app.getHttpServer()).post('/v1/auth/register').send({
+          email,
+          password: 'Str0ng!Passw0rd',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+        });
+
+      registrationThrottle.assertWithinBudget.mockRejectedValue(
+        new RegistrationThrottledError(1800),
+      );
+      const known = await send('existing@example.com');
+      const unknown = await send('nobody@example.com');
+
+      expect(known.status).toBe(unknown.status);
+      expect(known.body.error.code).toBe(unknown.body.error.code);
+      expect(known.headers['retry-after']).toBe(unknown.headers['retry-after']);
     });
   });
 

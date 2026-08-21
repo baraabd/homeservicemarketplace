@@ -1,158 +1,199 @@
-import type { User } from '@homeservicemarketplace/database';
+import type { AccountStatus } from '@homeservicemarketplace/database';
 
-import type { AppConfigService } from '../../../../config/app-config.service';
-import type { RedisService } from '../../../../infrastructure/redis/redis.service';
-import type { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
+import type {
+  SessionRepository,
+  SessionWithUserStanding,
+} from '../../../../infrastructure/persistence/iam/session.repository';
 import { SessionValidationService } from './session-validation.service';
 
-function makeUser(over: Partial<User> = {}): User {
+// D-2 — the authoritative per-request session check.
+//
+// This suite replaces the previous account-only "in good standing" cache
+// tests. That design could not see logout, logout-all, password reset, or
+// refresh rotation at all — it only asked whether the USER was allowed to hold
+// a session — so those revocations left an already-issued access token working
+// until it expired. Every account-standing case the old suite covered is still
+// covered here (suspended / locked / deleted-status / soft-deleted / inactive /
+// missing user), plus the session-level cases that were previously untestable
+// because they were not checked.
+
+const NOW = Date.UTC(2026, 7, 21, 12, 0, 0);
+const HOUR = 60 * 60 * 1000;
+
+const USER_ID = 'u-1';
+const SESSION_ID = 'sess-1';
+const JTI = 'jti-1';
+
+function makeSession(over: Partial<SessionWithUserStanding> = {}): SessionWithUserStanding {
   return {
-    id: 'u-1',
-    email: 'ada@example.com',
-    passwordHash: null,
-    firstName: 'Ada',
-    lastName: 'Lovelace',
-    isActive: true,
-    status: 'ACTIVE',
-    emailVerifiedAt: new Date('2026-01-02T00:00:00Z'),
-    passwordUpdatedAt: null,
-    failedLoginCount: 0,
-    lockedUntil: null,
-    mfaEnabled: false,
-    mfaEnrolledAt: null,
-    mfaSecret: null,
-    createdAt: new Date('2026-01-01T00:00:00Z'),
-    updatedAt: new Date('2026-01-01T00:00:00Z'),
-    deletedAt: null,
+    id: SESSION_ID,
+    userId: USER_ID,
+    currentJti: JTI,
+    revokedAt: null,
+    expiresAt: new Date(NOW + 30 * 24 * HOUR),
+    user: {
+      id: USER_ID,
+      status: 'ACTIVE' as AccountStatus,
+      isActive: true,
+      deletedAt: null,
+    },
     ...over,
-  } as User;
-}
-
-function mkRedis(state: { store: Map<string, string>; fail?: boolean }) {
-  const client = {
-    get: jest.fn(async (k: string) => {
-      if (state.fail) throw new Error('down');
-      return state.store.get(k) ?? null;
-    }),
-    setex: jest.fn(async (k: string, _ttl: number, v: string) => {
-      if (state.fail) throw new Error('down');
-      state.store.set(k, v);
-      return 'OK';
-    }),
-    del: jest.fn(async (k: string) => {
-      if (state.fail) throw new Error('down');
-      state.store.delete(k);
-      return 1;
-    }),
-  };
-  return {
-    redis: { getClient: () => client } as unknown as RedisService,
-    client,
   };
 }
 
-function mkUsers(user: User | null) {
-  return {
-    findById: jest.fn().mockResolvedValue(user),
-  } as unknown as UserRepository & { findById: jest.Mock };
+function build(result: SessionWithUserStanding | null | Error) {
+  const findByIdWithUserStanding = jest.fn(async () => {
+    if (result instanceof Error) throw result;
+    return result;
+  });
+  const sessions = { findByIdWithUserStanding } as unknown as SessionRepository;
+  return { sessions, findByIdWithUserStanding, service: new SessionValidationService(sessions) };
 }
 
-const config: AppConfigService = {
-  get: (k: string) => (k === 'AUTH_SESSION_CACHE_TTL_SECONDS' ? 30 : undefined),
-} as unknown as AppConfigService;
+const claims = { userId: USER_ID, sessionId: SESSION_ID, jti: JTI };
 
-const KEY = 'iam:session:standing:u-1';
+// Every rejection must present the SAME opaque code — being able to tell
+// "revoked" from "never existed" from "suspended" is an oracle.
+const OPAQUE_401 = {
+  response: expect.objectContaining({ code: 'AUTH_INVALID_CREDENTIALS' }),
+};
 
-describe('SessionValidationService', () => {
-  it('caches a positive flag on the first DB check and does not hit the DB again', async () => {
-    const state = { store: new Map<string, string>() };
-    const { redis, client } = mkRedis(state);
-    const users = mkUsers(makeUser({ status: 'ACTIVE' }));
-    const svc = new SessionValidationService(users, redis, config);
-
-    await expect(svc.assertInGoodStanding('u-1')).resolves.toBeUndefined();
-    expect(users.findById).toHaveBeenCalledTimes(1);
-    expect(client.setex).toHaveBeenCalledWith(KEY, 30, '1');
-
-    // Second call: cache hit → no further DB read.
-    await expect(svc.assertInGoodStanding('u-1')).resolves.toBeUndefined();
-    expect(users.findById).toHaveBeenCalledTimes(1);
+describe('SessionValidationService.assertSessionActive', () => {
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
-  it('trusts a cached positive flag without reading the DB', async () => {
-    const state = { store: new Map([[KEY, '1']]) };
-    const { redis } = mkRedis(state);
-    const users = mkUsers(makeUser());
-    const svc = new SessionValidationService(users, redis, config);
-
-    await expect(svc.assertInGoodStanding('u-1')).resolves.toBeUndefined();
-    expect(users.findById).not.toHaveBeenCalled();
+  it('admits a live session held by a user in good standing', async () => {
+    const { service } = build(makeSession());
+    await expect(service.assertSessionActive(claims)).resolves.toBeUndefined();
   });
 
-  it.each([
-    ['SUSPENDED', makeUser({ status: 'SUSPENDED' })],
-    ['LOCKED', makeUser({ status: 'LOCKED' })],
-    ['DELETED status', makeUser({ status: 'DELETED' })],
-    ['soft-deleted', makeUser({ deletedAt: new Date() })],
-    ['inactive', makeUser({ isActive: false })],
-    ['missing', null],
-  ])('rejects a %s account and does NOT cache it', async (_label, user) => {
-    const state = { store: new Map<string, string>() };
-    const { redis, client } = mkRedis(state);
-    const users = mkUsers(user);
-    const svc = new SessionValidationService(users, redis, config);
+  it('reads the session by id in a single indexed lookup (no N+1)', async () => {
+    const { service, findByIdWithUserStanding } = build(makeSession());
+    await service.assertSessionActive(claims);
+    expect(findByIdWithUserStanding).toHaveBeenCalledTimes(1);
+    expect(findByIdWithUserStanding).toHaveBeenCalledWith(SESSION_ID);
+  });
 
-    await expect(svc.assertInGoodStanding('u-1')).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'AUTH_INVALID_CREDENTIALS' }),
+  it('re-reads on EVERY request — a prior success is never cached', async () => {
+    // This is what makes revocation immediate on every instance: there is no
+    // positive cache entry that could outlive the revocation.
+    const { service, findByIdWithUserStanding } = build(makeSession());
+    await service.assertSessionActive(claims);
+    await service.assertSessionActive(claims);
+    await service.assertSessionActive(claims);
+    expect(findByIdWithUserStanding).toHaveBeenCalledTimes(3);
+  });
+
+  describe('session-level rejections', () => {
+    it('rejects when the session row does not exist', async () => {
+      const { service } = build(null);
+      await expect(service.assertSessionActive(claims)).rejects.toMatchObject(OPAQUE_401);
     });
-    // Never cached — a bad account is re-checked against the DB every time.
-    expect(client.setex).not.toHaveBeenCalled();
-    expect(state.store.has(KEY)).toBe(false);
+
+    it('rejects a REVOKED session (logout / logout-all / reset / suspend)', async () => {
+      const { service } = build(makeSession({ revokedAt: new Date(NOW - 1000) }));
+      await expect(service.assertSessionActive(claims)).rejects.toMatchObject(OPAQUE_401);
+    });
+
+    it('rejects an EXPIRED session', async () => {
+      const { service } = build(makeSession({ expiresAt: new Date(NOW - 1) }));
+      await expect(service.assertSessionActive(claims)).rejects.toMatchObject(OPAQUE_401);
+    });
+
+    it('rejects a session expiring exactly now (boundary is exclusive)', async () => {
+      const { service } = build(makeSession({ expiresAt: new Date(NOW) }));
+      await expect(service.assertSessionActive(claims)).rejects.toMatchObject(OPAQUE_401);
+    });
+
+    it('rejects when the session belongs to a DIFFERENT user than the token claims', async () => {
+      // Token replay against someone else's session id.
+      const { service } = build(makeSession({ userId: 'someone-else' }));
+      await expect(service.assertSessionActive(claims)).rejects.toMatchObject(OPAQUE_401);
+    });
+
+    it('rejects when the row returned does not match the requested session id', async () => {
+      const { service } = build(makeSession({ id: 'other-session' }));
+      await expect(service.assertSessionActive(claims)).rejects.toMatchObject(OPAQUE_401);
+    });
+
+    it('rejects a token whose jti is no longer the session current jti (refresh rotation)', async () => {
+      // After refresh rotates the family, the OLD access token must die even
+      // though a session row for that id may still exist.
+      const { service } = build(makeSession({ currentJti: 'jti-2-after-rotation' }));
+      await expect(
+        service.assertSessionActive({ ...claims, jti: 'jti-1-before-rotation' }),
+      ).rejects.toMatchObject(OPAQUE_401);
+    });
   });
 
-  it('re-checks the DB every request for a bad account (no negative caching)', async () => {
-    const state = { store: new Map<string, string>() };
-    const { redis } = mkRedis(state);
-    const users = mkUsers(makeUser({ status: 'SUSPENDED' }));
-    const svc = new SessionValidationService(users, redis, config);
+  describe('account-standing rejections', () => {
+    it.each([
+      ['SUSPENDED', { status: 'SUSPENDED' as AccountStatus }],
+      ['LOCKED', { status: 'LOCKED' as AccountStatus }],
+      ['DELETED status', { status: 'DELETED' as AccountStatus }],
+      ['PENDING_VERIFICATION', { status: 'PENDING_VERIFICATION' as AccountStatus }],
+      ['soft-deleted', { deletedAt: new Date(NOW - 1000) }],
+      ['deactivated', { isActive: false }],
+    ])('rejects a session whose owner is %s', async (_label, userOver) => {
+      const { service } = build(makeSession({ user: { ...makeSession().user!, ...userOver } }));
+      await expect(service.assertSessionActive(claims)).rejects.toMatchObject(OPAQUE_401);
+    });
 
-    await expect(svc.assertInGoodStanding('u-1')).rejects.toBeDefined();
-    await expect(svc.assertInGoodStanding('u-1')).rejects.toBeDefined();
-    expect(users.findById).toHaveBeenCalledTimes(2);
+    it('rejects when the owning user row is missing entirely', async () => {
+      const { service } = build(makeSession({ user: null }));
+      await expect(service.assertSessionActive(claims)).rejects.toMatchObject(OPAQUE_401);
+    });
   });
 
-  it('falls through to the DB (enforcing) when Redis is down, never fails open', async () => {
-    const state = { store: new Map<string, string>(), fail: true };
-    const { redis } = mkRedis(state);
-    const good = mkUsers(makeUser({ status: 'ACTIVE' }));
-    const svcGood = new SessionValidationService(good, redis, config);
-    await expect(svcGood.assertInGoodStanding('u-1')).resolves.toBeUndefined();
-    expect(good.findById).toHaveBeenCalledTimes(1);
-
-    const bad = mkUsers(makeUser({ status: 'SUSPENDED' }));
-    const svcBad = new SessionValidationService(bad, redis, config);
-    await expect(svcBad.assertInGoodStanding('u-1')).rejects.toBeDefined();
+  describe('claim-shape rejections', () => {
+    it.each([
+      ['missing userId', { ...claims, userId: '' }],
+      ['missing sessionId', { ...claims, sessionId: '' }],
+      ['missing jti', { ...claims, jti: '' }],
+    ])('rejects a token with %s without touching the database', async (_label, bad) => {
+      const { service, findByIdWithUserStanding } = build(makeSession());
+      await expect(service.assertSessionActive(bad)).rejects.toMatchObject(OPAQUE_401);
+      expect(findByIdWithUserStanding).not.toHaveBeenCalled();
+    });
   });
 
-  it('invalidate() deletes the cached flag so the next request re-checks', async () => {
-    const state = { store: new Map([[KEY, '1']]) };
-    const { redis, client } = mkRedis(state);
-    const users = mkUsers(makeUser({ status: 'SUSPENDED' }));
-    const svc = new SessionValidationService(users, redis, config);
+  describe('failure policy', () => {
+    it('FAILS CLOSED when the database lookup throws', async () => {
+      // A token must never be admitted because the check that would have
+      // refused it was unavailable — that turns a DB blip into an authz bypass.
+      const { service } = build(new Error('connection terminated'));
+      await expect(service.assertSessionActive(claims)).rejects.toMatchObject(OPAQUE_401);
+    });
 
-    await svc.invalidate('u-1');
-    expect(client.del).toHaveBeenCalledWith(KEY);
-    expect(state.store.has(KEY)).toBe(false);
-
-    // With the positive flag gone, the now-suspended user is rejected.
-    await expect(svc.assertInGoodStanding('u-1')).rejects.toBeDefined();
+    it('does not leak the infrastructure failure reason to the caller', async () => {
+      const { service } = build(new Error('P1001: cannot reach database at db.internal:5432'));
+      await expect(service.assertSessionActive(claims)).rejects.not.toMatchObject({
+        message: expect.stringContaining('db.internal'),
+      });
+    });
   });
 
-  it('invalidate() never throws when Redis is down', async () => {
-    const state = { store: new Map<string, string>(), fail: true };
-    const { redis } = mkRedis(state);
-    const users = mkUsers(makeUser());
-    const svc = new SessionValidationService(users, redis, config);
-    await expect(svc.invalidate('u-1')).resolves.toBeUndefined();
+  describe('multi-session isolation', () => {
+    it('leaves a second session usable after the first is revoked', async () => {
+      // Two sessions for one user: revoking one must not affect the other.
+      const revoked = makeSession({ id: 'sess-a', revokedAt: new Date(NOW - 1) });
+      const live = makeSession({ id: 'sess-b', currentJti: 'jti-b' });
+
+      const sessions = {
+        findByIdWithUserStanding: jest.fn(async (id: string) => (id === 'sess-a' ? revoked : live)),
+      } as unknown as SessionRepository;
+      const service = new SessionValidationService(sessions);
+
+      await expect(
+        service.assertSessionActive({ userId: USER_ID, sessionId: 'sess-a', jti: JTI }),
+      ).rejects.toMatchObject(OPAQUE_401);
+      await expect(
+        service.assertSessionActive({ userId: USER_ID, sessionId: 'sess-b', jti: 'jti-b' }),
+      ).resolves.toBeUndefined();
+    });
   });
 });

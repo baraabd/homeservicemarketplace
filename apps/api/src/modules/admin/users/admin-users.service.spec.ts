@@ -4,7 +4,7 @@ import type { RoleRepository } from '../../../infrastructure/persistence/iam/rol
 import type { SessionRepository } from '../../../infrastructure/persistence/iam/session.repository';
 import type { UserRepository } from '../../../infrastructure/persistence/iam/user.repository';
 import type { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
-import type { SessionValidationService } from '../../iam/authentication/services/session-validation.service';
+import { SecurityEventsBus } from '../../../shared/security-events/security-events.bus';
 import type { AdminAuditService } from '../admin-audit.service';
 import { AdminUsersService } from './admin-users.service';
 
@@ -40,7 +40,7 @@ interface Mocks {
   roles: RoleRepository;
   audit: AdminAuditService;
   sessions: SessionRepository;
-  sessionValidation: SessionValidationService;
+  securityEvents: SecurityEventsBus;
 }
 
 function makeMocks(
@@ -54,10 +54,15 @@ function makeMocks(
     sessions: {
       revokeAllForUser: jest.fn().mockResolvedValue({ count: 2 }),
     } as unknown as SessionRepository,
-    sessionValidation: {
-      invalidate: jest.fn().mockResolvedValue(undefined),
-      assertInGoodStanding: jest.fn().mockResolvedValue(undefined),
-    } as unknown as SessionValidationService,
+    // D-2/D-4: the admin status flip no longer busts a cache (the per-request
+    // check reads the Session row directly). It publishes a post-commit event
+    // so live WebSockets are torn down.
+    securityEvents: {
+      emitAllSessionsRevoked: jest.fn(),
+      emitSessionRevoked: jest.fn(),
+      emitRolesChanged: jest.fn(),
+      emitProviderStatusChanged: jest.fn(),
+    } as unknown as SecurityEventsBus,
     users: {
       findById: jest.fn().mockResolvedValue(over.user === undefined ? makeUser() : over.user),
       searchForAdmin: jest.fn().mockResolvedValue(over.rows ?? [makeUser()]),
@@ -87,7 +92,7 @@ function makeMocks(
 }
 
 function makeService(m: Mocks): AdminUsersService {
-  return new AdminUsersService(m.users, m.roles, m.audit, tx, m.sessions, m.sessionValidation);
+  return new AdminUsersService(m.users, m.roles, m.audit, tx, m.sessions, m.securityEvents);
 }
 
 describe('AdminUsersService', () => {
@@ -119,7 +124,7 @@ describe('AdminUsersService', () => {
       m.audit,
       txWithUser,
       m.sessions,
-      m.sessionValidation,
+      m.securityEvents,
     );
     await svc.suspend('admin-1', 'u-1');
     expect(m.audit.record).toHaveBeenCalledWith(
@@ -148,7 +153,7 @@ describe('AdminUsersService', () => {
       m.audit,
       txWithUser,
       m.sessions,
-      m.sessionValidation,
+      m.securityEvents,
     );
     await svc.restore('admin-1', 'u-1');
     expect(m.audit.record).toHaveBeenCalledWith(
@@ -182,7 +187,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       const out = await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED', reason: 'fraud' });
       expect(out.user.status).toBe('SUSPENDED');
@@ -211,7 +216,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       const out = await svc.setStatus('admin-1', 'u-1', { status: 'ACTIVE' });
       expect(out.user.status).toBe('ACTIVE');
@@ -230,7 +235,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       await expect(svc.setStatus('u-1', 'u-1', { status: 'SUSPENDED' })).rejects.toMatchObject({
         status: 400,
@@ -247,7 +252,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       await expect(svc.setStatus('u-1', 'u-1', { status: 'ACTIVE' })).resolves.toBeDefined();
     });
@@ -260,7 +265,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       await expect(
         svc.setStatus('admin-1', 'missing', { status: 'SUSPENDED' }),
@@ -275,7 +280,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
       expect(m.users.update).not.toHaveBeenCalled();
@@ -302,7 +307,7 @@ describe('AdminUsersService', () => {
         m.audit,
         tx,
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
       // Called with the target user id AND the transaction handle (2nd arg
@@ -321,7 +326,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'LOCKED' });
       expect(m.sessions.revokeAllForUser).toHaveBeenCalledWith('u-1', expect.anything());
@@ -335,7 +340,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'ACTIVE' });
       expect(m.sessions.revokeAllForUser).not.toHaveBeenCalled();
@@ -349,12 +354,16 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
-      // Busting the cached "in good standing" flag is what makes an
-      // already-issued access token stop working on the very next request.
-      expect(m.sessionValidation.invalidate).toHaveBeenCalledWith('u-1');
+      // REST-side revocation is already durable (sessions were revoked inside
+      // the transaction and the per-request check reads them), so what this
+      // pins is the post-commit teardown of already-connected sockets.
+      expect(m.securityEvents.emitAllSessionsRevoked).toHaveBeenCalledWith({
+        userId: 'u-1',
+        reason: 'account-suspended',
+      });
     });
 
     it('records the revoked session count in the suspend audit metadata', async () => {
@@ -365,7 +374,7 @@ describe('AdminUsersService', () => {
         m.audit,
         makeTxWithUserUpdate(),
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       await svc.setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
       expect(m.audit.record).toHaveBeenCalledWith(
@@ -389,7 +398,7 @@ describe('AdminUsersService', () => {
         m.audit,
         txWithUser,
         m.sessions,
-        m.sessionValidation,
+        m.securityEvents,
       );
       await svc.suspend('admin-1', 'u-1');
       expect(m.sessions.revokeAllForUser).toHaveBeenCalledWith('u-1', expect.anything());

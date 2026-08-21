@@ -2,6 +2,7 @@ import 'reflect-metadata';
 
 import { Logger as NestLogger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import helmet from 'helmet';
@@ -19,7 +20,9 @@ async function bootstrap(): Promise<void> {
     // we can wire raw + JSON parsers independently below — the raw
     // parser MUST win for /v1/media/uploads/* so the upload Buffer
     // doesn't get mis-decoded as JSON.
-    const app = await NestFactory.create(AppModule, {
+    // Typed as NestExpressApplication so `app.set('trust proxy', …)` — the
+    // Express-only knob the rate limiter depends on — is available.
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
       bufferLogs: true,
       bodyParser: false,
     });
@@ -32,6 +35,23 @@ async function bootstrap(): Promise<void> {
     const extraOrigins = config.get('CORS_ORIGINS');
     const origins = Array.from(
       new Set([...(frontendUrl ? [frontendUrl] : []), ...extraOrigins].filter(Boolean)),
+    );
+
+    // D-1 — trusted reverse proxies. Express only derives `req.ip` from
+    // X-Forwarded-For when `trust proxy` is set, and setting it to `true`
+    // trusts the ENTIRE chain, which lets any client prepend a forged address
+    // and mint a fresh rate-limit bucket per request. Setting it to a NUMBER
+    // means "skip exactly N proxies from the right", so the resolved IP is the
+    // one written by the hop we actually control. TRUST_PROXY_HOPS=0 (default)
+    // leaves trust proxy off entirely and `req.ip` is the socket peer.
+    const trustProxyHops = config.get('TRUST_PROXY_HOPS');
+    if (trustProxyHops > 0) {
+      app.set('trust proxy', trustProxyHops);
+    } else {
+      app.set('trust proxy', false);
+    }
+    bootstrapLogger.log(
+      `Trust proxy: ${trustProxyHops > 0 ? `${trustProxyHops} hop(s)` : 'disabled (X-Forwarded-For ignored)'}`,
     );
 
     app.use(helmet());

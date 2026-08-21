@@ -40,23 +40,38 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  // Sprint 01 hardening: this is the single chokepoint every
-  // JwtAuthGuard-protected route passes through. Beyond the stateless
-  // signature/shape check, we consult a short-TTL cached "is this account
-  // still in good standing?" flag so a deleted / deactivated / suspended
-  // / locked user is blocked immediately (on the next request after an
-  // admin action busts the cache), not only once their access token
-  // expires. See SessionValidationService for the caching + fail-closed
-  // semantics.
+  // D-2 — the single chokepoint every JwtAuthGuard-protected route passes
+  // through.
+  //
+  // The stateless half is handled by passport-jwt from the options above:
+  // signature, `iss`, `aud`, and `exp` are all verified before this method
+  // runs (ignoreExpiration is false, and issuer/audience are pinned).
+  //
+  // The stateful half is here. Previously this only asked whether the ACCOUNT
+  // was in good standing, which meant logout / logout-all / password reset /
+  // refresh rotation left the already-issued access token working until it
+  // expired. It now validates the specific Session row the token was minted
+  // for, so those revocations take effect on the very next request. See
+  // SessionValidationService for the full rule set and the fail-closed policy.
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
+    // Claim-shape gate. A token missing sub/sid/jti cannot be tied to a
+    // session, so there is nothing to validate against.
     if (!payload?.sub || !payload?.sid || !payload?.jti) {
       throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
     }
-    await this.sessionValidation.assertInGoodStanding(payload.sub);
+    await this.sessionValidation.assertSessionActive({
+      userId: payload.sub,
+      sessionId: payload.sid,
+      jti: payload.jti,
+    });
     return {
       id: payload.sub,
       sessionId: payload.sid,
       jti: payload.jti,
+      // NOTE: roles here come from the token. RolesGuard consumes them, so a
+      // role change only reaches REST authorization once the session is
+      // re-issued — which is why every role mutation revokes the user's
+      // sessions (see AdminUsersService / ProviderService).
       roles: Array.isArray(payload.roles) ? payload.roles : [],
     };
   }

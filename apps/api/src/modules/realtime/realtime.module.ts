@@ -4,6 +4,7 @@ import { ConfigModule } from '../../config/config.module';
 import { PersistenceModule } from '../../infrastructure/persistence/persistence.module';
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
 import { ConversationParticipantGate } from './conversation-participant.gate';
+import { RealtimeIdentityResolver } from './realtime-identity.resolver';
 import { RealtimeEventsController } from './realtime-events.controller';
 import { RealtimeEventsPublisher } from './realtime-events.publisher';
 import { RealtimeGateway } from './realtime.gateway';
@@ -20,7 +21,14 @@ import { RealtimeGateway } from './realtime.gateway';
 @Module({
   imports: [AuthenticationModule, ConfigModule, PersistenceModule],
   controllers: [RealtimeEventsController],
-  providers: [RealtimeEventsPublisher, RealtimeGateway, ConversationParticipantGate],
+  providers: [
+    RealtimeEventsPublisher,
+    RealtimeGateway,
+    ConversationParticipantGate,
+    // D-4: resolves CURRENT roles + provider status at handshake so room
+    // membership is never decided by a stale JWT claim.
+    RealtimeIdentityResolver,
+  ],
   exports: [RealtimeEventsPublisher, RealtimeGateway],
 })
 export class RealtimeModule {}

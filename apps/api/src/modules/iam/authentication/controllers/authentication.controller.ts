@@ -21,6 +21,10 @@ import type {
 } from '@homeservicemarketplace/contracts';
 
 import { AppConfigService } from '../../../../config/app-config.service';
+import {
+  RegistrationThrottleService,
+  RegistrationThrottledError,
+} from '../../../../infrastructure/throttle/registration-throttle.service';
 import { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { Public } from '../decorators/public.decorator';
@@ -61,15 +65,44 @@ export class AuthenticationController {
     private readonly auth: AuthenticationService,
     private readonly users: UserRepository,
     private readonly config: AppConfigService,
+    private readonly registrationThrottle: RegistrationThrottleService,
   ) {}
 
   // --- Registration -------------------------------------------------------
+  // D-1: the abuse budget used to be `@Throttle({ limit: 500, ttl: 1h })` on
+  // a per-instance in-memory store — 500/hour/replica, which is not a rate
+  // limit. It is now RegistrationThrottleService: 5 per rolling hour by
+  // default, charged against BOTH the client IP and the normalised email, on
+  // a Redis store shared by every replica. Production refuses to boot with a
+  // wider limit.
+  //
+  // The check runs here, not in a guard, because guards execute BEFORE
+  // ValidationPipe: a guard would let malformed bodies burn a legitimate
+  // user's budget. Charging it at the top of the handler means only validly
+  // shaped submissions count.
   @Public()
-  @Throttle({ default: { limit: 500, ttl: 60 * 60 * 1000 } })
   @Post('register')
   @HttpCode(HttpStatus.ACCEPTED)
-  async register(@Body() body: RegisterDto, @Req() req: Request): Promise<OtpChallengeResponse> {
-    const challenge = await this.auth.register(body, buildContext(req));
+  async register(
+    @Body() body: RegisterDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<OtpChallengeResponse> {
+    const ctx = buildContext(req);
+    try {
+      await this.registrationThrottle.assertWithinBudget({
+        ipAddress: ctx.device.ipAddress,
+        email: body.email,
+      });
+    } catch (err) {
+      if (err instanceof RegistrationThrottledError) {
+        // RFC 9110 §10.2.3 — delta-seconds. Set before rethrowing so the
+        // global exception filter's JSON body and this header travel together.
+        res.setHeader('Retry-After', String(err.retryAfterSeconds));
+      }
+      throw err;
+    }
+    const challenge = await this.auth.register(body, ctx);
     return {
       otpRequired: true,
       challengeId: challenge.challengeId,
@@ -186,7 +219,9 @@ export class AuthenticationController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
-    await this.auth.logout(user.sessionId, buildContext(req));
+    // D-2: userId is passed so the revoke + LOGOUT audit row commit together
+    // and the post-commit socket teardown knows whose sockets to evict.
+    await this.auth.logout(user.id, user.sessionId, buildContext(req));
     clearAuthCookies(res, this.config);
   }
 

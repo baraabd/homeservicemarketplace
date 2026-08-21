@@ -1,5 +1,16 @@
 import { envSchema, type AppEnv } from './env.schema';
 
+// D-1 — the registration abuse budget is a security control, so a permissive
+// value must not be reachable in production by mis-setting an env var. The
+// schema defaults to 5/hour; these rules make production REFUSE TO BOOT when
+// an operator tries to widen it, while leaving test/dev free to raise it so
+// suites that create many accounts back to back are not throttled.
+export const PRODUCTION_MAX_REGISTER_THROTTLE_LIMIT = 5;
+
+// Environments where a widened registration budget / non-shared throttle store
+// is acceptable. Anything else (production, staging) is held to the hard cap.
+const RELAXABLE_ENVS = new Set(['development', 'test']);
+
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
   const parsed = envSchema.safeParse(raw);
   if (!parsed.success) {
@@ -8,5 +19,39 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
-  return parsed.data;
+
+  const env = parsed.data;
+  const hardened = !RELAXABLE_ENVS.has(env.NODE_ENV);
+  const issues: string[] = [];
+
+  if (hardened && env.AUTH_REGISTER_THROTTLE_LIMIT > PRODUCTION_MAX_REGISTER_THROTTLE_LIMIT) {
+    issues.push(
+      `  - AUTH_REGISTER_THROTTLE_LIMIT: must be <= ${PRODUCTION_MAX_REGISTER_THROTTLE_LIMIT} when NODE_ENV=${env.NODE_ENV} ` +
+        `(got ${env.AUTH_REGISTER_THROTTLE_LIMIT})`,
+    );
+  }
+
+  if (hardened && !env.THROTTLE_REDIS_REQUIRED) {
+    issues.push(
+      `  - THROTTLE_REDIS_REQUIRED: must be true when NODE_ENV=${env.NODE_ENV} — a per-instance ` +
+        `in-memory rate limit is bypassable by spraying replicas`,
+    );
+  }
+
+  // A shorter window with the same limit is a *tighter* control, so only a
+  // longer-than-configured window would be surprising; what must not happen is
+  // an effectively-disabled window (e.g. 1 second), which would let an
+  // attacker submit 5 per second forever.
+  if (hardened && env.AUTH_REGISTER_THROTTLE_TTL_SECONDS < 3600) {
+    issues.push(
+      `  - AUTH_REGISTER_THROTTLE_TTL_SECONDS: must be >= 3600 when NODE_ENV=${env.NODE_ENV} ` +
+        `(got ${env.AUTH_REGISTER_THROTTLE_TTL_SECONDS})`,
+    );
+  }
+
+  if (issues.length > 0) {
+    throw new Error(`Invalid environment configuration:\n${issues.join('\n')}`);
+  }
+
+  return env;
 }

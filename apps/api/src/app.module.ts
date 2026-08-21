@@ -1,6 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 import { ConfigModule } from './config/config.module';
 import { HealthModule } from './infrastructure/health/health.module';
@@ -14,6 +14,10 @@ import { RedisModule } from './infrastructure/redis/redis.module';
 import { StorageModule } from './infrastructure/storage/storage.module';
 import { MetricsModule } from './infrastructure/telemetry/metrics.module';
 import { PersistenceModule } from './infrastructure/persistence/persistence.module';
+import { AppThrottlerGuard } from './infrastructure/throttle/app-throttler.guard';
+import { RateLimitModule } from './infrastructure/throttle/rate-limit.module';
+import { RateLimitStore } from './infrastructure/throttle/rate-limit.store';
+import { SecurityEventsModule } from './shared/security-events/security-events.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { BidsModule } from './modules/bids/bids.module';
@@ -45,7 +49,25 @@ import { ServicesModule } from './modules/services/services.module';
     MailModule,
     StorageModule,
     MetricsModule,
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    // Global, transport-agnostic post-commit security notifications
+    // (D-2/D-4). Publishers: IAM / admin / provider. Subscriber: the
+    // Socket.IO gateway.
+    SecurityEventsModule,
+    RateLimitModule,
+    // D-1: the throttler's counters are backed by the shared Redis store, so
+    // the budget is aggregate across API replicas instead of per-replica.
+    // The coarse 100/60s default is the global backstop; the sensitive auth
+    // routes tighten it with route-level @Throttle decorators, and
+    // registration has its own two-dimensional limiter (see
+    // RegistrationThrottleService).
+    ThrottlerModule.forRootAsync({
+      imports: [RateLimitModule],
+      inject: [RateLimitStore],
+      useFactory: (storage: RateLimitStore) => ({
+        throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
+        storage,
+      }),
+    }),
     HealthModule,
     IamModule,
     ServicesModule,
@@ -62,7 +84,10 @@ import { ServicesModule } from './modules/services/services.module';
     MediaModule,
   ],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // AppThrottlerGuard replaces the stock ThrottlerGuard so a 429 carries the
+    // stable RATE_LIMITED envelope instead of the "ThrottlerException: Too
+    // Many Requests" framework string.
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

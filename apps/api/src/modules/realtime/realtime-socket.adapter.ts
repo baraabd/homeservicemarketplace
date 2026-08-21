@@ -39,28 +39,53 @@ export class RealtimeSocketAdapter extends IoAdapter {
       this.log.log('REALTIME_SOCKET_IO=off — running without Redis adapter');
       return;
     }
+
     if (!this.redis.isReady()) {
-      this.log.warn(
-        'Redis not ready at startup — Socket.IO will run single-instance until Redis recovers',
-      );
+      this.failOrDegrade('Redis was not ready at startup');
       return;
     }
+
     try {
       const pub = this.redis.getClient().duplicate();
       const sub = pub.duplicate();
       await Promise.all([pub.connect?.(), sub.connect?.()]);
-      // The redis-adapter is namespace-aware; createAdapter returns
-      // a function that the IoAdapter will set on every namespace it
-      // creates.
+      // The redis-adapter is namespace-aware; createAdapter returns a function
+      // the IoAdapter sets on every namespace it creates.
       this.redisAdapterFactory = createAdapter(pub, sub, {
         key: 'socketio:hsm',
       }) as unknown as typeof this.redisAdapterFactory;
-      this.log.log('Socket.IO Redis adapter wired (key=socketio:hsm)');
+      this.log.log('Socket.IO Redis adapter wired (key=socketio:hsm) — cross-instance eviction ON');
     } catch (err) {
-      this.log.error(`Failed to wire Socket.IO Redis adapter: ${(err as Error).message}`);
-      // Soft-fail — keep the gateway running single-instance instead
-      // of crashing the API.
+      this.failOrDegrade(`Redis adapter wiring failed: ${(err as Error).message}`);
     }
+  }
+
+  // D-4 — never silently claim cross-instance security we do not have.
+  //
+  // Without the Redis adapter, `disconnectSockets` only reaches sockets held
+  // by THIS process. A logout or suspension served by one replica would leave
+  // the victim's socket alive on every other replica — the control looks like
+  // it works and does not. In a hardened environment that is a boot failure,
+  // not a warning, unless the operator has explicitly acknowledged a
+  // single-instance deployment via REALTIME_ALLOW_SINGLE_INSTANCE.
+  private failOrDegrade(reason: string): void {
+    const nodeEnv = this.config.get('NODE_ENV');
+    const hardened = nodeEnv === 'production' || nodeEnv === 'staging';
+    const acknowledged = this.config.get('REALTIME_ALLOW_SINGLE_INSTANCE');
+
+    if (hardened && !acknowledged) {
+      throw new Error(
+        `Realtime is enabled but the Socket.IO Redis adapter is unavailable (${reason}). ` +
+          `Cross-instance socket eviction after logout / suspension / provider-status change ` +
+          `would NOT work, so this boot is refused. Fix Redis, or set ` +
+          `REALTIME_ALLOW_SINGLE_INSTANCE=true to explicitly accept single-instance mode.`,
+      );
+    }
+
+    this.log.warn(
+      `${reason} — Socket.IO running SINGLE-INSTANCE. Socket eviction reaches only this ` +
+        `process; do not run more than one API replica in this mode.`,
+    );
   }
 
   createIOServer(port: number, options?: ServerOptions): Server {

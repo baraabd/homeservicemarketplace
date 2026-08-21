@@ -59,16 +59,12 @@ export const envSchema = z.object({
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(600),
   JWT_REFRESH_TTL_DAYS: z.coerce.number().int().positive().default(30),
 
-  // Sprint 01 hardening — TTL of the per-user "in good standing" cache
-  // consulted on every authenticated request for immediate access-token
-  // blocking. A short window bounds how long an already-issued access
-  // token can outlive an admin suspend/lock when explicit cache
-  // invalidation cannot reach the node; suspend/lock/logout-all/reset
-  // also delete the key for immediate revocation. Keep it well below
-  // JWT_ACCESS_TTL_SECONDS. The DB is always the source of truth on a
-  // cache miss, so this only trades staleness for read load, never
-  // correctness.
-  AUTH_SESSION_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+  // NOTE: AUTH_SESSION_CACHE_TTL_SECONDS was removed in the D-2 remediation.
+  // It bounded how long a cached per-USER "in good standing" flag could keep
+  // an access token alive after revocation. The per-request check now reads
+  // the Session row itself with no positive cache, so there is no staleness
+  // window left to configure. Unknown env keys are stripped by this schema,
+  // so a deployment that still sets the old variable boots normally.
 
   EMAIL_VERIFICATION_TTL_HOURS: z.coerce.number().int().positive().default(24),
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(15),
@@ -93,6 +89,30 @@ export const envSchema = z.object({
 
   PERMISSION_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
 
+  // --- Rate limiting (D-1) -------------------------------------------------
+  // Registration abuse budget. PRODUCTION DEFAULT IS 5 SUBMISSIONS PER
+  // ROLLING HOUR and production refuses to boot with a higher value (see
+  // env.validation.ts). The override exists so test/dev suites that create
+  // many accounts in a row are not throttled — it is NOT a production knob.
+  AUTH_REGISTER_THROTTLE_LIMIT: z.coerce.number().int().positive().default(5),
+  AUTH_REGISTER_THROTTLE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+
+  // Number of trusted reverse-proxy hops in front of the API. Express's
+  // `trust proxy` is set to exactly this number, so the client IP is taken
+  // from the Nth-from-the-right X-Forwarded-For entry and a caller-supplied
+  // header cannot forge it. 0 (default) = the API is directly exposed and
+  // X-Forwarded-For is IGNORED entirely. Never set this higher than the real
+  // number of proxies you control: each extra hop lets the client prepend one
+  // forged address and walk out of its own rate-limit bucket.
+  TRUST_PROXY_HOPS: z.coerce.number().int().nonnegative().max(10).default(0),
+
+  // Rate-limit counters live in Redis so the budget is shared across API
+  // replicas. When Redis is unreachable at request time the limiter FAILS
+  // CLOSED (429) rather than silently degrading to a per-instance in-memory
+  // count an attacker could bypass by spraying replicas. Set false only for
+  // single-instance local runs without Redis; production rejects false.
+  THROTTLE_REDIS_REQUIRED: trueish.default(true),
+
   // Sprint 7.0 (refined) — Socket.IO realtime gateway feature flag.
   // When `off`, the gateway closes every handshake at the door and
   // the polling fallback (Sprint 5.5 cadences) is the sole channel.
@@ -101,6 +121,20 @@ export const envSchema = z.object({
   // multi-instance fan-out. Default: off in dev/test so existing
   // suites are unaffected; flip to on once REDIS is provisioned.
   REALTIME_SOCKET_IO: trueish.default(false),
+
+  // D-4 — cross-instance realtime security.
+  //
+  // Socket eviction after logout / suspension / provider-status change relies
+  // on Socket.IO's Redis adapter to reach sockets held by OTHER API replicas.
+  // Without it, a revocation served by pod A silently leaves the victim's
+  // socket alive on pod B — the security control appears to work and does not.
+  //
+  // So: when REALTIME_SOCKET_IO is on and the Redis adapter cannot be wired,
+  // a production/staging boot FAILS. Set this to true ONLY for a deployment
+  // you know runs exactly one API instance; it is an explicit, auditable
+  // acknowledgement that cross-instance eviction is not available, not a
+  // convenience toggle.
+  REALTIME_ALLOW_SINGLE_INSTANCE: trueish.default(false),
 
   // Provider take-rate (Sprint 5.6 earnings read model). Marketplace fee
   // expressed in basis points (1 bp = 0.01%). 1000 = 10% take, 0 = fee-

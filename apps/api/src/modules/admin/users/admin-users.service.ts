@@ -13,7 +13,7 @@ import { RoleRepository } from '../../../infrastructure/persistence/iam/role.rep
 import { SessionRepository } from '../../../infrastructure/persistence/iam/session.repository';
 import { UserRepository } from '../../../infrastructure/persistence/iam/user.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
-import { SessionValidationService } from '../../iam/authentication/services/session-validation.service';
+import { SecurityEventsBus } from '../../../shared/security-events/security-events.bus';
 import { AppError } from '../../../shared/errors/app-error';
 import { AdminAuditService } from '../admin-audit.service';
 
@@ -33,7 +33,12 @@ export class AdminUsersService {
     private readonly audit: AdminAuditService,
     private readonly tx: TransactionRunner,
     private readonly sessions: SessionRepository,
-    private readonly sessionValidation: SessionValidationService,
+    // D-2/D-4: the per-request session check reads Postgres directly, so no
+    // cache needs busting after a status flip — the in-transaction session
+    // revoke below is immediately authoritative on every instance. What the
+    // bus is still needed for is tearing down live WebSockets, which have no
+    // per-message re-auth.
+    private readonly securityEvents: SecurityEventsBus,
   ) {}
 
   async list(query: ListAdminUsersQuery): Promise<ListAdminUsersResponse> {
@@ -137,13 +142,18 @@ export class AdminUsersService {
       );
       return { ...existing, isActive, status: nextStatus };
     });
-    // Sprint 01 hardening: drop the cached "in good standing" flag AFTER
-    // the status flip + session revoke commit, so the very next
-    // authenticated request re-reads the DB and the new status takes
-    // effect immediately — an already-issued access token cannot outlive
-    // the suspension by up to its TTL. Invalidated on every transition
-    // (including restore) so a stale flag never lingers either way.
-    await this.sessionValidation.invalidate(targetUserId);
+    // D-2/D-4 — post-commit. REST-side revocation is already durable: the
+    // status flip AND the session revoke committed together above, and
+    // SessionValidationService reads the Session row on every request, so no
+    // already-issued access token survives the suspension anywhere.
+    // What still needs doing is evicting sockets that completed their
+    // handshake before this ran.
+    if (nextStatus !== 'ACTIVE') {
+      this.securityEvents.emitAllSessionsRevoked({
+        userId: targetUserId,
+        reason: 'account-suspended',
+      });
+    }
     return { user: await this.toSummary(updated) };
   }
 
@@ -179,7 +189,11 @@ export class AdminUsersService {
       );
       return { ...next, status: 'SUSPENDED' as AccountStatus };
     });
-    await this.sessionValidation.invalidate(targetUserId);
+    // Post-commit socket teardown; see setStatus for why REST needs nothing.
+    this.securityEvents.emitAllSessionsRevoked({
+      userId: targetUserId,
+      reason: 'account-suspended',
+    });
     return { user: await this.toSummary(updated) };
   }
 
@@ -206,7 +220,9 @@ export class AdminUsersService {
       );
       return { ...next, status: 'ACTIVE' as AccountStatus };
     });
-    await this.sessionValidation.invalidate(targetUserId);
+    // Restore does NOT resurrect sessions: they were revoked when the account
+    // was suspended and stay revoked. The user signs in again, which is the
+    // correct outcome — nothing to publish here.
     return { user: await this.toSummary(updated) };
   }
 

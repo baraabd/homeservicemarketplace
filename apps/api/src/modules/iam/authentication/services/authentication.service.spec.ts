@@ -15,6 +15,7 @@ import type { MailPort } from '../../../../infrastructure/mail/mail.port';
 import type { RoleRepository } from '../../../../infrastructure/persistence/iam/role.repository';
 import type { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
 import type { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
+import type { SecurityEventsBus } from '../../../../shared/security-events/security-events.bus';
 import type { AuditService } from '../../audit/audit.service';
 import { AuthenticationService } from './authentication.service';
 import type { LoginAttemptService } from './login-attempt.service';
@@ -124,6 +125,15 @@ function makeHarness() {
 
   const mail = { send: jest.fn().mockResolvedValue(undefined) } as unknown as jest.Mocked<MailPort>;
 
+  // D-2/D-4: post-commit socket teardown. Publishing is fire-and-forget, so
+  // the double is a plain spy the assertions below read back.
+  const securityEvents = {
+    emitSessionRevoked: jest.fn(),
+    emitAllSessionsRevoked: jest.fn(),
+    emitRolesChanged: jest.fn(),
+    emitProviderStatusChanged: jest.fn(),
+  } as unknown as SecurityEventsBus;
+
   const svc = new AuthenticationService(
     users,
     roles,
@@ -135,6 +145,7 @@ function makeHarness() {
     tx,
     audit,
     config,
+    securityEvents,
     mail,
   );
 
@@ -150,6 +161,7 @@ function makeHarness() {
     tx,
     audit,
     config,
+    securityEvents,
     mail,
     fakeTx,
   };
@@ -212,6 +224,7 @@ describe('AuthenticationService', () => {
         local.tx,
         local.audit,
         flooredConfig,
+        local.securityEvents,
         local.mail,
       );
       local.users.findByEmail.mockResolvedValueOnce(makeUser()); // duplicate path (fast)
@@ -684,19 +697,56 @@ describe('AuthenticationService', () => {
   describe('logout / logoutAll', () => {
     it('logout revokes the current session and audits LOGOUT', async () => {
       const h = makeHarness();
-      await h.svc.logout('sess-1', ctx);
-      expect(h.sessions.revokeById).toHaveBeenCalledWith('sess-1');
+      await h.svc.logout('u-1', 'sess-1', ctx);
+      // D-2: the revoke and the audit row now share one transaction, so the
+      // repository call carries the tx handle.
+      expect(h.sessions.revokeById).toHaveBeenCalledWith('sess-1', expect.anything());
       expect(h.audit.record).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'LOGOUT', metadata: { sessionId: 'sess-1' } }),
+        expect.objectContaining({
+          type: 'LOGOUT',
+          userId: 'u-1',
+          metadata: { sessionId: 'sess-1' },
+        }),
+        expect.anything(),
       );
+    });
+
+    // D-2/D-4: sockets attached to the logged-out session must be torn down
+    // after commit — they have no per-message re-auth and would otherwise
+    // keep receiving events for a session that no longer exists.
+    it('logout publishes a post-commit teardown for ONLY that session', async () => {
+      const h = makeHarness();
+      await h.svc.logout('u-1', 'sess-1', ctx);
+      expect(h.securityEvents.emitSessionRevoked).toHaveBeenCalledWith({
+        userId: 'u-1',
+        sessionId: 'sess-1',
+      });
+      // Must NOT nuke the user's other sessions.
+      expect(h.securityEvents.emitAllSessionsRevoked).not.toHaveBeenCalled();
+    });
+
+    it('logout-all publishes a whole-user teardown', async () => {
+      const h = makeHarness();
+      await h.svc.logoutAll('u-1', ctx);
+      expect(h.securityEvents.emitAllSessionsRevoked).toHaveBeenCalledWith({
+        userId: 'u-1',
+        reason: 'logout-all',
+      });
     });
 
     it('logoutAll revokes all sessions and returns the count', async () => {
       const h = makeHarness();
       h.sessions.revokeAllForUser.mockResolvedValueOnce(4);
       await expect(h.svc.logoutAll('u-1', ctx)).resolves.toBe(4);
+      // D-2: revoke + audit now commit together, so the audit call carries
+      // the transaction handle and records how many sessions were killed.
       expect(h.audit.record).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'LOGOUT_ALL', userId: 'u-1' }),
+        expect.objectContaining({
+          type: 'LOGOUT_ALL',
+          userId: 'u-1',
+          metadata: { revokedSessionCount: 4 },
+        }),
+        expect.anything(),
       );
     });
   });
