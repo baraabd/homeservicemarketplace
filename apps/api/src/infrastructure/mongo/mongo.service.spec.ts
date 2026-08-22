@@ -40,6 +40,10 @@ import { MongoService } from './mongo.service';
 
 function mkConfig(overrides: Record<string, unknown> = {}): AppConfigService {
   const defaults: Record<string, unknown> = {
+    // Sprint 4 — the service is gated on this flag. The suite's default is
+    // ENABLED so the existing connect/retry cases still exercise the dialling
+    // path; the disabled-path cases override it explicitly.
+    MONGODB_ENABLED: true,
     MONGODB_URI: 'mongodb://localhost:27017',
     MONGODB_DB_NAME: 'test_db',
     MONGODB_SERVER_SELECTION_TIMEOUT_MS: 5,
@@ -162,6 +166,46 @@ describe('MongoService', () => {
     createConnection.mockReturnValueOnce({ asPromise: () => Promise.resolve(fakeConnection) });
     await expect(svc.connect()).resolves.toBe(fakeConnection);
     expect(createConnection).toHaveBeenCalledTimes(2);
+  });
+
+  // ── Sprint 4: disabled path (docs/adr/0002-mongodb.md) ───────────────────
+
+  it('does not connect at all when MONGODB_ENABLED=false', async () => {
+    const svc = new MongoService(mkConfig({ MONGODB_ENABLED: false }));
+    await expect(svc.onModuleInit()).resolves.toBeUndefined();
+    expect(createConnection).not.toHaveBeenCalled();
+    expect(svc.isReady()).toBe(false);
+    expect(svc.isEnabled()).toBe(false);
+  });
+
+  it('boots clean when disabled even with no MONGODB_URI configured', async () => {
+    // The realistic disabled deployment: the flag is off and the URI is simply
+    // absent. Boot must succeed — this is the case that previously made the
+    // whole API refuse to start without a Mongo it never used.
+    const svc = new MongoService(mkConfig({ MONGODB_ENABLED: false, MONGODB_URI: undefined }));
+    await expect(svc.onModuleInit()).resolves.toBeUndefined();
+    expect(createConnection).not.toHaveBeenCalled();
+  });
+
+  it('rejects an explicit connect() while disabled instead of hanging', async () => {
+    const svc = new MongoService(mkConfig({ MONGODB_ENABLED: false }));
+    await expect(svc.connect()).rejects.toThrow(/MongoDB is disabled/);
+    expect(createConnection).not.toHaveBeenCalled();
+  });
+
+  it('fails fast with a descriptive error when MONGODB_URI is missing', async () => {
+    const svc = new MongoService(mkConfig({ MONGODB_URI: undefined }));
+    await expect(svc.onModuleInit()).rejects.toThrow(/MongoDB URI is not defined/);
+    // The guard must run BEFORE the retry loop: a config fault is not
+    // transient, so mongoose must never be dialed at all.
+    expect(createConnection).not.toHaveBeenCalled();
+    expect(svc.isReady()).toBe(false);
+  });
+
+  it('fails fast when MONGODB_URI is an empty string', async () => {
+    const svc = new MongoService(mkConfig({ MONGODB_URI: '' }));
+    await expect(svc.onModuleInit()).rejects.toThrow(/MongoDB URI is not defined/);
+    expect(createConnection).not.toHaveBeenCalled();
   });
 
   it('onModuleDestroy closes the connection and flips ready to false', async () => {

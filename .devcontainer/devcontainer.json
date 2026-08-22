@@ -1,0 +1,26 @@
+{
+  "name": "homeservicemarketplace",
+  // Pinned to the same Node the CI runner, the Dockerfile base, .nvmrc and the
+  // Volta pin all use. Four places agreeing is the point: a contributor who
+  // uses any one of them lands on the same runtime, and "works on my machine"
+  // stops being a category of bug.
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "forwardPorts": [4000, 5173, 5432, 6379, 8025],
+  "portsAttributes": {
+    "4000": { "label": "api" },
+    "5173": { "label": "web" },
+    "8025": { "label": "mailpit" }
+  },
+  // corepack activates the exact pnpm from packageManager, so the container
+  // cannot drift from the lockfile's resolver.
+  "postCreateCommand": "corepack enable && corepack prepare pnpm@10.32.1 --activate && pnpm install --frozen-lockfile",
+  "remoteUser": "node",
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "prisma.prisma"]
+    }
+  }
+}

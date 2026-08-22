@@ -17,7 +17,29 @@ export class MongoService implements OnModuleInit, OnModuleDestroy {
 
   constructor(private readonly config: AppConfigService) {}
 
+  // Sprint 4 — Mongo is an OPTIONAL dependency. See docs/adr/0002-mongodb.md.
+  //
+  // A code search found no domain consumer of either Mongo model, so the only
+  // thing the connection fed was the readiness probe that reported on it. That
+  // is a dependency which can only ever subtract availability, so it is now
+  // off unless an operator turns it on.
+  isEnabled(): boolean {
+    return this.config.get('MONGODB_ENABLED');
+  }
+
   connect(): Promise<Connection> {
+    // Callers that reach connect() while Mongo is off get a hard, descriptive
+    // failure rather than a hang or a confusing "not initialized" later. The
+    // model providers below check isEnabled() first, so this only fires for a
+    // genuine mistake: code that needs Mongo in a deployment that disabled it.
+    if (!this.isEnabled()) {
+      return Promise.reject(
+        new Error(
+          'MongoDB is disabled (MONGODB_ENABLED=false) but a component requested ' +
+            'a connection. Set MONGODB_ENABLED=true and MONGODB_URI to enable it.',
+        ),
+      );
+    }
     if (!this.connectionPromise) {
       this.connectionPromise = this.establish().catch((err) => {
         // Clear the memoized promise on failure so a subsequent caller
@@ -31,6 +53,12 @@ export class MongoService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
+    // Disabled is a normal, supported state — not a degraded one. Boot must
+    // not open a socket, must not retry, and must not log an error.
+    if (!this.isEnabled()) {
+      this.logger.log('Mongo is disabled (MONGODB_ENABLED=false); skipping connection');
+      return;
+    }
     await this.connect();
   }
 
@@ -40,6 +68,21 @@ export class MongoService implements OnModuleInit, OnModuleDestroy {
     const attempts = this.config.get('STARTUP_MAX_RETRIES');
     const baseMs = this.config.get('STARTUP_RETRY_BASE_MS');
     const capMs = this.config.get('STARTUP_RETRY_CAP_MS');
+
+    // Fail fast BEFORE the retry loop: a missing URI is a configuration fault,
+    // not a transient one, so burning STARTUP_MAX_RETRIES on it only delays a
+    // crash that should be immediate. The env schema already rejects
+    // MONGODB_ENABLED=true with no MONGODB_URI, so this guard covers the paths
+    // that construct the service outside that contract. It is also what narrows
+    // `uri` from `string | undefined` to the `string` createConnection expects,
+    // with no non-null assertion or cast.
+    if (!uri) {
+      throw new Error(
+        'MongoDB URI is not defined in the application configuration. ' +
+          'Set MONGODB_URI in your environment (it is required whenever ' +
+          'MONGODB_ENABLED=true).',
+      );
+    }
 
     const conn = await retry(
       () =>
