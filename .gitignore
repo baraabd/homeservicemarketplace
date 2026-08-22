@@ -52,7 +52,7 @@ postman/reports/
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
-!.vscode/settings.jsonpackage-lock.json
+!.vscode/settings.json
 
 # Prisma client generated into the workspace package (see the generator
 # `output` in packages/database/prisma/schema.prisma). Build output, not
@@ -66,3 +66,7 @@ apps/web/blob-report/
 
 # Vitest JUnit report (CI artifact only)
 vitest-report.xml
+
+# npm lockfiles: this is a pnpm workspace; a stray package-lock.json
+# silently gives a different tree to anyone who runs npm install.
+package-lock.json

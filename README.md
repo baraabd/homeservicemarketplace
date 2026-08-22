@@ -18,9 +18,39 @@ The current backend state is **infrastructure baseline only**. Authentication, b
 
 ### Prerequisites
 
-- Node.js **20.x**
-- pnpm **10.x** (`corepack enable && corepack prepare pnpm@10 --activate`)
+- Node.js **20** — pinned in four places that must agree: `.nvmrc` (20.18.1),
+  the `volta` block in the root `package.json`, `.devcontainer/devcontainer.json`,
+  and the CI runner. `nvm use`, Volta, or the devcontainer each land you on it.
+- pnpm **10.32.1** — pinned by `packageManager` in the root `package.json`.
+  `corepack enable` is enough; corepack reads that field and activates the
+  exact version, so you cannot install against a different resolver than the
+  lockfile was built with.
 - Docker Desktop with Compose v2
+
+> This repo is a **pnpm workspace**. There is no `package-lock.json` and one
+> must never be committed (`.gitignore` blocks it): a stray npm lockfile
+> silently gives whoever runs `npm install` a different dependency tree from
+> the one CI and the Docker images build.
+
+### Zero-to-running, in one block
+
+```bash
+corepack enable                      # activates pnpm 10.32.1 from packageManager
+pnpm install --frozen-lockfile       # exact lockfile, no resolution drift
+cp .env.example .env
+pnpm docker:up:app                   # migrations run, then the API starts
+curl -fsS http://localhost:4000/health/ready
+```
+
+`pnpm docker:up:app` is self-contained: it applies migrations through a
+separate one-shot job and only then starts the API. To prove the whole stack
+end to end (build, migrate, boot, readiness, media upload, OTP through real
+SMTP) run the same check CI runs:
+
+```bash
+pnpm smoke:compose                   # ~3 min; tears the stack down afterwards
+API_HOST_PORT=4100 pnpm smoke:compose   # if something already owns port 4000
+```
 
 ### 1. Install dependencies
 
@@ -38,11 +68,12 @@ Edit `.env` if you need non-default ports. The infrastructure baseline does **no
 
 The API validates the entire environment on boot via a strict Zod schema (`apps/api/src/config/env.schema.ts`). Missing or malformed variables cause an immediate, descriptive startup failure — the process never starts in a half-configured state.
 
-### 3. Start data services (Postgres, Mongo, Redis, Mailpit)
+### 3. Start data services (Postgres, Redis, Mailpit)
 
 ```bash
-pnpm docker:up           # postgres + mongo + redis + mailpit (infra only)
-pnpm docker:up:app       # same, plus the API container (uses the `app` profile)
+pnpm docker:up           # postgres + redis + mailpit (infra only)
+pnpm docker:up:app       # same, plus the migration job and the API container
+pnpm docker:up:mongo     # add the opt-in Mongo container (see the ADR below)
 pnpm docker:logs         # follow logs
 pnpm docker:down         # stop everything
 ```
@@ -52,6 +83,22 @@ The `api` service in `infra/docker/docker-compose.yml` is gated behind the
 For day-to-day development run the API natively (steps 4–5) — that's the
 fast-feedback path. Use `pnpm docker:up:app` only when you need a fully
 containerised stack (e.g. to mirror a deployment-like image).
+
+**Migrations are a separate job, not something the API does at startup.** The
+`app` profile runs `api-migrate` — a one-shot container that applies pending
+Prisma migrations and exits — and the API is gated on it completing
+successfully. That is what makes `--scale api=N` safe: N replicas cannot race
+each other to migrate the same database, because migrating is not their job.
+The job is idempotent (`prisma migrate deploy` applies only what is pending
+and exits 0 when nothing is), so it re-runs harmlessly on every `up`. The API
+runtime image ships no Prisma CLI, so the separation is enforced by the image
+rather than by convention.
+
+**MongoDB is optional and off by default** — see
+[docs/adr/0002-mongodb.md](docs/adr/0002-mongodb.md). No code reads it, so it
+no longer boots with the stack, is not required to start the API, and is not
+reported by `/health/ready`. `pnpm docker:up:mongo` and `MONGODB_ENABLED=true`
+turn it back on together.
 
 ### 4. Apply database schema (Postgres)
 

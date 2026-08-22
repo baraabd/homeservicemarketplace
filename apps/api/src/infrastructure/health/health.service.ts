@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import { AppConfigService } from '../../config/app-config.service';
 import { MongoService } from '../mongo/mongo.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -26,6 +27,7 @@ export class HealthService {
     private readonly prisma: PrismaService,
     private readonly mongo: MongoService,
     private readonly redis: RedisService,
+    private readonly config: AppConfigService,
   ) {}
 
   liveness(): { status: 'ok'; uptimeSeconds: number; timestamp: string } {
@@ -37,12 +39,24 @@ export class HealthService {
   }
 
   async readiness(): Promise<ReadinessReport> {
-    const [pg, mongo, redis] = await Promise.all([
+    // Sprint 4 — Mongo is reported ONLY when it is enabled.
+    //
+    // Previously it was probed unconditionally, so a store with no domain
+    // consumer (docs/adr/0002-mongodb.md) could take the whole API out of the
+    // load-balancer pool. Readiness must describe what this instance needs to
+    // serve traffic; a disabled dependency is not one of those things, and
+    // listing it as "down" would be both untrue and actively harmful.
+    const mongoEnabled = this.config.get('MONGODB_ENABLED');
+
+    const checks = [
       this.checkDep('postgres', () => this.prisma.isReady() && this.prisma.ping()),
-      this.checkDep('mongo', () => this.mongo.isReady() && this.mongo.ping()),
       this.checkDep('redis', () => this.redis.isReady() && this.redis.ping()),
-    ]);
-    const deps = [pg, mongo, redis];
+    ];
+    if (mongoEnabled) {
+      checks.push(this.checkDep('mongo', () => this.mongo.isReady() && this.mongo.ping()));
+    }
+
+    const deps = await Promise.all(checks);
     return { ready: deps.every((d) => d.status === 'up'), dependencies: deps };
   }
 

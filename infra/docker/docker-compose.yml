@@ -1,3 +1,18 @@
+# Local development stack.
+#
+# Three profiles:
+#   (default)  backing services only - Postgres, Redis, Mailpit. This is what
+#              `pnpm docker:up` starts, for running the API from source.
+#   app        adds the containerised API and its one-shot migration job.
+#   mongo      adds MongoDB. OPT-IN: the API no longer needs it. See
+#              docs/adr/0002-mongodb.md.
+#
+# Every value below is a LOCAL DEVELOPMENT value. There are no production
+# secrets in this file and none may be added - the JWT and media signing
+# values are fixed, published, non-secret strings whose only job is to satisfy
+# the length checks in apps/api/src/config/env.schema.ts. Production
+# configuration comes from the deployment environment, never from this file.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -17,9 +32,14 @@ services:
       timeout: 5s
       retries: 5
 
+  # Opt-in. Nothing in the API reads Mongo (docs/adr/0002-mongodb.md), so it is
+  # behind a profile rather than started by default. Enable with:
+  #   docker compose --profile app --profile mongo up -d
+  # and set MONGODB_ENABLED=true plus MONGODB_URI on the api service.
   mongo:
     image: mongo:7
     container_name: hsm-mongo
+    profiles: ['mongo']
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: mongo
@@ -30,7 +50,7 @@ services:
     volumes:
       - mongo_data:/data/db
     healthcheck:
-      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.adminCommand({ ping: 1 }).ok']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -55,40 +75,135 @@ services:
     container_name: hsm-mailpit
     restart: unless-stopped
     ports:
-      - '1025:1025'
-      - '8025:8025'
+      - '1025:1025' # SMTP
+      - '8025:8025' # web UI + REST API (used by the OTP smoke test)
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8025/livez']
       interval: 10s
       timeout: 5s
       retries: 3
 
+  # -- one-shot schema deployment -------------------------------------------
+  #
+  # Runs to completion BEFORE any api replica starts, and exactly once no
+  # matter how many replicas are requested. `prisma migrate deploy` applies
+  # only pending migrations and exits 0 when there are none, so this job is
+  # idempotent and safe to re-run on every `up`.
+  #
+  # This is why the API image ships no Prisma CLI: migrating is not the
+  # application's job, and the split is enforced by the image rather than by
+  # convention.
+  api-migrate:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+      target: migrator
+    image: hsm-api-migrate:dev
+    container_name: hsm-api-migrate
+    profiles: ['app']
+    restart: 'no' # a one-shot job: never restart it, let it report its status
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/homeservicemarketplace
+
   api:
     build:
       context: ../..
       dockerfile: apps/api/Dockerfile
-    container_name: hsm-api
+    image: hsm-api:dev
     profiles: ['app']
+    restart: unless-stopped
     depends_on:
+      # Gate on the migration JOB, not merely on Postgres being reachable: the
+      # API must never observe a schema older than the code it is running.
+      api-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
-      mongo:
-        condition: service_healthy
       redis:
+        condition: service_healthy
+      # Mail is a hard dependency of the OTP flow - with Mailpit down,
+      # registration and login issue codes that never arrive, which looks like
+      # a broken app rather than a missing container.
+      mailpit:
         condition: service_healthy
     environment:
       NODE_ENV: development
       APP_ENV: dev
       PORT: 4000
+      LOG_LEVEL: debug
+
+      # -- datastores ------------------------------------------------------
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/homeservicemarketplace
-      MONGODB_URI: mongodb://mongo:mongo@mongo:27017/?authSource=admin
-      MONGODB_DB_NAME: homeservicemarketplace
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # Off by default - see docs/adr/0002-mongodb.md. To turn it on, start the
+      # `mongo` profile too and set:
+      #   MONGODB_ENABLED: 'true'
+      #   MONGODB_URI: mongodb://mongo:mongo@mongo:27017/?authSource=admin
+      MONGODB_ENABLED: 'false'
+
+      # -- auth ------------------------------------------------------------
+      # LOCAL DEVELOPMENT VALUE, NOT A SECRET. It is committed, identical on
+      # every machine, and worthless: it signs tokens only for a throwaway
+      # database on localhost. It exists because the env schema requires >= 32
+      # characters, and a placeholder that fails validation would just push
+      # people to invent their own.
+      JWT_ACCESS_SECRET: dev-only-insecure-not-a-real-secret-000000
+      # Local dev is plain HTTP on localhost. A Secure cookie is never sent
+      # over HTTP, so with the production default of true the browser silently
+      # drops the session cookie and every login "succeeds" then fails.
+      COOKIE_SECURE: 'false'
+      COOKIE_SAMESITE: lax
+
+      # -- frontend / CORS -------------------------------------------------
+      # The Vite dev server origin. FRONTEND_URL is always in the CORS
+      # allowlist and is also the base for the links in verification and
+      # password-reset mail. CORS_ORIGINS adds the Vite preview server.
+      FRONTEND_URL: http://localhost:5173
+      CORS_ORIGINS: http://localhost:5173,http://localhost:4173
+      # The origin the browser will use for presigned upload URLs. This is the
+      # HOST-side address, not the container-side one: these URLs are handed to
+      # a browser outside the Compose network, so it must track API_HOST_PORT
+      # below rather than the container's internal 4000.
+      PUBLIC_API_URL: http://localhost:${API_HOST_PORT:-4000}
+
+      # -- mail ------------------------------------------------------------
+      # `mailpit` is the Compose service name; the API resolves it on the
+      # Compose network. With SMTP_HOST set the API uses Nodemailer instead of
+      # the in-memory adapter, so OTP and verification mail is really sent and
+      # is readable at http://localhost:8025.
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_SECURE: 'false'
+      SMTP_FROM: noreply@homeservicemarketplace.local
+
+      # -- media uploads ---------------------------------------------------
+      # Local disk driver. The directory is created and chowned to the non-root
+      # runtime user in the image (see apps/api/Dockerfile) and is backed by
+      # the media_data volume below so uploads survive a container rebuild.
+      STORAGE_DRIVER: local
+      LOCAL_STORAGE_DIR: /var/lib/hsm/media
+      # Dev-only, same status as JWT_ACCESS_SECRET above: it HMAC-signs upload
+      # URLs valid only against this local stack.
+      MEDIA_SIGNING_SECRET: dev-only-insecure-media-signing-000000
+    volumes:
+      - media_data:/var/lib/hsm/media
     ports:
-      - '4000:4000'
+      # API_HOST_PORT overrides the published port for anyone who already runs
+      # something on 4000 — a second checkout, or a local API started from
+      # source. PUBLIC_API_URL above tracks it, so presigned upload URLs stay
+      # correct when it is changed.
+      #
+      # Remove this mapping entirely before `--scale api=N`: N containers
+      # cannot share one host port. The migration gate above is what makes
+      # scaling safe; this line is only here for single-instance convenience.
+      - '${API_HOST_PORT:-4000}:4000'
 
 volumes:
   postgres_data:
   mongo_data:
   redis_data:
+  media_data:

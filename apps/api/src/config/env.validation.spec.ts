@@ -42,13 +42,32 @@ describe('validateEnv', () => {
       expect(() => validateEnv({ ...baseEnv, DATABASE_URL: '' })).toThrow(/DATABASE_URL/);
     });
 
-    it('throws when MONGODB_URI is missing', () => {
+    // Sprint 4 — MONGODB_URI is no longer unconditionally required. It is
+    // required exactly when MONGODB_ENABLED is true; see
+    // docs/adr/0002-mongodb.md. The four cases below pin both halves of that
+    // contract so neither can regress into the other.
+    it('boots WITHOUT MONGODB_URI when Mongo is disabled (the default)', () => {
       const { MONGODB_URI: _unused, ...rest } = baseEnv;
-      expect(() => validateEnv(rest)).toThrow(/MONGODB_URI/);
+      const env = validateEnv(rest);
+      expect(env.MONGODB_ENABLED).toBe(false);
+      expect(env.MONGODB_URI).toBeUndefined();
     });
 
-    it('throws when MONGODB_URI is an empty string', () => {
-      expect(() => validateEnv({ ...baseEnv, MONGODB_URI: '' })).toThrow(/MONGODB_URI/);
+    it('throws when MONGODB_ENABLED=true and MONGODB_URI is missing', () => {
+      const { MONGODB_URI: _unused, ...rest } = baseEnv;
+      expect(() => validateEnv({ ...rest, MONGODB_ENABLED: 'true' })).toThrow(/MONGODB_URI/);
+    });
+
+    it('throws when MONGODB_ENABLED=true and MONGODB_URI is an empty string', () => {
+      expect(() => validateEnv({ ...baseEnv, MONGODB_ENABLED: 'true', MONGODB_URI: '' })).toThrow(
+        /MONGODB_URI/,
+      );
+    });
+
+    it('accepts MONGODB_ENABLED=true with a URI', () => {
+      const env = validateEnv({ ...baseEnv, MONGODB_ENABLED: 'true' });
+      expect(env.MONGODB_ENABLED).toBe(true);
+      expect(env.MONGODB_URI).toBe('mongodb://localhost:27017');
     });
 
     it('aggregates multiple issues in a single error message', () => {
@@ -58,7 +77,9 @@ describe('validateEnv', () => {
       } catch (err) {
         expect((err as Error).message).toMatch(/NODE_ENV/);
         expect((err as Error).message).toMatch(/DATABASE_URL/);
-        expect((err as Error).message).toMatch(/MONGODB_URI/);
+        // MONGODB_URI is deliberately NOT expected here any more: with Mongo
+        // disabled by default, its absence is not an error.
+        expect((err as Error).message).toMatch(/JWT_ACCESS_SECRET/);
       }
     });
   });

@@ -63,6 +63,15 @@ RUN pnpm --filter @homeservicemarketplace/api exec nest build
 # the same self-contained bundle.
 RUN pnpm --filter @homeservicemarketplace/api deploy --prod --legacy /out
 
+# Self-contained MIGRATION bundle (Sprint 4). Deliberately NOT --prod: the
+# Prisma CLI is a devDependency of the database package, and the CLI is the
+# entire point of this bundle. `files` in that package.json already limits it
+# to dist/, prisma/ (schema + migrations) and generated/.
+RUN pnpm --filter @homeservicemarketplace/database deploy --legacy /migrate \
+ && test -x /migrate/node_modules/.bin/prisma \
+ && test -d /migrate/prisma/migrations \
+ && echo "migration bundle carries the prisma CLI and the migrations"
+
 # Fail the BUILD — not the first request — on the regressions this image
 # previously shipped:
 #   D-7  `Cannot find module 'express'`: express was only a transitive
@@ -87,6 +96,54 @@ RUN set -eux; \
     test ! -d /out/test; \
     test ! -d /out/node_modules/typescript; \
     echo "deployed bundle carries no sources and no TypeScript toolchain"
+
+# ---------------------------------------------------------------------------
+# migrator — one-shot schema deployment job. Sprint 4.
+#
+# Migrations must NOT run from the API's entrypoint. With more than one
+# replica, every replica would race the same `migrate deploy` against the same
+# database on every rollout, and the loser of that race either blocks on
+# Postgres' advisory lock or dies. The application container's job is to serve
+# traffic; applying schema is a separate job that runs to completion FIRST.
+#
+# Compose expresses that with `depends_on: { api-migrate: service_completed_
+# successfully }`, so `--scale api=N` still applies migrations exactly once.
+#
+# Idempotent by construction: `prisma migrate deploy` applies only the
+# migrations absent from the `_prisma_migrations` table and exits 0 when there
+# is nothing to do, so re-running the job — on every boot, on a retry, on a
+# redeploy of an unchanged image — is a no-op.
+#
+# Built FROM builder because that stage already has the resolved workspace,
+# the Prisma CLI, and the engines. The runner image deliberately carries none
+# of those (no CLI, no npm), which is precisely why the API cannot migrate
+# itself even if someone tried.
+#
+# NOTE: `prisma migrate deploy` is invoked directly rather than through the
+# package's `migrate:deploy` script, because that script wraps the command in
+# `dotenv -e ../../.env` and there is no .env file in an image — DATABASE_URL
+# arrives from the container environment.
+# ---------------------------------------------------------------------------
+# Built from a clean base rather than FROM builder. Inheriting the builder
+# gave a working but 2.59 GB job image carrying python3/make/g++, the pnpm
+# store, and every workspace package — a compiler toolchain shipped to
+# wherever migrations run, pulled on every deploy. The bundle below is the
+# schema, the migrations, and the Prisma CLI, and nothing else.
+FROM node:${NODE_VERSION} AS migrator
+# openssl is what the Prisma engines link against on Alpine.
+RUN apk add --no-cache openssl \
+  && addgroup -S migrate \
+  && adduser -S -G migrate migrate
+WORKDIR /migrate
+COPY --from=builder --chown=migrate:migrate /migrate ./
+# Same non-root posture as the runtime image: a job holding database
+# credentials is exactly the wrong place to run as uid 0.
+USER migrate
+# No tini: a one-shot job with no children and no signal handling to get
+# wrong. It runs, exits with prisma's status, and Compose gates the API on
+# that status being 0. The CLI is invoked from the bundle's own .bin rather
+# than through pnpm, which is not installed here.
+CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
 
 # ---------------------------------------------------------------------------
 # runner — non-root, production dependencies only, no sources, no toolchain.
@@ -123,6 +180,22 @@ RUN rm -rf \
       /usr/local/bin/yarnpkg \
   && ! command -v npm
 COPY --from=builder --chown=app:app /out ./
+
+# Media upload root for STORAGE_DRIVER=local. Sprint 4.
+#
+# Created and chowned HERE, in the image, on purpose. When Docker first
+# populates an empty named volume it copies the image's directory — contents
+# AND ownership — into it, so the volume comes out owned by `app`. Create it
+# only in Compose and the volume is root-owned instead, the non-root process
+# gets EACCES on the first PUT, and the failure surfaces as a broken upload
+# rather than as a permissions problem.
+#
+# It is also a deliberate, absolute path rather than the default
+# `<cwd>/.media-uploads`, so uploads land on a mount that can be a volume and
+# not inside the application bundle.
+RUN mkdir -p /var/lib/hsm/media && chown -R app:app /var/lib/hsm
+ENV LOCAL_STORAGE_DIR=/var/lib/hsm/media
+
 USER app
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

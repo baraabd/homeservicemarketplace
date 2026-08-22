@@ -8,7 +8,7 @@ const trueish = z
     typeof v === 'boolean' ? v : ['1', 'true', 'yes', 'on'].includes(v.toLowerCase()),
   );
 
-export const envSchema = z.object({
+const baseEnvSchema = z.object({
   NODE_ENV: nodeEnv.default('development'),
   APP_ENV: z.enum(['dev', 'test', 'staging', 'prod']).default('dev'),
 
@@ -33,7 +33,21 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   DATABASE_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
 
-  MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
+  // Sprint 4 — Mongo is OFF by default. See docs/adr/0002-mongodb.md.
+  //
+  // A code search across apps/api/src found zero domain consumers: two
+  // schemas are declared and wired as providers, and nothing injects either
+  // one. The only reader of MongoService is the health check that reports on
+  // it — so the database existed to be health-checked, and an outage in a
+  // store serving no traffic could mark the whole API not-ready.
+  //
+  // Enabling it is now explicit. When disabled, no connection is opened and
+  // readiness does not mention it.
+  MONGODB_ENABLED: trueish.default(false),
+  // Optional, because with MONGODB_ENABLED=false there is nothing to connect
+  // to. The refinement below makes it required exactly when it is used, so
+  // "enabled but unconfigured" still fails at boot rather than at first ping.
+  MONGODB_URI: z.string().min(1).optional(),
   MONGODB_DB_NAME: z.string().min(1).default('homeservicemarketplace'),
   MONGODB_SERVER_SELECTION_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
   MONGODB_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
@@ -229,6 +243,24 @@ export const envSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
   S3_PUBLIC_BASE_URL: z.string().optional(),
+});
+
+// Sprint 4 — "enabled but unconfigured" must fail at BOOT, not at the first
+// ping. Leaving MONGODB_URI unconditionally optional would let the API start
+// with MONGODB_ENABLED=true and no URI, and the only symptom would be a
+// readiness check going down some seconds later.
+//
+// Kept as a refinement on a named base schema rather than chained directly
+// onto the object literal: chaining re-indents all 200+ lines of the object
+// and buries a four-line behaviour change in a whole-file diff.
+export const envSchema = baseEnvSchema.superRefine((env, ctx) => {
+  if (env.MONGODB_ENABLED && !env.MONGODB_URI) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['MONGODB_URI'],
+      message: 'MONGODB_URI is required when MONGODB_ENABLED=true',
+    });
+  }
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

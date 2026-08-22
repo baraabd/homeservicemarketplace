@@ -11,6 +11,7 @@ import request from 'supertest';
 // so this stays deterministic. No runtime impact.
 jest.setTimeout(30_000);
 
+import { AppConfigService } from '../../src/config/app-config.service';
 import { HealthController } from '../../src/infrastructure/health/health.controller';
 import { HealthService } from '../../src/infrastructure/health/health.service';
 import { MongoService } from '../../src/infrastructure/mongo/mongo.service';
@@ -33,7 +34,12 @@ async function bootApp(states: {
   pg: DepState;
   mongo: DepState;
   redis: DepState;
+  // Sprint 4 — readiness consults MONGODB_ENABLED. These route-level cases
+  // assert the enabled behaviour, so Mongo is opted IN unless a case says
+  // otherwise. See docs/adr/0002-mongodb.md.
+  mongoEnabled?: boolean;
 }): Promise<INestApplication> {
+  const mongoEnabled = states.mongoEnabled ?? true;
   const moduleRef = await Test.createTestingModule({
     controllers: [HealthController],
     providers: [
@@ -41,6 +47,10 @@ async function bootApp(states: {
       { provide: PrismaService, useValue: makeDep(states.pg) },
       { provide: MongoService, useValue: makeDep(states.mongo) },
       { provide: RedisService, useValue: makeDep(states.redis) },
+      {
+        provide: AppConfigService,
+        useValue: { get: (k: string) => (k === 'MONGODB_ENABLED' ? mongoEnabled : undefined) },
+      },
     ],
   }).compile();
 
@@ -208,6 +218,44 @@ describe('Health endpoints (route-level)', () => {
         expect(typeof dep.name).toBe('string');
         expect(typeof dep.status).toBe('string');
       }
+    });
+
+    // ── Sprint 4: Mongo is optional (docs/adr/0002-mongodb.md) ────────────
+
+    it('returns 200 with a DEAD Mongo when MONGODB_ENABLED=false', async () => {
+      // The defect this closes: an unconsumed datastore could take a fully
+      // serving instance out of the load-balancer pool.
+      app = await bootApp({
+        pg: { ready: true, ping: true },
+        mongo: { ready: false, ping: 'throw' },
+        redis: { ready: true, ping: true },
+        mongoEnabled: false,
+      });
+
+      const res = await request(app.getHttpServer()).get('/health/ready');
+      expect(res.status).toBe(200);
+      expect(res.body.ready).toBe(true);
+      expect((res.body.dependencies as Array<{ name: string }>).map((d) => d.name)).toEqual([
+        'postgres',
+        'redis',
+      ]);
+    });
+
+    it('still returns 503 for a dead Mongo when MONGODB_ENABLED=true', async () => {
+      app = await bootApp({
+        pg: { ready: true, ping: true },
+        mongo: { ready: false, ping: false },
+        redis: { ready: true, ping: true },
+        mongoEnabled: true,
+      });
+
+      const res = await request(app.getHttpServer()).get('/health/ready');
+      expect(res.status).toBe(503);
+      expect(
+        (res.body.dependencies as Array<{ name: string; status: string }>).find(
+          (d) => d.name === 'mongo',
+        )?.status,
+      ).toBe('down');
     });
   });
 });
