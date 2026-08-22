@@ -1,0 +1,129 @@
+version: 2
+
+# Dependabot rather than Renovate.
+#
+# Both would do the job. Dependabot wins here on one point: it is the only one
+# of the two that opens PRs from GitHub's own security-advisory feed without
+# any additional app installation or hosted service, and this repo's whole
+# supply-chain story is already GitHub-native (CodeQL, secret scanning, the
+# audit gate in ci.yml). Adding Renovate would mean a second bot, a second
+# configuration language, and a second place to look when an upgrade PR is
+# missing.
+#
+# Grouping matters more than cadence. An ungrouped Dependabot on a pnpm
+# monorepo with ~90 direct dependencies opens a wall of single-package PRs
+# every Monday, each triggering a full CI run, and the predictable outcome is
+# that the team stops reading them — which is worse than not having it. So
+# routine updates are batched into a handful of reviewable PRs, and only
+# security updates are allowed to arrive on their own.
+
+updates:
+  # ── npm / pnpm workspace ────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Stockholm
+    open-pull-requests-limit: 8
+    versioning-strategy: increase
+    labels: ['dependencies']
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # Security patches are NOT grouped anywhere below — Dependabot always
+      # raises those separately so they can be reviewed and merged alone.
+      nestjs:
+        patterns: ['@nestjs/*', 'reflect-metadata', 'rxjs']
+        update-types: ['minor', 'patch']
+      prisma:
+        patterns: ['prisma', '@prisma/*']
+        update-types: ['minor', 'patch']
+      react:
+        patterns: ['react', 'react-dom', 'react-router', '@types/react', '@types/react-dom']
+        update-types: ['minor', 'patch']
+      radix-and-ui:
+        patterns: ['@radix-ui/*', '@mui/*', '@emotion/*', 'lucide-react', 'sonner']
+        update-types: ['minor', 'patch']
+      tailwind:
+        patterns: ['tailwindcss', '@tailwindcss/*', 'tailwind-merge', 'tw-animate-css']
+        update-types: ['minor', 'patch']
+      realtime:
+        patterns: ['socket.io', 'socket.io-client', '@socket.io/*', 'ws', 'ioredis']
+        update-types: ['minor', 'patch']
+      aws:
+        patterns: ['@aws-sdk/*', '@smithy/*']
+        update-types: ['minor', 'patch']
+      test-tooling:
+        patterns:
+          [
+            'jest',
+            'ts-jest',
+            '@types/jest',
+            'vitest',
+            '@vitest/*',
+            '@testing-library/*',
+            'happy-dom',
+            'supertest',
+            '@playwright/*',
+          ]
+        update-types: ['minor', 'patch']
+      lint-and-build:
+        patterns:
+          [
+            'eslint',
+            'eslint-*',
+            'typescript-eslint',
+            'prettier',
+            'typescript',
+            'vite',
+            '@vitejs/*',
+            'turbo',
+          ]
+        update-types: ['minor', 'patch']
+    ignore:
+      # Majors are opened as individual PRs by design — a major upgrade needs a
+      # human reading a changelog, not a batch merge. Listing them here would
+      # SUPPRESS them entirely, so nothing is ignored; this block is left
+      # empty deliberately and documented so nobody adds a blanket
+      # `update-types: [version-update:semver-major]` ignore later and quietly
+      # stops hearing about React 20.
+      []
+
+  # ── GitHub Actions ──────────────────────────────────────────────────────
+  # Actions in this repo are pinned to commit SHAs (see ci.yml). A pinned SHA
+  # never updates itself, which is the point — but it also means a patched
+  # action is invisible without this. Dependabot understands the
+  # `uses: owner/repo@sha # vX.Y.Z` convention and bumps both parts together.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Stockholm
+    open-pull-requests-limit: 5
+    labels: ['dependencies', 'ci']
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+
+  # ── Container base image ────────────────────────────────────────────────
+  # The API image is scanned by Trivy on every PR, which reports a vulnerable
+  # base but cannot fix one. This is the half that opens the PR.
+  - package-ecosystem: docker
+    directory: '/apps/api'
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Stockholm
+    open-pull-requests-limit: 3
+    labels: ['dependencies', 'docker']
+    commit-message:
+      prefix: chore

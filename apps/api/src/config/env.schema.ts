@@ -106,6 +106,48 @@ export const envSchema = z.object({
   // forged address and walk out of its own rate-limit bucket.
   TRUST_PROXY_HOPS: z.coerce.number().int().nonnegative().max(10).default(0),
 
+  // ── Sprint 3: HTTP response hardening ──────────────────────────────────
+  //
+  // CSP is rolled out in stages rather than switched on, because a policy
+  // that is wrong the first time breaks the app for everyone at once and the
+  // usual response is to delete it. 'report-only' ships the header as
+  // Content-Security-Policy-Report-Only: browsers evaluate it, report what
+  // WOULD have been blocked, and block nothing. Once the reports are quiet,
+  // 'enforce' flips the same policy to the enforcing header — no directive
+  // changes, so the enforcing step cannot surprise anyone.
+  //
+  // 'off' exists for one reason: a policy that is actively breaking
+  // production must be switchable off with an env var, not a redeploy.
+  CSP_MODE: z.enum(['off', 'report-only', 'enforce']).default('report-only'),
+
+  // HSTS max-age in seconds, ramped deliberately.
+  //
+  // HSTS is the one header a mistake in which cannot be withdrawn: once a
+  // browser has pinned the directive it refuses plaintext for the full
+  // max-age no matter what the server later sends. So the default is 300 (5
+  // minutes) — long enough to be real, short enough that a bad rollout ages
+  // out within a coffee break. The documented ramp is 300 -> 86400 -> 2592000
+  // -> 31536000, and preload/includeSubDomains only at the end, once every
+  // subdomain is known to serve TLS.
+  HSTS_MAX_AGE_SECONDS: z.coerce.number().int().nonnegative().max(63_072_000).default(300),
+  HSTS_INCLUDE_SUBDOMAINS: trueish.default(false),
+  HSTS_PRELOAD: trueish.default(false),
+
+  // Bearer token required to scrape /metrics.
+  //
+  // The endpoint publishes request volumes, latencies and error rates — a
+  // free map of which routes exist and which are failing. It was previously
+  // unauthenticated, with a comment deferring the problem to "network policy
+  // / reverse-proxy rules", which is a control this repo neither owns nor
+  // tests.
+  //
+  // Optional so local runs and existing scrapers are not broken by an
+  // upgrade. When it IS set the endpoint requires it; when it is NOT set in
+  // production the endpoint stops existing (404) rather than serving to
+  // anyone who asks. Health probes are unaffected — they live on
+  // /health/live and /health/ready and are never gated by this.
+  METRICS_TOKEN: z.string().min(16).optional(),
+
   // Rate-limit counters live in Redis so the budget is shared across API
   // replicas. When Redis is unreachable at request time the limiter FAILS
   // CLOSED (429) rather than silently degrading to a per-instance in-memory

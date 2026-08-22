@@ -156,7 +156,24 @@ jobs:
       - name: Typecheck web
         run: pnpm --filter @homeservicemarketplace/web typecheck
       - name: Test web
-        run: pnpm --filter @homeservicemarketplace/web test
+        # Emit a machine-readable report alongside the console output. Twice now
+        # a web test has failed here and been diagnosable only by guesswork:
+        # the job log is the sole record, and reading it needs repo admin, so
+        # whoever triages the failure may not be able to see it at all. The
+        # JUnit file below is uploaded on failure and names the test, the
+        # assertion, and the stack — no privileges required.
+        # `test:ci` is `test` plus a JUnit report. It is a separate script
+        # because pnpm's `--` passthrough does not survive `--filter` and the
+        # extra flags were silently dropped.
+        run: pnpm --filter @homeservicemarketplace/web test:ci
+      - name: Upload the web test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-test-report
+          path: apps/web/vitest-report.xml
+          retention-days: 7
+          if-no-files-found: warn
       - name: Build web
         env:
           VITE_API_URL: https://api.example.com
@@ -356,6 +373,126 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # ── cookies / CSRF / refresh / logout, in a REAL browser ──────────────────
+  # These behaviours are defined by rules only a browser implements: HttpOnly
+  # hides a cookie from document.cookie, SameSite withholds it cross-site, and
+  # Path scopes the refresh token. supertest and happy-dom implement none of
+  # that, so they will happily pass a cookie contract Chromium refuses to
+  # honour. This job is the only place that check is real.
+  browser-auth-e2e:
+    name: Auth cookie contract (real browser + real API)
+    runs-on: ubuntu-latest
+    needs: verify-api
+    # Bounded deliberately. Each test does a real registration, an SMTP
+    # delivery and a mail-catcher poll, so the per-test budget is generous;
+    # without a job ceiling a hung suite would sit on a runner for GitHub's
+    # 6-hour default instead of failing in a coffee break.
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: homeservicemarketplace
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      mongo:
+        image: mongo:7
+        ports: ['27017:27017']
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      mailpit:
+        image: axllent/mailpit:latest
+        ports: ['1025:1025', '8025:8025']
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/homeservicemarketplace
+      MONGODB_URI: mongodb://localhost:27017/homeservicemarketplace
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      JWT_ACCESS_SECRET: ci_only_dummy_secret_at_least_32_chars_long
+      JWT_ISSUER: hsm-api
+      JWT_AUDIENCE: hsm-clients
+      SMTP_HOST: localhost
+      SMTP_PORT: '1025'
+      COOKIE_SECURE: 'false'
+      COOKIE_SAMESITE: lax
+      # Sprint 1's registration limiter is 5/IP/hour. Each test registers a
+      # fresh account, so the suite would throttle itself out halfway through
+      # and the failure would look like an auth bug. Raised for this job only.
+      AUTH_REGISTER_THROTTLE_LIMIT: '200'
+      # The cross-site test needs CORS to ALLOW the other origin, so that when
+      # the request still arrives anonymous the cause is unambiguously the
+      # cookie jar and not CORS.
+      CORS_ORIGINS: http://localhost:4010,http://127.0.0.1:4010
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Generate prisma client
+        run: pnpm --filter @homeservicemarketplace/database generate
+      - name: Apply migrations
+        run: pnpm --filter @homeservicemarketplace/database migrate:deploy
+      - name: Build database package
+        run: pnpm --filter @homeservicemarketplace/database build
+      - name: Seed baseline roles / permissions
+        run: pnpm --filter @homeservicemarketplace/database seed
+      - name: Build the API
+        run: pnpm --filter @homeservicemarketplace/api build
+      - name: Install Chromium
+        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Start the API
+        run: |
+          node apps/api/dist/main.js > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4010/health/live >/dev/null; then
+              echo "API is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API did not become healthy"; cat /tmp/api.log; exit 1
+        env:
+          NODE_ENV: development
+          PORT: '4010'
+      - name: Run the auth cookie contract in Chromium
+        # No web build and no vite preview here: this suite navigates only to
+        # the API origin (`${E2E_REAL_API}/health/live` and the cross-site
+        # variant), never to the SPA. playwright.config.ts omits the webServer
+        # entirely when E2E_REAL_API is set — see REAL_API_RUN there.
+        #
+        # The previous version set E2E_PREBUILT with no build step, so the
+        # preview server started against a directory that did not exist:
+        # "The directory \"dist\" does not exist". Adding a build would have
+        # fixed the symptom by producing a bundle nothing ever requests.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test             e2e/auth-cookies.spec.ts --project=chromium-desktop --workers=1
+      - name: Upload API log and Playwright artefacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-auth-e2e
+          path: |
+            /tmp/api.log
+            apps/web/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
   # ── the image actually builds, boots, serves, and stops ───────────────────
   docker-image:
     name: Docker cold build + production boot
@@ -479,10 +616,43 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
 
-      - name: Production dependency audit (fail on high or critical)
-        # --prod: a dev-only advisory should not block a merge, since it never
-        # reaches a deployed artifact.
+      - name: Production dependency audit (ZERO high or critical)
+        # The merge gate. --prod scopes it to what is actually deployed: a
+        # dev-only advisory in vite or eslint never reaches a running artifact,
+        # and blocking merges on those trains everyone to bypass the gate.
+        #
+        # --audit-level high means the job fails on any HIGH or CRITICAL, so
+        # the passing condition is literally "zero high, zero critical in the
+        # shipped tree". Sprint 3 left it at zero; anything above is a
+        # regression, not a backlog item.
         run: pnpm audit --prod --audit-level high
+
+      - name: Full dependency audit (report only, never blocks)
+        # The dev tree carries ~28 highs across vite, postcss, turbo, tar and
+        # friends. None of them ship, so none of them may block a merge — but
+        # they must not be INVISIBLE either, or the first anyone hears of a
+        # build-time compromise is after it happens. This step reports and
+        # always succeeds; the artifact below is the durable record.
+        if: always()
+        run: |
+          pnpm audit --json > audit-full.json || true
+          node -e "
+            const a = Object.values(JSON.parse(require('fs').readFileSync('audit-full.json','utf8')).advisories || {});
+            const by = {};
+            a.forEach(x => { by[x.severity] = (by[x.severity] || 0) + 1; });
+            console.log('Full-tree advisories (dev included):', JSON.stringify(by));
+            a.filter(x => ['critical','high'].includes(x.severity))
+             .forEach(x => console.log('  ' + x.severity.toUpperCase(), x.module_name, x.vulnerable_versions, '->', x.patched_versions));
+          "
+
+      - name: Upload the full audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit
+          path: audit-full.json
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: Secret scan
         uses: gitleaks/gitleaks-action@v2
@@ -491,6 +661,31 @@ jobs:
 
       - name: Build the image to scan
         run: docker build -f apps/api/Dockerfile -t hsm-api:scan .
+
+      - name: Generate an SBOM for the image
+        # An SBOM answers "were we running the compromised version of X on the
+        # 3rd?" months later, when node_modules has long since been rebuilt.
+        # Generated from the IMAGE rather than the lockfile on purpose: the
+        # lockfile describes what npm would install, the image describes what
+        # actually shipped, including OS packages the lockfile knows nothing
+        # about.
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: hsm-api:scan
+          format: cyclonedx-json
+          artifact-name: hsm-api-sbom.cyclonedx.json
+          output-file: hsm-api-sbom.cyclonedx.json
+
+      - name: Upload the SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: hsm-api-sbom.cyclonedx.json
+          # Longer than the other artifacts: the value of an SBOM is entirely
+          # in being able to answer a question asked long after the build.
+          retention-days: 90
+          if-no-files-found: warn
 
       - name: Container image scan (fail on unmitigated CRITICAL/HIGH)
         # aquasecurity/trivy-action publishes `v`-prefixed tags only, so the bare
@@ -526,6 +721,9 @@ jobs:
       - verify-web
       - integration-e2e
       - browser-e2e
+      # The cookie/CSRF/refresh/logout contract is a merge blocker like any
+      # other. A security check that is allowed to fail is not a check.
+      - browser-auth-e2e
       - docker-image
       - security-scan
     steps:
