@@ -14,7 +14,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install --with-deps chromium",
-    "test:e2e:update-snapshots": "playwright test --update-snapshots"
+    "test:e2e:update-snapshots": "playwright test --update-snapshots",
+    "test:ci": "pnpm build:deps && vitest run --reporter=default --reporter=junit --outputFile.junit=vitest-report.xml"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

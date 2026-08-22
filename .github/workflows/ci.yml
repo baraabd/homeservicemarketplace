@@ -156,7 +156,24 @@ jobs:
       - name: Typecheck web
         run: pnpm --filter @homeservicemarketplace/web typecheck
       - name: Test web
-        run: pnpm --filter @homeservicemarketplace/web test
+        # Emit a machine-readable report alongside the console output. Twice now
+        # a web test has failed here and been diagnosable only by guesswork:
+        # the job log is the sole record, and reading it needs repo admin, so
+        # whoever triages the failure may not be able to see it at all. The
+        # JUnit file below is uploaded on failure and names the test, the
+        # assertion, and the stack — no privileges required.
+        # `test:ci` is `test` plus a JUnit report. It is a separate script
+        # because pnpm's `--` passthrough does not survive `--filter` and the
+        # extra flags were silently dropped.
+        run: pnpm --filter @homeservicemarketplace/web test:ci
+      - name: Upload the web test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-test-report
+          path: apps/web/vitest-report.xml
+          retention-days: 7
+          if-no-files-found: warn
       - name: Build web
         env:
           VITE_API_URL: https://api.example.com

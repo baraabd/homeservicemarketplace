@@ -63,3 +63,6 @@ packages/database/generated/
 apps/web/playwright-report/
 apps/web/test-results/
 apps/web/blob-report/
+
+# Vitest JUnit report (CI artifact only)
+vitest-report.xml
