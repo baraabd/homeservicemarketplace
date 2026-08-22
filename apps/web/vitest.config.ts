@@ -21,6 +21,14 @@ export default mergeConfig(
       environment: 'happy-dom',
       setupFiles: ['./src/test-setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
+      // Must stay comfortably ABOVE the testing-library asyncUtilTimeout set
+      // in test-setup.ts. Vitest's default per-test budget is also 5000ms, so
+      // leaving it there means a waitFor that is about to fail gets killed by
+      // the outer timeout first — the report then says "Test timed out in
+      // 5000ms" and names the whole test, hiding which assertion was actually
+      // stuck. The inner budget has to expire first for the failure to be
+      // legible.
+      testTimeout: 20_000,
     },
   }),
 );

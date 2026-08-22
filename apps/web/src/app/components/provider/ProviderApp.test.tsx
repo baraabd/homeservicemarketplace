@@ -193,6 +193,34 @@ async function openProfileTab() {
   fireEvent.click(tab);
 }
 
+const ACTIVATE_CTA = /activate provider account|تفعيل حساب المحترف/i;
+
+// Click the onboarding CTA and keep clicking until the effect actually lands.
+//
+// The CTA is mounted inside a subtree React REPLACES when the `/v1/auth/me`
+// query settles. An element captured by `findByRole` can therefore already be
+// detached by the time the test clicks it — and clicking a detached node
+// dispatches nothing at all: no handler runs, no request leaves. Verified
+// directly, on a failing run: `isConnected === false` at click time, with a
+// different, live CTA sitting in the DOM.
+//
+// That failure mode is invisible to a longer timeout. The POST is not late, it
+// never happens, so the test waits out its budget and then reports the last
+// assertion — "expected +0 to be 1" — which reads as though the component
+// called the wrong endpoint. It does not; the click went to a corpse.
+//
+// Re-querying at click time is the fix. The `hasLanded` guard means a click is
+// only ever re-issued while nothing has happened yet, so this cannot inflate
+// the call counts these tests assert on.
+async function clickActivateUntil(hasLanded: () => boolean) {
+  await waitFor(() => {
+    if (!hasLanded()) {
+      fireEvent.click(screen.getByRole('button', { name: ACTIVATE_CTA }));
+    }
+    expect(hasLanded()).toBe(true);
+  });
+}
+
 describe('ProviderApp — provider with profile', () => {
   it('renders the real provider identity (no "Omar Al-Khalid" hardcoded)', async () => {
     mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
@@ -307,18 +335,34 @@ describe('ProviderApp — non-provider onboarding', () => {
 
     renderProvider();
     await openProfileTab();
-    const activate = await screen.findByRole('button', {
-      name: /activate provider account|تفعيل حساب المحترف/i,
-    });
-    fireEvent.click(activate);
+    await screen.findByRole('button', { name: ACTIVATE_CTA });
+    await clickActivateUntil(() => upgradeCalls > 0);
 
-    await waitFor(() => expect(upgradeCalls).toBe(1));
+    // Exactly one POST — the guard above re-clicks only while nothing has
+    // landed, so this still pins "one deliberate upgrade per press".
+    expect(upgradeCalls).toBe(1);
     // No client-supplied body — userId comes from the session only.
     expect(upgradeBody === null || upgradeBody === '').toBe(true);
-    // Cache is seeded with the upgrade response — the post-upgrade
-    // render verification is covered by the "shell top bar identity"
-    // tests in this file (which assert the same setQueryData → render
-    // path under cleaner conditions).
+
+    // ...and the cache is actually seeded. The test's name has always promised
+    // that and never checked it; the old comment deferred to the shell-identity
+    // tests, which start from a different state and so cannot catch a
+    // regression in THIS transition.
+    //
+    // The assertion has to be chosen carefully, because the obvious candidates
+    // are both vacuous — verified by deleting the `setQueryData` call and
+    // watching them still pass:
+    //   - "Grace Hopper" renders from the AUTH identity via
+    //     deriveShellIdentity, with or without a profile in the cache.
+    //   - "the CTA disappears" is briefly true during the post-mutation
+    //     refetch, when the query's 403 error is cleared before the next
+    //     response pins it again.
+    //
+    // `completedJobs` has no such second source. It is read straight off
+    // profileQuery.data.profile, and the GET is still mocked 403 here, so the
+    // only thing that can put 540 on the screen is onSuccess having seeded the
+    // cache. Deleting the seed now fails this line, which is the point.
+    expect(await screen.findByText('540')).toBeInTheDocument();
   });
 
   it('shows the safe upgrade error when POST /upgrade fails (no raw payload)', async () => {
@@ -333,13 +377,13 @@ describe('ProviderApp — non-provider onboarding', () => {
 
     renderProvider();
     await openProfileTab();
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: /activate provider account|تفعيل حساب المحترف/i }),
-      ).toBeInTheDocument(),
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: /activate provider account|تفعيل حساب المحترف/i }),
+    await screen.findByRole('button', { name: ACTIVATE_CTA });
+    // Same detached-node race as the test above: this one re-queried before
+    // clicking but could still catch the CTA in the instant before React
+    // swapped the subtree, which is why it flaked independently.
+    await clickActivateUntil(
+      () =>
+        screen.queryByText(/couldn't activate your provider account|تعذر تفعيل الحساب/i) !== null,
     );
 
     await waitFor(() =>
