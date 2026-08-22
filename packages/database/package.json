@@ -29,7 +29,8 @@
     "prisma:validate": "dotenv -e ../../.env -- prisma validate",
     "seed": "dotenv -e ../../.env -- node dist/seed.js",
     "grant:admin": "dotenv -e ../../.env -- node dist/admin-access-grant.js",
-    "grant:provider": "dotenv -e ../../.env -- node dist/admin-access-grant.js --provider"
+    "grant:provider": "dotenv -e ../../.env -- node dist/admin-access-grant.js --provider",
+    "verify:migrations": "node scripts/verify-constraint-migrations.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

@@ -12,6 +12,7 @@ import {
 } from '../../../infrastructure/persistence/services/provider-category-application.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
+import { AdminAuditService } from '../admin-audit.service';
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -35,6 +36,7 @@ export class AdminCategoryApplicationsService {
   constructor(
     private readonly applications: ProviderCategoryApplicationRepository,
     private readonly tx: TransactionRunner,
+    private readonly audit: AdminAuditService,
   ) {}
 
   async list(query: ListPendingCategoriesQuery): Promise<ListPendingCategoriesResponse> {
@@ -53,7 +55,12 @@ export class AdminCategoryApplicationsService {
     return { items, nextCursor };
   }
 
+  // `adminUserId` is the reviewing admin, taken from their session by the
+  // controller. It is the subject of the audit record — "who decided this" is
+  // the question the record exists to answer, and it is unanswerable if the
+  // actor is not threaded through.
   async review(
+    adminUserId: string,
     applicationId: string,
     input: ReviewCategoryApplicationRequest,
   ): Promise<PendingCategorySummary> {
@@ -82,14 +89,49 @@ export class AdminCategoryApplicationsService {
           existing.serviceCategoryId,
           tx,
         );
-        return this.applications.updateStatus(applicationId, 'APPROVED', tx);
+        const approved = await this.applications.updateStatus(applicationId, 'APPROVED', tx);
+        await this.recordDecision(adminUserId, 'ADMIN_CATEGORY_APPLICATION_APPROVED', approved, tx);
+        return approved;
       }
 
       // REJECT — no join-table mutation. The row stays so a future
       // re-apply can show prior context.
-      return this.applications.updateStatus(applicationId, 'REJECTED', tx);
+      const rejected = await this.applications.updateStatus(applicationId, 'REJECTED', tx);
+      await this.recordDecision(adminUserId, 'ADMIN_CATEGORY_APPLICATION_REJECTED', rejected, tx);
+      return rejected;
     });
     return toSummary(result);
+  }
+
+  // Inside the caller's transaction, always.
+  //
+  // Granting someone a skill and recording that you granted it are one act,
+  // and the audit trail is the only durable answer to "who let this provider
+  // into this category". Writing it after the transaction commits would mean
+  // any failure in between leaves a provider newly able to bid in a category
+  // with nothing on record — which is precisely the state this sprint exists
+  // to make impossible. So it commits with the decision or not at all.
+  private async recordDecision(
+    adminUserId: string,
+    type: 'ADMIN_CATEGORY_APPLICATION_APPROVED' | 'ADMIN_CATEGORY_APPLICATION_REJECTED',
+    row: ProviderCategoryApplicationWithJoins,
+    tx: Parameters<Parameters<TransactionRunner['run']>[0]>[0],
+  ): Promise<void> {
+    await this.audit.record(
+      {
+        adminUserId,
+        type,
+        metadata: {
+          applicationId: row.id,
+          providerProfileId: row.providerProfileId,
+          serviceCategoryId: row.serviceCategoryId,
+          categorySlug: row.serviceCategory.slug,
+          previousStatus: 'PENDING',
+          newStatus: row.status,
+        },
+      },
+      tx,
+    );
   }
 }
 

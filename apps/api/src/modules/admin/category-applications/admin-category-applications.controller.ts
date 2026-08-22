@@ -14,8 +14,10 @@ import type {
   PendingCategorySummary,
 } from '@homeservicemarketplace/contracts';
 
+import { CurrentUser } from '../../iam/authentication/decorators/current-user.decorator';
 import { CsrfGuard } from '../../iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
+import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import {
@@ -48,9 +50,10 @@ export class AdminCategoryApplicationsController {
   @Patch(':applicationId/review')
   @HttpCode(HttpStatus.OK)
   review(
+    @CurrentUser() admin: AuthenticatedUser,
     @Param('applicationId') applicationId: string,
     @Body() body: ReviewCategoryApplicationDto,
   ): Promise<PendingCategorySummary> {
-    return this.applications.review(applicationId, body);
+    return this.applications.review(admin.id, applicationId, body);
   }
 }

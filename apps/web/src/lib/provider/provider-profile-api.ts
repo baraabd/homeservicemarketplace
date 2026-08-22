@@ -1,5 +1,9 @@
 import type {
+  ApplyForCategoryRequest,
+  ApplyForCategoryResponse,
   GetProviderProfileResponse,
+  ListMyCategoryApplicationsQuery,
+  ListMyCategoryApplicationsResponse,
   UpdateProviderAvailabilityRequest,
   UpdateProviderAvailabilityResponse,
   UpdateProviderProfileRequest,
@@ -40,6 +44,35 @@ export async function updateProviderAvailability(
   const { data } = await api.patch<UpdateProviderAvailabilityResponse>(
     '/v1/me/provider/availability',
     input,
+  );
+  return data;
+}
+
+// ── Sprint 2: service-category applications ────────────────────────────────
+//
+// Adding a skill is no longer something the profile PATCH can do. A provider
+// applies here and an admin decides; until then the category shows up under
+// `pendingCategories` on the profile, never under `serviceCategories`.
+//
+// Neither call names a provider: the server takes ownership from the session,
+// so there is no id for the client to get wrong or for anyone to tamper with.
+
+export async function applyForCategory(
+  input: ApplyForCategoryRequest,
+): Promise<ApplyForCategoryResponse> {
+  const { data } = await api.post<ApplyForCategoryResponse>(
+    '/v1/me/provider/categories/applications',
+    input,
+  );
+  return data;
+}
+
+export async function listMyCategoryApplications(
+  query: ListMyCategoryApplicationsQuery = {},
+): Promise<ListMyCategoryApplicationsResponse> {
+  const { data } = await api.get<ListMyCategoryApplicationsResponse>(
+    '/v1/me/provider/categories/applications',
+    { params: query },
   );
   return data;
 }

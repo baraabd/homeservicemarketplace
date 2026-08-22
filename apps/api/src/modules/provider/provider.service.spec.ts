@@ -14,6 +14,7 @@ import type {
 import type { ServiceCategoryRepository } from '../../infrastructure/persistence/services/service-category.repository';
 import type { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
+import type { AuditService } from '../iam/audit/audit.service';
 import { ProviderService } from './provider.service';
 
 function makeTx(): TransactionRunner {
@@ -77,6 +78,7 @@ function makeProvider(over: Partial<ProviderProfile> = {}): ProviderProfile {
 function makeProviderWithCategories(
   over: Partial<ProviderProfile> = {},
   categories: ServiceCategory[] = [],
+  pending: ServiceCategory[] = [],
 ): ProviderProfileWithCategories {
   const base = makeProvider(over);
   return {
@@ -87,6 +89,10 @@ function makeProviderWithCategories(
       createdAt: new Date('2026-04-30T00:00:00.000Z'),
       serviceCategory: c,
     })),
+    // Sprint 2 — the shared profile include eager-loads live PENDING
+    // applications so every provider-profile response carries
+    // pendingCategories.
+    categoryApplications: pending.map((c) => ({ serviceCategory: c })),
   } as ProviderProfileWithCategories;
 }
 
@@ -129,9 +135,10 @@ interface Mocks {
     createForUser: jest.Mock;
     updateById: jest.Mock;
     updateAvailabilityById: jest.Mock;
-    replaceServiceCategories: jest.Mock;
+    removeServiceCategories: jest.Mock;
   };
   categories: { findById: jest.Mock };
+  audit: { record: jest.Mock };
 }
 
 type MocksOverride = { [K in keyof Mocks]?: Partial<Mocks[K]> };
@@ -156,13 +163,14 @@ function makeMocks(over: MocksOverride = {}): Mocks {
       updateAvailabilityById: jest
         .fn()
         .mockImplementation((_id, availability) => makeProvider({ availability })),
-      replaceServiceCategories: jest.fn().mockResolvedValue(undefined),
+      removeServiceCategories: jest.fn().mockResolvedValue(0),
       ...(over.providers ?? {}),
     },
     categories: {
       findById: jest.fn().mockResolvedValue(makeCategory()),
       ...(over.categories ?? {}),
     },
+    audit: { record: jest.fn().mockResolvedValue(undefined), ...(over.audit ?? {}) },
   };
 }
 
@@ -173,6 +181,7 @@ function makeService(m: Mocks) {
     m.providers as unknown as ProviderProfileRepository,
     m.categories as unknown as ServiceCategoryRepository,
     makeTx(),
+    m.audit as unknown as AuditService,
   );
 }
 
@@ -314,26 +323,130 @@ describe('ProviderService', () => {
         }),
         undefined,
       );
-      expect(m.providers.replaceServiceCategories).not.toHaveBeenCalled();
+      expect(m.providers.removeServiceCategories).not.toHaveBeenCalled();
     });
 
-    it('replaces service categories when categoryIds is provided', async () => {
+    // ── Sprint 2: adding a skill is an ADMIN decision ─────────────────────
+    //
+    // These replace the previous "replaces service categories when categoryIds
+    // is provided" test, which asserted the defect: it pinned the behaviour
+    // that let a provider write any active category straight onto their own
+    // profile. The endpoint still accepts categoryIds — that is how removal is
+    // expressed — but an id the provider does not already hold is now refused.
+    it('REFUSES to add a category the provider does not already hold', async () => {
+      const m = makeMocks(); // profile starts with no categories
+      await expect(
+        makeService(m).update('user-1', { categoryIds: ['cat-plumbing'] }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+
+      expect(m.providers.removeServiceCategories).not.toHaveBeenCalled();
+      expect(m.providers.updateById).not.toHaveBeenCalled();
+    });
+
+    it('the refusal tells the provider where to actually apply', async () => {
       const m = makeMocks();
-      await makeService(m).update('user-1', { categoryIds: ['cat-plumbing'] });
-      expect(m.categories.findById).toHaveBeenCalledWith('cat-plumbing', undefined);
-      expect(m.providers.replaceServiceCategories).toHaveBeenCalledWith(
+      await expect(
+        makeService(m).update('user-1', { categoryIds: ['cat-plumbing'] }),
+      ).rejects.toMatchObject({ message: expect.stringContaining('Apply for the category') });
+    });
+
+    it('refuses the ADD even when it is bundled with a legitimate profile edit', async () => {
+      // The whole PATCH is one transaction, so a rejected skill grant must not
+      // let the rest of the payload through. Otherwise "change my bio AND give
+      // me plumbing" half-succeeds and the client cannot tell which half.
+      const m = makeMocks();
+      await expect(
+        makeService(m).update('user-1', { bio: 'Hello', categoryIds: ['cat-plumbing'] }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+      expect(m.providers.removeServiceCategories).not.toHaveBeenCalled();
+      expect(m.providers.updateById).not.toHaveBeenCalled();
+    });
+
+    it('refuses an ADD that is disguised as a removal of something else', async () => {
+      // Holds plumbing; asks for electrical only. That is one removal AND one
+      // addition, and the addition decides the outcome.
+      const held = makeCategory({ id: 'cat-plumbing' });
+      const m = makeMocks({
+        providers: {
+          findByUserIdWithCategories: jest
+            .fn()
+            .mockResolvedValue(makeProviderWithCategories({}, [held])),
+        },
+      });
+      await expect(
+        makeService(m).update('user-1', { categoryIds: ['cat-electrical'] }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+      expect(m.providers.removeServiceCategories).not.toHaveBeenCalled();
+    });
+
+    // ── Sprint 2: removal is self-service ────────────────────────────────
+    it('removes a held category and records why the skill set changed', async () => {
+      const held = makeCategory({ id: 'cat-plumbing' });
+      const m = makeMocks({
+        providers: {
+          findByUserIdWithCategories: jest
+            .fn()
+            .mockResolvedValue(makeProviderWithCategories({}, [held])),
+        },
+      });
+      await makeService(m).update('user-1', { categoryIds: [] });
+
+      expect(m.providers.removeServiceCategories).toHaveBeenCalledWith(
         'pp-1',
         ['cat-plumbing'],
         undefined,
       );
+      expect(m.audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'PROVIDER_CATEGORY_REMOVED',
+          userId: 'user-1',
+          metadata: expect.objectContaining({ removedCategoryIds: ['cat-plumbing'] }),
+        }),
+        undefined,
+      );
     });
 
-    it('clears all categories when an empty array is provided', async () => {
+    it('keeps a held category that is still present in the payload', async () => {
+      const held = makeCategory({ id: 'cat-plumbing' });
+      const m = makeMocks({
+        providers: {
+          findByUserIdWithCategories: jest
+            .fn()
+            .mockResolvedValue(makeProviderWithCategories({}, [held])),
+        },
+      });
+      await makeService(m).update('user-1', { categoryIds: ['cat-plumbing'] });
+      expect(m.providers.removeServiceCategories).not.toHaveBeenCalled();
+      expect(m.audit.record).not.toHaveBeenCalled();
+    });
+
+    it('an empty array on a provider with no skills is a no-op, not an audit event', async () => {
       const m = makeMocks();
       await makeService(m).update('user-1', { categoryIds: [] });
-      // No category lookups for an empty list, but the join-table replace still fires.
       expect(m.categories.findById).not.toHaveBeenCalled();
-      expect(m.providers.replaceServiceCategories).toHaveBeenCalledWith('pp-1', [], undefined);
+      expect(m.providers.removeServiceCategories).not.toHaveBeenCalled();
+      expect(m.audit.record).not.toHaveBeenCalled();
+    });
+
+    it('surfaces pendingCategories on the profile it returns', async () => {
+      const pending = makeCategory({ id: 'cat-electrical', slug: 'electrical' });
+      const m = makeMocks({
+        providers: {
+          findByUserIdWithCategories: jest
+            .fn()
+            .mockResolvedValue(makeProviderWithCategories({}, [], [pending])),
+          findByIdWithCategories: jest
+            .fn()
+            .mockResolvedValue(makeProviderWithCategories({}, [], [pending])),
+        },
+      });
+      const out = await makeService(m).update('user-1', { bio: 'x' });
+      expect(out.profile.pendingCategories).toEqual([
+        expect.objectContaining({ id: 'cat-electrical', slug: 'electrical' }),
+      ]);
+      // A pending category is NOT an approved one. Conflating the two is how a
+      // Skills screen ends up advertising an unearned skill as live.
+      expect(out.profile.serviceCategories).toEqual([]);
     });
 
     it('rejects unknown / inactive categoryIds with VALIDATION_ERROR', async () => {
@@ -348,7 +461,7 @@ describe('ProviderService', () => {
       await expect(
         makeService(m).update('user-1', { categoryIds: ['cat-plumbing', 'cat-stale'] }),
       ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
-      expect(m.providers.replaceServiceCategories).not.toHaveBeenCalled();
+      expect(m.providers.removeServiceCategories).not.toHaveBeenCalled();
       expect(m.providers.updateById).not.toHaveBeenCalled();
     });
 
@@ -363,10 +476,17 @@ describe('ProviderService', () => {
     });
 
     it('skips the profile UPDATE when only categoryIds are sent', async () => {
-      const m = makeMocks();
-      await makeService(m).update('user-1', { categoryIds: ['cat-plumbing'] });
+      const held = makeCategory({ id: 'cat-plumbing' });
+      const m = makeMocks({
+        providers: {
+          findByUserIdWithCategories: jest
+            .fn()
+            .mockResolvedValue(makeProviderWithCategories({}, [held])),
+        },
+      });
+      await makeService(m).update('user-1', { categoryIds: [] });
       expect(m.providers.updateById).not.toHaveBeenCalled();
-      expect(m.providers.replaceServiceCategories).toHaveBeenCalled();
+      expect(m.providers.removeServiceCategories).toHaveBeenCalled();
     });
 
     // Sprint 7.x — city → coords auto-resolution. The provider feed +

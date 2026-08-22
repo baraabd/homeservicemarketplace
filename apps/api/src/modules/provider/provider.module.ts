@@ -10,6 +10,8 @@ import {
   ProviderBidsLegacyController,
 } from './bids/provider-bids.controller';
 import { ProviderBidsService } from './bids/provider-bids.service';
+import { ProviderCategoriesController } from './categories/provider-categories.controller';
+import { ProviderCategoriesService } from './categories/provider-categories.service';
 import { ProviderBookingsCanonicalController } from './bookings/provider-bookings-canonical.controller';
 import { ProviderBookingsController } from './bookings/provider-bookings.controller';
 import { ProviderBookingsService } from './bookings/provider-bookings.service';
@@ -42,10 +44,18 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
 // NotificationsService by NotificationsModule.
 @Module({
   // AuditModule: the onboarding service writes a PROVIDER_ONBOARDING_SUBMITTED
-  // audit row inside the same transaction as the state transition.
+  // audit row inside the same transaction as the state transition, and Sprint 2
+  // adds PROVIDER_CATEGORY_APPLIED / PROVIDER_CATEGORY_REMOVED on the same
+  // terms.
   imports: [AuthenticationModule, AuthorizationModule, NotificationsModule, AuditModule],
   controllers: [
     ProviderController,
+    // Sprint 2 — /me/provider/categories/applications. A separate controller
+    // rather than more routes on ProviderController: applying for a skill is
+    // moderated and asynchronous, editing a profile is neither, and the two
+    // sat one method apart for long enough that one silently did the other's
+    // job.
+    ProviderCategoriesController,
     ProviderJobsController,
     AvailableRequestsController,
     ProviderBidsController,
@@ -66,6 +76,8 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderActiveGuard,
     // Phase 4 — DRAFT → submit-for-review → PENDING_REVIEW.
     ProviderOnboardingService,
+    // Sprint 2 — provider-side skill applications.
+    ProviderCategoriesService,
   ],
   exports: [ProviderService, ProviderActiveGuard, ProviderOnboardingService],
 })

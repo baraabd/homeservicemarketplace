@@ -44,6 +44,16 @@ export function toProviderProfileSummary(
     serviceAreaLng: row.serviceAreaLng,
     serviceAreaRadiusKm: row.serviceAreaRadiusKm,
     serviceCategories: categories,
+    // Always present, empty array included. The repository's shared include
+    // already filters to live PENDING rows, so a superseded duplicate never
+    // shows up here as a second identical chip.
+    pendingCategories: row.categoryApplications.map((application) => ({
+      id: application.serviceCategory.id,
+      slug: application.serviceCategory.slug,
+      labelEn: application.serviceCategory.labelEn,
+      labelAr: application.serviceCategory.labelAr,
+      icon: application.serviceCategory.icon,
+    })),
     // Phase 4 — onboarding lifecycle stamps. `submittedForReviewAt` is what
     // separates "a complete application is queued" from "someone pressed
     // Upgrade"; `rejectionReason` is surfaced so a REJECTED provider is told

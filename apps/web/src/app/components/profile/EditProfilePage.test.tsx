@@ -250,10 +250,13 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
       serviceAreaLat: null,
       serviceAreaLng: null,
       serviceAreaRadiusKm: null,
-      // Currently selected: plumbing only.
+      // Approved (i.e. actually held): plumbing only.
       serviceCategories: [
         { id: 'cat-plumbing', slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة', icon: '🔧' },
       ],
+      // Sprint 2 — awaiting an admin decision. Always present on the wire,
+      // empty array included.
+      pendingCategories: [],
       updatedAt: '2026-04-30T00:00:00.000Z',
     },
   };
@@ -327,10 +330,18 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
     expect(screen.queryByTestId('edit-profile-skills')).toBeNull();
   });
 
-  it('toggles a skill pill and posts categoryIds + serviceAreaCity in provider context', async () => {
+  // ── Sprint 2 — adding a skill is an application, removing is an edit ──────
+  //
+  // This replaces the previous "toggles a skill pill and posts categoryIds"
+  // test, which asserted the defect: it pinned the UI sending a brand-new
+  // category in the profile PATCH, which the backend used to accept and now
+  // answers 403 to. The pill still toggles; where the toggle GOES is what
+  // changed.
+  it('ticking a new skill posts an APPLICATION, not a profile category', async () => {
     mockProviderRoute();
     let providerBody: Record<string, unknown> | null = null;
     let seekerBody: Record<string, unknown> | null = null;
+    let applicationBody: Record<string, unknown> | null = null;
     mock.onPatch('/v1/me/profile').reply((cfg) => {
       seekerBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
       return [200, { profile: { ...MOCK_PROFILE, city: 'Riyadh' } }];
@@ -339,28 +350,106 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
       providerBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
       return [200, PROVIDER_PROFILE_ROW];
     });
+    mock.onPost('/v1/me/provider/categories/applications').reply((cfg) => {
+      applicationBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [
+        201,
+        {
+          application: {
+            id: 'app-1',
+            status: 'PENDING',
+            category: SERVICES[1],
+            createdAt: '2026-08-22T00:00:00.000Z',
+            updatedAt: '2026-08-22T00:00:00.000Z',
+            supersededAt: null,
+          },
+        },
+      ];
+    });
 
     renderEdit('provider');
-
     await waitFor(() => expect(screen.getByTestId('skill-pill-electrical')).toBeInTheDocument());
 
-    // Add electrical to the existing plumbing selection.
     fireEvent.click(screen.getByTestId('skill-pill-electrical'));
     expect(screen.getByTestId('skill-pill-electrical').getAttribute('aria-pressed')).toBe('true');
 
     fireEvent.click(screen.getByRole('button', { name: /save changes|حفظ التغييرات/i }));
 
-    await waitFor(() => {
-      expect(providerBody).not.toBeNull();
-      expect(seekerBody).not.toBeNull();
-    });
+    await waitFor(() => expect(applicationBody).not.toBeNull());
+
+    // The new category went out as an application...
+    expect(applicationBody).toEqual({ categoryId: 'cat-electrical' });
+
+    // ...and NOT in the profile PATCH, which carries only what the provider
+    // already holds. Sending it there would be a 403 from the API.
     expect(providerBody).toMatchObject({
       serviceAreaCity: 'Riyadh',
-      categoryIds: expect.arrayContaining(['cat-plumbing', 'cat-electrical']),
+      categoryIds: ['cat-plumbing'],
     });
-    // Seeker save still fires in parallel — name + city + bio path
-    // is unchanged from the pre-Phase-6 contract.
+    expect((providerBody as { categoryIds: string[] }).categoryIds).not.toContain('cat-electrical');
     expect(seekerBody).toMatchObject({ city: 'Riyadh' });
+  });
+
+  it('un-ticking a held skill removes it through the profile PATCH', async () => {
+    mockProviderRoute();
+    let providerBody: Record<string, unknown> | null = null;
+    let applicationHits = 0;
+    mock.onPatch('/v1/me/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onPatch('/v1/me/provider/profile').reply((cfg) => {
+      providerBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [200, PROVIDER_PROFILE_ROW];
+    });
+    mock.onPost('/v1/me/provider/categories/applications').reply(() => {
+      applicationHits += 1;
+      return [201, {}];
+    });
+
+    renderEdit('provider');
+    await waitFor(() => expect(screen.getByTestId('skill-pill-plumbing')).toBeInTheDocument());
+
+    // Plumbing is held; un-tick it.
+    fireEvent.click(screen.getByTestId('skill-pill-plumbing'));
+    fireEvent.click(screen.getByRole('button', { name: /save changes|حفظ التغييرات/i }));
+
+    await waitFor(() => expect(providerBody).not.toBeNull());
+    expect(providerBody).toMatchObject({ categoryIds: [] });
+    // Removal is not an application — nothing should have been queued.
+    expect(applicationHits).toBe(0);
+  });
+
+  it('a pending skill renders as pending and cannot be toggled', async () => {
+    // The provider has applied for electrical; an admin has not decided.
+    mock.onGet('/v1/me/provider/profile').reply(200, {
+      profile: {
+        ...PROVIDER_PROFILE_ROW.profile,
+        pendingCategories: [SERVICES[1]],
+      },
+    });
+    mock.onGet('/v1/services').reply(200, { items: SERVICES });
+    mock.onGet('/v1/me/profile').reply(200, { profile: MOCK_PROFILE });
+    let applicationHits = 0;
+    mock.onPost('/v1/me/provider/categories/applications').reply(() => {
+      applicationHits += 1;
+      return [201, {}];
+    });
+    mock.onPatch('/v1/me/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onPatch('/v1/me/provider/profile').reply(200, PROVIDER_PROFILE_ROW);
+
+    renderEdit('provider');
+    await waitFor(() => expect(screen.getByTestId('skill-pill-electrical')).toBeInTheDocument());
+
+    const pill = screen.getByTestId('skill-pill-electrical');
+    expect(pill.getAttribute('data-pending')).toBe('true');
+    expect((pill as HTMLButtonElement).disabled).toBe(true);
+    // Pending reads as "in flight", not as a skill the provider has.
+    expect(pill.textContent).toMatch(/pending review|قيد المراجعة/i);
+
+    // Clicking it does nothing, and saving does not re-apply for something
+    // already sitting in the queue.
+    fireEvent.click(pill);
+    fireEvent.click(screen.getByRole('button', { name: /save changes|حفظ التغييرات/i }));
+    await waitFor(() => expect(screen.queryByText(/saving/i)).not.toBeInTheDocument());
+    expect(applicationHits).toBe(0);
   });
 
   it('seeker context does NOT post to /v1/me/provider/profile, even for a dual-role user', async () => {

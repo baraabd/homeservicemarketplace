@@ -5,10 +5,15 @@
 // userId; the session is the only ownership signal.
 export * from './enums/provider-availability';
 export * from './enums/provider-profile-status';
+export * from './enums/provider-category-application-status';
 export * from './request/upgrade-to-provider.request';
 export * from './request/update-provider-availability.request';
 export * from './request/update-provider-profile.request';
 export * from './request/apply-for-category.request';
+export * from './request/list-my-category-applications.query';
+export * from './response/apply-for-category.response';
+export * from './response/list-my-category-applications.response';
+export * from './response/provider-category-application-summary';
 export * from './response/get-provider-profile.response';
 export * from './response/provider-profile-summary';
 export * from './response/update-provider-availability.response';

@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import type {
+  ApplyForCategoryRequest,
+  ApplyForCategoryResponse,
   GetProviderProfileResponse,
   UpdateProviderAvailabilityRequest,
   UpdateProviderAvailabilityResponse,
@@ -10,6 +12,7 @@ import type {
 } from '@homeservicemarketplace/contracts';
 
 import {
+  applyForCategory,
   getProviderProfile,
   updateProviderAvailability,
   updateProviderProfile,
@@ -75,6 +78,26 @@ export function useUpdateProviderAvailability() {
     mutationFn: updateProviderAvailability,
     onSuccess: (res) => {
       qc.setQueryData(providerQueryKeys.profile.get(), { profile: res.profile });
+      qc.invalidateQueries({ queryKey: providerQueryKeys.profile.root });
+    },
+  });
+}
+
+// Sprint 2 — apply for a service category.
+//
+// Kept separate from useUpdateProviderProfile because the two do genuinely
+// different things: the PATCH edits a profile, this one opens a request that
+// an admin has to decide. Sharing a mutation would invite the UI to treat a
+// submitted application as a saved field.
+//
+// On success the profile cache is invalidated rather than seeded: the response
+// carries the application, not the profile, and `pendingCategories` lives on
+// the profile — so a refetch is what makes the new pending chip appear.
+export function useApplyForCategory() {
+  const qc = useQueryClient();
+  return useMutation<ApplyForCategoryResponse, AxiosError, ApplyForCategoryRequest>({
+    mutationFn: applyForCategory,
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: providerQueryKeys.profile.root });
     },
   });

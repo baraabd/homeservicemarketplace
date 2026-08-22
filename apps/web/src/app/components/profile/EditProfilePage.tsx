@@ -19,6 +19,7 @@ import { TextField } from '../ds/TextField';
 import { Button } from '../ds/Button';
 import { useProfile, useUpdateProfile } from '../../hooks/seeker/useProfile';
 import {
+  useApplyForCategory,
   useProviderProfile,
   useUpdateProviderProfile,
 } from '../../hooks/provider/useProviderProfile';
@@ -73,6 +74,8 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   const isProviderContext = appContext === 'provider';
   const providerProfileQuery = useProviderProfile();
   const updateProviderMut = useUpdateProviderProfile();
+  // Sprint 2 — adding a skill is an application, not a profile edit.
+  const applyCategoryMut = useApplyForCategory();
   const categoriesQuery = useServiceCategories();
 
   // Tone palette. Seeker context keeps the historical amber identity;
@@ -159,13 +162,34 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   }, [profile?.updatedAt, providerProfile?.updatedAt]);
 
   // Seed the skills selection from the provider profile when it lands.
+  //
+  // Only APPROVED categories seed the selection. A pending one is not a
+  // selected skill — it is a request awaiting a decision — and seeding it here
+  // would make the pill look like something the provider already has.
   useEffect(() => {
     if (!providerProfile) return;
     setSelectedCategoryIds(providerProfile.serviceCategories.map((c) => c.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerProfile?.updatedAt]);
 
+  // Categories with an admin decision outstanding. Rendered as their own,
+  // non-interactive state: there is nothing useful for the provider to do with
+  // one until an admin acts.
+  const pendingCategoryIds = useMemo(
+    () => new Set((providerProfile?.pendingCategories ?? []).map((c) => c.id)),
+    [providerProfile?.pendingCategories],
+  );
+
+  // What the provider currently holds, as opposed to what they have ticked.
+  const approvedCategoryIds = useMemo(
+    () => new Set((providerProfile?.serviceCategories ?? []).map((c) => c.id)),
+    [providerProfile?.serviceCategories],
+  );
+
   const toggleCategory = (id: string): void => {
+    // A category already awaiting review is not togglable — there is no
+    // withdraw endpoint, and letting the pill flip would imply one exists.
+    if (pendingCategoryIds.has(id)) return;
     setSelectedCategoryIds((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
     );
@@ -275,13 +299,27 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
       // leave the existing value alone; sending an explicit `null`
       // clears it. We chose "leave alone" so the user can save name
       // / phone changes without unintentionally wiping their pin.
+      // Sprint 2 — the two halves of a skill change go to different places.
+      //
+      // Removals are the provider's to make, so they ride along in the PATCH
+      // as the narrowed category list. Additions are an admin decision, and
+      // the PATCH now answers 403 to any id the provider does not already
+      // hold — so a newly ticked pill becomes an APPLICATION instead.
+      //
+      // Sending only the intersection of "ticked" and "already approved" is
+      // what keeps the PATCH within what the provider is allowed to do.
+      const keptCategoryIds = selectedCategoryIds.filter((id) => approvedCategoryIds.has(id));
+      const requestedCategoryIds = selectedCategoryIds.filter(
+        (id) => !approvedCategoryIds.has(id) && !pendingCategoryIds.has(id),
+      );
+
       const providerSave =
         isProviderContext && providerProfile
           ? updateProviderMut.mutateAsync({
               // Empty string explicitly clears the city; backend DTO
               // accepts string | null.
               serviceAreaCity: trimmedCity === '' ? null : trimmedCity,
-              categoryIds: selectedCategoryIds,
+              categoryIds: keptCategoryIds,
               ...(serviceAreaLat !== null && serviceAreaLng !== null
                 ? { serviceAreaLat, serviceAreaLng }
                 : {}),
@@ -289,6 +327,15 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
           : Promise.resolve(null);
 
       await Promise.all([seekerSave, providerSave]);
+
+      // Applications go out after the profile save resolves, and one at a
+      // time. Firing them in parallel with the PATCH would mean a rejected
+      // profile edit still left applications queued, which is confusing to
+      // undo; sequential also keeps the error attributable to a category.
+      for (const categoryId of requestedCategoryIds) {
+        await applyCategoryMut.mutateAsync({ categoryId });
+      }
+
       setSaved(true);
       // Brief visual confirmation, then return to the default state
       // so the user can continue editing if they want.
@@ -344,6 +391,11 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
         ? 'اختر التخصصات التي تقدمها. ستحدد الطلبات التي تتلقاها.'
         : 'Pick the categories you serve — drives which jobs reach you.',
     skillsLoading: lang === 'ar' ? 'جاري تحميل التخصصات…' : 'Loading categories…',
+    skillPending: lang === 'ar' ? 'قيد المراجعة' : 'Pending review',
+    skillsApprovalHint:
+      lang === 'ar'
+        ? 'تتم إضافة تخصص جديد بعد موافقة الإدارة. يمكنك إزالة تخصصاتك في أي وقت.'
+        : 'New categories need admin approval. You can remove your own at any time.',
     saveBtn: lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes',
     saved: lang === 'ar' ? 'تم الحفظ بنجاح ✓' : 'Saved successfully ✓',
     emailNote: lang === 'ar' ? 'لا يمكن تغيير البريد الإلكتروني' : 'Email cannot be changed',
@@ -497,8 +549,11 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
               >
                 {L.skills}
               </p>
-              <p className="text-slate-400 dark:text-slate-500 mb-2.5" style={{ fontSize: '11px' }}>
+              <p className="text-slate-400 dark:text-slate-500 mb-1" style={{ fontSize: '11px' }}>
                 {L.skillsHint}
+              </p>
+              <p className="text-slate-400 dark:text-slate-500 mb-2.5" style={{ fontSize: '11px' }}>
+                {L.skillsApprovalHint}
               </p>
               {categoriesQuery.isLoading && categories.length === 0 ? (
                 <p className="text-slate-400" style={{ fontSize: '12px' }}>
@@ -507,22 +562,38 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
               ) : (
                 <div className="flex flex-wrap gap-2" role="group" aria-label={L.skills}>
                   {categories.map((cat) => {
-                    const active = selectedCategoryIds.includes(cat.id);
+                    const pending = pendingCategoryIds.has(cat.id);
+                    const active = pending || selectedCategoryIds.includes(cat.id);
                     return (
                       <button
                         key={cat.id}
                         type="button"
                         onClick={() => toggleCategory(cat.id)}
+                        // A pending pill is inert: an application is already in
+                        // the queue and there is nothing for the provider to
+                        // toggle until an admin decides.
+                        disabled={pending}
                         aria-pressed={active}
+                        aria-disabled={pending || undefined}
                         data-testid={`skill-pill-${cat.slug}`}
+                        data-pending={pending ? 'true' : undefined}
+                        title={pending ? L.skillPending : undefined}
                         className={[
-                          'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 border transition-all active:scale-95',
+                          'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 border transition-all',
+                          pending ? 'opacity-70 cursor-default border-dashed' : 'active:scale-95',
                           active ? accent.pillActive : accent.pillIdleHover,
                         ].join(' ')}
                         style={{ fontSize: '12px', fontWeight: 600 }}
                       >
                         <Wrench size={11} className={active ? 'text-white' : 'text-slate-400'} />
                         {lang === 'ar' ? cat.labelAr : cat.labelEn}
+                        {/* The label carries the state for assistive tech too —
+                            a dashed border alone is not an announcement. */}
+                        {pending && (
+                          <span style={{ fontSize: '10px', fontWeight: 500 }}>
+                            · {L.skillPending}
+                          </span>
+                        )}
                       </button>
                     );
                   })}

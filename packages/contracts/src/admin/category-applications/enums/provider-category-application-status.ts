@@ -1,14 +1,5 @@
-// Lifecycle of a ProviderCategoryApplication row. Mirrors the Prisma
-// enum of the same name (packages/database/prisma/schema.prisma).
-//
-//   PENDING   — provider has applied, admin has not reviewed yet. The
-//               Provider app surfaces these on the profile under
-//               `pendingCategories`.
-//   APPROVED  — admin approved; service mirrors the row into
-//               ProviderProfileServiceCategory so the public profile
-//               picks it up. The application row stays as the audit
-//               trail.
-//   REJECTED  — admin rejected; the row stays so a future re-apply
-//               can show prior context, and to keep the audit history
-//               linear.
-export type ProviderCategoryApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+// The canonical declaration lives with the provider contracts, because the row
+// it describes is a PROVIDER's application for a skill — the admin surface
+// moderates that lifecycle rather than owning it. Re-exported here so the
+// admin barrel keeps its existing shape and no consumer import has to move.
+export type { ProviderCategoryApplicationStatus } from '../../../provider/profile/enums/provider-category-application-status';
