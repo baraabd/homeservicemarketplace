@@ -38,10 +38,23 @@ const REFRESH_PATH = '/v1/auth/refresh';
 test.describe('auth cookie contract (real browser)', () => {
   test.skip(!API, 'E2E_REAL_API is not set — start the API and set it to run these.');
 
+  // These tests are slower than the UI suite by nature, not by accident: each
+  // one registers an account, waits for an SMTP delivery, polls a mail
+  // catcher, then verifies an OTP. The repo-wide 60s budget fits that on a
+  // warm machine and not on a cold one — the FIRST test in a run routinely
+  // took ~80s here while every later one took ~13s, because the first pays for
+  // the SMTP connection, the mailpit container, and Chromium's first
+  // navigation all at once. A CI runner is colder than a laptop, so the budget
+  // is raised rather than left to be discovered as a flake.
+  test.describe.configure({ timeout: 180_000 });
+
   // The OTP is never persisted in plaintext, so the mailbox is the only place
   // to read it — which is exactly how a real client gets it.
+  // 60 attempts x 500ms = 30s. The old 10s window was fine once SMTP was warm
+  // and too short for the first delivery of a run, where nodemailer is still
+  // opening its first connection.
   async function otpFor(request: APIRequestContext, email: string): Promise<string> {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
       const res = await request.get(`${MAILPIT}/api/v1/messages?limit=30`);
       const body = (await res.json()) as {
         messages?: { ID: string; To?: { Address: string }[] }[];
@@ -97,20 +110,28 @@ test.describe('auth cookie contract (real browser)', () => {
     );
   }
 
+  const freshEmail = () => `sprint3-${Date.now()}-${Math.floor(Math.random() * 1e6)}@itest.local`;
+
   async function signIn(page: Page, request: APIRequestContext) {
-    const email = `sprint3-${Date.now()}-${Math.floor(Math.random() * 1e6)}@itest.local`;
     const password = 'a-reasonable-passphrase-1';
 
     await page.goto(`${API}/health/live`);
 
     // One retry, because the first SMTP connection of a run can time out
-    // against a cold mailpit ("Greeting never received") and surface as a 500.
-    // That is an environment warm-up artefact, not the contract under test.
+    // against a cold mail catcher ("Greeting never received") and surface as a
+    // 500. That is an environment warm-up artefact, not the contract.
+    //
+    // The retry uses a NEW address on purpose. A 500 from the mail step means
+    // the account may already have been created before the send failed, so
+    // reusing the address would collide with it and turn a warm-up blip into a
+    // 409 that looks like a registration bug.
+    let email = freshEmail();
     let registered = await inPage(page, '/v1/auth/register', {
       method: 'POST',
       body: { email, password, firstName: 'Cookie', lastName: 'Tester' },
     });
     if (registered.status >= 500) {
+      email = freshEmail();
       registered = await inPage(page, '/v1/auth/register', {
         method: 'POST',
         body: { email, password, firstName: 'Cookie', lastName: 'Tester' },

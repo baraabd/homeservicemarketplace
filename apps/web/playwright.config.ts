@@ -20,6 +20,20 @@ const BASE_URL = process.env.E2E_BASE_URL ?? `http://${HOST}:${PORT}`;
 // startup budget (and so a build failure is reported as a build failure).
 const PREBUILT = process.env.E2E_PREBUILT === '1';
 
+// The real-API auth suite talks ONLY to the API origin. Its two navigations
+// are `${E2E_REAL_API}/health/live` and the cross-site variant of the same
+// URL; it never uses baseURL, never requests a relative path, and never loads
+// the SPA at all. Starting vite preview for that run would build and serve a
+// bundle nothing ever fetches — and, because the job sets E2E_PREBUILT with no
+// build step, it did exactly what an unbuilt preview does:
+//
+//   [WebServer] Error: The directory "dist" does not exist.
+//
+// Adding a build step would have silenced that, at the cost of a minute of CI
+// per run to produce an artifact with no reader. Not starting the server is
+// the actual fix.
+const REAL_API_RUN = Boolean(process.env.E2E_REAL_API);
+
 // The three viewports the acceptance criteria name. Declared once so a
 // scenario cannot silently run at only one size.
 export const VIEWPORTS = {
@@ -85,40 +99,45 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], viewport: VIEWPORTS.mobile, isMobile: false },
     },
   ],
-  webServer: {
-    // `vite preview` serves the production build, so these tests exercise what
-    // ships rather than the dev server's transformed output.
-    //
-    // `--host ${HOST}` is load-bearing. Without an explicit host, vite preview
-    // binds `localhost`, which on the CI runner resolves to the IPv6 loopback
-    // and listens on [::1] ONLY. Playwright then polled `http://127.0.0.1:4173`
-    // — a different interface — got connection-refused every time, and gave up
-    // with "Timed out waiting 300000ms from config.webServer" while a perfectly
-    // healthy server sat there answering on [::1]. Binding the same host the
-    // `url` below names removes the mismatch entirely.
-    command: [
-      PREBUILT ? null : 'pnpm build',
-      `pnpm exec vite preview --host ${HOST} --port ${PORT} --strictPort`,
-    ]
-      .filter(Boolean)
-      .join(' && '),
-    url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
-    // Serving an already-built app is a couple of seconds, so CI gets a tight
-    // budget: a bad bind now reports itself in one minute instead of taking the
-    // full five it used to. The local path still compiles the app inside this
-    // window, so it keeps the generous budget a cold build needs.
-    timeout: PREBUILT ? 60_000 : 300_000,
-    // Surface vite's own output. Previously the timeout message was all CI
-    // printed, so "which port did it actually bind?" was unanswerable from the
-    // log — the single fact needed to diagnose this.
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: {
-      // The production build refuses to run without this (see vite.config.ts).
-      // The UI-level scenarios never reach the network; the persona workflow
-      // spec points at a real API through E2E_API_URL.
-      VITE_API_URL: process.env.E2E_API_URL ?? 'http://127.0.0.1:4010',
-    },
-  },
+  // Omitted entirely for the real-API run — see REAL_API_RUN above.
+  ...(REAL_API_RUN
+    ? {}
+    : {
+        webServer: {
+          // `vite preview` serves the production build, so these tests exercise what
+          // ships rather than the dev server's transformed output.
+          //
+          // `--host ${HOST}` is load-bearing. Without an explicit host, vite preview
+          // binds `localhost`, which on the CI runner resolves to the IPv6 loopback
+          // and listens on [::1] ONLY. Playwright then polled `http://127.0.0.1:4173`
+          // — a different interface — got connection-refused every time, and gave up
+          // with "Timed out waiting 300000ms from config.webServer" while a perfectly
+          // healthy server sat there answering on [::1]. Binding the same host the
+          // `url` below names removes the mismatch entirely.
+          command: [
+            PREBUILT ? null : 'pnpm build',
+            `pnpm exec vite preview --host ${HOST} --port ${PORT} --strictPort`,
+          ]
+            .filter(Boolean)
+            .join(' && '),
+          url: BASE_URL,
+          reuseExistingServer: !process.env.CI,
+          // Serving an already-built app is a couple of seconds, so CI gets a tight
+          // budget: a bad bind now reports itself in one minute instead of taking the
+          // full five it used to. The local path still compiles the app inside this
+          // window, so it keeps the generous budget a cold build needs.
+          timeout: PREBUILT ? 60_000 : 300_000,
+          // Surface vite's own output. Previously the timeout message was all CI
+          // printed, so "which port did it actually bind?" was unanswerable from the
+          // log — the single fact needed to diagnose this.
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: {
+            // The production build refuses to run without this (see vite.config.ts).
+            // The UI-level scenarios never reach the network; the persona workflow
+            // spec points at a real API through E2E_API_URL.
+            VITE_API_URL: process.env.E2E_API_URL ?? 'http://127.0.0.1:4010',
+          },
+        },
+      }),
 });
