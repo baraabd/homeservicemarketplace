@@ -5,11 +5,17 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import express from 'express';
+import type {
+  NextFunction as ExpressNext,
+  Request as ExpressRequest,
+  Response as ExpressResponse,
+} from 'express';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
+import { PERMISSIONS_POLICY, buildHelmetOptions } from './infrastructure/http/security-headers';
 import { RealtimeSocketAdapter } from './modules/realtime/realtime-socket.adapter';
 
 async function bootstrap(): Promise<void> {
@@ -53,7 +59,38 @@ async function bootstrap(): Promise<void> {
       `Trust proxy: ${trustProxyHops > 0 ? `${trustProxyHops} hop(s)` : 'disabled (X-Forwarded-For ignored)'}`,
     );
 
-    app.use(helmet());
+    // ── Sprint 3: response headers ─────────────────────────────────────────
+    //
+    // The policy itself lives in infrastructure/http/security-headers.ts so it
+    // can be asserted on by tests. Header policy is the kind of configuration
+    // that breaks nothing visible when a directive silently disappears, so it
+    // needs a test rather than a code review.
+    const cspMode = config.get('CSP_MODE');
+    const hstsMaxAge = config.get('HSTS_MAX_AGE_SECONDS');
+
+    app.use(
+      helmet(
+        buildHelmetOptions({
+          cspMode,
+          hstsMaxAgeSeconds: hstsMaxAge,
+          hstsIncludeSubDomains: config.get('HSTS_INCLUDE_SUBDOMAINS'),
+          hstsPreload: config.get('HSTS_PRELOAD'),
+        }),
+      ),
+    );
+
+    // helmet does not ship Permissions-Policy, so it is set directly.
+    app.use((_req: ExpressRequest, res: ExpressResponse, next: ExpressNext) => {
+      res.setHeader('Permissions-Policy', PERMISSIONS_POLICY);
+      next();
+    });
+
+    bootstrapLogger.log(
+      `Security headers: CSP=${cspMode}, HSTS max-age=${hstsMaxAge}s` +
+        `${config.get('HSTS_INCLUDE_SUBDOMAINS') ? ' +includeSubDomains' : ''}` +
+        `${config.get('HSTS_PRELOAD') ? ' +preload' : ''}, Permissions-Policy=deny-all`,
+    );
+
     app.use(cookieParser());
     // Sprint 7.x — media-upload PUT route. The body is the binary
     // file, not JSON, so the default body-parser would reject it.

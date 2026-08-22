@@ -1,0 +1,64 @@
+name: CodeQL
+
+# Static analysis for the JS/TS in this repo.
+#
+# Deliberately its own workflow rather than a job inside ci.yml. CodeQL builds
+# a database and runs a large query suite; on a busy PR that is the slowest
+# thing in the pipeline, and bolting it onto the merge gate would trade minutes
+# of every developer's day for a signal that is rarely time-critical. It runs
+# on pushes, on PRs, and on a weekly schedule so a newly-published query still
+# reaches code nobody has touched in months.
+#
+# `security-events: write` is required for CodeQL to upload results, and is
+# scoped to this workflow alone — ci.yml still runs with read-only permissions
+# so a fork PR cannot write to the security tab from there.
+
+on:
+  push:
+    branches: ['main', 'develop']
+  pull_request:
+    branches: ['main', 'develop']
+  schedule:
+    # Weekly, off-hours. A vulnerability found by a query added last Tuesday
+    # should not have to wait for someone to edit the file it lives in.
+    - cron: '27 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze JavaScript/TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      # Required for CodeQL to associate results with the PR on private repos.
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        with:
+          languages: javascript-typescript
+          # security-extended adds the higher-noise, higher-recall queries.
+          # Chosen over the default suite because this is a marketplace holding
+          # payment-adjacent and PII data, where a missed finding costs more
+          # than a triaged false positive.
+          queries: security-extended
+
+      # No build step: the JS/TS extractor reads source directly. Running
+      # `pnpm install` here would only add minutes and a supply-chain surface
+      # to an analysis that does not need either.
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        with:
+          category: '/language:javascript-typescript'

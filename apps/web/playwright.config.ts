@@ -30,6 +30,12 @@ export const VIEWPORTS = {
 
 export default defineConfig({
   testDir: './e2e',
+  // The real-API auth suite is excluded from the default run. It needs a
+  // booted API, Postgres, Redis and a mail catcher, none of which the
+  // stub-everything browser job has — and a spec that silently skips is worse
+  // than one that is deliberately not here. It runs in its own CI job (see
+  // `browser-auth-e2e` in ci.yml) and locally with E2E_REAL_API set.
+  testIgnore: process.env.E2E_REAL_API ? [] : ['**/auth-cookies.spec.ts'],
   // Deterministic: no test may depend on another's leftovers, and a flake
   // must fail rather than be retried into a pass locally.
   fullyParallel: true,
