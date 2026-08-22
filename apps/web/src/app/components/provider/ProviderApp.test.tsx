@@ -209,15 +209,38 @@ const ACTIVATE_CTA = /activate provider account|تفعيل حساب المحتر
 // assertion — "expected +0 to be 1" — which reads as though the component
 // called the wrong endpoint. It does not; the click went to a corpse.
 //
-// Re-querying at click time is the fix. The `hasLanded` guard means a click is
-// only ever re-issued while nothing has happened yet, so this cannot inflate
-// the call counts these tests assert on.
-async function clickActivateUntil(hasLanded: () => boolean) {
-  await waitFor(() => {
-    if (!hasLanded()) {
-      fireEvent.click(screen.getByRole('button', { name: ACTIVATE_CTA }));
+// Re-querying at click time is the fix. The guard means a click is only ever
+// re-issued while nothing has happened yet, so this cannot inflate the call
+// counts these tests assert on.
+//
+// `assertLanded` is an assertion rather than a boolean on purpose: when the
+// budget does expire, the error the caller sees is their OWN assertion
+// ("expected +0 to be 1", "unable to find the error message") rather than a
+// generic one from in here. Diagnosing the previous version of this cost a
+// whole round trip precisely because the reported error described the
+// scaffolding instead of the expectation.
+//
+// The CTA is looked up with queryByRole, not getByRole: it is legitimately
+// absent for a tick while React swaps the subtree, and getByRole would throw
+// "Unable to find an accessible element with the role button" from inside the
+// retry loop — which reads like the button never existing, when it is simply
+// mid-remount.
+async function clickActivateUntil(assertLanded: () => void) {
+  const landed = () => {
+    try {
+      assertLanded();
+      return true;
+    } catch {
+      return false;
     }
-    expect(hasLanded()).toBe(true);
+  };
+
+  await waitFor(() => {
+    if (!landed()) {
+      const cta = screen.queryByRole('button', { name: ACTIVATE_CTA });
+      if (cta) fireEvent.click(cta);
+    }
+    assertLanded();
   });
 }
 
@@ -336,7 +359,7 @@ describe('ProviderApp — non-provider onboarding', () => {
     renderProvider();
     await openProfileTab();
     await screen.findByRole('button', { name: ACTIVATE_CTA });
-    await clickActivateUntil(() => upgradeCalls > 0);
+    await clickActivateUntil(() => expect(upgradeCalls).toBeGreaterThan(0));
 
     // Exactly one POST — the guard above re-clicks only while nothing has
     // landed, so this still pins "one deliberate upgrade per press".
@@ -381,12 +404,11 @@ describe('ProviderApp — non-provider onboarding', () => {
     // Same detached-node race as the test above: this one re-queried before
     // clicking but could still catch the CTA in the instant before React
     // swapped the subtree, which is why it flaked independently.
-    await clickActivateUntil(
-      () =>
-        screen.queryByText(/couldn't activate your provider account|تعذر تفعيل الحساب/i) !== null,
-    );
-
-    await waitFor(() =>
+    //
+    // The landing condition IS the assertion this test exists to make — the
+    // provider is told the activation failed — so a timeout reports that
+    // directly rather than reporting the button.
+    await clickActivateUntil(() =>
       expect(
         screen.getByText(/couldn't activate your provider account|تعذر تفعيل الحساب/i),
       ).toBeInTheDocument(),
