@@ -66,6 +66,11 @@ function makeProfile(over: Partial<ProviderProfileWithCategories> = {}) {
         },
       },
     ],
+    // Sprint 2 — part of the shared profile include, so it is part of the
+    // read-model every provider-profile response is mapped from. The `as
+    // unknown as` below casts past the type, which is why omitting it failed
+    // at runtime rather than at typecheck.
+    categoryApplications: [],
     ...over,
   } as unknown as ProviderProfileWithCategories;
 }

@@ -282,6 +282,21 @@ jobs:
         run: pnpm --filter @homeservicemarketplace/database build
       - name: Seed baseline roles / permissions
         run: pnpm --filter @homeservicemarketplace/database seed
+      - name: Verify the constraint migrations against empty and upgraded databases
+        # Sprint 2. The constraint migrations are forward-only and they touch
+        # existing rows, so "it applied cleanly" is not evidence for either
+        # half of that: on an empty database every remediation branch and every
+        # refusal branch is dead code. This builds throwaway databases and
+        # drives all four scenarios, including the two where the migration is
+        # supposed to REFUSE and stop the deploy.
+        #
+        # Deliberately its own step, before the suite rather than beside it.
+        # The harness drops and creates databases on the same server the
+        # integration specs are using; running the two concurrently starved
+        # them badly enough to produce spurious failures (one suite took 96
+        # minutes instead of 6 seconds). Steps within a job are sequential,
+        # which is the isolation this needs.
+        run: pnpm --filter @homeservicemarketplace/database verify:migrations
       - name: Run the API suite with the DB- and Redis-gated specs ENABLED
         run: pnpm --filter @homeservicemarketplace/api test
       - name: Upload API logs on failure
