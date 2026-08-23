@@ -60,6 +60,32 @@ export class NotificationRepository {
     });
   }
 
+  // Sprint 6 — batched insert for outbox fan-out.
+  //
+  // The previous fan-out issued one INSERT per recipient, each in its own
+  // transaction, inside the seeker's HTTP request. For a dense city that is
+  // hundreds of round-trips on the critical path. This is one statement per
+  // batch; the caller bounds the batch size (OUTBOX_FANOUT_BATCH_SIZE) so a
+  // single transaction stays small regardless of how many providers match.
+  //
+  // Returns the number of rows written.
+  async createMany(inputs: CreateNotificationInput[], tx?: PrismaTx): Promise<number> {
+    if (inputs.length === 0) return 0;
+    const result = await this.db(tx).notification.createMany({
+      data: inputs.map((input) => ({
+        userId: input.userId,
+        type: input.type,
+        title: input.title,
+        body: input.body,
+        resourceType: input.resourceType ?? null,
+        resourceId: input.resourceId ?? null,
+        deepLink: input.deepLink ?? null,
+        metadata: input.metadata ?? Prisma.JsonNull,
+      })),
+    });
+    return result.count;
+  }
+
   // Cursor-paginated list. Always filters soft-deleted rows. When
   // `unread` is true, only rows with `readAt: null` are returned.
   // Order: createdAt DESC + id DESC (deterministic tiebreak so cursor

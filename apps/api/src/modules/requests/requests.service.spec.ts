@@ -6,7 +6,6 @@ import type {
 } from '@homeservicemarketplace/database';
 
 import type { AddressRepository } from '../../infrastructure/persistence/addresses/address.repository';
-import type { ProviderProfileRepository } from '../../infrastructure/persistence/bids/provider-profile.repository';
 import type { ServiceCategoryRepository } from '../../infrastructure/persistence/services/service-category.repository';
 import type {
   ServiceRequestRepository,
@@ -15,16 +14,23 @@ import type {
 import type { ServiceRequestEventRepository } from '../../infrastructure/persistence/requests/service-request-event.repository';
 import type { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
-import type { NotificationsService } from '../notifications/notifications.service';
-import type { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 import { RequestsService } from './requests.service';
+import { OutboxRepository } from '../../infrastructure/outbox/outbox.repository';
+import type { PrismaTx } from '@homeservicemarketplace/database';
 
 // In-memory tx that just calls the supplied callback with `undefined`
 // — no real Prisma transaction is required for these unit tests
 // because every repository method is mocked.
+// Sprint 6 — the runner hands the callback a SENTINEL rather than undefined,
+// so a test can prove that a write was handed the transaction instead of
+// merely that it was called. With `undefined` the two are indistinguishable,
+// and "did the outbox enqueue join the creation transaction" is precisely the
+// property that must not silently regress.
+export const TX_SENTINEL = { __tx: 'creation' } as unknown as PrismaTx;
+
 function makeTx(): TransactionRunner {
   return {
-    run: <T>(fn: (tx: undefined) => Promise<T>) => fn(undefined),
+    run: <T>(fn: (tx: PrismaTx) => Promise<T>) => fn(TX_SENTINEL),
   } as unknown as TransactionRunner;
 }
 
@@ -76,6 +82,9 @@ function makeRequest(overrides: Partial<ServiceRequest> = {}): ServiceRequestWit
     scheduleType: 'ASAP',
     scheduledAt: null,
     addressId: 'addr-1',
+    locationCityKey: null,
+    locationLat: null,
+    locationLng: null,
     addressSnapshot: {
       label: 'Home',
       line1: '4 Main St',
@@ -103,10 +112,10 @@ interface Mocks {
   events: { create: jest.Mock; listForRequest: jest.Mock };
   addresses: { findOwned: jest.Mock };
   categories: { findById: jest.Mock };
-  // Sprint 7.x — provider fan-out dependencies.
-  providers: { listEligibleUserIdsForRequest: jest.Mock };
-  notifications: { createForUser: jest.Mock };
-  realtime: { publishFor: jest.Mock; publish: jest.Mock; publishToRoom: jest.Mock };
+  // Sprint 6 — fan-out is an outbox enqueue inside the creation transaction.
+  // The recipient resolution, notification writes, and realtime publishes
+  // moved to RequestAvailable*Handler and are tested there.
+  outbox: { enqueue: jest.Mock };
 }
 
 function makeMocks(over: Partial<Mocks> = {}): Mocks {
@@ -132,22 +141,9 @@ function makeMocks(over: Partial<Mocks> = {}): Mocks {
       findById: jest.fn().mockResolvedValue(makeCategory()),
       ...(over.categories ?? {}),
     },
-    providers: {
-      // Default: no matching providers — keeps existing tests green
-      // since the fan-out becomes a no-op. Tests that need to assert
-      // fan-out behaviour override this to return recipient userIds.
-      listEligibleUserIdsForRequest: jest.fn().mockResolvedValue([]),
-      ...(over.providers ?? {}),
-    },
-    notifications: {
-      createForUser: jest.fn().mockResolvedValue({ id: 'notif-1' }),
-      ...(over.notifications ?? {}),
-    },
-    realtime: {
-      publishFor: jest.fn(),
-      publish: jest.fn(),
-      publishToRoom: jest.fn(),
-      ...(over.realtime ?? {}),
+    outbox: {
+      enqueue: jest.fn().mockResolvedValue({ id: 'outbox-1' }),
+      ...(over.outbox ?? {}),
     },
   };
 }
@@ -159,9 +155,9 @@ function makeService(m: Mocks) {
     m.addresses as unknown as AddressRepository,
     m.categories as unknown as ServiceCategoryRepository,
     makeTx(),
-    m.providers as unknown as ProviderProfileRepository,
-    m.notifications as unknown as NotificationsService,
-    m.realtime as unknown as RealtimeEventsPublisher,
+    // Sprint 6 — the service enqueues an outbox event instead of resolving
+    // recipients and writing notifications inline.
+    m.outbox as unknown as OutboxRepository,
   );
 }
 
@@ -200,7 +196,7 @@ describe('RequestsService', () => {
       // A REQUEST_CREATED event is emitted in the same transaction.
       expect(m.events.create).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'REQUEST_CREATED', actorUserId: 'user-1' }),
-        undefined,
+        TX_SENTINEL,
       );
     });
 
@@ -395,7 +391,7 @@ describe('RequestsService', () => {
           type: 'REQUEST_UPDATED',
           metadata: { changed: ['description'] },
         }),
-        undefined,
+        TX_SENTINEL,
       );
     });
 
@@ -434,11 +430,11 @@ describe('RequestsService', () => {
         'user-1',
         ['OPEN_FOR_BIDS'],
         'CANCELLED',
-        undefined,
+        TX_SENTINEL,
       );
       expect(m.events.create).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'REQUEST_CANCELLED' }),
-        undefined,
+        TX_SENTINEL,
       );
     });
 
@@ -474,11 +470,11 @@ describe('RequestsService', () => {
         'user-1',
         ['CANCELLED'],
         'OPEN_FOR_BIDS',
-        undefined,
+        TX_SENTINEL,
       );
       expect(m.events.create).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'REQUEST_REOPENED' }),
-        undefined,
+        TX_SENTINEL,
       );
     });
 
@@ -576,117 +572,108 @@ describe('RequestsService', () => {
     });
   });
 
-  // ─── Sprint 7.x — provider fan-out on create ─────────────────────────
-  describe('create (provider fan-out)', () => {
-    it('fans out REQUEST_AVAILABLE notifications to every eligible provider userId', async () => {
+  // ─── Sprint 6 — fan-out is enqueued, not performed ───────────────────
+  //
+  // The inline fan-out these tests used to cover is gone. What this service
+  // owes now is narrower and stronger: record the obligation to announce, in
+  // the same transaction as the request, and nothing else. Who receives it
+  // and how is RequestAvailable*Handler's job and is tested there.
+  describe('create (outbox fan-out)', () => {
+    it('enqueues exactly one request.available event', async () => {
       const m = makeMocks();
-      m.providers.listEligibleUserIdsForRequest = jest
-        .fn()
-        .mockResolvedValue([{ userId: 'user-prov-a' }, { userId: 'user-prov-b' }]);
-      await makeService(m).create('user-1', {
+      const svc = makeService(m);
+
+      await svc.create('user-1', {
         categoryId: 'cat-1',
         scheduleType: 'ASAP',
         addressId: 'addr-1',
-      });
-      expect(m.providers.listEligibleUserIdsForRequest).toHaveBeenCalledWith({
+      } as never);
+
+      expect(m.outbox.enqueue).toHaveBeenCalledTimes(1);
+      const [event] = m.outbox.enqueue.mock.calls[0];
+      expect(event.eventType).toBe('request.available');
+      expect(event.aggregateType).toBe('ServiceRequest');
+      expect(event.aggregateId).toBe('req-1');
+    });
+
+    it('enqueues INSIDE the creation transaction', async () => {
+      // The whole guarantee. Passing no tx would recreate the dual-write the
+      // outbox exists to remove: the request could commit while the
+      // announcement silently vanished.
+      const m = makeMocks();
+      const svc = makeService(m);
+
+      await svc.create('user-1', {
         categoryId: 'cat-1',
-        cityKey: 'riyadh',
-        excludeSeekerUserId: 'user-1',
-      });
-      // One notification per eligible provider userId.
-      expect(m.notifications.createForUser).toHaveBeenCalledTimes(2);
-      expect(m.notifications.createForUser).toHaveBeenNthCalledWith(
-        1,
+        scheduleType: 'ASAP',
+        addressId: 'addr-1',
+      } as never);
+
+      const [, tx] = m.outbox.enqueue.mock.calls[0];
+      // The SAME transaction object the runner handed the callback — not just
+      // "some tx". Passing a different one, or none, would recreate the
+      // dual-write the outbox exists to remove.
+      expect(tx).toBe(TX_SENTINEL);
+      // And the request row itself went through that same transaction.
+      expect(m.requests.create).toHaveBeenCalledWith(expect.anything(), TX_SENTINEL);
+    });
+
+    it('carries a self-contained location snapshot in the payload', async () => {
+      // The worker must never re-read the request row: by the time it runs,
+      // the row may be cancelled or edited, and fanning out its CURRENT state
+      // would announce something that never happened.
+      const m = makeMocks();
+      const svc = makeService(m);
+
+      await svc.create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'ASAP',
+        addressId: 'addr-1',
+      } as never);
+
+      const [event] = m.outbox.enqueue.mock.calls[0];
+      expect(event.payload).toEqual(
         expect.objectContaining({
-          userId: 'user-prov-a',
-          type: 'REQUEST_AVAILABLE',
-          resourceType: 'REQUEST',
-          resourceId: 'req-1',
-          deepLink: '/provider/requests/req-1',
-          actorUserId: 'user-1',
+          requestId: 'req-1',
+          seekerUserId: 'user-1',
+          categoryId: expect.anything(),
         }),
       );
-      // Matching realtime invalidation event so the provider's
-      // available-requests feed refreshes immediately.
-      expect(m.realtime.publishFor).toHaveBeenCalledWith(
-        'user-prov-a',
-        'request.available',
-        { requestId: 'req-1' },
-        { actorUserId: 'user-1' },
-      );
-      expect(m.realtime.publishFor).toHaveBeenCalledWith(
-        'user-prov-b',
-        'request.available',
-        { requestId: 'req-1' },
-        { actorUserId: 'user-1' },
-      );
+      // cityKey must be present as a key even when null, so the handler can
+      // distinguish "no city" from "field missing from an older payload".
+      expect(Object.keys(event.payload)).toEqual(expect.arrayContaining(['cityKey', 'lat', 'lng']));
     });
 
-    it('emits no notifications when no providers match', async () => {
+    it('uses a dedupe key derived from the request id', async () => {
       const m = makeMocks();
-      m.providers.listEligibleUserIdsForRequest = jest.fn().mockResolvedValue([]);
-      await makeService(m).create('user-1', {
+      const svc = makeService(m);
+
+      await svc.create('user-1', {
         categoryId: 'cat-1',
         scheduleType: 'ASAP',
         addressId: 'addr-1',
-      });
-      expect(m.notifications.createForUser).not.toHaveBeenCalled();
-      expect(m.realtime.publishFor).not.toHaveBeenCalled();
+      } as never);
+
+      const [event] = m.outbox.enqueue.mock.calls[0];
+      expect(event.dedupeKey).toBe('request-available:req-1');
     });
 
-    it('NEVER notifies the seekers own userId even if it surfaces in the recipient set', async () => {
-      // Defensive double-check: the repo filter already excludes the
-      // seeker; this test guards against a regression where the
-      // repo gets called with the wrong exclude id and accidentally
-      // includes the seeker in the recipient list.
+    it('lets an enqueue failure fail the whole create', async () => {
+      // Deliberate coupling. A request nobody is told about is not a request,
+      // so the correct response to "cannot record the announcement" is to
+      // refuse the write rather than to commit it silently unannounced —
+      // which is exactly what the old best-effort loop did.
       const m = makeMocks();
-      m.providers.listEligibleUserIdsForRequest = jest.fn().mockResolvedValue([
-        { userId: 'user-1' }, // the seeker themselves
-        { userId: 'user-prov-real' },
-      ]);
-      await makeService(m).create('user-1', {
-        categoryId: 'cat-1',
-        scheduleType: 'ASAP',
-        addressId: 'addr-1',
-      });
-      expect(m.notifications.createForUser).toHaveBeenCalledTimes(1);
-      expect(m.notifications.createForUser).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'user-prov-real' }),
-      );
-    });
+      m.outbox.enqueue = jest.fn().mockRejectedValue(new Error('outbox down'));
+      const svc = makeService(m);
 
-    it('SWALLOWS fan-out failures so the request is still created successfully', async () => {
-      const m = makeMocks();
-      m.providers.listEligibleUserIdsForRequest = jest.fn().mockRejectedValue(new Error('db down'));
-      // Must not throw — the request itself is already committed.
       await expect(
-        makeService(m).create('user-1', {
+        svc.create('user-1', {
           categoryId: 'cat-1',
           scheduleType: 'ASAP',
           addressId: 'addr-1',
-        }),
-      ).resolves.toMatchObject({ status: 'OPEN_FOR_BIDS' });
-    });
-
-    it('per-recipient failure does not poison the rest of the batch', async () => {
-      const m = makeMocks();
-      m.providers.listEligibleUserIdsForRequest = jest
-        .fn()
-        .mockResolvedValue([{ userId: 'user-prov-fail' }, { userId: 'user-prov-ok' }]);
-      m.notifications.createForUser = jest
-        .fn()
-        .mockRejectedValueOnce(new Error('db'))
-        .mockResolvedValueOnce({ id: 'notif-2' });
-      await expect(
-        makeService(m).create('user-1', {
-          categoryId: 'cat-1',
-          scheduleType: 'ASAP',
-          addressId: 'addr-1',
-        }),
-      ).resolves.toMatchObject({ status: 'OPEN_FOR_BIDS' });
-      // Both attempts were made — the failure did not short-circuit
-      // the second recipient.
-      expect(m.notifications.createForUser).toHaveBeenCalledTimes(2);
+        } as never),
+      ).rejects.toThrow(/outbox down/);
     });
   });
 });

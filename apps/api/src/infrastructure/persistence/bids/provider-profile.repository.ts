@@ -10,6 +10,25 @@ import type {
 } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  boundingBox,
+  isValidCoordinate,
+  normaliseCityKey,
+  MAX_SERVICE_AREA_RADIUS_KM,
+  type RequestLocation,
+} from '../../../shared/geo/service-area';
+
+/** The narrow projection fan-out needs: enough to evaluate the service-area
+ *  predicate per provider, and nothing else. Loading whole profile rows for a
+ *  ten-thousand-recipient fan-out is a lot of bytes for four numbers. */
+export interface EligibleRecipient {
+  id: string;
+  userId: string | null;
+  serviceAreaLat: number | null;
+  serviceAreaLng: number | null;
+  serviceAreaRadiusKm: number | null;
+  serviceAreaCityKey: string | null;
+}
 
 export interface UpsertProviderProfileInput {
   // Upsert key — typically the slug-style external id used by the
@@ -126,27 +145,93 @@ export class ProviderProfileRepository {
   // Selecting only the userId keeps the projection narrow — the
   // notification fan-out doesn't need any other field, and a
   // narrow select is the privacy-safe default.
-  listEligibleUserIdsForRequest(
-    args: { categoryId: string | null; cityKey: string; excludeSeekerUserId: string },
+  // Sprint 6 — fan-out recipients, page by page, using the SAME service-area
+  // rule the feed uses. See docs/adr/0003-service-area-geo-strategy.md.
+  //
+  // Two changes from the previous version, both load-bearing:
+  //
+  //   1. It applies the RADIUS. Before, it compared the display-cased
+  //      `serviceAreaCity` to an already-normalised cityKey with
+  //      `mode: 'insensitive'` — unindexable, and it ignored the radius
+  //      entirely, so notifications went to providers whose feed would not
+  //      even show the job.
+  //
+  //   2. It is KEYSET-PAGINATED. The old version loaded every recipient into
+  //      memory in one array, then looped issuing one transaction each. In a
+  //      dense city that is an unbounded result set and an unbounded loop
+  //      inside an HTTP request.
+  //
+  // The SQL side cannot evaluate each provider's own radius (that needs a
+  // per-row Haversine term Prisma cannot express), so it selects a superset —
+  // providers whose centre lies within the widest permitted radius of the
+  // request, plus same-city providers — and the caller applies
+  // `matchServiceArea` per row for the exact answer.
+  async listEligibleRecipientsPage(
+    args: {
+      categoryId: string | null;
+      location: RequestLocation;
+      excludeSeekerUserId: string;
+      take: number;
+      cursorId?: string;
+    },
     tx?: PrismaTx,
-  ): Promise<{ userId: string }[]> {
-    return this.db(tx).providerProfile.findMany({
+  ): Promise<EligibleRecipient[]> {
+    // Superset selector. Ordered so the cheap equality columns lead and the
+    // composite indexes added in the Sprint 6 migration are usable.
+    const geoCandidates: Prisma.ProviderProfileWhereInput[] = [];
+
+    if (isValidCoordinate(args.location.lat, args.location.lng)) {
+      // Widest box any provider could match from: their radius is capped, so
+      // a provider further than the cap cannot reach this request whatever
+      // they configured.
+      const box = boundingBox(
+        { lat: args.location.lat!, lng: args.location.lng! },
+        MAX_SERVICE_AREA_RADIUS_KM,
+      );
+      geoCandidates.push({
+        serviceAreaLat: { gte: box.minLat, lte: box.maxLat },
+        ...(box.wholeWorldLng
+          ? {}
+          : {
+              OR: box.lngRanges.map((r) => ({
+                serviceAreaLng: { gte: r.minLng, lte: r.maxLng },
+              })),
+            }),
+      });
+    }
+    if (args.location.cityKey) {
+      geoCandidates.push({ serviceAreaCityKey: args.location.cityKey });
+    }
+    // Neither coordinates nor a city — nothing can match. Returning [] here
+    // rather than an unfiltered query is the difference between "no
+    // recipients" and "every provider on the platform".
+    if (geoCandidates.length === 0) return [];
+
+    return (await this.db(tx).providerProfile.findMany({
       where: {
         status: 'ACTIVE',
         deletedAt: null,
         userId: { not: null, notIn: [args.excludeSeekerUserId] },
-        // Case-insensitive city match: serviceAreaCity is stored in
-        // display casing, so the comparison is done via Prisma's
-        // `mode: 'insensitive'` filter on the equality.
-        serviceAreaCity: { equals: args.cityKey, mode: 'insensitive' },
+        OR: geoCandidates,
         ...(args.categoryId
-          ? {
-              serviceCategories: { some: { serviceCategoryId: args.categoryId } },
-            }
+          ? { serviceCategories: { some: { serviceCategoryId: args.categoryId } } }
           : {}),
       },
-      select: { userId: true },
-    }) as Promise<{ userId: string }[]>;
+      select: {
+        id: true,
+        userId: true,
+        serviceAreaLat: true,
+        serviceAreaLng: true,
+        serviceAreaRadiusKm: true,
+        serviceAreaCityKey: true,
+      },
+      // Keyset pagination on the primary key. `skip`-based paging would drift
+      // as rows are inserted mid-fan-out and could deliver twice or skip a
+      // recipient entirely.
+      orderBy: { id: 'asc' },
+      ...(args.cursorId ? { cursor: { id: args.cursorId }, skip: 1 } : {}),
+      take: args.take,
+    })) as EligibleRecipient[];
   }
 
   // Single source of truth for "the provider profile attached to this
@@ -294,7 +379,14 @@ export class ProviderProfileRepository {
     if (input.bio !== undefined) data.bio = input.bio;
     if (input.headline !== undefined) data.headline = input.headline;
     if (input.phoneNumber !== undefined) data.phoneNumber = input.phoneNumber;
-    if (input.serviceAreaCity !== undefined) data.serviceAreaCity = input.serviceAreaCity;
+    if (input.serviceAreaCity !== undefined) {
+      data.serviceAreaCity = input.serviceAreaCity;
+      // Sprint 6 — the normalised mirror is written by the same branch that
+      // writes the display value, so the two cannot drift. A provider who
+      // edits their city and silently keeps the old match key is a fan-out
+      // bug that only shows up as "I stopped getting notifications".
+      data.serviceAreaCityKey = normaliseCityKey(input.serviceAreaCity);
+    }
     if (input.serviceAreaCountry !== undefined) data.serviceAreaCountry = input.serviceAreaCountry;
     if (input.serviceAreaLat !== undefined) data.serviceAreaLat = input.serviceAreaLat;
     if (input.serviceAreaLng !== undefined) data.serviceAreaLng = input.serviceAreaLng;

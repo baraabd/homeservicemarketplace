@@ -336,6 +336,51 @@ ok "an unsigned PUT is rejected (HTTP $UNSIGNED_STATUS)"
 rm -rf "$TMPDIR_SMOKE"
 
 # ---------------------------------------------------------------------------
+step "8b. Deprecated route contract (Sprint 6)"
+# No auth needed: the headers come from middleware, which runs BEFORE the
+# guards, so they are present on the 401 an unauthenticated call gets. That is
+# the whole reason this is middleware and not an interceptor.
+LEGACY_HEADERS="$(curl -sS -D - -o /dev/null "$API/v1/me/provider/jobs/available")"
+
+case "$LEGACY_HEADERS" in
+  *"404"*) fail "the legacy route was removed; deprecation must not break it" ;;
+esac
+ok "legacy route still routes"
+
+echo "$LEGACY_HEADERS" | grep -qi '^Deprecation: true' ||
+  fail "legacy route is missing the Deprecation header"
+ok "legacy route sends Deprecation: true"
+
+echo "$LEGACY_HEADERS" | grep -qi '^Sunset: ' ||
+  fail "legacy route is missing the Sunset header"
+ok "legacy route sends a Sunset date"
+
+echo "$LEGACY_HEADERS" | grep -qi 'rel="successor-version"' ||
+  fail "legacy route is missing the successor-version Link"
+ok "legacy route points at its canonical replacement"
+
+# The canonical family must NOT be marked deprecated, or the advice is circular.
+CANONICAL_HEADERS="$(curl -sS -D - -o /dev/null "$API/v1/provider/available-requests")"
+if echo "$CANONICAL_HEADERS" | grep -qi '^Deprecation:'; then
+  fail "the canonical route is marked deprecated"
+fi
+ok "canonical route carries no deprecation headers"
+
+# ---------------------------------------------------------------------------
+step "8c. Outbox worker is running (Sprint 6)"
+# The worker is silent by design when idle, so its absence would otherwise go
+# unnoticed until notifications stopped arriving.
+if ! docker logs "$API_CID" 2>&1 | grep -q "Outbox worker started"; then
+  fail "the outbox worker did not start; events would accumulate undelivered"
+fi
+ok "outbox worker started with its handlers registered"
+
+if docker logs "$API_CID" 2>&1 | grep -q "outbox.dead_letter"; then
+  fail "an outbox event dead-lettered during boot"
+fi
+ok "no dead-lettered outbox events"
+
+# ---------------------------------------------------------------------------
 step "9. No boot-time module resolution failures"
 if docker logs "$API_CID" 2>&1 | grep -qE "Cannot find module|MODULE_NOT_FOUND"; then
   fail "the api container logged a module resolution failure"

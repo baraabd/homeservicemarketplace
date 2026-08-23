@@ -14,6 +14,10 @@ import {
   type ServiceRequestWithCategory,
 } from '../../../infrastructure/persistence/requests/service-request.repository';
 import { AppError } from '../../../shared/errors/app-error';
+import {
+  constrainsAnything,
+  toServiceArea,
+} from '../available-requests/available-requests.service';
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -74,11 +78,27 @@ export class ProviderJobsService {
     const providerCategoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
     const categoryIds = explicitCategoryIds ?? providerCategoryIds;
 
+    // Sprint 6 — the LEGACY feed now applies the same service-area predicate
+    // as the canonical one.
+    //
+    // This route is deprecated, not frozen. Leaving it on the old city-only
+    // filter would mean the two families answer the same question differently,
+    // and "the deprecated route shows me different jobs" is precisely the
+    // reason people refuse to migrate off one.
+    //
+    // `query.city` keeps its meaning as a browse-time override of the
+    // provider's configured city, exactly as `near` does on the canonical
+    // route.
+    const serviceArea = toServiceArea(profile, query.city ?? null);
+    if (!constrainsAnything(serviceArea)) {
+      return { items: [], nextCursor: null };
+    }
+
     const take = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), 100);
     const rows = await this.requests.listAvailableForProvider({
       excludeSeekerUserId: profile.userId ?? null,
       categoryIds,
-      city: query.city,
+      serviceArea,
       take: take + 1,
       cursor: query.cursor,
     });

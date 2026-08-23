@@ -444,10 +444,22 @@ model ProviderProfile {
   categoryApplications     ProviderCategoryApplication[]
   user                     User?                            @relation(fields: [userId], references: [id])
 
+  // Sprint 6 — a normalised mirror of serviceAreaCity, written by the same
+  // code path that writes the display value. The fan-out query previously
+  // compared the DISPLAY-cased serviceAreaCity to an already-normalised
+  // cityKey using `mode: 'insensitive'`, which is both unindexable (it
+  // becomes a citext-less ILIKE) and subtly wrong the moment normalisation
+  // does anything beyond lowercasing.
+  serviceAreaCityKey       String?
+
   @@index([availability])
   @@index([deletedAt])
   @@index([serviceAreaCity])
   @@index([status])
+  // Sprint 6 — fan-out recipient selection. Leading equality on the two
+  // columns every fan-out carries, then the selective one.
+  @@index([status, deletedAt, serviceAreaCityKey])
+  @@index([status, deletedAt, serviceAreaLat, serviceAreaLng])
 }
 
 model ProviderProfileServiceCategory {
@@ -567,6 +579,18 @@ model ServiceRequest {
   scheduledAt       DateTime?
   addressId         String?
   addressSnapshot   Json
+  // Sprint 6 — location PROMOTED out of addressSnapshot into real columns.
+  //
+  // The snapshot stays the display source of truth (label, line1, country).
+  // These three are the QUERYABLE mirror, written in the same statement that
+  // writes the snapshot. The provider feed previously filtered on
+  // `addressSnapshot->>'cityKey'`, which no index can serve, so every feed
+  // page was a sequential scan over the whole table. A JSON path expression
+  // also cannot participate in the bounding-box range scan the service-area
+  // predicate needs. See docs/adr/0003-service-area-geo-strategy.md.
+  locationCityKey   String?
+  locationLat       Float?
+  locationLng       Float?
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
   deletedAt         DateTime?
@@ -583,6 +607,16 @@ model ServiceRequest {
   @@index([seekerUserId, deletedAt])
   @@index([seekerUserId, status])
   @@index([status])
+  // Sprint 6 — the two access paths of the provider feed.
+  //
+  // Both lead with the equality columns every feed query carries
+  // (status, deletedAt) so the index is usable, then the selective column:
+  //   * cityKey  — the fallback path and the city-equality path
+  //   * lat/lng  — the bounding-box prefilter; lat is the leading range key
+  //                because a radius bound on latitude is a fixed number of
+  //                degrees, while the longitude bound widens with latitude.
+  @@index([status, deletedAt, locationCityKey])
+  @@index([status, deletedAt, locationLat, locationLng])
 }
 
 model Dispute {
@@ -931,4 +965,88 @@ enum ServiceRequestStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+// ── Sprint 6: transactional outbox ─────────────────────────────────────────
+//
+// Fan-out used to run post-commit, in the request thread, as a best-effort
+// loop that logged and swallowed every failure. That is at-most-once
+// delivery with no record: if the process died between the domain commit and
+// the fan-out — or if a single recipient write failed — the notification was
+// simply lost, and nothing anywhere knew it should have existed.
+//
+// An outbox row is written in the SAME transaction as the domain mutation, so
+// the event and the state change commit or roll back together. A separate
+// worker then delivers it with retries. Delivery becomes at-least-once, and
+// handler-level idempotency (OutboxHandlerRun) makes the observable EFFECT
+// exactly-once.
+//
+// See docs/adr/0004-transactional-outbox.md.
+enum OutboxStatus {
+  // Waiting to be claimed. `availableAt` gates when it becomes eligible,
+  // which is what implements the retry backoff.
+  PENDING
+  // Claimed by a worker and in flight. A row stuck here past the visibility
+  // timeout was orphaned by a crashed worker and is reclaimed.
+  PROCESSING
+  // Delivered. Retained briefly for auditing, then reaped by the cleanup job.
+  PROCESSED
+  // Exhausted every retry. Terminal, and deliberately NOT auto-reaped: a
+  // dead letter is evidence, and deleting it destroys the only record that
+  // the event existed.
+  DEAD
+}
+
+model OutboxEvent {
+  id            String       @id @default(cuid())
+  // What the event is about — ("ServiceRequest", "<id>"). Lets an operator
+  // answer "what happened to request X" without scanning payloads.
+  aggregateType String
+  aggregateId   String
+  eventType     String
+  payload       Json
+  // Optional caller-supplied idempotency key for the PRODUCER side: a retried
+  // domain mutation that enqueues the same logical event twice collapses to
+  // one row instead of fanning out twice.
+  dedupeKey     String?      @unique
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  maxAttempts   Int          @default(8)
+  // When this row becomes claimable. Retry backoff is implemented by pushing
+  // this into the future rather than by sleeping a worker.
+  availableAt   DateTime     @default(now())
+  claimedAt     DateTime?
+  claimedBy     String?
+  lastError     String?      @db.Text
+  processedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  handlerRuns   OutboxHandlerRun[]
+
+  // The claim query: WHERE status = ? AND availableAt <= now() ORDER BY
+  // availableAt, id. Composite so the ordering is served by the index and
+  // the claim does not sort the backlog on every poll.
+  @@index([status, availableAt])
+  // Reclaiming rows orphaned by a crashed worker.
+  @@index([status, claimedAt])
+  // "What happened to this aggregate" — operator forensics.
+  @@index([aggregateType, aggregateId])
+}
+
+// Idempotency ledger. One row per (event, handler) pair, inserted INSIDE the
+// handler's own transaction alongside its effects.
+//
+// This is what turns at-least-once delivery into exactly-once effect. A
+// redelivery — after a crash, a claim timeout, or two workers racing — hits
+// the composite primary key, the insert conflicts, and the handler's work is
+// skipped rather than repeated. Because the marker and the effects share one
+// transaction, there is no window where one exists without the other.
+model OutboxHandlerRun {
+  eventId   String
+  handler   String
+  createdAt DateTime    @default(now())
+  event     OutboxEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, handler])
 }

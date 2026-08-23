@@ -288,32 +288,39 @@ describe('AvailableRequestsService.list', () => {
     expect(m.requests.listAvailableForProvider).not.toHaveBeenCalled();
   });
 
-  it('STRICT mode: provider profile city is normalised to lowercase before the repo filter', async () => {
+  // Sprint 6 — the repository now takes a ServiceArea, not a bare city
+  // string. The normalisation contract is unchanged and still asserted; only
+  // the field it arrives in has moved.
+  it('STRICT mode: provider profile city is normalised before the repo filter', async () => {
     const cat = makeCategory();
     const profile = makeProfile([cat], { serviceAreaCity: 'Jeddah' });
     const m = makeMocks({ profile, rows: [] });
     await makeService(m).list('user-provider-1', {});
     expect(m.requests.listAvailableForProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ city: 'jeddah' }),
+      expect.objectContaining({
+        serviceArea: expect.objectContaining({ cityKey: 'jeddah' }),
+      }),
     );
   });
 
-  it('STRICT mode: explicit `near` query overrides the provider city (also lowercased)', async () => {
+  it('STRICT mode: explicit `near` query overrides the provider city (also normalised)', async () => {
     const cat = makeCategory();
     const m = makeMocks({ profile: makeProfile([cat]), rows: [] });
     await makeService(m).list('user-provider-1', { near: 'Mecca' });
     expect(m.requests.listAvailableForProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ city: 'mecca' }),
+      expect.objectContaining({
+        serviceArea: expect.objectContaining({ cityKey: 'mecca' }),
+      }),
     );
   });
 
-  it('case-insensitive: aleppo / Aleppo / ALEPPO all hit the repo with the SAME normalised city', async () => {
+  it('case-insensitive: aleppo / Aleppo / ALEPPO all reach the repo as ONE key', async () => {
     const cat = makeCategory();
-    const calls: Array<{ city?: string }> = [];
+    const calls: Array<string | null> = [];
     const m = makeMocks({ profile: makeProfile([cat]), rows: [] });
     (m.requests.listAvailableForProvider as jest.Mock).mockImplementation(
-      async (args: { city?: string }) => {
-        calls.push({ city: args.city });
+      async (args: { serviceArea: { cityKey: string | null } }) => {
+        calls.push(args.serviceArea.cityKey);
         return [];
       },
     );
@@ -321,7 +328,61 @@ describe('AvailableRequestsService.list', () => {
     for (const casing of ['aleppo', 'Aleppo', 'ALEPPO']) {
       await makeService(m).list('user-provider-1', { near: casing });
     }
-    expect(calls.map((c) => c.city)).toEqual(['aleppo', 'aleppo', 'aleppo']);
+    expect(calls).toEqual(['aleppo', 'aleppo', 'aleppo']);
+  });
+
+  // Sprint 6 — the radius must actually reach the repository. It was a dead
+  // column for a whole sprint precisely because nothing asserted this.
+  it('passes the provider service-area centre and radius to the repository', async () => {
+    const cat = makeCategory();
+    const profile = makeProfile([cat], {
+      serviceAreaLat: 36.2021,
+      serviceAreaLng: 37.1343,
+      serviceAreaRadiusKm: 25,
+    });
+    const m = makeMocks({ profile, rows: [] });
+    await makeService(m).list('user-provider-1', {});
+    expect(m.requests.listAvailableForProvider).toHaveBeenCalledWith(
+      expect.objectContaining({
+        serviceArea: expect.objectContaining({
+          lat: 36.2021,
+          lng: 37.1343,
+          radiusKm: 25,
+        }),
+      }),
+    );
+  });
+
+  // A provider who dropped a map pin but never typed a city name is fully
+  // onboarded for matching. Under the pre-Sprint-6 city-only check they got
+  // an empty feed forever with no indication why.
+  it('serves a feed to a provider with coordinates but no city', async () => {
+    const cat = makeCategory();
+    const profile = makeProfile([cat], {
+      serviceAreaCity: null,
+      serviceAreaLat: 36.2021,
+      serviceAreaLng: 37.1343,
+      serviceAreaRadiusKm: 25,
+    });
+    const m = makeMocks({ profile, rows: [] });
+    await makeService(m).list('user-provider-1', {});
+    expect(m.requests.listAvailableForProvider).toHaveBeenCalled();
+  });
+
+  // The other direction still holds: nothing configured → empty page, never
+  // the global feed.
+  it('returns an empty page when neither a city nor a service-area centre is set', async () => {
+    const cat = makeCategory();
+    const profile = makeProfile([cat], {
+      serviceAreaCity: null,
+      serviceAreaLat: null,
+      serviceAreaLng: null,
+      serviceAreaRadiusKm: null,
+    });
+    const m = makeMocks({ profile, rows: [] });
+    const res = await makeService(m).list('user-provider-1', {});
+    expect(res.items).toEqual([]);
+    expect(m.requests.listAvailableForProvider).not.toHaveBeenCalled();
   });
 
   it('exposes mediaUrls on the wire as `media` (empty array fallback)', async () => {

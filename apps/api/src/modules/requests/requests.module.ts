@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
-import { NotificationsModule } from '../notifications/notifications.module';
 import { RequestsController } from './requests.controller';
 import { RequestsService } from './requests.service';
 
@@ -10,13 +9,13 @@ import { RequestsService } from './requests.service';
 // PrismaModule; this module needs AuthenticationModule for the
 // JwtAuthGuard / CsrfGuard it applies on every endpoint.
 //
-// Sprint 7.x — also imports NotificationsModule so create() can fan
-// out REQUEST_AVAILABLE notifications to matching providers via
-// NotificationsService.createForUser. RealtimeEventsPublisher is
-// `@Global` (RealtimeModule), so no import is needed for the
-// request.available realtime publish.
+// Sprint 6 — NotificationsModule is no longer imported. create() enqueues an
+// outbox event instead of fanning out inline, so this module no longer needs
+// to know how a notification is written or who receives one. The delivery
+// side lives in ./outbox (RequestOutboxModule), wired to the worker by
+// AppModule. OutboxRepository comes from the @Global OutboxModule.
 @Module({
-  imports: [AuthenticationModule, NotificationsModule],
+  imports: [AuthenticationModule],
   controllers: [RequestsController],
   providers: [RequestsService],
   exports: [RequestsService],

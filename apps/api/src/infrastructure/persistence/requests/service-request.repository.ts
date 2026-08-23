@@ -10,6 +10,17 @@ import type {
   User,
 } from '@homeservicemarketplace/database';
 
+import {
+  normaliseCityKey,
+  usesRadiusMatching,
+  type ServiceArea,
+} from '../../../shared/geo/service-area';
+import {
+  BOX_OVERSELECT_FACTOR,
+  filterByExactRadius,
+  serviceAreaWhere,
+} from '../../../shared/geo/service-area.sql';
+
 import { PrismaService } from '../../prisma/prisma.service';
 
 // Sprint 7.4 — privacy-safe seeker projection eager-loaded for the
@@ -152,11 +163,14 @@ export class ServiceRequestRepository {
   // `city`, when set, filters by the request's snapshotted city. The
   // snapshot is JSON, so we use Prisma's `path` filter on the
   // `addressSnapshot` column, equality + case-insensitive.
-  listAvailableForProvider(
+  async listAvailableForProvider(
     args: {
       excludeSeekerUserId: string | null;
       categoryIds?: string[];
-      city?: string;
+      // Sprint 6 — the provider's service area replaces the bare `city`
+      // string. The predicate lives in shared/geo so list, detail, and
+      // fan-out cannot drift; see docs/adr/0003-service-area-geo-strategy.md.
+      serviceArea: ServiceArea;
       take: number;
       cursor?: string;
       // Sprint 5.2 (canonical): when set, hide every request the
@@ -168,6 +182,13 @@ export class ServiceRequestRepository {
     },
     tx?: PrismaTx,
   ): Promise<ServiceRequestForProvider[]> {
+    // A null fragment means the area constrains NOTHING — an unonboarded
+    // provider with neither a city nor a service-area centre. That must be an
+    // empty feed, never an unfiltered one: omitting the clause would hand
+    // them the global request list.
+    const geoWhere = serviceAreaWhere(args.serviceArea);
+    if (!geoWhere) return Promise.resolve([]);
+
     const where: Prisma.ServiceRequestWhereInput = {
       status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
       deletedAt: null,
@@ -175,25 +196,15 @@ export class ServiceRequestRepository {
       ...(args.categoryIds && args.categoryIds.length > 0
         ? { categoryId: { in: args.categoryIds } }
         : {}),
-      ...(args.city
-        ? {
-            // Postgres JSON `path` lookup against the snapshotted
-            // `cityKey` — a denormalised lowercase-trimmed mirror of
-            // the original city, written by requests.service.ts
-            // alongside `city`. Filtering on `cityKey` means we get
-            // case-insensitive equality (e.g. "Aleppo" matches
-            // "aleppo" matches "ALEPPO") without losing the original
-            // casing for display, and without the false-positive
-            // risk of `string_contains: insensitive` (e.g. "York"
-            // would match "New York"). Caller MUST pass an
-            // already-normalised value — see normaliseCityKey() in
-            // requests.service.ts.
-            addressSnapshot: {
-              path: ['cityKey'],
-              equals: args.city,
-            },
-          }
-        : {}),
+      // Sprint 6 — service-area predicate over the PROMOTED columns.
+      //
+      // This replaced `addressSnapshot: { path: ['cityKey'], equals }`, a
+      // JSON-path equality that no index can serve: every feed page was a
+      // sequential scan of ServiceRequest. `locationCityKey` /
+      // `locationLat` / `locationLng` are real columns with composite
+      // indexes behind them, and the same fragment expresses both the
+      // city-equality fallback and the bounding-box radius filter.
+      ...(geoWhere ?? {}),
       ...(args.excludeBidsByProviderId
         ? {
             bids: {
@@ -206,9 +217,21 @@ export class ServiceRequestRepository {
           }
         : {}),
     };
-    return this.db(tx).serviceRequest.findMany({
+    // Over-fetch before the exact-radius pass.
+    //
+    // The bounding box is a square around a circle, so it admits up to
+    // 4/π ≈ 27% more rows than actually match, and `filterByExactRadius`
+    // drops them. Taking exactly `take` rows here would return a short page
+    // whenever any corner row was selected — and a short page is read by the
+    // cursor pager as "end of feed", silently truncating the provider's
+    // results. Ask for the corners too, then trim.
+    const overFetch = usesRadiusMatching(args.serviceArea)
+      ? Math.ceil(args.take * BOX_OVERSELECT_FACTOR) + 1
+      : args.take;
+
+    const rows = (await this.db(tx).serviceRequest.findMany({
       where,
-      take: args.take,
+      take: overFetch,
       ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: {
@@ -217,7 +240,12 @@ export class ServiceRequestRepository {
         // phone / status / MFA cannot reach the mapper.
         seeker: { select: { id: true, firstName: true, lastName: true } },
       },
-    }) as Promise<ServiceRequestForProvider[]>;
+    })) as ServiceRequestForProvider[];
+
+    // Exact Haversine over the box survivors. Sound in this direction only:
+    // the SQL is a strict superset of the circle, so this can remove false
+    // positives but can never invent or hide a true match.
+    return filterByExactRadius(args.serviceArea, rows, toRequestPoint).slice(0, args.take);
   }
 
   // Sprint 5.2 (canonical): single-row variant of the above. Returns
@@ -225,18 +253,25 @@ export class ServiceRequestRepository {
   // same per-provider visibility rules. Used by the detail endpoint
   // — invisible rows surface as null and the service maps that to
   // 404, identical to "doesn't exist".
-  findAvailableForProvider(
+  async findAvailableForProvider(
     requestId: string,
     args: {
       excludeSeekerUserId: string | null;
       categoryIds?: string[];
-      // Sprint 7.x — strict city match (mirrors listAvailableForProvider).
-      city?: string;
+      // Sprint 6 — the SAME service-area predicate the list uses. Detail
+      // visibility and list visibility must be one rule: a request the feed
+      // hides but the detail endpoint serves is an access-control hole that
+      // an id guess walks straight through.
+      serviceArea: ServiceArea;
       excludeBidsByProviderId?: string;
     },
     tx?: PrismaTx,
   ): Promise<ServiceRequestForProvider | null> {
-    return this.db(tx).serviceRequest.findFirst({
+    const geoWhere = serviceAreaWhere(args.serviceArea);
+    // Constrains nothing → sees nothing. Same rule as the list.
+    if (!geoWhere) return null;
+
+    const row = (await this.db(tx).serviceRequest.findFirst({
       where: {
         id: requestId,
         status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
@@ -245,18 +280,7 @@ export class ServiceRequestRepository {
         ...(args.categoryIds && args.categoryIds.length > 0
           ? { categoryId: { in: args.categoryIds } }
           : {}),
-        ...(args.city
-          ? {
-              addressSnapshot: {
-                // Same case-insensitive contract as
-                // listAvailableForProvider — caller normalises via
-                // normaliseCityKey() and we filter on the denormalised
-                // lowercase-trimmed `cityKey` field of the snapshot.
-                path: ['cityKey'],
-                equals: args.city,
-              },
-            }
-          : {}),
+        ...geoWhere,
         ...(args.excludeBidsByProviderId
           ? {
               bids: {
@@ -274,7 +298,13 @@ export class ServiceRequestRepository {
         // Same narrow projection as the list variant.
         seeker: { select: { id: true, firstName: true, lastName: true } },
       },
-    }) as Promise<ServiceRequestForProvider | null>;
+    })) as ServiceRequestForProvider | null;
+
+    if (!row) return null;
+    // The bounding box admits the square's corners; the list trims them and so
+    // must this. Without it a provider could open a request that their own
+    // feed correctly refuses to show.
+    return filterByExactRadius(args.serviceArea, [row], toRequestPoint)[0] ?? null;
   }
 
   // Returns the row only when it belongs to the given seeker AND is not
@@ -339,6 +369,10 @@ export class ServiceRequestRepository {
         scheduledAt: input.scheduledAt,
         addressId: input.addressId,
         addressSnapshot: input.addressSnapshot,
+        // Sprint 6 — the queryable mirror, derived HERE rather than by the
+        // caller. One writer means the columns cannot drift from the snapshot
+        // because some future call site forgot to set them.
+        ...deriveLocationColumns(input.addressSnapshot),
       },
       include: { category: true },
     });
@@ -355,7 +389,16 @@ export class ServiceRequestRepository {
   ): Promise<Prisma.BatchPayload> {
     return this.db(tx).serviceRequest.updateMany({
       where: { id: requestId, seekerUserId, deletedAt: null },
-      data: input,
+      data: {
+        ...input,
+        // Re-derive whenever the address changes. Editing a request's address
+        // without updating the promoted columns would leave it matching its
+        // OLD location — the failure would look like a geo bug rather than a
+        // missing write.
+        ...(input.addressSnapshot !== undefined
+          ? deriveLocationColumns(input.addressSnapshot)
+          : {}),
+      },
     });
   }
 
@@ -380,4 +423,59 @@ export class ServiceRequestRepository {
       data: { status: to },
     });
   }
+}
+
+// Sprint 6 — persistence row → the shape the geo predicate speaks.
+//
+// One place that knows the promoted columns are called locationLat/locationLng,
+// so shared/geo stays free of persistence naming and the two exact-radius call
+// sites (list and detail) cannot project differently.
+function toRequestPoint(row: { locationLat: number | null; locationLng: number | null }): {
+  lat: number | null;
+  lng: number | null;
+} {
+  return { lat: row.locationLat, lng: row.locationLng };
+}
+
+/** Snapshot JSON → the three promoted, indexable columns.
+ *
+ *  Mirrors the SQL backfill in the Sprint 6 migration exactly: same
+ *  normalisation (btrim + lower), same cityKey-then-city preference, same
+ *  range validation. If these two ever disagree, rows written before and
+ *  after the migration match differently — a bug with no visible symptom
+ *  except a feed that is subtly wrong for old data.
+ *
+ *  Invalid coordinates land as NULL rather than as a stored bad value: the
+ *  predicate reads NULL as "unknown location" and falls back to city, which
+ *  is the safe direction. */
+function deriveLocationColumns(snapshot: Prisma.InputJsonValue): {
+  locationCityKey: string | null;
+  locationLat: number | null;
+  locationLng: number | null;
+} {
+  const snap = (snapshot ?? {}) as {
+    city?: unknown;
+    cityKey?: unknown;
+    lat?: unknown;
+    lng?: unknown;
+  };
+
+  const rawCity =
+    typeof snap.cityKey === 'string' && snap.cityKey.trim() !== ''
+      ? snap.cityKey
+      : typeof snap.city === 'string'
+        ? snap.city
+        : null;
+
+  const lat = typeof snap.lat === 'number' && Number.isFinite(snap.lat) ? snap.lat : null;
+  const lng = typeof snap.lng === 'number' && Number.isFinite(snap.lng) ? snap.lng : null;
+  const coordsUsable = lat != null && lng != null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+
+  return {
+    locationCityKey: normaliseCityKey(rawCity),
+    // Both or neither: a half-known coordinate is not a location, and storing
+    // one of the pair would make `locationLat IS NOT NULL` lie.
+    locationLat: coordsUsable ? lat : null,
+    locationLng: coordsUsable ? lng : null,
+  };
 }

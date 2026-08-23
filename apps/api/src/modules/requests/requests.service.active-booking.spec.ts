@@ -19,7 +19,6 @@ import type {
 } from '@homeservicemarketplace/database';
 
 import type { AddressRepository } from '../../infrastructure/persistence/addresses/address.repository';
-import type { ProviderProfileRepository } from '../../infrastructure/persistence/bids/provider-profile.repository';
 import type {
   ServiceRequestRepository,
   ServiceRequestWithCategory,
@@ -27,9 +26,8 @@ import type {
 import type { ServiceRequestEventRepository } from '../../infrastructure/persistence/requests/service-request-event.repository';
 import type { ServiceCategoryRepository } from '../../infrastructure/persistence/services/service-category.repository';
 import type { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
-import type { NotificationsService } from '../notifications/notifications.service';
-import type { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 import { RequestsService } from './requests.service';
+import { OutboxRepository } from '../../infrastructure/outbox/outbox.repository';
 
 function makeTx(): TransactionRunner {
   return {
@@ -128,11 +126,10 @@ function makeService(rows: ServiceRequestWithCategory[]) {
       findById: jest.fn().mockResolvedValue(makeCategory()),
     } as unknown as ServiceCategoryRepository,
     makeTx(),
-    {
-      listEligibleUserIdsForRequest: jest.fn().mockResolvedValue([]),
-    } as unknown as ProviderProfileRepository,
-    { createForUser: jest.fn() } as unknown as NotificationsService,
-    { publishFor: jest.fn() } as unknown as RealtimeEventsPublisher,
+    // Sprint 6 — fan-out moved to the outbox, so the service takes an
+    // OutboxRepository instead of the provider repo / notifications /
+    // realtime trio it used to drive inline.
+    { enqueue: jest.fn().mockResolvedValue(null) } as unknown as OutboxRepository,
   );
 }
 
