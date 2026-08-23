@@ -43,6 +43,9 @@ function makeCategory(): ServiceCategory {
     labelAr: 'سباكة',
     icon: '🔧',
     sortOrder: 0,
+    // Sprint 8 — flat categories are leaves at the root.
+    parentId: null,
+    isLeaf: true,
     isActive: true,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
