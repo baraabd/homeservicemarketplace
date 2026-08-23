@@ -30,7 +30,8 @@
     "seed": "dotenv -e ../../.env -- node dist/seed.js",
     "grant:admin": "dotenv -e ../../.env -- node dist/admin-access-grant.js",
     "grant:provider": "dotenv -e ../../.env -- node dist/admin-access-grant.js --provider",
-    "verify:migrations": "node scripts/verify-constraint-migrations.mjs"
+    "verify:migrations": "node scripts/verify-constraint-migrations.mjs",
+    "backfill:provider-lifecycle": "dotenv -e ../../.env -- node scripts/backfill-provider-lifecycle.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

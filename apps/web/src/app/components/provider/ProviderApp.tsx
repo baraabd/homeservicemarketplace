@@ -3020,11 +3020,32 @@ export function ProviderApp() {
     );
   }
 
-  if (profile && profile.status !== 'ACTIVE') {
+  // Sprint 7 — pre-approval providers may reach ONBOARDING, and nothing else.
+  //
+  // This gate used to return unconditionally for every non-ACTIVE status,
+  // before it ever consulted `activeTab`. "Continue onboarding" called
+  // setActiveTab('profile'), the component re-rendered, the gate matched
+  // again, and the provider was handed the identical screen. The onboarding
+  // surface was unreachable for the one status whose entire purpose is to
+  // finish onboarding — a DRAFT provider could never leave DRAFT.
+  //
+  // Which statuses may enter mirrors the server's capability rules exactly
+  // (COMPLETE_ONBOARDING in docs/adr/0005): DRAFT and REJECTED are still
+  // drafting, PENDING_REVIEW may keep editing while queued, SUSPENDED may
+  // not. This is a RENDERING decision only — every marketplace action stays
+  // enforced server-side by ProviderCapabilityService, so a client that got
+  // this wrong would see 403s, not data.
+  const canEnterOnboarding =
+    profile !== null &&
+    (profile.status === 'DRAFT' ||
+      profile.status === 'PENDING_REVIEW' ||
+      profile.status === 'REJECTED');
+
+  if (profile && profile.status !== 'ACTIVE' && !(canEnterOnboarding && activeTab === 'profile')) {
     return (
       <ProviderStatusState
         status={profile.status}
-        onContinueOnboarding={() => setActiveTab('profile')}
+        onContinueOnboarding={canEnterOnboarding ? () => setActiveTab('profile') : undefined}
       />
     );
   }
@@ -3035,7 +3056,12 @@ export function ProviderApp() {
   //
   // `activeTab` is still what a deliberate tab press sets, so once the
   // provider upgrades (profile appears) they land wherever they navigated.
-  const effectiveTab = profile ? activeTab : 'profile';
+  // A non-ACTIVE provider who got past the gate above is, by construction,
+  // on the profile tab. Pinning it here as well means a future edit to the
+  // gate cannot accidentally mount a marketplace screen for them: pressing
+  // "Jobs" sends them back through the gate to the locked state, which is
+  // the correct answer, rather than rendering a feed that will only 403.
+  const effectiveTab = profile && profile.status === 'ACTIVE' ? activeTab : 'profile';
 
   const renderTab = () => {
     switch (effectiveTab) {
