@@ -34,13 +34,32 @@ BOOT_TIMEOUT_SECONDS="${BOOT_TIMEOUT_SECONDS:-180}"
 
 pass_count=0
 
-step() { printf '\n\033[1m=== %s ===\033[0m\n' "$*"; }
+# The step currently executing, so a failure can name it without the reader
+# having to scroll back through the log to find the last `===` banner.
+CURRENT_STEP="startup"
+
+step() {
+  CURRENT_STEP="$*"
+  printf '\n\033[1m=== %s ===\033[0m\n' "$*"
+}
 ok() {
   pass_count=$((pass_count + 1))
   printf '  \033[32mPASS\033[0m %s\n' "$*"
 }
 fail() {
   printf '  \033[31mFAIL\033[0m %s\n' "$*" >&2
+
+  # Emit a GitHub Actions annotation as well as the log line.
+  #
+  # A bare stdout FAIL is buried under a cold Docker build and a few thousand
+  # lines of container logging, and getting it out of CI and in front of a
+  # human has repeatedly meant someone scrolling and copying by hand. An
+  # `::error::` annotation is rendered at the top of the run summary and on the
+  # PR checks tab, so the failing assertion and the step it came from are
+  # readable without opening the raw log at all.
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    printf '::error title=compose-smoke: %s::%s\n' "$CURRENT_STEP" "$*"
+  fi
   exit 1
 }
 
