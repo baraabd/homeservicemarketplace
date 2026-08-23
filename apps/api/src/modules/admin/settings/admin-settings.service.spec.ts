@@ -2,6 +2,10 @@ import type {
   PlatformSettingRepository,
   PlatformSettingRow,
 } from '../../../infrastructure/persistence/settings/platform-setting.repository';
+import type {
+  PlatformSettingHistoryRepository,
+  PlatformSettingHistoryRow,
+} from '../../../infrastructure/persistence/settings/platform-setting-history.repository';
 import type { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import type { AdminAuditService } from '../admin-audit.service';
 import { AdminSettingsService } from './admin-settings.service';
@@ -22,11 +26,13 @@ function makeRow(over: Partial<PlatformSettingRow> = {}): PlatformSettingRow {
 
 interface Mocks {
   settings: PlatformSettingRepository;
+  history: PlatformSettingHistoryRepository;
   audit: AdminAuditService;
 }
 
 function makeMocks(initialRows: PlatformSettingRow[] = []): Mocks {
   let rows = [...initialRows];
+  const historyRows: PlatformSettingHistoryRow[] = [];
   return {
     settings: {
       list: jest.fn().mockImplementation(() => Promise.resolve(rows)),
@@ -51,12 +57,34 @@ function makeMocks(initialRows: PlatformSettingRow[] = []): Mocks {
         return Promise.resolve(removed ?? null);
       }),
     } as unknown as PlatformSettingRepository,
+    // Sprint 8 — the append-only trail. Recorded here so the tests can assert
+    // WHAT was written to it, not merely that a write happened.
+    history: {
+      append: jest.fn().mockImplementation((input: Partial<PlatformSettingHistoryRow>) => {
+        // Mirrors what the real repository stores: the caller supplies the
+        // change, the database supplies the identity and the clock. Newest
+        // first, so unshift.
+        const row = {
+          id: `hist-${historyRows.length + 1}`,
+          changedAt: new Date(`2026-08-24T00:0${historyRows.length}:00Z`),
+          reason: null,
+          ...input,
+        } as PlatformSettingHistoryRow;
+        historyRows.unshift(row);
+        return Promise.resolve(row);
+      }),
+      listByKey: jest
+        .fn()
+        .mockImplementation((args: { key: string; take: number }) =>
+          Promise.resolve(historyRows.filter((r) => r.key === args.key).slice(0, args.take)),
+        ),
+    } as unknown as PlatformSettingHistoryRepository,
     audit: { record: jest.fn().mockResolvedValue(undefined) } as unknown as AdminAuditService,
   };
 }
 
 function makeService(m: Mocks): AdminSettingsService {
-  return new AdminSettingsService(m.settings, m.audit, tx);
+  return new AdminSettingsService(m.settings, m.history, m.audit, tx);
 }
 
 describe('AdminSettingsService.getBulk', () => {
@@ -224,5 +252,98 @@ describe('AdminSettingsService.updateBulk', () => {
     // No upsert should have run because validation aborted before
     // the transaction body executed.
     expect(m.settings.upsert).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 8 — the append-only change trail.
+//
+// The current-value row cannot answer "what was this threshold when that
+// decision was made?", because it is overwritten by the next write — and the
+// next write is usually the one someone is disputing.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('AdminSettingsService — setting history', () => {
+  it('records the before and after of a change', async () => {
+    const m = makeMocks([makeRow({ key: 'platform_fee_bps', value: 1000 })]);
+    await makeService(m).updateBulk('admin-9', { platform_fee_bps: 750 });
+
+    expect(m.history.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'platform_fee_bps',
+        previousValue: 1000,
+        newValue: 750,
+        changedBy: 'admin-9',
+      }),
+      undefined,
+    );
+  });
+
+  it('records null as the previous value for a key that had no row', async () => {
+    // Not "0", not the schema default. The distinction between "was unset" and
+    // "was explicitly the default" is the whole point of keeping a trail.
+    const m = makeMocks([]);
+    await makeService(m).updateBulk('admin-9', { platform_fee_bps: 750 });
+
+    expect(m.history.append).toHaveBeenCalledWith(
+      expect.objectContaining({ previousValue: null, newValue: 750 }),
+      undefined,
+    );
+  });
+
+  it('does NOT record a same-value write', async () => {
+    // An idempotent write still gets an audit row — the operator's intent is
+    // worth recording — but not a history row. A history of non-changes buries
+    // the changes it exists to surface.
+    const m = makeMocks([makeRow({ key: 'platform_fee_bps', value: 1000 })]);
+    await makeService(m).updateBulk('admin-9', { platform_fee_bps: 1000 });
+
+    expect(m.history.append).not.toHaveBeenCalled();
+    expect(m.audit.record).toHaveBeenCalled();
+  });
+
+  it('writes the trail entry inside the SAME transaction as the value', async () => {
+    // A history that commits separately from the value it describes grows
+    // holes exactly where someone had a reason to want one.
+    const m = makeMocks([]);
+    await makeService(m).updateBulk('admin-9', { platform_fee_bps: 750 });
+
+    const settingTx = (m.settings.upsert as jest.Mock).mock.calls[0][1];
+    const historyTx = (m.history.append as jest.Mock).mock.calls[0][1];
+    expect(historyTx).toBe(settingTx);
+  });
+
+  it('records a deletion as a change to null', async () => {
+    // Deleting the row reverts the read path to the schema default, so the
+    // trail says so rather than going silent at the moment of a real change.
+    const m = makeMocks([makeRow({ key: 'platform_fee_bps', value: 1000 })]);
+    await makeService(m).remove('admin-9', 'platform_fee_bps');
+
+    expect(m.history.append).toHaveBeenCalledWith(
+      expect.objectContaining({ previousValue: 1000, newValue: null, reason: 'deleted' }),
+      undefined,
+    );
+  });
+
+  it('reads a key history newest-first and reports no next page when exhausted', async () => {
+    const m = makeMocks([]);
+    const service = makeService(m);
+    await service.updateBulk('admin-9', { platform_fee_bps: 750 });
+    await service.updateBulk('admin-9', { platform_fee_bps: 800 });
+
+    const out = await service.historyForKey('platform_fee_bps', { limit: 20 });
+
+    expect(out.key).toBe('platform_fee_bps');
+    expect(out.items).toHaveLength(2);
+    expect(out.nextCursor).toBeNull();
+  });
+
+  it('reads history for a key that is NOT in the whitelist', async () => {
+    // The trail of a key since removed from the schema is exactly the trail
+    // most worth keeping readable.
+    const m = makeMocks([]);
+    const out = await makeService(m).historyForKey('retired_key', { limit: 20 });
+
+    expect(out.key).toBe('retired_key');
+    expect(out.items).toEqual([]);
   });
 });

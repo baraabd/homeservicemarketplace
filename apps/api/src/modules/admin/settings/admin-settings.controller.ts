@@ -8,9 +8,11 @@ import {
   Param,
   Patch,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import type {
+  AdminSettingHistoryResponse,
   AdminSettingValue,
   AdminSettingsBulkResponse,
   SettingMutationResponse,
@@ -25,6 +27,7 @@ import type { AuthenticatedUser } from '../../iam/authentication/types/authentic
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import { AdminSettingsService } from './admin-settings.service';
+import { ListSettingHistoryQueryDto } from './dto/list-setting-history.query';
 import { UpdateAdminSettingsDto } from './dto/update-admin-settings.dto';
 
 // /v1/admin/settings — Sprint 6.5 refined.
@@ -58,6 +61,20 @@ export class AdminSettingsController {
     @Body() body: UpdateAdminSettingsDto,
   ): Promise<UpdateAdminSettingsResponse> {
     return this.settings.updateBulk(admin.id, body.values);
+  }
+
+  // Sprint 8 — the append-only trail for one key.
+  //
+  // Declared BEFORE `:key` because Nest matches routes in declaration order
+  // and `:key` would otherwise swallow `history` as a key name, turning every
+  // history request into a 404 for a setting called "history".
+  @Get(':key/history')
+  @HttpCode(HttpStatus.OK)
+  history(
+    @Param('key') key: string,
+    @Query() query: ListSettingHistoryQueryDto,
+  ): Promise<AdminSettingHistoryResponse> {
+    return this.settings.historyForKey(key, { limit: query.limit, cursor: query.cursor });
   }
 
   @Get(':key')

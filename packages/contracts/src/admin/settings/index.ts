@@ -61,6 +61,38 @@ export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
     description: 'Show the hourly-rate pricing mode in the seeker request wizard.',
     default: false,
   },
+
+  // ── Sprint 8: settings the provider onboarding wizard actually reads ────
+  // docs/adr/0008-category-hierarchy-and-onboarding-draft.md
+  //
+  // Every key below is consumed by a specific step. A setting nothing reads is
+  // a lever that does nothing, which is worse than no lever — an operator
+  // changes it, observes no effect, and stops trusting the whole screen.
+  {
+    key: 'provider_consent_policy_version',
+    type: 'string',
+    description:
+      'Version of the provider terms currently published. Pinned onto each application at consent time, so "they agreed" stays answerable after the terms change. Bump this when the document changes; providers mid-application keep the version they accepted until they re-consent.',
+    default: 'v1',
+  },
+  {
+    key: 'provider_onboarding_max_service_areas',
+    type: 'integer',
+    description:
+      'How many cities, districts, or neighborhoods one provider may cover. An upper bound, not a target — the cap exists so a single PATCH cannot amplify into thousands of rows.',
+    default: 20,
+    min: 1,
+    max: 200,
+  },
+  {
+    key: 'provider_onboarding_max_specialties',
+    type: 'integer',
+    description:
+      'How many leaf specialties one provider may hold or apply for. Each one is a separate admin decision, so this is also a bound on how much review work a single submission can create.',
+    default: 15,
+    min: 1,
+    max: 100,
+  },
 ] as const;
 
 export type AdminSettingKey = (typeof ADMIN_SETTINGS_SCHEMA)[number]['key'];
@@ -115,4 +147,38 @@ export interface ListSettingsResponse {
 
 export interface SettingMutationResponse {
   setting: AdminSettingValue;
+}
+
+// ─── Sprint 8: change history ───────────────────────────────────
+//
+//   GET /v1/admin/settings/:key/history
+//
+// PlatformSetting keeps only the CURRENT value and who last touched it, which
+// cannot answer "what was the threshold when this provider was rejected?" —
+// the question that actually gets asked, usually by someone disputing a
+// decision. Every write appends a row here, so the answer survives the next
+// write.
+//
+// Append-only. There is no edit and no delete on this surface: a mutable audit
+// trail is not one.
+
+export interface AdminSettingHistoryEntry {
+  id: string;
+  key: string;
+  /** Null for the first write of a key that had no row. */
+  previousValue: unknown;
+  newValue: unknown;
+  /** The admin who made the change, or null for a system write. */
+  changedBy: string | null;
+  changedAt: string;
+  /** Justification captured at change time, when the caller supplied one. */
+  reason: string | null;
+}
+
+export interface AdminSettingHistoryResponse {
+  key: string;
+  /** Newest first. */
+  items: AdminSettingHistoryEntry[];
+  /** Cursor for the next page, or null when the list is exhausted. */
+  nextCursor: string | null;
 }
