@@ -5,10 +5,12 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule } from './config/config.module';
 import { HealthModule } from './infrastructure/health/health.module';
 import { AllExceptionsFilter } from './infrastructure/http/all-exceptions.filter';
+import { DeprecatedRouteMiddleware } from './infrastructure/http/deprecated-route.middleware';
 import { RequestIdMiddleware } from './infrastructure/http/request-id.middleware';
 import { LoggerModule } from './infrastructure/logger/logger.module';
 import { MailModule } from './infrastructure/mail/mail.module';
 import { MongoModule } from './infrastructure/mongo/mongo.module';
+import { OutboxModule } from './infrastructure/outbox/outbox.module';
 import { PrismaModule } from './infrastructure/prisma/prisma.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
 import { StorageModule } from './infrastructure/storage/storage.module';
@@ -30,6 +32,11 @@ import { ProfileModule } from './modules/profile/profile.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RequestsModule } from './modules/requests/requests.module';
+import { RequestOutboxModule } from './modules/requests/outbox/request-outbox.module';
+import {
+  RequestAvailableBatchHandler,
+  RequestAvailableDispatchHandler,
+} from './modules/requests/outbox/request-available.handler';
 import { ServicesModule } from './modules/services/services.module';
 
 // Infrastructure & data-foundation bootstrap. Seeker domain modules
@@ -49,6 +56,14 @@ import { ServicesModule } from './modules/services/services.module';
     MailModule,
     StorageModule,
     MetricsModule,
+    // Sprint 6 — transactional outbox. AppModule is the ONLY place allowed to
+    // know both the worker and the domain handlers it runs; wiring them here
+    // keeps infrastructure from importing the domain modules that depend on
+    // it. See docs/adr/0004-transactional-outbox.md.
+    OutboxModule.forRoot({
+      imports: [RequestOutboxModule],
+      handlers: [RequestAvailableDispatchHandler, RequestAvailableBatchHandler],
+    }),
     // Global, transport-agnostic post-commit security notifications
     // (D-2/D-4). Publishers: IAM / admin / provider. Subscriber: the
     // Socket.IO gateway.
@@ -94,5 +109,14 @@ import { ServicesModule } from './modules/services/services.module';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(RequestIdMiddleware).forRoutes('*');
+    // Sprint 6 — Deprecation / Sunset / Link headers plus usage telemetry on
+    // the legacy provider route families. Bound to '*' and gated internally by
+    // the DEPRECATED_ROUTES registry, so adding or retiring a route is a
+    // one-line edit there rather than a change to module wiring.
+    //
+    // Middleware rather than an interceptor on purpose: guards run first, so
+    // an interceptor would skip every 401/403 — exactly the responses a client
+    // stuck on an old route tends to get.
+    consumer.apply(DeprecatedRouteMiddleware).forRoutes('*');
   }
 }

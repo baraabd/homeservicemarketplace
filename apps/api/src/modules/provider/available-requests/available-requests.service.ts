@@ -19,7 +19,12 @@ import {
 } from '../../../infrastructure/persistence/requests/service-request.repository';
 import { ServiceCategoryRepository } from '../../../infrastructure/persistence/services/service-category.repository';
 import { AppError } from '../../../shared/errors/app-error';
-import { normaliseCityKey } from '../../requests/requests.service';
+import {
+  haversineKm,
+  normaliseCityKey,
+  usesRadiusMatching,
+  type ServiceArea,
+} from '../../../shared/geo/service-area';
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -94,13 +99,16 @@ export class AvailableRequestsService {
     // trimmed form the snapshot's `cityKey` carries. Without this
     // step, a provider profile typed as "Aleppo" would silently miss
     // requests geocoded as "aleppo" / "ALEPPO".
-    const rawCity = (query.near ?? profile.serviceAreaCity ?? '').trim();
-    const effectiveCity = rawCity ? normaliseCityKey(rawCity) : null;
+    const serviceArea = toServiceArea(profile, query.near ?? null);
 
-    // Strict mode: empty profile filter set → empty page. We early-return
-    // with a stable envelope so the client cache doesn't see a global
-    // feed (which would leak unrelated jobs into the provider's UI).
-    if (effectiveCategoryIds.length === 0 || !effectiveCity) {
+    // Strict mode: an empty filter set → empty page, never a global feed.
+    //
+    // Sprint 6 — the second condition is now "the service area constrains
+    // nothing", not "there is no city". A provider who set a map pin and a
+    // radius but never typed a city name is fully onboarded for matching
+    // purposes and must get results; under the old check they got an empty
+    // feed forever with no indication why.
+    if (effectiveCategoryIds.length === 0 || !constrainsAnything(serviceArea)) {
       return { items: [], nextCursor: null };
     }
 
@@ -108,7 +116,7 @@ export class AvailableRequestsService {
     const rows = await this.requests.listAvailableForProvider({
       excludeSeekerUserId: profile.userId ?? null,
       categoryIds: effectiveCategoryIds,
-      city: effectiveCity,
+      serviceArea,
       excludeBidsByProviderId: profile.id,
       take: take + 1,
       cursor: query.cursor,
@@ -127,20 +135,22 @@ export class AvailableRequestsService {
       throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
     }
     const providerCategoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
-    const providerCityRaw = profile.serviceAreaCity?.trim() || null;
-    const providerCity = providerCityRaw ? normaliseCityKey(providerCityRaw) : null;
-    // Sprint 7.x — STRICT detail visibility (mirrors list). A provider
-    // who hasn't onboarded (no city / no categories) cannot fetch
-    // request details either, even by guessing the id. The city
-    // passed to the repo is the lowercase-trimmed key so a manual
-    // "Aleppo" profile matches an "aleppo" or "ALEPPO" snapshot.
-    if (providerCategoryIds.length === 0 || !providerCity) {
+    // Sprint 6 — STRICT detail visibility, driven by the SAME service-area
+    // value the list uses. Detail and list must agree exactly: a request the
+    // feed hides but the detail endpoint serves is an access-control hole
+    // reachable by guessing an id.
+    //
+    // No `near` override here — an explicit query parameter may widen what a
+    // provider BROWSES, but it must not widen what they are authorised to
+    // open.
+    const serviceArea = toServiceArea(profile, null);
+    if (providerCategoryIds.length === 0 || !constrainsAnything(serviceArea)) {
       throw new AppError('NOT_FOUND', 'Request not found.', 404);
     }
     const row = await this.requests.findAvailableForProvider(requestId, {
       excludeSeekerUserId: profile.userId ?? null,
       categoryIds: providerCategoryIds,
-      city: providerCity,
+      serviceArea,
       excludeBidsByProviderId: profile.id,
     });
     if (!row) {
@@ -184,16 +194,23 @@ function toSummary(
   // single-line change — no contract churn required.
   const budget = toBudget(row);
 
-  // Sprint 7.4 — Haversine distance from the provider's service-area
-  // centre to the request snapshot. Null when either end is missing
-  // coordinates (legacy address, coarse-city-only profile). The
-  // helper rounds to 0.1 km so the wire value is stable across
-  // requests (the UI renders to one decimal place either way).
-  const distanceKm = computeDistanceKm(
-    provider.serviceAreaLat,
-    provider.serviceAreaLng,
-    snapshot.lat,
-    snapshot.lng,
+  // Sprint 6 — distance now comes from the SAME haversineKm the matching
+  // predicate uses, over the SAME promoted columns the query filtered on.
+  //
+  // Previously this was a second, private copy of the formula reading the
+  // snapshot JSON while the filter read something else entirely. A displayed
+  // distance that disagrees with the radius that admitted the row is the most
+  // confusing possible bug: the provider sees "31 km" on a job inside their
+  // 25 km area and reasonably concludes the filter is broken.
+  //
+  // Falls back to the snapshot for rows written before the backfill.
+  const row6 = row as ServiceRequestForProvider & {
+    locationLat?: number | null;
+    locationLng?: number | null;
+  };
+  const distanceKm = haversineKm(
+    { lat: provider.serviceAreaLat, lng: provider.serviceAreaLng },
+    { lat: row6.locationLat ?? snapshot.lat, lng: row6.locationLng ?? snapshot.lng },
   );
 
   return {
@@ -262,39 +279,55 @@ function toBudget(_row: ServiceRequestForProvider): ProviderAvailableRequestBudg
   };
 }
 
-// Haversine distance in kilometres, rounded to one decimal place.
-// Returns null when either end is missing a coordinate so the wire
-// is unambiguous about "we don't know" vs "we know it's zero".
+// Sprint 6 — the private Haversine copy that used to live here is gone.
+// Its formula is now shared/geo/service-area.ts:haversineKm, which is also
+// what the matching predicate uses, so a displayed distance and the radius
+// that admitted the row can no longer disagree.
+//
+// Re-exported under the old name so existing importers keep compiling.
 export function computeDistanceKm(
   fromLat: number | null,
   fromLng: number | null,
   toLat: number | null,
   toLng: number | null,
 ): number | null {
-  if (fromLat == null || fromLng == null || toLat == null || toLng == null) {
-    return null;
-  }
-  // Guard against the obvious garbage. Out-of-range lat/lng → null
-  // so a malformed snapshot can't poison the renderer with NaN.
-  if (
-    Math.abs(fromLat) > 90 ||
-    Math.abs(toLat) > 90 ||
-    Math.abs(fromLng) > 180 ||
-    Math.abs(toLng) > 180
-  ) {
-    return null;
-  }
-  const R_KM = 6371; // Earth radius
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(toLat - fromLat);
-  const dLng = toRad(toLng - fromLng);
-  const lat1 = toRad(fromLat);
-  const lat2 = toRad(toLat);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const km = R_KM * c;
-  // One decimal place: enough precision for a "1.2 km" / "12.4 km"
-  // chip, stable enough that floating-point noise doesn't churn the
-  // displayed value between renders.
-  return Math.round(km * 10) / 10;
+  return haversineKm({ lat: fromLat, lng: fromLng }, { lat: toLat, lng: toLng });
+}
+
+// ─── service area ──────────────────────────────────────────────────────────
+
+/** Provider profile → the geo predicate's view of it.
+ *
+ *  `near` is the caller's explicit city override. It replaces the profile's
+ *  city for BROWSING only — the detail endpoint deliberately passes null, so
+ *  a query parameter can never widen what a provider is allowed to open. */
+export function toServiceArea(
+  profile: {
+    serviceAreaLat: number | null;
+    serviceAreaLng: number | null;
+    serviceAreaRadiusKm: number | null;
+    serviceAreaCity: string | null;
+    serviceAreaCityKey?: string | null;
+  },
+  near: string | null,
+): ServiceArea {
+  // Prefer the stored normalised key; fall back to normalising the display
+  // value for rows written before the column existed and not yet re-saved.
+  const cityKey = near
+    ? normaliseCityKey(near)
+    : (profile.serviceAreaCityKey ?? normaliseCityKey(profile.serviceAreaCity));
+
+  return {
+    lat: profile.serviceAreaLat,
+    lng: profile.serviceAreaLng,
+    radiusKm: profile.serviceAreaRadiusKm,
+    cityKey,
+  };
+}
+
+/** True when the area restricts the feed to something narrower than "all
+ *  requests". A false here must produce an EMPTY feed, never an unfiltered
+ *  one — see the strict-mode comment at the call site. */
+export function constrainsAnything(area: ServiceArea): boolean {
+  return usesRadiusMatching(area) || area.cityKey != null;
 }

@@ -34,13 +34,32 @@ BOOT_TIMEOUT_SECONDS="${BOOT_TIMEOUT_SECONDS:-180}"
 
 pass_count=0
 
-step() { printf '\n\033[1m=== %s ===\033[0m\n' "$*"; }
+# The step currently executing, so a failure can name it without the reader
+# having to scroll back through the log to find the last `===` banner.
+CURRENT_STEP="startup"
+
+step() {
+  CURRENT_STEP="$*"
+  printf '\n\033[1m=== %s ===\033[0m\n' "$*"
+}
 ok() {
   pass_count=$((pass_count + 1))
   printf '  \033[32mPASS\033[0m %s\n' "$*"
 }
 fail() {
   printf '  \033[31mFAIL\033[0m %s\n' "$*" >&2
+
+  # Emit a GitHub Actions annotation as well as the log line.
+  #
+  # A bare stdout FAIL is buried under a cold Docker build and a few thousand
+  # lines of container logging, and getting it out of CI and in front of a
+  # human has repeatedly meant someone scrolling and copying by hand. An
+  # `::error::` annotation is rendered at the top of the run summary and on the
+  # PR checks tab, so the failing assertion and the step it came from are
+  # readable without opening the raw log at all.
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    printf '::error title=compose-smoke: %s::%s\n' "$CURRENT_STEP" "$*"
+  fi
   exit 1
 }
 
@@ -152,7 +171,23 @@ done
 [ "$healthy" = "1" ] || fail "the api container never reported healthy"
 ok "container healthcheck reports healthy"
 
-LIVE="$(curl -fsS "$API/health/live")"
+# The container healthcheck above probes 127.0.0.1 from INSIDE the container.
+# This is the first request over the PUBLISHED port, and the two are not ready
+# at the same instant: Docker can report the container healthy while the
+# host<->container proxy is still coming up. Curling straight through failed
+# here with `curl: (56) Recv failure: Connection was reset`, aborting the whole
+# script under `set -e` long before any assertion ran — a flake that looks
+# nothing like its cause.
+#
+# So: wait for the PORT, not just the container, before trusting any host-side
+# request.
+LIVE=""
+for _ in $(seq 1 60); do
+  if LIVE="$(curl -fsS --max-time 5 "$API/health/live" 2>/dev/null)"; then break; fi
+  LIVE=""
+  sleep 1
+done
+[ -n "$LIVE" ] || fail "the published port never served /health/live (container was healthy internally)"
 echo "  /health/live -> $LIVE"
 [ "$(printf '%s' "$LIVE" | jget status)" = "ok" ] || fail "/health/live did not report ok"
 ok "/health/live returns ok"
@@ -334,6 +369,101 @@ UNSIGNED_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "$UNSIGNED" \
 ok "an unsigned PUT is rejected (HTTP $UNSIGNED_STATUS)"
 
 rm -rf "$TMPDIR_SMOKE"
+
+# ---------------------------------------------------------------------------
+step "8b. Deprecated route contract (Sprint 6)"
+#
+# THESE CALLS ARE DELIBERATELY UNAUTHENTICATED. A 401 here is the expected
+# result and is not a failure — do not "fix" it by adding credentials.
+#
+# Deprecation headers are set by middleware, which Nest runs BEFORE the guards.
+# Asserting them on an unauthenticated request is precisely what proves that:
+# an interceptor (the first implementation) ran after the guards and silently
+# dropped the headers on every 401/403 — the responses a client stuck on an old
+# route is most likely to be getting.
+#
+# Expect `401 AUTH_INVALID_CREDENTIALS` from JwtAuthGuard in the API log for
+# both of these. That is the contract being tested, not a symptom.
+LEGACY_URL="$API/v1/me/provider/jobs/available"
+LEGACY_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "$LEGACY_URL")"
+LEGACY_HEADERS="$(curl -sS -D - -o /dev/null "$LEGACY_URL")"
+
+# Assert the STATUS LINE, not a substring of the whole header blob.
+#
+# The previous check was `case "$LEGACY_HEADERS" in *"404"*)`, which searched
+# every header for the text "404" — including `x-request-id` (a UUID), `ETag`,
+# and `Content-Length`. Any of those can contain "404" by chance, and when one
+# did the run failed with "the legacy route was removed" on a route that was
+# working perfectly. Roughly a 1-in-100 false failure, i.e. exactly the kind of
+# flake that gets a real CI signal ignored.
+echo "  $LEGACY_URL -> HTTP $LEGACY_STATUS (401/403 expected: no credentials sent)"
+case "$LEGACY_STATUS" in
+  401 | 403 | 200) ;;
+  404) fail "the legacy route was REMOVED (404); deprecation must not break it" ;;
+  *) fail "the legacy route returned an unexpected HTTP $LEGACY_STATUS" ;;
+esac
+ok "legacy route still routes (HTTP $LEGACY_STATUS)"
+
+echo "$LEGACY_HEADERS" | grep -qi '^Deprecation: true' ||
+  fail "legacy route is missing the Deprecation header"
+ok "legacy route sends Deprecation: true"
+
+echo "$LEGACY_HEADERS" | grep -qi '^Sunset: ' ||
+  fail "legacy route is missing the Sunset header"
+ok "legacy route sends a Sunset date"
+
+echo "$LEGACY_HEADERS" | grep -qi 'rel="successor-version"' ||
+  fail "legacy route is missing the successor-version Link"
+ok "legacy route points at its canonical replacement"
+
+# The canonical family must NOT be marked deprecated, or the advice is
+# circular. Also unauthenticated, and also expected to 401.
+CANONICAL_URL="$API/v1/provider/available-requests"
+CANONICAL_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "$CANONICAL_URL")"
+CANONICAL_HEADERS="$(curl -sS -D - -o /dev/null "$CANONICAL_URL")"
+echo "  $CANONICAL_URL -> HTTP $CANONICAL_STATUS (401/403 expected: no credentials sent)"
+case "$CANONICAL_STATUS" in
+  404) fail "the canonical route does not exist (404)" ;;
+esac
+if echo "$CANONICAL_HEADERS" | grep -qi '^Deprecation:'; then
+  fail "the canonical route is marked deprecated"
+fi
+ok "canonical route carries no deprecation headers (HTTP $CANONICAL_STATUS)"
+
+# ---------------------------------------------------------------------------
+step "8c. Outbox worker is running (Sprint 6)"
+# The worker is silent by design when idle, so its absence would otherwise go
+# unnoticed until notifications stopped arriving.
+#
+# Every failure below PRINTS ITS EVIDENCE before giving up. The first version
+# just asserted and exited, which told a reader that something was wrong with
+# the worker but nothing about what — and the API log it left behind is
+# thousands of lines of request logging in which the relevant three are
+# invisible.
+API_LOG="$(docker logs "$API_CID" 2>&1)"
+
+if ! printf '%s' "$API_LOG" | grep -q "Outbox worker started"; then
+  echo "  ----- outbox-related log lines -----"
+  printf '%s' "$API_LOG" | grep -iE "outbox" | tail -20 || echo "  (no line mentions outbox at all)"
+  echo "  ----- last 40 lines of the api log -----"
+  printf '%s' "$API_LOG" | tail -40
+
+  # Distinguish "switched off" from "never got there". They need opposite
+  # responses — a config change versus a boot investigation — and the original
+  # single message conflated them.
+  if printf '%s' "$API_LOG" | grep -q "Outbox worker DISABLED"; then
+    fail "the outbox worker is DISABLED (OUTBOX_WORKER_ENABLED=false in this environment)"
+  fi
+  fail "the outbox worker did not start; events would accumulate undelivered"
+fi
+ok "outbox worker started with its handlers registered"
+
+if printf '%s' "$API_LOG" | grep -q "outbox.dead_letter"; then
+  echo "  ----- dead-lettered events -----"
+  printf '%s' "$API_LOG" | grep -A 8 "outbox.dead_letter" | head -40
+  fail "an outbox event dead-lettered during boot"
+fi
+ok "no dead-lettered outbox events"
 
 # ---------------------------------------------------------------------------
 step "9. No boot-time module resolution failures"

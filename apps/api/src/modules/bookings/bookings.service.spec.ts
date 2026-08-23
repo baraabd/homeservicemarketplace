@@ -44,6 +44,7 @@ function makeProvider(over: Partial<ProviderProfile> = {}): ProviderProfile {
     headline: null,
     phoneNumber: null,
     serviceAreaCity: null,
+    serviceAreaCityKey: null,
     serviceAreaCountry: null,
     serviceAreaLat: null,
     serviceAreaLng: null,

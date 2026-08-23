@@ -252,6 +252,13 @@ async function upsertProviderProfiles(tx: Prisma.TransactionClient): Promise<voi
         // requires city + at least one category to ALSO be set —
         // both are configured here).
         serviceAreaCity: spec.serviceAreaCity,
+        // Sprint 6 — the normalised mirror the fan-out query matches on. The
+        // seed writes ProviderProfile directly rather than through the
+        // repository, so it is a second writer of serviceAreaCity and has to
+        // maintain the key itself. Leaving it null makes every seeded
+        // provider invisible to fan-out, which looks like a broken matcher
+        // rather than a missing column.
+        serviceAreaCityKey: normaliseCityKey(spec.serviceAreaCity),
         serviceAreaCountry: spec.serviceAreaCountry,
         status: 'ACTIVE',
         deletedAt: null,
@@ -266,6 +273,7 @@ async function upsertProviderProfiles(tx: Prisma.TransactionClient): Promise<voi
         verified: spec.verified,
         topPro: spec.topPro,
         serviceAreaCity: spec.serviceAreaCity,
+        serviceAreaCityKey: normaliseCityKey(spec.serviceAreaCity),
         serviceAreaCountry: spec.serviceAreaCountry,
         status: 'ACTIVE',
       },
@@ -497,6 +505,7 @@ async function ensureProviderOnboarded(
       where: { id: profile.id },
       data: {
         serviceAreaCity: 'Riyadh',
+        serviceAreaCityKey: normaliseCityKey('Riyadh'),
         serviceAreaCountry: 'Saudi Arabia',
       },
     });
@@ -543,6 +552,48 @@ export async function seedWithTx(tx: Prisma.TransactionClient): Promise<void> {
   // The expression is idempotent — only rows missing cityKey are
   // touched, so re-runs are a no-op.
   await backfillAddressSnapshotCityKey(tx);
+  // Sprint 6 — the same idea for the promoted columns. Idempotent, and it
+  // repairs rows written by any path that forgot the mirror (including an
+  // older build of this very seed).
+  await backfillPromotedLocationColumns(tx);
+}
+
+/** Sprint 6 — repair rows whose queryable location columns are missing.
+ *
+ *  The migration backfilled everything that existed when it ran; this catches
+ *  anything written since by a path that did not maintain them. Both
+ *  statements only touch rows that need it, so re-runs are no-ops.
+ *
+ *  This is a safety net, not the mechanism: the repository derives these
+ *  columns on every write. A row showing up here means a new writer appeared
+ *  that bypasses it. */
+async function backfillPromotedLocationColumns(tx: Prisma.TransactionClient): Promise<void> {
+  await tx.$executeRawUnsafe(
+    `UPDATE "ServiceRequest"
+        SET "locationCityKey" = COALESCE(
+              NULLIF(btrim(lower("addressSnapshot" ->> 'cityKey')), ''),
+              NULLIF(btrim(lower("addressSnapshot" ->> 'city')), '')
+            ),
+            "locationLat" = CASE
+              WHEN jsonb_typeof("addressSnapshot" -> 'lat') = 'number'
+               AND abs(("addressSnapshot" ->> 'lat')::double precision) <= 90
+              THEN ("addressSnapshot" ->> 'lat')::double precision
+            END,
+            "locationLng" = CASE
+              WHEN jsonb_typeof("addressSnapshot" -> 'lng') = 'number'
+               AND abs(("addressSnapshot" ->> 'lng')::double precision) <= 180
+              THEN ("addressSnapshot" ->> 'lng')::double precision
+            END
+      WHERE "locationCityKey" IS NULL
+        AND "addressSnapshot" ? 'city'`,
+  );
+
+  await tx.$executeRawUnsafe(
+    `UPDATE "ProviderProfile"
+        SET "serviceAreaCityKey" = NULLIF(btrim(lower("serviceAreaCity")), '')
+      WHERE "serviceAreaCityKey" IS NULL
+        AND "serviceAreaCity" IS NOT NULL`,
+  );
 }
 
 async function backfillAddressSnapshotCityKey(tx: Prisma.TransactionClient): Promise<void> {
@@ -606,4 +657,18 @@ if (require.main === module) {
     .finally(() => {
       void prisma.$disconnect();
     });
+}
+
+/** Sprint 6 — the same normalisation the API applies (shared/geo/service-area
+ *  `normaliseCityKey`) and the same the migration backfill used
+ *  (`btrim(lower(...))`).
+ *
+ *  Duplicated rather than imported because packages/database must not depend
+ *  on apps/api. Three implementations of one rule is a drift risk, so it is
+ *  deliberately trivial: if it ever needs to be cleverer than trim+lowercase,
+ *  it belongs in this package and the API should import it from here. */
+function normaliseCityKey(city: string | null | undefined): string | null {
+  if (!city) return null;
+  const key = city.trim().toLowerCase();
+  return key.length > 0 ? key : null;
 }

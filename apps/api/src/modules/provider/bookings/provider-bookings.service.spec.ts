@@ -81,6 +81,10 @@ function makeBookingRow(
       customServiceText: null,
       description: 'Leaky kitchen sink',
       mediaUrls: [],
+      // Sprint 6 — promoted location columns.
+      locationCityKey: null,
+      locationLat: null,
+      locationLng: null,
       status: 'BID_ACCEPTED',
       scheduleType: 'LATER',
       scheduledAt: date,

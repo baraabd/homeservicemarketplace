@@ -60,6 +60,41 @@ const baseEnvSchema = z.object({
   REDIS_TLS: trueish.default(false),
   REDIS_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
 
+  // ── Sprint 6: transactional outbox ──────────────────────────────────────
+  // docs/adr/0004-transactional-outbox.md
+  //
+  // Every API replica runs a worker; they coordinate through the claim
+  // statement (FOR UPDATE SKIP LOCKED), not through configuration.
+  //
+  // Off ONLY for tests and one-shot processes. With it off, events accumulate
+  // in the table and are delivered by whichever replica has it on — nothing is
+  // lost, but nothing is delivered either, so a deployment with it off
+  // everywhere is an outage that looks like silence.
+  OUTBOX_WORKER_ENABLED: trueish.default(true),
+  // Rows claimed per tick. Larger batches amortise the claim round-trip;
+  // smaller ones spread work more evenly across replicas and shorten the
+  // window a crash can orphan.
+  OUTBOX_BATCH_SIZE: z.coerce.number().int().positive().max(1000).default(50),
+  // Idle poll interval. A full batch skips the wait entirely and re-polls
+  // immediately, so this bounds LATENCY WHEN IDLE, not throughput.
+  OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(2_000),
+  // How long a PROCESSING row may sit before it is presumed orphaned by a
+  // dead worker and returned to the queue. MUST exceed the slowest handler:
+  // set it too low and a healthy slow handler is reclaimed underneath itself,
+  // so the event runs twice concurrently (survivable — the idempotency marker
+  // catches it — but wasted work).
+  OUTBOX_CLAIM_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+  OUTBOX_RETRY_BASE_MS: z.coerce.number().int().positive().default(1_000),
+  OUTBOX_RETRY_CAP_MS: z.coerce.number().int().positive().default(300_000),
+  // How long PROCESSED rows are kept before the cleanup job reaps them. They
+  // are an audit trail with a short useful life. DEAD rows are never reaped.
+  OUTBOX_RETENTION_HOURS: z.coerce.number().int().positive().default(72),
+  OUTBOX_CLEANUP_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
+  // Recipients per notification batch during fan-out. Bounds the size of a
+  // single transaction: one 10,000-recipient INSERT would hold locks and bloat
+  // WAL, and a failure would redo all of it.
+  OUTBOX_FANOUT_BATCH_SIZE: z.coerce.number().int().positive().max(5_000).default(200),
+
   STARTUP_MAX_RETRIES: z.coerce.number().int().positive().default(5),
   STARTUP_RETRY_BASE_MS: z.coerce.number().int().positive().default(200),
   STARTUP_RETRY_CAP_MS: z.coerce.number().int().positive().default(5_000),
