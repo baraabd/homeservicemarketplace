@@ -152,7 +152,23 @@ done
 [ "$healthy" = "1" ] || fail "the api container never reported healthy"
 ok "container healthcheck reports healthy"
 
-LIVE="$(curl -fsS "$API/health/live")"
+# The container healthcheck above probes 127.0.0.1 from INSIDE the container.
+# This is the first request over the PUBLISHED port, and the two are not ready
+# at the same instant: Docker can report the container healthy while the
+# host<->container proxy is still coming up. Curling straight through failed
+# here with `curl: (56) Recv failure: Connection was reset`, aborting the whole
+# script under `set -e` long before any assertion ran — a flake that looks
+# nothing like its cause.
+#
+# So: wait for the PORT, not just the container, before trusting any host-side
+# request.
+LIVE=""
+for _ in $(seq 1 60); do
+  if LIVE="$(curl -fsS --max-time 5 "$API/health/live" 2>/dev/null)"; then break; fi
+  LIVE=""
+  sleep 1
+done
+[ -n "$LIVE" ] || fail "the published port never served /health/live (container was healthy internally)"
 echo "  /health/live -> $LIVE"
 [ "$(printf '%s' "$LIVE" | jget status)" = "ok" ] || fail "/health/live did not report ok"
 ok "/health/live returns ok"
@@ -337,15 +353,37 @@ rm -rf "$TMPDIR_SMOKE"
 
 # ---------------------------------------------------------------------------
 step "8b. Deprecated route contract (Sprint 6)"
-# No auth needed: the headers come from middleware, which runs BEFORE the
-# guards, so they are present on the 401 an unauthenticated call gets. That is
-# the whole reason this is middleware and not an interceptor.
-LEGACY_HEADERS="$(curl -sS -D - -o /dev/null "$API/v1/me/provider/jobs/available")"
+#
+# THESE CALLS ARE DELIBERATELY UNAUTHENTICATED. A 401 here is the expected
+# result and is not a failure — do not "fix" it by adding credentials.
+#
+# Deprecation headers are set by middleware, which Nest runs BEFORE the guards.
+# Asserting them on an unauthenticated request is precisely what proves that:
+# an interceptor (the first implementation) ran after the guards and silently
+# dropped the headers on every 401/403 — the responses a client stuck on an old
+# route is most likely to be getting.
+#
+# Expect `401 AUTH_INVALID_CREDENTIALS` from JwtAuthGuard in the API log for
+# both of these. That is the contract being tested, not a symptom.
+LEGACY_URL="$API/v1/me/provider/jobs/available"
+LEGACY_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "$LEGACY_URL")"
+LEGACY_HEADERS="$(curl -sS -D - -o /dev/null "$LEGACY_URL")"
 
-case "$LEGACY_HEADERS" in
-  *"404"*) fail "the legacy route was removed; deprecation must not break it" ;;
+# Assert the STATUS LINE, not a substring of the whole header blob.
+#
+# The previous check was `case "$LEGACY_HEADERS" in *"404"*)`, which searched
+# every header for the text "404" — including `x-request-id` (a UUID), `ETag`,
+# and `Content-Length`. Any of those can contain "404" by chance, and when one
+# did the run failed with "the legacy route was removed" on a route that was
+# working perfectly. Roughly a 1-in-100 false failure, i.e. exactly the kind of
+# flake that gets a real CI signal ignored.
+echo "  $LEGACY_URL -> HTTP $LEGACY_STATUS (401/403 expected: no credentials sent)"
+case "$LEGACY_STATUS" in
+  401 | 403 | 200) ;;
+  404) fail "the legacy route was REMOVED (404); deprecation must not break it" ;;
+  *) fail "the legacy route returned an unexpected HTTP $LEGACY_STATUS" ;;
 esac
-ok "legacy route still routes"
+ok "legacy route still routes (HTTP $LEGACY_STATUS)"
 
 echo "$LEGACY_HEADERS" | grep -qi '^Deprecation: true' ||
   fail "legacy route is missing the Deprecation header"
@@ -359,12 +397,19 @@ echo "$LEGACY_HEADERS" | grep -qi 'rel="successor-version"' ||
   fail "legacy route is missing the successor-version Link"
 ok "legacy route points at its canonical replacement"
 
-# The canonical family must NOT be marked deprecated, or the advice is circular.
-CANONICAL_HEADERS="$(curl -sS -D - -o /dev/null "$API/v1/provider/available-requests")"
+# The canonical family must NOT be marked deprecated, or the advice is
+# circular. Also unauthenticated, and also expected to 401.
+CANONICAL_URL="$API/v1/provider/available-requests"
+CANONICAL_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "$CANONICAL_URL")"
+CANONICAL_HEADERS="$(curl -sS -D - -o /dev/null "$CANONICAL_URL")"
+echo "  $CANONICAL_URL -> HTTP $CANONICAL_STATUS (401/403 expected: no credentials sent)"
+case "$CANONICAL_STATUS" in
+  404) fail "the canonical route does not exist (404)" ;;
+esac
 if echo "$CANONICAL_HEADERS" | grep -qi '^Deprecation:'; then
   fail "the canonical route is marked deprecated"
 fi
-ok "canonical route carries no deprecation headers"
+ok "canonical route carries no deprecation headers (HTTP $CANONICAL_STATUS)"
 
 # ---------------------------------------------------------------------------
 step "8c. Outbox worker is running (Sprint 6)"
