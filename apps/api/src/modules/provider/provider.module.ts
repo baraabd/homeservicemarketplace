@@ -19,8 +19,7 @@ import { ProviderJobsController } from './feed/provider-jobs.controller';
 import { ProviderJobsService } from './feed/provider-jobs.service';
 import { AuditModule } from '../iam/audit/audit.module';
 import { ProviderCapabilitiesController } from './capability/provider-capabilities.controller';
-import { ProviderCapabilityService } from './capability/provider-capability.service';
-import { ProviderActiveGuard } from './guards/provider-active.guard';
+import { ProviderCapabilityModule } from './capability/provider-capability.module';
 import { ProviderOnboardingService } from './onboarding/provider-onboarding.service';
 import { ProviderController } from './provider.controller';
 import { ProviderService } from './provider.service';
@@ -49,7 +48,17 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
   // audit row inside the same transaction as the state transition, and Sprint 2
   // adds PROVIDER_CATEGORY_APPLIED / PROVIDER_CATEGORY_REMOVED on the same
   // terms.
-  imports: [AuthenticationModule, AuthorizationModule, NotificationsModule, AuditModule],
+  // ProviderCapabilityModule owns ProviderActiveGuard and the capability
+  // service it needs. Importing it rather than re-declaring them here is what
+  // keeps ONE owner for the provider authorization gate — a second declaration
+  // is how the Sprint 7 boot crash happened.
+  imports: [
+    AuthenticationModule,
+    AuthorizationModule,
+    NotificationsModule,
+    AuditModule,
+    ProviderCapabilityModule,
+  ],
   controllers: [
     ProviderController,
     // Sprint 2 — /me/provider/categories/applications. A separate controller
@@ -79,21 +88,14 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderBookingsService,
     ProviderWalletService,
     ProviderEarningsService,
-    ProviderActiveGuard,
-    // Sprint 7 — the single decision point for provider authorization
-    // (docs/adr/0006). ProviderActiveGuard now delegates to it so the two
-    // route families cannot answer differently.
-    ProviderCapabilityService,
     // Phase 4 — DRAFT → submit-for-review → PENDING_REVIEW.
     ProviderOnboardingService,
     // Sprint 2 — provider-side skill applications.
     ProviderCategoriesService,
   ],
-  exports: [
-    ProviderService,
-    ProviderActiveGuard,
-    ProviderCapabilityService,
-    ProviderOnboardingService,
-  ],
+  // Re-exported so existing importers of ProviderModule keep resolving the
+  // guard and the capability service without also having to know about
+  // ProviderCapabilityModule.
+  exports: [ProviderService, ProviderOnboardingService, ProviderCapabilityModule],
 })
 export class ProviderModule {}
