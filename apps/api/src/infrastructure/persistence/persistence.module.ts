@@ -24,6 +24,8 @@ import { ProviderCategoryApplicationRepository } from './services/provider-categ
 import { DisputeRepository } from './disputes/dispute.repository';
 import { DisputeEventRepository } from './disputes/dispute-event.repository';
 import { PlatformSettingRepository } from './settings/platform-setting.repository';
+import { PlatformSettingHistoryRepository } from './settings/platform-setting-history.repository';
+import { ProviderOnboardingDraftRepository } from './provider/provider-onboarding-draft.repository';
 
 @Global()
 @Module({
@@ -51,7 +53,9 @@ import { PlatformSettingRepository } from './settings/platform-setting.repositor
     DisputeRepository,
     DisputeEventRepository,
     PlatformSettingRepository,
+    PlatformSettingHistoryRepository,
     ProviderCategoryApplicationRepository,
+    ProviderOnboardingDraftRepository,
   ],
   exports: [
     UserRepository,
@@ -77,7 +81,9 @@ import { PlatformSettingRepository } from './settings/platform-setting.repositor
     DisputeRepository,
     DisputeEventRepository,
     PlatformSettingRepository,
+    PlatformSettingHistoryRepository,
     ProviderCategoryApplicationRepository,
+    ProviderOnboardingDraftRepository,
   ],
 })
 export class PersistenceModule {}
