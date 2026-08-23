@@ -415,12 +415,33 @@ ok "canonical route carries no deprecation headers (HTTP $CANONICAL_STATUS)"
 step "8c. Outbox worker is running (Sprint 6)"
 # The worker is silent by design when idle, so its absence would otherwise go
 # unnoticed until notifications stopped arriving.
-if ! docker logs "$API_CID" 2>&1 | grep -q "Outbox worker started"; then
+#
+# Every failure below PRINTS ITS EVIDENCE before giving up. The first version
+# just asserted and exited, which told a reader that something was wrong with
+# the worker but nothing about what — and the API log it left behind is
+# thousands of lines of request logging in which the relevant three are
+# invisible.
+API_LOG="$(docker logs "$API_CID" 2>&1)"
+
+if ! printf '%s' "$API_LOG" | grep -q "Outbox worker started"; then
+  echo "  ----- outbox-related log lines -----"
+  printf '%s' "$API_LOG" | grep -iE "outbox" | tail -20 || echo "  (no line mentions outbox at all)"
+  echo "  ----- last 40 lines of the api log -----"
+  printf '%s' "$API_LOG" | tail -40
+
+  # Distinguish "switched off" from "never got there". They need opposite
+  # responses — a config change versus a boot investigation — and the original
+  # single message conflated them.
+  if printf '%s' "$API_LOG" | grep -q "Outbox worker DISABLED"; then
+    fail "the outbox worker is DISABLED (OUTBOX_WORKER_ENABLED=false in this environment)"
+  fi
   fail "the outbox worker did not start; events would accumulate undelivered"
 fi
 ok "outbox worker started with its handlers registered"
 
-if docker logs "$API_CID" 2>&1 | grep -q "outbox.dead_letter"; then
+if printf '%s' "$API_LOG" | grep -q "outbox.dead_letter"; then
+  echo "  ----- dead-lettered events -----"
+  printf '%s' "$API_LOG" | grep -A 8 "outbox.dead_letter" | head -40
   fail "an outbox event dead-lettered during boot"
 fi
 ok "no dead-lettered outbox events"
