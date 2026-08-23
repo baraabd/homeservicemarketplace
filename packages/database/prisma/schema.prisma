@@ -452,6 +452,41 @@ model ProviderProfile {
   // does anything beyond lowercasing.
   serviceAreaCityKey       String?
 
+  // ── Sprint 7: provider lifecycle axes ───────────────────────────────────
+  //
+  // Six independent axes replace what one `status` column was being asked to
+  // mean. See docs/adr/0005-provider-lifecycle-axes.md.
+  //
+  // ALL NULLABLE, and `status` above stays authoritative for this sprint —
+  // docs/adr/0007 owns the compatibility window. These are written by the
+  // backfill and by new code, and read by ProviderCapabilityService, but they
+  // do not yet gate the marketplace: flipping the gate before Sprint 9 issues
+  // work-access grants would deny every provider on the platform.
+  //
+  // Axis 1 — onboarding. Is the application complete and submitted?
+  onboardingState          ProviderOnboardingState?
+  // Axis 2 — verification. Have we confirmed WHO they are?
+  //
+  // Backfilled to UNVERIFIED for every row INCLUDING approved ones: no
+  // historical provider ever had a document checked, and recording them as
+  // VERIFIED would invent an audit trail.
+  verificationState        ProviderVerificationState?
+  // Axis 3 — provider standing on the marketplace. Distinct from account
+  // standing (User.status), which outranks it — see the precedence table.
+  standingState            ProviderStandingState?
+  // Axis 5 — what they have paid for. Inert: never grants a capability.
+  subscriptionTier         ProviderSubscriptionTier?
+  // Where the axis values above came from. LEGACY_APPROVED is deliberately
+  // NOT a synonym for verified — it records "approved under the old process,
+  // identity never checked", which is what makes those rows findable when
+  // verification becomes required.
+  lifecycleSource          ProviderLifecycleSource?
+  // When the backfill (or new code) last wrote the axes. Null means never.
+  lifecycleSyncedAt        DateTime?
+
+  onboardingSubmissions    ProviderOnboardingSubmission[]
+  workAccessGrants         ProviderWorkAccessGrant[]
+
   @@index([availability])
   @@index([deletedAt])
   @@index([serviceAreaCity])
@@ -460,6 +495,13 @@ model ProviderProfile {
   // columns every fan-out carries, then the selective one.
   @@index([status, deletedAt, serviceAreaCityKey])
   @@index([status, deletedAt, serviceAreaLat, serviceAreaLng])
+  // Sprint 7 — the reconciliation report scans "rows the backfill has not
+  // reached yet", and the admin queue will filter by axis once the axes are
+  // authoritative. Leading equality on deletedAt keeps soft-deleted rows out
+  // of both without a second pass.
+  @@index([deletedAt, onboardingState])
+  @@index([deletedAt, standingState])
+  @@index([lifecycleSyncedAt])
 }
 
 model ProviderProfileServiceCategory {
@@ -1049,4 +1091,173 @@ model OutboxHandlerRun {
   event     OutboxEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@id([eventId, handler])
+}
+
+// ── Sprint 7: provider lifecycle axes ──────────────────────────────────────
+// docs/adr/0005-provider-lifecycle-axes.md
+//
+// Six axes, one enum each. They are independent on purpose: no value of one
+// may be derived from another, which is exactly what the single legacy
+// `ProviderProfileStatus` got wrong.
+
+/// Axis 1 — is the application complete and submitted?
+/// NOT_STARTED -> DRAFT -> SUBMITTED -> ACCEPTED | RETURNED -> DRAFT
+enum ProviderOnboardingState {
+  NOT_STARTED
+  DRAFT
+  SUBMITTED
+  ACCEPTED
+  /// Sent back for changes. NOT a conduct decision — a returned applicant is
+  /// in good standing and may edit and resubmit.
+  RETURNED
+}
+
+/// Axis 2 — have we confirmed who they are?
+///
+/// Sprint 7 writes UNVERIFIED for every existing row, approved ones included.
+/// No document flow exists yet; claiming otherwise would fabricate an audit
+/// trail for thousands of providers.
+enum ProviderVerificationState {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+  /// A previously-verified document lapsed. Distinct from REJECTED: nobody
+  /// judged them badly, time simply passed.
+  EXPIRED
+}
+
+/// Axis 3 — standing on the marketplace.
+///
+/// Distinct from ACCOUNT standing (User.status), which outranks it: a
+/// provider can be SUSPENDED here with a healthy account (they remain a
+/// seeker), and an account can be suspended while this says GOOD.
+enum ProviderStandingState {
+  GOOD
+  UNDER_REVIEW
+  RESTRICTED
+  SUSPENDED
+  /// Terminal. No transition out.
+  TERMINATED
+}
+
+/// Axis 5 — what they have paid for. Inert this sprint.
+/// MUST NOT grant a capability: a paid tier that needs to unlock an action
+/// does so by issuing a work-access grant, so the decision stays auditable.
+enum ProviderSubscriptionTier {
+  NONE
+  BASIC
+  PRO
+  ELITE
+}
+
+/// Where a profile's axis values came from.
+///
+/// LEGACY_APPROVED is the load-bearing one: it means "approved under the old
+/// single-status process, identity never verified". It is deliberately not a
+/// synonym for VERIFIED, so these rows stay findable when verification
+/// becomes a requirement for work access.
+enum ProviderLifecycleSource {
+  /// Written by post-Sprint-7 application code.
+  NATIVE
+  LEGACY_DRAFT
+  /// Submitted under a policy version we hold no snapshot for.
+  LEGACY_PENDING
+  LEGACY_APPROVED
+  LEGACY_SUSPENDED
+  LEGACY_REJECTED
+}
+
+/// Axis 4 — a time-bounded permission to take work.
+enum ProviderWorkAccessStatus {
+  ACTIVE
+  /// Withdrawn before its natural end.
+  REVOKED
+  /// Past expiresAt. Stored for history; expiry itself is computed from the
+  /// timestamps, never from this column.
+  EXPIRED
+}
+
+/// An immutable record of ONE onboarding submission.
+///
+/// Reviewers must judge what was actually submitted, under the policy in
+/// force at the time — not what the mutable ProviderProfile looks like when
+/// they happen to open it. Without this, a provider can edit their profile
+/// after submitting and a reviewer approves something nobody sent, and a
+/// policy change silently invalidates every pending application.
+///
+/// Append-only: a resubmission writes a NEW row. Nothing here is ever updated
+/// except the decision fields, which are written once.
+model ProviderOnboardingSubmission {
+  id                String          @id @default(cuid())
+  providerProfileId String
+  /// The completeness policy in force when this was submitted, so a later
+  /// rule change cannot retroactively fail a queued application.
+  policyVersion     String
+  /// Verbatim copy of the fields the policy evaluated. JSON because its shape
+  /// is versioned by policyVersion, not by the schema.
+  snapshot          Json
+  /// Issues outstanding at submission time. Empty for a valid submission;
+  /// populated when an admin force-submits on a provider's behalf.
+  issues            Json?
+  submittedAt       DateTime        @default(now())
+  submittedByUserId String?
+
+  /// Decision fields, written once when a reviewer acts.
+  decidedAt         DateTime?
+  decidedByUserId   String?
+  decision          ProviderOnboardingState?
+  decisionNote      String?         @db.Text
+
+  createdAt         DateTime        @default(now())
+
+  providerProfile   ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+
+  /// "The newest submission for this provider" — the review queue's hot path.
+  @@index([providerProfileId, submittedAt])
+  /// "Everything still awaiting a decision", oldest first.
+  @@index([decidedAt, submittedAt])
+}
+
+/// Axis 4 — a grant of work access, bounded in time.
+///
+/// Access is a GRANT rather than a status because the question is "may they
+/// work RIGHT NOW", and now moves without anyone editing a row. A provider
+/// has access iff a row exists with revokedAt IS NULL and
+/// now() BETWEEN grantedAt AND COALESCE(expiresAt, 'infinity').
+///
+/// Expiry therefore needs no writer. A nightly job that flips a status column
+/// is a job that can fail, and its failure grants access nobody authorised.
+///
+/// Sprint 7 creates the table and the read path; it is NOT yet consulted for
+/// authorization (docs/adr/0007) — no grants exist, so enforcing it would
+/// lock out every provider.
+model ProviderWorkAccessGrant {
+  id                String                   @id @default(cuid())
+  providerProfileId String
+  status            ProviderWorkAccessStatus @default(ACTIVE)
+  /// Why this grant exists — e.g. LEGACY_APPROVED, VERIFIED_DOCUMENTS,
+  /// MANUAL_OVERRIDE. A string rather than an enum because the set of
+  /// justifications will grow faster than the schema should.
+  reason            String
+  grantedAt         DateTime                 @default(now())
+  grantedByUserId   String?
+  /// Null means open-ended. Deliberately nullable rather than a far-future
+  /// sentinel, so "no expiry" is queryable as IS NULL instead of relying on
+  /// everyone remembering the sentinel.
+  expiresAt         DateTime?
+  revokedAt         DateTime?
+  revokedByUserId   String?
+  revokedReason     String?
+
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  providerProfile   ProviderProfile          @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+
+  /// The authorization read: live grants for one provider, newest expiry
+  /// first. Leading equality on the two columns every check carries.
+  @@index([providerProfileId, status, expiresAt])
+  /// Sweeping grants that have aged out, for the reporting job.
+  @@index([status, expiresAt])
 }
