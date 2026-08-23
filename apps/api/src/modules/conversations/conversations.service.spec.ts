@@ -43,6 +43,13 @@ function makeProvider(over: Partial<ProviderProfile> = {}): ProviderProfile {
     phoneNumber: null,
     serviceAreaCity: null,
     serviceAreaCityKey: null,
+    // Sprint 7 — lifecycle axes; null until the backfill runs.
+    onboardingState: null,
+    verificationState: null,
+    standingState: null,
+    subscriptionTier: null,
+    lifecycleSource: null,
+    lifecycleSyncedAt: null,
     serviceAreaCountry: null,
     serviceAreaLat: null,
     serviceAreaLng: null,

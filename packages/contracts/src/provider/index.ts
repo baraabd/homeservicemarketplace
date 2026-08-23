@@ -18,3 +18,7 @@ export * from './bids';
 export * from './bookings';
 export * from './wallet';
 export * from './earnings';
+// Sprint 7 — server-authoritative capability set (docs/adr/0006). The
+// Provider app renders gating from this instead of re-deriving it from
+// `profile.status`.
+export * from './capabilities';

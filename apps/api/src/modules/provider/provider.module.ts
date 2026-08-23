@@ -18,6 +18,8 @@ import { ProviderBookingsService } from './bookings/provider-bookings.service';
 import { ProviderJobsController } from './feed/provider-jobs.controller';
 import { ProviderJobsService } from './feed/provider-jobs.service';
 import { AuditModule } from '../iam/audit/audit.module';
+import { ProviderCapabilitiesController } from './capability/provider-capabilities.controller';
+import { ProviderCapabilityService } from './capability/provider-capability.service';
 import { ProviderActiveGuard } from './guards/provider-active.guard';
 import { ProviderOnboardingService } from './onboarding/provider-onboarding.service';
 import { ProviderController } from './provider.controller';
@@ -64,6 +66,10 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderBookingsCanonicalController,
     ProviderWalletController,
     ProviderEarningsController,
+    // Sprint 7 — GET /v1/me/provider/capabilities. Guarded by JwtAuthGuard
+    // only: it EXPLAINS the provider gate, so gating it on that gate would
+    // hide the answer from exactly the providers who need it.
+    ProviderCapabilitiesController,
   ],
   providers: [
     ProviderService,
@@ -74,11 +80,20 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderWalletService,
     ProviderEarningsService,
     ProviderActiveGuard,
+    // Sprint 7 — the single decision point for provider authorization
+    // (docs/adr/0006). ProviderActiveGuard now delegates to it so the two
+    // route families cannot answer differently.
+    ProviderCapabilityService,
     // Phase 4 — DRAFT → submit-for-review → PENDING_REVIEW.
     ProviderOnboardingService,
     // Sprint 2 — provider-side skill applications.
     ProviderCategoriesService,
   ],
-  exports: [ProviderService, ProviderActiveGuard, ProviderOnboardingService],
+  exports: [
+    ProviderService,
+    ProviderActiveGuard,
+    ProviderCapabilityService,
+    ProviderOnboardingService,
+  ],
 })
 export class ProviderModule {}
