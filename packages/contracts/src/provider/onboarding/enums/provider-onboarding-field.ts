@@ -21,6 +21,23 @@ export const PROVIDER_ONBOARDING_FIELDS = [
   'serviceAreaRadiusKm',
   /** At least one service category the provider intends to work in. */
   'serviceCategories',
+
+  // ── Sprint 8: the rest of the onboarding journey ────────────────────────
+  // Additive only. Every value above keeps its meaning, so a client that
+  // knows only the Phase-4 set still renders every issue it understands and
+  // can fall back to a generic message for the rest.
+  /** Individual or business — decides which other fields are required. */
+  'providerType',
+  /** Registered trading name. Businesses only. */
+  'legalBusinessName',
+  /** At least one weekly working window. */
+  'availability',
+  /** Numeric years, or a start date the server derives them from. */
+  'yearsOfExperience',
+  /** Accepted terms, pinned to a document version. */
+  'consent',
+  /** At least one selectable LEAF specialty, not just a parent group. */
+  'specialties',
 ] as const;
 
 export type ProviderOnboardingField = (typeof PROVIDER_ONBOARDING_FIELDS)[number];
@@ -33,6 +50,12 @@ export interface ProviderOnboardingIssue {
    *   REQUIRED   — absent or blank
    *   TOO_SHORT  — present but below the minimum useful length
    *   UNVERIFIED — present but not verified (contact details)
+   *
+   * Sprint 8 adds:
+   *   NOT_VERIFIED — present but unproven. Distinct from UNVERIFIED, which is
+   *                  the account's email; this is a field the PROVIDER must
+   *                  prove (their phone), and the two have different fixes.
+   *   OUT_OF_RANGE — present, well-formed, and outside the allowed bounds.
    */
-  code: 'REQUIRED' | 'TOO_SHORT' | 'UNVERIFIED';
+  code: 'REQUIRED' | 'TOO_SHORT' | 'UNVERIFIED' | 'NOT_VERIFIED' | 'OUT_OF_RANGE';
 }
