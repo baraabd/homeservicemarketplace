@@ -22,3 +22,5 @@ export * from './audit';
 export * from './category-applications';
 // Phase 4 — admin access-request review queue.
 export * from './access-requests';
+// Sprint 8 — service-category tree and equipment catalogue administration.
+export * from './catalog';

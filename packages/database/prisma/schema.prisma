@@ -909,6 +909,15 @@ enum AuditEventType {
   PROVIDER_CATEGORY_REMOVED
   ADMIN_CATEGORY_APPLICATION_APPROVED
   ADMIN_CATEGORY_APPLICATION_REJECTED
+  /// Sprint 8 — catalogue administration. The category tree and the equipment
+  /// list decide what a provider can claim to do and what a seeker can search
+  /// for, so editing them is a privileged act with the same audit expectations
+  /// as editing a person's standing. `isLeaf` in particular is what makes a
+  /// row selectable at all.
+  ADMIN_CATEGORY_CREATED
+  ADMIN_CATEGORY_UPDATED
+  ADMIN_EQUIPMENT_CREATED
+  ADMIN_EQUIPMENT_UPDATED
 }
 
 enum AddressType {
