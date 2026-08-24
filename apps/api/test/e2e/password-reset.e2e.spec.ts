@@ -22,6 +22,8 @@ import { Test } from '@nestjs/testing';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 
+import { withAdvisoryLock } from '../support/db-isolation';
+
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
 
@@ -51,7 +53,10 @@ d('Password reset — real HTTP round trip', () => {
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
     prisma = db.prisma;
-    await db.seed();
+    // Serialised against the other seeders and against the idempotency spec:
+    // seed() upserts a fixed set of shared rows, and two concurrent upserts of
+    // the same row race. The hold is only as long as the seed itself.
+    await withAdvisoryLock('seed', 'exclusive', () => db.seed());
 
     const { JwtService } = require('@nestjs/jwt');
     const { TransactionRunner } = require('../../src/infrastructure/prisma/transaction.runner');

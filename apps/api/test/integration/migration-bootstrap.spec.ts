@@ -9,6 +9,10 @@ export {}; // module marker — keeps `shouldRun` / `d` out of global scope (col
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
 
+// As with the siblings: a real round trip to Postgres under a loaded parallel
+// run does not belong on jest's 5s default.
+jest.setTimeout(60_000);
+
 d('migration bootstrap (postgres)', () => {
   it('exposes the iam tables after migrations are applied', async () => {
     const { prisma } =
