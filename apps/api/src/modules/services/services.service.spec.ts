@@ -1,7 +1,17 @@
 import type { ServiceCategory } from '@homeservicemarketplace/database';
 
 import type { ServiceCategoryRepository } from '../../infrastructure/persistence/services/service-category.repository';
+import type { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { ServicesService } from './services.service';
+
+// Sprint 8 — listEquipment reads through PrismaService directly. Every case
+// below exercises listCategories only, so the stub is deliberately empty
+// rather than a half-mock that would imply coverage it does not give.
+function prismaStub(): PrismaService {
+  return {
+    client: { equipmentCatalogItem: { findMany: jest.fn().mockResolvedValue([]) } },
+  } as unknown as PrismaService;
+}
 
 function makeRow(overrides: Partial<ServiceCategory> = {}): ServiceCategory {
   return {
@@ -33,7 +43,7 @@ describe('ServicesService', () => {
         ]),
     } as unknown as ServiceCategoryRepository;
 
-    const svc = new ServicesService(repo);
+    const svc = new ServicesService(repo, prismaStub());
     const out = await svc.listCategories();
 
     expect(out).toEqual([
@@ -44,6 +54,10 @@ describe('ServicesService', () => {
         labelAr: 'سباكة',
         icon: '🔧',
         sortOrder: 0,
+        // Sprint 8 — served, not derived. A pre-hierarchy row is a
+        // selectable competency at the root, exactly what it was before.
+        parentId: null,
+        isLeaf: true,
       },
       {
         id: 'sc-2',
@@ -52,6 +66,8 @@ describe('ServicesService', () => {
         labelAr: 'سباكة', // makeRow default — proves bilingual label passes through
         icon: '🔧',
         sortOrder: 1,
+        parentId: null,
+        isLeaf: true,
       },
     ]);
     // No persistence-only fields leak through.
@@ -67,7 +83,7 @@ describe('ServicesService', () => {
     const repo = {
       listActive: jest.fn().mockResolvedValue([]),
     } as unknown as ServiceCategoryRepository;
-    const svc = new ServicesService(repo);
+    const svc = new ServicesService(repo, prismaStub());
     expect(await svc.listCategories()).toEqual([]);
   });
 
@@ -83,7 +99,7 @@ describe('ServicesService', () => {
     const repo = {
       listActive: jest.fn().mockResolvedValue(rows),
     } as unknown as ServiceCategoryRepository;
-    const svc = new ServicesService(repo);
+    const svc = new ServicesService(repo, prismaStub());
     const out = await svc.listCategories();
     expect(out.map((d) => d.id)).toEqual(['1', '2']);
   });

@@ -1,5 +1,8 @@
 import { Controller, Get, HttpCode, HttpStatus } from '@nestjs/common';
-import type { ServiceCategoryListResponse } from '@homeservicemarketplace/contracts';
+import type {
+  EquipmentCatalogListResponse,
+  ServiceCategoryListResponse,
+} from '@homeservicemarketplace/contracts';
 
 import { Public } from '../iam/authentication/decorators/public.decorator';
 import { ServicesService } from './services.service';
@@ -20,6 +23,21 @@ export class ServicesController {
   @HttpCode(HttpStatus.OK)
   async list(): Promise<ServiceCategoryListResponse> {
     const items = await this.services.listCategories();
+    return { items };
+  }
+
+  // Sprint 8 — the equipment catalogue, on the same public, read-only terms
+  // as the category list above: the onboarding wizard needs it before a
+  // provider has any standing to speak of, and it is part of what the
+  // marketplace says it can do.
+  //
+  // Curated through the admin catalogue surface, so there is no mutating
+  // endpoint paired with this one either.
+  @Public()
+  @Get('equipment')
+  @HttpCode(HttpStatus.OK)
+  async equipment(): Promise<EquipmentCatalogListResponse> {
+    const items = await this.services.listEquipment();
     return { items };
   }
 }

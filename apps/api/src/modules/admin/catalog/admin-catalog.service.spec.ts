@@ -49,16 +49,14 @@ function build(seed: Row[] = [], opts: { holders?: Record<string, number> } = {}
   const holders = opts.holders ?? {};
 
   const serviceCategory = {
-    findMany: jest
-      .fn()
-      .mockImplementation(() =>
-        Promise.resolve(
-          [...rows.values()].map((r) => ({
-            ...r,
-            _count: { providerProfiles: holders[r.id] ?? 0 },
-          })),
-        ),
+    findMany: jest.fn().mockImplementation(() =>
+      Promise.resolve(
+        [...rows.values()].map((r) => ({
+          ...r,
+          _count: { providerProfiles: holders[r.id] ?? 0 },
+        })),
       ),
+    ),
     findFirst: jest
       .fn()
       .mockImplementation(({ where }: { where: { id?: string; slug?: string } }) =>
@@ -339,11 +337,9 @@ describe('the isLeaf rails', () => {
     // them what to fix.
     const h = build([row({ id: 'held' })], { holders: { held: 3 } });
 
-    const error = await h.service
-      .updateCategory('admin-1', 'held', { isLeaf: false })
-      .catch((e: Error) => e);
-
-    expect(error.message).toContain('3');
+    await expect(h.service.updateCategory('admin-1', 'held', { isLeaf: false })).rejects.toThrow(
+      /3/,
+    );
   });
 
   it('allows un-selecting an UNHELD category', async () => {
