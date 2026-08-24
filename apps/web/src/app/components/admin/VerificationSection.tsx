@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, ChevronRight, Clock, FileText, Shield, ShieldCheck, X } from 'lucide-react';
+import { Check, ChevronRight, Clock, Shield, ShieldCheck, X } from 'lucide-react';
 import type {
   AdminProviderAction,
   AdminProviderSummary,
@@ -7,6 +7,8 @@ import type {
 } from '@homeservicemarketplace/contracts';
 
 import { useLang } from '../../i18n/LanguageContext';
+import { VerificationEvidencePanel } from '../../features/admin-verification/components/VerificationEvidencePanel';
+import { useVerificationCase } from '../../features/admin-verification/hooks/useVerificationCase';
 import {
   useAdminProviderAudit,
   useAdminProviderDecision,
@@ -26,7 +28,10 @@ import {
 //   • Detail drawer:
 //       - identity + status badge
 //       - review notes textarea (PATCH save)
-//       - documents panel (deferred — file storage not yet shipped)
+//       - restricted evidence panel (Sprint 9B). Metadata only: the payload
+//         carries no bytes, storage key or signed URL, so it is safe to hold
+//         in the query cache. Opening a document is a separate, audited,
+//         short-lived read (docs/adr/0009).
 //       - audit history timeline (real audit events scoped by
 //         metadata.providerProfileId)
 //       - approve / reject / suspend / reactivate actions, gated by the
@@ -208,6 +213,8 @@ function ProviderDetailDrawer({
   const isAr = lang === 'ar';
   const detailQuery = useAdminProviderDetail(providerProfileId);
   const auditQuery = useAdminProviderAudit(providerProfileId);
+  // Sprint 9B — the real evidence case behind the panel below.
+  const verificationQuery = useVerificationCase(providerProfileId);
   const saveNotes = useUpdateAdminProviderReviewNotes();
   const decision = useAdminProviderDecision();
 
@@ -287,7 +294,15 @@ function ProviderDetailDrawer({
               labels={L}
             />
 
-            <DocumentsPlaceholder labels={L} />
+            {/* Sprint 9B — real evidence, replacing the placeholder that read
+                "Document storage ships in a follow-up sprint." A reviewer
+                deciding against a placeholder is deciding on no evidence. */}
+            <VerificationEvidencePanel
+              verificationCase={verificationQuery.data}
+              lang={isAr ? 'ar' : 'en'}
+              isLoading={verificationQuery.isPending}
+              isError={verificationQuery.isError}
+            />
 
             <AuditHistoryBlock
               items={auditQuery.data?.items ?? []}
@@ -400,26 +415,6 @@ function ReviewNotesBlock({
             ✓ {labels.saved}
           </span>
         ) : null}
-      </div>
-    </div>
-  );
-}
-
-function DocumentsPlaceholder({
-  labels,
-}: {
-  labels: { documents: string; documentsEmpty: string };
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-slate-500" style={{ fontSize: '11px', fontWeight: 700 }}>
-        {labels.documents}
-      </p>
-      <div className="flex items-center gap-3 px-3 py-3 rounded-2xl bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-700">
-        <FileText size={18} className="text-slate-400" />
-        <p className="text-slate-500" style={{ fontSize: '12px' }}>
-          {labels.documentsEmpty}
-        </p>
       </div>
     </div>
   );

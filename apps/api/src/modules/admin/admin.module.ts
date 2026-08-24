@@ -10,6 +10,7 @@ import { AdminRolesController, AdminUsersController } from './users/admin-users.
 import { AdminUsersService } from './users/admin-users.service';
 import { AdminVerificationController } from './verification/admin-verification.controller';
 import { AdminVerificationService } from './verification/admin-verification.service';
+import { AdminVerificationCaseService } from './verification/admin-verification-case.service';
 import { AdminAnalyticsController } from './analytics/admin-analytics.controller';
 import { AdminAnalyticsService } from './analytics/admin-analytics.service';
 import { AdminDisputesController } from './disputes/admin-disputes.controller';
@@ -71,6 +72,7 @@ import { AdminCatalogService } from './catalog/admin-catalog.service';
     AdminAuditService,
     AdminUsersService,
     AdminVerificationService,
+    AdminVerificationCaseService,
     AdminDisputesService,
     AdminAnalyticsService,
     AdminFinancialsService,

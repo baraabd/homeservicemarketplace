@@ -22,6 +22,7 @@ import { AppConfigService } from '../../src/config/app-config.service';
 import { AllExceptionsFilter } from '../../src/infrastructure/http/all-exceptions.filter';
 import { AdminVerificationController } from '../../src/modules/admin/verification/admin-verification.controller';
 import { AdminVerificationService } from '../../src/modules/admin/verification/admin-verification.service';
+import { AdminVerificationCaseService } from '../../src/modules/admin/verification/admin-verification-case.service';
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
 import { AppError } from '../../src/shared/errors/app-error';
@@ -74,6 +75,11 @@ async function bootApp(): Promise<INestApplication> {
     providers: [
       Reflector,
       { provide: AdminVerificationService, useValue: verificationService },
+      // Sprint 9B — the controller now also resolves the case service, for
+      // GET /:providerProfileId/verification. Stubbed to null ("this provider
+      // has never submitted"), which is a legitimate state, so these Sprint 6.2
+      // assertions keep testing the routes they were written for.
+      { provide: AdminVerificationCaseService, useValue: { forProvider: async () => null } },
       { provide: AppConfigService, useValue: config },
       { provide: APP_FILTER, useFactory: () => new AllExceptionsFilter(config) },
     ],
