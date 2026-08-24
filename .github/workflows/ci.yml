@@ -480,6 +480,16 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
+          # This is the ONE job that never installs pnpm, and setup-node v5
+          # turned `package-manager-cache` on by default: it reads
+          # `packageManager` from package.json, finds pnpm, and shells out to
+          # it to locate the store. That failed here with
+          #   Unable to locate executable file: pnpm
+          # while every other job passed, because every other job runs
+          # pnpm/action-setup first. Nothing is installed here, so there is no
+          # store worth caching — say so rather than adding pnpm to satisfy a
+          # cache this job does not use.
+          package-manager-cache: false
       - name: Run the Compose smoke test
         run: bash scripts/ci/compose-smoke.sh
       - name: Dump Compose logs on failure
