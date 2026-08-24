@@ -28,7 +28,7 @@ The implementation changed.
 
 | Suite | 9A baseline                         | Now                                     | Δ               |
 | ----- | ----------------------------------- | --------------------------------------- | --------------- |
-| API   | 1666 passed / 0 failed / 89 skipped | **1796 passed / 0 failed / 89 skipped** | +130            |
+| API   | 1666 passed / 0 failed / 89 skipped | **1836 passed / 0 failed / 89 skipped** | +170            |
 | Web   | 661 passed / **1 failed**           | **676 passed / 0 failed**               | +15, −1 failure |
 
 No new skips. No `.only`, no `.skip`, no `continue-on-error`, no threshold change.
@@ -48,10 +48,39 @@ No new skips. No `.only`, no `.skip`, no `continue-on-error`, no threshold chang
 | Admin restricted evidence panel (EN/AR, a11y, non-colour cues)                     | ✅ 14 copy/guardrail tests |
 | Public-media import guardrail (matches specifiers, not comments)                   | ✅                         |
 
+## Real API boot — verified
+
+Booted `dist/main.js` against the live local Postgres and Redis:
+
+```
+/health/live   200 {"status":"ok"}
+/health/ready  200 {"ready":true, postgres: up, redis: up}
+GET /v1/verification/documents/:id/content  ->  401   (not 404)
+```
+
+401 rather than 404 is the proof the new route is both **registered** and
+**auth-gated**. The boot log carries no dependency-injection errors, no
+module-resolution failures and no configuration problems. Process stopped
+afterwards; the user's own long-running processes were left untouched.
+
+### Environment blocker (not a code defect)
+
+`pnpm --filter @homeservicemarketplace/database generate` fails locally with
+
+```
+EPERM: rename ... query_engine-windows.dll.node
+```
+
+because the user's `prisma studio` (running since 22 Aug) holds that DLL open.
+No schema changed this turn, and the generated client was verified current —
+50 models, 40 enums, `ProviderWorkAccessGrant` carrying `source` and `caseId`.
+A clean CI runner has no studio process and is unaffected. **Not worked around
+by killing the user's process.**
+
 ## NOT started — required before any push
 
 - Provider evidence experience (checklist, upload, submit, ACTION_REQUIRED, resubmit, renewal UI)
-- Upload prepare/finalize idempotency; short-lived reviewer reads; IDOR; access audit rows
+- Upload prepare/finalize idempotency (the READ half, IDOR and access audit are DONE)
 - Portfolio (`ProviderPortfolioItem` CRUD, moderation, limits)
 - Redacted preview endpoint + rate limiting + privacy snapshot tests
 - Atomic approval → `VERIFIED` + grant + audit + notification + outbox, with forced-failure rollback
