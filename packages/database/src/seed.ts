@@ -165,6 +165,28 @@ const PERMISSIONS: PermissionSpec[] = [
   // admin role without touching the controller. Seeded onto `admin` today
   // because there is only one admin role.
   { key: 'admin:access:grant', description: 'Approve or reject admin access requests' },
+  // Sprint 9B — reading a RESTRICTED identity document is a narrower
+  // capability than "is an admin", for the same reason admin:access:grant is.
+  //
+  // Every admin being able to open every passport makes the access audit
+  // meaningless: "who looked at this document?" answers "anyone on the team".
+  // Holding it separately means the ability can be withheld from a day-to-day
+  // admin role without touching a controller, and the audit trail names a
+  // meaningfully smaller set of people.
+  //
+  // Seeded onto `admin` today because there is only one admin role. Splitting
+  // it onto a dedicated reviewer role is a Product/Security decision, recorded
+  // in the Sprint 9B report rather than guessed at here.
+  {
+    key: 'verification:evidence:view',
+    description: 'Open restricted provider identity evidence',
+  },
+  // Deciding on a case is separate again from SEEING the evidence: a trainee
+  // reviewer may need to read documents without the authority to approve.
+  {
+    key: 'verification:decide',
+    description: 'Approve, reject or otherwise decide a provider verification case',
+  },
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
