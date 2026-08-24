@@ -36,6 +36,7 @@ import type { AuthenticatedUser } from '../iam/authentication/types/authenticate
 import { Public } from '../iam/authentication/decorators/public.decorator';
 import { AppError } from '../../shared/errors/app-error';
 import { PresignUploadRequestDto } from './dto/presign-upload.dto';
+import { isRestrictedKey } from '../provider/verification/media/evidence-keys';
 
 // Sprint 7.x — media upload pipeline.
 //
@@ -133,6 +134,18 @@ export class MediaController {
     const rawKey = idx >= 0 ? req.path.slice(idx + prefix.length) : '';
     const key = decodeURIComponent(rawKey);
 
+    // Sprint 9B — the write half of the same boundary (docs/adr/0009 §3).
+    //
+    // This route's auth IS the HMAC signature, so a key that the presign
+    // endpoint would never mint cannot normally appear here. Refusing anyway
+    // means an attacker who ever obtains a signing capability still cannot
+    // write INTO the restricted namespace and have a reviewer read it as
+    // evidence — which would be evidence forgery, not just a file upload.
+    if (isRestrictedKey(key)) {
+      this.log.warn({ msg: 'media.public.restricted_key_write_refused' });
+      throw new AppError('VALIDATION_ERROR', 'Upload rejected.', 400);
+    }
+
     if (!sig || !exp || !ct || !sz) {
       throw new AppError('VALIDATION_ERROR', 'Missing presign parameters.', 400);
     }
@@ -189,6 +202,23 @@ export class MediaController {
     const idx = req.path.indexOf(prefix);
     const rawKey = idx >= 0 ? req.path.slice(idx + prefix.length) : '';
     const key = decodeURIComponent(rawKey);
+
+    // Sprint 9B — this route is @Public(), unauthenticated, and sets
+    // `Cache-Control: public, immutable`. Identity evidence must therefore be
+    // unreachable from it (docs/adr/0009 §3).
+    //
+    // Restricted objects already live in a separate bucket/root, so in a
+    // correctly configured deployment this branch is unreachable. It exists
+    // for the deployment that is NOT correctly configured — a shared root, a
+    // copied env file — where configuration alone would silently serve a
+    // passport to the internet with a one-year cache header.
+    //
+    // 404, not 403: a distinguishable response would confirm to an
+    // unauthenticated prober that a given case id exists.
+    if (isRestrictedKey(key)) {
+      this.log.warn({ msg: 'media.public.restricted_key_refused' });
+      throw new AppError('NOT_FOUND', 'File not found.', 404);
+    }
 
     let absPath: string;
     try {
