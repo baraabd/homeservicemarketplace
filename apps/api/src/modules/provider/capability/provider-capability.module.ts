@@ -33,10 +33,15 @@ import { ProviderActiveGuard } from '../guards/provider-active.guard';
 // ProviderCapabilityModule` answers "what is behind this gate?" — which a
 // global provider would silently erase.
 //
-// It depends only on PrismaService (global PrismaModule), so importing it
-// cannot create a cycle with any domain module. That is what makes it safe to
-// import from ConversationsModule, which is exactly what the original comment
-// was trying to avoid.
+// It depends only on globally-provided infrastructure — PrismaService
+// (PrismaModule) and, since Sprint 9, AppConfigService (ConfigModule is
+// @Global) for the WORK_ACCESS_ENFORCED / VERIFICATION_ENFORCED rollout flags.
+// It has no domain-module dependency, so importing it cannot create a cycle.
+// That is what makes it safe to import from ConversationsModule, which is
+// exactly what the original comment was trying to avoid.
+//
+// Keep it that way. The moment this service needs something from a domain
+// module, the boot crash described above comes back.
 @Module({
   providers: [ProviderCapabilityService, ProviderActiveGuard],
   exports: [ProviderCapabilityService, ProviderActiveGuard],

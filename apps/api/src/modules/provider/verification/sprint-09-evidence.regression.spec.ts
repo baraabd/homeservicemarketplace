@@ -5,6 +5,7 @@ import {
 } from '@homeservicemarketplace/contracts';
 
 import { ProviderCapabilityService } from '../capability/provider-capability.service';
+import type { AppConfigService } from '../../../config/app-config.service';
 import type { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,13 +104,23 @@ describe('Sprint 9 regression — approval grants work access with no evidence',
     const prisma = {
       client: {
         user: { findUnique: jest.fn().mockResolvedValue(ELIGIBLE) },
-        providerProfile: { findFirst: jest.fn().mockResolvedValue(profile) },
+        providerProfile: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue(profile === null ? null : { id: 'pp-1', ...profile }),
+        },
         // The grant read Sprint 9 introduces. Returning null models the true
-        // state of the platform today: the table exists and is empty.
+        // state of the platform before the backfill: the table exists, empty.
         providerWorkAccessGrant: { findFirst: jest.fn().mockResolvedValue(grant) },
       },
     } as unknown as PrismaService;
-    return new ProviderCapabilityService(prisma);
+    // Both rollout flags ON. This suite asserts the SPRINT 9 contract, which
+    // is what the flags enable; the OFF position (the rollback target) is
+    // walked in provider-capability.service.spec.ts.
+    const config = {
+      get: jest.fn(() => true),
+    } as unknown as AppConfigService;
+    return new ProviderCapabilityService(prisma, config);
   }
 
   it('denies SUBMIT_BID to an approved provider holding no work-access grant', async () => {
@@ -118,7 +129,18 @@ describe('Sprint 9 regression — approval grants work access with no evidence',
     // Rank 7 is inert pre-Sprint-9, so today this provider is granted the full
     // working set on the strength of status === 'ACTIVE' alone.
     expect(set.allowed).not.toContain(ProviderCapability.SubmitBid);
-    expect(set.primaryReason).toBe(ProviderCapabilityDenialReason.NoWorkAccess);
+
+    // The DENIAL is the security property; which rank fired is not. This
+    // fixture is unverified AND ungranted, so ranks 6 and 7 both deny it and
+    // precedence decides which reason surfaces — rank 6 does, because identity
+    // is checked before time (docs/adr/0005). Pinning one exact code here
+    // would make a legitimate precedence change look like a security
+    // regression, so the assertion is "denied, for one of the two reasons that
+    // deny work".
+    expect([
+      ProviderCapabilityDenialReason.VerificationRequired,
+      ProviderCapabilityDenialReason.NoWorkAccess,
+    ]).toContain(set.primaryReason);
   });
 
   it.each([

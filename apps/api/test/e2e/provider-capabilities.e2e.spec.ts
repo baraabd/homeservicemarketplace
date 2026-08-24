@@ -19,6 +19,7 @@ import { ProviderCapabilitiesController } from '../../src/modules/provider/capab
 import { ProviderCapabilityService } from '../../src/modules/provider/capability/provider-capability.service';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
 import { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
+import { AppConfigService } from '../../src/config/app-config.service';
 
 type AccountRow = { status: string; isActive: boolean; deletedAt: Date | null } | null;
 type ProfileRow = {
@@ -41,17 +42,30 @@ class StubJwtGuard implements CanActivate {
   }
 }
 
+/** Sprint 9 rollout flags, OFF — the position these route fixtures were
+ *  written against, and the rollback target (docs/adr/0013). */
+const FLAGS_OFF = { get: jest.fn(() => false) } as unknown as AppConfigService;
+
 async function bootApp(account: AccountRow, profile: ProfileRow): Promise<INestApplication> {
   const prisma = {
     client: {
       user: { findUnique: jest.fn().mockResolvedValue(account) },
-      providerProfile: { findFirst: jest.fn().mockResolvedValue(profile) },
+      providerProfile: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue(profile === null ? null : { id: 'pp-1', ...profile }),
+      },
+      providerWorkAccessGrant: { findFirst: jest.fn().mockResolvedValue(null) },
     },
   } as unknown as PrismaService;
 
   const moduleRef = await Test.createTestingModule({
     controllers: [ProviderCapabilitiesController],
-    providers: [ProviderCapabilityService, { provide: PrismaService, useValue: prisma }],
+    providers: [
+      ProviderCapabilityService,
+      { provide: PrismaService, useValue: prisma },
+      { provide: AppConfigService, useValue: FLAGS_OFF },
+    ],
   })
     .overrideGuard(JwtAuthGuard)
     .useClass(StubJwtGuard)
@@ -133,10 +147,14 @@ describe('GET /v1/me/provider/capabilities', () => {
           useValue: {
             client: {
               user: { findUnique: prismaSpy },
-              providerProfile: { findFirst: jest.fn().mockResolvedValue(profile()) },
+              providerProfile: {
+                findFirst: jest.fn().mockResolvedValue({ id: 'pp-1', ...profile() }),
+              },
+              providerWorkAccessGrant: { findFirst: jest.fn().mockResolvedValue(null) },
             },
           },
         },
+        { provide: AppConfigService, useValue: FLAGS_OFF },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -202,6 +220,31 @@ describe('GET /v1/me/provider/capabilities', () => {
 // not the other was a silent authorization split. Both now resolve the same
 // service; this asserts the guard cannot answer differently between them.
 // ─────────────────────────────────────────────────────────────────────────────
+/** Build the service with both Sprint 9 rollout flags OFF.
+ *
+ *  These parity fixtures were written against the legacy marketplace rule, and
+ *  OFF reproduces that rule exactly (docs/adr/0013), so the assertions below
+ *  keep meaning precisely what they meant when they were written. The ARMED
+ *  positions are walked in provider-capability.service.spec.ts — parity between
+ *  the two route families is the property under test here, not the gate. */
+function makeCapabilityService(account: unknown, profileRow: unknown) {
+  const prisma = {
+    client: {
+      user: { findUnique: jest.fn().mockResolvedValue(account) },
+      providerProfile: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue(
+            profileRow === null ? null : { id: 'pp-1', ...(profileRow as object) },
+          ),
+      },
+      providerWorkAccessGrant: { findFirst: jest.fn().mockResolvedValue(null) },
+    },
+  } as unknown as PrismaService;
+  const config = { get: jest.fn(() => false) } as unknown as AppConfigService;
+  return new ProviderCapabilityService(prisma, config);
+}
+
 describe('route-family parity', () => {
   const FIXTURES: Array<[string, AccountRow, ProfileRow]> = [
     ['approved provider', ELIGIBLE, profile()],
@@ -229,13 +272,7 @@ describe('route-family parity', () => {
       // service's answer is asserting both families at once — which is the
       // point of the refactor: there is no longer a second copy that could
       // disagree.
-      const prisma = {
-        client: {
-          user: { findUnique: jest.fn().mockResolvedValue(account) },
-          providerProfile: { findFirst: jest.fn().mockResolvedValue(profileRow) },
-        },
-      } as unknown as PrismaService;
-      const service = new ProviderCapabilityService(prisma);
+      const service = makeCapabilityService(account, profileRow);
 
       const canonical = await service.can('u-1', ProviderCapability.ViewMarketplace);
       const legacy = await service.can('u-1', ProviderCapability.ViewMarketplace);
@@ -249,15 +286,12 @@ describe('route-family parity', () => {
     // is denied.
     const verdicts: Array<[string, boolean]> = [];
     for (const [label, account, profileRow] of FIXTURES) {
-      const prisma = {
-        client: {
-          user: { findUnique: jest.fn().mockResolvedValue(account) },
-          providerProfile: { findFirst: jest.fn().mockResolvedValue(profileRow) },
-        },
-      } as unknown as PrismaService;
       verdicts.push([
         label,
-        await new ProviderCapabilityService(prisma).can('u-1', ProviderCapability.ViewMarketplace),
+        await makeCapabilityService(account, profileRow).can(
+          'u-1',
+          ProviderCapability.ViewMarketplace,
+        ),
       ]);
     }
 
