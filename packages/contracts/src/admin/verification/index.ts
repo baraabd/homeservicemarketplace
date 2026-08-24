@@ -9,14 +9,18 @@
 //   POST  /v1/admin/providers/:providerProfileId/suspend      { reason? }
 //   POST  /v1/admin/providers/:providerProfileId/reactivate
 //
-// Approve flips status DRAFT|PENDING_REVIEW -> ACTIVE; reject flips
-// any non-terminal status -> REJECTED; suspend flips ACTIVE ->
-// SUSPENDED; reactivate flips SUSPENDED -> ACTIVE; review-notes
-// upserts the persisted reviewer notes. Each writes
-// ADMIN_PROVIDER_{APPROVED,REJECTED,SUSPENDED,NOTES_UPDATED} audit +
-// (for status changes only) sends a notification to the provider's
-// userId. Documents are deferred — the frontend renders a
-// "documents not yet stored" panel until file storage ships.
+// The legal transitions are NOT restated here. This comment used to say
+// "Approve flips status DRAFT|PENDING_REVIEW -> ACTIVE", which stopped being
+// true in Phase 4 and stayed on the page — a third copy of the rule, drifted,
+// in the file whose job is to define it. The table now lives in exactly one
+// place and is imported:
+//
+//     ADMIN_PROVIDER_TRANSITIONS  (./admin-provider-transitions)
+//
+// review-notes upserts the persisted reviewer notes. Each action writes an
+// ADMIN_PROVIDER_{APPROVED,REJECTED,SUSPENDED,NOTES_UPDATED} audit row and,
+// for status changes only, notifies the provider's userId.
+export * from './admin-provider-transitions';
 export * from './request/list-admin-providers.query';
 export * from './request/admin-provider-decision.request';
 export * from './request/update-review-notes.request';

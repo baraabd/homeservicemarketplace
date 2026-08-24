@@ -28,7 +28,17 @@ import { dirname, join } from 'node:path';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const here = dirname(fileURLToPath(import.meta.url));
-const source = readFileSync(join(here, 'VerificationSection.tsx'), 'utf8');
+const raw = readFileSync(join(here, 'VerificationSection.tsx'), 'utf8');
+
+/** The component with comments stripped.
+ *
+ *  These assertions are about CODE, not prose. The fix for D-3 quotes the
+ *  offending line in a doc comment so the next reader knows why the rule
+ *  moved — and a naive source scan would match that quotation and report the
+ *  bug as still present. Stripping comments first is what makes the assertion
+ *  mean "this rule is not implemented here" rather than "this string does not
+ *  appear in the file". */
+const source = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 describe('Sprint 9 regression — the admin UI must not own the transition table', () => {
   it('does not offer Approve for a DRAFT provider', () => {

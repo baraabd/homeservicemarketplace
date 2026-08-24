@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Check, ChevronRight, Clock, FileText, Shield, ShieldCheck, X } from 'lucide-react';
-import type { AdminProviderSummary, ProviderAuditEvent } from '@homeservicemarketplace/contracts';
+import type {
+  AdminProviderAction,
+  AdminProviderSummary,
+  ProviderAuditEvent,
+} from '@homeservicemarketplace/contracts';
 
 import { useLang } from '../../i18n/LanguageContext';
 import {
@@ -25,8 +29,10 @@ import {
 //       - documents panel (deferred — file storage not yet shipped)
 //       - audit history timeline (real audit events scoped by
 //         metadata.providerProfileId)
-//       - approve / reject / suspend / reactivate actions, gated
-//         by current status
+//       - approve / reject / suspend / reactivate actions, gated by the
+//         SERVER's `availableActions` (Sprint 9). This component does not
+//         know the transition table: it used to, disagreed with the backend
+//         about DRAFT, and offered a button that 409'd.
 
 const STATUS_VALUES = ['PENDING_REVIEW', 'ACTIVE', 'SUSPENDED', 'REJECTED', 'DRAFT'] as const;
 type StatusValue = (typeof STATUS_VALUES)[number];
@@ -290,7 +296,7 @@ function ProviderDetailDrawer({
             />
 
             <ActionsBlock
-              status={provider.status}
+              availableActions={provider.availableActions ?? []}
               reason={decisionReason}
               setReason={setDecisionReason}
               onAction={(action) =>
@@ -477,17 +483,30 @@ function AuditHistoryBlock({
 }
 
 function ActionsBlock({
-  status,
+  availableActions,
   reason,
   setReason,
   onAction,
   isPending,
   labels,
 }: {
-  status: string;
+  /** What the SERVER says is legal from this provider's current status.
+   *
+   *  Sprint 9 / docs/sprint-09/INSPECTION.md D-3. This block used to derive
+   *  the rule itself:
+   *
+   *      const canApprove = status === 'DRAFT' || status === 'PENDING_REVIEW';
+   *
+   *  which contradicted the backend's `from: ['PENDING_REVIEW']` and put an
+   *  enabled Approve button on every DRAFT provider. Clicking it 409'd.
+   *
+   *  The component no longer knows the transition table. It renders what it
+   *  is told, so the client cannot disagree with the server about
+   *  authorization — the drift ADR 0006 exists to prevent. */
+  availableActions: readonly AdminProviderAction[];
   reason: string;
   setReason: (s: string) => void;
-  onAction: (action: 'approve' | 'reject' | 'suspend' | 'reactivate') => void;
+  onAction: (action: AdminProviderAction) => void;
   isPending: boolean;
   labels: {
     actions: string;
@@ -498,10 +517,13 @@ function ActionsBlock({
     reasonLabel: string;
   };
 }) {
-  const canApprove = status === 'DRAFT' || status === 'PENDING_REVIEW';
-  const canReject = status !== 'REJECTED';
-  const canSuspend = status === 'ACTIVE';
-  const canReactivate = status === 'SUSPENDED';
+  // Absent (older payload, cache miss) degrades to NOTHING offered rather than
+  // everything offered. A missing rule must fail closed.
+  const can = (action: AdminProviderAction) => availableActions.includes(action);
+  const canApprove = can('approve');
+  const canReject = can('reject');
+  const canSuspend = can('suspend');
+  const canReactivate = can('reactivate');
   return (
     <div className="flex flex-col gap-2">
       <p className="text-slate-500" style={{ fontSize: '11px', fontWeight: 700 }}>

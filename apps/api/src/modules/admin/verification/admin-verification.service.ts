@@ -1,4 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import {
+  ADMIN_PROVIDER_TRANSITIONS,
+  availableAdminProviderActions,
+} from '@homeservicemarketplace/contracts';
 import type {
   AdminProviderMutationResponse,
   AdminProviderSummary,
@@ -76,7 +80,7 @@ export class AdminVerificationService {
       // provider with no headline, no service area, and no categories, and
       // makes the whole submit-for-review gate optional. Approval now requires
       // a submitted application.
-      from: ['PENDING_REVIEW'] as ProviderProfileStatus[],
+      from: ADMIN_PROVIDER_TRANSITIONS.approve as ProviderProfileStatus[],
       to: 'ACTIVE' as ProviderProfileStatus,
       auditType: 'ADMIN_PROVIDER_APPROVED' as AuditEventType,
       auditMetadata: note ? { note } : {},
@@ -99,7 +103,7 @@ export class AdminVerificationService {
     return this.transition({
       adminUserId,
       providerProfileId,
-      from: ['DRAFT', 'PENDING_REVIEW', 'ACTIVE', 'SUSPENDED'] as ProviderProfileStatus[],
+      from: ADMIN_PROVIDER_TRANSITIONS.reject as ProviderProfileStatus[],
       to: 'REJECTED' as ProviderProfileStatus,
       auditType: 'ADMIN_PROVIDER_REJECTED' as AuditEventType,
       auditMetadata: reasonText ? { reason: reasonText } : {},
@@ -127,7 +131,7 @@ export class AdminVerificationService {
     return this.transition({
       adminUserId,
       providerProfileId,
-      from: ['ACTIVE'] as ProviderProfileStatus[],
+      from: ADMIN_PROVIDER_TRANSITIONS.suspend as ProviderProfileStatus[],
       to: 'SUSPENDED' as ProviderProfileStatus,
       auditType: 'ADMIN_PROVIDER_SUSPENDED' as AuditEventType,
       auditMetadata: reasonText ? { reason: reasonText } : {},
@@ -154,7 +158,7 @@ export class AdminVerificationService {
     return this.transition({
       adminUserId,
       providerProfileId,
-      from: ['SUSPENDED'] as ProviderProfileStatus[],
+      from: ADMIN_PROVIDER_TRANSITIONS.reactivate as ProviderProfileStatus[],
       to: 'ACTIVE' as ProviderProfileStatus,
       // Re-uses the APPROVED audit type — the metadata's
       // previousStatus = SUSPENDED already disambiguates this from
@@ -343,6 +347,10 @@ function toSummary(
   return {
     id: row.id,
     status: row.status,
+    // Sprint 9 — the server decides what is offerable, from the same table it
+    // enforces. The client used to work this out for itself and got `approve`
+    // wrong for DRAFT (docs/sprint-09/INSPECTION.md D-3).
+    availableActions: availableAdminProviderActions(row.status),
     userId: row.user?.id ?? null,
     email: row.user?.email ?? null,
     displayName: row.displayName,
