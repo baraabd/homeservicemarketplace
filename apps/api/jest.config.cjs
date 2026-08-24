@@ -1,22 +1,27 @@
-// The DB- and Redis-gated suites all talk to ONE database, and two of them
-// truncate shared tables (User, Session, VerificationToken, AuditEvent) during
-// setup. Run in parallel workers, one suite wipes rows another is mid-assertion
-// on — which is exactly what CI reported: three suites failing together that
-// each pass in isolation. That reads as a broken test but is really a missing
-// isolation boundary.
+// The DB- and Redis-gated suites all talk to ONE database. They used to keep
+// themselves clean with table-wide TRUNCATE and unscoped deleteMany({}) /
+// count(), which is correct only while exactly one suite is running. In
+// parallel workers one suite wiped rows another was mid-assertion on — which
+// is what CI reported: suites failing together that each pass in isolation.
 //
-// Serialising whenever a gate is on is the fix that cannot be forgotten. A
-// `--runInBand` typed onto one command line protects only that command; this
-// protects every invocation, local or CI. The hermetic default run (no gates,
-// no database) keeps full parallelism and full speed.
-const dbBackedRun =
-  process.env.RUN_DB_INTEGRATION === '1' || process.env.RUN_REDIS_INTEGRATION === '1';
-
+// That was answered here, by pinning `maxWorkers: 1` for any gated run. It
+// worked, but it is a workaround rather than a boundary: it hid the missing
+// isolation and taxed every future suite with the wall-clock of a serial run.
+//
+// The boundary now lives in the suites themselves (test/support/db-isolation.ts):
+// per-suite fixture namespaces so cleanup is a prefix match over rows the
+// suite owns, plus a narrowly scoped Postgres advisory lock for the one suite
+// that legitimately mutates a whole table and asserts on table-wide totals.
+// With that in place the gated run keeps full parallelism, like the hermetic
+// default run always has.
 /** @type {import('jest').Config} */
 module.exports = {
   rootDir: '.',
-  ...(dbBackedRun ? { maxWorkers: 1 } : {}),
   roots: ['<rootDir>/src', '<rootDir>/test'],
+  // Runs in every worker before the spec loads. Caps this worker's Prisma
+  // pool so the gated run cannot exhaust Postgres' max_connections — see the
+  // file for the arithmetic.
+  setupFiles: ['<rootDir>/test/support/bound-db-pool.cjs'],
   testRegex: '.*\\.spec\\.ts$',
   transform: {
     '^.+\\.ts$': [
