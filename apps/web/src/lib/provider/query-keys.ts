@@ -14,6 +14,13 @@ export const providerQueryKeys = {
     root: ['provider', 'profile'] as const,
     get: () => ['provider', 'profile', 'get'] as const,
   },
+  onboarding: {
+    // Sprint 8 — the wizard. One key for the whole application, because the
+    // server returns the whole application on every call: a per-step cache
+    // would need merging, and merging is where two sources of truth start.
+    root: ['provider', 'onboarding'] as const,
+    draft: () => ['provider', 'onboarding', 'draft'] as const,
+  },
   jobs: {
     root: ['provider', 'jobs'] as const,
     // Legacy /me/provider/jobs feed (kept for backwards compatibility

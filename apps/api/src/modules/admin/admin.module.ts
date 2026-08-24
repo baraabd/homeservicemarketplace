@@ -23,6 +23,8 @@ import { AdminSettingsService } from './settings/admin-settings.service';
 import { AdminCategoryApplicationsController } from './category-applications/admin-category-applications.controller';
 import { AdminCategoryApplicationsService } from './category-applications/admin-category-applications.service';
 import { AdminAccessRequestsController } from './access-requests/admin-access-requests.controller';
+import { AdminCatalogController } from './catalog/admin-catalog.controller';
+import { AdminCatalogService } from './catalog/admin-catalog.service';
 
 // Admin module. Hosts every admin-side surface so the
 // AuthenticationModule / AuthorizationModule / AdminAuditService
@@ -60,6 +62,10 @@ import { AdminAccessRequestsController } from './access-requests/admin-access-re
     AdminCategoryApplicationsController,
     // Phase 4 — admin access-request review queue.
     AdminAccessRequestsController,
+    // Sprint 8 — the service-category tree and the equipment catalogue. Both
+    // decide what a provider can claim to do, so both are admin-only and
+    // fully audited; neither has a delete route.
+    AdminCatalogController,
   ],
   providers: [
     AdminAuditService,
@@ -70,6 +76,7 @@ import { AdminAccessRequestsController } from './access-requests/admin-access-re
     AdminFinancialsService,
     AdminSettingsService,
     AdminCategoryApplicationsService,
+    AdminCatalogService,
   ],
   exports: [AdminAuditService],
 })

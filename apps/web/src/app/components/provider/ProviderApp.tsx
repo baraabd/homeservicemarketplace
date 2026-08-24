@@ -113,6 +113,11 @@ import { RequestMediaGallery } from '../ds/RequestMediaGallery';
 import { resolveMediaUrl } from '../../../lib/media-url';
 import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
 import { EditProfilePage } from '../profile/EditProfilePage';
+// Sprint 8 — the onboarding wizard. Replaces the profile editor for providers
+// who are still applying: the editor is built for an approved provider
+// adjusting a live listing and has no notion of steps, of what is missing, or
+// of submitting.
+import { ProviderOnboardingWizard } from './onboarding/ProviderOnboardingWizard';
 import type {
   ProviderAvailability,
   ProviderProfileSummary,
@@ -3063,6 +3068,23 @@ export function ProviderApp() {
   // the correct answer, rather than rendering a feed that will only 403.
   const effectiveTab = profile && profile.status === 'ACTIVE' ? activeTab : 'profile';
 
+  // Sprint 8 — a provider who is still applying gets the WIZARD, not the
+  // profile screen.
+  //
+  // Sprint 7 made the profile tab reachable for these statuses, which fixed
+  // the loop where "Continue onboarding" handed the provider the identical
+  // locked screen. But what it handed them was the profile EDITOR: a surface
+  // built for an approved provider adjusting a live listing, with no notion of
+  // steps, of what is still missing, or of submitting. Reaching it was
+  // progress; it was not the destination.
+  //
+  // Which statuses route here mirrors `canEnterOnboarding` above, which in
+  // turn mirrors the server's COMPLETE_ONBOARDING capability. This is a
+  // RENDERING decision only — every onboarding write is enforced server-side,
+  // so a client that got this wrong would see 403s, not data.
+  const showOnboardingWizard =
+    profile !== null && profile.status !== 'ACTIVE' && canEnterOnboarding;
+
   const renderTab = () => {
     switch (effectiveTab) {
       case 'jobs':
@@ -3074,7 +3096,7 @@ export function ProviderApp() {
       case 'wallet':
         return <WalletScreen />;
       case 'profile':
-        return <ProviderProfileScreen />;
+        return showOnboardingWizard ? <ProviderOnboardingWizard /> : <ProviderProfileScreen />;
       default:
         return <LiveJobsScreen />;
     }

@@ -21,6 +21,8 @@ import { AuditModule } from '../iam/audit/audit.module';
 import { ProviderCapabilitiesController } from './capability/provider-capabilities.controller';
 import { ProviderCapabilityModule } from './capability/provider-capability.module';
 import { ProviderOnboardingService } from './onboarding/provider-onboarding.service';
+import { ProviderOnboardingWizardController } from './onboarding/provider-onboarding-wizard.controller';
+import { ProviderOnboardingWizardService } from './onboarding/provider-onboarding-wizard.service';
 import { ProviderController } from './provider.controller';
 import { ProviderService } from './provider.service';
 import { ProviderEarningsController } from './wallet/provider-earnings.controller';
@@ -79,6 +81,11 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     // only: it EXPLAINS the provider gate, so gating it on that gate would
     // hide the answer from exactly the providers who need it.
     ProviderCapabilitiesController,
+    // Sprint 8 — the onboarding wizard. A separate controller from
+    // ProviderController because it is a different surface with different
+    // gating: every route here must be reachable by a DRAFT provider who holds
+    // no marketplace capability at all.
+    ProviderOnboardingWizardController,
   ],
   providers: [
     ProviderService,
@@ -90,6 +97,8 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderEarningsService,
     // Phase 4 — DRAFT → submit-for-review → PENDING_REVIEW.
     ProviderOnboardingService,
+    // Sprint 8 — the wizard: get, per-step patch, submit, withdraw.
+    ProviderOnboardingWizardService,
     // Sprint 2 — provider-side skill applications.
     ProviderCategoriesService,
   ],

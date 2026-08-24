@@ -487,6 +487,46 @@ model ProviderProfile {
   onboardingSubmissions    ProviderOnboardingSubmission[]
   workAccessGrants         ProviderWorkAccessGrant[]
 
+  // ── Sprint 8: onboarding journey fields ─────────────────────────────────
+  // docs/adr/0008-category-hierarchy-and-onboarding-draft.md
+  //
+  // All nullable and all additive: an existing provider row is untouched and
+  // still valid, and the completeness policy is what decides whether a given
+  // profile may be SUBMITTED — not the column definitions.
+
+  /// Individual vs business. Changes which other fields are required.
+  providerType             ProviderType?
+  /// Business display name, for BUSINESS providers. Distinct from
+  /// displayName, which is the public marketplace name either way.
+  legalBusinessName        String?
+  /// Proof the phone is reachable. Presence of a number is not proof.
+  phoneVerifiedAt          DateTime?
+  profileImageUrl          String?
+  /// Numeric fact, not a display bucket. A bucket ("5-10 years") cannot be
+  /// compared, filtered, or aged; this can, and the UI renders whatever band
+  /// it likes from it.
+  yearsOfExperience        Int?
+  /// Alternative to the count, for providers who know when they started. The
+  /// policy accepts EITHER and derives years from this when present, so the
+  /// stored fact stays a fact and does not silently go stale.
+  professionSince          DateTime?
+  transportMode            ProviderTransportMode?
+  /// Fixed premises, if any. Distinct from the service-area centre: a
+  /// workshop is where they are, the service area is where they go.
+  workshopAddressLine      String?
+  workshopLat              Float?
+  workshopLng              Float?
+  additionalInformation    String?                          @db.Text
+  /// The consent document version the provider accepted, and when. A boolean
+  /// "agreed" is unfalsifiable the moment the terms change.
+  acceptedConsentVersion   String?
+  consentAcceptedAt        DateTime?
+
+  availabilityIntervals    ProviderAvailabilityInterval[]
+  equipment                ProviderEquipment[]
+  serviceAreas             ProviderServiceArea[]
+  onboardingDraft          ProviderOnboardingDraft?
+
   @@index([availability])
   @@index([deletedAt])
   @@index([serviceAreaCity])
@@ -581,12 +621,38 @@ model ServiceCategory {
   createdAt            DateTime                         @default(now())
   updatedAt            DateTime                         @updatedAt
   deletedAt            DateTime?
+
+  // ── Sprint 8: parent/child hierarchy ────────────────────────────────────
+  // docs/adr/0008-category-hierarchy-and-onboarding-draft.md
+  //
+  // Self-referencing, one level deep in practice but not constrained to it.
+  // Backward compatible by construction: every existing row keeps parentId
+  // NULL and isLeaf TRUE, so it stays exactly what it is today — a selectable
+  // competency at the root. Nothing that reads ServiceCategory has to change.
+  parentId             String?
+  parent               ServiceCategory?                 @relation("CategoryTree", fields: [parentId], references: [id])
+  children             ServiceCategory[]                @relation("CategoryTree")
+
+  // Is this a SELECTABLE competency, or an organisational heading?
+  //
+  // Selectability is a property of the catalogue, decided server-side. Letting
+  // the client infer it from "has no children" would make the rule a
+  // suggestion, and would silently flip a parent into a selectable leaf the
+  // moment its last child was deactivated.
+  isLeaf               Boolean                          @default(true)
+
   serviceRequests      ServiceRequest[]
   providerProfiles     ProviderProfileServiceCategory[]
   categoryApplications ProviderCategoryApplication[]
+  equipmentItems       EquipmentCatalogItem[]
 
   @@index([deletedAt])
   @@index([isActive, sortOrder])
+  // Rendering a parent's children in catalogue order — the wizard's hot read.
+  @@index([parentId, sortOrder])
+  // "Every selectable competency", which is what matching and the specialty
+  // picker both ask for.
+  @@index([isLeaf, isActive])
 }
 
 model ServiceRequestEvent {
@@ -843,6 +909,15 @@ enum AuditEventType {
   PROVIDER_CATEGORY_REMOVED
   ADMIN_CATEGORY_APPLICATION_APPROVED
   ADMIN_CATEGORY_APPLICATION_REJECTED
+  /// Sprint 8 — catalogue administration. The category tree and the equipment
+  /// list decide what a provider can claim to do and what a seeker can search
+  /// for, so editing them is a privileged act with the same audit expectations
+  /// as editing a person's standing. `isLeaf` in particular is what makes a
+  /// row selectable at all.
+  ADMIN_CATEGORY_CREATED
+  ADMIN_CATEGORY_UPDATED
+  ADMIN_EQUIPMENT_CREATED
+  ADMIN_EQUIPMENT_UPDATED
 }
 
 enum AddressType {
@@ -1106,6 +1181,16 @@ enum ProviderOnboardingState {
   NOT_STARTED
   DRAFT
   SUBMITTED
+  /// Sprint 8 — the wizard was completed and validated, and identity
+  /// documents are the only thing outstanding.
+  ///
+  /// A DISTINCT state rather than a flavour of SUBMITTED, because it is where
+  /// a valid submission lands and it must be unmistakable that arriving here
+  /// grants NOTHING: no marketplace access, no work-access grant, no verified
+  /// badge. It sits between SUBMITTED and ACCEPTED precisely so that
+  /// "application complete" and "approved to work" can never be read as the
+  /// same fact — which is the conflation ADR 0005 exists to undo.
+  DOCUMENTS_REQUIRED
   ACCEPTED
   /// Sent back for changes. NOT a conduct decision — a returned applicant is
   /// in good standing and may edit and resubmit.
@@ -1260,4 +1345,240 @@ model ProviderWorkAccessGrant {
   @@index([providerProfileId, status, expiresAt])
   /// Sweeping grants that have aged out, for the reporting job.
   @@index([status, expiresAt])
+}
+
+// ── Sprint 8: provider onboarding journey ──────────────────────────────────
+// docs/adr/0008-category-hierarchy-and-onboarding-draft.md
+
+/// Individual tradesperson vs registered business. Not cosmetic: it changes
+/// which other fields the completeness policy requires, so it cannot be
+/// inferred or defaulted.
+enum ProviderType {
+  INDIVIDUAL
+  BUSINESS
+}
+
+/// How a provider reaches a job. Stable CODES rather than free text so the
+/// value survives translation and can be filtered on; the label lives in the
+/// client's i18n bundle, keyed by this code.
+enum ProviderTransportMode {
+  ON_FOOT
+  MOTORCYCLE
+  CAR
+  VAN
+  TRUCK
+  PUBLIC_TRANSPORT
+}
+
+/// A weekly recurring window in which the provider works.
+///
+/// Modelled as day + minute-of-day intervals rather than one broad enum
+/// (weekdays, evenings) because the marketplace has to answer "are they free
+/// at 14:30 on Tuesday", and a bucket cannot. Minutes-from-midnight rather
+/// than a time type: integer-comparable, trivially indexable, and carrying no
+/// timezone of its own — the zone is stored once on the interval, so a
+/// provider who moves cities does not silently shift every window.
+model ProviderAvailabilityInterval {
+  id                String          @id @default(cuid())
+  providerProfileId String
+  /// 0 = Sunday … 6 = Saturday. Matches JS getDay(), so there is no
+  /// conversion layer to get wrong.
+  dayOfWeek         Int
+  /// Minutes from local midnight, 0..1440. End is EXCLUSIVE, so 09:00-17:00
+  /// is [540, 1020) and two adjacent windows can touch without overlapping.
+  startMinute       Int
+  endMinute         Int
+  /// IANA zone, e.g. Asia/Damascus.
+  timezone          String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  providerProfile   ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+
+  /// The availability read: one provider's whole week, in order.
+  @@index([providerProfileId, dayOfWeek, startMinute])
+  /// Exact duplicates of the same window are always a mistake. Declared here
+  /// rather than left as raw SQL so Prisma owns it and the drift gate stays
+  /// green; `map` keeps the descriptive name the migration created.
+  ///
+  /// This does NOT prevent partial overlap (09:00-12:00 beside 11:00-14:00) —
+  /// that needs an EXCLUDE over int4range and the btree_gist extension, which
+  /// is the sort of infrastructure change ADR 0003 declined to make without
+  /// evidence. Overlap is validated in the service on every write and tested
+  /// there; this closes the cheapest half for free.
+  @@unique([providerProfileId, dayOfWeek, startMinute, endMinute], map: "provider_availability_no_exact_duplicate")
+}
+
+/// A piece of equipment a provider owns, from a controlled catalogue.
+///
+/// Codes rather than free text: van, Van, VAN and small van are one
+/// capability, and matching cannot work if providers type it. Linked to a
+/// category so the wizard offers plumbers plumbing equipment.
+model EquipmentCatalogItem {
+  id         String              @id @default(cuid())
+  /// Stable, human-readable, never reused. The client keys i18n off this.
+  code       String              @unique
+  labelEn    String
+  labelAr    String
+  /// Null means it applies to every category — a ladder is a ladder.
+  categoryId String?
+  category   ServiceCategory?    @relation(fields: [categoryId], references: [id])
+  isActive   Boolean             @default(true)
+  sortOrder  Int                 @default(0)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  providers  ProviderEquipment[]
+
+  @@index([categoryId, isActive, sortOrder])
+  @@index([isActive, sortOrder])
+}
+
+model ProviderEquipment {
+  providerProfileId String
+  equipmentItemId   String
+  createdAt         DateTime             @default(now())
+
+  providerProfile   ProviderProfile      @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  equipmentItem     EquipmentCatalogItem @relation(fields: [equipmentItemId], references: [id], onDelete: Cascade)
+
+  @@id([providerProfileId, equipmentItemId])
+  @@index([equipmentItemId])
+}
+
+/// Normalised place references.
+///
+/// The existing free-text serviceAreaCity stays and stays authoritative for
+/// matching — Sprint 6's cityKey plus bounded-Haversine strategy is untouched.
+/// These add a CANONICAL spine so spellings resolve to one row that districts
+/// can hang off, which free text cannot support.
+model City {
+  id            String                @id @default(cuid())
+  /// btrim+lower match key — the SAME normalisation as Sprint 6's
+  /// locationCityKey, so the two join without a translation layer.
+  cityKey       String                @unique
+  labelEn       String
+  labelAr       String
+  countryCode   String
+  isActive      Boolean               @default(true)
+  sortOrder     Int                   @default(0)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  districts     District[]
+  providerAreas ProviderServiceArea[]
+
+  @@index([countryCode, isActive, sortOrder])
+}
+
+model District {
+  id            String                @id @default(cuid())
+  cityId        String
+  districtKey   String
+  labelEn       String
+  labelAr       String
+  isActive      Boolean               @default(true)
+  sortOrder     Int                   @default(0)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  city          City                  @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  neighborhoods Neighborhood[]
+  providerAreas ProviderServiceArea[]
+
+  /// Unique WITHIN a city, not globally — Downtown exists in many cities.
+  @@unique([cityId, districtKey])
+  @@index([cityId, isActive, sortOrder])
+}
+
+model Neighborhood {
+  id              String                @id @default(cuid())
+  districtId      String
+  neighborhoodKey String
+  labelEn         String
+  labelAr         String
+  isActive        Boolean               @default(true)
+  sortOrder       Int                   @default(0)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  district        District              @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  providerAreas   ProviderServiceArea[]
+
+  @@unique([districtId, neighborhoodKey])
+  @@index([districtId, isActive, sortOrder])
+}
+
+/// Where a provider will actually travel, at whatever granularity they chose.
+///
+/// Exactly one of city / district / neighborhood is set, enforced by a CHECK
+/// constraint in the migration: a row with two set has no defined meaning and
+/// would be counted twice by every area query.
+model ProviderServiceArea {
+  id                String          @id @default(cuid())
+  providerProfileId String
+  cityId            String?
+  districtId        String?
+  neighborhoodId    String?
+  createdAt         DateTime        @default(now())
+
+  providerProfile   ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  city              City?           @relation(fields: [cityId], references: [id])
+  district          District?       @relation(fields: [districtId], references: [id])
+  neighborhood      Neighborhood?   @relation(fields: [neighborhoodId], references: [id])
+
+  @@index([providerProfileId])
+  @@index([cityId])
+  @@index([districtId])
+  @@index([neighborhoodId])
+}
+
+/// The wizard's saved state — what makes resume-from-last-step possible.
+///
+/// One draft per provider. `data` is a versioned JSON bag rather than fifty
+/// nullable columns because a half-filled wizard is genuinely unstructured:
+/// modelling every intermediate state would mean a migration each time a step
+/// is reordered. COMMITTED values live in typed columns on ProviderProfile and
+/// its relations; this is scratch space with a lifetime of one application.
+model ProviderOnboardingDraft {
+  id                String          @id @default(cuid())
+  providerProfileId String          @unique
+  /// The step to resume on.
+  currentStep       String
+  /// Steps the SERVER has accepted as complete. Never client-asserted, or a
+  /// client could mark itself finished.
+  completedSteps    String[]        @default([])
+  data              Json            @default("{}")
+  /// Optimistic concurrency token. Every PATCH presents the version it read;
+  /// a mismatch is a 409 rather than a silent overwrite. Two tabs open on one
+  /// wizard is the ordinary case, not the exotic one.
+  version           Int             @default(0)
+  /// The completeness policy in force, so a draft is not silently re-judged
+  /// under a newer version mid-flight.
+  policyVersion     String
+  lastSavedAt       DateTime        @default(now())
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  providerProfile   ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+}
+
+/// Append-only history for platform settings.
+///
+/// PlatformSetting keeps only the current value and who last touched it, which
+/// cannot answer "what was the threshold when this provider was rejected?" —
+/// the question that actually gets asked. Settings that gate onboarding need a
+/// trail, so every write appends here.
+model PlatformSettingHistory {
+  id            String   @id @default(cuid())
+  key           String
+  previousValue Json?
+  newValue      Json
+  changedBy     String?
+  changedAt     DateTime @default(now())
+  /// Justification captured at change time.
+  reason        String?
+
+  @@index([key, changedAt])
+  @@index([changedAt])
 }

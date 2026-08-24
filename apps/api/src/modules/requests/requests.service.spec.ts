@@ -42,6 +42,9 @@ function makeCategory(overrides: Partial<ServiceCategory> = {}): ServiceCategory
     labelAr: 'سباكة',
     icon: '🔧',
     sortOrder: 0,
+    // Sprint 8 — flat categories are leaves at the root.
+    parentId: null,
+    isLeaf: true,
     isActive: true,
     createdAt: new Date('2026-04-26T00:00:00.000Z'),
     updatedAt: new Date('2026-04-26T00:00:00.000Z'),
