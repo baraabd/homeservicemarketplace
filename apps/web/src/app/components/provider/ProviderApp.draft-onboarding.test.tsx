@@ -70,6 +70,63 @@ const DRAFT_PROFILE = {
   updatedAt: '2026-04-30T00:00:00.000Z',
 };
 
+/** Sprint 8 — the wizard's own read, for a provider who has not started. */
+const EMPTY_DRAFT = {
+  state: 'DRAFT' as const,
+  currentStep: 'PROVIDER_TYPE' as const,
+  steps: [
+    { step: 'PROVIDER_TYPE' as const, complete: false, issues: [] },
+    { step: 'IDENTITY' as const, complete: false, issues: [] },
+    { step: 'LOCATION' as const, complete: false, issues: [] },
+    { step: 'SPECIALTIES' as const, complete: false, issues: [] },
+    { step: 'EXPERIENCE' as const, complete: false, issues: [] },
+    { step: 'AVAILABILITY' as const, complete: false, issues: [] },
+    { step: 'PROFILE' as const, complete: false, issues: [] },
+    { step: 'CONSENT' as const, complete: false, issues: [] },
+    { step: 'REVIEW' as const, complete: false, issues: [] },
+  ],
+  completedSteps: [],
+  percentComplete: 0,
+  nextAction: { kind: 'COMPLETE_STEP' as const, step: 'PROVIDER_TYPE' as const },
+  complete: false,
+  missing: [],
+  version: 0,
+  policyVersion: 'sprint-08',
+  lastSavedAt: null,
+  editable: true,
+  data: {
+    providerType: null,
+    legalBusinessName: null,
+    displayName: 'Grace Hopper',
+    profileImageUrl: null,
+    phoneNumber: null,
+    phoneVerified: false,
+    serviceAreaCity: null,
+    serviceAreaCountry: null,
+    serviceAreaLat: null,
+    serviceAreaLng: null,
+    serviceAreaRadiusKm: null,
+    serviceAreaIds: [],
+    workshopAddressLine: null,
+    workshopLat: null,
+    workshopLng: null,
+    primaryGroupIds: [],
+    specialtyLeafIds: [],
+    pendingSpecialtyIds: [],
+    yearsOfExperience: null,
+    professionSince: null,
+    equipmentCodes: [],
+    transportMode: null,
+    availability: [],
+    timezone: null,
+    headline: null,
+    bio: null,
+    additionalInformation: null,
+    acceptedConsentVersion: null,
+    consentAcceptedAt: null,
+  },
+};
+
 let mock: MockAdapter;
 let qc: QueryClient;
 
@@ -98,6 +155,14 @@ function mockDraftProvider() {
     code: 'FORBIDDEN',
   });
   mock.onGet(/\/v1\/me\/notifications/).reply(200, { items: [], nextCursor: null, unreadCount: 0 });
+
+  // Sprint 8 — the onboarding surface these tests reach is now the wizard,
+  // which reads its own draft plus the public catalogue. Answered here so the
+  // routing assertions below fail on ROUTING when they fail, not on an
+  // unmocked request.
+  mock.onGet('/v1/me/provider/onboarding/draft').reply(200, EMPTY_DRAFT);
+  mock.onGet('/v1/services').reply(200, { items: [] });
+  mock.onGet('/v1/services/equipment').reply(200, { items: [] });
 }
 
 beforeEach(() => {
@@ -132,10 +197,12 @@ describe('ProviderApp — DRAFT onboarding routing (Sprint 7 regression)', () =>
     await waitFor(() => expect(screen.getByTestId('provider-status-draft')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /continue onboarding/i }));
 
-    // "My Skills" is a section heading unique to the profile/onboarding
-    // surface. ("My Profile" is defined as a label but never painted, so it
-    // is not a usable anchor.)
-    await waitFor(() => expect(screen.getByText(/my skills/i)).toBeInTheDocument());
+    // Sprint 8 — the onboarding surface is now the WIZARD, not the profile
+    // editor. "Set up your provider account" is its heading and belongs to no
+    // other screen, so it is the anchor that proves the right surface mounted.
+    await waitFor(() =>
+      expect(screen.getByText(/set up your provider account/i)).toBeInTheDocument(),
+    );
     // And the status screen is genuinely gone, not merely overlaid.
     expect(screen.queryByTestId('provider-status-draft')).toBeNull();
   });
@@ -148,7 +215,9 @@ describe('ProviderApp — DRAFT onboarding routing (Sprint 7 regression)', () =>
 
     await waitFor(() => expect(screen.getByTestId('provider-status-draft')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /continue onboarding/i }));
-    await waitFor(() => expect(screen.getByText(/my skills/i)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/set up your provider account/i)).toBeInTheDocument(),
+    );
 
     // The live jobs screen's unique hint must never appear for DRAFT.
     expect(screen.queryByText(/pull up to see requests/i)).toBeNull();
@@ -165,8 +234,12 @@ describe('ProviderApp — DRAFT onboarding routing (Sprint 7 regression)', () =>
       const cta = screen.getByRole('button', { name: /إكمال الملف|continue onboarding/i });
       fireEvent.click(cta);
 
-      // The Arabic heading of the same surface.
-      await waitFor(() => expect(screen.getByText(/مهاراتي|my skills/i)).toBeInTheDocument());
+      // The Arabic heading of the same surface — the wizard, since Sprint 8.
+      await waitFor(() =>
+        expect(
+          screen.getByText(/إعداد حساب مزوّد الخدمة|set up your provider account/i),
+        ).toBeInTheDocument(),
+      );
       const rtlHost = document.querySelector('[dir="rtl"]');
       expect(rtlHost).not.toBeNull();
     } finally {
