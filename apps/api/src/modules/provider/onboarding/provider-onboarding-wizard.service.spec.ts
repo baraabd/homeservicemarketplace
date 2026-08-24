@@ -884,8 +884,14 @@ describe('patchStep — against a real ValidationPipe instance', () => {
 
     // The condition that caused the bug, asserted directly: the instance
     // really does carry keys the client never sent.
+    //
+    // `bio` is read straight off the typed value — it is a declared optional
+    // member of PatchOnboardingStepRequest, so no cast is needed or wanted.
+    // The `as Record<string, unknown>` that was here was noise, and TS2352
+    // was right to reject it: the interface has no index signature, so the
+    // conversion does not overlap.
     expect(Object.keys(body).length).toBeGreaterThan(20);
-    expect((body as Record<string, unknown>).bio).toBeUndefined();
+    expect(body.bio).toBeUndefined();
 
     await h.service.patchStep('u-1', 'PROVIDER_TYPE', body);
 
