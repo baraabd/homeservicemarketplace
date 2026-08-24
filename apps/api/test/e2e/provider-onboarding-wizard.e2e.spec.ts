@@ -463,3 +463,114 @@ describe('Provider onboarding wizard — HTTP surface', () => {
     });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REGRESSION — the bug the unit suite could not see.
+//
+// The ValidationPipe hands the service a CLASS INSTANCE, not the plain object
+// literal a unit test passes. TypeScript's class-field semantics define every
+// declared property on every instance, as `undefined` — so a PATCH carrying
+// one field arrives with all thirty declared keys present.
+//
+// The per-step field guard filtered on `Object.keys`, which therefore saw
+// every field on every request and rejected all of them. Every unit test
+// passed; the first real PATCH against a booted API 400'd with "these fields
+// do not belong to the AVAILABILITY step: providerType, legalBusinessName,
+// displayName, …" — a list of thirty fields the client never sent.
+//
+// This is the layer that can see it, because this is the layer that has the
+// real pipe in it.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Provider onboarding wizard — the DTO instance reaches the service correctly', () => {
+  let app: INestApplication;
+  let http: ReturnType<INestApplication['getHttpServer']>;
+
+  beforeAll(async () => {
+    @Module({
+      controllers: [ProviderOnboardingWizardController],
+      providers: [
+        { provide: ProviderOnboardingWizardService, useValue: wizard },
+        { provide: AppConfigService, useValue: makeConfig() },
+        { provide: APP_FILTER, useClass: AllExceptionsFilter },
+        Reflector,
+      ],
+    })
+    class TestModule {}
+
+    const moduleRef = await Test.createTestingModule({ imports: [TestModule] })
+      .overrideGuard(JwtAuthGuard)
+      .useClass(FakeJwtAuthGuard)
+      .overrideGuard(CsrfGuard)
+      .useClass(FakeCsrfGuard)
+      .compile();
+
+    app = moduleRef.createNestApplication();
+    app.use(cookieParser());
+    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
+    );
+    await app.init();
+    http = app.getHttpServer();
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    wizard.patchStep.mockResolvedValue(VIEW);
+    fakeAuthedUser = { id: 'user-1', sessionId: 's-1', jti: 'j-1', roles: ['provider'] };
+  });
+
+  it('a single-field PATCH reaches the service and is not rejected as cross-step', async () => {
+    await withCsrf(request(http).patch(`${BASE}/steps/PROVIDER_TYPE`))
+      .send({ version: 0, providerType: 'INDIVIDUAL' })
+      .expect(200);
+
+    expect(wizard.patchStep).toHaveBeenCalledWith(
+      'user-1',
+      'PROVIDER_TYPE',
+      expect.objectContaining({ providerType: 'INDIVIDUAL', version: 0 }),
+    );
+  });
+
+  it('carries every declared key on the instance — which is WHY the guard must filter', async () => {
+    // Pins the underlying condition, not just its symptom. If a future
+    // tsconfig or pipe change stops materialising absent fields, this test
+    // fails and the guard's `undefined` filter can be reconsidered
+    // deliberately rather than discovered by a provider.
+    await withCsrf(request(http).patch(`${BASE}/steps/PROVIDER_TYPE`))
+      .send({ version: 0, providerType: 'INDIVIDUAL' })
+      .expect(200);
+
+    const received = wizard.patchStep.mock.calls[0][2] as Record<string, unknown>;
+    expect(Object.keys(received)).toContain('bio');
+    expect(received.bio).toBeUndefined();
+  });
+
+  // The mirror case — a field genuinely SENT for another step must still be
+  // rejected — is asserted in the UNIT suite, not here: the cross-step guard
+  // lives in the service, which this file deliberately fakes. Asserting it
+  // against a mock would test nothing.
+
+  it('accepts a full-week AVAILABILITY PATCH, the shape that first exposed this', async () => {
+    await withCsrf(request(http).patch(`${BASE}/steps/AVAILABILITY`))
+      .send({
+        version: 0,
+        timezone: 'Asia/Damascus',
+        availability: [
+          { dayOfWeek: 1, startMinute: 540, endMinute: 1020 },
+          { dayOfWeek: 2, startMinute: 540, endMinute: 1020 },
+        ],
+      })
+      .expect(200);
+
+    expect(wizard.patchStep).toHaveBeenCalledWith(
+      'user-1',
+      'AVAILABILITY',
+      expect.objectContaining({ timezone: 'Asia/Damascus' }),
+    );
+  });
+});

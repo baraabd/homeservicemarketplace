@@ -1,3 +1,7 @@
+import { ValidationPipe } from '@nestjs/common';
+import type { PatchOnboardingStepRequest } from '@homeservicemarketplace/contracts';
+
+import { PatchOnboardingStepDto } from './dto/patch-onboarding-step.dto';
 import type {
   ProviderProfileRepository,
   ProviderProfileWithCategories,
@@ -849,5 +853,72 @@ describe('get', () => {
     const view = await h.service.get('u-1');
 
     expect(view.state).toBe('ACCEPTED');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REGRESSION — the per-step guard against a REAL DTO instance.
+//
+// Every test above passes a plain object literal, which is not what the
+// service receives in production. The ValidationPipe hands it a class
+// INSTANCE, and TypeScript's class-field semantics define every declared
+// property on every instance — as `undefined`. A guard filtering on
+// `Object.keys` therefore saw all thirty declared fields on a request that
+// sent one, and rejected every PATCH the wizard made.
+//
+// The whole unit suite passed. The first real PATCH against a booted API
+// 400'd. These cases run the actual pipe so the gap cannot reopen.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('patchStep — against a real ValidationPipe instance', () => {
+  const pipe = new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true });
+
+  const asDto = (body: Record<string, unknown>) =>
+    pipe.transform(body, {
+      type: 'body',
+      metatype: PatchOnboardingStepDto,
+    }) as Promise<PatchOnboardingStepRequest>;
+
+  it('accepts a single-field patch carried on a full DTO instance', async () => {
+    const h = build();
+    const body = await asDto({ version: 3, providerType: 'INDIVIDUAL' });
+
+    // The condition that caused the bug, asserted directly: the instance
+    // really does carry keys the client never sent.
+    expect(Object.keys(body).length).toBeGreaterThan(20);
+    expect((body as Record<string, unknown>).bio).toBeUndefined();
+
+    await h.service.patchStep('u-1', 'PROVIDER_TYPE', body);
+
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ providerType: 'INDIVIDUAL' }) }),
+    );
+  });
+
+  it('still rejects a field genuinely SENT for another step', async () => {
+    // The filter must not blunt the guard. `null` counts as sent — it means
+    // "clear this field", which is exactly the kind of cross-step write that
+    // would wipe a completed step from a half-finished one.
+    const h = build();
+    const body = await asDto({ version: 3, providerType: 'INDIVIDUAL', bio: null });
+
+    await expect(h.service.patchStep('u-1', 'PROVIDER_TYPE', body)).rejects.toMatchObject({
+      status: 400,
+    });
+  });
+
+  it('accepts a full week on the AVAILABILITY step', async () => {
+    const h = build();
+    const body = await asDto({
+      version: 3,
+      timezone: 'Asia/Damascus',
+      availability: [
+        { dayOfWeek: 1, startMinute: 540, endMinute: 1020 },
+        { dayOfWeek: 2, startMinute: 540, endMinute: 1020 },
+      ],
+    });
+
+    await h.service.patchStep('u-1', 'AVAILABILITY', body);
+
+    expect(h.drafts.replaceAvailability).toHaveBeenCalled();
   });
 });

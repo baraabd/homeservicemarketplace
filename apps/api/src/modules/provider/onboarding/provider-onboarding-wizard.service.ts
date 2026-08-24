@@ -906,7 +906,24 @@ export class ProviderOnboardingWizardService {
     body: PatchOnboardingStepRequest,
   ): void {
     const allowed = new Set(STEP_WRITABLE_FIELDS[step]);
-    const offending = Object.keys(body).filter((k) => k !== 'version' && !allowed.has(k));
+    // Only fields that were actually SENT.
+    //
+    // `Object.keys` alone is wrong here, and wrong in a way no unit test sees:
+    // the ValidationPipe hands this method a class instance, and TypeScript
+    // compiling class fields to `useDefineForClassFields` semantics defines
+    // EVERY declared property on every instance — as `undefined`. So a PATCH
+    // carrying one field arrives with all thirty declared keys present, and an
+    // unfiltered check rejects every request as writing fields it never sent.
+    //
+    // The unit tests pass plain object literals and never saw it; the runtime
+    // check against a booted API found it on the first real PATCH.
+    //
+    // Filtering on `undefined` is also the correct rule on its own terms:
+    // `undefined` means "not sent, leave alone" everywhere else in this
+    // service, and `null` — which means "clear this" — is preserved.
+    const offending = Object.entries(body)
+      .filter(([key, value]) => key !== 'version' && value !== undefined && !allowed.has(key))
+      .map(([key]) => key);
     if (offending.length > 0) {
       throw new AppError(
         'VALIDATION_ERROR',
