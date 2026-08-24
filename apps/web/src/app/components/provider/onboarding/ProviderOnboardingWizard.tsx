@@ -20,7 +20,15 @@ import type {
   ProviderTransportModeCode,
   ProviderTypeCode,
 } from '@homeservicemarketplace/contracts';
-import { PROVIDER_ONBOARDING_STEPS } from '@homeservicemarketplace/contracts';
+// NOTE: types only from contracts, deliberately. The package builds to
+// CommonJS, and rollup cannot statically resolve a named export through its
+// `__exportStar` barrel — importing the runtime PROVIDER_ONBOARDING_STEPS
+// array typechecks and passes vitest, then fails the PRODUCTION build with
+// "is not exported by dist/index.js". Nothing in the web app had imported a
+// runtime value from contracts before this screen, so the trap was unsprung.
+//
+// It is also unnecessary: the server sends `steps` in wizard order on every
+// response, so the order has one source instead of two that can disagree.
 
 import { useLang } from '../../../i18n/LanguageContext';
 import { useEquipmentCatalog, useServiceCategories } from '../../../../lib/use-service-categories';
@@ -96,7 +104,9 @@ export function ProviderOnboardingWizard() {
   if (step === null && view) setStep(view.currentStep);
 
   const activeStep = step ?? view?.currentStep ?? 'PROVIDER_TYPE';
-  const index = PROVIDER_ONBOARDING_STEPS.indexOf(activeStep);
+  // Order comes from the SERVER's step list, not a client-side copy.
+  const order = view?.steps.map((s) => s.step) ?? [];
+  const index = order.indexOf(activeStep);
 
   if (draftQuery.isLoading) {
     return (
@@ -237,7 +247,7 @@ function ErrorBody({
       <button
         type="button"
         onClick={onAction}
-        className="mt-4 w-full py-3 rounded-2xl bg-blue-600 text-white active:scale-95 transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+        className="mt-4 w-full py-3 rounded-2xl bg-blue-600 text-white active:scale-95 transition-all outline-none focus:ring-2 focus:ring-blue-500/40"
         style={{ fontSize: '14px', fontWeight: 700 }}
       >
         {actionLabel}
@@ -295,7 +305,7 @@ function SubmittedBody({ view }: { view: ProviderOnboardingDraftView }) {
         type="button"
         onClick={() => withdraw.mutate()}
         disabled={withdraw.isPending}
-        className="mt-5 w-full py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 active:scale-95 transition-all disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+        className="mt-5 w-full py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 active:scale-95 transition-all disabled:opacity-60 outline-none focus:ring-2 focus:ring-blue-500/40"
         style={{ fontSize: '14px', fontWeight: 700 }}
       >
         {withdraw.isPending ? copy.withdrawing : copy.withdraw}
@@ -341,7 +351,7 @@ function StepRail({
                 type="button"
                 onClick={() => onSelect(s.step)}
                 aria-current={isActive ? 'step' : undefined}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-full border transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-full border transition-colors outline-none focus:ring-2 focus:ring-blue-500/40 ${
                   isActive
                     ? 'border-blue-500 bg-blue-600 text-white'
                     : s.complete
@@ -415,7 +425,7 @@ function SaveIndicator({
           <button
             type="button"
             onClick={status.retry}
-            className="inline-flex items-center gap-1 underline outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 rounded"
+            className="inline-flex items-center gap-1 underline outline-none focus:ring-2 focus:ring-blue-500/40 rounded"
           >
             <RefreshCw size={11} aria-hidden />
             {copy.retry}
@@ -433,7 +443,7 @@ function SaveIndicator({
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="underline outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 rounded"
+            className="underline outline-none focus:ring-2 focus:ring-blue-500/40 rounded"
           >
             {copy.reload}
           </button>
@@ -458,6 +468,9 @@ function StepBody({
 }) {
   const { lang } = useLang();
   const copy = UI[lang];
+  // The server's ordering again — Back and Next must walk the same list the
+  // rail renders, or the two disagree the moment a step is added.
+  const order = view.steps.map((s) => s.step);
   const autosave = useOnboardingStepAutosave(step);
   const heading = useRef<HTMLHeadingElement | null>(null);
 
@@ -534,19 +547,19 @@ function StepBody({
         {index > 0 ? (
           <button
             type="button"
-            onClick={() => void goto(PROVIDER_ONBOARDING_STEPS[index - 1])}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 active:scale-95 transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+            onClick={() => void goto(order[index - 1])}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 active:scale-95 transition-all outline-none focus:ring-2 focus:ring-blue-500/40"
             style={{ fontSize: '14px', fontWeight: 700 }}
           >
             <ArrowLeft size={15} className="rtl:rotate-180" aria-hidden />
             {copy.back}
           </button>
         ) : null}
-        {index < PROVIDER_ONBOARDING_STEPS.length - 1 ? (
+        {index < order.length - 1 ? (
           <button
             type="button"
-            onClick={() => void goto(PROVIDER_ONBOARDING_STEPS[index + 1])}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-200 dark:shadow-none active:scale-95 transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+            onClick={() => void goto(order[index + 1])}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-200 dark:shadow-none active:scale-95 transition-all outline-none focus:ring-2 focus:ring-blue-500/40"
             style={{ fontSize: '14px', fontWeight: 700 }}
           >
             {copy.next}
@@ -785,7 +798,7 @@ function LocationStep({ view, save, errorFor }: StepProps) {
         type="button"
         onClick={locate}
         disabled={geo === 'locating'}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 active:scale-95 transition-all disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 active:scale-95 transition-all disabled:opacity-60 outline-none focus:ring-2 focus:ring-blue-500/40"
         style={{ fontSize: '13px', fontWeight: 700 }}
       >
         {geo === 'locating' ? (
@@ -1120,7 +1133,7 @@ function AvailabilityStep({ view, save, errorFor }: StepProps) {
                 type="button"
                 aria-label={`${copy.remove} ${DAY_LABELS[lang][interval.dayOfWeek]} ${minuteToTime(interval.startMinute)}`}
                 onClick={() => commit(rows.filter((_, j) => j !== i))}
-                className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 active:scale-95 transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 active:scale-95 transition-all outline-none focus:ring-2 focus:ring-blue-500/40"
               >
                 <Trash2 size={15} aria-hidden />
               </button>
@@ -1141,7 +1154,7 @@ function AvailabilityStep({ view, save, errorFor }: StepProps) {
       <button
         type="button"
         onClick={() => commit([...rows, { dayOfWeek: 1, startMinute: 540, endMinute: 1020 }])}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 active:scale-95 transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 active:scale-95 transition-all outline-none focus:ring-2 focus:ring-blue-500/40"
         style={{ fontSize: '13px', fontWeight: 700 }}
       >
         <Plus size={15} aria-hidden />
@@ -1224,7 +1237,7 @@ function ConsentStep({ view, save, errorFor }: StepProps) {
             // invents a version.
             save({ acceptedConsentVersion: event.target.checked ? view.policyVersion : null });
           }}
-          className="mt-0.5 w-5 h-5 rounded accent-blue-600 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+          className="mt-0.5 w-5 h-5 rounded accent-blue-600 outline-none focus:ring-2 focus:ring-blue-500/40"
         />
         <span>
           <span
@@ -1317,7 +1330,7 @@ function ReviewStep({
               <button
                 type="button"
                 onClick={() => onGo(s.step)}
-                className="w-full flex items-center justify-between gap-3 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-start active:scale-[0.99] transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                className="w-full flex items-center justify-between gap-3 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-start active:scale-[0.99] transition-all outline-none focus:ring-2 focus:ring-blue-500/40"
               >
                 <span className="min-w-0">
                   <span
@@ -1356,7 +1369,7 @@ function ReviewStep({
         type="button"
         disabled={!view.complete || submit.isPending}
         onClick={() => submit.mutate({ version: view.version })}
-        className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-200 dark:shadow-none active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+        className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-200 dark:shadow-none active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed outline-none focus:ring-2 focus:ring-blue-500/40"
         style={{ fontSize: '15px', fontWeight: 800 }}
       >
         {submit.isPending ? (

@@ -11,7 +11,12 @@ import { AlertCircle, Check } from 'lucide-react';
 //     screen reader announces what it is
 //   - aria-invalid and aria-describedby wired to the error text, so the error
 //     is announced when the field takes focus rather than only being visible
-//   - a visible focus ring, because keyboard users need to know where they are
+//   - a visible focus ring on plain `:focus`, not only `:focus-visible`.
+//     `:focus-visible` is suppressed for PROGRAMMATIC focus when the last
+//     input modality was a pointer — and this wizard moves focus
+//     programmatically on every step change, so a focus-visible-only ring is
+//     invisible at exactly the moment it matters most. Caught by the
+//     real-browser suite; jsdom cannot see it.
 //
 // The visual language is the existing FixNow provider surface: rounded-2xl
 // inputs, slate borders, blue-600 accents, dark: variants throughout, and
@@ -243,7 +248,7 @@ export function ChoiceGroup<T extends string>({
               role="radio"
               aria-checked={selected}
               onClick={() => onChange(option.value)}
-              className={`w-full text-start px-4 py-3 rounded-2xl border transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${
+              className={`w-full text-start px-4 py-3 rounded-2xl border transition-colors outline-none focus:ring-2 focus:ring-blue-500/40 ${
                 selected
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
                   : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'
@@ -338,7 +343,7 @@ export function ChipToggles({
                 type="button"
                 aria-pressed={on}
                 onClick={() => onToggle(option.value)}
-                className={`px-3.5 py-2 rounded-full border transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${
+                className={`px-3.5 py-2 rounded-full border transition-colors outline-none focus:ring-2 focus:ring-blue-500/40 ${
                   on
                     ? 'border-blue-500 bg-blue-600 text-white'
                     : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200'
