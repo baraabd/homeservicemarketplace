@@ -29,6 +29,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, cpSync, rmSync, readdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,9 +38,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG = join(HERE, '..');
 const WIN = process.platform === 'win32';
 
+// The snapshot rule lives in a CommonJS lib beside this file so it can be unit
+// tested without a Postgres server (apps/api/test/scripts/migration-history.spec.ts).
+const require = createRequire(import.meta.url);
+const { SPRINT2_START, selectHistoricalMigrations } = require('./migration-history.lib.cjs');
+
 const ADMIN_URL =
   process.env.ADMIN_DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/postgres';
-const SPRINT2_PREFIX = '20260822';
 const INDEXES = [
   'provider_category_application_one_pending_uniq',
   'user_email_lower_uniq',
@@ -103,15 +108,62 @@ function recreate(db) {
 
 // A migrations directory holding only the migrations that existed BEFORE this
 // sprint, so we can materialise the exact database an upgrade starts from.
+//
+// The boundary is a NAMED migration, not a date. Selecting by date prefix
+// deleted a Sprint 6 migration that merely shared Sprint 2's date and retained
+// every Sprint 7/8/9 migration, so this "pre-Sprint-2" database arrived
+// carrying the Sprint 9 backfill while missing the Sprint 2 migration that
+// creates DataRemediationLog — which the backfill writes to before it changes
+// anything. CI: P3018 / 42P01.
 function preSprint2Schema() {
   const dir = mkdtempSync(join(tmpdir(), 'hsm-pre-sprint2-'));
-  cpSync(join(PKG, 'prisma'), join(dir, 'prisma'), { recursive: true });
-  for (const name of readdirSync(join(dir, 'prisma', 'migrations'))) {
-    if (name.startsWith(SPRINT2_PREFIX)) {
-      rmSync(join(dir, 'prisma', 'migrations', name), { recursive: true, force: true });
+  try {
+    cpSync(join(PKG, 'prisma'), join(dir, 'prisma'), { recursive: true });
+
+    const migrations = join(dir, 'prisma', 'migrations');
+    const entries = readdirSync(migrations, { withFileTypes: true }).map((e) => ({
+      name: e.name,
+      isDirectory: e.isDirectory(),
+    }));
+
+    // Throws if the cutoff is missing, duplicated or malformed, or if any entry
+    // that is plainly meant to be a migration cannot be placed against it.
+    const { keep, drop } = selectHistoricalMigrations(entries, SPRINT2_START);
+
+    for (const name of drop) {
+      rmSync(join(migrations, name), { recursive: true, force: true });
     }
+
+    // Verify what was actually written, not what we intended to write. A
+    // failed rmSync, a case-insensitive filesystem or a symlink would all
+    // leave a post-cutoff migration in place, and the whole point of scenario
+    // B is that this baseline is genuinely historical.
+    const remaining = readdirSync(migrations, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+    const late = remaining.filter((name) => name >= SPRINT2_START);
+    if (late.length > 0) {
+      throw new Error(
+        `pre-Sprint-2 snapshot still contains ${late.length} migration(s) at or after ` +
+          `${SPRINT2_START}: ${late.join(', ')}`,
+      );
+    }
+    if (remaining.length !== keep.length) {
+      throw new Error(
+        `pre-Sprint-2 snapshot has ${remaining.length} migrations, expected ${keep.length}`,
+      );
+    }
+
+    console.log(
+      `  pre-Sprint-2 snapshot: ${keep.length} migrations kept, ${drop.length} removed ` +
+        `(cutoff ${SPRINT2_START})`,
+    );
+    return dir;
+  } catch (err) {
+    // Do not leak the temp directory when the snapshot cannot be built.
+    rmSync(dir, { recursive: true, force: true });
+    throw err;
   }
-  return dir;
 }
 
 function deploy(db, schemaDir = PKG) {
@@ -165,7 +217,18 @@ VALUES ('req-1','u-seek','cat-plumb','addr-1','Leaky tap drips constantly','OPEN
 async function main() {
   console.log('Sprint 2 constraint-migration verification\n');
   const preDir = preSprint2Schema();
+  try {
+    await scenarios(preDir);
+  } finally {
+    // Previously this ran only on the success path, so every failing run left
+    // a copy of prisma/ behind in the temp directory.
+    rmSync(preDir, { recursive: true, force: true });
+  }
+  console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
+  process.exit(failures === 0 ? 0 : 1);
+}
 
+async function scenarios(preDir) {
   // ── A: empty database ────────────────────────────────────────────────────
   console.log('A. empty database');
   recreate('hsm_mig_empty');
@@ -307,10 +370,6 @@ async function main() {
     !dIdx.has('bid_one_active_per_provider_request_uniq'),
     'the constraint was not left half-applied',
   );
-
-  rmSync(preDir, { recursive: true, force: true });
-  console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
-  process.exit(failures === 0 ? 0 : 1);
 }
 
 main().catch((err) => {
