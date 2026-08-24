@@ -641,7 +641,18 @@ export async function seed(): Promise<void> {
   // the production safety check, so an import of seed() from another script
   // could bypass it. Cheap to double-check; tests still pin the guard itself.
   assertSeedProductionSafe();
-  await prisma.$transaction(seedWithTx);
+  // ONE transaction, so a partial seed is impossible — but that is far more
+  // work than Prisma's 5s interactive-transaction default is sized for. That
+  // default is a budget for a web request; this routine upserts the roles,
+  // permissions, category tree, demo users and admin grants in a single unit.
+  //
+  // It had been passing on margin. Under a loaded parallel test run it crossed
+  // the line by 39ms and failed with "Transaction already closed: ... the
+  // timeout for this transaction was 5000 ms", which would equally be a cold
+  // database or a slow CI runner — the seed is a CI deploy step, not only a
+  // test fixture. Stating a budget appropriate to a bootstrap routine is the
+  // fix; shortening the transaction would trade atomicity for it.
+  await prisma.$transaction(seedWithTx, { maxWait: 30_000, timeout: 120_000 });
 }
 
 export function assertSeedProductionSafe(env: NodeJS.ProcessEnv = process.env): void {
