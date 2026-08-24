@@ -885,7 +885,8 @@ describe('patchStep — against a real ValidationPipe instance', () => {
     // The condition that caused the bug, asserted directly: the instance
     // really does carry keys the client never sent.
     expect(Object.keys(body).length).toBeGreaterThan(20);
-    expect((body as Record<string, unknown>).bio).toBeUndefined();
+    expect(Object.keys(body)).toContain('bio');
+    expect(body.bio).toBeUndefined();
 
     await h.service.patchStep('u-1', 'PROVIDER_TYPE', body);
 
