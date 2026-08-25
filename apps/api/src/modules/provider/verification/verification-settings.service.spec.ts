@@ -142,3 +142,84 @@ describe('an absent or unusable row falls back to the schema default', () => {
     await expect(service.policyMaxDocuments()).resolves.toBe(schemaDefault);
   });
 });
+
+// ── Sprint 9B.3 — evidence upload limits ──────────────────────────────────
+
+import {
+  EVIDENCE_MAX_BYTES_KEY,
+  EVIDENCE_MAX_DOCUMENTS_PER_CASE_KEY,
+  EVIDENCE_UPLOAD_TTL_SECONDS_KEY,
+} from './verification-settings.service';
+
+const EVIDENCE_KEYS = [
+  EVIDENCE_MAX_BYTES_KEY,
+  EVIDENCE_MAX_DOCUMENTS_PER_CASE_KEY,
+  EVIDENCE_UPLOAD_TTL_SECONDS_KEY,
+];
+
+function buildByKey(rows: Record<string, unknown>) {
+  const findByKey = jest.fn(async (key: string) =>
+    key in rows ? { key, value: rows[key] } : null,
+  );
+  return { service: new VerificationSettingsService({ findByKey } as never), findByKey };
+}
+
+describe('evidence limits come from the canonical schema', () => {
+  it.each(EVIDENCE_KEYS)('%s is declared with bounds and a default', (key) => {
+    const field = ADMIN_SETTINGS_SCHEMA.find((f) => f.key === key);
+    expect(field).toBeDefined();
+    expect(field?.type).toBe('integer');
+    expect(typeof field?.default).toBe('number');
+    expect(field?.min).toBeGreaterThan(0);
+    expect(field?.max).toBeGreaterThanOrEqual(field?.min as number);
+  });
+
+  it('resolves all three together', async () => {
+    // Values chosen INSIDE the declared bounds. 1 KiB would be below the 64 KiB
+    // minimum and would correctly fall back — which is a different test.
+    const { service } = buildByKey({
+      [EVIDENCE_MAX_BYTES_KEY]: 128 * 1024,
+      [EVIDENCE_MAX_DOCUMENTS_PER_CASE_KEY]: 3,
+      [EVIDENCE_UPLOAD_TTL_SECONDS_KEY]: 120,
+    });
+    await expect(service.evidenceLimits()).resolves.toEqual({
+      maxBytes: 128 * 1024,
+      maxDocumentsPerCase: 3,
+      uploadTtlSeconds: 120,
+    });
+  });
+
+  it('falls back per key, so one bad row does not poison the others', async () => {
+    // A partially-resolved limit set is the dangerous outcome: a service that
+    // silently lost the count ceiling would enforce half the policy.
+    const { service } = buildByKey({
+      [EVIDENCE_MAX_BYTES_KEY]: 'not a number',
+      [EVIDENCE_MAX_DOCUMENTS_PER_CASE_KEY]: 3,
+    });
+    const limits = await service.evidenceLimits();
+    const defaultBytes = ADMIN_SETTINGS_SCHEMA.find((f) => f.key === EVIDENCE_MAX_BYTES_KEY)
+      ?.default as number;
+    const defaultTtl = ADMIN_SETTINGS_SCHEMA.find((f) => f.key === EVIDENCE_UPLOAD_TTL_SECONDS_KEY)
+      ?.default as number;
+    expect(limits.maxBytes).toBe(defaultBytes);
+    expect(limits.maxDocumentsPerCase).toBe(3);
+    expect(limits.uploadTtlSeconds).toBe(defaultTtl);
+  });
+
+  it('clamps an out-of-band oversized ceiling to the declared maximum', async () => {
+    // An upload ceiling written past the schema max would widen the attack
+    // surface every parser and scanner downstream has to handle.
+    const max = ADMIN_SETTINGS_SCHEMA.find((f) => f.key === EVIDENCE_MAX_BYTES_KEY)?.max as number;
+    const { service } = buildByKey({ [EVIDENCE_MAX_BYTES_KEY]: max * 10 });
+    await expect(service.evidenceLimits()).resolves.toMatchObject({ maxBytes: max });
+  });
+
+  it('rejects a zero or negative ceiling in favour of the default', async () => {
+    const def = ADMIN_SETTINGS_SCHEMA.find((f) => f.key === EVIDENCE_MAX_BYTES_KEY)
+      ?.default as number;
+    for (const bad of [0, -1]) {
+      const { service } = buildByKey({ [EVIDENCE_MAX_BYTES_KEY]: bad });
+      await expect(service.evidenceLimits()).resolves.toMatchObject({ maxBytes: def });
+    }
+  });
+});

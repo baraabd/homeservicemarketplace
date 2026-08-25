@@ -661,6 +661,8 @@ model ServiceCategory {
   // "Every selectable competency", which is what matching and the specialty
   // picker both ask for.
   @@index([isLeaf, isActive])
+  /// Sprint 9B.3 — evidence uploads prepared against this category licence.
+  pendingEvidenceAssets MediaAsset[] @relation("MediaAssetPendingCategory")
 }
 
 model ServiceRequestEvent {
@@ -938,6 +940,12 @@ enum AuditEventType {
   // attempts to be verified.
   VERIFICATION_CASE_CREATED
   VERIFICATION_CASE_RESUMED
+  // Sprint 9B.3 — evidence upload. Distinct from the case events: a provider
+  // reserving an upload slot and a provider attaching a finished document are
+  // different facts, and reusing a case event for either would make the
+  // timeline say something that did not happen.
+  VERIFICATION_EVIDENCE_PREPARED
+  VERIFICATION_EVIDENCE_ATTACHED
 }
 
 enum AddressType {
@@ -1696,6 +1704,34 @@ model MediaAsset {
   /// never readable and is swept.
   uploadCompletedAt DateTime?
 
+  /// Sprint 9B.3 — the case a PREPARED upload belongs to, before any
+  /// VerificationDocument exists to carry the link.
+  ///
+  /// Load-bearing for authorization, not convenience: ownership of restricted
+  /// evidence is derived through case.providerProfile.userId, and between
+  /// prepare and finalize there is no document to derive it from. Parsing the
+  /// storage key for a case id would make a string the authorization boundary,
+  /// which is exactly what ADR 0009 refuses.
+  ///
+  /// SetNull rather than Cascade: deleting a case must not delete the record of
+  /// bytes that may still exist in the bucket. Retention owns that decision.
+  verificationCaseId String?
+
+  /// Sprint 9B.3 — the document slot this upload was prepared FOR.
+  ///
+  /// Recorded at prepare time so finalize can create the VerificationDocument
+  /// without trusting a second client-supplied kind, and so a retried prepare
+  /// can be recognised as the same request rather than starting a new upload.
+  pendingDocumentKind VerificationDocumentKind?
+  pendingServiceCategoryId String?
+
+  /// Sprint 9B.3 — when the prepared upload stops being usable.
+  ///
+  /// Stored rather than computed from createdAt + the configured TTL, so an
+  /// admin shortening the TTL cannot retroactively expire uploads that are
+  /// already in flight.
+  uploadExpiresAt   DateTime?
+
   // ── retention (ADR 0012) ────────────────────────────────────────────────
   /// When the BYTES become eligible for deletion. Null until the owning case
   /// reaches a terminal state and a window can be computed.
@@ -1709,6 +1745,8 @@ model MediaAsset {
   updatedAt         DateTime        @updatedAt
 
   owner                User?                 @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  verificationCase     VerificationCase?     @relation(fields: [verificationCaseId], references: [id], onDelete: SetNull)
+  pendingCategory      ServiceCategory?      @relation("MediaAssetPendingCategory", fields: [pendingServiceCategoryId], references: [id], onDelete: SetNull)
   verificationDocument VerificationDocument?
   portfolioItems       ProviderPortfolioItem[]
 
@@ -1717,7 +1755,31 @@ model MediaAsset {
   /// The scan worker queue.
   @@index([scanState, createdAt])
   @@index([ownerUserId, visibility])
+  /// The cleanup sweep: prepared uploads that expired without being finalized.
+  @@index([verificationCaseId, uploadCompletedAt])
 }
+
+// Sprint 9B.3 — one more PARTIAL unique index that Prisma cannot express, so
+// it lives in raw forward-only SQL and is invisible to .
+// Same arrangement as the Sprint 2 and 9B.2 partial indexes: created once,
+// never recreated by Prisma, and must not be dropped by a schema edit.
+//
+//   media_asset_one_open_preparation_per_slot_uniq
+//     UNIQUE (verificationCaseId, pendingDocumentKind, pendingServiceCategoryId)
+//     NULLS NOT DISTINCT
+//     WHERE uploadCompletedAt IS NULL AND deletedAt IS NULL
+//       AND verificationCaseId IS NOT NULL
+//
+//     Does two jobs the service layer cannot, because both are "at most one row
+//     like this" — a read followed by a write that two concurrent requests both
+//     win. It makes a retried prepare collide (so the service returns the
+//     existing preparation instead of starting a second upload), and it stops
+//     concurrent prepares each passing the documents-per-case check and then
+//     both inserting.
+//
+//     NULLS NOT DISTINCT is load-bearing: every non-licence kind has a NULL
+//     category, and under Postgres' default semantics two such rows would be
+//     distinct and both would insert — the entire race this closes.
 
 /// A published, immutable requirement set (ADR 0010). Rules differ by country,
 /// provider type and category, and change on a legal timetable nobody in this
@@ -1831,6 +1893,8 @@ model VerificationCase {
   policy               VerificationRequirementPolicy? @relation(fields: [policyVersion], references: [version], onDelete: NoAction, onUpdate: NoAction)
   assignedTo           User?                          @relation("VerificationCaseAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   documents            VerificationDocument[]
+  /// Sprint 9B.3 — uploads prepared against this case but not yet finalized.
+  preparedAssets       MediaAsset[]
   decisions            VerificationDecision[]
   accessLogs           VerificationAccessLog[]
   grants               ProviderWorkAccessGrant[]

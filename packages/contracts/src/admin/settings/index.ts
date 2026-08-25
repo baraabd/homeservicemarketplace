@@ -114,6 +114,53 @@ export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
     min: 1,
     max: 20,
   },
+  {
+    // Sprint 9B.3 — the largest single piece of identity evidence accepted.
+    //
+    // A ceiling on attack surface as much as on disk: every byte accepted is a
+    // byte a parser, a scanner and a reviewer's browser must handle. 10 MB
+    // comfortably holds a phone photo of a passport or a multi-page PDF.
+    //
+    // Enforced server-side against the RECEIVED length, never against the
+    // declared one, so a lying Content-Length cannot widen it.
+    key: 'verification_evidence_max_bytes',
+    type: 'integer',
+    description:
+      'Maximum size in bytes of a single piece of identity evidence. Enforced against the bytes actually received, not against the declared length.',
+    default: 10 * 1024 * 1024,
+    min: 64 * 1024,
+    max: 25 * 1024 * 1024,
+  },
+  {
+    // Sprint 9B.3 — how many live documents one case may hold.
+    //
+    // Bounds both the review workload and the blast radius of a compromised
+    // provider account: without it, an attacker with a session can fill the
+    // restricted bucket. Superseded documents do not count, so resubmitting
+    // after a rejection is never blocked by this.
+    key: 'verification_evidence_max_documents_per_case',
+    type: 'integer',
+    description:
+      'How many live (non-superseded) evidence documents one verification case may hold. Superseded documents are not counted, so resubmission is never blocked by this limit.',
+    default: 10,
+    min: 1,
+    max: 25,
+  },
+  {
+    // Sprint 9B.3 — how long a prepared upload stays usable.
+    //
+    // Short on purpose: the prepare response authorises a write into the
+    // restricted namespace, so it is a capability with a blast radius, and a
+    // stale one left in a browser history or a proxy log should be inert.
+    // Long enough for a slow mobile upload of the size ceiling above.
+    key: 'verification_evidence_upload_ttl_seconds',
+    type: 'integer',
+    description:
+      'How long a prepared evidence upload stays valid, in seconds. The prepare response authorises a write into the restricted namespace, so this is deliberately short.',
+    default: 900,
+    min: 60,
+    max: 3600,
+  },
 ] as const;
 
 export type AdminSettingKey = (typeof ADMIN_SETTINGS_SCHEMA)[number]['key'];
