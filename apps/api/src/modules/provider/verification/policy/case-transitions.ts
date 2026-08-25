@@ -138,6 +138,48 @@ export function isLegalCaseTransition(
   return VERIFICATION_CASE_TRANSITIONS[action].from.includes(from);
 }
 
+/**
+ * Sprint 9B.5 — the actions that have a working command behind them TODAY.
+ *
+ * LEGAL AND IMPLEMENTED ARE DIFFERENT QUESTIONS, and conflating them is the
+ * exact defect this file's header describes: the admin table offered an Approve
+ * button and the backend answered 409.
+ *
+ * The transition table above describes the DOMAIN — approve is legal from
+ * SUBMITTED, and it will stay legal, because that is true of verification
+ * regardless of what this codebase has finished building. This list describes
+ * the BUILD. `approve` is missing from it deliberately: granting work access is
+ * an atomic operation across the case, the grant and the provider's status
+ * (ADR 0013), and offering half of it is worse than offering none.
+ *
+ * Withholding, never inventing: everything here must exist in the table, and
+ * `offerableCaseActions` can only ever return a subset of the legal set. Both
+ * are asserted.
+ */
+export const IMPLEMENTED_CASE_ACTIONS: readonly VerificationCaseAction[] = Object.freeze([
+  'submit',
+  'assign',
+  'requestAction',
+]);
+
+export function isImplementedCaseAction(action: VerificationCaseAction): boolean {
+  return IMPLEMENTED_CASE_ACTIONS.includes(action);
+}
+
+/**
+ * What the server may actually OFFER: legal for this actor in this state, AND
+ * backed by a command that works.
+ *
+ * This is what a client should be given. `availableCaseActions` remains the
+ * answer to "what does the domain permit", which is what the policy tests walk.
+ */
+export function offerableCaseActions(
+  state: VerificationCaseState,
+  actor: 'provider' | 'reviewer' | 'system',
+): VerificationCaseAction[] {
+  return availableCaseActions(state, actor).filter(isImplementedCaseAction);
+}
+
 /** States from which nothing further can happen without a NEW case. */
 export const TERMINAL_CASE_STATES: readonly VerificationCaseState[] = Object.freeze([
   'REJECTED',

@@ -5,6 +5,8 @@ import {
   VERIFICATION_CASE_TRANSITIONS,
   availableCaseActions,
   isLegalCaseTransition,
+  IMPLEMENTED_CASE_ACTIONS,
+  offerableCaseActions,
   type VerificationCaseAction,
 } from './case-transitions';
 
@@ -198,5 +200,82 @@ describe('full cross-product', () => {
         }
       }
     }
+  });
+});
+
+// ── Sprint 9B.5: legal is not the same as implemented ──────────────────────
+
+describe('the server only offers actions it can actually perform', () => {
+  it('lists only actions that exist in the transition table', () => {
+    for (const action of IMPLEMENTED_CASE_ACTIONS) {
+      expect(VERIFICATION_CASE_TRANSITIONS[action]).toBeDefined();
+    }
+  });
+
+  it('NEVER offers approve, however legal it is', () => {
+    // The D-3 defect this file's header describes, in its exact original form:
+    // a UI offered an Approve button and the backend answered 409. `approve` is
+    // legal from SUBMITTED and IN_REVIEW and will stay legal — the transition
+    // table describes the DOMAIN. What it must not be is offered, until the
+    // atomic grant workflow behind it exists (Sprint 9B.7).
+    expect(isLegalCaseTransition('approve', 'SUBMITTED')).toBe(true);
+    expect(isLegalCaseTransition('approve', 'IN_REVIEW')).toBe(true);
+
+    for (const state of ALL_STATES) {
+      expect(offerableCaseActions(state, 'reviewer')).not.toContain('approve');
+      expect(offerableCaseActions(state, 'provider')).not.toContain('approve');
+    }
+  });
+
+  it('offers a provider submission from a draft and from a returned case', () => {
+    expect(offerableCaseActions('DRAFT', 'provider')).toEqual(['submit']);
+    expect(offerableCaseActions('ACTION_REQUIRED', 'provider')).toEqual(['submit']);
+  });
+
+  it('offers a reviewer assignment and request-action on live cases', () => {
+    for (const state of ['SUBMITTED', 'IN_REVIEW'] as const) {
+      const offered = offerableCaseActions(state, 'reviewer');
+      expect(offered).toContain('assign');
+      expect(offered).toContain('requestAction');
+    }
+  });
+
+  it('offers nothing from a terminal state, to anyone', () => {
+    for (const state of ['REJECTED', 'EXPIRED'] as const) {
+      expect(offerableCaseActions(state, 'provider')).toEqual([]);
+      expect(offerableCaseActions(state, 'reviewer')).toEqual([]);
+      expect(offerableCaseActions(state, 'system')).toEqual([]);
+    }
+  });
+
+  it('offers a provider nothing while a reviewer holds the case', () => {
+    // The provider waits. Offering "submit" here would let them overwrite a
+    // case someone is mid-way through reading.
+    for (const state of ['SUBMITTED', 'IN_REVIEW'] as const) {
+      expect(offerableCaseActions(state, 'provider')).toEqual([]);
+    }
+  });
+
+  it('is always a SUBSET of what the transition table allows', () => {
+    // The guard cannot invent an action, only withhold one. If these ever
+    // disagree the offer is a lie in the other direction.
+    for (const state of ALL_STATES) {
+      for (const actor of ['provider', 'reviewer', 'system'] as const) {
+        const legal = availableCaseActions(state, actor);
+        for (const offered of offerableCaseActions(state, actor)) {
+          expect(legal).toContain(offered);
+        }
+      }
+    }
+  });
+
+  it('withholds exactly the unimplemented actions and nothing else', () => {
+    // Pins WHICH actions are still missing, so finishing one in a later sprint
+    // fails this test until the list is updated — the list cannot silently
+    // drift away from reality.
+    const notYet = (Object.keys(VERIFICATION_CASE_TRANSITIONS) as VerificationCaseAction[]).filter(
+      (a) => !IMPLEMENTED_CASE_ACTIONS.includes(a),
+    );
+    expect([...notYet].sort()).toEqual(['approve', 'expire', 'reject', 'reverify', 'revoke']);
   });
 });
