@@ -940,6 +940,12 @@ enum AuditEventType {
   // attempts to be verified.
   VERIFICATION_CASE_CREATED
   VERIFICATION_CASE_RESUMED
+  // Sprint 9B.3 — evidence upload. Distinct from the case events: a provider
+  // reserving an upload slot and a provider attaching a finished document are
+  // different facts, and reusing a case event for either would make the
+  // timeline say something that did not happen.
+  VERIFICATION_EVIDENCE_PREPARED
+  VERIFICATION_EVIDENCE_ATTACHED
 }
 
 enum AddressType {

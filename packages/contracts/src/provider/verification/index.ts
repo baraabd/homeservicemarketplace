@@ -59,3 +59,6 @@ export interface CurrentVerificationCaseResponse {
   /** Null when the provider has never started verification. */
   case: ProviderVerificationCase | null;
 }
+
+// Sprint 9B.3 — the restricted evidence upload lifecycle.
+export * from './evidence';

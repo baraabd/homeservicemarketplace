@@ -6,6 +6,9 @@ import { AuditModule } from '../../iam/audit/audit.module';
 import { ProviderVerificationCaseController } from './case/provider-verification-case.controller';
 import { ProviderVerificationCaseService } from './case/provider-verification-case.service';
 import { EvidenceReadController } from './media/evidence-read.controller';
+import { EvidenceUploadController } from './media/evidence-upload.controller';
+import { EvidenceUploadService } from './media/evidence-upload.service';
+import { VerificationSettingsService } from './verification-settings.service';
 import { EvidenceReadService } from './media/evidence-read.service';
 
 // Sprint 9B — restricted provider identity evidence.
@@ -49,7 +52,17 @@ import { EvidenceReadService } from './media/evidence-read.service';
   // same transaction as the write. PersistenceModule is @Global, so the
   // settings repository needs no import.
   imports: [AuthorizationModule, StorageModule, AuditModule],
-  controllers: [EvidenceReadController, ProviderVerificationCaseController],
-  providers: [EvidenceReadService, ProviderVerificationCaseService],
+  controllers: [
+    EvidenceReadController,
+    EvidenceUploadController,
+    ProviderVerificationCaseController,
+  ],
+  providers: [
+    EvidenceReadService,
+    EvidenceUploadService,
+    ProviderVerificationCaseService,
+    // Reads the evidence limits through the canonical PlatformSettingRepository.
+    VerificationSettingsService,
+  ],
 })
 export class ProviderVerificationModule {}
