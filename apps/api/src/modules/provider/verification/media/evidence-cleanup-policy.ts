@@ -20,7 +20,7 @@
  * could delete the object in between, turning a successful upload into a
  * mysterious failure.
  *
- * Sixty seconds is far longer than that window and costs nothing but a little
+ * Five minutes is far longer than that window and costs nothing but a little
  * disk.
  */
 export const CLEANUP_GRACE_SECONDS = 300;
