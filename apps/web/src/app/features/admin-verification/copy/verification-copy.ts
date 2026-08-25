@@ -63,12 +63,17 @@ export const SCAN_STATE_LABELS: Record<Lang, Record<MediaScanStateCode, string>>
     CLEAN: 'Scanned',
     QUARANTINED: 'Quarantined — not viewable',
     SCAN_FAILED: 'Scan failed — retrying',
+    // Says what to DO about it. "Rejected" alone reads as a verdict on the
+    // provider; the fault is usually a failed upload, and the fix is to send
+    // the file again.
+    REJECTED: 'Rejected — file unreadable, please re-upload',
   },
   ar: {
     PENDING: 'بانتظار الفحص الأمني',
     CLEAN: 'تم الفحص',
     QUARANTINED: 'محجوز — غير قابل للعرض',
     SCAN_FAILED: 'فشل الفحص — إعادة المحاولة',
+    REJECTED: 'مرفوض — الملف غير صالح، يرجى رفعه من جديد',
   },
 };
 

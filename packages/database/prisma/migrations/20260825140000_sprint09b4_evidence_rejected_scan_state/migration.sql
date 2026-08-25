@@ -1,0 +1,27 @@
+-- Sprint 9B.4 — a scan state for files WE refused, distinct from malware.
+--
+-- QUARANTINED means a scanner positively identified something, and ADR 0012
+-- gives it the LONGEST retention window because destroying malware destroys the
+-- evidence of the attack. A provider whose PDF arrived truncated has not
+-- attacked anyone, and filing their document under that state both fabricates a
+-- finding and holds an innocent person's identity document far longer than any
+-- policy intends.
+--
+-- REJECTED is that separate answer: disallowed format, bytes disagreeing with
+-- the declared type or the filename, or a truncated document.
+--
+-- Additive and forward-only. Adding a value to an enum cannot invalidate an
+-- existing row, so there is nothing to backfill and no rewrite: every asset
+-- keeps the state it already had.
+--
+-- ROLLBACK NOTE: PostgreSQL cannot remove a value from an enum. Reverting the
+-- code is safe and requires no schema change — rows already written as
+-- REJECTED stay unreadable under the pre-9B.4 read rule too, because that rule
+-- admits CLEAN and nothing else. Do not attempt to drop the value.
+--
+-- Executed outside an explicit transaction block by Prisma's migration runner.
+-- The new value is NOT used anywhere in this migration, which is what makes
+-- that safe: PostgreSQL forbids using an enum value added in the same
+-- transaction that added it.
+
+ALTER TYPE "MediaScanState" ADD VALUE IF NOT EXISTS 'REJECTED';

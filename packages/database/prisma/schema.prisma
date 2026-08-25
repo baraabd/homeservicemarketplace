@@ -1670,6 +1670,15 @@ enum MediaScanState {
   /// The scanner itself errored. Distinct from QUARANTINED: nobody judged the
   /// file, the infrastructure failed. Retryable, and unreadable meanwhile.
   SCAN_FAILED
+  /// Sprint 9B.4 — WE refused the file: a format outside the allowlist, bytes
+  /// that disagree with the declared type or the extension, or a truncated
+  /// document. Terminal.
+  ///
+  /// Deliberately NOT QUARANTINED. That state means a scanner positively
+  /// identified malware and carries the longest retention as attack evidence;
+  /// filing a provider's corrupted PDF under it both fabricates a finding and
+  /// holds an innocent person's document far longer than it should be held.
+  REJECTED
 }
 
 /// A stored object. The unit of media is this row, not a URL string — a URL
