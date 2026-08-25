@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -291,27 +291,77 @@ describe('restricted code never depends on the local adapter directly', () => {
   // LocalDiskStorageAdapter and called absolutePathForKey(), which has no
   // meaning under STORAGE_DRIVER=s3 — restricted reads were broken in every
   // production configuration and no test noticed, because every test ran local.
-  it('no file under provider/verification imports LocalDiskStorageAdapter', () => {
-    const root = join(__dirname, '..', '..', 'modules', 'provider', 'verification');
 
+  /**
+   * Files under `root` whose import statements mention `symbol`.
+   *
+   * ONE directory read per directory. This used to call `readdirSync(dir)` for
+   * the names and then `statSync(full)` on each one to ask whether it was a
+   * directory — a check/use pair with a window between them, which CodeQL
+   * flagged as a filesystem race: the path can be replaced between the two
+   * calls, so the answer describes something other than what is then opened.
+   * `withFileTypes` answers both questions from the same directory read, so
+   * there is no window to exploit.
+   *
+   * It also closes a smaller hole in passing. `statSync` FOLLOWS symlinks, so
+   * a link inside the tree pointing anywhere on the filesystem would have been
+   * walked as though it were part of provider/verification. A `Dirent`
+   * describes the entry itself, and links are skipped explicitly below.
+   */
+  const findFilesImporting = (root: string, symbol: string): string[] => {
     const offenders: string[] = [];
     const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir)) {
-        const full = join(dir, entry);
-        if (statSync(full).isDirectory()) {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        // Never traverse a link: it can leave the directory under audit.
+        if (entry.isSymbolicLink()) continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
           walk(full);
           continue;
         }
-        if (!entry.endsWith('.ts')) continue;
-        for (const line of readFileSync(full, 'utf8').split('\n')) {
+        if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
+        // Split on either line ending: these files are checked out with CRLF
+        // on Windows, and a lone \n split would leave a trailing \r that the
+        // `startsWith` checks below would still handle but `includes` would
+        // not describe accurately.
+        for (const line of readFileSync(full, 'utf8').split(/\r?\n/)) {
           const trimmed = line.trim();
           const isImport = trimmed.startsWith('import ') || trimmed.startsWith('} from ');
-          if (isImport && line.includes('LocalDiskStorageAdapter')) offenders.push(full);
+          if (isImport && line.includes(symbol)) offenders.push(full);
         }
       }
     };
     walk(root);
+    return offenders;
+  };
 
-    expect(offenders).toEqual([]);
+  it('no file under provider/verification imports LocalDiskStorageAdapter', () => {
+    const root = join(__dirname, '..', '..', 'modules', 'provider', 'verification');
+    expect(findFilesImporting(root, 'LocalDiskStorageAdapter')).toEqual([]);
+  });
+
+  it('the guardrail still detects an offender, and still ignores a mere mention', () => {
+    // Without this, the test above passes just as well if the walker silently
+    // stopped finding anything — which is exactly the risk when changing how
+    // it enumerates directories.
+    const root = mkdtempSync(join(tmpdir(), 'hsm-walk-'));
+    tmpRoots.push(root);
+    mkdirSync(join(root, 'nested'), { recursive: true });
+
+    writeFileSync(
+      join(root, 'nested', 'offender.ts'),
+      'import { LocalDiskStorageAdapter } from "../x";\n',
+    );
+    // A comment naming the class is not a dependency on it.
+    writeFileSync(
+      join(root, 'innocent.ts'),
+      '// LocalDiskStorageAdapter is deliberately not imported here\nexport const x = 1;\n',
+    );
+    // Not TypeScript, so not part of the module graph this guards.
+    writeFileSync(join(root, 'notes.md'), 'import { LocalDiskStorageAdapter } from "x";\n');
+
+    expect(findFilesImporting(root, 'LocalDiskStorageAdapter')).toEqual([
+      join(root, 'nested', 'offender.ts'),
+    ]);
   });
 });
