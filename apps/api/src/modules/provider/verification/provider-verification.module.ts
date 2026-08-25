@@ -7,6 +7,7 @@ import { ProviderVerificationCaseController } from './case/provider-verification
 import { ProviderVerificationCaseService } from './case/provider-verification-case.service';
 import { EvidenceReadController } from './media/evidence-read.controller';
 import { EvidenceUploadController } from './media/evidence-upload.controller';
+import { EvidenceCleanupService } from './media/evidence-cleanup.service';
 import { EvidenceUploadService } from './media/evidence-upload.service';
 import { VerificationSettingsService } from './verification-settings.service';
 import { EvidenceReadService } from './media/evidence-read.service';
@@ -57,9 +58,14 @@ import { EvidenceReadService } from './media/evidence-read.service';
     EvidenceUploadController,
     ProviderVerificationCaseController,
   ],
+  exports: [EvidenceCleanupService],
   providers: [
     EvidenceReadService,
     EvidenceUploadService,
+    // No controller. A route that deletes evidence in bulk is a weapon; the
+    // sweep is invoked by an operator process or scheduler, and its batch
+    // bound is what keeps one invocation from becoming an outage.
+    EvidenceCleanupService,
     ProviderVerificationCaseService,
     // Reads the evidence limits through the canonical PlatformSettingRepository.
     VerificationSettingsService,
