@@ -21,6 +21,8 @@
 // ADMIN_PROVIDER_{APPROVED,REJECTED,SUSPENDED,NOTES_UPDATED} audit row and,
 // for status changes only, notifies the provider's userId.
 export * from './admin-provider-transitions';
+// Sprint 9B.2 — versioned requirement policies.
+export * from './policy';
 export * from './request/list-admin-providers.query';
 export * from './request/admin-provider-decision.request';
 export * from './request/update-review-notes.request';

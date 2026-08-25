@@ -24,6 +24,13 @@ const ALLOWED_METADATA_KEYS = new Set<string>([
   'serviceCategoryId',
   'categorySlug',
   'removedCategoryIds',
+  // Sprint 9B.2 — verification policy and case lifecycle. Identifiers and
+  // enum-valued state only. Deliberately NOT the requirements payload: an
+  // audit row must stay readable and bounded, and the policy version already
+  // points at the exact requirement set, immutably.
+  'policyVersion',
+  'caseId',
+  'caseState',
 ]);
 
 export interface AuditInput {
