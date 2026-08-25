@@ -12,6 +12,8 @@ import { EvidenceUploadService } from './media/evidence-upload.service';
 import { VerificationSettingsService } from './verification-settings.service';
 import { EvidenceReadService } from './media/evidence-read.service';
 import { EvidenceScanService } from './media/evidence-scan.service';
+import { VerificationCaseWorkflowService } from './case/verification-case-workflow.service';
+import { VerificationCaseEventsHandler } from './case/verification-case-events.handler';
 import { EvidenceScannedHandler } from './media/evidence-scanned.handler';
 import { ClamAvMalwareScanner } from './media/clamav-scanner.adapter';
 import { resolveScannerSelection } from './media/scanner-selection';
@@ -70,7 +72,14 @@ import { Logger } from '@nestjs/common';
     EvidenceUploadController,
     ProviderVerificationCaseController,
   ],
-  exports: [EvidenceCleanupService, EvidenceScanService, EvidenceScannedHandler],
+  exports: [
+    EvidenceCleanupService,
+    EvidenceScanService,
+    EvidenceScannedHandler,
+    // Sprint 9B.5 — the only class allowed to act on the case transition table.
+    VerificationCaseWorkflowService,
+    VerificationCaseEventsHandler,
+  ],
   providers: [
     EvidenceReadService,
     EvidenceUploadService,
@@ -85,6 +94,12 @@ import { Logger } from '@nestjs/common';
     // sweep: a route that scans on demand is a route that can be aimed.
     EvidenceScanService,
     EvidenceScannedHandler,
+    // Sprint 9B.5 — the only class allowed to act on the case transition table.
+    // Exported so the admin case-commands controller can drive the same
+    // implementation the provider side uses; two copies of a transition is how
+    // D-3 happened.
+    VerificationCaseWorkflowService,
+    VerificationCaseEventsHandler,
     {
       // The one binding that decides whether evidence can ever be cleared.
       //

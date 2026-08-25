@@ -13,7 +13,9 @@ import { AuditModule } from '../iam/audit/audit.module';
 import { AdminController } from './admin.controller';
 import { AdminRolesController, AdminUsersController } from './users/admin-users.controller';
 import { AdminUsersService } from './users/admin-users.service';
+import { ProviderVerificationModule } from '../provider/verification/provider-verification.module';
 import { AdminVerificationController } from './verification/admin-verification.controller';
+import { AdminVerificationCaseCommandsController } from './verification/admin-verification-case-commands.controller';
 import { AdminVerificationPolicyController } from './verification/admin-verification-policy.controller';
 import { AdminVerificationPolicyService } from './verification/admin-verification-policy.service';
 import { VerificationSettingsService } from '../provider/verification/verification-settings.service';
@@ -62,12 +64,19 @@ import { AdminCatalogService } from './catalog/admin-catalog.service';
     NotificationsModule,
     AdminAccessModule,
     AuditModule,
+    // Exports VerificationCaseWorkflowService, the only class allowed to act on
+    // the case transition table.
+    ProviderVerificationModule,
   ],
   controllers: [
     AdminController,
     AdminUsersController,
     AdminRolesController,
     AdminVerificationController,
+    // Sprint 9B.5 — the CASE axis, deliberately its own controller. The one
+    // above owns the PROVIDER STATUS axis; 9B.1 established that the two must
+    // not be merged, and separate controllers make that structural.
+    AdminVerificationCaseCommandsController,
     // Sprint 9B.2 — versioned requirement policies. Per-POLICY, so its own
     // controller rather than more routes under admin/providers/:id.
     AdminVerificationPolicyController,

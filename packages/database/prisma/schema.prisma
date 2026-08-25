@@ -956,6 +956,12 @@ enum AuditEventType {
   VERIFICATION_EVIDENCE_SCAN_FAILED
   /// WE refused the file: disallowed, malformed, truncated or mislabelled.
   VERIFICATION_EVIDENCE_REJECTED
+  // Sprint 9B.5 — case workflow. Submission and assignment are not decisions
+  // (nobody judged anything), so they are audit events only; requestAction
+  // additionally writes a VerificationDecision.
+  VERIFICATION_CASE_SUBMITTED
+  VERIFICATION_CASE_ASSIGNED
+  VERIFICATION_CASE_ACTION_REQUESTED
 }
 
 enum AddressType {
@@ -1003,6 +1009,9 @@ enum NotificationResourceType {
   BOOKING
   CONVERSATION
   REVIEW
+  /// Sprint 9B.5. The deep link target is the provider's own verification
+  /// screen, never a document.
+  VERIFICATION_CASE
 }
 
 enum NotificationType {
@@ -1023,6 +1032,11 @@ enum NotificationType {
   // that matches a provider's configured category + service-area.
   // Drives the provider-side notification drawer + unread badge.
   REQUEST_AVAILABLE
+  // Sprint 9B.5 — a reviewer returned a verification case to the provider with
+  // something specific to fix. The provider cannot discover this by polling a
+  // screen they have no reason to revisit, so it is a notification rather than
+  // a state they must go looking for.
+  VERIFICATION_ACTION_REQUIRED
   SYSTEM
 }
 

@@ -3,6 +3,7 @@ import { ADMIN_SETTINGS_SCHEMA } from '@homeservicemarketplace/contracts';
 import type { PrismaTx } from '@homeservicemarketplace/database';
 
 import { PlatformSettingRepository } from '../../../infrastructure/persistence/settings/platform-setting.repository';
+import { CONSENT_VERSION_KEY } from '../onboarding/provider-onboarding-wizard.service';
 
 // Sprint 9B.2 — verification limits, read from the canonical settings
 // mechanism.
@@ -74,6 +75,34 @@ export class VerificationSettingsService {
       this.boundedInteger(EVIDENCE_UPLOAD_TTL_SECONDS_KEY, tx),
     ]);
     return { maxBytes, maxDocumentsPerCase, uploadTtlSeconds };
+  }
+
+  /**
+   * The consent document version a provider must have accepted to submit.
+   *
+   * Reads the SAME PlatformSetting row the onboarding wizard writes and
+   * validates against, via the same exported key. A second key, or a local
+   * constant, is how a provider accepts terms on one screen and is refused by
+   * the next for not having accepted them.
+   *
+   * Returns null when nothing is configured, and null means "no requirement" —
+   * this service does not invent an obligation nobody stated. It differs from
+   * the wizard's default on purpose: the wizard is ASKING for consent and needs
+   * a version to show, while this is CHECKING it and must not manufacture a
+   * requirement out of a fallback.
+   */
+  async requiredConsentVersion(tx?: PrismaTx): Promise<string | null> {
+    try {
+      const row = await this.settings.findByKey(CONSENT_VERSION_KEY, tx);
+      const value = typeof row?.value === 'string' ? row.value.trim() : '';
+      return value.length > 0 ? value : null;
+    } catch {
+      // Same asymmetry as the limits above: a missing settings row must not
+      // block every submission. It can only ever ADD a requirement, so absent
+      // means absent.
+      this.logger.warn({ msg: 'verification.setting.read.failed', key: CONSENT_VERSION_KEY });
+      return null;
+    }
   }
 
   private async boundedInteger(key: string, tx?: PrismaTx): Promise<number> {

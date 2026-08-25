@@ -69,7 +69,7 @@ import { evaluateOnboarding, type OnboardingCandidate } from './provider-onboard
  *  was started. */
 export const CURRENT_ONBOARDING_POLICY_VERSION = 'sprint-08';
 
-const CONSENT_VERSION_KEY = 'provider_consent_policy_version';
+export const CONSENT_VERSION_KEY = 'provider_consent_policy_version';
 const MAX_SERVICE_AREAS_KEY = 'provider_onboarding_max_service_areas';
 const MAX_SPECIALTIES_KEY = 'provider_onboarding_max_specialties';
 

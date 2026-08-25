@@ -32,6 +32,7 @@ import { ProfileModule } from './modules/profile/profile.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { ProviderVerificationModule } from './modules/provider/verification/provider-verification.module';
 import { EvidenceScannedHandler } from './modules/provider/verification/media/evidence-scanned.handler';
+import { VerificationCaseEventsHandler } from './modules/provider/verification/case/verification-case-events.handler';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { RequestOutboxModule } from './modules/requests/outbox/request-outbox.module';
@@ -71,6 +72,7 @@ import { ServicesModule } from './modules/services/services.module';
         RequestAvailableDispatchHandler,
         RequestAvailableBatchHandler,
         EvidenceScannedHandler,
+        VerificationCaseEventsHandler,
       ],
     }),
     // Global, transport-agnostic post-commit security notifications

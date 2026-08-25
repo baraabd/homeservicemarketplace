@@ -20,6 +20,10 @@ export const OutboxEventType = {
    *  Emitted in the SAME transaction as the state change, so a crash cannot
    *  leave a document quarantined with nothing announcing it. */
   EVIDENCE_SCANNED: 'evidence.scanned',
+  /** Sprint 9B.5 — a provider submitted (or resubmitted) a verification case. */
+  VERIFICATION_CASE_SUBMITTED: 'verification.case.submitted',
+  /** Sprint 9B.5 — a reviewer returned a case to the provider. */
+  VERIFICATION_CASE_ACTION_REQUIRED: 'verification.case.action_required',
 } as const;
 
 export type OutboxEventTypeName = (typeof OutboxEventType)[keyof typeof OutboxEventType];
