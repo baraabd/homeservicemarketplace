@@ -19,6 +19,11 @@ import { PlatformSettingRepository } from '../../../infrastructure/persistence/s
 
 export const VERIFICATION_POLICY_MAX_DOCUMENTS_KEY = 'verification_policy_max_documents';
 
+// Sprint 9B.3 — evidence upload limits. Same mechanism, same fallback rules.
+export const EVIDENCE_MAX_BYTES_KEY = 'verification_evidence_max_bytes';
+export const EVIDENCE_MAX_DOCUMENTS_PER_CASE_KEY = 'verification_evidence_max_documents_per_case';
+export const EVIDENCE_UPLOAD_TTL_SECONDS_KEY = 'verification_evidence_upload_ttl_seconds';
+
 /** The schema entry, so bounds and default are read from one place. */
 function field(key: string) {
   return ADMIN_SETTINGS_SCHEMA.find((f) => f.key === key);
@@ -44,6 +49,31 @@ export class VerificationSettingsService {
    */
   async policyMaxDocuments(tx?: PrismaTx): Promise<number> {
     return this.boundedInteger(VERIFICATION_POLICY_MAX_DOCUMENTS_KEY, tx);
+  }
+
+  /**
+   * The evidence upload limits, resolved together.
+   *
+   * One call because they are used together and a partially-resolved limit set
+   * is a bug waiting to happen: a service that read the size ceiling but forgot
+   * the count ceiling would enforce half the policy silently.
+   *
+   * Same asymmetry as the policy ceiling — every one of these can only REFUSE
+   * an upload, never widen access to something already stored — so an absent
+   * or malformed row falls back to the schema default rather than blocking
+   * uploads over a missing settings row.
+   */
+  async evidenceLimits(tx?: PrismaTx): Promise<{
+    maxBytes: number;
+    maxDocumentsPerCase: number;
+    uploadTtlSeconds: number;
+  }> {
+    const [maxBytes, maxDocumentsPerCase, uploadTtlSeconds] = await Promise.all([
+      this.boundedInteger(EVIDENCE_MAX_BYTES_KEY, tx),
+      this.boundedInteger(EVIDENCE_MAX_DOCUMENTS_PER_CASE_KEY, tx),
+      this.boundedInteger(EVIDENCE_UPLOAD_TTL_SECONDS_KEY, tx),
+    ]);
+    return { maxBytes, maxDocumentsPerCase, uploadTtlSeconds };
   }
 
   private async boundedInteger(key: string, tx?: PrismaTx): Promise<number> {
