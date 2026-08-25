@@ -5,10 +5,18 @@ import { AuthenticationModule } from '../iam/authentication/authentication.modul
 import { AuthorizationModule } from '../iam/authorization/authorization.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AdminAuditService } from './admin-audit.service';
+// Sprint 9B.2 — AdminVerificationPolicyService writes its audit row through the
+// IAM AuditService (allowlisted metadata, same transaction as the write).
+// AuthenticationModule imports AuditModule but does not re-export it, so the
+// import has to be explicit here.
+import { AuditModule } from '../iam/audit/audit.module';
 import { AdminController } from './admin.controller';
 import { AdminRolesController, AdminUsersController } from './users/admin-users.controller';
 import { AdminUsersService } from './users/admin-users.service';
 import { AdminVerificationController } from './verification/admin-verification.controller';
+import { AdminVerificationPolicyController } from './verification/admin-verification-policy.controller';
+import { AdminVerificationPolicyService } from './verification/admin-verification-policy.service';
+import { VerificationSettingsService } from '../provider/verification/verification-settings.service';
 import { AdminVerificationService } from './verification/admin-verification.service';
 import { AdminVerificationCaseService } from './verification/admin-verification-case.service';
 import { AdminAnalyticsController } from './analytics/admin-analytics.controller';
@@ -48,12 +56,21 @@ import { AdminCatalogService } from './catalog/admin-catalog.service';
 @Module({
   // AdminAccessModule exports the AdminAccessService the review controller
   // below reuses — one lifecycle implementation for both sides of the axis.
-  imports: [AuthenticationModule, AuthorizationModule, NotificationsModule, AdminAccessModule],
+  imports: [
+    AuthenticationModule,
+    AuthorizationModule,
+    NotificationsModule,
+    AdminAccessModule,
+    AuditModule,
+  ],
   controllers: [
     AdminController,
     AdminUsersController,
     AdminRolesController,
     AdminVerificationController,
+    // Sprint 9B.2 — versioned requirement policies. Per-POLICY, so its own
+    // controller rather than more routes under admin/providers/:id.
+    AdminVerificationPolicyController,
     AdminDisputesController,
     AdminAnalyticsController,
     AdminFinancialsController,
@@ -73,6 +90,11 @@ import { AdminCatalogService } from './catalog/admin-catalog.service';
     AdminUsersService,
     AdminVerificationService,
     AdminVerificationCaseService,
+    AdminVerificationPolicyService,
+    // Reads verification_policy_max_documents through the canonical
+    // PlatformSettingRepository. Provided here rather than exported from the
+    // provider module so admin does not import the provider domain.
+    VerificationSettingsService,
     AdminDisputesService,
     AdminAnalyticsService,
     AdminFinancialsService,

@@ -567,6 +567,9 @@ export async function seedWithTx(tx: Prisma.TransactionClient): Promise<void> {
   // `assertSeedProductionSafe()` check in seed() guarantees this block
   // never runs in production.
   await upsertDevUsers(tx);
+  // Sprint 9B.2 — a NON-LEGAL development default so a fresh database can open
+  // a verification case at all. See the function for why it is dev-only.
+  await upsertDevVerificationPolicy(tx);
   // One-shot backfill for the case-insensitive city filter (Sprint
   // 7.x). New requests carry addressSnapshot.cityKey at write time;
   // legacy snapshots written before the normalisation landed need
@@ -704,4 +707,54 @@ function normaliseCityKey(city: string | null | undefined): string | null {
   if (!city) return null;
   const key = city.trim().toLowerCase();
   return key.length > 0 ? key : null;
+}
+
+/**
+ * Sprint 9B.2 — a development verification policy.
+ *
+ * NOT LEGAL ADVICE AND NOT A COUNTRY REQUIREMENT. This is the global default
+ * (country NULL, providerType NULL, categoryId NULL) and it exists for exactly
+ * one reason: `resolveRequirements` throws NO_POLICY_IN_FORCE when nothing
+ * applies, so without a row here a fresh developer database cannot open a
+ * verification case at all and the whole flow is untestable.
+ *
+ * It asks for one generic identity document. It deliberately does NOT encode
+ * any country's licensing rules — inventing those is a product and legal
+ * decision, made by publishing a real policy through the admin API, which is
+ * why that path exists.
+ *
+ * Idempotent by `version`, and it never touches a row that already exists:
+ * policies are append-only, so re-running the seed must not rewrite a version
+ * that a case may already reference. If an operator has published their own
+ * global default, this leaves it alone — the partial unique index would refuse
+ * a second live one anyway.
+ */
+async function upsertDevVerificationPolicy(tx: Prisma.TransactionClient): Promise<void> {
+  const version = '2026.08-dev-default-v1';
+
+  const alreadyThere = await tx.verificationRequirementPolicy.findUnique({ where: { version } });
+  if (alreadyThere) return;
+
+  // Some other global default is already live — an operator's, or a later dev
+  // version. Publishing a second one would violate
+  // verification_policy_one_live_per_scope_uniq, and silently retiring theirs
+  // would be worse.
+  const liveGlobal = await tx.verificationRequirementPolicy.findFirst({
+    where: { country: null, providerType: null, categoryId: null, retiredAt: null },
+  });
+  if (liveGlobal) return;
+
+  await tx.verificationRequirementPolicy.create({
+    data: {
+      version,
+      country: null,
+      providerType: null,
+      categoryId: null,
+      requirements: {
+        documents: ['INDIVIDUAL_IDENTITY'],
+        verificationRequired: true,
+      },
+      publishedAt: new Date('2026-08-01T00:00:00.000Z'),
+    },
+  });
 }

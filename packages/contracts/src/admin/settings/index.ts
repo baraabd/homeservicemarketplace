@@ -93,6 +93,27 @@ export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
     min: 1,
     max: 100,
   },
+  {
+    // Sprint 9B.2 — a publication-time ceiling on how much one policy version
+    // may demand. It bounds the checklist a provider is handed, so a mistyped
+    // policy cannot create a list nobody can finish.
+    //
+    // A ceiling, never a grant: it can only refuse a publish. That is why an
+    // absent or malformed row safely falls back to this default instead of
+    // failing closed — refusing every publish because a settings row is
+    // missing would be a worse outage than a slightly low ceiling.
+    //
+    // min 1, not 0: parsePolicyRequirements already refuses a policy that
+    // requires verification while naming no documents, so a ceiling of 0 would
+    // make every verifying policy unpublishable.
+    key: 'verification_policy_max_documents',
+    type: 'integer',
+    description:
+      'How many document kinds a single verification policy version may require. A publication-time ceiling only — policies already published are never re-validated against it, because a rule added today must not invalidate a decision made honestly last month.',
+    default: 10,
+    min: 1,
+    max: 20,
+  },
 ] as const;
 
 export type AdminSettingKey = (typeof ADMIN_SETTINGS_SCHEMA)[number]['key'];

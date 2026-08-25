@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
 import { AuthorizationModule } from '../../iam/authorization/authorization.module';
+import { AuditModule } from '../../iam/audit/audit.module';
+import { ProviderVerificationCaseController } from './case/provider-verification-case.controller';
+import { ProviderVerificationCaseService } from './case/provider-verification-case.service';
 import { EvidenceReadController } from './media/evidence-read.controller';
 import { EvidenceReadService } from './media/evidence-read.service';
 
@@ -42,8 +45,11 @@ import { EvidenceReadService } from './media/evidence-read.service';
 // module wanting to read evidence would be a second read path, and one audited
 // read path is the whole point.
 @Module({
-  imports: [AuthorizationModule, StorageModule],
-  controllers: [EvidenceReadController],
-  providers: [EvidenceReadService],
+  // Sprint 9B.2 adds AuditModule: case creation and resume are audited in the
+  // same transaction as the write. PersistenceModule is @Global, so the
+  // settings repository needs no import.
+  imports: [AuthorizationModule, StorageModule, AuditModule],
+  controllers: [EvidenceReadController, ProviderVerificationCaseController],
+  providers: [EvidenceReadService, ProviderVerificationCaseService],
 })
 export class ProviderVerificationModule {}

@@ -119,6 +119,14 @@ function makeFakeTx() {
       upsert: jest.fn(async () => ({})),
       findMany: jest.fn(async () => []),
     },
+    // Sprint 9B.2 — the dev verification policy. It looks the version up, then
+    // checks for any other live global default, and only creates when both are
+    // absent. Returning null from both reads exercises the CREATE path.
+    verificationRequirementPolicy: {
+      findUnique: jest.fn(async () => null),
+      findFirst: jest.fn(async () => null),
+      create: jest.fn(async () => ({ version: '2026.08-dev-default-v1' })),
+    },
     // Sprint 7.x — backfill of addressSnapshot.cityKey on legacy rows
     // is run via a raw SQL UPDATE inside seedWithTx. Fake into a no-op
     // returning the affected-row count Prisma would normally return.

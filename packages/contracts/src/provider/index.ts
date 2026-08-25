@@ -18,6 +18,8 @@ export * from './bids';
 export * from './bookings';
 export * from './wallet';
 export * from './earnings';
+// Sprint 9B.2 — the provider's own verification case.
+export * from './verification';
 // Sprint 7 — server-authoritative capability set (docs/adr/0006). The
 // Provider app renders gating from this instead of re-deriving it from
 // `profile.status`.
