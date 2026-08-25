@@ -13,6 +13,7 @@ import { AuditService } from '../../../iam/audit/audit.service';
 import { AppError } from '../../../../shared/errors/app-error';
 import { VerificationSettingsService } from '../verification-settings.service';
 import {
+  TERMINAL_CASE_STATES,
   VERIFICATION_CASE_TRANSITIONS,
   offerableCaseActions,
   type VerificationCaseAction,
@@ -159,8 +160,13 @@ export class VerificationCaseWorkflowService {
    * nothing and lets them name somebody else's. The id is resolved from the
    * authenticated user, which removes an entire class of IDOR from the route.
    *
-   * "Active" means a case submission could legally move — the same states the
-   * transition table names, rather than a second list kept in step by hand.
+   * "Active" means NOT TERMINAL, not "submittable".
+   *
+   * The difference matters and cost a test to find. Filtering to the states
+   * submission is legal from makes the idempotent replay unreachable: once the
+   * case is SUBMITTED there is nothing to find, so a provider double-clicking
+   * gets a 404 about a case that plainly exists. Resolving the live case and
+   * letting submit() judge it is what lets a replay be recognised as a replay.
    */
   async submitOwnCase(
     userId: string,
@@ -169,7 +175,7 @@ export class VerificationCaseWorkflowService {
     const open = await this.prisma.client.verificationCase.findFirst({
       where: {
         providerProfile: { userId },
-        state: { in: [...VERIFICATION_CASE_TRANSITIONS.submit.from] },
+        state: { notIn: [...TERMINAL_CASE_STATES] },
       },
       orderBy: { createdAt: 'desc' },
       select: { id: true },

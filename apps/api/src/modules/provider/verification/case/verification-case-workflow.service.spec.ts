@@ -94,10 +94,15 @@ function harness(
   const audits: Array<{ type: string; metadata: Record<string, unknown> }> = [];
   const outbox: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
   const notifications: Array<Record<string, unknown>> = [];
+  const ownCaseQueries: Array<Record<string, unknown>> = [];
   let reads = 0;
 
   const client = {
     verificationCase: {
+      findFirst: jest.fn(async (args: { where: Record<string, unknown> }) => {
+        ownCaseQueries.push(args.where);
+        return current ? { id: current.id } : null;
+      }),
       findUnique: jest.fn(async () => {
         reads += 1;
         // A second read models re-reading after losing the conditional update.
@@ -149,7 +154,7 @@ function harness(
     settings as never,
   );
 
-  return { service, client, updates, decisions, audits, outbox, notifications };
+  return { service, client, updates, decisions, audits, outbox, notifications, ownCaseQueries };
 }
 
 async function failure(p: Promise<unknown>): Promise<AppError> {
@@ -466,5 +471,37 @@ describe('every command', () => {
     });
     const text = JSON.stringify(h.audits);
     expect(text).not.toContain('SENTINEL');
+  });
+});
+
+// ── resolving the caller's own case ───────────────────────────────────────
+
+describe('submitOwnCase', () => {
+  it('resolves the LIVE case rather than only a submittable one', async () => {
+    // Filtering to the states submission is legal from makes the idempotent
+    // replay unreachable: once the case is SUBMITTED there is nothing to find,
+    // and a provider double-clicking gets a 404 about a case that plainly
+    // exists. This shipped, and an integration test caught it — hence the unit
+    // test, which is cheaper to run and names the mistake.
+    const h = harness({ row: caseRow({ state: 'SUBMITTED' }) });
+    const out = await h.service.submitOwnCase(PROVIDER_USER);
+
+    expect(out).toMatchObject({ state: 'SUBMITTED', changed: false });
+
+    const where = h.ownCaseQueries[0] as { state?: { notIn?: string[]; in?: string[] } };
+    expect(where.state?.notIn).toEqual(expect.arrayContaining(['REJECTED', 'EXPIRED']));
+    expect(where.state?.in).toBeUndefined();
+  });
+
+  it('scopes the lookup to the caller, so no case id can be supplied at all', async () => {
+    const h = harness();
+    await h.service.submitOwnCase(PROVIDER_USER);
+    expect(h.ownCaseQueries[0]).toMatchObject({ providerProfile: { userId: PROVIDER_USER } });
+  });
+
+  it('answers a provider with no live case exactly as a missing one', async () => {
+    const h = harness({ row: null });
+    const err = await failure(h.service.submitOwnCase(PROVIDER_USER));
+    expect(err.status).toBe(404);
   });
 });
