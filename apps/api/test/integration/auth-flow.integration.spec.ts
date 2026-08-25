@@ -5,14 +5,16 @@ export {}; // module marker — see migration-bootstrap.spec.ts.
 // as migration-bootstrap.spec.ts) so the default `pnpm test` stays hermetic.
 //
 // Setup/teardown contract:
-//   - beforeAll: Prisma connect, truncate every IAM table in the correct
-//     order (respecting FKs), seed the baseline roles/permissions via the
+//   - beforeAll: Prisma connect, seed the baseline roles/permissions via the
 //     shared seed() function.
-//   - afterEach: truncate user-generated IAM rows; keep seeded roles/perms.
+//   - afterEach: delete the accounts this suite registered (scoped by its own
+//     email domain, in FK order); keep seeded roles/perms.
 //   - afterAll: $disconnect.
 // This avoids transaction-based isolation (tests issue their own
 // transactions via the service layer, which would conflict with a test-
 // wrapping transaction).
+
+import { fixtureEmailDomain, withAdvisoryLock } from '../support/db-isolation';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -20,28 +22,50 @@ const d = shouldRun ? describe : describe.skip;
 jest.setTimeout(60_000);
 
 d('IAM end-to-end flow (real Postgres)', () => {
+  // This suite's fixture namespace. Accounts under this domain belong to this
+  // spec and to nothing else, which is what makes the scoped cleanup below
+  // safe to run while other suites are mid-flight.
+  const EMAIL_DOMAIN = fixtureEmailDomain('auth-flow');
+  const addr = (local: string): string => `${local}@${EMAIL_DOMAIN}`;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let services: any;
 
+  // Remove only the accounts THIS suite created.
+  //
+  // This used to be a table-wide TRUNCATE of the whole IAM graph. That is a
+  // correct reset only while nothing else is running: under parallel workers
+  // it deleted the users password-reset and sprint02-constraints were still
+  // asserting on, and those suites failed for a defect that was never theirs.
+  //
+  // Every account here is registered under this suite's own email domain, so
+  // ownership is unambiguous and cleanup is a scoped delete. Children go
+  // first — the IAM foreign keys are RESTRICT, not CASCADE.
   async function truncateUserData() {
-    await prisma.$executeRawUnsafe(
-      // PascalCase and DOUBLE-QUOTED. Migration
-      // 20260501003603_rename_tables_to_pascal_case renamed every table, and
-      // unquoted identifiers are folded to lower case by PostgreSQL, so
-      // `TRUNCATE TABLE User` would look for a table called "user". This
-      // statement had been failing since that rename — invisibly, because the
-      // RUN_DB_INTEGRATION gate skips this spec unless CI turns it on.
-      `TRUNCATE TABLE "AuditEvent", "Session", "VerificationToken", "UserRole", "User" RESTART IDENTITY CASCADE`,
-    );
+    const mine = await prisma.user.findMany({
+      where: { email: { endsWith: `@${EMAIL_DOMAIN}` } },
+      select: { id: true },
+    });
+    if (mine.length === 0) return;
+    const userId = { in: mine.map((u: { id: string }) => u.id) };
+
+    await prisma.auditEvent.deleteMany({ where: { userId } });
+    await prisma.session.deleteMany({ where: { userId } });
+    await prisma.verificationToken.deleteMany({ where: { userId } });
+    await prisma.userRole.deleteMany({ where: { userId } });
+    await prisma.user.deleteMany({ where: { id: userId } });
   }
 
   beforeAll(async () => {
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
     prisma = db.prisma;
-    await db.seed(); // ensures roles + permissions present
+    // Serialised against the other seeders and against the idempotency spec:
+    // seed() upserts a fixed set of shared rows, and two concurrent upserts of
+    // the same row race. The hold is only as long as the seed itself.
+    await withAdvisoryLock('seed', 'exclusive', () => db.seed());
 
     // Wire the service graph manually — avoids booting the full AppModule
     // (which would require Mongo + Redis). We only need Prisma + IAM.
@@ -234,11 +258,11 @@ d('IAM end-to-end flow (real Postgres)', () => {
   }
 
   it('register → OTP verify → sign in → refresh round-trip succeeds', async () => {
-    const registered = await signUp('integration@example.com');
+    const registered = await signUp(addr('integration'));
     expect(registered.roles).toContain('customer');
     expect(registered.issued.refresh.raw).toBeDefined();
 
-    const loggedIn = await signIn('integration@example.com');
+    const loggedIn = await signIn(addr('integration'));
     expect(loggedIn.user.id).toBe(registered.user.id);
 
     const rotated = await services.auth.refresh({
@@ -252,8 +276,8 @@ d('IAM end-to-end flow (real Postgres)', () => {
   });
 
   it('refresh replay: presenting the old refresh token after rotation revokes the entire family', async () => {
-    await signUp('replay@example.com');
-    const loggedIn = await signIn('replay@example.com');
+    await signUp(addr('replay'));
+    const loggedIn = await signIn(addr('replay'));
     const oldRefresh = loggedIn.issued.refresh.raw;
 
     // Rotate once (legit client).
@@ -279,18 +303,18 @@ d('IAM end-to-end flow (real Postgres)', () => {
   });
 
   it('reset-password revokes every active session for the user', async () => {
-    await signUp('reset@example.com');
+    await signUp(addr('reset'));
     // Two more "device" sessions on top of the one signUp issued.
-    await signIn('reset@example.com');
-    await signIn('reset@example.com');
+    await signIn(addr('reset'));
+    await signIn(addr('reset'));
 
-    const user = await services.users.findByEmail('reset@example.com');
+    const user = await services.users.findByEmail(addr('reset'));
     expect(await services.sessionsRepo.listActiveByUser(user!.id)).not.toHaveLength(0);
 
     services.mail.clear();
-    await services.auth.forgotPassword('reset@example.com', ctx);
+    await services.auth.forgotPassword(addr('reset'), ctx);
     await services.auth.resetPassword(
-      resetTokenFromMail('reset@example.com'),
+      resetTokenFromMail(addr('reset')),
       'a-completely-new-passphrase',
       ctx,
     );
@@ -301,10 +325,18 @@ d('IAM end-to-end flow (real Postgres)', () => {
 
   it('anti-enumeration: forgot-password on an unknown email is silent (no DB row, no mail)', async () => {
     services.mail.clear();
-    await services.auth.forgotPassword('ghost@example.com', ctx);
+    await services.auth.forgotPassword(addr('ghost'), ctx);
     expect(services.mail.outbox.length).toBe(0);
     // No verification-token row created.
-    const rows = await prisma.verificationToken.count();
+    //
+    // Scoped to the ghost address on purpose. A bare count() is a global read:
+    // it saw the tokens password-reset had legitimately created and failed a
+    // test about an account that does not exist. Counting the rows that WOULD
+    // belong to this email is both parallel-safe and a sharper statement of
+    // the property under test.
+    const rows = await prisma.verificationToken.count({
+      where: { user: { email: addr('ghost') } },
+    });
     expect(rows).toBe(0);
   });
 });

@@ -17,6 +17,8 @@
 
 export {};
 
+import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
 
@@ -29,6 +31,24 @@ d('Provider lifecycle backfill (real Postgres)', () => {
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   const IDS: string[] = [];
+
+  /** This suite's fixture namespace, so its rows are never confused with
+   *  another suite's even though the backfill reads the whole table. */
+  const P = fixturePrefix('provider-lifecycle');
+
+  /**
+   * The backfill is a WHOLE-TABLE mutator and this suite asserts on
+   * whole-table totals — `totals.written`, `totals.scanned`, `totals.conflicts`.
+   * Those are global by construction, so no fixture namespace can make them
+   * parallel-safe: a ProviderProfile created by any other suite between the
+   * two `--apply` runs lands in the second run's write count and fails
+   * "a second apply writes zero rows".
+   *
+   * That is the case the advisory lock exists for. EXCLUSIVE here; every other
+   * suite that writes ProviderProfile takes it SHARED, so they still run
+   * concurrently with each other and only this suite serialises against them.
+   */
+  let lifecycleLock: HeldLock;
 
   /** A provider profile with a chosen legacy status and NULL axes, i.e. what
    *  an upgraded (pre-Sprint-7) database looks like. */
@@ -70,7 +90,9 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     IDS.length = 0;
   }
 
-  beforeAll(() => {
+  beforeAll(async () => {
+    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'exclusive');
+
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
     prisma = db.prisma;
@@ -110,6 +132,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
   afterAll(async () => {
     await cleanup();
     await prisma.$disconnect();
+    await lifecycleLock.release();
   });
 
   // ── schema shape ─────────────────────────────────────────────────────────
@@ -118,7 +141,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     it('leaves every new axis NULL on a freshly created row', async () => {
       // The backward-compatibility guarantee: an older API build that knows
       // nothing about these columns can still insert a profile.
-      const id = await legacyProfile('bf-fresh', 'DRAFT');
+      const id = await legacyProfile(`${P}fresh`, 'DRAFT');
       const axes = await readAxes(id);
 
       expect(axes).toEqual({
@@ -132,7 +155,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     });
 
     it('keeps the legacy status column writable and authoritative', async () => {
-      const id = await legacyProfile('bf-legacy', 'ACTIVE');
+      const id = await legacyProfile(`${P}legacy`, 'ACTIVE');
       const row = await prisma.providerProfile.findUnique({
         where: { id },
         select: { status: true },
@@ -155,7 +178,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     it.each(CASES)(
       '%s maps to onboarding=%s standing=%s source=%s',
       async (legacy, onboarding, standing, source) => {
-        const id = await legacyProfile(`bf-map-${legacy}`, legacy, {
+        const id = await legacyProfile(`${P}map-${legacy}`, legacy, {
           // Satisfy the conflict detectors so this case isolates the mapping.
           ...(legacy === 'ACTIVE' || legacy === 'SUSPENDED' ? { reviewedAt: new Date() } : {}),
           ...(legacy === 'PENDING_REVIEW' ? { submittedForReviewAt: new Date() } : {}),
@@ -176,7 +199,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
       // The load-bearing decision of the whole migration. An admin clicked
       // approve; nobody saw a document. Writing VERIFIED here would fabricate
       // an audit trail for the entire existing supply side.
-      const id = await legacyProfile('bf-unverified', 'ACTIVE', { reviewedAt: new Date() });
+      const id = await legacyProfile(`${P}unverified`, 'ACTIVE', { reviewedAt: new Date() });
       runBackfill({ apply: true });
 
       expect((await readAxes(id)).verificationState).toBe('UNVERIFIED');
@@ -187,7 +210,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
 
   describe('dry run', () => {
     it('writes NOTHING and still reports what it would do', async () => {
-      const id = await legacyProfile('bf-dry', 'ACTIVE', { reviewedAt: new Date() });
+      const id = await legacyProfile(`${P}dry`, 'ACTIVE', { reviewedAt: new Date() });
 
       const report = runBackfill(); // default mode
 
@@ -202,7 +225,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
 
   describe('idempotency', () => {
     it('a second apply writes zero rows', async () => {
-      await legacyProfile('bf-idem', 'ACTIVE', { reviewedAt: new Date() });
+      await legacyProfile(`${P}idem`, 'ACTIVE', { reviewedAt: new Date() });
 
       const first = runBackfill({ apply: true });
       const second = runBackfill({ apply: true });
@@ -215,7 +238,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     it('never overwrites an axis a human or newer code already set', async () => {
       // Only NULLs are filled. A non-null value was written by something that
       // knew more than the backfill does.
-      const id = await legacyProfile('bf-preset', 'ACTIVE', {
+      const id = await legacyProfile(`${P}preset`, 'ACTIVE', {
         reviewedAt: new Date(),
         standingState: 'RESTRICTED',
         lifecycleSource: 'NATIVE',
@@ -236,7 +259,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     it('counts conflicting rows and leaves them untouched', async () => {
       // A DRAFT profile that carries a submission stamp contradicts itself.
       // The migration is not entitled to decide which half was the truth.
-      const id = await legacyProfile('bf-conflict', 'DRAFT', {
+      const id = await legacyProfile(`${P}conflict`, 'DRAFT', {
         submittedForReviewAt: new Date(),
       });
 
@@ -256,8 +279,8 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     });
 
     it('breaks counts down by legacy status and target source', async () => {
-      await legacyProfile('bf-c1', 'DRAFT');
-      await legacyProfile('bf-c2', 'ACTIVE', { reviewedAt: new Date() });
+      await legacyProfile(`${P}c1`, 'DRAFT');
+      await legacyProfile(`${P}c2`, 'ACTIVE', { reviewedAt: new Date() });
 
       const report = runBackfill();
 
@@ -275,7 +298,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
 
   describe('constraints actually reject what they exist to reject', () => {
     it('refuses a grant that expires before it begins', async () => {
-      const id = await legacyProfile('bf-grant-1', 'ACTIVE', { reviewedAt: new Date() });
+      const id = await legacyProfile(`${P}grant-1`, 'ACTIVE', { reviewedAt: new Date() });
       await expect(
         prisma.providerWorkAccessGrant.create({
           data: {
@@ -291,7 +314,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     it('refuses a second LIVE grant with the same reason', async () => {
       // A retried admin action must not produce two live grants for one
       // justification. Different reasons remain legal.
-      const id = await legacyProfile('bf-grant-2', 'ACTIVE', { reviewedAt: new Date() });
+      const id = await legacyProfile(`${P}grant-2`, 'ACTIVE', { reviewedAt: new Date() });
       await prisma.providerWorkAccessGrant.create({
         data: { providerProfileId: id, reason: 'LEGACY_APPROVED' },
       });
@@ -311,7 +334,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     });
 
     it('refuses half a decision on a submission', async () => {
-      const id = await legacyProfile('bf-sub-1', 'PENDING_REVIEW', {
+      const id = await legacyProfile(`${P}sub-1`, 'PENDING_REVIEW', {
         submittedForReviewAt: new Date(),
       });
       await expect(
@@ -328,7 +351,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     });
 
     it('refuses a submission with a blank policy version', async () => {
-      const id = await legacyProfile('bf-sub-2', 'PENDING_REVIEW', {
+      const id = await legacyProfile(`${P}sub-2`, 'PENDING_REVIEW', {
         submittedForReviewAt: new Date(),
       });
       await expect(
@@ -339,7 +362,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     });
 
     it('accepts a well-formed submission snapshot', async () => {
-      const id = await legacyProfile('bf-sub-3', 'PENDING_REVIEW', {
+      const id = await legacyProfile(`${P}sub-3`, 'PENDING_REVIEW', {
         submittedForReviewAt: new Date(),
       });
       await expect(

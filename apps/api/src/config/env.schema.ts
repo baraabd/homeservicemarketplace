@@ -89,6 +89,49 @@ const baseEnvSchema = z.object({
   // How long PROCESSED rows are kept before the cleanup job reaps them. They
   // are an audit trail with a short useful life. DEAD rows are never reaped.
   OUTBOX_RETENTION_HOURS: z.coerce.number().int().positive().default(72),
+
+  // ── Sprint 9: verification and work access ────────────────────────────
+  // docs/adr/0013-evidence-to-work-access-capability-transition.md
+  //
+  // THE ROLLOUT SWITCH. Off preserves the pre-Sprint-9 rule exactly (the
+  // legacy `status === 'ACTIVE'` marketplace gate); on consults the
+  // work-access grant and the verification axis.
+  //
+  // Defaults OFF, and that default is the safety property, not laziness: this
+  // flag can deny every provider on the platform at once. It must not flip
+  // until the backfill migration has run AND its live-grant count matches the
+  // working-provider count. A flag makes that reversible in seconds instead
+  // of in a deploy.
+  //
+  // This is a rollout control with a scheduled removal, not a permanent
+  // branch — ADR 0013 "Revisit".
+  WORK_ACCESS_ENFORCED: trueish.default(false),
+  // Independently switchable. Requiring verification and requiring a grant are
+  // two different denials with two different blast radii, and folding them
+  // into one flag means a problem with either forces both off.
+  VERIFICATION_ENFORCED: trueish.default(false),
+  // How long an approval grants work for. Renewal issues a fresh grant rather
+  // than extending this one, so the history stays append-only.
+  VERIFICATION_GRANT_DAYS: z.coerce.number().int().positive().default(365),
+
+  // ── Sprint 9: restricted evidence retention (ADR 0012) ────────────────
+  // Engineering defaults chosen to be conservative-SHORT. They are not legal
+  // advice; legal review is recorded as outstanding in the sprint report.
+  // Quarantine is deliberately the LONGEST: destroying malware destroys the
+  // evidence of the attack.
+  EVIDENCE_RETAIN_VERIFIED_DAYS: z.coerce.number().int().positive().default(90),
+  EVIDENCE_RETAIN_REJECTED_DAYS: z.coerce.number().int().positive().default(30),
+  EVIDENCE_RETAIN_ABANDONED_DAYS: z.coerce.number().int().positive().default(30),
+  EVIDENCE_RETAIN_QUARANTINE_DAYS: z.coerce.number().int().positive().default(180),
+  // Lifetime of a minted read authorization for one restricted object. Short
+  // enough that a leaked URL is near-worthless; long enough to stream a PDF.
+  EVIDENCE_READ_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(120),
+  // Hard cap on a single evidence upload, enforced on RECEIVED bytes.
+  EVIDENCE_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 1024 * 1024),
   OUTBOX_CLEANUP_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
   // Recipients per notification batch during fan-out. Bounds the size of a
   // single transaction: one 10,000-recipient INSERT would hold locks and bloat

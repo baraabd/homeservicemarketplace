@@ -38,6 +38,10 @@ const ADMIN_ME = {
 const PROVIDER = {
   id: 'pp-1',
   status: 'PENDING_REVIEW' as const,
+  // Sprint 9 — the server now tells the client which actions are legal, and
+  // the client no longer derives them. PENDING_REVIEW admits approve and
+  // reject (ADMIN_PROVIDER_TRANSITIONS).
+  availableActions: ['approve', 'reject'] as const,
   userId: 'u-prov-1',
   email: 'p@example.com',
   displayName: 'Ada Lovelace',
@@ -193,7 +197,14 @@ describe('AdminDashboard — Pro Verification (Sprint 6.2)', () => {
   });
 
   it('disables Approve when status is not pending', async () => {
-    const ACTIVE = { ...PROVIDER, status: 'ACTIVE' as const };
+    // ACTIVE does NOT admit approve, so the server omits it. The button is
+    // disabled because the SERVER said so — not because the client re-derived
+    // the rule, which is the whole point of the Sprint 9 change.
+    const ACTIVE = {
+      ...PROVIDER,
+      status: 'ACTIVE' as const,
+      availableActions: ['reject', 'suspend'] as const,
+    };
     mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
     mock.onGet('/v1/admin/providers').reply(200, { items: [ACTIVE], nextCursor: null });
     mock.onGet('/v1/admin/providers/pp-1').reply(200, ACTIVE);

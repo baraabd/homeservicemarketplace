@@ -20,6 +20,8 @@
 // sibling integration specs.
 export {};
 
+import { acquireAdvisoryLock, type HeldLock } from '../support/db-isolation';
+
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
 
@@ -47,11 +49,56 @@ d('Service-area matching and fan-out (real Postgres)', () => {
   let categoryId: string;
   let seekerUserId: string;
 
+  /** Every id this suite invents lives under one of these prefixes, which is
+   *  what lets cleanup be a scoped delete. */
+  const REQUEST_PREFIX = 'geo-';
+  const PROVIDER_PREFIX = 'load-p-';
+  const PROVIDER_USER_PREFIX = 'load-u-';
+
+  /**
+   * Remove this suite's own rows.
+   *
+   * This used to be
+   *   TRUNCATE "OutboxHandlerRun","OutboxEvent","Bid","ServiceRequest",
+   *            "ProviderProfileServiceCategory","ProviderProfile" ... CASCADE
+   * — a correct reset only while nothing else is running. Under parallel
+   * workers it wiped the OutboxEvent rows outbox.integration was mid-assertion
+   * on and the ProviderProfile rows the lifecycle backfill had just written,
+   * failing two suites for a defect in neither.
+   *
+   * Note what is NOT here: Outbox and Bid. This spec never writes either. They
+   * were in the TRUNCATE only as FK collateral, and scoped deletes do not need
+   * them cleared.
+   */
   async function truncate() {
-    await prisma.$executeRawUnsafe(
-      `TRUNCATE TABLE "OutboxHandlerRun", "OutboxEvent", "Bid", "ServiceRequest",
-       "ProviderProfileServiceCategory", "ProviderProfile" RESTART IDENTITY CASCADE`,
-    );
+    const providerIds = (
+      await prisma.providerProfile.findMany({
+        where: { id: { startsWith: PROVIDER_PREFIX } },
+        select: { id: true },
+      })
+    ).map((p: { id: string }) => p.id);
+
+    await prisma.bid.deleteMany({
+      where: {
+        OR: [
+          { requestId: { startsWith: REQUEST_PREFIX } },
+          ...(providerIds.length ? [{ providerId: { in: providerIds } }] : []),
+        ],
+      },
+    });
+    await prisma.serviceRequest.deleteMany({ where: { id: { startsWith: REQUEST_PREFIX } } });
+    if (providerIds.length) {
+      await prisma.providerProfileServiceCategory.deleteMany({
+        where: { providerProfileId: { in: providerIds } },
+      });
+      await prisma.providerProfile.deleteMany({ where: { id: { in: providerIds } } });
+    }
+  }
+
+  /** Just this suite's requests — the per-describe reset. */
+  async function clearRequests() {
+    await prisma.bid.deleteMany({ where: { requestId: { startsWith: REQUEST_PREFIX } } });
+    await prisma.serviceRequest.deleteMany({ where: { id: { startsWith: REQUEST_PREFIX } } });
   }
 
   /** Insert a request straight through Prisma, writing the promoted columns
@@ -98,7 +145,16 @@ d('Service-area matching and fan-out (real Postgres)', () => {
     return rows.map((r: { id: string }) => r.id).sort();
   }
 
+  let lifecycleLock: HeldLock;
+
   beforeAll(async () => {
+    // SHARED, not exclusive: this suite writes ProviderProfile rows (600 of
+    // them, with NULL lifecycle axes) and so must not overlap the lifecycle
+    // backfill, which rewrites that table wholesale and asserts on table-wide
+    // totals. Shared locks are mutually compatible, so every other suite that
+    // merely writes providers still runs concurrently with this one.
+    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
     prisma = db.prisma;
@@ -149,18 +205,21 @@ d('Service-area matching and fan-out (real Postgres)', () => {
 
   afterAll(async () => {
     await truncate();
-    // Remove this spec's own fixtures — they live outside the truncate list
-    // because User and ServiceCategory are shared with other specs.
+    // Remove this spec's own fixtures — they live outside truncate() because
+    // User and ServiceCategory are shared tables with other specs.
     await prisma.serviceCategory.deleteMany({ where: { id: categoryId } });
-    await prisma.user.deleteMany({ where: { id: seekerUserId } });
+    await prisma.user.deleteMany({
+      where: { OR: [{ id: seekerUserId }, { id: { startsWith: PROVIDER_USER_PREFIX } }] },
+    });
     await prisma.$disconnect();
+    await lifecycleLock.release();
   });
 
   // ── geographic boundaries ────────────────────────────────────────────────
 
   describe('geographic boundaries', () => {
     beforeAll(async () => {
-      await prisma.serviceRequest.deleteMany({});
+      await clearRequests();
       await makeRequest('geo-inside-1', northOf(1), 'aleppo');
       await makeRequest('geo-inside-24', northOf(24), 'aleppo');
       await makeRequest('geo-edge-25', northOf(25), 'aleppo');
@@ -274,9 +333,9 @@ d('Service-area matching and fan-out (real Postgres)', () => {
       // Regression guard for the over-fetch. Trimming corners after taking
       // exactly `take` rows would return a short page, which the cursor pager
       // reads as "end of feed" and silently truncates the provider's results.
-      await prisma.serviceRequest.deleteMany({});
+      await clearRequests();
       for (let i = 0; i < 30; i++) {
-        await makeRequest(`page-${i}`, northOf(1 + (i % 20) * 0.5), 'aleppo');
+        await makeRequest(`geo-page-${i}`, northOf(1 + (i % 20) * 0.5), 'aleppo');
       }
       const ids = await listIds(area({ cityKey: null, radiusKm: 25 }), 10);
       expect(ids).toHaveLength(10);
@@ -289,8 +348,8 @@ d('Service-area matching and fan-out (real Postgres)', () => {
     const PROVIDERS = 600;
 
     beforeAll(async () => {
-      await prisma.serviceRequest.deleteMany({});
-      await prisma.providerProfile.deleteMany({});
+      await clearRequests();
+      await prisma.providerProfile.deleteMany({ where: { id: { startsWith: PROVIDER_PREFIX } } });
 
       // Each provider needs a real User: fan-out delivers to a userId, and
       // the recipient query filters `userId: { not: null }` precisely so a
@@ -333,8 +392,8 @@ d('Service-area matching and fan-out (real Postgres)', () => {
       // These users are outside the truncate list (User is not in it, because
       // the seeded accounts other specs rely on live there), so clean up the
       // ones this block created.
-      await prisma.providerProfile.deleteMany({ where: { id: { startsWith: 'load-p-' } } });
-      await prisma.user.deleteMany({ where: { id: { startsWith: 'load-u-' } } });
+      await prisma.providerProfile.deleteMany({ where: { id: { startsWith: PROVIDER_PREFIX } } });
+      await prisma.user.deleteMany({ where: { id: { startsWith: PROVIDER_USER_PREFIX } } });
     });
 
     it('pages recipients without loading them all at once', async () => {

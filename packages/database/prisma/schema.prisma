@@ -61,6 +61,9 @@ model User {
   platformSettings           PlatformSetting[]
   adminAccessRequests        AdminAccessRequest[]      @relation("AdminAccessRequestApplicant")
   adminAccessRequestsDecided AdminAccessRequest[]      @relation("AdminAccessRequestReviewer")
+  mediaAssets                MediaAsset[]
+  verificationCasesAssigned  VerificationCase[]        @relation("VerificationCaseAssignee")
+  verificationDecisions      VerificationDecision[]    @relation("VerificationDecisionReviewer")
 
   @@index([deletedAt])
   @@index([status])
@@ -486,6 +489,8 @@ model ProviderProfile {
 
   onboardingSubmissions    ProviderOnboardingSubmission[]
   workAccessGrants         ProviderWorkAccessGrant[]
+  verificationCases        VerificationCase[]
+  portfolioItems           ProviderPortfolioItem[]
 
   // ── Sprint 8: onboarding journey fields ─────────────────────────────────
   // docs/adr/0008-category-hierarchy-and-onboarding-draft.md
@@ -645,6 +650,9 @@ model ServiceCategory {
   providerProfiles     ProviderProfileServiceCategory[]
   categoryApplications ProviderCategoryApplication[]
   equipmentItems       EquipmentCatalogItem[]
+  verificationPolicies VerificationRequirementPolicy[]
+  verificationDocuments VerificationDocument[]
+  portfolioItems       ProviderPortfolioItem[]
 
   @@index([deletedAt])
   @@index([isActive, sortOrder])
@@ -1325,6 +1333,22 @@ model ProviderWorkAccessGrant {
   /// MANUAL_OVERRIDE. A string rather than an enum because the set of
   /// justifications will grow faster than the schema should.
   reason            String
+  /// Sprint 9 — the STRUCTURED half of `reason`. Free text is what an
+  /// operator wrote; this is what the platform can branch and report on, and
+  /// it is why a MANUAL_OVERRIDE stays distinguishable from a verified grant
+  /// forever (docs/adr/0013). Nullable only so the Sprint 7 rows that predate
+  /// it remain valid; every new grant sets it.
+  source            ProviderWorkAccessSource?
+  /// The verification case that issued this grant, when one did. Null for
+  /// LEGACY_BACKFILL and MANUAL_OVERRIDE — a backfilled grant is truthfully
+  /// backed by no case at all.
+  caseId            String?
+  /// NOTE ON NAMING — ADR 0013 speaks of startsAt/endsAt; these two columns
+  /// ARE those, under the names ADR 0005 already documented the access
+  /// predicate with:
+  ///   revokedAt IS NULL AND now() BETWEEN grantedAt AND COALESCE(expiresAt,'infinity')
+  /// They were not renamed: the predicate, the index below, and the Sprint 7
+  /// read path all name them, and a rename buys no semantics.
   grantedAt         DateTime                 @default(now())
   grantedByUserId   String?
   /// Null means open-ended. Deliberately nullable rather than a far-future
@@ -1339,12 +1363,19 @@ model ProviderWorkAccessGrant {
   updatedAt         DateTime                 @updatedAt
 
   providerProfile   ProviderProfile          @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  /// SetNull, not Cascade: deleting a case must never silently delete the
+  /// grant it issued. The access record outlives the paperwork.
+  case              VerificationCase?        @relation(fields: [caseId], references: [id], onDelete: SetNull)
 
   /// The authorization read: live grants for one provider, newest expiry
   /// first. Leading equality on the two columns every check carries.
   @@index([providerProfileId, status, expiresAt])
   /// Sweeping grants that have aged out, for the reporting job.
   @@index([status, expiresAt])
+  @@index([caseId])
+  /// "Which grants came from the backfill?" — the query that makes a later
+  /// verify-the-back-catalogue campaign possible.
+  @@index([source, status])
 }
 
 // ── Sprint 8: provider onboarding journey ──────────────────────────────────
@@ -1581,4 +1612,390 @@ model PlatformSettingHistory {
 
   @@index([key, changedAt])
   @@index([changedAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sprint 9 — provider verification, restricted evidence, work access
+//
+// docs/adr/0009-restricted-identity-media.md
+// docs/adr/0010-policy-versioned-verification.md
+// docs/adr/0012-evidence-retention-and-deletion.md
+// docs/adr/0013-evidence-to-work-access-capability-transition.md
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// How exposed a stored object is. RESTRICTED is deliberately NOT a synonym
+/// for PRIVATE: a private file is one its owner controls, a restricted file is
+/// identity evidence its owner may not freely share and a reviewer may read
+/// only through an audited, short-lived, permission-gated path.
+enum MediaVisibility {
+  /// Request photos, avatars. Cacheable, key-addressed, served publicly.
+  PUBLIC
+  /// Owner-only. Not listed publicly, no reviewer path.
+  PRIVATE
+  /// Identity evidence. ADR 0009: private namespace, reviewer-permission or
+  /// owner, single-use short-lived reads, no-store, every read audited.
+  RESTRICTED
+}
+
+/// Where an object sits in the malware pipeline. The read path serves CLEAN
+/// and nothing else, so an unscanned file is unreadable rather than trusted.
+enum MediaScanState {
+  /// Not yet scanned. Unreadable. This is the state a no-op development
+  /// scanner leaves an object in, which is why the failure is closed.
+  PENDING
+  CLEAN
+  /// Failed the scan. Terminal but RETAINED — deleting malware destroys the
+  /// evidence of the attack (ADR 0012 gives it the LONGEST retention window).
+  QUARANTINED
+  /// The scanner itself errored. Distinct from QUARANTINED: nobody judged the
+  /// file, the infrastructure failed. Retryable, and unreadable meanwhile.
+  SCAN_FAILED
+}
+
+/// A stored object. The unit of media is this row, not a URL string — a URL
+/// cannot carry a scan state, a hash, an owner, a retention date, or a
+/// visibility, and without those "restricted" has no representation (ADR 0009).
+model MediaAsset {
+  id                String          @id @default(cuid())
+  visibility        MediaVisibility
+  /// Server-generated. NEVER derived from a client filename: that is a
+  /// path-traversal vector, and the extension must follow the DETECTED type.
+  storageKey        String          @unique
+  /// What the client said it was uploading.
+  declaredMimeType  String
+  /// What the leading bytes actually say. A mismatch is a rejected upload;
+  /// storing both makes the mismatch visible after the fact.
+  detectedMimeType  String?
+  /// Byte length as RECEIVED and counted server-side, not as declared.
+  sizeBytes         Int
+  /// Computed server-side. Survives deletion of the bytes (ADR 0012) and
+  /// answers "was this the document we verified?" without keeping it.
+  sha256            String?
+  scanState         MediaScanState  @default(PENDING)
+  scannedAt         DateTime?
+  /// Scanner verdict detail. Never contains file content.
+  scanSignature     String?
+  /// Who uploaded it. The owner half of the RESTRICTED read rule.
+  ownerUserId       String?
+  /// Client-supplied, sanitised, stored for display ONLY. Never used to build
+  /// a storage key or a Content-Disposition without re-escaping.
+  originalFilename  String?
+  /// True once the binary landed and validation passed. An incomplete asset is
+  /// never readable and is swept.
+  uploadCompletedAt DateTime?
+
+  // ── retention (ADR 0012) ────────────────────────────────────────────────
+  /// When the BYTES become eligible for deletion. Null until the owning case
+  /// reaches a terminal state and a window can be computed.
+  retainUntil       DateTime?
+  /// Set only after the object is confirmed gone from storage. Marking first
+  /// would produce rows claiming a deletion that did not happen.
+  deletedAt         DateTime?
+  deletionReason    String?
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  owner                User?                 @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  verificationDocument VerificationDocument?
+  portfolioItems       ProviderPortfolioItem[]
+
+  /// The retention sweep: what is due for deletion and not yet deleted.
+  @@index([deletedAt, retainUntil])
+  /// The scan worker queue.
+  @@index([scanState, createdAt])
+  @@index([ownerUserId, visibility])
+}
+
+/// A published, immutable requirement set (ADR 0010). Rules differ by country,
+/// provider type and category, and change on a legal timetable nobody in this
+/// codebase controls — so they are DATA, and a case is judged under the version
+/// in force when it was submitted.
+model VerificationRequirementPolicy {
+  id                String        @id @default(cuid())
+  /// Opaque, sortable, human-readable. e.g. 2026.08-sy-v1
+  version           String        @unique
+  /// ISO 3166-1 alpha-2. Null = the global default.
+  country           String?
+  /// Null = applies to both INDIVIDUAL and BUSINESS.
+  providerType      ProviderType?
+  /// Null = applies to every category. Set = a category-specific licence rule.
+  categoryId        String?
+  /// The required document kinds and their rules. JSON because the shape is
+  /// versioned by `version`, not by the schema — a new document kind must not
+  /// require a migration. Validated against a zod schema at publish time.
+  requirements      Json
+  publishedAt       DateTime      @default(now())
+  publishedByUserId String?
+  /// Non-destructive withdrawal. A retired policy still explains every case
+  /// that was judged under it.
+  retiredAt         DateTime?
+
+  createdAt         DateTime      @default(now())
+
+  category          ServiceCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  cases             VerificationCase[]
+
+  /// Resolution reads live policies for a country/type/category triple.
+  @@index([country, providerType, categoryId, retiredAt])
+  @@index([retiredAt, publishedAt])
+}
+
+/// Where a case sits. SUBMITTED grants the redacted preview and NOTHING else
+/// (ADR 0011/0013) — submitting evidence is not a partial work grant.
+enum VerificationCaseState {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  /// Reviewer asked for something specific. The provider can act; the case is
+  /// not closed and the evidence already supplied is retained.
+  ACTION_REQUIRED
+  VERIFIED
+  REJECTED
+  /// A previously-VERIFIED case whose grant window lapsed. Distinct from
+  /// REJECTED: nobody judged them badly, time passed.
+  EXPIRED
+}
+
+/// The four evidence kinds ADR 0010 defines.
+enum VerificationDocumentKind {
+  INDIVIDUAL_IDENTITY
+  BUSINESS_REGISTRATION
+  /// Deliberately distinct from INDIVIDUAL_IDENTITY. For a business the
+  /// SUBJECT of verification is the company; this asks the separate question
+  /// "is this human allowed to speak for it?", which is the one that matters
+  /// for fraud.
+  AUTHORIZED_REPRESENTATIVE_IDENTITY
+  /// Carries the serviceCategoryId it satisfies: holding an electrician
+  /// licence says nothing about gas, so category licences UNION.
+  CATEGORY_LICENSE
+}
+
+/// One provider review case, stamped with the policy it is judged under.
+model VerificationCase {
+  id                   String                @id @default(cuid())
+  providerProfileId    String
+  state                VerificationCaseState @default(DRAFT)
+  /// Written ONCE at submission. A policy published afterwards has no effect
+  /// on this case (ADR 0010).
+  policyVersion        String
+  /// Snapshot of what that version required, so the reviewer checklist and
+  /// any later replay do not depend on the policy row still existing.
+  requirementsSnapshot Json?
+  /// Country/type the requirements were resolved for, captured at submission.
+  country              String?
+  providerType         ProviderType?
+
+  submittedAt          DateTime?
+  /// Workflow, not authorization: an unassigned reviewer with the permission
+  /// may still read the case. Assignment prevents two people doing the work,
+  /// not two people seeing it.
+  assignedToUserId     String?
+  assignedAt           DateTime?
+
+  /// Denormalised pointer to when the case closed. The decisions themselves
+  /// are append-only and are the record of record.
+  decidedAt            DateTime?
+
+  /// Reviewer free text. Treated as PERSONAL DATA (ADR 0012) and deleted with
+  /// the evidence — the durable record is built from reason CODES.
+  reviewerNotes        String?               @db.Text
+
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  providerProfile      ProviderProfile                @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  policy               VerificationRequirementPolicy? @relation(fields: [policyVersion], references: [version], onDelete: NoAction, onUpdate: NoAction)
+  assignedTo           User?                          @relation("VerificationCaseAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  documents            VerificationDocument[]
+  decisions            VerificationDecision[]
+  accessLogs           VerificationAccessLog[]
+  grants               ProviderWorkAccessGrant[]
+
+  /// The review queue: oldest submitted first, by state.
+  @@index([state, submittedAt])
+  @@index([assignedToUserId, state])
+  @@index([providerProfileId, createdAt])
+  @@index([policyVersion])
+}
+
+/// Evidence attached to a case. Outlives the BYTES it points at: after the
+/// retention sweep this row still records kind, hash, size and that it was
+/// CLEAN, while the MediaAsset object is gone (ADR 0012).
+model VerificationDocument {
+  id                String                   @id @default(cuid())
+  caseId            String
+  kind              VerificationDocumentKind
+  /// Set for CATEGORY_LICENSE, null otherwise. Which trade this licence
+  /// satisfies.
+  serviceCategoryId String?
+  mediaAssetId      String                   @unique
+  /// What the document says about itself, if the reviewer records it. Never
+  /// an identity NUMBER — those are not stored (ADR 0009).
+  expiresOn         DateTime?
+  /// Superseded by a resubmission. The old row is kept: what was originally
+  /// shown is part of the record.
+  supersededAt      DateTime?
+
+  uploadedAt        DateTime                 @default(now())
+  uploadedByUserId  String?
+
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  case              VerificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  mediaAsset        MediaAsset       @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  category          ServiceCategory? @relation(fields: [serviceCategoryId], references: [id], onDelete: SetNull)
+
+  @@index([caseId, kind, supersededAt])
+  @@index([serviceCategoryId])
+}
+
+/// What a reviewer decided. APPROVED is the only outcome that issues a grant.
+enum VerificationDecisionOutcome {
+  APPROVED
+  REJECTED
+  /// Not a closure — the provider is asked for something specific and may act.
+  ACTION_REQUIRED
+  /// Ops requires fresh evidence. Opens a NEW case; never edits the old one.
+  REVERIFY_REQUIRED
+  /// The grant window lapsed.
+  EXPIRED
+  /// Access withdrawn before its natural end. Does NOT make the prior
+  /// verification untrue (ADR 0013).
+  REVOKED
+}
+
+/// Stable, structured justification. The PERMANENT record is built from these
+/// codes rather than from reviewer prose, because prose about a passport
+/// contains personal data and gets deleted with the evidence (ADR 0012).
+enum VerificationReasonCode {
+  DOCUMENTS_COMPLETE_AND_LEGIBLE
+  DOCUMENT_MISSING
+  DOCUMENT_ILLEGIBLE
+  DOCUMENT_EXPIRED
+  DOCUMENT_MISMATCH
+  SUSPECTED_FORGERY
+  DUPLICATE_IDENTITY
+  BUSINESS_NOT_REGISTERED
+  REPRESENTATIVE_NOT_AUTHORIZED
+  LICENSE_MISSING_FOR_CATEGORY
+  LICENSE_EXPIRED
+  POLICY_PERIOD_ELAPSED
+  TRUST_AND_SAFETY_ACTION
+  PROVIDER_REQUESTED
+  OTHER
+}
+
+/// An immutable reviewer decision. Append-only and PERMANENT: it survives the
+/// deletion of the evidence it was based on, because a platform that cannot
+/// say why it trusted someone cannot be trusted to have judged well.
+model VerificationDecision {
+  id              String                      @id @default(cuid())
+  caseId          String
+  outcome         VerificationDecisionOutcome
+  reasonCode      VerificationReasonCode
+  /// The state the case moved FROM. Makes the decision sequence replayable
+  /// without joining to anything.
+  fromState       VerificationCaseState
+  toState         VerificationCaseState
+  /// The policy the decision was made under — pinned here too, so the record
+  /// stands alone if the case row is ever pseudonymised.
+  policyVersion   String
+  decidedByUserId String?
+  /// Structured, non-PII detail. Reviewer prose lives on the case and is
+  /// deleted with the evidence; this is what survives.
+  metadata        Json?
+
+  decidedAt       DateTime                    @default(now())
+  createdAt       DateTime                    @default(now())
+
+  case            VerificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  decidedBy       User?            @relation("VerificationDecisionReviewer", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([caseId, decidedAt])
+  @@index([decidedByUserId, decidedAt])
+  @@index([outcome, decidedAt])
+}
+
+/// Every read of a RESTRICTED asset. Detection rather than prevention: a
+/// reviewer with the permission may legitimately open a case they are not
+/// assigned, and the answer to "who looked at this passport?" must exist.
+model VerificationAccessLog {
+  id            String   @id @default(cuid())
+  caseId        String
+  mediaAssetId  String?
+  actorUserId   String?
+  /// VIEW_METADATA | MINT_READ_TOKEN | READ_BYTES | DOWNLOAD
+  action        String
+  /// Granted, or the stable denial code. A DENIED read is the more interesting
+  /// row of the two.
+  outcome       String
+  /// Truncated at the edge. Never a full fingerprinting surface.
+  ipPrefix      String?
+  userAgentHash String?
+  createdAt     DateTime @default(now())
+
+  case          VerificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([mediaAssetId, createdAt])
+}
+
+/// What justified a work-access grant. A MANUAL_OVERRIDE is legitimate and
+/// must stay distinguishable from a verified grant forever.
+enum ProviderWorkAccessSource {
+  /// Issued by an approved verification decision.
+  VERIFIED_DOCUMENTS
+  /// Sprint 9 backfill: approved under the OLD single-status process, identity
+  /// never checked. Grants access; does NOT claim verification.
+  LEGACY_BACKFILL
+  MANUAL_OVERRIDE
+  RENEWAL
+}
+
+/// Moderation state for provider-published portfolio work.
+enum PortfolioModerationState {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// A piece of past work a provider chooses to show. Metadata in PostgreSQL and
+/// bytes in object storage — ADR 0002 governs Mongo, and no production consumer
+/// for portfolio drafts exists, so activating Mongo for this is unjustified
+/// operational cost.
+model ProviderPortfolioItem {
+  id                      String                   @id @default(cuid())
+  providerProfileId       String
+  mediaAssetId            String
+  serviceCategoryId       String?
+  title                   String?
+  description             String?                  @db.Text
+  /// The provider asserting they have the right to publish this image — a
+  /// customer home is in it. Stored as an explicit acknowledgement with a
+  /// timestamp, not a silent assumption.
+  publicationRightAckAt   DateTime?
+  publicationRightAckText String?
+  moderationState         PortfolioModerationState @default(PENDING)
+  moderatedByUserId       String?
+  moderatedAt             DateTime?
+  moderationReason        String?
+  /// Provider-controlled ordering.
+  position                Int                      @default(0)
+
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  deletedAt               DateTime?
+
+  providerProfile         ProviderProfile  @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  mediaAsset              MediaAsset       @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  category                ServiceCategory? @relation(fields: [serviceCategoryId], references: [id], onDelete: SetNull)
+
+  /// The provider own gallery, ordered, excluding soft-deleted.
+  @@index([providerProfileId, deletedAt, position])
+  /// The moderation queue.
+  @@index([moderationState, createdAt])
+  @@index([serviceCategoryId])
 }

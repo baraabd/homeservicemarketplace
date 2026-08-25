@@ -20,6 +20,8 @@ export {}; // module marker.
 // only its own rows — it never truncates, so it can share a database with the
 // other suites.
 
+import { acquireAdvisoryLock, type HeldLock } from '../support/db-isolation';
+
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
 
@@ -57,7 +59,15 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
     return { user, profile };
   }
 
+  let lifecycleLock: HeldLock;
+
   beforeAll(async () => {
+    // SHARED: this suite creates ProviderProfile rows with NULL lifecycle
+    // axes, which the lifecycle-backfill suite would otherwise pick up in its
+    // whole-table totals. Shared locks are mutually compatible, so this does
+    // not serialise against any suite except that one.
+    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
     prisma = db.prisma;
@@ -129,6 +139,7 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
     await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     await prisma.serviceCategory.deleteMany({ where: { id: { in: createdCategoryIds } } });
     await prisma.$disconnect();
+    await lifecycleLock.release();
   });
 
   // ── C1: one live PENDING application per (provider, category) ────────────

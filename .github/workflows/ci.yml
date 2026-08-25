@@ -97,9 +97,9 @@ jobs:
       RUN_DB_INTEGRATION: '1'
       RUN_REDIS_INTEGRATION: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
@@ -192,7 +192,7 @@ jobs:
         run: pnpm --filter @homeservicemarketplace/api test
       - name: Upload API logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: integration-logs
           path: |
@@ -207,9 +207,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
@@ -238,7 +238,7 @@ jobs:
       # green run uploads nothing.
       - name: Upload Playwright traces and report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-report
           path: |
@@ -302,9 +302,9 @@ jobs:
       # cookie jar and not CORS.
       CORS_ORIGINS: http://localhost:4010,http://127.0.0.1:4010
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
@@ -351,7 +351,7 @@ jobs:
           pnpm --filter @homeservicemarketplace/web exec playwright test             e2e/auth-cookies.spec.ts --project=chromium-desktop --workers=1
       - name: Upload API log and Playwright artefacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: browser-auth-e2e
           path: |
@@ -383,7 +383,7 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 10s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Cold build (no cache)
         # --no-cache is the point: D-8 was a stage-ordering defect that a warm
         # cache would have hidden. The Dockerfile also asserts, at BUILD time,
@@ -392,8 +392,8 @@ jobs:
         run: docker build --no-cache -f apps/api/Dockerfile -t hsm-api:ci .
 
       - name: Prepare the database the container will boot against
-        uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+        uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
@@ -474,12 +474,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Node is used by the smoke script only to parse JSON (no jq on the
       # runner is not guaranteed) — it installs no dependencies.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
+          # This is the ONE job that never installs pnpm, and setup-node v5
+          # turned `package-manager-cache` on by default: it reads
+          # `packageManager` from package.json, finds pnpm, and shells out to
+          # it to locate the store. That failed here with
+          #   Unable to locate executable file: pnpm
+          # while every other job passed, because every other job runs
+          # pnpm/action-setup first. Nothing is installed here, so there is no
+          # store worth caching — say so rather than adding pnpm to satisfy a
+          # cache this job does not use.
+          package-manager-cache: false
       - name: Run the Compose smoke test
         run: bash scripts/ci/compose-smoke.sh
       - name: Dump Compose logs on failure
@@ -494,13 +504,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Full history so the secret scan can diff the whole branch, not
           # just the tip commit.
           fetch-depth: 0
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
@@ -537,7 +547,7 @@ jobs:
 
       - name: Upload the full audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dependency-audit
           path: audit-full.json
@@ -568,7 +578,7 @@ jobs:
 
       - name: Upload the SBOM
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sbom
           path: hsm-api-sbom.cyclonedx.json

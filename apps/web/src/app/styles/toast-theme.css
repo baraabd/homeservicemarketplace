@@ -52,9 +52,9 @@ li[data-sonner-toast].hsm-toast {
 
 /* ── Seeker variant (orange/amber) ──────────────────────────────── */
 li[data-sonner-toast].hsm-toast--seeker {
-  --normal-bg: #fff7ed;        /* amber-50 */
-  --normal-text: #7c2d12;      /* orange-900 — high contrast on amber-50 */
-  --normal-border: #fcd34d;    /* amber-300 */
+  --normal-bg: #fff7ed; /* amber-50 */
+  --normal-text: #7c2d12; /* orange-900 — high contrast on amber-50 */
+  --normal-border: #fcd34d; /* amber-300 */
 }
 
 /* Default-channel emit (notification.created) — visually distinct
@@ -63,20 +63,20 @@ li[data-sonner-toast].hsm-toast--seeker {
 li[data-sonner-toast].hsm-toast--seeker[data-type='success'] {
   --success-bg: #fff7ed;
   --success-text: #7c2d12;
-  --success-border: #fb923c;   /* orange-400 */
+  --success-border: #fb923c; /* orange-400 */
 }
 
 /* ── Provider variant (light-blue) ──────────────────────────────── */
 li[data-sonner-toast].hsm-toast--provider {
-  --normal-bg: #eff6ff;        /* blue-50 */
-  --normal-text: #1e3a8a;      /* blue-900 */
-  --normal-border: #93c5fd;    /* blue-300 */
+  --normal-bg: #eff6ff; /* blue-50 */
+  --normal-text: #1e3a8a; /* blue-900 */
+  --normal-border: #93c5fd; /* blue-300 */
 }
 
 li[data-sonner-toast].hsm-toast--provider[data-type='success'] {
   --success-bg: #eff6ff;
   --success-text: #1e3a8a;
-  --success-border: #3b82f6;   /* blue-500 */
+  --success-border: #3b82f6; /* blue-500 */
 }
 
 /* ── Aggregate variant ──────────────────────────────────────────── */
@@ -84,18 +84,18 @@ li[data-sonner-toast].hsm-toast--provider[data-type='success'] {
  * user doesn't think a critical event just happened.
  */
 li[data-sonner-toast].hsm-toast--aggregate.hsm-toast--seeker {
-  --normal-border: #fde68a;    /* amber-200 */
+  --normal-border: #fde68a; /* amber-200 */
 }
 li[data-sonner-toast].hsm-toast--aggregate.hsm-toast--provider {
-  --normal-border: #bfdbfe;    /* blue-200 */
+  --normal-border: #bfdbfe; /* blue-200 */
 }
 
 /* ── Action button (View) ───────────────────────────────────────── */
 li[data-sonner-toast].hsm-toast--seeker [data-button] {
-  background: #f59e0b;          /* amber-500 */
+  background: #f59e0b; /* amber-500 */
   color: #ffffff;
 }
 li[data-sonner-toast].hsm-toast--provider [data-button] {
-  background: #2563eb;          /* blue-600 */
+  background: #2563eb; /* blue-600 */
   color: #ffffff;
 }

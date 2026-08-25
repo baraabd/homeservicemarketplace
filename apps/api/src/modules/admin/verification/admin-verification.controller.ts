@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import type {
   AdminProviderMutationResponse,
+  AdminVerificationCase,
   AdminProviderSummary,
   ListAdminProvidersResponse,
   ListProviderAuditEventsResponse,
@@ -32,12 +33,16 @@ import { ListAdminProvidersQueryDto } from './dto/list-admin-providers.query';
 import { ListProviderAuditQueryDto } from './dto/list-provider-audit.query';
 import { UpdateReviewNotesDto } from './dto/update-review-notes.dto';
 import { AdminVerificationService } from './admin-verification.service';
+import { AdminVerificationCaseService } from './admin-verification-case.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 @Controller({ path: 'admin/providers', version: '1' })
 export class AdminVerificationController {
-  constructor(private readonly verification: AdminVerificationService) {}
+  constructor(
+    private readonly verification: AdminVerificationService,
+    private readonly cases: AdminVerificationCaseService,
+  ) {}
 
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -121,5 +126,26 @@ export class AdminVerificationController {
     @Query() query: ListProviderAuditQueryDto,
   ): Promise<ListProviderAuditEventsResponse> {
     return this.verification.getAuditHistory(providerProfileId, query);
+  }
+
+  // Sprint 9B — the verification case, replacing the "documents ship in a
+  // follow-up sprint" placeholder the admin UI has carried since Sprint 6.2.
+  //
+  // METADATA ONLY. No bytes, no storage key, no signed URL (docs/adr/0009).
+  // Opening a document is a separate, audited, short-lived read, so this
+  // payload stays safe to hold in the client's query cache.
+  //
+  // Returns null — not 404 — when the provider has never submitted. "No case
+  // yet" is a state a reviewer must be able to see, not a failure the UI has
+  // to special-case.
+  @Get(':providerProfileId/verification')
+  @HttpCode(HttpStatus.OK)
+  verificationCase(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('providerProfileId') providerProfileId: string,
+  ): Promise<AdminVerificationCase | null> {
+    // The reviewer's id is passed so availableActions can already exclude a
+    // self-review, rather than rendering buttons the mutation would refuse.
+    return this.cases.forProvider(providerProfileId, admin.id);
   }
 }

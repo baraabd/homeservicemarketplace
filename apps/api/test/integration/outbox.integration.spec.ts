@@ -38,6 +38,8 @@
 // sibling integration specs.
 export {};
 
+import { acquireAdvisoryLock, type HeldLock } from '../support/db-isolation';
+
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
 
@@ -173,13 +175,37 @@ d('Outbox delivery guarantees (real Postgres)', () => {
     throw new Error(`outbox event ${id} never became claimable`);
   }
 
+  /** Every row enqueue() writes carries this aggregate type, so this suite's
+   *  rows are distinguishable from any other producer's. */
+  const OWNED = { aggregateType: 'Test' } as const;
+
+  /**
+   * Remove this suite's own queue rows.
+   *
+   * This used to be a table-wide TRUNCATE. Under parallel workers that deleted
+   * rows other suites had legitimately enqueued — and geo-fanout's own
+   * TRUNCATE returned the favour, wiping this suite's rows mid-assertion.
+   * Neither suite had a bug; the reset did.
+   */
   async function truncate() {
-    await prisma.$executeRawUnsafe(
-      `TRUNCATE TABLE "OutboxHandlerRun", "OutboxEvent" RESTART IDENTITY CASCADE`,
+    const mine = (await prisma.outboxEvent.findMany({ where: OWNED, select: { id: true } })).map(
+      (e: { id: string }) => e.id,
     );
+    if (mine.length === 0) return;
+    await prisma.outboxHandlerRun.deleteMany({ where: { eventId: { in: mine } } });
+    await prisma.outboxEvent.deleteMany({ where: { id: { in: mine } } });
   }
 
+  let outboxLock: HeldLock;
+
   beforeAll(async () => {
+    // EXCLUSIVE. Scoped cleanup keeps this suite from destroying other
+    // producers' rows, but it cannot make claimBatch() selective: the worker
+    // claims whatever is PENDING and due, by design, so a row enqueued
+    // elsewhere would be claimed here and break assertions that name the
+    // exact rows expected back. A queue consumer needs the queue to itself.
+    outboxLock = await acquireAdvisoryLock('outbox', 'exclusive');
+
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
     prisma = db.prisma;
@@ -193,6 +219,7 @@ d('Outbox delivery guarantees (real Postgres)', () => {
   afterAll(async () => {
     await truncate();
     await prisma.$disconnect();
+    await outboxLock.release();
   });
 
   // ── claiming ─────────────────────────────────────────────────────────────
@@ -292,7 +319,10 @@ d('Outbox delivery guarantees (real Postgres)', () => {
       // (Standalone, not inside a transaction — see the note on enqueue().)
       const second = await enqueue('test.a', {}, { dedupeKey: 'same' });
       expect(second).toBeNull();
-      expect(await prisma.outboxEvent.count()).toBe(1);
+      // Scoped: a bare count() is a global read over a queue every producer
+      // shares. The property under test is that the dedupe key collapsed THIS
+      // suite's two enqueues into one row.
+      expect(await prisma.outboxEvent.count({ where: OWNED })).toBe(1);
     });
   });
 

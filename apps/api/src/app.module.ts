@@ -30,6 +30,7 @@ import { MediaModule } from './modules/media/media.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ProfileModule } from './modules/profile/profile.module';
 import { ProviderModule } from './modules/provider/provider.module';
+import { ProviderVerificationModule } from './modules/provider/verification/provider-verification.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { RequestOutboxModule } from './modules/requests/outbox/request-outbox.module';
@@ -94,6 +95,9 @@ import { ServicesModule } from './modules/services/services.module';
     ConversationsModule,
     ProfileModule,
     ProviderModule,
+    // Sprint 9B — restricted identity evidence. Separate from MediaModule on
+    // purpose: that one owns the PUBLIC pipeline.
+    ProviderVerificationModule,
     AdminModule,
     RealtimeModule,
     MediaModule,

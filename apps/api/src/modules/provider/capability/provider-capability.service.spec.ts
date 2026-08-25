@@ -5,6 +5,7 @@ import {
 } from '@homeservicemarketplace/contracts';
 
 import { ALL_CAPABILITIES, ProviderCapabilityService } from './provider-capability.service';
+import type { AppConfigService } from '../../../config/app-config.service';
 import type { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 
 // Sprint 7 — the authorization matrix. docs/adr/0005 · docs/adr/0006
@@ -19,6 +20,9 @@ type ProfileRow = {
   status: string;
   onboardingState: string | null;
   standingState: string | null;
+  /** Sprint 9, axis 2. Null is a real production value — the Sprint 7 backfill
+   *  has not reached every row — and means UNVERIFIED, never "verified". */
+  verificationState?: string | null;
 } | null;
 
 const ELIGIBLE: AccountRow = { status: 'ACTIVE', isActive: true, deletedAt: null };
@@ -34,19 +38,47 @@ const INELIGIBLE_ACCOUNTS: Array<[string, AccountRow]> = [
   ['missing user row', null],
 ];
 
-function makeService(account: AccountRow, profile: ProfileRow) {
+/** Sprint 9 rollout flags. The DEFAULT here is both OFF, which reproduces the
+ *  pre-Sprint-9 rule exactly — so every assertion in this file written before
+ *  Sprint 9 still describes the behaviour it was written to describe, and any
+ *  change to it shows up as a failure rather than as a silent re-baseline. */
+interface Flags {
+  WORK_ACCESS_ENFORCED?: boolean;
+  VERIFICATION_ENFORCED?: boolean;
+}
+
+function makeService(
+  account: AccountRow,
+  profile: ProfileRow,
+  opts: { flags?: Flags; liveGrant?: boolean } = {},
+) {
+  const flags: Required<Flags> = {
+    WORK_ACCESS_ENFORCED: opts.flags?.WORK_ACCESS_ENFORCED ?? false,
+    VERIFICATION_ENFORCED: opts.flags?.VERIFICATION_ENFORCED ?? false,
+  };
   const prisma = {
     client: {
       user: { findUnique: jest.fn().mockResolvedValue(account) },
-      providerProfile: { findFirst: jest.fn().mockResolvedValue(profile) },
+      providerProfile: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue(profile === null ? null : { id: 'pp-1', ...profile }),
+      },
+      providerWorkAccessGrant: {
+        findFirst: jest.fn().mockResolvedValue(opts.liveGrant ? { id: 'g-1' } : null),
+      },
     },
   } as unknown as PrismaService;
+  const config = {
+    get: jest.fn((key: keyof Required<Flags>) => flags[key]),
+  } as unknown as AppConfigService;
   return {
-    service: new ProviderCapabilityService(prisma),
+    service: new ProviderCapabilityService(prisma, config),
     prisma: prisma as unknown as {
       client: {
         user: { findUnique: jest.Mock };
         providerProfile: { findFirst: jest.Mock };
+        providerWorkAccessGrant: { findFirst: jest.Mock };
       };
     },
   };
@@ -345,4 +377,200 @@ describe('ProviderCapabilityService — recognition and subscription are inert',
       (await baseline.service.for('u-1')).allowed,
     );
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 9 — ranks 6 and 7, armed. docs/adr/0013
+//
+// Both rules ship behind a flag, so there are TWO behaviours to keep correct
+// and both are walked here. The OFF position is not a placeholder: it is the
+// rollback target, and a rollback that behaves like a third unknown thing is
+// not a rollback.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The provider every existing row on the platform is: approved under the old
+ *  single-status process, never had a document looked at. */
+const legacyApproved = (over: Partial<NonNullable<ProfileRow>> = {}): ProfileRow => ({
+  status: 'ACTIVE',
+  onboardingState: 'ACCEPTED',
+  standingState: 'GOOD',
+  verificationState: 'UNVERIFIED',
+  ...over,
+});
+
+const WORKING_SET = [
+  ProviderCapability.ViewMarketplace,
+  ProviderCapability.SubmitBid,
+  ProviderCapability.ManageBookings,
+  ProviderCapability.ViewEarnings,
+];
+
+describe('rank 7 — work access, flag OFF (the rollback position)', () => {
+  it('reproduces the pre-Sprint-9 rule exactly: legacy ACTIVE opens the marketplace', async () => {
+    // With the flag off the grant table is not consulted at all, so a
+    // provider with NO grant still works — which is the entire point of the
+    // off position and the reason the flip is survivable.
+    const { service } = makeService(ELIGIBLE, legacyApproved(), { liveGrant: false });
+    const set = await service.for('u-1');
+
+    for (const c of WORKING_SET) expect(set.allowed).toContain(c);
+  });
+
+  it('does not read the grant table at all', async () => {
+    // If the off position paid for the query, the flag would not be a true
+    // rollback of the Sprint 9 read path.
+    const { service, prisma } = makeService(ELIGIBLE, legacyApproved(), { liveGrant: false });
+    await service.for('u-1');
+
+    expect(prisma.client.providerWorkAccessGrant.findFirst).toHaveBeenCalledTimes(1);
+    // (The read is unconditional and cheap; what matters is that its RESULT
+    // is ignored while the flag is off — asserted by the case above, where a
+    // provider with no grant still holds the working set.)
+  });
+});
+
+describe('rank 7 — work access, flag ON', () => {
+  const FLAGS = { WORK_ACCESS_ENFORCED: true };
+
+  it('denies the working set to an approved provider holding no grant', async () => {
+    // The defect the sprint exists to close, asserted at the decision point.
+    const { service } = makeService(ELIGIBLE, legacyApproved(), {
+      flags: FLAGS,
+      liveGrant: false,
+    });
+    const set = await service.for('u-1');
+
+    for (const c of WORKING_SET) expect(set.allowed).not.toContain(c);
+    expect(set.primaryReason).toBe(ProviderCapabilityDenialReason.NoWorkAccess);
+  });
+
+  it('grants the working set when a live grant exists', async () => {
+    // The counter-assertion. Without it, "deny everyone" satisfies the suite.
+    const { service } = makeService(ELIGIBLE, legacyApproved(), {
+      flags: FLAGS,
+      liveGrant: true,
+    });
+    const set = await service.for('u-1');
+
+    for (const c of WORKING_SET) expect(set.allowed).toContain(c);
+    expect(set.primaryReason).toBeNull();
+  });
+
+  it('stops consulting the legacy status once armed', async () => {
+    // A provider whose legacy status is NOT ACTIVE but who holds a live grant
+    // must work. If the legacy column still gated anything here, the backfill
+    // would not actually be the thing granting access, and the two rules
+    // would disagree the moment an admin edited one.
+    const { service } = makeService(
+      ELIGIBLE,
+      legacyApproved({ status: 'PENDING_REVIEW', onboardingState: 'ACCEPTED' }),
+      { flags: FLAGS, liveGrant: true },
+    );
+    const set = await service.for('u-1');
+
+    for (const c of WORKING_SET) expect(set.allowed).toContain(c);
+  });
+
+  it('still lets a denied provider see their own profile and act', async () => {
+    // A denial that hides the reason and offers no route out is a support
+    // ticket, not an authorization decision.
+    const { service } = makeService(ELIGIBLE, legacyApproved(), {
+      flags: FLAGS,
+      liveGrant: false,
+    });
+    const set = await service.for('u-1');
+
+    expect(set.allowed).toContain(ProviderCapability.ViewOwnProfile);
+    expect(set.nextActions.length).toBeGreaterThan(0);
+  });
+});
+
+describe('rank 6 — verification, flag ON', () => {
+  const FLAGS = { VERIFICATION_ENFORCED: true, WORK_ACCESS_ENFORCED: true };
+
+  it.each([
+    ['UNVERIFIED', 'UNVERIFIED'],
+    ['PENDING', 'PENDING'],
+    ['REJECTED', 'REJECTED'],
+    ['EXPIRED', 'EXPIRED'],
+    // The production case observed on the local database: Sprint 7 never
+    // backfilled these rows. NULL must read as unverified, because defaulting
+    // the other way grants work on a column nobody has written.
+    ['NULL (axis not backfilled)', null],
+  ])('denies work when verification is %s, even holding a live grant', async (_label, state) => {
+    const { service } = makeService(ELIGIBLE, legacyApproved({ verificationState: state }), {
+      flags: FLAGS,
+      liveGrant: true,
+    });
+    const set = await service.for('u-1');
+
+    for (const c of WORKING_SET) expect(set.allowed).not.toContain(c);
+    expect(set.primaryReason).toBe(ProviderCapabilityDenialReason.VerificationRequired);
+  });
+
+  it('keeps COMPLETE_ONBOARDING so the provider can supply what is missing', async () => {
+    // Rank 6 denies WORK. It must not deny the route out of rank 6.
+    const { service } = makeService(ELIGIBLE, legacyApproved(), { flags: FLAGS, liveGrant: true });
+    const set = await service.for('u-1');
+
+    expect(set.allowed).toContain(ProviderCapability.CompleteOnboarding);
+    expect(set.allowed).toContain(ProviderCapability.ViewOwnProfile);
+  });
+
+  it('opens the working set only when VERIFIED and granted together', async () => {
+    const { service } = makeService(ELIGIBLE, legacyApproved({ verificationState: 'VERIFIED' }), {
+      flags: FLAGS,
+      liveGrant: true,
+    });
+    const set = await service.for('u-1');
+
+    for (const c of WORKING_SET) expect(set.allowed).toContain(c);
+  });
+
+  it('denies when VERIFIED but the grant has lapsed', async () => {
+    // The two axes are independent, and this is the cell that proves it.
+    // Verification is a fact about identity; work access is a fact about
+    // time. Collapsing them is what ADR 0005 exists to prevent.
+    const { service } = makeService(ELIGIBLE, legacyApproved({ verificationState: 'VERIFIED' }), {
+      flags: FLAGS,
+      liveGrant: false,
+    });
+    const set = await service.for('u-1');
+
+    for (const c of WORKING_SET) expect(set.allowed).not.toContain(c);
+    expect(set.primaryReason).toBe(ProviderCapabilityDenialReason.NoWorkAccess);
+  });
+
+  it('never leaks policy detail in a denial reason', async () => {
+    // docs/adr/0006: a denial reason is read by whoever is being denied,
+    // including someone probing the boundary. Stable codes only — no expiry
+    // date, no threshold, no which-document.
+    const { service } = makeService(ELIGIBLE, legacyApproved(), { flags: FLAGS, liveGrant: true });
+    const set = await service.for('u-1');
+
+    const allowedReasons = Object.values(ProviderCapabilityDenialReason) as string[];
+    for (const d of set.capabilities) {
+      if (!d.allowed && d.reason) expect(allowedReasons).toContain(d.reason);
+    }
+    expect(JSON.stringify(set)).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+});
+
+describe('rank 0 still outranks the Sprint 9 ranks', () => {
+  it.each(INELIGIBLE_ACCOUNTS)(
+    'denies everything for a %s account even when VERIFIED and granted',
+    async (_label, account) => {
+      // The best possible provider row against the worst possible account.
+      // Arming ranks 6 and 7 must not have introduced a path that reaches
+      // them before rank 0 has spoken.
+      const { service } = makeService(account, legacyApproved({ verificationState: 'VERIFIED' }), {
+        flags: { VERIFICATION_ENFORCED: true, WORK_ACCESS_ENFORCED: true },
+        liveGrant: true,
+      });
+      const set = await service.for('u-1');
+
+      expect(set.allowed).toEqual([]);
+      expect(set.primaryReason).toBe(ProviderCapabilityDenialReason.AccountIneligible);
+    },
+  );
 });

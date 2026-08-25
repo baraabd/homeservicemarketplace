@@ -1,0 +1,45 @@
+# Line-ending policy.
+#
+# The repository stores LF in every blob already; this file makes the WORKING
+# TREE agree on every platform. Without it, Windows checkouts honour
+# `core.autocrlf=true` and land CRLF on disk, while Linux checkouts land LF.
+#
+# That split is invisible to git — `git status` is clean either way, because
+# the blobs are identical — but it is not invisible to Prettier, whose
+# `endOfLine` default is "lf". On this Windows machine `pnpm format:check`
+# reported 800 of 1050 tracked files as unformatted, every one of them a false
+# positive about a byte the repository does not contain. A gate that fails for
+# 800 files nobody touched is a gate people learn to ignore, and it hides the
+# handful of real formatting errors underneath.
+#
+# `eol=lf` overrides core.autocrlf per-repository, so contributors need no
+# local git configuration and CI needs no change. Normalising costs no diff:
+# the blobs are LF today and stay byte-identical.
+* text=auto eol=lf
+
+# Binaries must never be EOL-converted. `text=auto` already detects most of
+# these, but detection is a heuristic and a corrupted PNG is an expensive way
+# to discover its limits.
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.webp   binary
+*.avif   binary
+*.pdf    binary
+*.zip    binary
+*.gz     binary
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.otf    binary
+*.eot    binary
+*.node   binary
+*.dll    binary
+*.exe    binary
+
+# Generated and vendored trees: keep them out of language statistics and out
+# of diffs, without changing how they are stored.
+pnpm-lock.yaml            linguist-generated=true -diff
+packages/database/generated/** linguist-generated=true -diff

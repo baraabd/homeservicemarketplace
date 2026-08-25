@@ -1,4 +1,5 @@
 import type { ProviderProfileStatus } from '../../../provider/profile/enums/provider-profile-status';
+import type { AdminProviderAction } from '../admin-provider-transitions';
 
 // Admin-facing summary of one provider profile. Differs from the
 // public ProviderProfileSummary in that it surfaces the linked
@@ -33,6 +34,16 @@ export interface AdminProviderSummary {
   phoneNumber?: string | null;
   serviceAreaRadiusKm?: number | null;
   serviceCategories?: Array<{ id: string; slug: string; labelEn: string; labelAr: string }>;
+  // Sprint 9 — the actions the SERVER says are legal from this row's current
+  // status, derived from ADMIN_PROVIDER_TRANSITIONS.
+  //
+  // The client renders these and owns no rule. Before this field the admin UI
+  // decided for itself, got `approve` wrong for DRAFT, and offered reviewers a
+  // button the backend answered with 409 (docs/sprint-09/INSPECTION.md D-3).
+  //
+  // Optional so a cached or older payload degrades to "no actions offered"
+  // rather than to "every action offered" — the safe direction.
+  availableActions?: AdminProviderAction[];
   createdAt: string;
   updatedAt: string;
 }

@@ -7,6 +7,7 @@ import {
   type ProviderCapabilityDecision,
 } from '@homeservicemarketplace/contracts';
 
+import { AppConfigService } from '../../../config/app-config.service';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 
 // Sprint 7 — THE decision point for "what may this provider do".
@@ -43,21 +44,33 @@ const ALL_CAPABILITIES: readonly ProviderCapability[] = [
 ];
 
 /** The inputs the rules read. Assembled once so a rule cannot smuggle in an
- *  extra query — the service must stay two reads deep (docs/adr/0006). */
+ *  extra query — the service must stay three reads deep (docs/adr/0006, plus
+ *  the grant read docs/adr/0013 adds). */
 interface CapabilityContext {
   accountEligible: boolean;
   hasProfile: boolean;
   onboardingState: string | null;
   standingState: string | null;
-  /** Legacy status, still authoritative for the marketplace gate this sprint
-   *  (docs/adr/0007). Read here so the ONE decision point reflects the ONE
-   *  rule actually in force, rather than a rule that is not enforced yet. */
+  /** Legacy status. Still the marketplace gate when WORK_ACCESS_ENFORCED is
+   *  off, so the ONE decision point reflects the ONE rule actually in force
+   *  rather than the one that is coming (docs/adr/0007). */
   legacyStatus: string | null;
+  /** Axis 2. NULL is possible and means "the Sprint 7 backfill has not reached
+   *  this row", NOT "verified" — verified on a database that has never seen a
+   *  document would be a fabricated audit trail. Treated as UNVERIFIED. */
+  verificationState: string | null;
+  /** Axis 4. True iff a grant exists with revokedAt IS NULL and now() between
+   *  its start and end. Computed in SQL, never from a status column, so expiry
+   *  needs no writer (docs/adr/0005). */
+  hasLiveWorkAccessGrant: boolean;
 }
 
 @Injectable()
 export class ProviderCapabilityService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: AppConfigService,
+  ) {}
 
   /** The capability set for a user. Never throws for an unknown or ineligible
    *  user: it returns an all-denied set, because "who is this?" and "what may
@@ -96,13 +109,42 @@ export class ProviderCapabilityService {
         onboardingState: null,
         standingState: null,
         legacyStatus: null,
+        verificationState: null,
+        hasLiveWorkAccessGrant: false,
       };
     }
 
     const profile = await this.prisma.client.providerProfile.findFirst({
       where: { userId, deletedAt: null },
-      select: { status: true, onboardingState: true, standingState: true },
+      select: {
+        id: true,
+        status: true,
+        onboardingState: true,
+        standingState: true,
+        verificationState: true,
+      },
     });
+
+    // The grant read is skipped entirely when there is no profile: there is
+    // nothing to key it on, and a rule that cannot fire should not cost a
+    // round trip.
+    const grant =
+      profile === null
+        ? null
+        : await this.prisma.client.providerWorkAccessGrant.findFirst({
+            where: {
+              providerProfileId: profile.id,
+              status: 'ACTIVE',
+              revokedAt: null,
+              // "Live" is a time predicate evaluated by the database, not a
+              // status column maintained by a job. A nightly sweep that fails
+              // would otherwise leave access granted that nobody authorised
+              // (docs/adr/0005 axis 4).
+              grantedAt: { lte: new Date() },
+              OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+            },
+            select: { id: true },
+          });
 
     return {
       accountEligible: true,
@@ -110,6 +152,8 @@ export class ProviderCapabilityService {
       onboardingState: profile?.onboardingState ?? null,
       standingState: profile?.standingState ?? null,
       legacyStatus: profile?.status ?? null,
+      verificationState: profile?.verificationState ?? null,
+      hasLiveWorkAccessGrant: grant !== null,
     };
   }
 
@@ -228,23 +272,42 @@ export class ProviderCapabilityService {
       return this.render(allowed, reasons, nextActions, primaryReason);
     }
 
-    // ── Rank 6 — verification. Inert this sprint. ────────────────────────
+    // ── Rank 6 — verification. ARMED in Sprint 9, behind a flag. ─────────
     //
-    // Every legacy-approved provider is UNVERIFIED by construction
-    // (docs/adr/0007): nobody ever checked a document. Enforcing verification
-    // now would deny the entire existing supply side, so the rank exists,
-    // is tested, and is not yet armed. Sprint 8 arms it.
+    // docs/adr/0013. A NULL verificationState means the Sprint 7 axis
+    // backfill has not reached this row — observed on real data — and is
+    // treated as UNVERIFIED. Defaulting the other way would grant work on the
+    // strength of a column nobody has written yet.
+    if (this.config.get('VERIFICATION_ENFORCED')) {
+      const verified = ctx.verificationState === 'VERIFIED';
+      if (!verified) {
+        primaryReason = ProviderCapabilityDenialReason.VerificationRequired;
+        // Work is denied; onboarding and appeal are NOT. A provider who cannot
+        // work must still be able to see why and act on it, or the denial is
+        // a dead end.
+        allowed.add(ProviderCapability.CompleteOnboarding);
+        for (const c of ALL_CAPABILITIES) {
+          if (!allowed.has(c)) reasons.set(c, primaryReason);
+        }
+        nextActions.push(ProviderNextAction.CompleteProfile);
+        return this.render(allowed, reasons, nextActions, primaryReason);
+      }
+    }
 
-    // ── Rank 7 — work access. Inert this sprint. ─────────────────────────
+    // ── Rank 7 — work access. ARMED in Sprint 9, behind a flag. ──────────
     //
-    // Grants are modelled and readable but not consulted: no grant exists
-    // yet, so enforcing would lock out every provider. Sprint 9 arms it after
-    // backfilling grants for LEGACY_APPROVED rows.
+    // The flag is the rollout control ADR 0005 asked for. OFF reproduces the
+    // pre-Sprint-9 rule EXACTLY — the legacy status gate — so turning it off
+    // is a true rollback rather than a different third behaviour. ON consults
+    // the grant.
     //
-    // Until then the MARKETPLACE GATE REMAINS THE LEGACY STATUS, unchanged —
-    // this service reports the rule that is actually in force rather than the
-    // one that is coming.
-    const marketplaceOpen = ctx.legacyStatus === 'ACTIVE';
+    // The backfill migration (20260824084700) must have run before this is
+    // enabled: it refuses to complete unless every working provider holds a
+    // live grant, precisely so this flag cannot be armed against a state that
+    // would lock out the supply side.
+    const marketplaceOpen = this.config.get('WORK_ACCESS_ENFORCED')
+      ? ctx.hasLiveWorkAccessGrant
+      : ctx.legacyStatus === 'ACTIVE';
 
     if (!marketplaceOpen) {
       primaryReason = ProviderCapabilityDenialReason.NoWorkAccess;

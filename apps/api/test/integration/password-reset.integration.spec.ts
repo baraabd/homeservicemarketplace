@@ -18,6 +18,8 @@ export {}; // module marker — see migration-bootstrap.spec.ts.
 // row it creates uses an @itest.local email and is deleted afterward, so the
 // real admin@admin.com and all seeded data are left untouched.
 
+import { withAdvisoryLock } from '../support/db-isolation';
+
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
 
@@ -94,7 +96,10 @@ d('Password reset flow (real Postgres)', () => {
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
     prisma = db.prisma;
-    await db.seed(); // ensures roles + permissions present (idempotent)
+    // Serialised against the other seeders and against the idempotency spec:
+    // seed() upserts a fixed set of shared rows, and two concurrent upserts of
+    // the same row race. The hold is only as long as the seed itself.
+    await withAdvisoryLock('seed', 'exclusive', () => db.seed());
 
     const { JwtService } = require('@nestjs/jwt');
     const { TransactionRunner } = require('../../src/infrastructure/prisma/transaction.runner');
