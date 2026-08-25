@@ -146,6 +146,7 @@ d('Service-area matching and fan-out (real Postgres)', () => {
   }
 
   let lifecycleLock: HeldLock;
+  let outboxLock: HeldLock;
 
   beforeAll(async () => {
     // SHARED, not exclusive: this suite writes ProviderProfile rows (600 of
@@ -154,6 +155,20 @@ d('Service-area matching and fan-out (real Postgres)', () => {
     // totals. Shared locks are mutually compatible, so every other suite that
     // merely writes providers still runs concurrently with this one.
     lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+
+    // SHARED on the outbox, because this suite is a PRODUCER.
+    //
+    // Creating a request enqueues request.available. outbox.integration.spec.ts
+    // runs real workers that claim whatever is PENDING and due — a queue
+    // consumer cannot be selective — and asserts on the exact rows it expects
+    // back. Left unlocked, its workers claim and dead-letter this suite's
+    // events, which surfaces as a stalled drain in THAT suite rather than a
+    // failure in this one.
+    //
+    // That suite takes the same lock EXCLUSIVE, so shared here is exactly the
+    // mutual exclusion required: producers may run together, never alongside
+    // the consumer.
+    outboxLock = await acquireAdvisoryLock('outbox', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -212,6 +227,7 @@ d('Service-area matching and fan-out (real Postgres)', () => {
       where: { OR: [{ id: seekerUserId }, { id: { startsWith: PROVIDER_USER_PREFIX } }] },
     });
     await prisma.$disconnect();
+    await outboxLock?.release();
     await lifecycleLock.release();
   });
 

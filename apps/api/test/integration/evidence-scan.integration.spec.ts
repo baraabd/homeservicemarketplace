@@ -71,6 +71,7 @@ d('Evidence scanning (real Postgres, real bytes)', () => {
 
   let storageRoot: string;
   let lifecycleLock: HeldLock;
+  let outboxLock: HeldLock;
   let EICAR_PDF: Buffer;
 
   const readDoc = (docId: string) =>
@@ -145,6 +146,20 @@ d('Evidence scanning (real Postgres, real bytes)', () => {
 
   beforeAll(async () => {
     lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+
+    // SHARED on the outbox, because this suite is a PRODUCER.
+    //
+    // Scanning enqueues evidence.scanned rows. outbox.integration.spec.ts runs
+    // real workers that claim whatever is PENDING and due — by design, since a
+    // queue consumer cannot be selective — and it asserts table-wide totals.
+    // Left unlocked, its workers dead-letter this suite's events (no handler is
+    // registered in ITS module) and its counts include rows it never enqueued.
+    //
+    // That suite takes the same lock EXCLUSIVE, so shared here is exactly the
+    // mutual exclusion needed: many producers may run together, but never
+    // alongside the consumer. Taken after providerLifecycle, in the same order
+    // as every other suite, so the two cannot deadlock.
+    outboxLock = await acquireAdvisoryLock('outbox', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -283,6 +298,7 @@ d('Evidence scanning (real Postgres, real bytes)', () => {
     await app?.close();
     rmSync(storageRoot, { recursive: true, force: true });
     await prisma.$disconnect();
+    await outboxLock?.release();
     await lifecycleLock.release();
   });
 
