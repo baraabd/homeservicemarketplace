@@ -8,8 +8,12 @@ Design and threat model: `RESTRICTED_EVIDENCE_UPLOAD.md` beside this file.
 ## Branch and baseline
 
 - Branch: `feat/sprint-09b3-restricted-evidence-upload`.
-- Base: `develop` at `4ca7136`, which is an **ancestor** of this branch — 0
-  behind. `a51b1a6` (the 9B.2 squash-merge) is also an ancestor.
+- Base: `origin/develop` at `a51b1a6` (the 9B.2 squash-merge), which is the
+  merge base — 0 behind, 15 commits ahead, 32 files changed.
+- The LOCAL `develop` ref is stale at `4ca7136` and predates the 9B.2 merge.
+  Measure against `origin/develop`; `git log develop..HEAD` locally reports 76
+  commits, which is the staleness, not this sprint. Left alone deliberately:
+  this branch does not update `develop`.
 - The older `feat/sprint-09b-provider-verification-experience` remote ref still
   points at the pre-merge `e0e0697`. Deliberately NOT force-updated.
 - Four user stashes untouched throughout.
@@ -30,15 +34,65 @@ Design and threat model: `RESTRICTED_EVIDENCE_UPLOAD.md` beside this file.
 | `449f44c` | fix the reverse-geocode race in the web drag test              |
 | `ddb2edd` | correct the stated grace period (300s, not 60s)                |
 | `0c175b0` | M5 — evidence log/PII hygiene gate (7 tests)                   |
+| `9ab9124` | design doc + this checkpoint                                   |
+| `f6a8445` | own the S3 source stream when an upload fails (3 tests)        |
+| `4b7f209` | race-free directory enumeration in the guardrail (+1 test)     |
+
+## CI round two — what `9ab9124` got wrong
+
+The first pushed SHA failed CI in `Verify API`:
+
+```
+FAIL test/e2e/admin-verification.e2e.spec.ts
+ENOENT: no such file or directory, open '/tmp/hsm-stage-.../staged.bin'
+```
+
+An admin authentication suite blamed for a storage adapter's file handle. It
+was simply the suite running when someone else's stream finally touched disk.
+
+`S3RestrictedStorageAdapter.putObjectFromFile` built its body inline as
+`Body: createReadStream(sourcePath)`. `createReadStream` schedules its `open()`
+immediately, so the stream touches the file whether or not anyone reads it.
+When `send()` REJECTS BEFORE consuming the body — which the contract suite
+deliberately simulates — the stream is orphaned: unread, undestroyed, and
+carrying no `'error'` listener. The contract suite's `afterAll` then removes the
+staging directory, the pending open finds nothing, and an `'error'` event with
+no listener is an uncaught exception in whatever is running next.
+
+Fixed in `f6a8445`: the stream is a named local, destroyed in a `finally` on
+both paths, with a listener so a late fs error on a stream nobody is reading
+cannot take the process down. Still streaming, still O(chunk) — no `readFile`,
+no Buffer, no delay, no retry, no global handler. Pinned by
+`s3-restricted-storage.stream-ownership.spec.ts`, whose second test reproduced
+the exact CI `ENOENT` (and killed the worker) before the fix.
+
+CodeQL alert #7 `js/file-system-race` was raised on the same file: the walker
+called `readdirSync(dir)` then `statSync(full)` — a check/use pair with a
+window between them. Fixed in `4b7f209` with a single
+`readdirSync(dir, { withFileTypes: true })` enumeration, which also stops the
+walker following symlinks out of the audited tree (`statSync` follows them,
+`Dirent` does not). Resolved by code, not dismissed; a second test proves the
+guardrail still detects a planted offending import.
+
+Note for a future session: `canonical-axes.spec.ts:59` carries the identical
+`statSync(full).isDirectory()` pattern. CodeQL has not flagged it and it was
+left untouched as out of scope, but it is the same latent defect.
 
 ## Test counts
 
-| Point              | Suites  | Tests    |
-| ------------------ | ------- | -------- |
-| Recovered baseline | 136     | 2145     |
-| Now                | **142** | **2259** |
+| Point                           | Suites  | Tests                |
+| ------------------------------- | ------- | -------------------- |
+| Recovered baseline              | 136     | 2145                 |
+| At `0c175b0`, DB+Redis gates ON | 142     | 2259                 |
+| At `4b7f209`, hermetic          | **143** | **2077 + 186 gated** |
 
-All green, 0 failed, 0 unjustified skips, normal workers, real Postgres + Redis.
+The hermetic figure is the one measured locally against the final SHA: 128
+suites passed, 15 DB-gated suites skipped by their `RUN_DB_INTEGRATION` gate,
+0 failed. The gated run for the final SHA is green in CI's
+`Integration & E2E (real Postgres / Redis)` job rather than re-measured here.
+
+0 failed, 0 unjustified skips, normal workers, and — checked explicitly after
+`f6a8445` — 0 forced-worker-exit warnings and 0 `staged.bin` ENOENT lines.
 
 ## Decisions already made (do not relitigate)
 
