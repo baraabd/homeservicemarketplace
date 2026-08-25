@@ -1,9 +1,11 @@
-import { Controller, Get, Logger, Param, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Logger, Param, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
 
-import { LocalDiskStorageAdapter } from '../../../../infrastructure/storage/local-disk-storage.adapter';
+import {
+  RESTRICTED_OBJECT_STORAGE,
+  RestrictedObjectStoragePort,
+} from '../../../../infrastructure/storage/restricted-object-storage.port';
 import { AppError } from '../../../../shared/errors/app-error';
 import { CurrentUser } from '../../../iam/authentication/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../../iam/authentication/guards/jwt-auth.guard';
@@ -39,7 +41,13 @@ export class EvidenceReadController {
   constructor(
     private readonly reads: EvidenceReadService,
     private readonly permissions: PermissionResolverService,
-    private readonly local: LocalDiskStorageAdapter,
+    // Sprint 9B.3 — the CONFIGURED restricted backend, not the local adapter.
+    // 9A injected LocalDiskStorageAdapter and called absolutePathForKey(),
+    // which has no meaning when STORAGE_DRIVER=s3: restricted reads were
+    // broken in every production configuration. An architecture test now
+    // fails if a restricted file imports the local adapter again.
+    @Inject(RESTRICTED_OBJECT_STORAGE)
+    private readonly objects: RestrictedObjectStoragePort,
   ) {}
 
   @Get(':documentId/content')
@@ -80,17 +88,17 @@ export class EvidenceReadController {
     res.setHeader('Content-Type', grant.detectedMimeType);
     res.setHeader('Referrer-Policy', 'no-referrer');
 
-    let absPath: string;
+    let stream;
     try {
-      absPath = this.local.absolutePathForKey(grant.storageKey);
+      stream = await this.objects.openReadStream(grant.storageKey);
     } catch {
-      // A key the adapter refuses is a data problem, not a client one. The
-      // caller gets the same 404 every other denial gets.
-      this.log.error({ msg: 'evidence.read.key_unresolvable', documentId });
+      // An unresolvable or missing object is a data problem, not a client one.
+      // The caller gets the same 404 every other denial gets — no signal about
+      // whether the document, the case or the object exists.
+      this.log.error({ msg: 'evidence.read.object_unavailable', documentId });
       throw new AppError('NOT_FOUND', 'Document not found.', 404);
     }
 
-    const stream = createReadStream(absPath);
     stream.on('error', (err) => {
       // Headers are already sent by the time a stream error surfaces, so the
       // only honest thing left is to destroy the response rather than emit a

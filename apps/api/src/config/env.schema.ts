@@ -298,6 +298,12 @@ const baseEnvSchema = z.object({
   //   the AWS SDK provider chain unless S3_ACCESS_KEY_ID + _SECRET are set.
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   LOCAL_STORAGE_DIR: z.string().optional(),
+  // Sprint 9B.3 — restricted evidence lives under its OWN root, not a
+  // subdirectory of the public media root. ADR 0009 asks for the split to be
+  // enforced twice, by configuration AND by code; a shared root would leave
+  // only the code half, so a public route that lost its isRestrictedKey check
+  // could still resolve a passport. Defaults to <repo>/.restricted-uploads.
+  RESTRICTED_STORAGE_DIR: z.string().optional(),
 
   // Used by the LocalDiskStorageAdapter to HMAC-sign upload tokens.
   // Optional: when unset the adapter falls back to JWT_ACCESS_SECRET.
@@ -321,6 +327,11 @@ const baseEnvSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
   S3_PUBLIC_BASE_URL: z.string().optional(),
+  // Sprint 9B.3 — the restricted evidence bucket. Same reasoning as
+  // RESTRICTED_STORAGE_DIR: a distinct bucket means the public/restricted
+  // split survives a code mistake. Falls back to S3_BUCKET when unset, which
+  // is a deliberate operator choice rather than a default worth relying on.
+  S3_RESTRICTED_BUCKET: z.string().optional(),
 });
 
 // Sprint 4 — "enabled but unconfigured" must fail at BOOT, not at the first
