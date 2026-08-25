@@ -3,34 +3,42 @@
 Resume point for a new session. A new session should be able to continue from
 this file without re-deriving anything.
 
+Design and threat model: `RESTRICTED_EVIDENCE_UPLOAD.md` beside this file.
+
 ## Branch and baseline
 
-- Branch: `feat/sprint-09b3-restricted-evidence-upload`, created from `309ddf7`.
-- Base: `a51b1a6` (PR #42 squash-merge of 9B.2 into `develop`). 0 behind.
+- Branch: `feat/sprint-09b3-restricted-evidence-upload`.
+- Base: `develop` at `4ca7136`, which is an **ancestor** of this branch — 0
+  behind. `a51b1a6` (the 9B.2 squash-merge) is also an ancestor.
 - The older `feat/sprint-09b-provider-verification-experience` remote ref still
   points at the pre-merge `e0e0697`. Deliberately NOT force-updated.
-- Four user stashes untouched throughout. Worktree clean.
-- Nothing pushed yet. No PR yet.
+- Four user stashes untouched throughout.
 
 ## Commits (oldest first)
 
-| SHA       | What                                                         |
-| --------- | ------------------------------------------------------------ |
-| `8d379bb` | evidence limits through `ADMIN_SETTINGS_SCHEMA` (7 tests)    |
-| `309ddf7` | pure prepare/finalize policy (31 tests)                      |
-| `d0449a7` | restricted storage abstraction + read-path repair (25 tests) |
-| `d89fd78` | schema for prepared uploads (2 migrations)                   |
-| `2b304c0` | prepare / content / finalize services and routes             |
-| `e924120` | end-to-end regressions (40 tests)                            |
+| SHA       | What                                                           |
+| --------- | -------------------------------------------------------------- |
+| `8d379bb` | evidence limits through `ADMIN_SETTINGS_SCHEMA` (7 tests)      |
+| `309ddf7` | pure prepare/finalize policy (31 tests)                        |
+| `d0449a7` | restricted storage abstraction + read-path repair (25 tests)   |
+| `d89fd78` | schema for prepared uploads (2 migrations)                     |
+| `2b304c0` | prepare / content / finalize services and routes               |
+| `e924120` | end-to-end regressions (40 tests)                              |
+| `258fc5b` | status checkpoint                                              |
+| `9732d1e` | M4 — sweep abandoned evidence preparations (14 tests)          |
+| `1ca053f` | M5 — HTTP-boundary proof that PENDING is unreadable (17 tests) |
+| `449f44c` | fix the reverse-geocode race in the web drag test              |
+| `ddb2edd` | correct the stated grace period (300s, not 60s)                |
+| `0c175b0` | M5 — evidence log/PII hygiene gate (7 tests)                   |
 
 ## Test counts
 
 | Point              | Suites  | Tests    |
 | ------------------ | ------- | -------- |
 | Recovered baseline | 136     | 2145     |
-| Now                | **138** | **2210** |
+| Now                | **142** | **2259** |
 
-All green, 0 skipped, normal workers, real Postgres + Redis.
+All green, 0 failed, 0 unjustified skips, normal workers, real Postgres + Redis.
 
 ## Decisions already made (do not relitigate)
 
@@ -58,46 +66,148 @@ slot design settled, so the extra columns went into `20260825123000` rather than
 being appended. Prisma identifies an applied migration by NAME; appending left
 the schema half-built while `migrate status` said "up to date".
 
-## Remaining work
+**Cleanup grace is 300 seconds.** A finalize that passed the expiry check
+microseconds earlier is still doing a `head()` plus a database write; sweeping
+at the instant of expiry would delete the object underneath it.
 
-### M4 — cleanup / compensation sweep — NOT STARTED
+## Work status
 
-Expired, non-finalized preparations must have their staged/promoted objects
-deleted, idempotently, in bounded batches, tolerating "already missing", never
-touching finalized documents or another case's objects. No public endpoint.
-Query shape is ready: index
-`MediaAsset(verificationCaseId, uploadCompletedAt)` plus `uploadExpiresAt`.
+### M4 — cleanup / compensation sweep — DONE (`9732d1e`)
 
-Note: in-request compensation already exists and is tested — if the object
-lands and the row update fails, the object is deleted before the error
-surfaces. M4 is the periodic sweep for uploads simply abandoned.
+`EvidenceCleanupService.sweepExpiredPreparations()`: bounded batches (default
+100, max 500), object deleted FIRST then the row claimed conditionally so two
+concurrent sweeps delete once and report once. Refuses finalized, already
+deleted, no-expiry, in-grace, `PUBLIC`, and other-case assets. Tolerates an
+already-missing object; a storage failure leaves the row for the next run. No
+HTTP route. 14 integration tests including forced storage failure, retry, and
+concurrent sweeps.
 
-### M5 — remaining tests — PARTIAL
+### M5 — privacy and boundary proof — DONE (`1ca053f`, `0c175b0`)
 
-Done: 40 integration/HTTP tests, 25 storage contract tests (both backends).
-Missing: the repository's PII/log-scanning gate run against evidence success
-AND failure paths; a test proving `PENDING` is unreadable through the real read
-route (the policy unit test covers the rule, not the route).
+17 HTTP-boundary tests: `PENDING`, `QUARANTINED` and `SCAN_FAILED` unreadable
+(including by the owner), cross-owner refused, reviewer-without-permission
+refused, revocation honoured between requests, unknown id answered exactly as a
+forbidden one (no existence oracle), audit rows for both ALLOWED and DENIED, no
+full IP or raw user agent recorded.
 
-### M6 — gates, docs, push, PR, CI — NOT STARTED
+7 log-hygiene tests capturing every Nest `Logger` and `console.*` write during
+real HTTP flows, over the success path AND the failure paths (rejected bytes,
+denied read, sweep whose storage delete throws a raw driver error naming the
+object). Scans for storage key, sha256, filename, owner id, storage root,
+document body, and credential-shaped material. Two anti-vacuity anchors: a
+tripwire that plants a known string through the same logger and requires the
+scan to find it, and the sweep test asserting its warn line IS present while the
+key inside the thrown error is not.
 
-None of the 25 local CI-equivalent gates has been run for this branch beyond
-API lint/typecheck/test and the database gates. Still to run: web lint /
-typecheck / unit / build, Playwright, auth-cookie contract, Docker cold build
-and boot, Compose smoke, dependency/secret/container scans, lockfile, format.
+### M6 — local gates — DONE
 
-**Compose smoke warning.** `pnpm smoke:compose` ends with
-`docker compose down -v --remove-orphans`. Run earlier in this project, it
-DESTROYED the developer's local Postgres volume and the dev database had to be
-rebuilt from migrations + seed. Run it only with an isolated project name and
-disposable volumes, or in a throwaway environment.
+Every CI-equivalent gate below was run locally against this branch's content.
+See "Gate results" for exact numbers.
 
-Docs still to write: upload sequence, storage architecture, Local vs S3,
-authorization model, non-enumerating 404s, MIME/signature/size controls,
-scan-state semantics, temporary-object lifecycle, cleanup/compensation, audit
-design, PII prohibitions, threat model before/after, tests mapped to threats,
-9B.4 scanner responsibilities, rollback plan.
+Docs: `RESTRICTED_EVIDENCE_UPLOAD.md` covers storage architecture, the upload
+sequence, streaming and size enforcement, scan-state semantics, the
+authorization model and non-enumerating 404s, audit and PII prohibitions, the
+cleanup/compensation design, the threat model before/after, tests mapped to
+threats, 9B.4 scanner responsibilities, and the rollback plan.
+
+## Gate results
+
+| Gate                                             | Result                                                  |
+| ------------------------------------------------ | ------------------------------------------------------- |
+| API suite, DB+Redis gates ON                     | 142 suites / 2259 tests / 0 failed / 0 skipped          |
+| API hermetic (gates OFF)                         | 127 passed / 15 gated suites skipped                    |
+| API lint / typecheck / build                     | pass                                                    |
+| Web unit                                         | 64 files / 676 tests                                    |
+| Web lint / typecheck / build                     | pass (32 pre-existing warnings, 0 errors)               |
+| Playwright browser E2E                           | 246 passed                                              |
+| Auth-cookie contract (real browser)              | 8 passed                                                |
+| Contracts build                                  | pass                                                    |
+| Database validate/generate/tc/build              | pass                                                    |
+| Migration drift vs schema.prisma                 | PASS (empty migration)                                  |
+| `verify:migrations` harness                      | ALL CHECKS PASSED                                       |
+| Fresh database migrate:deploy                    | 41 migrations applied                                   |
+| Production boot (host, built dist)               | health/live ok, health/ready postgres+redis up          |
+| Evidence routes in the real graph                | 4/4 registered (401 at the guard; control is 404)       |
+| Docker cold build (`--no-cache`)                 | pass                                                    |
+| Docker production boot                           | healthy, ready, uid 100 (non-root), no MODULE_NOT_FOUND |
+| Docker graceful SIGTERM                          | exit code 0                                             |
+| Compose smoke (ISOLATED project)                 | 29 assertions passed                                    |
+| `pnpm audit --prod --audit-level high`           | No known vulnerabilities found                          |
+| Trivy image scan (CRITICAL/HIGH, ignore-unfixed) | exit 0, none                                            |
+| Gitleaks full history                            | 10 findings, all pre-existing (see below)               |
+| Lockfile `--frozen-lockfile`                     | pass                                                    |
+| Prettier over changed files                      | all 26 clean                                            |
+
+## Pre-existing conditions — NOT introduced by this branch
+
+**Dev-tree audit advisories.** `pnpm audit` over the full tree reports
+`{low:6, moderate:22, high:28, critical:1}` across vite, postcss, tar, undici,
+brace-expansion and friends. All dev-only; the blocking gate is `--prod`, which
+reports zero. This matches the baseline documented in `ci.yml`.
+
+**Gitleaks findings.** 10 `generic-api-key` hits, all dummy secrets in existing
+spec files. Every one lives in a commit that is an ancestor of the base
+(`6d63dc35`, `f3cce56e`, `37c90005` — April to August). This branch introduces
+**zero** new findings; the new log-hygiene spec's `AKIA` regex does not trigger.
+
+**Repository-wide `format:check`.** 793 files fail `prettier . --check`. This is
+a pre-existing CRLF/baseline condition and is NOT a step in any CI workflow —
+`ci.yml` and `reusable-verify.yml` run lint/typecheck/test/build only. Do not
+mass-format; all 26 files changed by this branch are Prettier-clean.
+
+## Environmental interference — resolved
+
+A stray container `docker-api-1` (image `hsm-api:dev`, compose project
+`docker`, created 2026-08-25 11:11 UTC) was running a **real** API against the
+shared dev Postgres. Its outbox worker polls the same queue the
+`outbox.integration.spec.ts` suite uses, claimed that suite's `test.parallel`
+events, found no handler registered for them, and dead-lettered them — 75 DEAD
+against 45 PROCESSED. The container's own logs show exactly 75
+`outbox.no_handler` lines for `test.parallel`, matching the failure count.
+
+This was NOT a defect in this branch and NOT a test-isolation defect: the suite
+takes an exclusive advisory lock, which cannot exclude a separate OS process.
+The suite passes 21/21 alone. `OUTBOX_WORKER_ENABLED` defaults to `true`
+(`env.schema.ts`), which is why an idle dev container is enough to do this.
+
+Resolved by stopping only that container, with the user's authorization. It is
+currently `exited (0)`. Postgres, Redis, Mongo, Mailpit and all 15 volumes were
+verified untouched before and after.
+
+To restart it when convenient:
+
+```
+docker start docker-api-1
+```
+
+Re-running the API suite while it is up will reproduce the outbox failure. Stop
+it again, or run the API gates with it down.
+
+## Compose smoke — how to run it SAFELY
+
+`scripts/ci/compose-smoke.sh` ends with `docker compose down -v
+--remove-orphans` and derives its project name from `infra/docker`, which is
+**the same project as the developer's running stack**. Run as-is on a developer
+machine it destroys `docker_postgres_data`. It has already done so once in this
+project; the dev database had to be rebuilt from migrations + seed.
+
+It was run for this sprint against an isolated copy instead:
+
+- a generated compose file with every `container_name:` removed (those are
+  absolute and would collide with the running stack) and host ports remapped to
+  55432 / 57017 / 56379 / 51025 / 58025, API on 4002;
+- project name `hsmsmoke9b3`, so its volumes are `hsmsmoke9b3_*` and `down -v`
+  can only reach them;
+- the script's hardcoded `MAILPIT=http://localhost:8025` repointed at the
+  isolated mailpit.
+
+Result: 29 assertions passed; `docker volume ls` was byte-identical before and
+after; the dev database still held its data.
+
+The generated files were temporary and are not committed. Hardening the real
+script so it refuses to tear down the default developer project is a worthwhile
+follow-up and is **not** part of this sprint.
 
 ## Blockers
 
-None external. The work is incomplete, not blocked.
+None external.
