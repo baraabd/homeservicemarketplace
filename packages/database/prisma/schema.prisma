@@ -926,6 +926,18 @@ enum AuditEventType {
   ADMIN_CATEGORY_UPDATED
   ADMIN_EQUIPMENT_CREATED
   ADMIN_EQUIPMENT_UPDATED
+  // Sprint 9B.2 — verification policy publication is an ADMIN act with legal
+  // weight: it decides what every provider in a country must prove. Retirement
+  // matters just as much, because "which policy was in force on the day this
+  // case opened" is the question an appeal turns on.
+  VERIFICATION_POLICY_PUBLISHED
+  VERIFICATION_POLICY_RETIRED
+  // Case creation is provider-initiated. CREATED and RESUMED are separate
+  // events on purpose: a resume is a retry, and a timeline that showed six
+  // CREATED rows for one case would misrepresent a flaky connection as six
+  // attempts to be verified.
+  VERIFICATION_CASE_CREATED
+  VERIFICATION_CASE_RESUMED
 }
 
 enum AddressType {
@@ -1786,6 +1798,17 @@ model VerificationCase {
   country              String?
   providerType         ProviderType?
 
+  /// Sprint 9B.2 — caller-supplied replay key for case CREATION.
+  ///
+  /// Almost every create-case call is a retry: a double tap, a replayed POST, a
+  /// resumed session. Resume-the-open-case already covers the common shape, but
+  /// not the one where the first attempt has since been REJECTED — without a
+  /// key that retry starts a second attempt nobody asked for. Unique per
+  /// provider rather than globally, so two providers cannot collide on a
+  /// client-generated value; NULLs stay distinct, which is what allows any
+  /// number of keyless cases.
+  idempotencyKey       String?
+
   submittedAt          DateTime?
   /// Workflow, not authorization: an unassigned reviewer with the permission
   /// may still read the case. Assignment prevents two people doing the work,
@@ -1812,12 +1835,41 @@ model VerificationCase {
   accessLogs           VerificationAccessLog[]
   grants               ProviderWorkAccessGrant[]
 
+  /// A replayed create-case request returns the case the first one made.
+  @@unique([providerProfileId, idempotencyKey])
   /// The review queue: oldest submitted first, by state.
   @@index([state, submittedAt])
   @@index([assignedToUserId, state])
   @@index([providerProfileId, createdAt])
   @@index([policyVersion])
 }
+
+// Sprint 9B.2 — two constraints on the models above live in raw forward-only
+// migrations because Prisma cannot express a PARTIAL unique index. Same
+// arrangement as provider_category_application_one_pending_uniq (Sprint 2):
+// Prisma's diff engine ignores partial indexes entirely, which is what keeps
+// the CI drift gate green — and also means Prisma will never recreate them.
+// They are created once and must never be dropped by a schema edit.
+//
+//   verification_case_one_active_per_provider_uniq
+//     UNIQUE (providerProfileId)
+//     WHERE state IN ('DRAFT','SUBMITTED','IN_REVIEW','ACTION_REQUIRED')
+//
+//     Two open cases for one provider means two reviewers, two decisions, and
+//     no defined answer about which governs access. A plain unique on
+//     providerProfileId would have been expressible here and is wrong: it would
+//     bar a rejected provider from ever trying again.
+//
+//   verification_policy_one_live_per_scope_uniq
+//     UNIQUE (country, providerType, categoryId) NULLS NOT DISTINCT
+//     WHERE retiredAt IS NULL
+//
+//     resolveRequirements() throws AMBIGUOUS_POLICY when two live policies tie
+//     on specificity — correct, but it fails the PROVIDER over a mistake an
+//     admin made days earlier. NULLS NOT DISTINCT (PG15+) is load-bearing:
+//     without it the global default (NULL, NULL, NULL) could be published
+//     twice, because Postgres normally treats NULLs as distinct in a unique
+//     index and would not consider those rows equal.
 
 /// Evidence attached to a case. Outlives the BYTES it points at: after the
 /// retention sweep this row still records kind, hash, size and that it was
