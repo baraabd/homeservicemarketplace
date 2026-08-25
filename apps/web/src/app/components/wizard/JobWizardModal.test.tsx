@@ -703,6 +703,19 @@ describe('JobWizardModal — geolocation', () => {
     //    consistent (no crash, post still fires).
     fireEvent.click(screen.getByTestId('leaflet-marker'));
 
+    // Wait for the Nominatim auto-fill to land BEFORE submitting.
+    //
+    // Capturing coords kicks off applyReverseGeocode; the address field only
+    // fills when that promise resolves. Clicking "confirm job" first makes
+    // handlePost reject on the empty-address validation, so no POST fires and
+    // postedBody stays {} - the failure then reads as "expected undefined to
+    // be 'ASAP'", which accuses the payload for a precondition that had not
+    // arrived yet. Whether it arrived in time depended on machine load, which
+    // is why this passed alone and failed in a loaded full run.
+    //
+    // Same observable condition the sibling success test waits on above.
+    await waitFor(() => expect(screen.getByDisplayValue(/Auto-Filled St/i)).toBeInTheDocument());
+
     // 3. Submit; the captured coords land on manualAddress.
     fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
     await waitFor(() => expect(postedBody.scheduleType).toBe('ASAP'));
