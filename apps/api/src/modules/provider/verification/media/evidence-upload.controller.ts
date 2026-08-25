@@ -116,7 +116,12 @@ export class EvidenceUploadController {
     }
 
     const result = await this.uploads.acceptContent(user.id, assetId, req, declared);
-    return { assetId, ...result } as unknown as UploadEvidenceContentResponse;
+    return {
+      assetId,
+      sizeBytes: result.sizeBytes,
+      // The wire name is detectedMimeType; the service speaks detectedMime.
+      detectedMimeType: result.detectedMime,
+    };
   }
 
   @Post(':assetId/finalize')
