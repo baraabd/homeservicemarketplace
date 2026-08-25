@@ -74,24 +74,57 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
     sizeBytes: number;
   }): Promise<void> {
     validateKey(input.key);
-    await this.guarded(() =>
-      this.client.send(
-        new PutObjectCommand({
-          Bucket: this.bucket(),
-          Key: input.key,
-          // A file stream with an explicit length, so a 10 MiB upload never
-          // becomes a 10 MiB Buffer. ContentLength is required because the SDK
-          // cannot infer it from a stream, and it is the SERVER-counted value,
-          // not anything the client claimed.
-          Body: createReadStream(input.sourcePath),
-          ContentLength: input.sizeBytes,
-          ContentType: input.contentType,
-          // Belt and braces against a bucket whose policy is looser than it
-          // should be. Evidence is served by this API or not at all.
-          ACL: 'private',
-        }),
-      ),
-    );
+
+    // The stream is named, and this method owns it for its whole life.
+    //
+    // It used to be constructed inline inside PutObjectCommand, which is fine
+    // exactly while send() succeeds. When send() REJECTS BEFORE consuming the
+    // body — a backend outage — an inline stream is orphaned: nobody reads it
+    // and nobody closes it. That is not merely a leaked handle, because
+    // createReadStream schedules its open() immediately, so the stream is
+    // still going to touch the file. If the staging directory has been removed
+    // by then, it emits 'error' with ENOENT, and an 'error' event with no
+    // listener is an uncaught exception.
+    //
+    // It does not fail the code that caused it — by then that work is over. It
+    // fails whatever is running next. In CI that was an admin authentication
+    // e2e suite, blamed for a storage adapter's file handle.
+    //
+    // Pinned by s3-restricted-storage.stream-ownership.spec.ts.
+    const body = createReadStream(input.sourcePath);
+
+    // A backstop for the orphaned case ONLY. It cannot hide a real failure: if
+    // the stream breaks while the SDK is reading it, that surfaces as send()
+    // rejecting, which `guarded` turns into the sanitised error below. This
+    // listener exists so a late fs error on a stream nobody is reading any
+    // more cannot take the process down.
+    body.on('error', () => undefined);
+
+    try {
+      await this.guarded(() =>
+        this.client.send(
+          new PutObjectCommand({
+            Bucket: this.bucket(),
+            Key: input.key,
+            // A file stream with an explicit length, so a 10 MiB upload never
+            // becomes a 10 MiB Buffer. ContentLength is required because the
+            // SDK cannot infer it from a stream, and it is the SERVER-counted
+            // value, not anything the client claimed.
+            Body: body,
+            ContentLength: input.sizeBytes,
+            ContentType: input.contentType,
+            // Belt and braces against a bucket whose policy is looser than it
+            // should be. Evidence is served by this API or not at all.
+            ACL: 'private',
+          }),
+        ),
+      );
+    } finally {
+      // Settled on BOTH paths. On success the SDK has already consumed and
+      // closed it, so this is a no-op; on failure it is the whole point.
+      body.destroy();
+    }
+
     this.log.log({ msg: 'restricted.storage.put', bytes: input.sizeBytes });
   }
 
