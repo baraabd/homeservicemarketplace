@@ -25,7 +25,6 @@ import { Test } from '@nestjs/testing';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 
-import { acquireAdvisoryLock, type HeldLock } from '../support/db-isolation';
 import { AppConfigService } from '../../src/config/app-config.service';
 import { AllExceptionsFilter } from '../../src/infrastructure/http/all-exceptions.filter';
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
@@ -111,28 +110,10 @@ async function bootApp(): Promise<INestApplication> {
 describe('RequestsController (e2e)', () => {
   let app: INestApplication;
 
-  let outboxLock: HeldLock;
-
   beforeAll(async () => {
-    // SHARED on the outbox, because this suite is a PRODUCER.
-    //
-    // Creating a request enqueues request.available. outbox.integration.spec.ts
-    // runs real workers that claim whatever is PENDING and due — a queue
-    // consumer cannot be selective — and asserts on the exact rows it expects
-    // back. Left unlocked, its workers claim and dead-letter this suite's
-    // events, which surfaces as a stalled drain in THAT suite rather than a
-    // failure in this one.
-    //
-    // That suite takes the same lock EXCLUSIVE, so shared here is exactly the
-    // mutual exclusion required: producers may run together, never alongside
-    // the consumer.
-    outboxLock = await acquireAdvisoryLock('outbox', 'shared');
-
     app = await bootApp();
   });
   afterAll(async () => {
-    await outboxLock?.release();
-
     await app.close();
   });
   beforeEach(() => {
