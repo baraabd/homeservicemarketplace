@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import type { Request } from 'express';
 import type {
@@ -72,11 +73,25 @@ export class PrepareEvidenceUploadDto {
   filename?: string | null;
 }
 
+// Sprint 9B.4 — a tighter budget than the global 100/60s backstop.
+//
+// Every one of these routes costs far more than an ordinary request: prepare
+// reserves a slot, content moves a whole file and then a scanner reads it
+// again, finalize creates a document. The number a LEGITIMATE provider needs is
+// small and bounded by maxDocumentsPerCase, so an hourly budget in the tens is
+// generous for retries and re-uploads while stopping a loop from consuming
+// storage and scanner time.
+//
+// Charged per authenticated caller by the app throttler, and counted in Redis,
+// so the budget is aggregate across replicas rather than per-replica.
+const EVIDENCE_UPLOAD_THROTTLE = { default: { limit: 30, ttl: 60 * 60 * 1000 } } as const;
+
 @UseGuards(JwtAuthGuard, CsrfGuard)
 @Controller({ path: 'me/provider/verification/evidence', version: '1' })
 export class EvidenceUploadController {
   constructor(private readonly uploads: EvidenceUploadService) {}
 
+  @Throttle(EVIDENCE_UPLOAD_THROTTLE)
   @Post('prepare')
   @HttpCode(HttpStatus.OK)
   // 200 rather than 201: prepare frequently RETURNS an existing open
@@ -96,6 +111,7 @@ export class EvidenceUploadController {
     return prepared as unknown as PrepareEvidenceUploadResponse;
   }
 
+  @Throttle(EVIDENCE_UPLOAD_THROTTLE)
   @Put(':assetId/content')
   @HttpCode(HttpStatus.OK)
   async content(
@@ -124,6 +140,7 @@ export class EvidenceUploadController {
     };
   }
 
+  @Throttle(EVIDENCE_UPLOAD_THROTTLE)
   @Post(':assetId/finalize')
   @HttpCode(HttpStatus.OK)
   // 200 for both the first finalize and the idempotent replay, for the same

@@ -946,6 +946,16 @@ enum AuditEventType {
   // timeline say something that did not happen.
   VERIFICATION_EVIDENCE_PREPARED
   VERIFICATION_EVIDENCE_ATTACHED
+  // Sprint 9B.4 — scan outcomes. Four events rather than one with a field,
+  // because "a document was cleared" and "a document was quarantined" are the
+  // two facts an auditor searches for by name, and a single event type would
+  // bury the second inside the metadata of the first.
+  VERIFICATION_EVIDENCE_SCAN_CLEARED
+  VERIFICATION_EVIDENCE_SCAN_QUARANTINED
+  /// The scanner errored. Nobody judged the file.
+  VERIFICATION_EVIDENCE_SCAN_FAILED
+  /// WE refused the file: disallowed, malformed, truncated or mislabelled.
+  VERIFICATION_EVIDENCE_REJECTED
 }
 
 enum AddressType {
@@ -1670,6 +1680,15 @@ enum MediaScanState {
   /// The scanner itself errored. Distinct from QUARANTINED: nobody judged the
   /// file, the infrastructure failed. Retryable, and unreadable meanwhile.
   SCAN_FAILED
+  /// Sprint 9B.4 — WE refused the file: a format outside the allowlist, bytes
+  /// that disagree with the declared type or the extension, or a truncated
+  /// document. Terminal.
+  ///
+  /// Deliberately NOT QUARANTINED. That state means a scanner positively
+  /// identified malware and carries the longest retention as attack evidence;
+  /// filing a provider's corrupted PDF under it both fabricates a finding and
+  /// holds an innocent person's document far longer than it should be held.
+  REJECTED
 }
 
 /// A stored object. The unit of media is this row, not a URL string — a URL

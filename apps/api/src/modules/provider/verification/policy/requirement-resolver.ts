@@ -187,12 +187,33 @@ export function resolveRequirements(input: {
  */
 export function missingRequirements(
   resolved: ResolvedRequirements,
-  held: ReadonlyArray<{ kind: VerificationDocumentKind; serviceCategoryId: string | null }>,
+  held: ReadonlyArray<{
+    kind: VerificationDocumentKind;
+    serviceCategoryId: string | null;
+    /** Sprint 9B.4 — the scan state of the evidence behind this document.
+     *  Required, not optional: an optional field here would let a caller
+     *  satisfy a requirement by simply not mentioning it. */
+    scanState: string;
+  }>,
 ): ResolvedRequirement[] {
   return resolved.requirements.filter(
     (req) =>
       !held.some(
-        (doc) => doc.kind === req.kind && (doc.serviceCategoryId ?? null) === req.serviceCategoryId,
+        (doc) =>
+          doc.kind === req.kind &&
+          (doc.serviceCategoryId ?? null) === req.serviceCategoryId &&
+          // Sprint 9B.4 — ONLY a scanned, clean document counts.
+          //
+          // Without this, a provider is verified on the strength of a file
+          // nobody has cleared, and in the QUARANTINED case on the strength of
+          // one a scanner positively flagged. That is the entire point of
+          // scanning, and it has to be enforced HERE rather than in the UI:
+          // this function is what a submission and a reviewer decision are
+          // recomputed against (ADR 0010 §5).
+          //
+          // Compared against CLEAN rather than a denylist, so a scan state
+          // invented later fails closed without anyone remembering to add it.
+          doc.scanState === 'CLEAN',
       ),
   );
 }

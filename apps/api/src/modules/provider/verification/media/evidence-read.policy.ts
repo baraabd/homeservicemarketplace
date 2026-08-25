@@ -28,7 +28,7 @@ export interface EvidenceReadContext {
    *  routing mistake, and is refused rather than served. */
   visibility: 'PUBLIC' | 'PRIVATE' | 'RESTRICTED';
   /** Scan state recorded on the asset. */
-  scanState: 'PENDING' | 'CLEAN' | 'QUARANTINED' | 'SCAN_FAILED';
+  scanState: 'PENDING' | 'CLEAN' | 'QUARANTINED' | 'SCAN_FAILED' | 'REJECTED';
   /** Set once the bytes have been destroyed under the retention schedule. */
   evidenceDeletedAt: Date | null;
   /** The case the document hangs off. Used only for the audit trail; a
@@ -46,6 +46,9 @@ export type EvidenceReadDenial =
   | 'SELF_REVIEW'
   | 'NOT_SCANNED'
   | 'QUARANTINED'
+  /** Sprint 9B.4 — we refused the file itself. Separate from QUARANTINED so
+   *  the access log distinguishes "malware" from "malformed". */
+  | 'REJECTED'
   | 'EVIDENCE_DELETED';
 
 export type EvidenceReadDecision =
@@ -112,6 +115,12 @@ export function decideEvidenceRead(ctx: EvidenceReadContext): EvidenceReadDecisi
     // Held, not deleted (ADR 0012), and never served — serving a file a
     // scanner flagged would hand malware to the reviewer it was aimed at.
     return { allowed: false, reason: 'QUARANTINED' };
+  }
+  if (ctx.scanState === 'REJECTED') {
+    // We refused this file at validation. Never served, and recorded under its
+    // own reason so an operator reading the access log can tell a corrupted
+    // upload from an attack.
+    return { allowed: false, reason: 'REJECTED' };
   }
   if (ctx.scanState !== 'CLEAN') {
     return { allowed: false, reason: 'NOT_SCANNED' };

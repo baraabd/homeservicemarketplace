@@ -79,6 +79,18 @@ export class MetricsService implements OnModuleInit {
   // reaches zero is a decision. Labelled by the canonical replacement so the
   // migration table in the sprint report can be generated from live data
   // rather than from someone's memory of what maps to what.
+  /** Sprint 9B.4 — scan outcomes by terminal state.
+   *
+   *  Labelled by state and nothing else. A per-asset or per-owner label would
+   *  turn a metrics endpoint into a list of whose identity documents were
+   *  quarantined, and Prometheus retains far longer than the documents do. */
+  readonly evidenceScanOutcomesTotal = new Counter({
+    name: 'evidence_scan_outcomes_total',
+    help: 'Restricted evidence scan outcomes by terminal scan state.',
+    labelNames: ['state'] as const,
+    registers: [this.registry],
+  });
+
   readonly deprecatedRouteRequestsTotal = new Counter({
     name: 'deprecated_route_requests_total',
     help: 'Requests served by a deprecated route',

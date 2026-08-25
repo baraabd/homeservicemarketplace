@@ -30,7 +30,14 @@ export type VerificationDocumentKindCode =
 /** Mirrors MediaScanState. The client renders `CLEAN` as viewable and every
  *  other value as not-yet-viewable, so a new state added server-side fails
  *  closed in the UI rather than becoming silently viewable. */
-export type MediaScanStateCode = 'PENDING' | 'CLEAN' | 'QUARANTINED' | 'SCAN_FAILED';
+export type MediaScanStateCode =
+  | 'PENDING'
+  | 'CLEAN'
+  | 'QUARANTINED'
+  | 'SCAN_FAILED'
+  /** Sprint 9B.4 — refused at validation (disallowed, malformed, truncated or
+   *  dishonestly labelled). Distinct from QUARANTINED, which means malware. */
+  | 'REJECTED';
 
 /** One piece of evidence, as a reviewer sees it before opening it. */
 export interface AdminVerificationDocument {

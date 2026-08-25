@@ -31,6 +31,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ProfileModule } from './modules/profile/profile.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { ProviderVerificationModule } from './modules/provider/verification/provider-verification.module';
+import { EvidenceScannedHandler } from './modules/provider/verification/media/evidence-scanned.handler';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { RequestOutboxModule } from './modules/requests/outbox/request-outbox.module';
@@ -62,8 +63,15 @@ import { ServicesModule } from './modules/services/services.module';
     // keeps infrastructure from importing the domain modules that depend on
     // it. See docs/adr/0004-transactional-outbox.md.
     OutboxModule.forRoot({
-      imports: [RequestOutboxModule],
-      handlers: [RequestAvailableDispatchHandler, RequestAvailableBatchHandler],
+      // ProviderVerificationModule contributes EvidenceScannedHandler. Without
+      // it registered here the worker has no consumer for 'evidence.scanned'
+      // and DEAD-LETTERS every scan announcement — see OutboxWorker.
+      imports: [RequestOutboxModule, ProviderVerificationModule],
+      handlers: [
+        RequestAvailableDispatchHandler,
+        RequestAvailableBatchHandler,
+        EvidenceScannedHandler,
+      ],
     }),
     // Global, transport-agnostic post-commit security notifications
     // (D-2/D-4). Publishers: IAM / admin / provider. Subscriber: the

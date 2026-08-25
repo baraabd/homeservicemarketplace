@@ -11,6 +11,18 @@ import { EvidenceCleanupService } from './media/evidence-cleanup.service';
 import { EvidenceUploadService } from './media/evidence-upload.service';
 import { VerificationSettingsService } from './verification-settings.service';
 import { EvidenceReadService } from './media/evidence-read.service';
+import { EvidenceScanService } from './media/evidence-scan.service';
+import { EvidenceScannedHandler } from './media/evidence-scanned.handler';
+import { ClamAvMalwareScanner } from './media/clamav-scanner.adapter';
+import { resolveScannerSelection } from './media/scanner-selection';
+import {
+  MALWARE_SCANNER_PORT,
+  MalwareScannerPort,
+  UnconfiguredMalwareScanner,
+  DeterministicTestScanner,
+} from './media/malware-scanner.port';
+import { AppConfigService } from '../../../config/app-config.service';
+import { Logger } from '@nestjs/common';
 
 // Sprint 9B — restricted provider identity evidence.
 //
@@ -58,7 +70,7 @@ import { EvidenceReadService } from './media/evidence-read.service';
     EvidenceUploadController,
     ProviderVerificationCaseController,
   ],
-  exports: [EvidenceCleanupService],
+  exports: [EvidenceCleanupService, EvidenceScanService, EvidenceScannedHandler],
   providers: [
     EvidenceReadService,
     EvidenceUploadService,
@@ -69,6 +81,43 @@ import { EvidenceReadService } from './media/evidence-read.service';
     ProviderVerificationCaseService,
     // Reads the evidence limits through the canonical PlatformSettingRepository.
     VerificationSettingsService,
+    // Sprint 9B.4. No controller either, for the same reason as the cleanup
+    // sweep: a route that scans on demand is a route that can be aimed.
+    EvidenceScanService,
+    EvidenceScannedHandler,
+    {
+      // The one binding that decides whether evidence can ever be cleared.
+      //
+      // resolveScannerSelection THROWS if a process that believes it is
+      // production asks for the deterministic test scanner — the one adapter
+      // capable of writing CLEAN without scanning anything. A boot failure is
+      // the correct outcome: the alternative is an API that looks healthy while
+      // trusting every file it is given.
+      provide: MALWARE_SCANNER_PORT,
+      inject: [AppConfigService],
+      useFactory: (config: AppConfigService): MalwareScannerPort => {
+        const selection = resolveScannerSelection({
+          driver: config.get('EVIDENCE_SCANNER_DRIVER') as string | undefined,
+          isProduction: config.isProduction,
+        });
+
+        if (selection.warn) {
+          new Logger('MalwareScanner').warn(
+            'No malware scanner configured: restricted evidence will be stored ' +
+              'but can never be cleared for review.',
+          );
+        }
+
+        switch (selection.kind) {
+          case 'clamav':
+            return new ClamAvMalwareScanner(config);
+          case 'test':
+            return new DeterministicTestScanner();
+          case 'none':
+            return new UnconfiguredMalwareScanner();
+        }
+      },
+    },
   ],
 })
 export class ProviderVerificationModule {}

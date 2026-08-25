@@ -16,6 +16,10 @@ export const OutboxEventType = {
   REQUEST_AVAILABLE: 'request.available',
   /** One bounded slice of fan-out recipients. Emitted by the dispatcher. */
   REQUEST_AVAILABLE_BATCH: 'request.available.batch',
+  /** Sprint 9B.4 — a restricted evidence scan reached a terminal answer.
+   *  Emitted in the SAME transaction as the state change, so a crash cannot
+   *  leave a document quarantined with nothing announcing it. */
+  EVIDENCE_SCANNED: 'evidence.scanned',
 } as const;
 
 export type OutboxEventTypeName = (typeof OutboxEventType)[keyof typeof OutboxEventType];

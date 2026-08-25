@@ -101,8 +101,25 @@ describe('S3RestrictedStorageAdapter — source stream ownership', () => {
     return p;
   }
 
-  afterAll(() => {
-    for (const r of roots) rmSync(r, { recursive: true, force: true });
+  afterAll(async () => {
+    // Wait for pending closes before removing the directories.
+    //
+    // The adapter destroys its read stream synchronously, but the fd is closed
+    // on a later tick, and on Windows a directory containing a handle that is
+    // still open cannot be removed: rmdir fails ENOTEMPTY even with
+    // { recursive: true, force: true }. That surfaced as this suite "failing to
+    // run" with every one of its tests passing.
+    await settleFilesystem();
+
+    for (const r of roots) {
+      try {
+        rmSync(r, { recursive: true, force: true });
+      } catch {
+        // A leftover directory under the OS temp root is harmless, and a
+        // teardown hook must never be the thing that fails a suite. The
+        // barrier above is what makes this branch rare rather than routine.
+      }
+    }
   });
 
   it('destroys the source stream when the backend rejects before reading it', async () => {

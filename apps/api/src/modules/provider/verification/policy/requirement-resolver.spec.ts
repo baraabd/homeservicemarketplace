@@ -4,6 +4,7 @@ import {
   resolveRequirements,
   type CandidatePolicy,
 } from './requirement-resolver';
+import type { VerificationDocumentKind } from '@homeservicemarketplace/database';
 
 // Sprint 9B — requirement resolution. docs/adr/0010
 //
@@ -322,14 +323,19 @@ describe('missingRequirements', () => {
     at: AT,
   });
 
+  /** A held document whose evidence passed the scan. */
+  const clean = (kind: VerificationDocumentKind, serviceCategoryId: string | null = null) => ({
+    kind,
+    serviceCategoryId,
+    scanState: 'CLEAN' as const,
+  });
+
   it('reports everything outstanding when nothing is held', () => {
     expect(missingRequirements(resolved, [])).toHaveLength(2);
   });
 
-  it('clears a requirement satisfied by a held document', () => {
-    const missing = missingRequirements(resolved, [
-      { kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null },
-    ]);
+  it('clears a requirement satisfied by a held CLEAN document', () => {
+    const missing = missingRequirements(resolved, [clean('INDIVIDUAL_IDENTITY')]);
     expect(missing.map((m) => m.kind)).toEqual(['CATEGORY_LICENSE']);
   });
 
@@ -337,19 +343,58 @@ describe('missingRequirements', () => {
     // The cell that matters: a gas licence must not clear the electrical
     // requirement just because both are CATEGORY_LICENSE.
     const missing = missingRequirements(resolved, [
-      { kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null },
-      { kind: 'CATEGORY_LICENSE', serviceCategoryId: 'cat-gas' },
+      clean('INDIVIDUAL_IDENTITY'),
+      clean('CATEGORY_LICENSE', 'cat-gas'),
     ]);
     expect(missing).toHaveLength(1);
     expect(missing[0].serviceCategoryId).toBe('cat-elec');
   });
 
-  it('reports nothing once everything is held', () => {
+  it('reports nothing once everything is held and clean', () => {
     expect(
       missingRequirements(resolved, [
-        { kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null },
-        { kind: 'CATEGORY_LICENSE', serviceCategoryId: 'cat-elec' },
+        clean('INDIVIDUAL_IDENTITY'),
+        clean('CATEGORY_LICENSE', 'cat-elec'),
       ]),
     ).toEqual([]);
+  });
+
+  // ── Sprint 9B.4: only a CLEAN document counts ──────────────────────────
+
+  it.each(['PENDING', 'QUARANTINED', 'SCAN_FAILED', 'REJECTED'] as const)(
+    'does NOT let a %s document satisfy a requirement',
+    (scanState) => {
+      // The whole point of scanning. If an unscanned or quarantined document
+      // satisfied a requirement, a provider could be verified on the strength
+      // of a file nobody has cleared — and in the QUARANTINED case, on the
+      // strength of one a scanner positively flagged.
+      const missing = missingRequirements(resolved, [
+        { kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null, scanState },
+      ]);
+      expect(missing.map((m) => m.kind)).toContain('INDIVIDUAL_IDENTITY');
+    },
+  );
+
+  it('compares against CLEAN rather than a denylist', () => {
+    // A scan state invented later must fail closed here too, without anyone
+    // remembering to add it to a list of bad values.
+    const missing = missingRequirements(resolved, [
+      {
+        kind: 'INDIVIDUAL_IDENTITY',
+        serviceCategoryId: null,
+        scanState: 'SOME_FUTURE_STATE' as never,
+      },
+    ]);
+    expect(missing.map((m) => m.kind)).toContain('INDIVIDUAL_IDENTITY');
+  });
+
+  it('still clears the requirement when a CLEAN copy sits alongside a rejected one', () => {
+    // A provider whose first upload was corrupt and who successfully re-sent
+    // it is satisfied, not blocked by the corpse of the first attempt.
+    const missing = missingRequirements(resolved, [
+      { kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null, scanState: 'REJECTED' },
+      clean('INDIVIDUAL_IDENTITY'),
+    ]);
+    expect(missing.map((m) => m.kind)).toEqual(['CATEGORY_LICENSE']);
   });
 });

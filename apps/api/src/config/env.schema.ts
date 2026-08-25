@@ -317,6 +317,30 @@ const baseEnvSchema = z.object({
   // origin of the API (e.g. https://api.example.com).
   PUBLIC_API_URL: z.string().optional(),
 
+  // --- Evidence malware scanning (Sprint 9B.4) ------------------------------
+  // Which adapter clears restricted identity evidence for review.
+  //
+  //   none    (default) UnconfiguredMalwareScanner. Scans nothing and NEVER
+  //           returns CLEAN, so evidence uploads and is simply unreadable.
+  //           A visible, diagnosable failure rather than silent trust.
+  //   test    DeterministicTestScanner. Recognises the EICAR test file and
+  //           clears everything else. REFUSED AT BOOT when the process
+  //           believes it is production — it is the one adapter that can mark
+  //           a file CLEAN without scanning it.
+  //   clamav  ClamAvMalwareScanner, speaking clamd INSTREAM over TCP.
+  //
+  // An unrecognised value is a boot error, not a fallback: falling back to
+  // 'none' on a typo would silently disable scanning.
+  EVIDENCE_SCANNER_DRIVER: z.enum(['none', 'test', 'clamav']).default('none'),
+
+  // clamd connection. Required only when EVIDENCE_SCANNER_DRIVER=clamav; the
+  // adapter refuses to construct without a host rather than failing later on
+  // the one path where "not scanned" and "clean" must never be confusable.
+  CLAMAV_HOST: z.string().optional(),
+  CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
+  // A scan that never returns must not hold a worker forever.
+  CLAMAV_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+
   // S3-only env. None is required when STORAGE_DRIVER=local; the
   // adapter throws a clear error at presign time if S3 is selected
   // without a bucket.
