@@ -1,3 +1,6 @@
+import { ProviderCapability } from '@homeservicemarketplace/contracts';
+import { ProviderCapabilityGuard } from './guards/provider-capability.guard';
+import { RequireCapability } from './guards/require-capability.decorator';
 import {
   Body,
   Controller,
@@ -69,8 +72,14 @@ export class ProviderController {
 
   // Phase 4 — what the Provider app reads to decide whether Submit is
   // enabled, so it never re-derives the server's completeness policy.
-  @UseGuards(RolesGuard)
+  // Sprint 9B.8 — a READ of the caller's own onboarding status, so it follows
+  // VIEW_OWN_PROFILE. Gating it on COMPLETE_ONBOARDING would 403 an ACCEPTED
+  // provider asking about their own record, which is both wrong and a
+  // regression: nothing about reading your status stops being reasonable once
+  // you are onboarded.
+  @UseGuards(ProviderCapabilityGuard, RolesGuard)
   @Roles('provider')
+  @RequireCapability(ProviderCapability.ViewOwnProfile)
   @Get('onboarding')
   @HttpCode(HttpStatus.OK)
   getOnboarding(@CurrentUser() user: AuthenticatedUser): Promise<ProviderOnboardingStatus> {
@@ -79,8 +88,10 @@ export class ProviderController {
 
   // Phase 4 — DRAFT → PENDING_REVIEW. Returns 422 with machine-readable
   // missing-field codes when the application is incomplete.
-  @UseGuards(CsrfGuard, RolesGuard)
+  // Sprint 9B.8 — the application itself. Distinct from editing: a suspended provider may not re-enter the queue.
+  @UseGuards(ProviderCapabilityGuard, CsrfGuard, RolesGuard)
   @Roles('provider')
+  @RequireCapability(ProviderCapability.SubmitForReview)
   @Post('submit-for-review')
   @HttpCode(HttpStatus.OK)
   submitForReview(
@@ -93,8 +104,10 @@ export class ProviderController {
   // Phase 4 — PENDING_REVIEW → DRAFT. The counterpart to the edit lock: a
   // queued application cannot be edited, so the provider needs a visible way
   // out of the queue.
-  @UseGuards(CsrfGuard, RolesGuard)
+  // Sprint 9B.8 — the inverse of submitting, and gated with it — withdrawing is part of owning the application.
+  @UseGuards(ProviderCapabilityGuard, CsrfGuard, RolesGuard)
   @Roles('provider')
+  @RequireCapability(ProviderCapability.SubmitForReview)
   @Post('withdraw-review')
   @HttpCode(HttpStatus.OK)
   withdrawFromReview(
@@ -104,16 +117,20 @@ export class ProviderController {
     return this.onboarding.withdrawFromReview(user.id);
   }
 
-  @UseGuards(RolesGuard)
+  // Sprint 9B.8 — a locked-out provider must still READ their own record, or the denial is a dead end they cannot even see.
+  @UseGuards(ProviderCapabilityGuard, RolesGuard)
   @Roles('provider')
+  @RequireCapability(ProviderCapability.ViewOwnProfile)
   @Get('profile')
   @HttpCode(HttpStatus.OK)
   getProfile(@CurrentUser() user: AuthenticatedUser): Promise<GetProviderProfileResponse> {
     return this.provider.get(user.id);
   }
 
-  @UseGuards(CsrfGuard, RolesGuard)
+  // Sprint 9B.8 — writing is a strictly stronger claim than reading. Rank 3 (SUSPENDED) grants VIEW_OWN_PROFILE and withholds EDIT_OWN_PROFILE; this is where that becomes real.
+  @UseGuards(ProviderCapabilityGuard, CsrfGuard, RolesGuard)
   @Roles('provider')
+  @RequireCapability(ProviderCapability.EditOwnProfile)
   @Patch('profile')
   @HttpCode(HttpStatus.OK)
   updateProfile(
@@ -123,8 +140,10 @@ export class ProviderController {
     return this.provider.update(user.id, body);
   }
 
-  @UseGuards(CsrfGuard, RolesGuard)
+  // Sprint 9B.8 — availability is profile state a suspended provider must not be able to change.
+  @UseGuards(ProviderCapabilityGuard, CsrfGuard, RolesGuard)
   @Roles('provider')
+  @RequireCapability(ProviderCapability.EditOwnProfile)
   @Patch('availability')
   @HttpCode(HttpStatus.OK)
   updateAvailability(

@@ -1,3 +1,6 @@
+import { ProviderCapability } from '@homeservicemarketplace/contracts';
+import { RequireCapability } from '../../guards/require-capability.decorator';
+import { ProviderCapabilityGuard } from '../../guards/provider-capability.guard';
 import {
   Body,
   Controller,
@@ -86,7 +89,11 @@ export class PrepareEvidenceUploadDto {
 // so the budget is aggregate across replicas rather than per-replica.
 const EVIDENCE_UPLOAD_THROTTLE = { default: { limit: 30, ttl: 60 * 60 * 1000 } } as const;
 
-@UseGuards(JwtAuthGuard, CsrfGuard)
+// Sprint 9B.8 — evidence lands in restricted storage and is malware-scanned.
+// Ungated before this sprint, so a suspended or terminated provider could push
+// files into that pipeline indefinitely.
+@UseGuards(JwtAuthGuard, CsrfGuard, ProviderCapabilityGuard)
+@RequireCapability(ProviderCapability.ManageVerification)
 @Controller({ path: 'me/provider/verification/evidence', version: '1' })
 export class EvidenceUploadController {
   constructor(private readonly uploads: EvidenceUploadService) {}

@@ -1,3 +1,5 @@
+import { ProviderCapability } from '@homeservicemarketplace/contracts';
+import { RequireCapability } from '../guards/require-capability.decorator';
 import {
   Body,
   Controller,
@@ -21,7 +23,7 @@ import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
-import { ProviderActiveGuard } from '../guards/provider-active.guard';
+import { ProviderCapabilityGuard } from '../guards/provider-capability.guard';
 import { ListMyBidsQueryDto } from './dto/list-my-bids.query';
 import { SubmitBidDto } from './dto/submit-bid.dto';
 import { ProviderBidsService } from './provider-bids.service';
@@ -41,8 +43,12 @@ import { ProviderBidsService } from './provider-bids.service';
 //   1. JwtAuthGuard — authenticated session required.
 //   2. RolesGuard('provider') — only provider-role users; everyone else
 //      gets 403 before any service code runs.
-//   3. ProviderActiveGuard — only ACTIVE provider profiles may bid.
-//      DRAFT, PENDING_REVIEW, SUSPENDED, REJECTED → 403.
+//   3. ProviderCapabilityGuard — Sprint 9B.8. The class declares
+//      VIEW_MARKETPLACE (browsing your own bid history is a marketplace
+//      surface); the two MUTATIONS below re-declare SUBMIT_BID, because
+//      taking on new work is a strictly stronger claim than looking at it.
+//      A provider whose grant lapsed can still read what they bid; they
+//      cannot bid again.
 //
 // Mutating routes additionally use CsrfGuard so a stolen access cookie
 // alone cannot drive a bid submission / withdrawal from a hostile
@@ -52,13 +58,15 @@ import { ProviderBidsService } from './provider-bids.service';
 // session via @CurrentUser. The DTOs do NOT declare providerId or
 // providerUserId; the global ValidationPipe's `forbidNonWhitelisted: true`
 // rejects payloads that try to inject them.
-@UseGuards(JwtAuthGuard, RolesGuard, ProviderActiveGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ProviderCapabilityGuard)
+@RequireCapability(ProviderCapability.ViewMarketplace)
 @Roles('provider')
 @Controller({ path: 'provider/bids', version: '1' })
 export class ProviderBidsController {
   constructor(private readonly bids: ProviderBidsService) {}
 
   @UseGuards(CsrfGuard)
+  @RequireCapability(ProviderCapability.SubmitBid)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   submit(
@@ -78,6 +86,7 @@ export class ProviderBidsController {
   }
 
   @UseGuards(CsrfGuard)
+  @RequireCapability(ProviderCapability.SubmitBid)
   @Post(':bidId/withdraw')
   @HttpCode(HttpStatus.OK)
   withdraw(
@@ -92,13 +101,22 @@ export class ProviderBidsController {
 // guards, same service. Existing clients on `/v1/me/provider/bids`
 // keep working until they're migrated. New clients should prefer
 // the canonical `/v1/provider/bids` controller above.
-@UseGuards(JwtAuthGuard, RolesGuard, ProviderActiveGuard)
+//
+// Sprint 9B.8 — "same guards" now has to include the per-route capability
+// declarations, and it is the whole reason this shim is dangerous: a legacy
+// twin that gates more weakly than its canonical partner is not a shim, it is
+// a bypass, and it is the one an attacker would find first. The declarations
+// below are duplicated deliberately rather than inherited, and a route-parity
+// test walks both families over the same fixtures.
+@UseGuards(JwtAuthGuard, RolesGuard, ProviderCapabilityGuard)
+@RequireCapability(ProviderCapability.ViewMarketplace)
 @Roles('provider')
 @Controller({ path: 'me/provider/bids', version: '1' })
 export class ProviderBidsLegacyController {
   constructor(private readonly bids: ProviderBidsService) {}
 
   @UseGuards(CsrfGuard)
+  @RequireCapability(ProviderCapability.SubmitBid)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   submit(
@@ -118,6 +136,7 @@ export class ProviderBidsLegacyController {
   }
 
   @UseGuards(CsrfGuard)
+  @RequireCapability(ProviderCapability.SubmitBid)
   @Post(':bidId/withdraw')
   @HttpCode(HttpStatus.OK)
   withdraw(

@@ -1,3 +1,4 @@
+import { ProviderCapabilityModule } from '../capability/provider-capability.module';
 import { Module } from '@nestjs/common';
 
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
@@ -68,7 +69,11 @@ import { Logger } from '@nestjs/common';
   // Sprint 9B.2 adds AuditModule: case creation and resume are audited in the
   // same transaction as the write. PersistenceModule is @Global, so the
   // settings repository needs no import.
-  imports: [AuthorizationModule, StorageModule, AuditModule],
+  // Sprint 9B.8 — ProviderCapabilityModule owns ProviderCapabilityGuard and
+  // the service it needs. Two controllers here now mount that guard, and
+  // without this import Nest cannot construct it: the application fails at
+  // BOOT, not at request time. app-module-di.e2e.spec.ts is what caught it.
+  imports: [AuthorizationModule, StorageModule, AuditModule, ProviderCapabilityModule],
   controllers: [
     EvidenceReadController,
     EvidenceUploadController,
