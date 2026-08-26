@@ -329,7 +329,17 @@ d('Service-area matching and fan-out (real Postgres)', () => {
       // same verdict for the same rows.
       const a = area({ cityKey: 'aleppo', radiusKm: 25 });
       const selected = new Set(await listIds(a));
+      // Scoped to THIS suite's category, which is what makes the comparison
+      // apples-to-apples: listIds() filters by category and matchServiceArea()
+      // knows nothing about categories, so an unscoped read compares a
+      // category-filtered SQL verdict against a category-blind predicate.
+      //
+      // Unscoped, this said "for every fixture" while reading every row in the
+      // database, and passed only because no other suite happened to create an
+      // OPEN_FOR_BIDS request in Aleppo under a different category. Sprint
+      // 9B.9 created 25 of them and this went red roughly one run in six.
       const all = await prisma.serviceRequest.findMany({
+        where: { categoryId },
         select: { id: true, locationLat: true, locationLng: true, locationCityKey: true },
       });
       for (const row of all) {

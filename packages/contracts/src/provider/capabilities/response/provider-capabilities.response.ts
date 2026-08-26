@@ -36,6 +36,19 @@ export const ProviderCapability = {
    *  should not be uploading documents into a pipeline that will not act on
    *  them. */
   ManageVerification: 'MANAGE_VERIFICATION',
+  /** Sprint 9B.9 — see a heavily redacted slice of the marketplace while
+   *  waiting for work access.
+   *
+   *  Held ONLY by a provider who has finished onboarding and is being denied
+   *  work — the two states where "you may not work yet" is the whole message.
+   *  Deliberately NOT held by a provider who already has work access (they get
+   *  the real feed) nor by one still in onboarding (they have a task in front
+   *  of them and a preview is a distraction from it), and never by a suspended,
+   *  terminated or restricted provider.
+   *
+   *  Holding it is necessary but NOT sufficient: the preview also has to be
+   *  switched on by policy, which is off by default. */
+  PreviewMarketplace: 'PREVIEW_MARKETPLACE',
   AppealDecision: 'APPEAL_DECISION',
 } as const;
 export type ProviderCapability = (typeof ProviderCapability)[keyof typeof ProviderCapability];
