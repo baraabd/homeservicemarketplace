@@ -20,6 +20,7 @@ import {
 } from '../policy/case-transitions';
 import { assessSubmissionReadiness } from './submission-readiness';
 import { GRANT_SOURCE_FOR_APPROVAL, grantClosureFor } from '../grant/work-access-grant.policy';
+import { computeGrantWindow, type GrantWindow } from '../grant/grant-validity';
 import type { ResolvedRequirements } from '../policy/requirement-resolver';
 
 // Sprint 9B.5 — the three commands that move a verification case.
@@ -379,12 +380,30 @@ export class VerificationCaseWorkflowService {
     this.assertFresh(kase, input.expectedState);
     this.assertLegal('approve', kase.state);
 
+    // ONE clock read for the whole approval. The decision row, the grant start
+    // and the grant expiry are all measured from this single instant, so they
+    // cannot disagree about when the approval happened — see grant-validity.ts
+    // on why a second `new Date()` here is a real failure and not pedantry.
+    const decidedAt = new Date();
+
+    // Resolved BEFORE the transaction opens. A settings read is a round trip to
+    // a table nothing else in this transaction touches, and holding a write
+    // transaction open across it lengthens the window in which two concurrent
+    // approvals can contend for the grant index, for no benefit.
+    //
+    // It throws on a misconfigured validity, which fails the approval outright
+    // rather than issuing a grant of some unintended length.
+    const window = computeGrantWindow({
+      decidedAt,
+      validityDays: await this.settings.workGrantValidityDays(),
+    });
+
     return this.commit({
       kase,
       action: 'approve',
       actor: 'reviewer',
       actorUserId: reviewerUserId,
-      data: { state: 'VERIFIED', reviewerNotes: input.note ?? null, decidedAt: new Date() },
+      data: { state: 'VERIFIED', reviewerNotes: input.note ?? null, decidedAt },
       auditType: 'VERIFICATION_CASE_APPROVED',
       auditMetadata: {
         caseId: kase.id,
@@ -394,7 +413,7 @@ export class VerificationCaseWorkflowService {
       eventType: OutboxEventType.VERIFICATION_CASE_APPROVED,
       decision: { outcome: 'APPROVED', reasonCode: input.reasonCode },
       profileUpdate: { verificationState: 'VERIFIED', verified: true },
-      grant: { open: true },
+      grant: { open: window },
       notifyProvider: 'APPROVED',
     });
   }
@@ -476,27 +495,94 @@ export class VerificationCaseWorkflowService {
       ...(closure ? { grant: { close: closure } } : {}),
     });
   }
+  // ── expiry: the SYSTEM actor's edge ─────────────────────────────────────
+
+  /**
+   * Close a VERIFIED case whose grant window has elapsed.
+   *
+   * INTERNAL BY CONSTRUCTION. `VERIFICATION_CASE_TRANSITIONS.expire` names the
+   * actor as `system`, and there is deliberately no controller route for it:
+   * an HTTP endpoint that expires a case would be a human performing a
+   * machine's act, recorded against their name, and reachable by anyone who
+   * could reach the route. The only caller is VerificationExpiryService, driven
+   * by the scheduled job.
+   *
+   * Everything else is identical to a revocation — the same single transaction,
+   * the same conditional claim — with two deliberate differences:
+   *
+   *   the decision outcome is EXPIRED, not REVOKED, because nobody judged the
+   *   provider badly and the permanent record must not imply that they did;
+   *
+   *   `decidedByUserId` is null, because no human decided. Attributing it to
+   *   the reviewer who once approved the case, or to a service account
+   *   masquerading as a person, would put a name against an act they did not
+   *   perform.
+   *
+   * Idempotent: a case already EXPIRED replays instead of writing again, so a
+   * second worker that selected the same row before the first committed does
+   * nothing.
+   */
+  async expireCase(caseId: string, now: Date): Promise<CaseCommandResult> {
+    const kase = await this.load(caseId);
+    if (!kase) throw notFound();
+
+    if (kase.state === 'EXPIRED') return this.replay(kase, 'system');
+    this.assertLegal('expire', kase.state);
+
+    return this.commit({
+      kase,
+      action: 'expire',
+      actor: 'system',
+      actorUserId: null,
+      data: { state: 'EXPIRED', decidedAt: now },
+      auditType: 'VERIFICATION_CASE_EXPIRED',
+      auditMetadata: {
+        caseId: kase.id,
+        providerProfileId: kase.providerProfileId,
+        reasonCode: 'POLICY_PERIOD_ELAPSED',
+        // Names the machine, so an operator reading the trail is not left
+        // wondering which admin did this at 03:00.
+        actor: 'SYSTEM',
+      },
+      eventType: OutboxEventType.VERIFICATION_CASE_ACCESS_CLOSED,
+      decision: { outcome: 'EXPIRED', reasonCode: 'POLICY_PERIOD_ELAPSED' },
+      // The EVIDENCE axis only. An expiry says nothing about standing, and a
+      // provider whose documents aged out has done nothing wrong.
+      profileUpdate: { verificationState: 'EXPIRED', verified: false },
+      grant: { close: 'EXPIRED' },
+      notifyProvider: 'EXPIRED',
+    });
+  }
+
   // ── the shared machinery ────────────────────────────────────────────────
 
   private async commit(input: {
     kase: LoadedCase;
     action: VerificationCaseAction;
-    actor: 'provider' | 'reviewer';
-    actorUserId: string;
+    actor: 'provider' | 'reviewer' | 'system';
+    /** Null for the SYSTEM actor: no human decided, and inventing a user id
+     *  to satisfy a column would put a person's name on a machine's act. */
+    actorUserId: string | null;
     data: Record<string, unknown>;
     auditType: string;
     auditMetadata: Record<string, unknown>;
     eventType: string | null;
     decision?: {
-      outcome: 'ACTION_REQUIRED' | 'REJECTED' | 'APPROVED' | 'REVERIFY_REQUIRED' | 'REVOKED';
+      outcome:
+        | 'ACTION_REQUIRED'
+        | 'REJECTED'
+        | 'APPROVED'
+        | 'REVERIFY_REQUIRED'
+        | 'REVOKED'
+        | 'EXPIRED';
       reasonCode: VerificationReasonCode;
     };
     /** Fields to write on the provider profile, in the SAME transaction. */
     profileUpdate?: Record<string, unknown>;
     /** Open a work-access grant, or close the one that is open. */
-    grant?: { open: true } | { close: 'REVOKED' | 'EXPIRED' };
+    grant?: { open: GrantWindow } | { close: 'REVOKED' | 'EXPIRED' };
     /** Which notification the provider gets, if any. */
-    notifyProvider?: 'ACTION_REQUIRED' | 'REJECTED' | 'APPROVED';
+    notifyProvider?: 'ACTION_REQUIRED' | 'REJECTED' | 'APPROVED' | 'EXPIRED';
   }): Promise<CaseCommandResult> {
     const { kase } = input;
     const toState = input.data.state as VerificationCaseState;
@@ -541,10 +627,16 @@ export class VerificationCaseWorkflowService {
       if (input.grant) {
         if ('open' in input.grant) {
           // One row per approval, carrying the case it came from and the
-          // source that says it was EARNED rather than handed out. The partial
-          // unique index (one ACTIVE grant per provider) is what makes a
-          // concurrent second approval fail rather than double-grant; this is
-          // the application half of that guarantee.
+          // source that says it was EARNED rather than handed out.
+          //
+          // The concurrency guarantee comes from the PRE-EXISTING index
+          // `provider_work_access_grant_one_live_per_reason`: approval always
+          // writes the same reason, so a second concurrent approval collides
+          // on it and fails rather than double-granting. (An earlier draft of
+          // this sprint added a "one ACTIVE grant per provider" index for the
+          // same job; it was dropped because it would also have collapsed a
+          // MANUAL_OVERRIDE and a documents grant into one slot, erasing a
+          // distinction ADR 0013 requires to survive forever.)
           await client.providerWorkAccessGrant.create({
             data: {
               providerProfileId: kase.providerProfileId,
@@ -553,17 +645,45 @@ export class VerificationCaseWorkflowService {
               source: GRANT_SOURCE_FOR_APPROVAL,
               reason: input.auditType,
               grantedByUserId: input.actorUserId,
+              // Frozen at issue and never recalculated. Lowering the setting
+              // tomorrow shortens future approvals and re-dates nobody's
+              // existing access, so "how long was this provider authorised
+              // for?" stays answerable from the row itself, forever.
+              grantedAt: input.grant.open.grantedAt,
+              expiresAt: input.grant.open.expiresAt,
             },
           });
         } else {
-          // Scoped to ACTIVE. Re-closing an already-closed grant would move
-          // its timestamp forward and rewrite when access actually ended.
+          // Scoped THREE ways, and the caseId is the one that matters.
+          //
+          // A verification decision is a judgement about the evidence in THIS
+          // case, so it may only close what THIS case issued. Closing every
+          // ACTIVE grant the provider holds — which is what this did before —
+          // would let a documents revocation silently destroy a MANUAL_OVERRIDE
+          // somebody granted deliberately for an unrelated reason, with no
+          // decision, no audit trail naming it, and no way to tell afterwards
+          // that it had ever existed. ADR 0013 requires those sources to stay
+          // distinguishable forever; erasing one as a side effect is the same
+          // harm as merging them.
+          //
+          // Revocation therefore does NOT guarantee the provider stops working:
+          // if they hold a separate live override, they keep working on it, and
+          // that is correct. The instrument that overrides EVERY source is
+          // account suspension (capability rank 3), which outranks rank 7
+          // regardless of how many grants exist.
+          //
+          // Scoped to ACTIVE as well: re-closing an already-closed grant would
+          // move its timestamp forward and rewrite when access actually ended.
           await client.providerWorkAccessGrant.updateMany({
-            where: { providerProfileId: kase.providerProfileId, status: 'ACTIVE' },
+            where: {
+              providerProfileId: kase.providerProfileId,
+              caseId: kase.id,
+              status: 'ACTIVE',
+            },
             data: {
               status: input.grant.close,
               ...(input.grant.close === 'REVOKED'
-                ? { revokedAt: new Date(), revokedByUserId: input.actorUserId }
+                ? { revokedAt: new Date(), revokedByUserId: input.actorUserId ?? null }
                 : {}),
             },
           });
@@ -608,13 +728,17 @@ export class VerificationCaseWorkflowService {
                 ? 'VERIFICATION_APPROVED'
                 : kind === 'REJECTED'
                   ? 'VERIFICATION_REJECTED'
-                  : 'VERIFICATION_ACTION_REQUIRED',
+                  : kind === 'EXPIRED'
+                    ? 'VERIFICATION_EXPIRED'
+                    : 'VERIFICATION_ACTION_REQUIRED',
             title:
               kind === 'APPROVED'
                 ? 'Your verification is complete'
                 : kind === 'REJECTED'
                   ? 'Your verification could not be completed'
-                  : 'Your verification needs attention',
+                  : kind === 'EXPIRED'
+                    ? 'Your verification needs renewing'
+                    : 'Your verification needs attention',
             // Deliberately generic, and carrying NO reason code. A notification
             // is listed, cached and pushed to a device; a rejection reason is a
             // judgement about a person and belongs behind the access-controlled
@@ -624,7 +748,12 @@ export class VerificationCaseWorkflowService {
                 ? 'Your documents have been checked and you can now take work.'
                 : kind === 'REJECTED'
                   ? 'A reviewer has closed your verification. Open your verification page for details.'
-                  : 'A reviewer has asked for something before your application can continue.',
+                  : kind === 'EXPIRED'
+                    ? // Worded as a renewal, not a sanction. Nobody judged them
+                      // badly; the window they were given simply ran out, and a
+                      // provider told otherwise will read a punishment into it.
+                      'Your verification has reached the end of its validity. Submit fresh documents to keep taking work.'
+                    : 'A reviewer has asked for something before your application can continue.',
             resourceType: 'VERIFICATION_CASE',
             resourceId: kase.id,
             deepLink: '/provider/verification',
@@ -655,7 +784,7 @@ export class VerificationCaseWorkflowService {
   private async afterLostRace(
     kase: LoadedCase,
     intended: VerificationCaseState,
-    actor: 'provider' | 'reviewer',
+    actor: 'provider' | 'reviewer' | 'system',
   ): Promise<CaseCommandResult> {
     const fresh = await this.load(kase.id);
     if (fresh && fresh.state === intended) return this.replay(fresh, actor);
@@ -668,7 +797,7 @@ export class VerificationCaseWorkflowService {
     );
   }
 
-  private replay(kase: LoadedCase, actor: 'provider' | 'reviewer'): CaseCommandResult {
+  private replay(kase: LoadedCase, actor: 'provider' | 'reviewer' | 'system'): CaseCommandResult {
     return {
       caseId: kase.id,
       state: kase.state,

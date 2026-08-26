@@ -55,6 +55,8 @@ function harness(
     /** Which table's write should throw, to prove the rollback. */
     failAt?: 'decision' | 'profile' | 'grant' | 'audit' | 'notification' | 'outbox';
     existingGrant?: { id: string; status: string } | null;
+    /** Sprint 9B.7 — what the settings row says a grant lasts, in days. */
+    validityDays?: number;
   } = {},
 ) {
   const writes: string[] = [];
@@ -104,11 +106,13 @@ function harness(
         grants.push(a.data);
         return { id: 'grant-1' };
       }),
-      updateMany: jest.fn(async (a: { data: Record<string, unknown> }) => {
-        writes.push('grant-close');
-        grantUpdates.push(a.data);
-        return { count: 1 };
-      }),
+      updateMany: jest.fn(
+        async (a: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+          writes.push('grant-close');
+          grantUpdates.push(a.data);
+          return { count: 1 };
+        },
+      ),
     },
     notification: {
       create: jest.fn(async (a: { data: Record<string, unknown> }) => {
@@ -156,7 +160,13 @@ function harness(
     },
   };
 
-  const settings = { requiredConsentVersion: jest.fn(async () => null) };
+  const settings = {
+    requiredConsentVersion: jest.fn(async () => null),
+    // Sprint 9B.7 — the approval reads its grant length from settings rather
+    // than a constant. Pinned to the ADR 0013 default here so these tests keep
+    // asserting the transaction, not the number.
+    workGrantValidityDays: jest.fn(async () => options.validityDays ?? 365),
+  };
 
   const service = new VerificationCaseWorkflowService(
     { client } as never,
@@ -414,5 +424,128 @@ describe('what gets written down', () => {
     const text = JSON.stringify(h.logged);
     expect(text).not.toContain('SENTINELAPPROVE');
     expect(text).not.toContain(PROVIDER_USER);
+  });
+});
+
+// ── Sprint 9B.7 — the grant window is configured, not compiled in ─────────
+//
+// ADR 0013: `endsAt = decidedAt + VERIFICATION_GRANT_DAYS` (default 365,
+// configurable). These prove the "configurable" half, which is the half a
+// hard-coded constant would silently satisfy in every other test.
+describe('the grant window', () => {
+  const MS_PER_DAY = 86_400_000;
+
+  it('reads the duration from settings rather than a constant', async () => {
+    const h = harness({ validityDays: 30 });
+    await h.service.approve(REVIEWER, { caseId: CASE_ID, reasonCode: APPROVE_REASON });
+
+    const grant = h.grants[0];
+    const granted = grant.grantedAt as Date;
+    const expires = grant.expiresAt as Date;
+    expect(expires.getTime() - granted.getTime()).toBe(30 * MS_PER_DAY);
+  });
+
+  it('a different setting produces a different window — same code path', async () => {
+    // The pair is the point: one value alone cannot distinguish "read the
+    // setting" from "happens to equal the constant".
+    const a = harness({ validityDays: 7 });
+    await a.service.approve(REVIEWER, { caseId: CASE_ID, reasonCode: APPROVE_REASON });
+    const b = harness({ validityDays: 900 });
+    await b.service.approve(REVIEWER, { caseId: CASE_ID, reasonCode: APPROVE_REASON });
+
+    const span = (h: typeof a) =>
+      (h.grants[0].expiresAt as Date).getTime() - (h.grants[0].grantedAt as Date).getTime();
+    expect(span(a)).toBe(7 * MS_PER_DAY);
+    expect(span(b)).toBe(900 * MS_PER_DAY);
+  });
+
+  it('never issues an open-ended grant', async () => {
+    // The regression that matters most: before this sprint `expiresAt` was
+    // never written at all, so every approval granted access that no expiry,
+    // no sweep and no policy change could ever end.
+    const h = harness();
+    await h.service.approve(REVIEWER, { caseId: CASE_ID, reasonCode: APPROVE_REASON });
+    expect(h.grants[0].expiresAt).toBeInstanceOf(Date);
+    expect(h.grants[0].expiresAt).not.toBeNull();
+  });
+
+  it('anchors the grant to the SAME instant as the decision', async () => {
+    // One clock read for the whole approval. If these ever diverge, the
+    // decision and the access it created disagree about when it happened.
+    const h = harness();
+    await h.service.approve(REVIEWER, { caseId: CASE_ID, reasonCode: APPROVE_REASON });
+    const decidedAt = h.decisions[0].decidedAt as Date | undefined;
+    if (decidedAt) {
+      expect((h.grants[0].grantedAt as Date).getTime()).toBe(decidedAt.getTime());
+    }
+    expect(h.grants[0].grantedAt).toBeInstanceOf(Date);
+  });
+
+  it.each([0, -1, 1.5])(
+    'refuses the whole approval when the configured validity is %p',
+    async (days) => {
+      // Fail closed and fail LOUD. A misconfigured validity must not quietly
+      // become "some other length" — and nothing may be written on the way out.
+      const h = harness({ validityDays: days });
+      await failure(h.service.approve(REVIEWER, { caseId: CASE_ID, reasonCode: APPROVE_REASON }));
+      expect(h.writes).toEqual([]);
+      expect(h.grants).toEqual([]);
+      expect(h.decisions).toEqual([]);
+    },
+  );
+});
+
+// ── Sprint 9B.7 — revoking one case's grant must not touch the others ────
+//
+// A verification decision judges the evidence in ONE case. Closing every
+// ACTIVE grant the provider holds — which is what this did before — would let
+// a documents revocation destroy a MANUAL_OVERRIDE somebody granted
+// deliberately for an unrelated reason, with no decision naming it and no way
+// to tell afterwards it had existed. ADR 0013 requires the sources to stay
+// distinguishable forever; erasing one as a side effect is that same harm.
+describe('grant closure is scoped to the case that issued it', () => {
+  it('revocation closes only grants carrying THIS case id', async () => {
+    const h = harness({ row: caseRow({ state: 'VERIFIED' }) });
+    await h.service.revoke(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+
+    expect(h.client.providerWorkAccessGrant.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ caseId: CASE_ID, status: 'ACTIVE' }),
+      }),
+    );
+  });
+
+  it('re-verification is scoped the same way', async () => {
+    const h = harness({ row: caseRow({ state: 'VERIFIED' }) });
+    await h.service.reverify(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+
+    expect(h.client.providerWorkAccessGrant.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ caseId: CASE_ID, status: 'ACTIVE' }),
+      }),
+    );
+  });
+
+  it('never issues a provider-wide close with no case scope', async () => {
+    // The precise regression. A `where` naming only the provider is what
+    // swept up MANUAL_OVERRIDE and LEGACY_BACKFILL rows.
+    const h = harness({ row: caseRow({ state: 'VERIFIED' }) });
+    await h.service.revoke(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+
+    for (const call of h.client.providerWorkAccessGrant.updateMany.mock.calls) {
+      const where = call[0].where;
+      expect(where).toHaveProperty('caseId');
+    }
+  });
+
+  it('still records REVOKED for a revocation and EXPIRED for a re-verify', async () => {
+    // Non-vacuity: scoping the WHERE must not have changed what is written.
+    const r = harness({ row: caseRow({ state: 'VERIFIED' }) });
+    await r.service.revoke(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+    expect(r.grantUpdates[0]).toMatchObject({ status: 'REVOKED' });
+
+    const v = harness({ row: caseRow({ state: 'VERIFIED' }) });
+    await v.service.reverify(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+    expect(v.grantUpdates[0]).toMatchObject({ status: 'EXPIRED' });
   });
 });
