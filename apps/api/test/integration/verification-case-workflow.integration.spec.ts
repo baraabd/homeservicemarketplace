@@ -453,4 +453,149 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     expect(res.body.availableActions).not.toContain('approve');
     expect(res.body.availableActions).toContain('requestAction');
   });
+
+  // ── the review queue, over real HTTP ────────────────────────────────────
+
+  describe('the review queue', () => {
+    const queue = (qs = '') => request(http).get(`/v1/admin/verification/cases${qs}`);
+
+    it('refuses a caller without verification:decide', async () => {
+      await seedCase('SUBMITTED');
+      currentUser = { id: REVIEWER };
+      permissions = new Set();
+      expect((await queue()).status).toBe(403);
+    });
+
+    it('lists a live case for a permitted reviewer, with server-computed actions', async () => {
+      await seedCase('SUBMITTED');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const res = await queue();
+      expect(res.status).toBe(200);
+
+      const mine = res.body.items.find((i: { id: string }) => i.id === CASE_ID);
+      expect(mine).toMatchObject({ state: 'SUBMITTED', providerProfileId: PP });
+      expect(mine.availableActions).toEqual(
+        expect.arrayContaining(['assign', 'requestAction', 'reject']),
+      );
+      expect(mine.availableActions).not.toContain('approve');
+    });
+
+    it('hides the actions on a case the reviewer is the subject of', async () => {
+      await seedCase('SUBMITTED');
+      await prisma.providerProfile.update({ where: { id: PP }, data: { userId: REVIEWER } });
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const mine = (await queue()).body.items.find((i: { id: string }) => i.id === CASE_ID);
+      expect(mine.availableActions).toEqual([]);
+      expect(mine.blockedReason).toBe('SELF_REVIEW');
+    });
+
+    it('excludes terminal cases from the default view', async () => {
+      await seedCase('REJECTED');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const ids = (await queue()).body.items.map((i: { id: string }) => i.id);
+      expect(ids).not.toContain(CASE_ID);
+
+      // ...but returns it when asked for explicitly.
+      const asked = (await queue('?state=REJECTED')).body.items.map((i: { id: string }) => i.id);
+      expect(asked).toContain(CASE_ID);
+    });
+
+    it('refuses an unknown state rather than quietly ignoring the filter', async () => {
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+      expect((await queue('?state=NONSENSE')).status).toBe(400);
+    });
+
+    it('carries no storage key, filename or hash', async () => {
+      await seedCase('SUBMITTED');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const text = JSON.stringify((await queue()).body);
+      expect(text).not.toMatch(/storageKey|sha256|\.pdf/);
+    });
+
+    it('serves ONE specific case by id, and its audit trail', async () => {
+      await seedCase('SUBMITTED');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const detail = await request(http).get(`/v1/admin/verification/cases/${CASE_ID}`);
+      expect(detail.status).toBe(200);
+      expect(detail.body).toMatchObject({ id: CASE_ID, state: 'SUBMITTED' });
+
+      await requestAction(CASE_ID, { reasonCode: 'DOCUMENT_MISSING' });
+
+      const audit = await request(http).get(`/v1/admin/verification/cases/${CASE_ID}/audit`);
+      expect(audit.status).toBe(200);
+      expect(audit.body.items.map((i: { type: string }) => i.type)).toContain(
+        'VERIFICATION_CASE_ACTION_REQUESTED',
+      );
+    });
+
+    it('answers an unknown case id with 404', async () => {
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+      const res = await request(http).get(`/v1/admin/verification/cases/${P}no-such-case`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── rejection, end to end ───────────────────────────────────────────────
+
+  describe('rejection', () => {
+    it('closes the case, records the decision and tells the provider', async () => {
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const res = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/reject`)
+        .send({ reasonCode: 'SUSPECTED_FORGERY', note: 'SENTINELREJECT altered document' });
+
+      expect(res.status).toBe(200);
+      expect(await stateOf()).toBe('REJECTED');
+      expect(res.body.availableActions).toEqual([]);
+
+      const decisions = await prisma.verificationDecision.findMany({ where: { caseId: CASE_ID } });
+      expect(decisions[0]).toMatchObject({ outcome: 'REJECTED', reasonCode: 'SUSPECTED_FORGERY' });
+
+      const notes = await prisma.notification.findMany({ where: { userId: OWNER } });
+      expect(notes[0].type).toBe('VERIFICATION_REJECTED');
+      // Neither the prose nor the reason reaches a row that is listed and pushed.
+      const text = JSON.stringify(notes);
+      expect(text).not.toContain('SENTINELREJECT');
+      expect(text).not.toContain('SUSPECTED_FORGERY');
+    });
+
+    it('refuses without a reason', async () => {
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const res = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/reject`)
+        .send({});
+      expect(res.status).toBe(400);
+      expect(await stateOf()).toBe('IN_REVIEW');
+    });
+
+    it('never exposes an approve route', async () => {
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const res = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+        .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+      expect(res.status).toBe(404);
+      expect(await stateOf()).toBe('IN_REVIEW');
+    });
+  });
 });
