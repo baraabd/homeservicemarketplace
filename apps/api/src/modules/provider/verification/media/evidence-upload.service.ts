@@ -405,6 +405,47 @@ export class EvidenceUploadService {
         ttlSeconds,
       });
     } catch (err) {
+      // INCONSISTENT_STATE is the one refusal that can be a LIE.
+      //
+      // decideFinalize refuses when `uploadCompletedAt !== hasDocument`, which
+      // is right for a genuinely corrupt row. But those two facts are read by
+      // two separate queries — Prisma's `include` issues its own query too, so
+      // there is no single-statement snapshot to hide behind — and a concurrent
+      // finalize commits between them. The loser then sees a combination that
+      // existed in NO committed state, and a provider whose upload actually
+      // succeeded is told it is broken.
+      //
+      // The document and the uploadCompletedAt stamp are written in ONE
+      // transaction, so committed state always has both or neither. Re-reading
+      // them inside a transaction therefore distinguishes the two cases: a
+      // document that is really there means the upload really finalized, and
+      // the honest answer is the winner's result.
+      if ((err as { code?: string })?.code === 'INCONSISTENT_STATE') {
+        const settled = await this.tx.run(async (trx: PrismaTx) => {
+          const [row, doc] = await Promise.all([
+            trx.mediaAsset.findUnique({
+              where: { id: asset.id },
+              select: { uploadCompletedAt: true },
+            }),
+            trx.verificationDocument.findUnique({
+              where: { mediaAssetId: asset.id },
+              select: { id: true, kind: true, serviceCategoryId: true },
+            }),
+          ]);
+          return { completed: row?.uploadCompletedAt ?? null, doc };
+        });
+
+        if (settled.doc && settled.completed) {
+          return {
+            documentId: settled.doc.id,
+            assetId: asset.id,
+            kind: settled.doc.kind,
+            serviceCategoryId: settled.doc.serviceCategoryId,
+            scanState: asset.scanState,
+            created: false,
+          };
+        }
+      }
       throw toAppError(err);
     }
 

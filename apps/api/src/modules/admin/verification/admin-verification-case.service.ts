@@ -8,7 +8,7 @@ import type {
 
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import { AppError } from '../../../shared/errors/app-error';
-import { availableCaseActions } from '../../provider/verification/policy/case-transitions';
+import { offerableCaseActions } from '../../provider/verification/policy/case-transitions';
 
 // Sprint 9B — the reviewer's read of a verification case.
 //
@@ -157,9 +157,12 @@ export class AdminVerificationCaseService {
     // reviewer who is also the subject should never see the buttons; showing
     // them and then refusing teaches people to click and hope.
     const isSelfReview = profile.userId !== null && profile.userId === reviewerUserId;
+    // OFFERABLE, not merely legal. approve is legal from SUBMITTED and has no
+    // command behind it until Sprint 9B.7; offering it would recreate D-3
+    // exactly — a button the backend answers with 409.
     const actions = isSelfReview
       ? []
-      : (availableCaseActions(row.state, 'reviewer') as VerificationCaseActionCode[]);
+      : (offerableCaseActions(row.state, 'reviewer') as VerificationCaseActionCode[]);
 
     const blockedReason = isSelfReview
       ? ('SELF_REVIEW' as const)

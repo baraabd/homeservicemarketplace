@@ -91,6 +91,18 @@ export class MetricsService implements OnModuleInit {
     registers: [this.registry],
   });
 
+  /** Sprint 9B.5 — verification case transitions, by destination state.
+   *
+   *  Labelled by state alone. A per-case or per-provider label would turn the
+   *  metrics endpoint into a list of who is under review, retained far longer
+   *  than the case is. */
+  readonly verificationCaseTransitionsTotal = new Counter({
+    name: 'verification_case_transitions_total',
+    help: 'Verification case transitions by destination state.',
+    labelNames: ['to_state'],
+    registers: [this.registry],
+  });
+
   readonly deprecatedRouteRequestsTotal = new Counter({
     name: 'deprecated_route_requests_total',
     help: 'Requests served by a deprecated route',
