@@ -330,7 +330,13 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
         headline: 'Experienced provider serving the test region',
         bio: 'A sufficiently long biography for the onboarding policy to consider this profile complete for submission.',
         phoneNumber: '+963900000222',
-        serviceAreaCity: 'Aleppo',
+        // A service area NO other suite uses. This provider is deliberately
+        // marketplace-eligible — that is the whole point of the suite — and
+        // geo-fanout.integration.spec.ts counts every eligible recipient in
+        // 'aleppo' table-wide, so seeding one there made its recipient total
+        // 601 instead of 600. An eligible provider is a shared-world fixture
+        // in a way a DRAFT one is not.
+        serviceAreaCity: 'WorkAccessTestCity',
         serviceAreaCountry: 'SY',
         serviceAreaRadiusKm: 25,
         initials: 'WA',
