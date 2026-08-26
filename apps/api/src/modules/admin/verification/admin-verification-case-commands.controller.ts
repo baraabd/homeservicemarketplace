@@ -165,6 +165,45 @@ class ListCaseAuditDto {
   cursor?: string;
 }
 
+class ApproveCaseDto {
+  /**
+   * Mandatory. Approval is a judgement like any other, and "why did we trust
+   * this?" is exactly what the permanent record has to answer years later.
+   */
+  @IsIn(['DOCUMENTS_COMPLETE_AND_LEGIBLE', 'OTHER'])
+  reasonCode!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+
+  @IsOptional()
+  @IsIn(['SUBMITTED', 'IN_REVIEW'])
+  expectedState?: 'SUBMITTED' | 'IN_REVIEW';
+}
+
+class CloseAccessDto {
+  @IsIn([
+    'POLICY_PERIOD_ELAPSED',
+    'TRUST_AND_SAFETY_ACTION',
+    'SUSPECTED_FORGERY',
+    'DOCUMENT_EXPIRED',
+    'PROVIDER_REQUESTED',
+    'OTHER',
+  ])
+  reasonCode!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+
+  @IsOptional()
+  @IsIn(['VERIFIED'])
+  expectedState?: 'VERIFIED';
+}
+
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Permissions('verification:decide')
 @Controller({ path: 'admin/verification/cases', version: '1' })
@@ -245,6 +284,62 @@ export class AdminVerificationCaseCommandsController {
     @Body() body: AssignCaseDto,
   ): Promise<CaseCommandResult> {
     return this.workflow.assign(user.id, { caseId, expectedState: body.expectedState });
+  }
+
+  /**
+   * The transaction this whole area exists for.
+   *
+   * Case, decision, provider evidence state, work-access grant, audit,
+   * notification and event — one transaction, or none of them.
+   */
+  @UseGuards(CsrfGuard)
+  @Post(':caseId/approve')
+  @HttpCode(HttpStatus.OK)
+  approve(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('caseId') caseId: string,
+    @Body() body: ApproveCaseDto,
+  ): Promise<CaseCommandResult> {
+    return this.workflow.approve(user.id, {
+      caseId,
+      reasonCode: body.reasonCode as never,
+      note: body.note ?? null,
+      expectedState: body.expectedState,
+    });
+  }
+
+  /** Withdraw access early. The verified history stands. */
+  @UseGuards(CsrfGuard)
+  @Post(':caseId/revoke')
+  @HttpCode(HttpStatus.OK)
+  revoke(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('caseId') caseId: string,
+    @Body() body: CloseAccessDto,
+  ): Promise<CaseCommandResult> {
+    return this.workflow.revoke(user.id, {
+      caseId,
+      reasonCode: body.reasonCode as never,
+      note: body.note ?? null,
+      expectedState: body.expectedState,
+    });
+  }
+
+  /** Ask for fresh evidence. Not a sanction — the grant closes as EXPIRED. */
+  @UseGuards(CsrfGuard)
+  @Post(':caseId/reverify')
+  @HttpCode(HttpStatus.OK)
+  reverify(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('caseId') caseId: string,
+    @Body() body: CloseAccessDto,
+  ): Promise<CaseCommandResult> {
+    return this.workflow.reverify(user.id, {
+      caseId,
+      reasonCode: body.reasonCode as never,
+      note: body.note ?? null,
+      expectedState: body.expectedState,
+    });
   }
 
   @UseGuards(CsrfGuard)

@@ -26,6 +26,10 @@ export const OutboxEventType = {
   VERIFICATION_CASE_ACTION_REQUIRED: 'verification.case.action_required',
   /** Sprint 9B.6 — a reviewer closed a case against the provider. */
   VERIFICATION_CASE_REJECTED: 'verification.case.rejected',
+  /** Sprint 9B.7 — approved, and a work-access grant opened. */
+  VERIFICATION_CASE_APPROVED: 'verification.case.approved',
+  /** Sprint 9B.7 — a grant was closed, by revocation or re-verification. */
+  VERIFICATION_CASE_ACCESS_CLOSED: 'verification.case.access_closed',
 } as const;
 
 export type OutboxEventTypeName = (typeof OutboxEventType)[keyof typeof OutboxEventType];

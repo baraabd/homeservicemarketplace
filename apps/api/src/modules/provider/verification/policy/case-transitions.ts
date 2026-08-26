@@ -163,6 +163,18 @@ export const IMPLEMENTED_CASE_ACTIONS: readonly VerificationCaseAction[] = Objec
   // Sprint 9B.6. Closing a case is the half of deciding that needs no grant and
   // no atomic write across three tables, so it ships before approval does.
   'reject',
+  // Sprint 9B.7. Approval finally has the atomic transaction behind it: the
+  // case, the decision, the provider evidence state, the work-access grant,
+  // the audit row, the notification and the event, all together or not at all.
+  'approve',
+  'revoke',
+  'reverify',
+  // Sprint 9B.7. `expire` finally has a caller: VerificationExpiryService,
+  // driven by the scheduled sweep. It stays actor:'system', so
+  // offerableCaseActions still never shows it to a provider or a reviewer —
+  // being implemented and being offerable to a human are different things, and
+  // this is the one action where they differ.
+  'expire',
 ]);
 
 export function isImplementedCaseAction(action: VerificationCaseAction): boolean {

@@ -4,6 +4,7 @@ import type { PrismaTx } from '@homeservicemarketplace/database';
 
 import { PlatformSettingRepository } from '../../../infrastructure/persistence/settings/platform-setting.repository';
 import { CONSENT_VERSION_KEY } from '../onboarding/provider-onboarding-wizard.service';
+import { GRANT_VALIDITY_DAYS_KEY } from './grant/grant-validity';
 
 // Sprint 9B.2 — verification limits, read from the canonical settings
 // mechanism.
@@ -24,6 +25,9 @@ export const VERIFICATION_POLICY_MAX_DOCUMENTS_KEY = 'verification_policy_max_do
 export const EVIDENCE_MAX_BYTES_KEY = 'verification_evidence_max_bytes';
 export const EVIDENCE_MAX_DOCUMENTS_PER_CASE_KEY = 'verification_evidence_max_documents_per_case';
 export const EVIDENCE_UPLOAD_TTL_SECONDS_KEY = 'verification_evidence_upload_ttl_seconds';
+
+// Sprint 9B.7 — how long an approval's work-access grant lasts (ADR 0013).
+export { GRANT_VALIDITY_DAYS_KEY } from './grant/grant-validity';
 
 /** The schema entry, so bounds and default are read from one place. */
 function field(key: string) {
@@ -103,6 +107,25 @@ export class VerificationSettingsService {
       this.logger.warn({ msg: 'verification.setting.read.failed', key: CONSENT_VERSION_KEY });
       return null;
     }
+  }
+
+  /**
+   * How many days a work-access grant issued by an approval lasts.
+   *
+   * UNLIKE the ceilings above, this one can GRANT rather than only refuse: a
+   * larger number means longer access. It still falls back to the schema
+   * default rather than failing closed, and that is deliberate — refusing every
+   * approval because a settings row is missing would stop the review queue
+   * dead, while the fallback is the documented ADR 0013 default (365) that an
+   * admin would have been shown anyway.
+   *
+   * What it must never do is fall back to something OPEN-ENDED. boundedInteger
+   * cannot return null or Infinity, and computeGrantWindow refuses anything
+   * non-positive, so there is no path from a broken settings row to a grant
+   * that never expires.
+   */
+  async workGrantValidityDays(tx?: PrismaTx): Promise<number> {
+    return this.boundedInteger(GRANT_VALIDITY_DAYS_KEY, tx);
   }
 
   private async boundedInteger(key: string, tx?: PrismaTx): Promise<number> {

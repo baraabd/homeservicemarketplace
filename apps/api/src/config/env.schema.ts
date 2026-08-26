@@ -110,9 +110,27 @@ const baseEnvSchema = z.object({
   // two different denials with two different blast radii, and folding them
   // into one flag means a problem with either forces both off.
   VERIFICATION_ENFORCED: trueish.default(false),
-  // How long an approval grants work for. Renewal issues a fresh grant rather
-  // than extending this one, so the history stays append-only.
-  VERIFICATION_GRANT_DAYS: z.coerce.number().int().positive().default(365),
+  // NOTE — ADR 0013 names this number VERIFICATION_GRANT_DAYS and it was once
+  // declared here. It has MOVED to the admin settings schema, as
+  // `verification_work_grant_validity_days`, because it must be changeable by
+  // an operator without a deploy and must be the same number the admin screen
+  // displays. It was removed from here rather than left in place: it was never
+  // read by anything, and a dead env var is worse than none — the next person
+  // to need a shorter grant window would set it, deploy, and change nothing.
+  //
+  // Sprint 9B.7 — the expiry sweep that closes lapsed verifications.
+  //
+  // Default OFF. The sweep is not load-bearing for authorization (access is a
+  // read-time predicate; see verification-expiry.service.ts), so leaving it off
+  // costs truthfulness of the record, not safety. It is armed deliberately,
+  // once, per environment.
+  VERIFICATION_EXPIRY_WORKER_ENABLED: trueish.default(false),
+  // Fifteen minutes. The window between a verification lapsing and the record
+  // saying so; access itself is already denied on the next request.
+  VERIFICATION_EXPIRY_INTERVAL_MS: z.coerce.number().int().positive().default(900_000),
+  // Cases per pass. Bounds one sweep so a large backlog drains over several
+  // runs instead of holding a connection for minutes.
+  VERIFICATION_EXPIRY_BATCH_SIZE: z.coerce.number().int().positive().default(100),
 
   // ── Sprint 9: restricted evidence retention (ADR 0012) ────────────────
   // Engineering defaults chosen to be conservative-SHORT. They are not legal

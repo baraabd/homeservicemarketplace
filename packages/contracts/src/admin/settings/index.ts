@@ -161,6 +161,31 @@ export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
     min: 60,
     max: 3600,
   },
+  {
+    // Sprint 9B.7 — how long a work-access grant issued by an approval lasts.
+    //
+    // ADR 0013: `endsAt = decidedAt + VERIFICATION_GRANT_DAYS` (default 365,
+    // configurable). This IS that number, and it lives here rather than as a
+    // constant in the approval service for the reason every other limit does:
+    // the value an admin is shown must be the value the code enforces.
+    //
+    // The floor is 1 day, not 0. A zero-day grant would be born already
+    // expired — an approval that authorises nothing, reported to the provider
+    // as success — and no legitimate configuration wants that. A policy that
+    // means "never grant" says so by requiring verification the provider
+    // cannot satisfy, not by issuing dead grants.
+    //
+    // The ceiling is 10 years. Grants are deliberately finite: an open-ended
+    // one is how a provider verified once in 2026 is still trading on it in
+    // 2040 with nobody having looked again.
+    key: 'verification_work_grant_validity_days',
+    type: 'integer',
+    description:
+      'How many days a work-access grant issued by an approved verification lasts. Existing grants keep the duration in force when they were issued; changing this affects future approvals only.',
+    default: 365,
+    min: 1,
+    max: 3650,
+  },
 ] as const;
 
 export type AdminSettingKey = (typeof ADMIN_SETTINGS_SCHEMA)[number]['key'];

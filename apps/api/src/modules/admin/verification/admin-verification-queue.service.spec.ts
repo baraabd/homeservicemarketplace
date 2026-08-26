@@ -104,7 +104,11 @@ describe('what the queue shows by default', () => {
     expect(out.items[0].availableActions).toEqual(
       expect.arrayContaining(['assign', 'requestAction', 'reject']),
     );
-    expect(out.items[0].availableActions).not.toContain('approve');
+    // Offered from Sprint 9B.7, because the atomic transaction behind it now
+    // exists. `expire` stays withheld: it is the system actor's edge and no
+    // deployment wires a scheduler.
+    expect(out.items[0].availableActions).toContain('approve');
+    expect(out.items[0].availableActions).not.toContain('expire');
   });
 
   it('offers nothing on a row the reviewer is the subject of', async () => {

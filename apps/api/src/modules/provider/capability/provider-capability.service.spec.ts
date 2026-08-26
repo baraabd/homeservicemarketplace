@@ -574,3 +574,80 @@ describe('rank 0 still outranks the Sprint 9 ranks', () => {
     },
   );
 });
+
+// ── Sprint 9B.7 — suspension outranks any grant, on EITHER axis ───────────
+//
+// The defect these pin: admin suspension writes only the legacy `status`
+// column, leaving `standingState` at a non-null 'GOOD'. While
+// WORK_ACCESS_ENFORCED was off, rank 7 re-checked `legacyStatus === 'ACTIVE'`
+// and suspension still denied work by accident. Arming the flag moves rank 7
+// onto the grant — so without this, turning the flag on would silently
+// authorise every suspended provider who happens to hold a grant.
+describe('suspension outranks work access', () => {
+  const BOTH_ON = { VERIFICATION_ENFORCED: true, WORK_ACCESS_ENFORCED: true };
+
+  it('denies the working set when only the LEGACY axis says suspended', async () => {
+    // Exactly the row admin suspension leaves behind: status SUSPENDED,
+    // standingState still GOOD, holding a live VERIFIED grant.
+    const { service } = makeService(
+      ELIGIBLE,
+      legacyApproved({ status: 'SUSPENDED', verificationState: 'VERIFIED' }),
+      { flags: BOTH_ON, liveGrant: true },
+    );
+    const set = await service.for('u-1');
+
+    for (const c of WORKING_SET) expect(set.allowed).not.toContain(c);
+    expect(set.primaryReason).toBe(ProviderCapabilityDenialReason.ProviderSuspended);
+  });
+
+  it('denies the working set when only the STANDING axis says suspended', async () => {
+    const { service } = makeService(
+      ELIGIBLE,
+      legacyApproved({ standingState: 'SUSPENDED', verificationState: 'VERIFIED' }),
+      { flags: BOTH_ON, liveGrant: true },
+    );
+    const set = await service.for('u-1');
+
+    for (const c of WORKING_SET) expect(set.allowed).not.toContain(c);
+    expect(set.primaryReason).toBe(ProviderCapabilityDenialReason.ProviderSuspended);
+  });
+
+  it('still lets a suspended provider appeal and read their own profile', async () => {
+    // A denial nobody can act on is a dead end: the point of suspension is
+    // that they can see it and contest it.
+    const { service } = makeService(ELIGIBLE, legacyApproved({ status: 'SUSPENDED' }), {
+      flags: BOTH_ON,
+      liveGrant: true,
+    });
+    const set = await service.for('u-1');
+
+    expect(set.allowed).toContain(ProviderCapability.AppealDecision);
+    expect(set.allowed).toContain(ProviderCapability.ViewOwnProfile);
+  });
+
+  it('does not downgrade TERMINATED to SUSPENDED', async () => {
+    // Rank 2 is terminal and has no appeal. Consulting the legacy axis at
+    // rank 3 must not reorder the two.
+    const { service } = makeService(
+      ELIGIBLE,
+      legacyApproved({ status: 'SUSPENDED', standingState: 'TERMINATED' }),
+      { flags: BOTH_ON, liveGrant: true },
+    );
+    const set = await service.for('u-1');
+
+    expect(set.primaryReason).toBe(ProviderCapabilityDenialReason.ProviderTerminated);
+    expect(set.allowed).not.toContain(ProviderCapability.AppealDecision);
+  });
+
+  it('a healthy verified provider with a grant still works — the fix denies nothing extra', async () => {
+    // Non-vacuity: if this went red, the two assertions above would pass for
+    // the wrong reason.
+    const { service } = makeService(ELIGIBLE, legacyApproved({ verificationState: 'VERIFIED' }), {
+      flags: BOTH_ON,
+      liveGrant: true,
+    });
+    const set = await service.for('u-1');
+
+    for (const c of WORKING_SET) expect(set.allowed).toContain(c);
+  });
+});
