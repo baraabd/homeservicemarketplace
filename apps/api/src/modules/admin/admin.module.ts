@@ -16,6 +16,7 @@ import { AdminUsersService } from './users/admin-users.service';
 import { ProviderVerificationModule } from '../provider/verification/provider-verification.module';
 import { AdminVerificationController } from './verification/admin-verification.controller';
 import { AdminVerificationCaseCommandsController } from './verification/admin-verification-case-commands.controller';
+import { AdminVerificationQueueService } from './verification/admin-verification-queue.service';
 import { AdminVerificationPolicyController } from './verification/admin-verification-policy.controller';
 import { AdminVerificationPolicyService } from './verification/admin-verification-policy.service';
 import { VerificationSettingsService } from '../provider/verification/verification-settings.service';
@@ -95,6 +96,7 @@ import { AdminCatalogService } from './catalog/admin-catalog.service';
     AdminCatalogController,
   ],
   providers: [
+    AdminVerificationQueueService,
     AdminAuditService,
     AdminUsersService,
     AdminVerificationService,

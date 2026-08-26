@@ -278,7 +278,64 @@ export class VerificationCaseWorkflowService {
       },
       eventType: OutboxEventType.VERIFICATION_CASE_ACTION_REQUIRED,
       decision: { outcome: 'ACTION_REQUIRED', reasonCode: input.reasonCode },
-      notifyProvider: true,
+      notifyProvider: 'ACTION_REQUIRED',
+    });
+  }
+
+  // ── reject ──────────────────────────────────────────────────────────────
+
+  /**
+   * The reviewer closes the case against the provider.
+   *
+   * The half of deciding that needs no grant: rejection withdraws nothing and
+   * creates nothing, so it does not carry 9B.7's atomic write across the case,
+   * the grant and the provider's status. That is why it ships and approve does
+   * not.
+   *
+   * Reachable from ACTION_REQUIRED as well as the live states — a provider who
+   * was asked for something and never came back still has to be closable, or
+   * the queue fills with cases nobody can finish.
+   *
+   * NOT a correction tool for a VERIFIED case. Undoing a grant is `revoke`,
+   * which is a different edge with a different record, and the transition table
+   * refuses this one from VERIFIED.
+   */
+  async reject(
+    reviewerUserId: string,
+    input: {
+      caseId: string;
+      reasonCode: VerificationReasonCode;
+      note?: string | null;
+      expectedState?: VerificationCaseState;
+    },
+  ): Promise<CaseCommandResult> {
+    if (VERIFICATION_CASE_TRANSITIONS.reject.requiresReason && !input.reasonCode) {
+      throw new AppError('VALIDATION_ERROR', 'A reason is required to reject this case.', 400, {
+        reason: 'REASON_REQUIRED',
+      });
+    }
+
+    const kase = await this.requireReviewable(input.caseId, reviewerUserId);
+
+    if (kase.state === 'REJECTED') return this.replay(kase, 'reviewer');
+    this.assertFresh(kase, input.expectedState);
+    this.assertLegal('reject', kase.state);
+
+    return this.commit({
+      kase,
+      action: 'reject',
+      actor: 'reviewer',
+      actorUserId: reviewerUserId,
+      data: { state: 'REJECTED', reviewerNotes: input.note ?? null, decidedAt: new Date() },
+      auditType: 'VERIFICATION_CASE_REJECTED',
+      auditMetadata: {
+        caseId: kase.id,
+        providerProfileId: kase.providerProfileId,
+        reasonCode: input.reasonCode,
+      },
+      eventType: OutboxEventType.VERIFICATION_CASE_REJECTED,
+      decision: { outcome: 'REJECTED', reasonCode: input.reasonCode },
+      notifyProvider: 'REJECTED',
     });
   }
 
@@ -293,8 +350,9 @@ export class VerificationCaseWorkflowService {
     auditType: string;
     auditMetadata: Record<string, unknown>;
     eventType: string | null;
-    decision?: { outcome: 'ACTION_REQUIRED'; reasonCode: VerificationReasonCode };
-    notifyProvider?: boolean;
+    decision?: { outcome: 'ACTION_REQUIRED' | 'REJECTED'; reasonCode: VerificationReasonCode };
+    /** Which notification the provider gets, if any. */
+    notifyProvider?: 'ACTION_REQUIRED' | 'REJECTED';
   }): Promise<CaseCommandResult> {
     const { kase } = input;
     const toState = input.data.state as VerificationCaseState;
@@ -354,15 +412,21 @@ export class VerificationCaseWorkflowService {
       }
 
       if (input.notifyProvider && kase.providerProfile.userId) {
+        const rejected = input.notifyProvider === 'REJECTED';
         await client.notification.create({
           data: {
             userId: kase.providerProfile.userId,
-            type: 'VERIFICATION_ACTION_REQUIRED',
-            title: 'Your verification needs attention',
-            // Deliberately generic. A notification is listed, cached and pushed
-            // to a device; the reviewer's specific note lives behind the
-            // access-controlled case.
-            body: 'A reviewer has asked for something before your application can continue.',
+            type: rejected ? 'VERIFICATION_REJECTED' : 'VERIFICATION_ACTION_REQUIRED',
+            title: rejected
+              ? 'Your verification could not be completed'
+              : 'Your verification needs attention',
+            // Deliberately generic, and carrying NO reason code. A notification
+            // is listed, cached and pushed to a device; a rejection reason is a
+            // judgement about a person and belongs behind the access-controlled
+            // case, as does the reviewer's prose.
+            body: rejected
+              ? 'A reviewer has closed your verification. Open your verification page for details.'
+              : 'A reviewer has asked for something before your application can continue.',
             resourceType: 'VERIFICATION_CASE',
             resourceId: kase.id,
             deepLink: '/provider/verification',

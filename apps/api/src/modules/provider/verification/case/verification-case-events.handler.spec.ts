@@ -32,19 +32,21 @@ describe('VerificationCaseEventsHandler', () => {
       [
         OutboxEventType.VERIFICATION_CASE_SUBMITTED,
         OutboxEventType.VERIFICATION_CASE_ACTION_REQUIRED,
+        OutboxEventType.VERIFICATION_CASE_REJECTED,
       ].sort(),
     );
     expect(OutboxEventType.VERIFICATION_CASE_SUBMITTED).toBe('verification.case.submitted');
     expect(OutboxEventType.VERIFICATION_CASE_ACTION_REQUIRED).toBe(
       'verification.case.action_required',
     );
+    expect(OutboxEventType.VERIFICATION_CASE_REJECTED).toBe('verification.case.rejected');
   });
 
   it('has a stable name, because it is persisted', () => {
     expect(harness().handler.name).toBe('verification-case.metrics');
   });
 
-  it.each(['SUBMITTED', 'ACTION_REQUIRED', 'IN_REVIEW'])(
+  it.each(['SUBMITTED', 'ACTION_REQUIRED', 'IN_REVIEW', 'REJECTED'])(
     'counts a transition to %s under its own label',
     async (toState) => {
       const { handler, incs } = harness();

@@ -505,3 +505,134 @@ describe('submitOwnCase', () => {
     expect(err.status).toBe(404);
   });
 });
+
+// ── reject ────────────────────────────────────────────────────────────────
+
+describe('reject', () => {
+  const REASON = 'SUSPECTED_FORGERY' as const;
+
+  it('closes the case and records the decision', async () => {
+    const h = harness({ row: caseRow({ state: 'IN_REVIEW', assignedToUserId: REVIEWER }) });
+    const out = await h.service.reject(REVIEWER, { caseId: CASE_ID, reasonCode: REASON });
+
+    expect(out).toMatchObject({ state: 'REJECTED', changed: true });
+    expect(h.decisions[0]).toMatchObject({
+      outcome: 'REJECTED',
+      reasonCode: REASON,
+      fromState: 'IN_REVIEW',
+      toState: 'REJECTED',
+      decidedByUserId: REVIEWER,
+    });
+  });
+
+  it('is reachable from ACTION_REQUIRED as well', async () => {
+    // A provider who was asked for something and never came back still has to
+    // be closable, or the queue fills with cases nobody can finish.
+    const h = harness({ row: caseRow({ state: 'ACTION_REQUIRED' }) });
+    expect((await h.service.reject(REVIEWER, { caseId: CASE_ID, reasonCode: REASON })).state).toBe(
+      'REJECTED',
+    );
+  });
+
+  it('demands a reason, because the transition table says so', async () => {
+    const h = harness({ row: caseRow({ state: 'IN_REVIEW' }) });
+    const err = await failure(
+      h.service.reject(REVIEWER, { caseId: CASE_ID, reasonCode: undefined as never }),
+    );
+    expect(err.status).toBe(400);
+    expect(h.updates).toEqual([]);
+    expect(h.decisions).toEqual([]);
+  });
+
+  it('refuses a reviewer rejecting their own case', async () => {
+    const h = harness({
+      row: caseRow({
+        state: 'IN_REVIEW',
+        providerProfile: { ...COMPLETE_PROFILE, userId: REVIEWER },
+      }),
+    });
+    const err = await failure(h.service.reject(REVIEWER, { caseId: CASE_ID, reasonCode: REASON }));
+    expect(err.status).toBe(403);
+  });
+
+  it('tells the provider', async () => {
+    const h = harness({ row: caseRow({ state: 'IN_REVIEW' }) });
+    await h.service.reject(REVIEWER, { caseId: CASE_ID, reasonCode: REASON });
+    expect(h.notifications[0]).toMatchObject({
+      userId: PROVIDER_USER,
+      resourceType: 'VERIFICATION_CASE',
+      resourceId: CASE_ID,
+    });
+  });
+
+  it('puts neither the reviewer note nor the reason into the notification body', async () => {
+    // A rejection reason is a judgement about a person. It belongs behind the
+    // access-controlled case, not in a row that is listed, cached and pushed to
+    // a device.
+    const h = harness({ row: caseRow({ state: 'IN_REVIEW' }) });
+    await h.service.reject(REVIEWER, {
+      caseId: CASE_ID,
+      reasonCode: REASON,
+      note: 'SENTINELREJECT the document appears altered',
+    });
+    const text = JSON.stringify(h.notifications[0]);
+    expect(text).not.toContain('SENTINELREJECT');
+    expect(text).not.toContain('SUSPECTED_FORGERY');
+  });
+
+  it('is idempotent when the case is already rejected', async () => {
+    const h = harness({ row: caseRow({ state: 'REJECTED' }) });
+    const out = await h.service.reject(REVIEWER, { caseId: CASE_ID, reasonCode: REASON });
+
+    expect(out.changed).toBe(false);
+    expect(h.decisions).toEqual([]);
+    expect(h.notifications).toEqual([]);
+  });
+
+  it('refuses on a case nobody submitted', async () => {
+    const err = await failure(
+      harness({ row: caseRow({ state: 'DRAFT' }) }).service.reject(REVIEWER, {
+        caseId: CASE_ID,
+        reasonCode: REASON,
+      }),
+    );
+    expect(err.status).toBe(409);
+  });
+
+  it('refuses to reopen a VERIFIED case by rejecting it', async () => {
+    // reject is not a correction tool. Undoing a grant is `revoke`, which is a
+    // different edge with a different record.
+    const err = await failure(
+      harness({ row: caseRow({ state: 'VERIFIED' }) }).service.reject(REVIEWER, {
+        caseId: CASE_ID,
+        reasonCode: REASON,
+      }),
+    );
+    expect(err.status).toBe(409);
+  });
+
+  it('offers nothing afterwards, to anyone', async () => {
+    const h = harness({ row: caseRow({ state: 'IN_REVIEW' }) });
+    const out = await h.service.reject(REVIEWER, { caseId: CASE_ID, reasonCode: REASON });
+    expect(out.availableActions).toEqual([]);
+  });
+});
+
+// ── approval is PREPARED, not exposed ─────────────────────────────────────
+
+describe('approval stays behind the boundary', () => {
+  it('is not offered by any command result', async () => {
+    const h = harness({ row: caseRow({ state: 'SUBMITTED' }) });
+    const out = await h.service.assign(REVIEWER, { caseId: CASE_ID });
+    expect(out.availableActions).not.toContain('approve');
+  });
+
+  it('has no public method on the workflow service', () => {
+    // Sprint 9B.7 owns approval, and it is atomic across the case, the grant
+    // and the provider's status. A half-built approve reachable by anyone who
+    // can find it is exactly the shape of the defect this whole area exists to
+    // avoid, so the boundary is the absence of the method, not a flag.
+    const h = harness();
+    expect((h.service as unknown as Record<string, unknown>).approve).toBeUndefined();
+  });
+});

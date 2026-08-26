@@ -177,6 +177,20 @@ d('Outbox delivery guarantees (real Postgres)', () => {
 
   /** Every row enqueue() writes carries this aggregate type, so this suite's
    *  rows are distinguishable from any other producer's. */
+  /**
+   * This suite's own rows.
+   *
+   * EVERY read of the queue is scoped to it, not merely the cleanup. The
+   * comment on the scoped count below has always said a bare count() is a
+   * global read over a queue every producer writes to — but the parallel-drain
+   * test and the claim test were still counting table-wide, so a single stray
+   * row from any other producer (or from an interrupted earlier run) wedged
+   * the drain loop forever and reported it as "drain stalled".
+   *
+   * Scoping does not weaken anything: the test still asserts every one of its
+   * own 120 events reached PROCESSED exactly once. It just stops asserting
+   * things about rows it did not create.
+   */
   const OWNED = { aggregateType: 'Test' } as const;
 
   /**
@@ -246,7 +260,7 @@ d('Outbox delivery guarantees (real Postgres)', () => {
       const claimed = await repo.claimBatch('worker-1', 10);
       expect(claimed).toHaveLength(10);
       // And the rest are genuinely still available to everyone else.
-      expect(await prisma.outboxEvent.count({ where: { status: 'PENDING' } })).toBe(30);
+      expect(await prisma.outboxEvent.count({ where: { ...OWNED, status: 'PENDING' } })).toBe(30);
     });
 
     it('spreads a backlog across concurrent workers instead of one taking it all', async () => {
@@ -567,7 +581,7 @@ d('Outbox delivery guarantees (real Postgres)', () => {
             // Nothing claimable right now. Done only when nothing is in
             // flight either — otherwise another worker is mid-batch.
             const outstanding = await prisma.outboxEvent.count({
-              where: { status: { in: ['PENDING', 'PROCESSING'] } },
+              where: { ...OWNED, status: { in: ['PENDING', 'PROCESSING'] } },
             });
             if (outstanding === 0) return;
             if (Date.now() > deadline) throw new Error(`drain stalled: ${outstanding} outstanding`);
@@ -582,10 +596,11 @@ d('Outbox delivery guarantees (real Postgres)', () => {
       // whether the missing events were retried, dead-lettered, or skipped.
       const byStatus = await prisma.outboxEvent.groupBy({
         by: ['status'],
+        where: OWNED,
         _count: { _all: true },
       });
       const failed = await prisma.outboxEvent.findFirst({
-        where: { status: { in: ['DEAD', 'PENDING'] } },
+        where: { ...OWNED, status: { in: ['DEAD', 'PENDING'] } },
         select: { status: true, attempts: true, lastError: true },
       });
       const summary =
@@ -602,10 +617,10 @@ d('Outbox delivery guarantees (real Postgres)', () => {
       expect(new Set(handled).size).toBe(handled.length);
       // Every event reached the terminal success state.
       expect({
-        processed: await prisma.outboxEvent.count({ where: { status: 'PROCESSED' } }),
+        processed: await prisma.outboxEvent.count({ where: { ...OWNED, status: 'PROCESSED' } }),
         summary,
       }).toEqual({ processed: total, summary });
-      expect(await prisma.outboxEvent.count({ where: { status: 'PENDING' } })).toBe(0);
+      expect(await prisma.outboxEvent.count({ where: { ...OWNED, status: 'PENDING' } })).toBe(0);
       // And each was handled exactly once. Checked last: if it fails after the
       // above passed, the cause is the idempotency marker skipping a
       // redelivery, not a lost event — which the summary above will show.

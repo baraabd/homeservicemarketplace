@@ -24,6 +24,8 @@ export const OutboxEventType = {
   VERIFICATION_CASE_SUBMITTED: 'verification.case.submitted',
   /** Sprint 9B.5 — a reviewer returned a case to the provider. */
   VERIFICATION_CASE_ACTION_REQUIRED: 'verification.case.action_required',
+  /** Sprint 9B.6 — a reviewer closed a case against the provider. */
+  VERIFICATION_CASE_REJECTED: 'verification.case.rejected',
 } as const;
 
 export type OutboxEventTypeName = (typeof OutboxEventType)[keyof typeof OutboxEventType];

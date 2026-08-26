@@ -44,6 +44,7 @@ export class VerificationCaseEventsHandler implements OutboxHandler {
   readonly eventTypes = [
     OutboxEventType.VERIFICATION_CASE_SUBMITTED,
     OutboxEventType.VERIFICATION_CASE_ACTION_REQUIRED,
+    OutboxEventType.VERIFICATION_CASE_REJECTED,
   ] as const;
 
   private readonly log = new Logger(VerificationCaseEventsHandler.name);

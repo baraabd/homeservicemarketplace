@@ -962,6 +962,7 @@ enum AuditEventType {
   VERIFICATION_CASE_SUBMITTED
   VERIFICATION_CASE_ASSIGNED
   VERIFICATION_CASE_ACTION_REQUESTED
+  VERIFICATION_CASE_REJECTED
 }
 
 enum AddressType {
@@ -1037,6 +1038,10 @@ enum NotificationType {
   // screen they have no reason to revisit, so it is a notification rather than
   // a state they must go looking for.
   VERIFICATION_ACTION_REQUIRED
+  // Sprint 9B.6 — the case was closed against the provider. A distinct type
+  // from ACTION_REQUIRED because the two demand opposite responses: one asks
+  // them to act, the other tells them there is nothing further to do here.
+  VERIFICATION_REJECTED
   SYSTEM
 }
 
