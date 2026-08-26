@@ -1,3 +1,4 @@
+import { ProviderCapabilityService } from '../../src/modules/provider/capability/provider-capability.service';
 // Route-level e2e for /v1/me/provider/onboarding/* (Sprint 8).
 // docs/adr/0008-category-hierarchy-and-onboarding-draft.md
 //
@@ -12,8 +13,10 @@
 //   - every route is auth-gated (no session => 401) and role-gated
 //     (a seeker with a valid session => 403)
 //   - mutations are CSRF-gated; reads are not
-//   - the wizard is reachable by a DRAFT provider — it must NOT be behind
-//     ProviderActiveGuard, which asks for a capability onboarding EARNS
+//   - the wizard is reachable by a DRAFT provider. Sprint 9B.8 gates it on
+//     EDIT_OWN_PROFILE, which a DRAFT provider HOLDS — as opposed to
+//     VIEW_MARKETPLACE, which onboarding earns and which would make the
+//     surface unreachable for exactly the people whose job is to finish it
 //   - `forbidNonWhitelisted` rejects the fields a client would forge to skip
 //     review: status, onboardingState, verified, userId, providerProfileId
 //   - there is no request shape through which a caller can name a DIFFERENT
@@ -115,6 +118,16 @@ const CSRF = 'csrf-token-value';
 const withCsrf = (r: request.Test) =>
   r.set('Cookie', [`hsm_csrf=${CSRF}`]).set('X-CSRF-Token', CSRF);
 
+// Sprint 9B.8 — the capability guard's dependency, as a controllable double.
+//
+// Deliberately a SET rather than a blanket allow: the load-bearing assertion in
+// this file is that a DRAFT provider CAN reach the wizard, and a guard stubbed
+// to always pass would make it vacuous. DRAFT holds EDIT_OWN_PROFILE, which is
+// what the controller declares — see the controller for why it is not
+// COMPLETE_ONBOARDING.
+const HELD = new Set<string>(['EDIT_OWN_PROFILE']);
+const capabilityService = { can: async (_u: string, c: string) => HELD.has(c) };
+
 describe('Provider onboarding wizard — HTTP surface', () => {
   let app: INestApplication;
   let http: ReturnType<INestApplication['getHttpServer']>;
@@ -125,6 +138,7 @@ describe('Provider onboarding wizard — HTTP surface', () => {
       providers: [
         { provide: ProviderOnboardingWizardService, useValue: wizard },
         { provide: AppConfigService, useValue: makeConfig() },
+        { provide: ProviderCapabilityService, useValue: capabilityService },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
         Reflector,
       ],
@@ -212,10 +226,13 @@ describe('Provider onboarding wizard — HTTP surface', () => {
     });
 
     it('a DRAFT provider CAN reach the whole surface', async () => {
-      // The load-bearing one. Gating onboarding on ProviderActiveGuard — which
-      // asks for VIEW_MARKETPLACE — would make the surface unreachable for
-      // exactly the providers whose job is to finish onboarding, which is the
-      // loop Sprint 7 fixed. If this ever 403s, that gate has crept back.
+      // The load-bearing one. Gating onboarding on VIEW_MARKETPLACE would make
+      // the surface unreachable for exactly the providers whose job is to
+      // finish onboarding, which is the loop Sprint 7 fixed. Sprint 9B.8 gates
+      // it on EDIT_OWN_PROFILE instead — held by DRAFT — so this still passes,
+      // and it now also proves the guard asks the RIGHT question: HELD
+      // contains only EDIT_OWN_PROFILE, so a controller declaring anything
+      // else would 403 here.
       await request(http).get(`${BASE}/draft`).expect(200);
       await withCsrf(request(http).patch(`${BASE}/steps/PROFILE`))
         .send({ version: 0, bio: 'x' })
@@ -491,6 +508,7 @@ describe('Provider onboarding wizard — the DTO instance reaches the service co
       providers: [
         { provide: ProviderOnboardingWizardService, useValue: wizard },
         { provide: AppConfigService, useValue: makeConfig() },
+        { provide: ProviderCapabilityService, useValue: capabilityService },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
         Reflector,
       ],

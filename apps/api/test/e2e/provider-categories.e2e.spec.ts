@@ -1,3 +1,4 @@
+import { ProviderCapabilityService } from '../../src/modules/provider/capability/provider-capability.service';
 // Route-level e2e for /v1/me/provider/categories/applications (Sprint 2).
 //
 // Boots a minimal Nest app with the real HTTP stack — cookie-parser,
@@ -106,6 +107,15 @@ const CSRF = 'csrf-token-value';
 const withCsrf = (r: request.Test) =>
   r.set('Cookie', [`hsm_csrf=${CSRF}`]).set('X-CSRF-Token', CSRF);
 
+// Sprint 9B.8 — the capability guard's dependency, as a controllable double.
+//
+// A SET, not a blanket allow: a guard stubbed to always pass would make every
+// authorization assertion in this file vacuous. These are the capabilities the
+// routes under test declare, so a controller that started asking for something
+// else would 403 here rather than pass silently.
+const HELD = new Set<string>(['EDIT_OWN_PROFILE']);
+const capabilityService = { can: async (_u: string, c: string) => HELD.has(c) };
+
 describe('Provider category applications — HTTP surface', () => {
   let app: INestApplication;
   let http: ReturnType<INestApplication['getHttpServer']>;
@@ -116,6 +126,7 @@ describe('Provider category applications — HTTP surface', () => {
       providers: [
         { provide: ProviderCategoriesService, useValue: categoriesService },
         { provide: AppConfigService, useValue: makeConfig() },
+        { provide: ProviderCapabilityService, useValue: capabilityService },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
         Reflector,
       ],

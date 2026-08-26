@@ -141,6 +141,9 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     prisma = db.prisma;
 
     const { PrismaService } = require('../../src/infrastructure/prisma/prisma.service');
+    const {
+      ProviderCapabilityService,
+    } = require('../../src/modules/provider/capability/provider-capability.service');
     const { TransactionRunner } = require('../../src/infrastructure/prisma/transaction.runner');
     const { OutboxRepository } = require('../../src/infrastructure/outbox/outbox.repository');
     const { AuditService } = require('../../src/modules/iam/audit/audit.service');
@@ -196,6 +199,16 @@ d('Verification case workflow (real Postgres, real routes)', () => {
         AuditEventRepository,
         OutboxRepository,
         { provide: PrismaService, useValue: { client: prisma, isReady: () => true } },
+        // Sprint 9B.8 — ProviderCapabilityGuard now gates these routes and
+        // needs this service. A SET rather than a blanket allow: these suites
+        // exercise the real provider flows, and a guard stubbed to pass would
+        // stop them proving the routes are gated at all.
+        {
+          provide: ProviderCapabilityService,
+          useValue: {
+            can: async (_u: string, c: string) => new Set(['MANAGE_VERIFICATION']).has(c),
+          },
+        },
         { provide: 'AppConfigService', useValue: config },
         { provide: AllExceptionsFilter, useValue: new AllExceptionsFilter(config) },
         { provide: APP_FILTER, useExisting: AllExceptionsFilter },

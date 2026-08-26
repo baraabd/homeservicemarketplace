@@ -175,6 +175,9 @@ d('Evidence log hygiene (real Postgres, real storage)', () => {
     storageRoot = mkdtempSync(join(tmpdir(), 'hsm-hygiene-it-'));
 
     const { PrismaService } = require('../../src/infrastructure/prisma/prisma.service');
+    const {
+      ProviderCapabilityService,
+    } = require('../../src/modules/provider/capability/provider-capability.service');
     const { AppConfigService } = require('../../src/config/app-config.service');
     const {
       EvidenceUploadController,
@@ -227,6 +230,16 @@ d('Evidence log hygiene (real Postgres, real storage)', () => {
         AuditService,
         AuditEventRepository,
         { provide: PrismaService, useValue: { client: prisma, isReady: () => true } },
+        // Sprint 9B.8 — ProviderCapabilityGuard now gates these routes and
+        // needs this service. A SET rather than a blanket allow: these suites
+        // exercise the real provider flows, and a guard stubbed to pass would
+        // stop them proving the routes are gated at all.
+        {
+          provide: ProviderCapabilityService,
+          useValue: {
+            can: async (_u: string, c: string) => new Set(['MANAGE_VERIFICATION']).has(c),
+          },
+        },
         { provide: AppConfigService, useValue: config },
         {
           provide: RESTRICTED_OBJECT_STORAGE,
