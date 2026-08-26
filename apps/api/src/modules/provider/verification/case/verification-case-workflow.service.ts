@@ -19,6 +19,7 @@ import {
   type VerificationCaseAction,
 } from '../policy/case-transitions';
 import { assessSubmissionReadiness } from './submission-readiness';
+import { GRANT_SOURCE_FOR_APPROVAL, grantClosureFor } from '../grant/work-access-grant.policy';
 import type { ResolvedRequirements } from '../policy/requirement-resolver';
 
 // Sprint 9B.5 — the three commands that move a verification case.
@@ -339,6 +340,142 @@ export class VerificationCaseWorkflowService {
     });
   }
 
+  // ── approve: the transaction this whole area exists for ─────────────────
+
+  /**
+   * Turn checked evidence into work access.
+   *
+   * docs/adr/0013. EIGHT things happen and they happen TOGETHER: the case
+   * moves, the decision is recorded, the provider evidence axis updates, the
+   * grant opens, and the audit row, the notification and the outbox event are
+   * written — all inside one transaction, under a claim conditional on the
+   * state we observed.
+   *
+   * A partial success is the worst outcome available. A case that says
+   * VERIFIED with no grant behind it lies about what the provider may do, and
+   * a grant with no decision behind it is access nobody authorised. There is
+   * no ordering of these writes that makes a partial success acceptable, which
+   * is why they share a transaction rather than a retry queue.
+   */
+  async approve(
+    reviewerUserId: string,
+    input: {
+      caseId: string;
+      reasonCode: VerificationReasonCode;
+      note?: string | null;
+      expectedState?: VerificationCaseState;
+    },
+  ): Promise<CaseCommandResult> {
+    // Approval carries a reason like every other judgement: "why did we trust
+    // this?" is exactly what the permanent record has to answer years later.
+    if (VERIFICATION_CASE_TRANSITIONS.approve.requiresReason && !input.reasonCode) {
+      throw new AppError('VALIDATION_ERROR', 'A reason is required to approve this case.', 400, {
+        reason: 'REASON_REQUIRED',
+      });
+    }
+
+    const kase = await this.requireReviewable(input.caseId, reviewerUserId);
+    if (kase.state === 'VERIFIED') return this.replay(kase, 'reviewer');
+    this.assertFresh(kase, input.expectedState);
+    this.assertLegal('approve', kase.state);
+
+    return this.commit({
+      kase,
+      action: 'approve',
+      actor: 'reviewer',
+      actorUserId: reviewerUserId,
+      data: { state: 'VERIFIED', reviewerNotes: input.note ?? null, decidedAt: new Date() },
+      auditType: 'VERIFICATION_CASE_APPROVED',
+      auditMetadata: {
+        caseId: kase.id,
+        providerProfileId: kase.providerProfileId,
+        reasonCode: input.reasonCode,
+      },
+      eventType: OutboxEventType.VERIFICATION_CASE_APPROVED,
+      decision: { outcome: 'APPROVED', reasonCode: input.reasonCode },
+      profileUpdate: { verificationState: 'VERIFIED', verified: true },
+      grant: { open: true },
+      notifyProvider: 'APPROVED',
+    });
+  }
+
+  // ── closing access ──────────────────────────────────────────────────────
+
+  /** Withdraw access early. The verified history stands (ADR 0013 §6). */
+  async revoke(
+    reviewerUserId: string,
+    input: {
+      caseId: string;
+      reasonCode: VerificationReasonCode;
+      note?: string | null;
+      expectedState?: VerificationCaseState;
+    },
+  ): Promise<CaseCommandResult> {
+    return this.closeAccess('revoke', reviewerUserId, input);
+  }
+
+  /** Ask a verified provider for fresh evidence. NOT a sanction: the grant
+   *  closes as EXPIRED, and a new case carries the re-check. */
+  async reverify(
+    reviewerUserId: string,
+    input: {
+      caseId: string;
+      reasonCode: VerificationReasonCode;
+      note?: string | null;
+      expectedState?: VerificationCaseState;
+    },
+  ): Promise<CaseCommandResult> {
+    return this.closeAccess('reverify', reviewerUserId, input);
+  }
+
+  private async closeAccess(
+    action: 'revoke' | 'reverify',
+    reviewerUserId: string,
+    input: {
+      caseId: string;
+      reasonCode: VerificationReasonCode;
+      note?: string | null;
+      expectedState?: VerificationCaseState;
+    },
+  ): Promise<CaseCommandResult> {
+    const rule = VERIFICATION_CASE_TRANSITIONS[action];
+    if (rule.requiresReason && !input.reasonCode) {
+      throw new AppError('VALIDATION_ERROR', 'A reason is required for this action.', 400, {
+        reason: 'REASON_REQUIRED',
+      });
+    }
+
+    const kase = await this.requireReviewable(input.caseId, reviewerUserId);
+    if (kase.state === 'EXPIRED') return this.replay(kase, 'reviewer');
+    this.assertFresh(kase, input.expectedState);
+    this.assertLegal(action, kase.state);
+
+    const closure = grantClosureFor(action);
+
+    return this.commit({
+      kase,
+      action,
+      actor: 'reviewer',
+      actorUserId: reviewerUserId,
+      data: { state: rule.to, reviewerNotes: input.note ?? null, decidedAt: new Date() },
+      auditType:
+        action === 'revoke' ? 'VERIFICATION_CASE_REVOKED' : 'VERIFICATION_CASE_REVERIFY_REQUIRED',
+      auditMetadata: {
+        caseId: kase.id,
+        providerProfileId: kase.providerProfileId,
+        reasonCode: input.reasonCode,
+      },
+      eventType: OutboxEventType.VERIFICATION_CASE_ACCESS_CLOSED,
+      decision: {
+        outcome: rule.outcome as 'REVOKED' | 'REVERIFY_REQUIRED',
+        reasonCode: input.reasonCode,
+      },
+      // The evidence axis records that verification lapsed. standingState is
+      // untouched: losing a grant is not a disciplinary state.
+      profileUpdate: { verificationState: 'EXPIRED', verified: false },
+      ...(closure ? { grant: { close: closure } } : {}),
+    });
+  }
   // ── the shared machinery ────────────────────────────────────────────────
 
   private async commit(input: {
@@ -350,9 +487,16 @@ export class VerificationCaseWorkflowService {
     auditType: string;
     auditMetadata: Record<string, unknown>;
     eventType: string | null;
-    decision?: { outcome: 'ACTION_REQUIRED' | 'REJECTED'; reasonCode: VerificationReasonCode };
+    decision?: {
+      outcome: 'ACTION_REQUIRED' | 'REJECTED' | 'APPROVED' | 'REVERIFY_REQUIRED' | 'REVOKED';
+      reasonCode: VerificationReasonCode;
+    };
+    /** Fields to write on the provider profile, in the SAME transaction. */
+    profileUpdate?: Record<string, unknown>;
+    /** Open a work-access grant, or close the one that is open. */
+    grant?: { open: true } | { close: 'REVOKED' | 'EXPIRED' };
     /** Which notification the provider gets, if any. */
-    notifyProvider?: 'ACTION_REQUIRED' | 'REJECTED';
+    notifyProvider?: 'ACTION_REQUIRED' | 'REJECTED' | 'APPROVED';
   }): Promise<CaseCommandResult> {
     const { kase } = input;
     const toState = input.data.state as VerificationCaseState;
@@ -382,6 +526,49 @@ export class VerificationCaseWorkflowService {
         });
       }
 
+      // The provider's EVIDENCE axis. Never standingState and never status:
+      // approving documents says nothing about whether the account is in good
+      // standing, and a suspended provider whose documents check out is still
+      // suspended. Conflating the two axes is how a suspension gets lifted by
+      // an unrelated document review.
+      if (input.profileUpdate) {
+        await client.providerProfile.update({
+          where: { id: kase.providerProfileId },
+          data: input.profileUpdate,
+        });
+      }
+
+      if (input.grant) {
+        if ('open' in input.grant) {
+          // One row per approval, carrying the case it came from and the
+          // source that says it was EARNED rather than handed out. The partial
+          // unique index (one ACTIVE grant per provider) is what makes a
+          // concurrent second approval fail rather than double-grant; this is
+          // the application half of that guarantee.
+          await client.providerWorkAccessGrant.create({
+            data: {
+              providerProfileId: kase.providerProfileId,
+              caseId: kase.id,
+              status: 'ACTIVE',
+              source: GRANT_SOURCE_FOR_APPROVAL,
+              reason: input.auditType,
+              grantedByUserId: input.actorUserId,
+            },
+          });
+        } else {
+          // Scoped to ACTIVE. Re-closing an already-closed grant would move
+          // its timestamp forward and rewrite when access actually ended.
+          await client.providerWorkAccessGrant.updateMany({
+            where: { providerProfileId: kase.providerProfileId, status: 'ACTIVE' },
+            data: {
+              status: input.grant.close,
+              ...(input.grant.close === 'REVOKED'
+                ? { revokedAt: new Date(), revokedByUserId: input.actorUserId }
+                : {}),
+            },
+          });
+        }
+      }
       await this.audit.record(
         {
           type: input.auditType as never,
@@ -412,21 +599,32 @@ export class VerificationCaseWorkflowService {
       }
 
       if (input.notifyProvider && kase.providerProfile.userId) {
-        const rejected = input.notifyProvider === 'REJECTED';
+        const kind = input.notifyProvider;
         await client.notification.create({
           data: {
             userId: kase.providerProfile.userId,
-            type: rejected ? 'VERIFICATION_REJECTED' : 'VERIFICATION_ACTION_REQUIRED',
-            title: rejected
-              ? 'Your verification could not be completed'
-              : 'Your verification needs attention',
+            type:
+              kind === 'APPROVED'
+                ? 'VERIFICATION_APPROVED'
+                : kind === 'REJECTED'
+                  ? 'VERIFICATION_REJECTED'
+                  : 'VERIFICATION_ACTION_REQUIRED',
+            title:
+              kind === 'APPROVED'
+                ? 'Your verification is complete'
+                : kind === 'REJECTED'
+                  ? 'Your verification could not be completed'
+                  : 'Your verification needs attention',
             // Deliberately generic, and carrying NO reason code. A notification
             // is listed, cached and pushed to a device; a rejection reason is a
             // judgement about a person and belongs behind the access-controlled
             // case, as does the reviewer's prose.
-            body: rejected
-              ? 'A reviewer has closed your verification. Open your verification page for details.'
-              : 'A reviewer has asked for something before your application can continue.',
+            body:
+              kind === 'APPROVED'
+                ? 'Your documents have been checked and you can now take work.'
+                : kind === 'REJECTED'
+                  ? 'A reviewer has closed your verification. Open your verification page for details.'
+                  : 'A reviewer has asked for something before your application can continue.',
             resourceType: 'VERIFICATION_CASE',
             resourceId: kase.id,
             deepLink: '/provider/verification',

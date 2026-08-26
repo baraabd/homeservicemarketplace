@@ -963,6 +963,12 @@ enum AuditEventType {
   VERIFICATION_CASE_ASSIGNED
   VERIFICATION_CASE_ACTION_REQUESTED
   VERIFICATION_CASE_REJECTED
+  // Sprint 9B.7 — the decisions that create or close work access. Separate
+  // types because "access was granted" and "access was withdrawn" are the two
+  // facts an auditor searches for by name.
+  VERIFICATION_CASE_APPROVED
+  VERIFICATION_CASE_REVOKED
+  VERIFICATION_CASE_REVERIFY_REQUIRED
 }
 
 enum AddressType {
@@ -1042,6 +1048,8 @@ enum NotificationType {
   // from ACTION_REQUIRED because the two demand opposite responses: one asks
   // them to act, the other tells them there is nothing further to do here.
   VERIFICATION_REJECTED
+  /// Sprint 9B.7 — verification completed and work access opened.
+  VERIFICATION_APPROVED
   SYSTEM
 }
 

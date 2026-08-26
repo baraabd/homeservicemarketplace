@@ -212,21 +212,29 @@ describe('the server only offers actions it can actually perform', () => {
     }
   });
 
-  it('NEVER offers approve, however legal it is', () => {
-    // The D-3 defect this file's header describes, in its exact original form:
-    // a UI offered an Approve button and the backend answered 409. `approve` is
-    // legal from SUBMITTED and IN_REVIEW and will stay legal — the transition
-    // table describes the DOMAIN. What it must not be is offered, until the
-    // atomic grant workflow behind it exists (Sprint 9B.7).
-    expect(isLegalCaseTransition('approve', 'SUBMITTED')).toBe(true);
-    expect(isLegalCaseTransition('approve', 'IN_REVIEW')).toBe(true);
+  it('offers approve only now that it has an atomic transaction behind it', () => {
+    // Until Sprint 9B.7 this test asserted the opposite, and it was right to:
+    // approve was legal from SUBMITTED and had no command, so offering it
+    // would have recreated D-3 exactly. It is offered now because the
+    // transaction exists — case, decision, provider state, grant, audit,
+    // notification and event, together or not at all.
+    expect(offerableCaseActions('SUBMITTED', 'reviewer')).toContain('approve');
+    expect(offerableCaseActions('IN_REVIEW', 'reviewer')).toContain('approve');
 
+    // Still never to a provider, and never on a case nobody submitted.
     for (const state of ALL_STATES) {
-      expect(offerableCaseActions(state, 'reviewer')).not.toContain('approve');
       expect(offerableCaseActions(state, 'provider')).not.toContain('approve');
     }
+    expect(offerableCaseActions('DRAFT', 'reviewer')).not.toContain('approve');
   });
 
+  it('still withholds expire, which has no scheduler', () => {
+    // The SYSTEM actor has no caller yet. Offering it to a reviewer would be
+    // offering an action nobody can perform.
+    for (const state of ALL_STATES) {
+      expect(offerableCaseActions(state, 'reviewer')).not.toContain('expire');
+    }
+  });
   it('offers a provider submission from a draft and from a returned case', () => {
     expect(offerableCaseActions('DRAFT', 'provider')).toEqual(['submit']);
     expect(offerableCaseActions('ACTION_REQUIRED', 'provider')).toEqual(['submit']);
@@ -284,6 +292,9 @@ describe('the server only offers actions it can actually perform', () => {
     const notYet = (Object.keys(VERIFICATION_CASE_TRANSITIONS) as VerificationCaseAction[]).filter(
       (a) => !IMPLEMENTED_CASE_ACTIONS.includes(a),
     );
-    expect([...notYet].sort()).toEqual(['approve', 'expire', 'reverify', 'revoke']);
+    // Only `expire` remains: it is the SYSTEM actor's edge and needs a
+    // scheduler, which no deployment wires yet. Everything a reviewer can do
+    // now has a command behind it.
+    expect([...notYet].sort()).toEqual(['expire']);
   });
 });

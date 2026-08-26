@@ -456,10 +456,11 @@ describe('every command', () => {
     expect(out.availableActions).toEqual([]);
   });
 
-  it('never offers approve, on any command result', async () => {
+  it('offers approve on a live case, now that the transaction exists', async () => {
     const h = harness({ row: caseRow({ state: 'SUBMITTED' }) });
     const out = await h.service.assign(REVIEWER, { caseId: CASE_ID });
-    expect(out.availableActions).not.toContain('approve');
+    expect(out.availableActions).toContain('approve');
+    expect(out.availableActions).not.toContain('expire');
   });
 
   it('writes nothing identifying into the audit metadata', async () => {
@@ -620,19 +621,12 @@ describe('reject', () => {
 
 // ── approval is PREPARED, not exposed ─────────────────────────────────────
 
-describe('approval stays behind the boundary', () => {
-  it('is not offered by any command result', async () => {
-    const h = harness({ row: caseRow({ state: 'SUBMITTED' }) });
-    const out = await h.service.assign(REVIEWER, { caseId: CASE_ID });
-    expect(out.availableActions).not.toContain('approve');
-  });
-
-  it('has no public method on the workflow service', () => {
-    // Sprint 9B.7 owns approval, and it is atomic across the case, the grant
-    // and the provider's status. A half-built approve reachable by anyone who
-    // can find it is exactly the shape of the defect this whole area exists to
-    // avoid, so the boundary is the absence of the method, not a flag.
+describe('approval is now real', () => {
+  it('exposes the command', () => {
+    // Until Sprint 9B.7 this asserted the METHOD DID NOT EXIST, because the
+    // boundary was its absence rather than a flag. The transaction is built,
+    // so the boundary is gone and the assertion inverts.
     const h = harness();
-    expect((h.service as unknown as Record<string, unknown>).approve).toBeUndefined();
+    expect(typeof (h.service as unknown as Record<string, unknown>).approve).toBe('function');
   });
 });

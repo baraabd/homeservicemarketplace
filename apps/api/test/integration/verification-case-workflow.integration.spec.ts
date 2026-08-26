@@ -444,14 +444,16 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     expect(await stateOf()).toBe('DRAFT');
   });
 
-  it('never offers approve in a command result', async () => {
+  it('offers approve now that the atomic transaction exists', async () => {
     await seedCase('SUBMITTED');
     currentUser = { id: REVIEWER };
     permissions = new Set(['verification:decide']);
 
     const res = await assign(CASE_ID);
-    expect(res.body.availableActions).not.toContain('approve');
+    expect(res.body.availableActions).toContain('approve');
     expect(res.body.availableActions).toContain('requestAction');
+    // Still withheld: no scheduler drives the system actor's edge.
+    expect(res.body.availableActions).not.toContain('expire');
   });
 
   // ── the review queue, over real HTTP ────────────────────────────────────
@@ -479,7 +481,9 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       expect(mine.availableActions).toEqual(
         expect.arrayContaining(['assign', 'requestAction', 'reject']),
       );
-      expect(mine.availableActions).not.toContain('approve');
+      expect(mine.availableActions).toContain('approve');
+      // Still withheld: the system actor's edge has no scheduler.
+      expect(mine.availableActions).not.toContain('expire');
     });
 
     it('hides the actions on a case the reviewer is the subject of', async () => {
@@ -586,7 +590,10 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       expect(await stateOf()).toBe('IN_REVIEW');
     });
 
-    it('never exposes an approve route', async () => {
+    it('approves atomically: case, decision, provider state and grant together', async () => {
+      // Until Sprint 9B.7 this asserted the route 404'd, because approval was
+      // deliberately unbuilt. It is built now, and what matters is that all of
+      // it lands together.
       await seedCase('IN_REVIEW');
       currentUser = { id: REVIEWER };
       permissions = new Set(['verification:decide']);
@@ -594,8 +601,77 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       const res = await request(http)
         .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
         .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
-      expect(res.status).toBe(404);
-      expect(await stateOf()).toBe('IN_REVIEW');
+
+      expect(res.status).toBe(200);
+      expect(await stateOf()).toBe('VERIFIED');
+
+      const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(profile.verificationState).toBe('VERIFIED');
+      expect(profile.verified).toBe(true);
+      // The ACCOUNT axis is untouched: approving documents says nothing about
+      // whether the account is in good standing.
+      expect(profile.standingState).toBeNull();
+
+      const grants = await prisma.providerWorkAccessGrant.findMany({
+        where: { providerProfileId: PP },
+      });
+      expect(grants).toHaveLength(1);
+      expect(grants[0]).toMatchObject({
+        status: 'ACTIVE',
+        source: 'VERIFIED_DOCUMENTS',
+        caseId: CASE_ID,
+        grantedByUserId: REVIEWER,
+      });
+
+      const decisions = await prisma.verificationDecision.findMany({ where: { caseId: CASE_ID } });
+      expect(decisions[0]).toMatchObject({ outcome: 'APPROVED', toState: 'VERIFIED' });
+    });
+
+    it('two concurrent approvals produce ONE decision and ONE grant', async () => {
+      // The database is the real guarantee: provider_work_access_grant_one_live_per_reason
+      // makes the second insert fail, and the conditional case claim makes the
+      // second transaction lose. Neither alone is enough.
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const call = () =>
+        request(http)
+          .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+          .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+
+      await Promise.all([call(), call()]);
+
+      expect(await stateOf()).toBe('VERIFIED');
+      expect(await prisma.verificationDecision.count({ where: { caseId: CASE_ID } })).toBe(1);
+      expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
+        1,
+      );
+    });
+
+    it('revocation closes the grant immediately', async () => {
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+        .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+
+      const res = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/revoke`)
+        .send({ reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+
+      expect(res.status).toBe(200);
+      const grants = await prisma.providerWorkAccessGrant.findMany({
+        where: { providerProfileId: PP },
+      });
+      expect(grants[0].status).toBe('REVOKED');
+      expect(grants[0].revokedAt).not.toBeNull();
+
+      const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(profile.verificationState).toBe('EXPIRED');
+      expect(profile.verified).toBe(false);
     });
   });
 });
