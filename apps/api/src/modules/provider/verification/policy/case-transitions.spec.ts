@@ -232,6 +232,14 @@ describe('the server only offers actions it can actually perform', () => {
     expect(offerableCaseActions('ACTION_REQUIRED', 'provider')).toEqual(['submit']);
   });
 
+  it('offers a reviewer rejection once a case is live', () => {
+    // Sprint 9B.6. Closing a case is the half of deciding that needs no grant
+    // and no atomic write across three tables, so it ships before approval.
+    for (const state of ['SUBMITTED', 'IN_REVIEW', 'ACTION_REQUIRED'] as const) {
+      expect(offerableCaseActions(state, 'reviewer')).toContain('reject');
+    }
+  });
+
   it('offers a reviewer assignment and request-action on live cases', () => {
     for (const state of ['SUBMITTED', 'IN_REVIEW'] as const) {
       const offered = offerableCaseActions(state, 'reviewer');
@@ -276,6 +284,6 @@ describe('the server only offers actions it can actually perform', () => {
     const notYet = (Object.keys(VERIFICATION_CASE_TRANSITIONS) as VerificationCaseAction[]).filter(
       (a) => !IMPLEMENTED_CASE_ACTIONS.includes(a),
     );
-    expect([...notYet].sort()).toEqual(['approve', 'expire', 'reject', 'reverify', 'revoke']);
+    expect([...notYet].sort()).toEqual(['approve', 'expire', 'reverify', 'revoke']);
   });
 });

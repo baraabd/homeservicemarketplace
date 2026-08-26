@@ -160,6 +160,9 @@ export const IMPLEMENTED_CASE_ACTIONS: readonly VerificationCaseAction[] = Objec
   'submit',
   'assign',
   'requestAction',
+  // Sprint 9B.6. Closing a case is the half of deciding that needs no grant and
+  // no atomic write across three tables, so it ships before approval does.
+  'reject',
 ]);
 
 export function isImplementedCaseAction(action: VerificationCaseAction): boolean {

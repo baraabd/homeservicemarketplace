@@ -71,6 +71,41 @@ class RequestActionDto {
   expectedState?: 'SUBMITTED' | 'IN_REVIEW';
 }
 
+class RejectCaseDto {
+  /**
+   * Mandatory. The transition table marks rejection as requiring a reason, and
+   * this is validated at the edge so the refusal is a 400 about the request
+   * rather than a 500 about a database enum.
+   *
+   * Closing a case against someone without recording why is the one thing a
+   * permanent record must never allow.
+   */
+  @IsIn([
+    'DOCUMENT_MISSING',
+    'DOCUMENT_ILLEGIBLE',
+    'DOCUMENT_EXPIRED',
+    'DOCUMENT_MISMATCH',
+    'SUSPECTED_FORGERY',
+    'DUPLICATE_IDENTITY',
+    'BUSINESS_NOT_REGISTERED',
+    'REPRESENTATIVE_NOT_AUTHORIZED',
+    'LICENSE_MISSING_FOR_CATEGORY',
+    'LICENSE_EXPIRED',
+    'TRUST_AND_SAFETY_ACTION',
+    'OTHER',
+  ])
+  reasonCode!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+
+  @IsOptional()
+  @IsIn(['SUBMITTED', 'IN_REVIEW', 'ACTION_REQUIRED'])
+  expectedState?: 'SUBMITTED' | 'IN_REVIEW' | 'ACTION_REQUIRED';
+}
+
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Permissions('verification:decide')
 @Controller({ path: 'admin/verification/cases', version: '1' })
@@ -86,6 +121,22 @@ export class AdminVerificationCaseCommandsController {
     @Body() body: AssignCaseDto,
   ): Promise<CaseCommandResult> {
     return this.workflow.assign(user.id, { caseId, expectedState: body.expectedState });
+  }
+
+  @UseGuards(CsrfGuard)
+  @Post(':caseId/reject')
+  @HttpCode(HttpStatus.OK)
+  reject(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('caseId') caseId: string,
+    @Body() body: RejectCaseDto,
+  ): Promise<CaseCommandResult> {
+    return this.workflow.reject(user.id, {
+      caseId,
+      reasonCode: body.reasonCode as never,
+      note: body.note ?? null,
+      expectedState: body.expectedState,
+    });
   }
 
   @UseGuards(CsrfGuard)
