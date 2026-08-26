@@ -41,6 +41,7 @@ const ALL_CAPABILITIES: readonly ProviderCapability[] = [
   ProviderCapability.ManageBookings,
   ProviderCapability.ViewEarnings,
   ProviderCapability.ManageVerification,
+  ProviderCapability.PreviewMarketplace,
   ProviderCapability.AppealDecision,
 ];
 
@@ -314,6 +315,10 @@ export class ProviderCapabilityService {
         // work must still be able to see why and act on it, or the denial is
         // a dead end.
         allowed.add(ProviderCapability.CompleteOnboarding);
+        // Sprint 9B.9 — and they may look, if policy allows it. This is one of
+        // exactly two states where the whole message is "not yet", which is
+        // what the preview is for.
+        allowed.add(ProviderCapability.PreviewMarketplace);
         for (const c of ALL_CAPABILITIES) {
           if (!allowed.has(c)) reasons.set(c, primaryReason);
         }
@@ -339,6 +344,9 @@ export class ProviderCapabilityService {
 
     if (!marketplaceOpen) {
       primaryReason = ProviderCapabilityDenialReason.NoWorkAccess;
+      // Sprint 9B.9 — the second "not yet" state: verified, but the grant is
+      // missing, revoked or lapsed.
+      allowed.add(ProviderCapability.PreviewMarketplace);
       for (const c of ALL_CAPABILITIES) {
         if (!allowed.has(c)) reasons.set(c, primaryReason);
       }

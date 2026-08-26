@@ -1,3 +1,5 @@
+import { MarketplacePreviewController } from './preview/marketplace-preview.controller';
+import { MarketplacePreviewService } from './preview/marketplace-preview.service';
 import { Module } from '@nestjs/common';
 
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
@@ -63,6 +65,9 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
   ],
   controllers: [
     ProviderController,
+    // Sprint 9B.9 — the redacted preview. Read-only, and the only route in its
+    // family; see the controller for why there is no mutation counterpart.
+    MarketplacePreviewController,
     // Sprint 2 — /me/provider/categories/applications. A separate controller
     // rather than more routes on ProviderController: applying for a skill is
     // moderated and asynchronous, editing a profile is neither, and the two
@@ -88,6 +93,7 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderOnboardingWizardController,
   ],
   providers: [
+    MarketplacePreviewService,
     ProviderService,
     ProviderJobsService,
     AvailableRequestsService,

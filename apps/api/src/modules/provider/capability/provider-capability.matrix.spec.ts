@@ -30,6 +30,7 @@ const ALL = [
   ProviderCapability.ManageBookings,
   ProviderCapability.ViewEarnings,
   ProviderCapability.ManageVerification,
+  ProviderCapability.PreviewMarketplace,
   ProviderCapability.AppealDecision,
 ] as const;
 
@@ -184,21 +185,45 @@ const MATRIX: Array<[string, Account | null, Profile | null, boolean, readonly s
     ELIGIBLE,
     profile({ verificationState: 'UNVERIFIED' }),
     true,
-    [C.ViewOwnProfile, C.EditOwnProfile, C.ManageVerification, C.CompleteOnboarding],
+    [
+      C.ViewOwnProfile,
+      C.EditOwnProfile,
+      C.ManageVerification,
+      C.CompleteOnboarding,
+      // Sprint 9B.9 — one of the two "not yet" states. Holding the capability
+      // is necessary but NOT sufficient: the preview is off by policy default.
+      C.PreviewMarketplace,
+    ],
   ],
   [
     'verification EXPIRED — same denial, and evidence management stays open',
     ELIGIBLE,
     profile({ verificationState: 'EXPIRED' }),
     true,
-    [C.ViewOwnProfile, C.EditOwnProfile, C.ManageVerification, C.CompleteOnboarding],
+    [
+      C.ViewOwnProfile,
+      C.EditOwnProfile,
+      C.ManageVerification,
+      C.CompleteOnboarding,
+      // Sprint 9B.9 — one of the two "not yet" states. Holding the capability
+      // is necessary but NOT sufficient: the preview is off by policy default.
+      C.PreviewMarketplace,
+    ],
   ],
   [
     'verification REJECTED',
     ELIGIBLE,
     profile({ verificationState: 'REJECTED' }),
     true,
-    [C.ViewOwnProfile, C.EditOwnProfile, C.ManageVerification, C.CompleteOnboarding],
+    [
+      C.ViewOwnProfile,
+      C.EditOwnProfile,
+      C.ManageVerification,
+      C.CompleteOnboarding,
+      // Sprint 9B.9 — one of the two "not yet" states. Holding the capability
+      // is necessary but NOT sufficient: the preview is off by policy default.
+      C.PreviewMarketplace,
+    ],
   ],
 
   // ── rank 7: work access, flag ON ───────────────────────────────────────
@@ -207,7 +232,7 @@ const MATRIX: Array<[string, Account | null, Profile | null, boolean, readonly s
     ELIGIBLE,
     profile({ verificationState: 'VERIFIED' }),
     false,
-    [C.ViewOwnProfile, C.EditOwnProfile, C.ManageVerification],
+    [C.ViewOwnProfile, C.EditOwnProfile, C.ManageVerification, C.PreviewMarketplace],
   ],
 
   // ── rank 8: the full working set ───────────────────────────────────────

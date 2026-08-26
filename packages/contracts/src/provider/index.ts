@@ -24,3 +24,5 @@ export * from './verification';
 // Provider app renders gating from this instead of re-deriving it from
 // `profile.status`.
 export * from './capabilities';
+// Sprint 9B.9 — the redacted marketplace preview. Read-only by construction.
+export * from './preview';
