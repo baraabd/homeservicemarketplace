@@ -207,7 +207,23 @@ export class ProviderCapabilityService {
     }
 
     // ── Rank 3 — SUSPENDED. Read + appeal only. ──────────────────────────
-    if (standing === 'SUSPENDED') {
+    //
+    // Sprint 9B.7 — BOTH axes are consulted, and this is not defensive
+    // padding. Admin suspension (`decideIfInStatus`) writes ONLY the legacy
+    // `status` column, so a suspended provider's `standingState` is a
+    // perfectly non-null 'GOOD' — a null-fallback like `onboardingFromLegacy`
+    // would not catch it.
+    //
+    // Reading `standingState` alone was survivable only because rank 7 with
+    // WORK_ACCESS_ENFORCED **off** re-checks `legacyStatus === 'ACTIVE'`, which
+    // suspension does clear. Flip that flag on and rank 7 consults the grant
+    // instead — at which point a suspended provider holding an ACTIVE grant
+    // would be authorised to work, and arming the flag would silently
+    // un-suspend everyone who holds one.
+    //
+    // ADR 0007's mapping table already says legacy SUSPENDED means standing
+    // SUSPENDED. Either axis saying it is enough; this fails closed.
+    if (standing === 'SUSPENDED' || ctx.legacyStatus === 'SUSPENDED') {
       primaryReason = ProviderCapabilityDenialReason.ProviderSuspended;
       allowed.add(ProviderCapability.AppealDecision);
       for (const c of ALL_CAPABILITIES) {
