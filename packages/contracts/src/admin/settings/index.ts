@@ -186,6 +186,53 @@ export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
     min: 1,
     max: 3650,
   },
+  {
+    // ── Sprint 9B.9 — the redacted marketplace preview ───────────────────
+    //
+    // OFF by default, and that is the whole posture: the preview shows part of
+    // the marketplace to providers who have NOT been verified, so the safe
+    // state is showing nothing. An operator turns it on deliberately, per
+    // environment, after reading what it discloses.
+    key: 'marketplace_preview_enabled',
+    type: 'boolean',
+    description:
+      'Show a heavily redacted marketplace preview to providers who finished onboarding but do not yet have work access. Off by default.',
+    default: false,
+  },
+  {
+    // Grid size for coarse location, in km. LARGER IS MORE PRIVATE, which is
+    // the opposite of most limits here, so the floor matters more than the
+    // ceiling: 5 km is the tightest an operator may set, because a preview
+    // user is unverified and a tighter cell starts to identify a street.
+    key: 'marketplace_preview_cell_km',
+    type: 'integer',
+    description:
+      'Edge length in km of the grid cell a preview request is snapped to. Larger is more private; the preview never shows exact coordinates.',
+    default: 25,
+    min: 5,
+    max: 200,
+  },
+  {
+    // Small on purpose. A preview is a taste of the marketplace, not a feed.
+    key: 'marketplace_preview_page_size',
+    type: 'integer',
+    description: 'Items per page in the redacted preview.',
+    default: 10,
+    min: 1,
+    max: 25,
+  },
+  {
+    // The anti-scraping ceiling: the TOTAL number of items reachable through
+    // pagination, ever. Without it, a small page size only slows a harvest
+    // down instead of bounding it.
+    key: 'marketplace_preview_max_items',
+    type: 'integer',
+    description:
+      'Total items reachable through preview pagination. Bounds a harvest rather than merely slowing it.',
+    default: 30,
+    min: 1,
+    max: 200,
+  },
 ] as const;
 
 export type AdminSettingKey = (typeof ADMIN_SETTINGS_SCHEMA)[number]['key'];
