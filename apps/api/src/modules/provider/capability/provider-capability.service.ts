@@ -40,6 +40,7 @@ const ALL_CAPABILITIES: readonly ProviderCapability[] = [
   ProviderCapability.SubmitBid,
   ProviderCapability.ManageBookings,
   ProviderCapability.ViewEarnings,
+  ProviderCapability.ManageVerification,
   ProviderCapability.AppealDecision,
 ];
 
@@ -241,6 +242,10 @@ export class ProviderCapabilityService {
       // off punishes the customer for the provider's restriction.
       allowed.add(ProviderCapability.ManageBookings);
       allowed.add(ProviderCapability.ViewEarnings);
+      // A restriction is not a reason to let someone's identity documents go
+      // stale — that would turn a temporary restriction into a permanent one
+      // the moment their verification lapsed.
+      allowed.add(ProviderCapability.ManageVerification);
       allowed.add(ProviderCapability.AppealDecision);
       for (const c of ALL_CAPABILITIES) {
         if (!allowed.has(c)) reasons.set(c, primaryReason);
@@ -253,6 +258,13 @@ export class ProviderCapabilityService {
     // restriction: an investigation that has not concluded must not silently
     // take away someone's livelihood.
     allowed.add(ProviderCapability.EditOwnProfile);
+    // Granted HERE, above rank 5, so every later rank inherits it: a provider
+    // must be able to supply verification evidence whatever their onboarding
+    // or verification state, or the one action that would unblock them is the
+    // one the block takes away. Ranks 0-3 have already returned, so this is
+    // exactly "eligible account, has a profile, not terminated, not
+    // suspended".
+    allowed.add(ProviderCapability.ManageVerification);
 
     // ── Rank 5 — onboarding. ─────────────────────────────────────────────
     //
