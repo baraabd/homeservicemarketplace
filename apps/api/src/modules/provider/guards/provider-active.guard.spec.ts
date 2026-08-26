@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { ProviderCapability } from '@homeservicemarketplace/contracts';
 
 import { ProviderActiveGuard } from './provider-active.guard';
@@ -20,6 +21,12 @@ import type { ProviderCapabilityService } from '../capability/provider-capabilit
 function makeCtx(user: { id: string } | undefined) {
   return {
     switchToHttp: () => ({ getRequest: () => ({ user }) }),
+    // Sprint 9B.8 — the guard now reads @RequireCapability metadata off the
+    // handler and the class. These return bare functions carrying no metadata,
+    // which is the case that matters here: a route that declares nothing must
+    // still be gated, and gated on VIEW_MARKETPLACE.
+    getHandler: () => function handler() {},
+    getClass: () => class Controller {},
   } as unknown as Parameters<ProviderActiveGuard['canActivate']>[0];
 }
 
@@ -32,7 +39,7 @@ function makeCapabilities(can: boolean | (() => Promise<boolean>)) {
 describe('ProviderActiveGuard', () => {
   it('allows the request when VIEW_MARKETPLACE is held', async () => {
     const capabilities = makeCapabilities(true);
-    const guard = new ProviderActiveGuard(capabilities);
+    const guard = new ProviderActiveGuard(capabilities, new Reflector());
 
     await expect(guard.canActivate(makeCtx({ id: 'u-1' }))).resolves.toBe(true);
   });
@@ -42,7 +49,7 @@ describe('ProviderActiveGuard', () => {
     // say EDIT_OWN_PROFILE — every marketplace route silently opens to
     // providers who merely finished onboarding.
     const capabilities = makeCapabilities(true);
-    const guard = new ProviderActiveGuard(capabilities);
+    const guard = new ProviderActiveGuard(capabilities, new Reflector());
 
     await guard.canActivate(makeCtx({ id: 'u-42' }));
 
@@ -51,7 +58,7 @@ describe('ProviderActiveGuard', () => {
 
   it('rejects with an opaque FORBIDDEN when the capability is withheld', async () => {
     const capabilities = makeCapabilities(false);
-    const guard = new ProviderActiveGuard(capabilities);
+    const guard = new ProviderActiveGuard(capabilities, new Reflector());
 
     await expect(guard.canActivate(makeCtx({ id: 'u-1' }))).rejects.toThrow(ForbiddenException);
     await expect(guard.canActivate(makeCtx({ id: 'u-1' }))).rejects.toMatchObject({
@@ -63,7 +70,7 @@ describe('ProviderActiveGuard', () => {
     // The envelope must not become an oracle. A caller who can tell "no
     // profile" from "account suspended" apart can enumerate account states of
     // other users by probing, so every denial looks identical from outside.
-    const guard = new ProviderActiveGuard(makeCapabilities(false));
+    const guard = new ProviderActiveGuard(makeCapabilities(false), new Reflector());
 
     const shapes: unknown[] = [];
     for (let i = 0; i < 3; i++) {
@@ -79,7 +86,7 @@ describe('ProviderActiveGuard', () => {
     // lookup on `undefined`; failing before that keeps the guard honest about
     // requiring JwtAuthGuard in front of it.
     const capabilities = makeCapabilities(true);
-    const guard = new ProviderActiveGuard(capabilities);
+    const guard = new ProviderActiveGuard(capabilities, new Reflector());
 
     await expect(guard.canActivate(makeCtx(undefined))).rejects.toThrow(ForbiddenException);
     expect(capabilities.can).not.toHaveBeenCalled();
@@ -92,7 +99,7 @@ describe('ProviderActiveGuard', () => {
     const capabilities = makeCapabilities(async () => {
       throw new Error('database unavailable');
     });
-    const guard = new ProviderActiveGuard(capabilities);
+    const guard = new ProviderActiveGuard(capabilities, new Reflector());
 
     await expect(guard.canActivate(makeCtx({ id: 'u-1' }))).rejects.toThrow(/database unavailable/);
   });

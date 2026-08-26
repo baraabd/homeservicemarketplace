@@ -1,8 +1,8 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
-import { ProviderCapability } from '@homeservicemarketplace/contracts';
+import { Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 
 import { ProviderCapabilityService } from '../capability/provider-capability.service';
-import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
+import { ProviderCapabilityGuard } from './provider-capability.guard';
 
 // Marketplace gate for the provider route families.
 //
@@ -29,20 +29,30 @@ import type { AuthenticatedUser } from '../../iam/authentication/types/authentic
 // envelope, so a caller cannot distinguish "no profile" from "not approved"
 // from "account suspended" by probing. Providers who want to know WHY ask
 // GET /v1/me/provider/capabilities, which answers for their own account only.
+// Sprint 9B.8 — this is now the VIEW_MARKETPLACE specialisation of
+// ProviderCapabilityGuard, and nothing more.
+//
+// The Sprint 7 comment above said VIEW_MARKETPLACE is "the capability these
+// routes actually require: the feed, bids, bookings, and earnings surfaces are
+// all marketplace work." That was true of the feed and wrong of the rest, and
+// the audit found the cost: rank 4 (RESTRICTED) deliberately grants
+// MANAGE_BOOKINGS and VIEW_EARNINGS while withholding VIEW_MARKETPLACE, so a
+// restricted provider was locked out of bookings the capability service had
+// explicitly decided they should keep — punishing the seeker on the other end
+// of an accepted job, which is the exact outcome rank 4's comment says it
+// exists to avoid.
+//
+// Routes now declare their capability with @RequireCapability. This subclass
+// survives for the surfaces where VIEW_MARKETPLACE really is the right
+// question — the job feed and the available-requests list — and because it
+// inherits canActivate, a @RequireCapability on a route it guards still wins.
 @Injectable()
-export class ProviderActiveGuard implements CanActivate {
-  constructor(private readonly capabilities: ProviderCapabilityService) {}
-
-  async canActivate(ctx: ExecutionContext): Promise<boolean> {
-    const user = ctx.switchToHttp().getRequest<{ user?: AuthenticatedUser }>().user;
-    if (!user) throw new ForbiddenException({ code: 'FORBIDDEN' });
-
-    // VIEW_MARKETPLACE is the capability these routes actually require: the
-    // feed, bids, bookings, and earnings surfaces are all marketplace work.
-    // Naming the capability rather than a status is what lets Sprint 9 move
-    // the gate onto work-access grants without touching this file.
-    const allowed = await this.capabilities.can(user.id, ProviderCapability.ViewMarketplace);
-    if (!allowed) throw new ForbiddenException({ code: 'FORBIDDEN' });
-    return true;
+export class ProviderActiveGuard extends ProviderCapabilityGuard {
+  // An explicit constructor, not an inherited one: TypeScript emits
+  // design:paramtypes only where a constructor is declared, and Nest resolves
+  // dependencies from that metadata. A subclass with no constructor fails to
+  // inject at runtime while typechecking perfectly.
+  constructor(capabilities: ProviderCapabilityService, reflector: Reflector) {
+    super(capabilities, reflector);
   }
 }
