@@ -969,6 +969,11 @@ enum AuditEventType {
   VERIFICATION_CASE_APPROVED
   VERIFICATION_CASE_REVOKED
   VERIFICATION_CASE_REVERIFY_REQUIRED
+  /// Sprint 9B.7 — a VERIFIED case whose grant window elapsed, closed by the
+  /// SYSTEM actor. Distinct from REVOKED on purpose: nobody judged the
+  /// provider badly, time simply passed, and an operator reading this history
+  /// later must be able to tell the two apart.
+  VERIFICATION_CASE_EXPIRED
 }
 
 enum AddressType {
@@ -1050,6 +1055,9 @@ enum NotificationType {
   VERIFICATION_REJECTED
   /// Sprint 9B.7 — verification completed and work access opened.
   VERIFICATION_APPROVED
+  /// Sprint 9B.7 — a verification lapsed on its own schedule. Worded as a
+  /// renewal prompt rather than a sanction, because it is one.
+  VERIFICATION_EXPIRED
   SYSTEM
 }
 

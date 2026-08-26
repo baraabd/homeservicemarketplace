@@ -13,6 +13,8 @@ import { VerificationSettingsService } from './verification-settings.service';
 import { EvidenceReadService } from './media/evidence-read.service';
 import { EvidenceScanService } from './media/evidence-scan.service';
 import { VerificationCaseWorkflowService } from './case/verification-case-workflow.service';
+import { VerificationExpiryJob } from './expiry/verification-expiry.job';
+import { VerificationExpiryService } from './expiry/verification-expiry.service';
 import { VerificationCaseEventsHandler } from './case/verification-case-events.handler';
 import { EvidenceScannedHandler } from './media/evidence-scanned.handler';
 import { ClamAvMalwareScanner } from './media/clamav-scanner.adapter';
@@ -73,6 +75,7 @@ import { Logger } from '@nestjs/common';
     ProviderVerificationCaseController,
   ],
   exports: [
+    VerificationExpiryService,
     EvidenceCleanupService,
     EvidenceScanService,
     EvidenceScannedHandler,
@@ -81,6 +84,12 @@ import { Logger } from '@nestjs/common';
     VerificationCaseEventsHandler,
   ],
   providers: [
+    // Sprint 9B.7 — the SYSTEM expiry pass. The job is registered
+    // unconditionally and decides for itself whether to schedule anything, so
+    // the wiring does not depend on config read order at module-construction
+    // time; VERIFICATION_EXPIRY_WORKER_ENABLED (default false) is what arms it.
+    VerificationExpiryService,
+    VerificationExpiryJob,
     EvidenceReadService,
     EvidenceUploadService,
     // No controller. A route that deletes evidence in bulk is a weapon; the

@@ -228,11 +228,30 @@ describe('the server only offers actions it can actually perform', () => {
     expect(offerableCaseActions('DRAFT', 'reviewer')).not.toContain('approve');
   });
 
-  it('still withholds expire, which has no scheduler', () => {
-    // The SYSTEM actor has no caller yet. Offering it to a reviewer would be
-    // offering an action nobody can perform.
+  it('never offers expire to a human, even now that it is implemented', () => {
+    // HISTORY: through 9B.6 this test read "still withholds expire, which has
+    // no scheduler" and was justified by the action having no caller at all.
+    // Sprint 9B.7 gave it one — VerificationExpiryService, driven by the
+    // scheduled sweep — so `expire` is now in IMPLEMENTED_CASE_ACTIONS.
+    //
+    // The assertion is unchanged and is now a STRONGER claim: expiry is the
+    // SYSTEM actor's edge, and it must never appear as a button. An operator
+    // expiring a case by hand would record a machine's act against their name,
+    // and the reviewer-facing instrument for ending access early already
+    // exists and is called revoke.
     for (const state of ALL_STATES) {
       expect(offerableCaseActions(state, 'reviewer')).not.toContain('expire');
+      expect(offerableCaseActions(state, 'provider')).not.toContain('expire');
+    }
+  });
+
+  it('does offer expire to the system actor, from VERIFIED only', () => {
+    // The other half: withholding it from humans must not have withheld it
+    // from the only actor that may perform it, which would leave the sweep
+    // unable to act through the same table everything else goes through.
+    expect(offerableCaseActions('VERIFIED', 'system')).toContain('expire');
+    for (const state of ALL_STATES.filter((s) => s !== 'VERIFIED')) {
+      expect(offerableCaseActions(state, 'system')).not.toContain('expire');
     }
   });
   it('offers a provider submission from a draft and from a returned case', () => {
@@ -292,9 +311,14 @@ describe('the server only offers actions it can actually perform', () => {
     const notYet = (Object.keys(VERIFICATION_CASE_TRANSITIONS) as VerificationCaseAction[]).filter(
       (a) => !IMPLEMENTED_CASE_ACTIONS.includes(a),
     );
-    // Only `expire` remains: it is the SYSTEM actor's edge and needs a
-    // scheduler, which no deployment wires yet. Everything a reviewer can do
-    // now has a command behind it.
-    expect([...notYet].sort()).toEqual(['expire']);
+    // HISTORY: this expected `['expire']` from 9B.5 through 9B.6, because the
+    // SYSTEM edge had no caller. Sprint 9B.7 added VerificationExpiryService
+    // and its scheduled adapter, so the withheld list is now EMPTY: every
+    // action in the canonical table has a command behind it.
+    //
+    // The test is kept rather than deleted precisely because an empty list is
+    // the strongest form of the claim it always made — if a future sprint adds
+    // a transition without a command, this goes red immediately.
+    expect([...notYet].sort()).toEqual([]);
   });
 });

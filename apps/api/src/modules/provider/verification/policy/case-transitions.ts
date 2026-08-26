@@ -169,6 +169,12 @@ export const IMPLEMENTED_CASE_ACTIONS: readonly VerificationCaseAction[] = Objec
   'approve',
   'revoke',
   'reverify',
+  // Sprint 9B.7. `expire` finally has a caller: VerificationExpiryService,
+  // driven by the scheduled sweep. It stays actor:'system', so
+  // offerableCaseActions still never shows it to a provider or a reviewer —
+  // being implemented and being offerable to a human are different things, and
+  // this is the one action where they differ.
+  'expire',
 ]);
 
 export function isImplementedCaseAction(action: VerificationCaseAction): boolean {
