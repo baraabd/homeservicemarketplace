@@ -1,3 +1,5 @@
+import { RequireCapability } from '../guards/require-capability.decorator';
+import { ProviderCapability } from '@homeservicemarketplace/contracts';
 import {
   Controller,
   Get,
@@ -21,7 +23,7 @@ import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
-import { ProviderActiveGuard } from '../guards/provider-active.guard';
+import { ProviderCapabilityGuard } from '../guards/provider-capability.guard';
 import { ListProviderBookingsQueryDto } from './dto/list-provider-bookings.query';
 import { ProviderBookingsService } from './provider-bookings.service';
 
@@ -31,7 +33,7 @@ import { ProviderBookingsService } from './provider-bookings.service';
 // Class-level guards (in order):
 //   1. JwtAuthGuard
 //   2. RolesGuard('provider')
-//   3. ProviderActiveGuard
+//   3. ProviderCapabilityGuard
 //
 // Mutating routes (start / complete / cancel) additionally use
 // CsrfGuard so a stolen access cookie alone cannot drive a booking
@@ -39,8 +41,10 @@ import { ProviderBookingsService } from './provider-bookings.service';
 //
 // `providerUserId` is sourced exclusively from the authenticated
 // session via @CurrentUser. Path params are the only client input.
-@UseGuards(JwtAuthGuard, RolesGuard, ProviderActiveGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ProviderCapabilityGuard)
 @Roles('provider')
+// Sprint 9B.8 — an accepted booking is an obligation to a seeker, not marketplace browsing. Rank 4 (RESTRICTED) grants MANAGE_BOOKINGS precisely so a restriction does not strand the customer on the other end.
+@RequireCapability(ProviderCapability.ManageBookings)
 @Controller({ path: 'me/provider/bookings', version: '1' })
 export class ProviderBookingsController {
   constructor(private readonly bookings: ProviderBookingsService) {}

@@ -1,3 +1,4 @@
+import { ProviderCapabilityService } from '../../src/modules/provider/capability/provider-capability.service';
 // Route-level e2e for /v1/me/provider/*. Boots a minimal Nest app with
 // only the ProviderController; ProviderService is replaced with an
 // in-test fake. Real HTTP stack (cookie-parser, ValidationPipe,
@@ -100,6 +101,7 @@ async function bootApp(): Promise<INestApplication> {
       // satisfies the constructor so the pre-existing route assertions run.
       { provide: ProviderOnboardingService, useValue: onboardingService },
       { provide: AppConfigService, useValue: config },
+      { provide: ProviderCapabilityService, useValue: capabilityService },
       { provide: APP_FILTER, useFactory: () => new AllExceptionsFilter(config) },
     ],
   })
@@ -149,6 +151,20 @@ const PROFILE_FIXTURE = {
   createdAt: '2026-04-30T00:00:00.000Z',
   updatedAt: '2026-04-30T00:00:00.000Z',
 };
+
+// Sprint 9B.8 — the capability guard's dependency, as a controllable double.
+//
+// A SET, not a blanket allow: a guard stubbed to always pass would make every
+// authorization assertion in this file vacuous. These are the capabilities the
+// routes under test declare, so a controller that started asking for something
+// else would 403 here rather than pass silently.
+const HELD = new Set<string>([
+  'VIEW_OWN_PROFILE',
+  'EDIT_OWN_PROFILE',
+  'COMPLETE_ONBOARDING',
+  'SUBMIT_FOR_REVIEW',
+]);
+const capabilityService = { can: async (_u: string, c: string) => HELD.has(c) };
 
 describe('ProviderController (e2e)', () => {
   let app: INestApplication;

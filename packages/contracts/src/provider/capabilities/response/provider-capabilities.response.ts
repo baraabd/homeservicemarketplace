@@ -23,6 +23,19 @@ export const ProviderCapability = {
   SubmitBid: 'SUBMIT_BID',
   ManageBookings: 'MANAGE_BOOKINGS',
   ViewEarnings: 'VIEW_EARNINGS',
+  /** Sprint 9B.8 — submit a verification case and manage its evidence.
+   *
+   *  A capability of its own because none of the existing ones fit. It is not
+   *  CompleteOnboarding: that is withheld once onboarding reaches ACCEPTED, and
+   *  re-verification is precisely something an ACCEPTED provider does. It is
+   *  not EditOwnProfile: evidence goes to restricted storage and is scanned,
+   *  which is a different blast radius from changing a headline.
+   *
+   *  Held from rank 4 downward — a RESTRICTED provider may keep their
+   *  verification current — and withheld from SUSPENDED and TERMINATED, who
+   *  should not be uploading documents into a pipeline that will not act on
+   *  them. */
+  ManageVerification: 'MANAGE_VERIFICATION',
   AppealDecision: 'APPEAL_DECISION',
 } as const;
 export type ProviderCapability = (typeof ProviderCapability)[keyof typeof ProviderCapability];

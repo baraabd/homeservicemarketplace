@@ -728,7 +728,15 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
       'src/modules/provider/bids/provider-bids.controller.ts',
       'src/modules/provider/available-requests/available-requests.controller.ts',
     ]) {
-      expect(fs.readFileSync(file, 'utf8')).toContain('ProviderActiveGuard');
+      // Sprint 9B.8 — either name is a pass, and that is not laxity.
+      // ProviderActiveGuard IS ProviderCapabilityGuard specialised to
+      // VIEW_MARKETPLACE; the bids controller moved to the general form
+      // because its mutations need SUBMIT_BID, while the available-requests
+      // feed kept the specialised one because VIEW_MARKETPLACE really is the
+      // right question there. What this pins is the property that matters:
+      // the real work routes are gated by a capability guard, not by a status
+      // comparison, so the probe below cannot drift away from them.
+      expect(fs.readFileSync(file, 'utf8')).toMatch(/ProviderCapabilityGuard|ProviderActiveGuard/);
     }
   });
 });

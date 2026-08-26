@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { ProviderCapabilityService } from './provider-capability.service';
 import { ProviderActiveGuard } from '../guards/provider-active.guard';
+import { ProviderCapabilityGuard } from '../guards/provider-capability.guard';
 
 // Sprint 7 — the one owner of the provider authorization gate.
 //
@@ -42,8 +43,13 @@ import { ProviderActiveGuard } from '../guards/provider-active.guard';
 //
 // Keep it that way. The moment this service needs something from a domain
 // module, the boot crash described above comes back.
+// Sprint 9B.8 — ProviderCapabilityGuard joins it, and ProviderActiveGuard is
+// now a subclass of it. Both are declared and exported here for the reason the
+// whole comment above exists: a guard and the service it needs live in ONE
+// module, and every consumer imports this one. Declaring the new guard locally
+// in a domain module would recreate exactly the boot crash described above.
 @Module({
-  providers: [ProviderCapabilityService, ProviderActiveGuard],
-  exports: [ProviderCapabilityService, ProviderActiveGuard],
+  providers: [ProviderCapabilityService, ProviderCapabilityGuard, ProviderActiveGuard],
+  exports: [ProviderCapabilityService, ProviderCapabilityGuard, ProviderActiveGuard],
 })
 export class ProviderCapabilityModule {}

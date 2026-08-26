@@ -1,3 +1,6 @@
+import { ProviderCapability } from '@homeservicemarketplace/contracts';
+import { RequireCapability } from '../../guards/require-capability.decorator';
+import { ProviderCapabilityGuard } from '../../guards/provider-capability.guard';
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import type {
@@ -58,7 +61,12 @@ class SubmitVerificationCaseDto {
   expectedState?: 'DRAFT' | 'ACTION_REQUIRED';
 }
 
-@UseGuards(JwtAuthGuard)
+// Sprint 9B.8 — MANAGE_VERIFICATION, not COMPLETE_ONBOARDING. The latter is
+// withheld once onboarding reaches ACCEPTED, and re-verification is precisely
+// something an ACCEPTED provider does, so gating on it would block this route
+// for the people who most need it.
+@UseGuards(JwtAuthGuard, ProviderCapabilityGuard)
+@RequireCapability(ProviderCapability.ManageVerification)
 @Controller({ path: 'me/provider/verification', version: '1' })
 export class ProviderVerificationCaseController {
   constructor(

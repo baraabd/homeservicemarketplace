@@ -1,3 +1,6 @@
+import { ProviderCapability } from '@homeservicemarketplace/contracts';
+import { RequireCapability } from '../guards/require-capability.decorator';
+import { ProviderCapabilityGuard } from '../guards/provider-capability.guard';
 import {
   Body,
   Controller,
@@ -34,8 +37,13 @@ import { ProviderCategoriesService } from './provider-categories.service';
 // Guards mirror the sibling provider routes exactly — session, then the
 // provider role, then CSRF on the mutation. A seeker with a valid session is
 // stopped by RolesGuard before any service code runs.
-@UseGuards(JwtAuthGuard, RolesGuard)
+// Sprint 9B.8 — applying for a category changes what a provider offers, so it
+// is profile editing. This family had NO capability gate at all before this
+// sprint: a SUSPENDED provider could apply for new categories, which rank 3
+// exists to prevent.
+@UseGuards(JwtAuthGuard, RolesGuard, ProviderCapabilityGuard)
 @Roles('provider')
+@RequireCapability(ProviderCapability.EditOwnProfile)
 @Controller({ path: 'me/provider/categories/applications', version: '1' })
 export class ProviderCategoriesController {
   constructor(private readonly categories: ProviderCategoriesService) {}

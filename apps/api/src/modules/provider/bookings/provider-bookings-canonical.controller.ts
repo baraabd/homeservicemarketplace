@@ -1,3 +1,5 @@
+import { RequireCapability } from '../guards/require-capability.decorator';
+import { ProviderCapability } from '@homeservicemarketplace/contracts';
 import {
   Controller,
   Get,
@@ -21,7 +23,7 @@ import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
-import { ProviderActiveGuard } from '../guards/provider-active.guard';
+import { ProviderCapabilityGuard } from '../guards/provider-capability.guard';
 import { ListProviderBookingsQueryDto } from './dto/list-provider-bookings.query';
 import { ProviderBookingsService } from './provider-bookings.service';
 
@@ -31,11 +33,13 @@ import { ProviderBookingsService } from './provider-bookings.service';
 // the URL prefix differs.
 //
 // Class-level guards: JwtAuthGuard + RolesGuard('provider') +
-// ProviderActiveGuard. Mutations additionally require CsrfGuard.
+// ProviderCapabilityGuard. Mutations additionally require CsrfGuard.
 // `providerUserId` is sourced from the session via @CurrentUser;
 // the wire never accepts providerId / providerProfileId.
-@UseGuards(JwtAuthGuard, RolesGuard, ProviderActiveGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ProviderCapabilityGuard)
 @Roles('provider')
+// Sprint 9B.8 — the canonical twin of /me/provider/bookings. Both families must gate identically; a rule added to one and not the other is a silent authorization split.
+@RequireCapability(ProviderCapability.ManageBookings)
 @Controller({ path: 'provider/bookings', version: '1' })
 export class ProviderBookingsCanonicalController {
   constructor(private readonly bookings: ProviderBookingsService) {}

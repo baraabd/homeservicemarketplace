@@ -2,14 +2,14 @@
 // Boots a minimal Nest app with only the ProviderEarningsController;
 // the service is replaced with an in-test fake. Real HTTP stack
 // (cookie-parser, ValidationPipe, exception filter) without booting
-// Prisma. JwtAuthGuard, CsrfGuard, and ProviderActiveGuard are
+// Prisma. JwtAuthGuard, CsrfGuard, and ProviderCapabilityGuard are
 // overridden with fakes; RolesGuard runs unchanged so the role-gate
 // behaviour matches production.
 //
 // What these tests pin:
 //   - GET endpoints are auth-gated (no session ⇒ 401)
 //   - GET endpoints are role-gated (non-provider ⇒ 403)
-//   - GET endpoints are gated by ProviderActiveGuard (non-ACTIVE ⇒ 403)
+//   - GET endpoints are gated by ProviderCapabilityGuard (non-ACTIVE ⇒ 403)
 //   - DTO validation rejects unknown query parameters
 //   - chart range validation rejects invalid values + defaults to 30d
 //   - summary / transactions / chart wire shapes carry the canonical
@@ -35,7 +35,7 @@ import { AppConfigService } from '../../src/config/app-config.service';
 import { AllExceptionsFilter } from '../../src/infrastructure/http/all-exceptions.filter';
 import { ProviderEarningsController } from '../../src/modules/provider/wallet/provider-earnings.controller';
 import { ProviderEarningsService } from '../../src/modules/provider/wallet/provider-earnings.service';
-import { ProviderActiveGuard } from '../../src/modules/provider/guards/provider-active.guard';
+import { ProviderCapabilityGuard } from '../../src/modules/provider/guards/provider-capability.guard';
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
 
@@ -76,7 +76,7 @@ class FakeCsrfGuard {
   }
 }
 
-class FakeProviderActiveGuard implements CanActivate {
+class FakeProviderCapabilityGuard implements CanActivate {
   canActivate(): boolean {
     if (!fakeProviderActive) {
       throw new ForbiddenException({ code: 'FORBIDDEN' });
@@ -103,8 +103,8 @@ async function bootApp(): Promise<INestApplication> {
     .useClass(FakeJwtAuthGuard)
     .overrideGuard(CsrfGuard)
     .useClass(FakeCsrfGuard)
-    .overrideGuard(ProviderActiveGuard)
-    .useClass(FakeProviderActiveGuard)
+    .overrideGuard(ProviderCapabilityGuard)
+    .useClass(FakeProviderCapabilityGuard)
     .compile();
   const app = moduleRef.createNestApplication({ logger: false });
   app.use(cookieParser());

@@ -68,7 +68,7 @@ describe('AppModule dependency graph', () => {
     await moduleRef.close();
   });
 
-  it('resolves ProviderActiveGuard from EVERY module whose controllers mount it', async () => {
+  it('resolves the provider capability guards from EVERY module that mounts one', async () => {
     // The specific regression. The guard is mounted by controllers in two
     // different modules; one that resolves it and one that does not is exactly
     // the crash this suite was written for.
@@ -85,17 +85,30 @@ describe('AppModule dependency graph', () => {
       require('../../src/modules/provider/provider.module') as typeof import('../../src/modules/provider/provider.module');
     const { ConversationsModule } =
       require('../../src/modules/conversations/conversations.module') as typeof import('../../src/modules/conversations/conversations.module');
+    // Sprint 9B.8 — the verification module joined the list the moment its
+    // controllers mounted the guard, and it did so by FAILING this suite:
+    // it mounted the guard without importing the module that owns it, which
+    // is a boot crash, not a request-time 500.
+    const { ProviderVerificationModule } =
+      require('../../src/modules/provider/verification/provider-verification.module') as typeof import('../../src/modules/provider/verification/provider-verification.module');
     const { ProviderActiveGuard } =
       require('../../src/modules/provider/guards/provider-active.guard') as typeof import('../../src/modules/provider/guards/provider-active.guard');
+    // Sprint 9B.8 — ProviderCapabilityGuard is what most controllers now mount,
+    // and ProviderActiveGuard is its VIEW_MARKETPLACE subclass. BOTH are checked:
+    // a subclass resolving proves nothing about its base, and the base gained a
+    // second dependency (Reflector) that could fail to resolve on its own.
+    const { ProviderCapabilityGuard } =
+      require('../../src/modules/provider/guards/provider-capability.guard') as typeof import('../../src/modules/provider/guards/provider-capability.guard');
     /* eslint-enable @typescript-eslint/no-require-imports */
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     try {
-      for (const mod of [ProviderModule, ConversationsModule]) {
+      for (const mod of [ProviderModule, ConversationsModule, ProviderVerificationModule]) {
         // Resolving through the INJECTOR is the assertion. Constructing the
         // guard with `new` proves nothing — that is precisely how the unit
         // tests missed this.
         expect(moduleRef.select(mod).get(ProviderActiveGuard)).toBeDefined();
+        expect(moduleRef.select(mod).get(ProviderCapabilityGuard)).toBeDefined();
       }
     } finally {
       await moduleRef.close();

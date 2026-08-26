@@ -1,3 +1,5 @@
+import { RequireCapability } from '../provider/guards/require-capability.decorator';
+import { ProviderCapability } from '@homeservicemarketplace/contracts';
 import {
   Body,
   Controller,
@@ -23,7 +25,7 @@ import { JwtAuthGuard } from '../iam/authentication/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../iam/authentication/types/authenticated-user';
 import { Roles } from '../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../iam/authorization/guards/roles.guard';
-import { ProviderActiveGuard } from '../provider/guards/provider-active.guard';
+import { ProviderCapabilityGuard } from '../provider/guards/provider-capability.guard';
 import { ConversationsService } from './conversations.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListMessagesQueryDto } from './dto/list-messages.query';
@@ -38,18 +40,20 @@ import { SendMessageDto } from './dto/send-message.dto';
 // flows). Only the URL prefix differs.
 //
 // Class-level guards: JwtAuthGuard + RolesGuard('provider') +
-// ProviderActiveGuard. Mutations also CsrfGuard. `userId` taken from
+// ProviderCapabilityGuard. Mutations also CsrfGuard. `userId` taken from
 // @CurrentUser; the wire never accepts senderUserId / providerProfileId.
 // Foreign conversation surfaces as 404 via the participant gate.
 //
-// Sprint 01 hardening: ProviderActiveGuard is mounted here to match the
+// Sprint 01 hardening: ProviderCapabilityGuard is mounted here to match the
 // rest of the provider surface (feed, bids, bookings, wallet,
 // earnings). A DRAFT / PENDING_REVIEW / SUSPENDED / REJECTED provider
 // may sign in and finish onboarding but must NOT be able to open or
 // post in booking chats until an admin approves the profile (status
 // === ACTIVE).
-@UseGuards(JwtAuthGuard, RolesGuard, ProviderActiveGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ProviderCapabilityGuard)
 @Roles('provider')
+// Sprint 9B.8 — a conversation is about work already in hand. Gating it on VIEW_MARKETPLACE cut a restricted provider off from the seeker they still owe a job to.
+@RequireCapability(ProviderCapability.ManageBookings)
 @Controller({ path: 'provider/conversations', version: '1' })
 export class ProviderConversationsController {
   constructor(private readonly conversations: ConversationsService) {}

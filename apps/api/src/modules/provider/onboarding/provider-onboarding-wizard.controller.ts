@@ -1,3 +1,5 @@
+import { RequireCapability } from '../guards/require-capability.decorator';
+import { ProviderCapabilityGuard } from '../guards/provider-capability.guard';
 import {
   Body,
   Controller,
@@ -11,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   PROVIDER_ONBOARDING_STEPS,
+  ProviderCapability,
   type ProviderOnboardingDraftView,
   type ProviderOnboardingStep,
 } from '@homeservicemarketplace/contracts';
@@ -44,8 +47,19 @@ import { ProviderOnboardingWizardService } from './provider-onboarding-wizard.se
 // NOT ProviderActiveGuard. That guard asks for VIEW_MARKETPLACE, which a DRAFT
 // provider does not have and must not need — gating the onboarding surface on
 // a capability that onboarding EARNS is precisely the loop Sprint 7 fixed.
-@UseGuards(JwtAuthGuard, RolesGuard)
+// Sprint 9B.8 — the onboarding surface itself. Ungated before this sprint, so
+// a SUSPENDED provider could keep editing and re-submitting an application
+// nobody would act on.
+//
+// EDIT_OWN_PROFILE, not COMPLETE_ONBOARDING, and the difference is load
+// bearing. COMPLETE_ONBOARDING is withheld once onboarding reaches ACCEPTED,
+// so gating on it would start returning 403 to fully-onboarded providers who
+// could reach this surface yesterday — a regression dressed up as a security
+// fix. EDIT_OWN_PROFILE is held by every state that could already reach it and
+// withheld from exactly the two that should not: SUSPENDED and TERMINATED.
+@UseGuards(JwtAuthGuard, RolesGuard, ProviderCapabilityGuard)
 @Roles('provider')
+@RequireCapability(ProviderCapability.EditOwnProfile)
 @Controller({ path: 'me/provider/onboarding', version: '1' })
 export class ProviderOnboardingWizardController {
   constructor(private readonly wizard: ProviderOnboardingWizardService) {}
