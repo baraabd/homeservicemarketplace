@@ -89,6 +89,14 @@ is `revokedAt IS NULL AND now() BETWEEN startsAt AND COALESCE(endsAt,'infinity')
 specified, so expiry needs no writer and a failed cron cannot grant access nobody
 authorised.
 
+> **Sprint 9B.7 amendment.** `VERIFICATION_GRANT_DAYS` is the NAME this ADR gave
+> the number; it is not an environment variable. It lives in the admin settings
+> schema as `verification_work_grant_validity_days` (bounds 1–3650, default 365),
+> so an operator can change it without a deploy and the value enforced is the
+> value the admin screen shows. An env var of that name was declared once and
+> never read; it has been removed. See
+> [sprint-09b7/WORK_ACCESS_LIFECYCLE.md](../sprint-09b7/WORK_ACCESS_LIFECYCLE.md) §4.
+
 `source` records what justified it: `VERIFIED_DOCUMENTS`, `LEGACY_BACKFILL`,
 `MANUAL_OVERRIDE`, `RENEWAL`. A manual override is legitimate and must be
 distinguishable from a verified one forever.
