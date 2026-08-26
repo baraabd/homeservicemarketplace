@@ -56,6 +56,26 @@ export class AuditEventRepository {
   // `path` filter to match metadata.providerProfileId (the key all
   // verification mutations write — see admin-verification.service.ts).
   // Cursor-paginated by [createdAt desc, id desc] like list().
+  /**
+   * Sprint 9B.6 — the audit trail for ONE verification case.
+   *
+   * Keyed on metadata.caseId, the same JSON-path mechanism the provider trail
+   * uses. A case-scoped trail is not a filtered provider trail: a provider can
+   * have several cases over time, and "what happened to THIS application" is
+   * the question a reviewer and an auditor both actually ask.
+   */
+  listForVerificationCase(
+    args: { caseId: string; take: number; cursor?: string },
+    tx?: PrismaTx,
+  ): Promise<AuditEvent[]> {
+    return this.db(tx).auditEvent.findMany({
+      where: { metadata: { path: ['caseId'], equals: args.caseId } },
+      take: args.take,
+      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+  }
+
   listForProviderProfile(
     args: { providerProfileId: string; take: number; cursor?: string },
     tx?: PrismaTx,

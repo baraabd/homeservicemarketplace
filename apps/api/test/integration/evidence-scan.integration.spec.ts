@@ -129,7 +129,20 @@ d('Evidence scanning (real Postgres, real bytes)', () => {
    */
   async function cleanupFixtures(): Promise<void> {
     await prisma.auditEvent.deleteMany({ where: { userId: { startsWith: P } } });
-    await prisma.outboxEvent.deleteMany({ where: { aggregateId: { startsWith: P } } });
+    // ALL evidence.scanned rows, not just this suite's fixtures.
+    //
+    // scanPending() is a GLOBAL sweep — correct in production, where every
+    // PENDING asset should be scanned, and cross-contaminating here: running it
+    // also scans OTHER suites' fixtures and enqueues events under THEIR asset
+    // ids, which their cleanup never deletes. Those orphans then sit PENDING in
+    // a queue outbox.integration.spec.ts consumes, and surface there as a
+    // stalled drain.
+    //
+    // This suite is the only thing in the test run that invokes the sweep, so
+    // every evidence.scanned row is its doing whether or not the asset was
+    // its own. Scoping by event type rather than by fixture prefix is what
+    // makes the ownership true.
+    await prisma.outboxEvent.deleteMany({ where: { eventType: 'evidence.scanned' } });
     await prisma.verificationAccessLog.deleteMany({ where: { caseId: { startsWith: P } } });
     await prisma.verificationDocument.deleteMany({ where: { caseId: { startsWith: P } } });
     await prisma.mediaAsset.deleteMany({ where: { ownerUserId: { startsWith: P } } });
@@ -414,14 +427,28 @@ d('Evidence scanning (real Postgres, real bytes)', () => {
 
   // ── idempotence and races ───────────────────────────────────────────────
 
-  it('is idempotent: a second sweep finds nothing to do', async () => {
-    await seedAsset(`${P}a8`, CLEAN_PDF);
+  it('is idempotent: a second sweep does not touch an asset it already cleared', async () => {
+    const id = await seedAsset(`${P}a8`, CLEAN_PDF);
 
     const first = await scanService.scanPending();
-    const second = await scanService.scanPending();
-
     expect(first.cleared).toBe(1);
-    expect(second.examined).toBe(0);
+
+    const afterFirst = await prisma.mediaAsset.findUnique({ where: { id } });
+    await scanService.scanPending();
+    const afterSecond = await prisma.mediaAsset.findUnique({ where: { id } });
+
+    // The claim is about THIS asset, not about the whole database being empty.
+    //
+    // scanPending() is a global sweep by design, so asserting the second sweep
+    // examined ZERO rows asserts that no other suite has a PENDING asset in
+    // flight — which is not this test's business and is false whenever the
+    // suites overlap. Idempotence means the asset already judged is not judged
+    // again: same state, same timestamp, and no second announcement.
+    expect(afterSecond.scanState).toBe('CLEAN');
+    expect(afterSecond.scannedAt.toISOString()).toBe(afterFirst.scannedAt.toISOString());
+
+    const events = await prisma.outboxEvent.findMany({ where: { aggregateId: id } });
+    expect(events).toHaveLength(1);
   });
 
   it('two concurrent sweeps write once and report once', async () => {

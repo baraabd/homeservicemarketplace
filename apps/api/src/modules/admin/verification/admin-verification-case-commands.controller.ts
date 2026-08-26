@@ -1,5 +1,16 @@
-import { Body, Controller, HttpCode, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 import { CurrentUser } from '../../iam/authentication/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
@@ -11,6 +22,12 @@ import {
   VerificationCaseWorkflowService,
   type CaseCommandResult,
 } from '../../provider/verification/case/verification-case-workflow.service';
+import {
+  AdminVerificationQueueService,
+  type VerificationQueuePage,
+} from './admin-verification-queue.service';
+import { AdminVerificationCaseService } from './admin-verification-case.service';
+import { AuditEventRepository } from '../../../infrastructure/persistence/iam/audit-event.repository';
 
 // Sprint 9B.5 — the reviewer's two commands on a verification case.
 //
@@ -106,11 +123,118 @@ class RejectCaseDto {
   expectedState?: 'SUBMITTED' | 'IN_REVIEW' | 'ACTION_REQUIRED';
 }
 
+class ListQueueDto {
+  @IsOptional()
+  @IsIn(['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'ACTION_REQUIRED', 'VERIFIED', 'REJECTED', 'EXPIRED'])
+  state?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  policyVersion?: string;
+
+  /** Matched against the provider's display name. Search NARROWS the queue; it
+   *  never widens it past the state filter. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  search?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  cursor?: string;
+}
+
+class ListCaseAuditDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  cursor?: string;
+}
+
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Permissions('verification:decide')
 @Controller({ path: 'admin/verification/cases', version: '1' })
 export class AdminVerificationCaseCommandsController {
-  constructor(private readonly workflow: VerificationCaseWorkflowService) {}
+  constructor(
+    private readonly workflow: VerificationCaseWorkflowService,
+    private readonly queue: AdminVerificationQueueService,
+    private readonly cases: AdminVerificationCaseService,
+    private readonly audit: AuditEventRepository,
+  ) {}
+
+  /** The work list. Oldest first, live cases by default. */
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListQueueDto,
+  ): Promise<VerificationQueuePage> {
+    return this.queue.list(
+      {
+        state: query.state as never,
+        policyVersion: query.policyVersion,
+        search: query.search,
+        limit: query.limit,
+        cursor: query.cursor,
+      },
+      user.id,
+    );
+  }
+
+  /** One SPECIFIC case, by its own id — not "the newest for this provider". */
+  @Get(':caseId')
+  @HttpCode(HttpStatus.OK)
+  detail(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('caseId') caseId: string,
+  ): Promise<unknown> {
+    return this.cases.forCase(caseId, user.id) as Promise<unknown>;
+  }
+
+  /**
+   * What happened to THIS application.
+   *
+   * Scoped to the case rather than the provider: a provider can have several
+   * cases over time, and a merged trail answers a question nobody asked.
+   */
+  @Get(':caseId/audit')
+  @HttpCode(HttpStatus.OK)
+  async caseAudit(
+    @Param('caseId') caseId: string,
+    @Query() query: ListCaseAuditDto,
+  ): Promise<{ items: unknown[]; nextCursor: string | null }> {
+    const take = Math.min(query.limit ?? 25, 100);
+    const rows = await this.audit.listForVerificationCase({
+      caseId,
+      take: take + 1,
+      cursor: query.cursor,
+    });
+    const page = rows.slice(0, take);
+    return {
+      items: page.map((r) => ({
+        id: r.id,
+        type: r.type as string,
+        actorUserId: r.userId ?? null,
+        metadata: (r.metadata as Record<string, unknown> | null) ?? null,
+        createdAt: r.createdAt.toISOString(),
+      })),
+      nextCursor: rows.length > take ? (page[page.length - 1]?.id ?? null) : null,
+    };
+  }
 
   @UseGuards(CsrfGuard)
   @Post(':caseId/assign')

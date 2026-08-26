@@ -165,6 +165,14 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     const {
       AdminVerificationCaseCommandsController,
     } = require('../../src/modules/admin/verification/admin-verification-case-commands.controller');
+    // Sprint 9B.6 added read routes to that controller, so it now needs the
+    // queue and detail services too.
+    const {
+      AdminVerificationQueueService,
+    } = require('../../src/modules/admin/verification/admin-verification-queue.service');
+    const {
+      AdminVerificationCaseService,
+    } = require('../../src/modules/admin/verification/admin-verification-case.service');
     const { AllExceptionsFilter } = require('../../src/infrastructure/http/all-exceptions.filter');
     const { JwtAuthGuard } = require('../../src/modules/iam/authentication/guards/jwt-auth.guard');
     const { CsrfGuard } = require('../../src/modules/iam/authentication/guards/csrf.guard');
@@ -178,6 +186,8 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       controllers: [ProviderVerificationCaseController, AdminVerificationCaseCommandsController],
       providers: [
         VerificationCaseWorkflowService,
+        AdminVerificationQueueService,
+        AdminVerificationCaseService,
         VerificationSettingsService,
         PlatformSettingRepository,
         ProviderVerificationCaseService,

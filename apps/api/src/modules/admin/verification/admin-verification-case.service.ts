@@ -52,8 +52,44 @@ export class AdminVerificationCaseService {
     });
     if (!profile) throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
 
+    return this.project({ providerProfileId }, profile, reviewerUserId);
+  }
+
+  /**
+   * Sprint 9B.6 — one SPECIFIC case, by its own id.
+   *
+   * Distinct from forProvider, which answers "the newest case for this
+   * provider". A reviewer arriving from the queue clicked a particular row, and
+   * handing them a different case because it happens to be newer would be a
+   * quiet substitution at exactly the moment accuracy matters.
+   *
+   * A case that does not exist and a case whose provider profile is deleted
+   * answer the same 404 — the reviewer has no need to tell those apart, and the
+   * distinction would confirm the existence of an id they cannot see.
+   */
+  async forCase(caseId: string, reviewerUserId: string): Promise<AdminVerificationCase | null> {
+    const kase = await this.prisma.client.verificationCase.findUnique({
+      where: { id: caseId },
+      select: { providerProfile: { select: { id: true, userId: true, deletedAt: true } } },
+    });
+    if (!kase?.providerProfile || kase.providerProfile.deletedAt !== null) {
+      throw new AppError('NOT_FOUND', 'Verification case not found.', 404);
+    }
+
+    return this.project(
+      { id: caseId },
+      { id: kase.providerProfile.id, userId: kase.providerProfile.userId },
+      reviewerUserId,
+    );
+  }
+
+  private async project(
+    where: { id: string } | { providerProfileId: string },
+    profile: { id: string; userId: string | null },
+    reviewerUserId: string,
+  ): Promise<AdminVerificationCase | null> {
     const row = await this.prisma.client.verificationCase.findFirst({
-      where: { providerProfileId },
+      where,
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
