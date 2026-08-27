@@ -50,7 +50,21 @@ export class PresignUploadItemDto {
   filename?: string;
 }
 
+/** Sprint 9B.10 — which namespace the synthesised keys land in.
+ *
+ *  A whitelist, never a caller-supplied prefix: the whole reason keys are
+ *  server-synthesised is that a caller-controlled path is a traversal vector,
+ *  and accepting "give me a key under X" would hand that control straight
+ *  back. Defaults to 'request', so every existing client is unaffected. */
+export const PRESIGN_PURPOSES = ['request', 'portfolio'] as const;
+export type PresignPurpose = (typeof PRESIGN_PURPOSES)[number];
+
 export class PresignUploadRequestDto {
+  @IsOptional()
+  @IsString()
+  @IsIn([...PRESIGN_PURPOSES])
+  purpose?: PresignPurpose;
+
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(MAX_FILES_PER_REQUEST)
