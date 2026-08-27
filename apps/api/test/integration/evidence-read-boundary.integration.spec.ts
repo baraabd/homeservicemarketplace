@@ -292,6 +292,25 @@ d('Restricted evidence read boundary (real Postgres, real bytes)', () => {
       expect(res.status).toBe(404);
     });
 
+    it('is refused once the bytes were DELETED under retention', async () => {
+      // Sprint 9B.13. Retention deletion (ADR 0012) removes the object and
+      // stamps the row; the metadata survives so the audit trail can still say
+      // a document existed. A read after that must refuse — and refuse with the
+      // SAME answer as an unknown document, because "this one used to be here"
+      // is itself a fact about someone's identity papers.
+      await prisma.mediaAsset.update({
+        where: { id: ASSET },
+        data: { deletedAt: new Date() },
+      });
+
+      const res = await readDoc();
+      expect(res.status).toBe(404);
+
+      // Still audited. A refused read is exactly the read worth recording.
+      const logs = await prisma.verificationAccessLog.findMany({ where: { mediaAssetId: ASSET } });
+      expect(logs.length).toBeGreaterThan(0);
+    });
+
     it('is refused to an unauthenticated caller', async () => {
       currentUser = null;
       const res = await readDoc();

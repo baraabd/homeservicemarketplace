@@ -50,6 +50,9 @@ d('Verification case workflow (real Postgres, real routes)', () => {
   let prisma: any;
   let app: INestApplication;
   let http: any;
+  /** Captured so a test can make the LAST write in the decision transaction
+   *  fail, and prove the rest is rolled back. */
+  let outboxRepo: any;
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   const P = fixturePrefix('case-workflow');
@@ -228,6 +231,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
     await app.init();
     http = app.getHttpServer();
+    outboxRepo = app.get(OutboxRepository);
 
     await cleanupFixtures();
     await prisma.verificationRequirementPolicy.deleteMany({ where: { version: POLICY } });
@@ -685,6 +689,154 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
       expect(profile.verificationState).toBe('EXPIRED');
       expect(profile.verified).toBe(false);
+    });
+
+    // ── Sprint 9B.13 — the refusals nothing asserted yet ──────────────────
+
+    it('refuses an ILLEGAL transition rather than performing it', async () => {
+      // `ILLEGAL_TRANSITION` is raised by the workflow and was named in no test
+      // at all: every concurrency test drove `expectedState`, which is a
+      // DIFFERENT guard. That one asks "is the case where you think it is";
+      // this one asks "is this verb meaningful here at all".
+      //
+      // Revoking a case that was never approved is the clean example. There is
+      // nothing to revoke, no replay to fall back on, and a reviewer who
+      // reaches it has a stale tab or a bad script.
+      await seedCase('SUBMITTED');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const res = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/revoke`)
+        .send({ reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.details.reason).toBe('ILLEGAL_TRANSITION');
+      // And nothing moved: a refused transition is not a partial one.
+      expect(await stateOf()).toBe('SUBMITTED');
+      expect(await prisma.verificationDecision.count({ where: { caseId: CASE_ID } })).toBe(0);
+      expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
+        0,
+      );
+    });
+
+    it('re-approving a VERIFIED case REPLAYS rather than deciding twice', async () => {
+      // The other half of the same boundary, and the reason the test above
+      // uses revoke: approve on VERIFIED is deliberately idempotent, because a
+      // reviewer whose response was dropped must be able to retry without
+      // producing a second decision or a second grant. An error there would
+      // teach people to refresh and re-decide, which is worse.
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const first = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+        .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+      expect(first.status).toBe(200);
+      expect(first.body.changed).toBe(true);
+
+      const replayed = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+        .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+
+      expect(replayed.status).toBe(200);
+      expect(replayed.body.changed).toBe(false);
+      expect(await prisma.verificationDecision.count({ where: { caseId: CASE_ID } })).toBe(1);
+      expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
+        1,
+      );
+    });
+
+    it('an approval and a revocation racing each other leave ONE coherent outcome', async () => {
+      // Two reviewers, opposite intents, same instant. Whichever lands second
+      // must either fail or apply to the state the first one produced — what
+      // must not happen is an approved case with a revoked grant, or a revoked
+      // case still holding live access.
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+        .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+
+      const [again, revoked] = await Promise.all([
+        request(http)
+          .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+          .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' }),
+        request(http)
+          .post(`/v1/admin/verification/cases/${CASE_ID}/revoke`)
+          .send({ reasonCode: 'TRUST_AND_SAFETY_ACTION' }),
+      ]);
+
+      // The re-approval is a REPLAY, not a second approval, and the revocation
+      // lands. Both answer 200; what matters is what they left behind.
+      expect(again.status).toBe(200);
+      expect(revoked.status).toBe(200);
+
+      const grants = await prisma.providerWorkAccessGrant.findMany({
+        where: { providerProfileId: PP },
+      });
+      // One grant, revoked. Never two, and never a live one left behind.
+      expect(grants).toHaveLength(1);
+      expect(grants[0].status).toBe('REVOKED');
+
+      const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(profile.verified).toBe(false);
+
+      // TWO decisions, not one: the approval and the revocation are both real
+      // judgements and both belong on the permanent record. What must not
+      // exist is a second APPROVAL from the replayed call.
+      const decisions = await prisma.verificationDecision.findMany({ where: { caseId: CASE_ID } });
+      expect(decisions.map((row: { outcome: string }) => row.outcome).sort()).toEqual([
+        'APPROVED',
+        'REVOKED',
+      ]);
+    });
+
+    it('rolls the WHOLE decision back when any part of it fails', async () => {
+      // The claim "case, decision, provider state, grant, audit and outbox land
+      // together" is only worth making if the failure path is checked too.
+      // Otherwise a half-applied approval — a verified case with no grant, or a
+      // grant with no decision — is indistinguishable from success in the data.
+      //
+      // The failure is induced at the LAST write in the transaction, so
+      // everything before it has already been staged and must be undone.
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const outbox = outboxRepo;
+      const enqueue = jest
+        .spyOn(outbox, 'enqueue')
+        .mockRejectedValueOnce(new Error('induced failure inside the transaction'));
+
+      const res = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+        .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+      enqueue.mockRestore();
+
+      expect(res.status).toBeGreaterThanOrEqual(500);
+
+      // NOTHING survived: not the state change, not the decision, not the
+      // grant, not the provider flags.
+      expect(await stateOf()).toBe('IN_REVIEW');
+      expect(await prisma.verificationDecision.count({ where: { caseId: CASE_ID } })).toBe(0);
+      expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
+        0,
+      );
+      const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(profile.verified).toBe(false);
+      expect(profile.verificationState).not.toBe('VERIFIED');
+
+      // And the case is still decidable afterwards — a rolled-back attempt
+      // must not leave it wedged.
+      const retry = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+        .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+      expect(retry.status).toBe(200);
+      expect(await stateOf()).toBe('VERIFIED');
     });
   });
 
