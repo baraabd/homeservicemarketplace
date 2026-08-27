@@ -24,6 +24,8 @@ import {
   useUpdateAdminUserStatus,
 } from '../../hooks/admin/useAdminUsers';
 import { VerificationSection } from './VerificationSection';
+import { AdminVerificationCaseWorkspace } from '../../features/admin-verification/components/AdminVerificationCaseWorkspace';
+import { VerificationPolicyPanel } from '../../features/admin-verification/components/VerificationPolicyPanel';
 import { DisputeSection } from './DisputesSection';
 import { DashboardOverview } from './DashboardOverview';
 import { FinancialsSection } from './FinancialsSection';
@@ -786,7 +788,20 @@ export function AdminDashboard() {
               transition={{ duration: 0.2 }}
             >
               {activeSection === 'dashboard' && <DashboardOverview lang={lang} />}
-              {activeSection === 'verification' && <VerificationSection />}
+              {activeSection === 'verification' && (
+                <div className="space-y-8">
+                  {/* Sprint 9B.12 — the CASE axis: the review queue and the
+                      case a reviewer opens from it. Rendered above the
+                      provider-ACCOUNT section, which keeps its own actions,
+                      because a reviewer arrives here to work the queue. The
+                      two axes stay in separate blocks on purpose. */}
+                  <AdminVerificationCaseWorkspace />
+                  <VerificationSection />
+                  {/* Policy versions are append-only and rarely touched, so
+                      they sit last rather than competing with the queue. */}
+                  <VerificationPolicyPanel />
+                </div>
+              )}
               {activeSection === 'financials' && <FinancialsSection lang={lang} />}
               {activeSection === 'disputes' && <DisputeSection lang={lang} />}
               {activeSection === 'settings' && <SettingsSection lang={lang} />}

@@ -46,6 +46,11 @@ export interface VerificationQueueQuery {
   state?: VerificationCaseState;
   policyVersion?: string;
   search?: string;
+  /** Sprint 9B.12 — submission window, inclusive at both ends. A queue with no
+   *  date filter forces a reviewer working a backlog to page through
+   *  everything to reach last week's submissions. */
+  submittedFrom?: string;
+  submittedTo?: string;
   limit?: number;
   cursor?: string;
 }
@@ -69,6 +74,34 @@ export interface VerificationQueuePage {
   nextCursor: string | null;
 }
 
+/** An inclusive date window for `submittedAt`, or null when neither end was
+ *  given. Throws on anything it cannot parse. */
+function parseRange(from?: string, to?: string): { gte?: Date; lte?: Date } | null {
+  const parse = (value: string, field: string): Date => {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) {
+      throw new AppError('VALIDATION_ERROR', 'Unusable date filter.', 400, {
+        reason: 'UNPARSEABLE_DATE',
+        field,
+      });
+    }
+    return d;
+  };
+
+  const gte = from ? parse(from, 'submittedFrom') : undefined;
+  const lte = to ? parse(to, 'submittedTo') : undefined;
+  if (gte === undefined && lte === undefined) return null;
+  if (gte && lte && gte.getTime() > lte.getTime()) {
+    // An inverted window matches nothing, and a reviewer staring at an empty
+    // queue would reasonably conclude there is no work rather than that they
+    // typed the dates the wrong way round.
+    throw new AppError('VALIDATION_ERROR', 'The date range ends before it begins.', 400, {
+      reason: 'INVERTED_DATE_RANGE',
+    });
+  }
+  return { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) };
+}
+
 @Injectable()
 export class AdminVerificationQueueService {
   constructor(private readonly prisma: PrismaService) {}
@@ -79,6 +112,12 @@ export class AdminVerificationQueueService {
   ): Promise<VerificationQueuePage> {
     const take = this.pageSize(query.limit);
     const search = (query.search ?? '').trim();
+
+    // The submission window. An unparseable date is REFUSED rather than
+    // dropped, for the same reason an unknown state is: a filter that silently
+    // does nothing shows a list that does not match what was asked for, and it
+    // looks like an answer.
+    const range = parseRange(query.submittedFrom, query.submittedTo);
 
     if (query.state !== undefined && !ALL_STATES.includes(query.state)) {
       // Refused rather than ignored. Silently dropping an unknown filter shows
@@ -98,6 +137,7 @@ export class AdminVerificationQueueService {
         ...(search.length > 0
           ? { providerProfile: { displayName: { contains: search, mode: 'insensitive' } } }
           : {}),
+        ...(range ? { submittedAt: range } : {}),
       },
       select: {
         id: true,

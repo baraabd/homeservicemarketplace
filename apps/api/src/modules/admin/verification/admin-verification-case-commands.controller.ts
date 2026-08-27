@@ -150,6 +150,19 @@ class ListQueueDto {
   @IsString()
   @MaxLength(64)
   cursor?: string;
+  /** Sprint 9B.12 — inclusive submission window. Validated as an ISO date by
+   *  the service, which refuses rather than silently ignoring an unusable
+   *  value: a filter that quietly does nothing shows a list that does not
+   *  match what was asked for. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  submittedFrom?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  submittedTo?: string;
 }
 
 class ListCaseAuditDto {
@@ -227,6 +240,8 @@ export class AdminVerificationCaseCommandsController {
         state: query.state as never,
         policyVersion: query.policyVersion,
         search: query.search,
+        submittedFrom: query.submittedFrom,
+        submittedTo: query.submittedTo,
         limit: query.limit,
         cursor: query.cursor,
       },

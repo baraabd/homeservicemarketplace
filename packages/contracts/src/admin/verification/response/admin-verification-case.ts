@@ -85,6 +85,29 @@ export interface AdminVerificationDecision {
   decidedAt: string;
 }
 
+/**
+ * Whether the provider can take work RIGHT NOW, and on what basis.
+ *
+ * Sprint 9B.12 — a reviewer about to revoke had no way to see whether there
+ * was anything to revoke, and a reviewer looking at a VERIFIED case could not
+ * tell an active grant from one that lapsed last week. Those are different
+ * decisions, and the difference was not on the surface at all.
+ *
+ * Deliberately the ACCESS answer, not the row: `active` is computed with the
+ * same read-time predicate the capability service uses (ADR 0013), so a grant
+ * whose expiry has passed reports inactive even though no sweep has relabelled
+ * it. A reviewer must never be shown "ACTIVE" for access that is already gone.
+ */
+export interface AdminWorkAccessStatus {
+  active: boolean;
+  /** Why the grant exists: earned, backfilled, or handed out. */
+  source: string | null;
+  status: string | null;
+  grantedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+}
+
 /** The case as a reviewer sees it. */
 export interface AdminVerificationCase {
   id: string;
@@ -109,6 +132,9 @@ export interface AdminVerificationCase {
   /** Why an action a reviewer might expect is absent. Stable codes, no policy
    *  detail. */
   blockedReason: 'SELF_REVIEW' | 'TERMINAL_STATE' | 'NOT_SUBMITTED' | null;
+  /** Sprint 9B.12 — whether this provider can take work right now. Null when
+   *  they have never held a grant. */
+  workAccess: AdminWorkAccessStatus | null;
 }
 
 export type VerificationCaseActionCode =

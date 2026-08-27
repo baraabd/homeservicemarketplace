@@ -8,6 +8,8 @@ import type {
 
 import { useLang } from '../../i18n/LanguageContext';
 import { VerificationEvidencePanel } from '../../features/admin-verification/components/VerificationEvidencePanel';
+import { UI } from '../../features/admin-verification/copy/verification-copy';
+import { useEvidenceDownload } from '../../features/admin-verification/evidence/useEvidenceDownload';
 import { useVerificationCase } from '../../features/admin-verification/hooks/useVerificationCase';
 import {
   useAdminProviderAudit,
@@ -219,6 +221,10 @@ function ProviderDetailDrawer({
   const decision = useAdminProviderDecision();
 
   const provider = detailQuery.data;
+  // Sprint 9B.12 — the view button on each document was inert until now: the
+  // panel exposed `onView`, nothing passed it. Opening a document is its own
+  // audited request (docs/adr/0009), never part of the case payload.
+  const evidence = useEvidenceDownload();
   const [notesDraft, setNotesDraft] = useState('');
   const [decisionReason, setDecisionReason] = useState('');
 
@@ -302,7 +308,14 @@ function ProviderDetailDrawer({
               lang={isAr ? 'ar' : 'en'}
               isLoading={verificationQuery.isPending}
               isError={verificationQuery.isError}
+              onView={evidence.open}
             />
+
+            {evidence.failed ? (
+              <p role="alert" className="text-rose-600" style={{ fontSize: '11px' }}>
+                {UI[isAr ? 'ar' : 'en'].evidenceOpenFailed}
+              </p>
+            ) : null}
 
             <AuditHistoryBlock
               items={auditQuery.data?.items ?? []}
