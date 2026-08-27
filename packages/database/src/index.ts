@@ -29,7 +29,7 @@ export * from '../generated/prisma';
 
 // Re-export seed utilities so they can be unit-tested from the workspace
 // without pulling the seed script's top-level main() execution.
-export { assertSeedProductionSafe, seed, seedWithTx } from './seed';
+export { assertSeedProductionSafe, isProductionSeedTarget, seed, seedWithTx } from './seed';
 
 // Local-only operator routine for granting customer + provider + admin
 // access to an existing User. Exposed for the CLI script in
