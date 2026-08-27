@@ -25,6 +25,26 @@ import { NodemailerMailAdapter } from './nodemailer-mail.adapter';
           log.log('Using NodemailerMailAdapter (SMTP)');
           return adapter;
         }
+        // Sprint 9B.14 — a production process must not bind the mock.
+        //
+        // The in-memory adapter is a correct default for dev and CI: it
+        // captures messages so a test can read an OTP. In production it is a
+        // silent hole. Registration, email verification and password reset all
+        // return 202 and log "mail.sent", while nothing is delivered — so every
+        // new account is unreachable and every locked-out user stays locked
+        // out, with a green health check and no error anywhere.
+        //
+        // Refusing at boot is the only honest outcome. The failure mode it
+        // replaces is invisible for as long as nobody happens to test signup on
+        // production, which is exactly the kind of bug that is found by a user.
+        if (config.isProduction) {
+          throw new Error(
+            'Refusing to boot: no SMTP_HOST is configured, so mail would be ' +
+              'captured in memory and never delivered. Configure SMTP_HOST (and ' +
+              'its credentials), or run a mail relay — verification and password ' +
+              'reset are unusable without one.',
+          );
+        }
         log.log('Using InMemoryMailAdapter (no SMTP_HOST)');
         // Return the NestJS-managed instance so that injecting by class token
         // (e.g. in tests accessing .outbox) gets the same object as MAIL_PORT.

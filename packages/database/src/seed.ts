@@ -443,6 +443,17 @@ const ARGON2_OPTIONS: argon2.Options = {
 };
 
 async function upsertDevUsers(tx: Prisma.TransactionClient): Promise<void> {
+  // Sprint 9B.14 — never in production, whatever ALLOW_PROD_SEED says. These
+  // accounts carry passwords published in this repository and two of them are
+  // admins; see isProductionSeedTarget for why the coarse flag is not enough.
+  if (isProductionSeedTarget()) {
+    console.warn(
+      '[seed] SKIPPING dev users: NODE_ENV=production. These accounts have ' +
+        'published passwords and must never exist in a production database.',
+    );
+    return;
+  }
+
   // Roles must already exist in this transaction (upsertRoles ran first).
   const roleByName = new Map<string, { id: string }>();
   const roles = await tx.role.findMany({
@@ -667,6 +678,35 @@ export function assertSeedProductionSafe(env: NodeJS.ProcessEnv = process.env): 
   }
 }
 
+/**
+ * Is this process seeding a PRODUCTION database?
+ *
+ * Sprint 9B.14. `ALLOW_PROD_SEED=true` is a legitimate thing for an operator to
+ * set: the roles, permissions and category catalogue are reference data that
+ * production genuinely needs, and this file is where they live. But that flag
+ * was ALL OR NOTHING, and the two blocks below are not reference data:
+ *
+ *   - `upsertDevUsers` creates four accounts with passwords printed in this
+ *     repository — two of them ADMIN, `status: ACTIVE`, `emailVerifiedAt` set.
+ *     Worse, a re-run ROTATES THE PASSWORD BACK to the documented value, so an
+ *     operator who noticed and changed it would have it silently restored.
+ *   - `upsertDevVerificationPolicy` publishes a global default whose own
+ *     comment says it is NOT LEGAL ADVICE AND NOT A COUNTRY REQUIREMENT.
+ *     Providers verified against it would have been judged by a placeholder.
+ *
+ * Both now refuse on NODE_ENV alone, independently of the flag. An operator who
+ * wants reference data in production gets exactly that; there is no combination
+ * of environment variables that puts a known-password admin account, or a
+ * placeholder policy, into a production database.
+ *
+ * Deliberately NOT a throw: the reference-data half of the seed is the part the
+ * operator asked for, and failing the whole run would push them toward doing it
+ * by hand. Skipping loudly is the behaviour that leaves production correct.
+ */
+export function isProductionSeedTarget(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV === 'production';
+}
+
 async function main(): Promise<void> {
   await seed();
 
@@ -730,6 +770,17 @@ function normaliseCityKey(city: string | null | undefined): string | null {
  * a second live one anyway.
  */
 async function upsertDevVerificationPolicy(tx: Prisma.TransactionClient): Promise<void> {
+  // Sprint 9B.14 — never in production, whatever ALLOW_PROD_SEED says. A
+  // provider verified against a placeholder policy has been judged against
+  // nothing; publishing a real one through the admin API is the supported path.
+  if (isProductionSeedTarget()) {
+    console.warn(
+      '[seed] SKIPPING the development verification policy: NODE_ENV=production. ' +
+        'Publish a real policy through the admin API instead.',
+    );
+    return;
+  }
+
   const version = '2026.08-dev-default-v1';
 
   const alreadyThere = await tx.verificationRequirementPolicy.findUnique({ where: { version } });
