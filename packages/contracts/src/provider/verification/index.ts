@@ -12,7 +12,11 @@
 // one, and `created` says which happened. A client that retries after a timeout
 // gets the same case back, not a duplicate.
 
-import type { VerificationCaseStateCode, VerificationDocumentKindCode } from '../../admin';
+import type {
+  MediaScanStateCode,
+  VerificationCaseStateCode,
+  VerificationDocumentKindCode,
+} from '../../admin';
 
 /** One thing the provider still has to produce. Mirrors the resolver's
  *  ResolvedRequirement, minus the policy version that demanded it — which
@@ -36,6 +40,59 @@ export interface ProviderVerificationCase {
   verificationRequired: boolean;
   /** The full requirement set, snapshotted onto the case at creation. */
   requirements: ProviderVerificationRequirement[];
+  /** Sprint 9B.11 — what has actually been supplied, and its scan verdict. */
+  documents: ProviderVerificationDocument[];
+  /** Sprint 9B.11 — the latest reviewer decision, or null before any. */
+  latestDecision: ProviderVerificationDecisionSummary | null;
+}
+
+/**
+ * One document the provider has already uploaded, and where it stands.
+ *
+ * Sprint 9B.11 — the provider surface could previously say WHAT was required
+ * but never what had happened to what was supplied. Without this a provider
+ * whose passport is being scanned, was quarantined, or was rejected sees the
+ * same screen as one who uploaded nothing, which is the difference between
+ * "wait" and "act".
+ *
+ * `scanState` is the media pipeline's own verdict (Sprint 9B.4):
+ *
+ *   PENDING      still being checked
+ *   CLEAN        accepted
+ *   QUARANTINED  malware found — the file is withheld, not deleted
+ *   SCAN_FAILED  the scanner could not reach a verdict; fail closed
+ *   REJECTED     refused before scanning (format, size, truncation)
+ */
+export interface ProviderVerificationDocument {
+  id: string;
+  kind: VerificationDocumentKindCode;
+  serviceCategoryId: string | null;
+  scanState: MediaScanStateCode;
+  uploadedAt: string;
+  /** True once a replacement has been accepted for the same requirement. A
+   *  superseded document stays visible so a provider can see what changed. */
+  superseded: boolean;
+}
+
+/**
+ * The most recent reviewer decision, as a CODE.
+ *
+ * Deliberately the code and never `reviewerNotes`. The reason code is a
+ * stable, translatable fact the provider can act on; the reviewer's prose is
+ * internal writing about a person, and Sprint 9B.5 already keeps it off the
+ * notification for the same reason. The provider sees WHY in their own
+ * language, not what a stranger typed about them.
+ */
+export interface ProviderVerificationDecisionSummary {
+  outcome:
+    | 'ACTION_REQUIRED'
+    | 'REJECTED'
+    | 'APPROVED'
+    | 'REVERIFY_REQUIRED'
+    | 'REVOKED'
+    | 'EXPIRED';
+  reasonCode: string;
+  decidedAt: string;
 }
 
 export interface CreateVerificationCaseRequest {

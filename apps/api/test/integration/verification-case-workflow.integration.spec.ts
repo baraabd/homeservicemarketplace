@@ -687,4 +687,110 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       expect(profile.verified).toBe(false);
     });
   });
+
+  // ── Sprint 9B.11 — what the provider's own case surface carries ─────────
+  //
+  // The provider surface could previously say WHAT was required but never what
+  // had happened to what was supplied. A provider whose passport is being
+  // scanned, was quarantined, or was rejected saw the same screen as one who
+  // uploaded nothing — the difference between "wait" and "act".
+  describe('the provider view of their own case', () => {
+    it('carries each uploaded document and its scan verdict', async () => {
+      await seedCase('SUBMITTED');
+      currentUser = { id: OWNER };
+
+      const res = await request(http).get('/v1/me/provider/verification/case');
+
+      expect(res.status).toBe(200);
+      expect(res.body.case.documents).toHaveLength(1);
+      expect(res.body.case.documents[0]).toMatchObject({
+        kind: 'INDIVIDUAL_IDENTITY',
+        scanState: 'CLEAN',
+        superseded: false,
+      });
+      expect(typeof res.body.case.documents[0].uploadedAt).toBe('string');
+    });
+
+    it.each(['PENDING', 'QUARANTINED', 'SCAN_FAILED', 'REJECTED'])(
+      'surfaces a %s scan verdict verbatim',
+      async (scanState) => {
+        // Three different things to say to the person waiting: still checking,
+        // malware found, refused before scanning. Collapsing them into one
+        // "not ready" would tell a provider to wait when they must act.
+        await seedCase('SUBMITTED');
+        await prisma.mediaAsset.updateMany({
+          where: { verificationCaseId: CASE_ID },
+          data: { scanState },
+        });
+        currentUser = { id: OWNER };
+
+        const res = await request(http).get('/v1/me/provider/verification/case');
+        expect(res.body.case.documents[0].scanState).toBe(scanState);
+      },
+    );
+
+    it('carries the latest decision as a CODE', async () => {
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+      await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/request-action`)
+        .send({ reasonCode: 'DOCUMENT_ILLEGIBLE', note: 'the scan is blurry, ask again' });
+
+      currentUser = { id: OWNER };
+      const res = await request(http).get('/v1/me/provider/verification/case');
+
+      expect(res.body.case.latestDecision).toMatchObject({
+        outcome: 'ACTION_REQUIRED',
+        reasonCode: 'DOCUMENT_ILLEGIBLE',
+      });
+    });
+
+    it('NEVER carries the reviewer’s prose', async () => {
+      // The reason CODE is a stable, translatable fact the provider can act on.
+      // The reviewer's note is internal writing about a person, and Sprint
+      // 9B.5 already keeps it off the notification for the same reason.
+      const secret = 'internal note: claimant seems evasive';
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+      await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/request-action`)
+        .send({ reasonCode: 'DOCUMENT_ILLEGIBLE', note: secret });
+
+      currentUser = { id: OWNER };
+      const raw = JSON.stringify(
+        (await request(http).get('/v1/me/provider/verification/case')).body,
+      );
+
+      expect(raw).not.toContain(secret);
+      expect(raw).not.toContain('reviewerNotes');
+      expect(raw).not.toContain('evasive');
+    });
+
+    it('carries no reviewer identity, storage key or internal id', async () => {
+      await seedCase('SUBMITTED');
+      currentUser = { id: OWNER };
+      const raw = JSON.stringify(
+        (await request(http).get('/v1/me/provider/verification/case')).body,
+      );
+
+      for (const forbidden of [
+        'reviewerNotes',
+        'assignedToUserId',
+        'storageKey',
+        'mediaAssetId',
+        REVIEWER,
+      ]) {
+        expect(raw).not.toContain(forbidden);
+      }
+    });
+
+    it('is null before any decision', async () => {
+      await seedCase('DRAFT');
+      currentUser = { id: OWNER };
+      const res = await request(http).get('/v1/me/provider/verification/case');
+      expect(res.body.case.latestDecision).toBeNull();
+    });
+  });
 });
