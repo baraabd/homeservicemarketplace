@@ -140,6 +140,54 @@ describe('validateEnv', () => {
         /MONGODB_URI/,
       );
     });
+
+    // ── Sprint 9B.14 — the dev shortcut that must not exist in production ──
+
+    it('refuses AUTH_REQUIRE_EMAIL_VERIFICATION=false in production', () => {
+      // With it off, `register` marks the account verified and ACTIVE itself
+      // and hands back a challenge that will never verify. Locally that saves
+      // a round-trip; in production it is a signup funnel with no proof of
+      // mailbox control at the bottom of it.
+      expect(() =>
+        validateEnv({
+          ...baseEnv,
+          NODE_ENV: 'production',
+          AUTH_REQUIRE_EMAIL_VERIFICATION: 'false',
+        }),
+      ).toThrow(/AUTH_REQUIRE_EMAIL_VERIFICATION/);
+    });
+
+    it('names what is wrong with it, not just the variable', () => {
+      // An operator reading a boot failure needs to know the consequence, or
+      // the temptation is to assume the check is over-strict and remove it.
+      expect(() =>
+        validateEnv({
+          ...baseEnv,
+          NODE_ENV: 'production',
+          AUTH_REQUIRE_EMAIL_VERIFICATION: '0',
+        }),
+      ).toThrow(/without an OTP/);
+    });
+
+    it('accepts it in production when it is on', () => {
+      expect(() =>
+        validateEnv({
+          ...baseEnv,
+          NODE_ENV: 'production',
+          AUTH_REQUIRE_EMAIL_VERIFICATION: 'true',
+        }),
+      ).not.toThrow();
+    });
+
+    it('still lets development turn it off', () => {
+      // The convenience is real and stays available where it is safe.
+      const env = validateEnv({
+        ...baseEnv,
+        NODE_ENV: 'development',
+        AUTH_REQUIRE_EMAIL_VERIFICATION: 'false',
+      });
+      expect(env.AUTH_REQUIRE_EMAIL_VERIFICATION).toBe(false);
+    });
   });
 
   describe('coercion helpers', () => {

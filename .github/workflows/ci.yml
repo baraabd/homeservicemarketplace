@@ -408,6 +408,13 @@ jobs:
           pnpm --filter @homeservicemarketplace/database build
 
       - name: Boot the production image
+        # SMTP_HOST is required as of Sprint 9B.14: a production process now
+        # REFUSES to boot without a mail host, because the in-memory adapter
+        # would accept every message and deliver none — signup, verification and
+        # password reset would each answer 202 while nothing arrived, behind a
+        # green health check. This boot is production-shaped, so it configures
+        # mail like production must. The host is never dialled: createTransport()
+        # does not connect, and this job sends no mail.
         run: |
           docker run -d --name hsm-api-ci --network host \
             -e NODE_ENV=production -e APP_ENV=prod -e PORT=4000 -e LOG_LEVEL=info \
@@ -415,6 +422,7 @@ jobs:
             -e REDIS_HOST=localhost -e REDIS_PORT=6379 \
             -e JWT_ACCESS_SECRET="ci_only_dummy_secret_at_least_32_chars_long" \
             -e REALTIME_SOCKET_IO=true \
+            -e SMTP_HOST="smtp.invalid" -e SMTP_PORT=587 \
             hsm-api:ci
 
       - name: Wait for health

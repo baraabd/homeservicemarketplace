@@ -49,6 +49,25 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     );
   }
 
+  // Sprint 9B.14 — the dev shortcut that skips the OTP round-trip entirely.
+  //
+  // With this false, `register` sets `emailVerifiedAt` and `status: ACTIVE`
+  // itself and returns an opaque challenge that will never verify. That is a
+  // reasonable convenience locally. In production it means ANY address can be
+  // registered and used without ever proving control of the mailbox — account
+  // takeover by typo, and a signup funnel with no proof of identity at the
+  // bottom of it.
+  //
+  // The schema already defaults it to true. This makes the unsafe value
+  // unreachable rather than merely unusual, which is the same treatment the
+  // registration throttle above already gets.
+  if (hardened && !env.AUTH_REQUIRE_EMAIL_VERIFICATION) {
+    issues.push(
+      `  - AUTH_REQUIRE_EMAIL_VERIFICATION: must be true when NODE_ENV=${env.NODE_ENV} — ` +
+        `with it off, registration marks accounts verified and ACTIVE without an OTP`,
+    );
+  }
+
   if (issues.length > 0) {
     throw new Error(`Invalid environment configuration:\n${issues.join('\n')}`);
   }
