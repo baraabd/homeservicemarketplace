@@ -100,14 +100,18 @@ export class ProviderVerificationCaseController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: CreateVerificationCaseDto,
   ): Promise<CreateVerificationCaseResponse> {
+    // No cast. Sprint 9B.13 aliased ProviderCaseView to the published
+    // contract, so if the mapper ever drifts from it again this line stops
+    // compiling — which is the only reason the drift that shipped in 9B.11 was
+    // able to reach a browser at all.
     return this.cases.createOrResume(user.id, {
       idempotencyKey: body.idempotencyKey ?? null,
-    }) as unknown as Promise<CreateVerificationCaseResponse>;
+    });
   }
 
   @Get('case')
   @HttpCode(HttpStatus.OK)
   current(@CurrentUser() user: AuthenticatedUser): Promise<CurrentVerificationCaseResponse> {
-    return this.cases.current(user.id) as unknown as Promise<CurrentVerificationCaseResponse>;
+    return this.cases.current(user.id);
   }
 }

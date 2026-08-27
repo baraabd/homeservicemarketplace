@@ -1,5 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma, PrismaTx, VerificationCaseState } from '@homeservicemarketplace/database';
+import type {
+  MediaScanStateCode,
+  ProviderVerificationCase,
+  ProviderVerificationDecisionSummary,
+  ProviderVerificationRequirement,
+  VerificationCaseStateCode,
+  VerificationDocumentKindCode,
+} from '@homeservicemarketplace/contracts';
 
 import { PrismaService } from '../../../../infrastructure/prisma/prisma.service';
 import { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
@@ -30,26 +38,22 @@ export interface CreateCaseInput {
   idempotencyKey?: string | null;
 }
 
-export interface ProviderCaseView {
-  id: string;
-  state: VerificationCaseState;
-  policyVersion: string;
-  createdAt: string;
-  submittedAt: string | null;
-  /** What the provider still has to produce, from the case's own snapshot. */
-  requirements: unknown;
-  /** Sprint 9B.11 — what has been supplied, and each file's scan verdict. */
-  documents: Array<{
-    id: string;
-    kind: string;
-    serviceCategoryId: string | null;
-    scanState: string;
-    uploadedAt: string;
-    superseded: boolean;
-  }>;
-  /** Sprint 9B.11 — the latest reviewer decision as a CODE. Never the notes. */
-  latestDecision: { outcome: string; reasonCode: string; decidedAt: string } | null;
-}
+/**
+ * What this service returns IS the published contract — not a lookalike.
+ *
+ * Sprint 9B.13. This used to be a structurally similar interface of its own
+ * (`state: VerificationCaseState`, `kind: string`, `scanState: string`), and
+ * the controller bridged the gap with `as unknown as`. That cast is a promise
+ * with nothing behind it: the wire shape drifted away from
+ * `ProviderVerificationCase` — `requirements` became a nested snapshot object
+ * — and neither the compiler nor a single test noticed, because every API test
+ * asserted the shape the API produced rather than the shape it published.
+ *
+ * Aliasing the contract directly is what makes the compiler the guard. The
+ * mapper below now cannot return anything the client is not expecting, and the
+ * controller needs no cast at all, so the next drift is a build failure.
+ */
+export type ProviderCaseView = ProviderVerificationCase;
 
 export interface CreateCaseResult {
   case: ProviderCaseView;
@@ -339,29 +343,108 @@ interface CaseRowForView {
   decisions?: Array<{ outcome: string; reasonCode: string; decidedAt: Date }>;
 }
 
+/**
+ * Unwrap the stored snapshot into the two fields the CONTRACT publishes.
+ *
+ * Sprint 9B.13 — this used to hand the raw snapshot straight out as
+ * `requirements`, so the wire carried
+ *
+ *   requirements: { requirements: [...], policyVersion, verificationRequired }
+ *
+ * while `ProviderVerificationCase` declares
+ *
+ *   requirements: ProviderVerificationRequirement[]
+ *   verificationRequired: boolean
+ *
+ * The mismatch survived a controller cast (`as unknown as`), so nothing in the
+ * API noticed, and every API test asserted the shape the API produced rather
+ * than the shape it promised. The web client, written against the contract,
+ * calls `case.requirements.filter(...)` — which throws on an object, and the
+ * object is truthy so its `?? []` guard never fired. The provider verification
+ * screen was broken for every provider who had a case at all.
+ *
+ * A snapshot is JSON on a row that may predate any given shape, so this reads
+ * defensively and returns an empty requirement list rather than throwing: a
+ * provider seeing "nothing outstanding" on an unreadable snapshot is wrong, but
+ * a 500 on their own verification screen is worse and tells them nothing.
+ */
+/** The document kinds the CONTRACT admits. A snapshot naming anything else is
+ *  either older than the current catalogue or corrupt; either way the client
+ *  has no label for it and no screen to satisfy it on. */
+const CONTRACT_DOCUMENT_KINDS: readonly VerificationDocumentKindCode[] = [
+  'INDIVIDUAL_IDENTITY',
+  'BUSINESS_REGISTRATION',
+  'AUTHORIZED_REPRESENTATIVE_IDENTITY',
+  'CATEGORY_LICENSE',
+];
+
+function isContractKind(value: unknown): value is VerificationDocumentKindCode {
+  return (
+    typeof value === 'string' && (CONTRACT_DOCUMENT_KINDS as readonly string[]).includes(value)
+  );
+}
+
+export function unwrapSnapshot(snapshot: Prisma.JsonValue | null | undefined): {
+  requirements: ProviderVerificationRequirement[];
+  verificationRequired: boolean;
+} {
+  const snap = (snapshot ?? {}) as {
+    requirements?: unknown;
+    verificationRequired?: unknown;
+  };
+  const list = Array.isArray(snap.requirements) ? snap.requirements : [];
+
+  const requirements: ProviderVerificationRequirement[] = [];
+  for (const entry of list) {
+    const item = (entry ?? {}) as { kind?: unknown; serviceCategoryId?: unknown };
+    // An entry whose kind is not a contract code is DROPPED, not coerced.
+    // Emitting `{ kind: '' }` would typecheck only with a cast and would reach
+    // the client as a checklist row with no label and no way to satisfy it.
+    if (!isContractKind(item.kind)) continue;
+    requirements.push({
+      kind: item.kind,
+      serviceCategoryId: typeof item.serviceCategoryId === 'string' ? item.serviceCategoryId : null,
+    });
+  }
+
+  return {
+    requirements,
+    // Absent means "required". The safe reading of a snapshot we cannot fully
+    // parse is that verification applies, never that it does not — the same
+    // fail-closed choice the policy makes for `verificationRequired`.
+    verificationRequired: snap.verificationRequired !== false,
+  };
+}
+
 function toView(row: CaseRowForView): ProviderCaseView {
   const decision = row.decisions?.[0];
+  const snapshot = unwrapSnapshot(row.requirementsSnapshot);
   return {
     id: row.id,
-    state: row.state,
+    // Database enum -> contract union. Narrowing at the LEAF, where the two
+    // vocabularies genuinely coincide (a Prisma enum value is one of these by
+    // construction), rather than casting the whole object and losing every
+    // other field's check with it.
+    state: row.state as VerificationCaseStateCode,
     policyVersion: row.policyVersion,
     createdAt: row.createdAt.toISOString(),
     submittedAt: row.submittedAt ? row.submittedAt.toISOString() : null,
-    requirements: row.requirementsSnapshot ?? null,
+    requirements: snapshot.requirements,
+    verificationRequired: snapshot.verificationRequired,
     documents: (row.documents ?? []).map((d) => ({
       id: d.id,
-      kind: d.kind,
+      kind: d.kind as VerificationDocumentKindCode,
       serviceCategoryId: d.serviceCategoryId,
       // The media pipeline's verdict, surfaced verbatim so the client can tell
       // "still scanning" from "quarantined" from "refused before scanning" —
       // three different things to say to the person waiting.
-      scanState: d.mediaAsset.scanState,
+      scanState: d.mediaAsset.scanState as MediaScanStateCode,
       uploadedAt: d.uploadedAt.toISOString(),
       superseded: d.supersededAt !== null,
     })),
     latestDecision: decision
       ? {
-          outcome: decision.outcome,
+          outcome: decision.outcome as ProviderVerificationDecisionSummary['outcome'],
           reasonCode: decision.reasonCode,
           decidedAt: decision.decidedAt.toISOString(),
         }
