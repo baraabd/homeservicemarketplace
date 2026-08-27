@@ -233,6 +233,31 @@ export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
     min: 1,
     max: 200,
   },
+  {
+    // ── Sprint 9B.10 — provider portfolio ────────────────────────────────
+    //
+    // How many published pieces of work a provider may show. A ceiling rather
+    // than a target: the gallery is a sample, and an unbounded one becomes a
+    // storage bill and a moderation queue nobody drains.
+    key: 'provider_portfolio_max_items',
+    type: 'integer',
+    description:
+      'Maximum published portfolio items per provider. Existing items over a lowered limit are kept; only new additions are refused.',
+    default: 12,
+    min: 1,
+    max: 60,
+  },
+  {
+    // Per-file ceiling, in bytes. Below the platform-wide media cap on
+    // purpose: a portfolio photo is a phone snapshot of finished work, and the
+    // gallery renders many of them at once.
+    key: 'provider_portfolio_max_file_bytes',
+    type: 'integer',
+    description: 'Maximum size of a single portfolio image, in bytes.',
+    default: 5 * 1024 * 1024,
+    min: 64 * 1024,
+    max: 10 * 1024 * 1024,
+  },
 ] as const;
 
 export type AdminSettingKey = (typeof ADMIN_SETTINGS_SCHEMA)[number]['key'];

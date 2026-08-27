@@ -1,3 +1,5 @@
+import { AppConfigService } from '../../config/app-config.service';
+import { portfolioOwnerRef } from '../provider/portfolio/portfolio-policy';
 import {
   Body,
   Controller,
@@ -75,6 +77,7 @@ export class MediaController {
   constructor(
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly local: LocalDiskStorageAdapter,
+    private readonly config: AppConfigService,
   ) {}
 
   // ─── Presign batch ───────────────────────────────────────────────────────
@@ -93,6 +96,30 @@ export class MediaController {
     const items = await Promise.all(
       body.items.map((item) => {
         const ext = extensionForContentType(item.contentType as ContentType);
+        // Sprint 9B.10 — namespace by purpose, from a WHITELIST. Portfolio
+        // media is public and permanent; request media is public and tied to a
+        // job. Separate prefixes let a cleanup job, a bucket policy and a CDN
+        // rule scope to one without parsing anything, and let the portfolio
+        // route refuse a key that did not come from its own namespace.
+        //
+        // Note what is NOT here: the caller's filename, and any caller-supplied
+        // prefix. The purpose selects between two server-owned constants.
+        // Portfolio keys carry an OPAQUE owner ref, because a portfolio image
+        // URL is public: it is handed to every customer who views the gallery,
+        // and a raw user id in that URL publishes an internal identifier that
+        // correlates the provider across every other surface.
+        //
+        // Request media keeps the existing layout — those URLs are shown only
+        // to the seeker and the bidding providers, and changing the scheme
+        // would orphan every URL already stored in ServiceRequest.mediaUrls[].
+        if (body.purpose === 'portfolio') {
+          const ref = portfolioOwnerRef(user.id, String(this.config.get('JWT_ACCESS_SECRET')));
+          return this.storage.presignUpload({
+            key: `portfolio/${ref}/${randomUUID()}.${ext}`,
+            contentType: item.contentType as ContentType,
+            sizeBytes: item.sizeBytes,
+          });
+        }
         const key = `requests/${user.id}/${randomUUID()}.${ext}`;
         return this.storage.presignUpload({
           key,

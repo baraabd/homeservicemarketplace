@@ -26,3 +26,6 @@ export * from './verification';
 export * from './capabilities';
 // Sprint 9B.9 — the redacted marketplace preview. Read-only by construction.
 export * from './preview';
+// Sprint 9B.10 — the public provider portfolio. Strictly separate from the
+// RESTRICTED verification evidence surface.
+export * from './portfolio';
