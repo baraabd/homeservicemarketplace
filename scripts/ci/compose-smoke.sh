@@ -23,13 +23,24 @@
 set -euo pipefail
 
 COMPOSE_FILE="infra/docker/docker-compose.yml"
-DC=(docker compose -f "$COMPOSE_FILE" --profile app)
+# An optional extra -f, so the stack can be run in ISOLATION beside a
+# developer's already-running one. The base file pins container_name and host
+# ports; an override that renames and remaps both, combined with its own
+# COMPOSE_PROJECT_NAME, is what keeps this script's `down -v` away from the
+# developer's data volumes. Empty by default, so CI is unchanged.
+COMPOSE_EXTRA_FILE="${COMPOSE_EXTRA_FILE:-}"
+DC=(docker compose -f "$COMPOSE_FILE")
+if [ -n "$COMPOSE_EXTRA_FILE" ]; then DC+=(-f "$COMPOSE_EXTRA_FILE"); fi
+DC+=(--profile app)
 # Overridable so the test can run on a machine that already has something on
 # 4000. Compose reads the same variable for the published port AND for
 # PUBLIC_API_URL, so the presigned upload URLs the API mints stay reachable.
 export API_HOST_PORT="${API_HOST_PORT:-4000}"
 API="http://localhost:$API_HOST_PORT"
-MAILPIT="http://localhost:8025"
+# Overridable for the same reason as API_HOST_PORT above: an isolated run
+# republishes Mailpit somewhere else.
+export MAILPIT_HOST_PORT="${MAILPIT_HOST_PORT:-8025}"
+MAILPIT="http://localhost:$MAILPIT_HOST_PORT"
 BOOT_TIMEOUT_SECONDS="${BOOT_TIMEOUT_SECONDS:-180}"
 
 pass_count=0
