@@ -47,6 +47,7 @@ import {
 } from 'recharts';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { PortfolioSection } from './portfolio/PortfolioSection';
+import { ProviderVerificationScreen } from '../../features/provider-verification/components/ProviderVerificationScreen';
 // Sprint 5.3 retired the legacy `useEcosystem` mock from this file —
 // LiveJobsScreen + MyBidsScreen read from the API. Sprint 5.6 (refined)
 // migrated the wallet to the canonical /v1/provider/earnings/* surface:
@@ -2476,6 +2477,15 @@ function ProviderProfileScreen() {
               />
             </button>
           ))}
+        </div>
+
+        {/* Sprint 9B.11 — the verification journey.
+            Above the gallery because it is the thing that decides whether the
+            provider can work at all; the gallery is what they show once they
+            can. Both live on the profile screen because both are facts about
+            the provider rather than about a job. */}
+        <div className="px-5 pb-2">
+          <ProviderVerificationScreen />
         </div>
 
         {/* Sprint 9B.10 — the provider's public gallery.
