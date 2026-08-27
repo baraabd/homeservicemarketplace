@@ -453,25 +453,40 @@ step "8c. Outbox worker is running (Sprint 6)"
 # invisible.
 API_LOG="$(docker logs "$API_CID" 2>&1)"
 
-if ! printf '%s' "$API_LOG" | grep -q "Outbox worker started"; then
+# grep -q on a HERESTRING, never through a pipe.
+#
+# Sprint 9B.14. This was `printf '%s' "$API_LOG" | grep -q ...`, and combined
+# with `set -o pipefail` at the top of this file that is a false negative
+# waiting for a big log:
+# grep -q exits the instant it matches, printf dies of SIGPIPE (141), and
+# pipefail hands the PIPELINE that 141 — so a match that is found EARLY reports
+# as not found. The bigger the log and the sooner the match, the more reliably
+# it lies, which is why it fired on cold, freshly built stacks and passed on
+# warm re-runs. Reproducible in four lines of bash, and it cost two
+# investigations before anyone read the exit code rather than the message.
+if ! grep -q "Outbox worker started" <<<"$API_LOG"; then
   echo "  ----- outbox-related log lines -----"
-  printf '%s' "$API_LOG" | grep -iE "outbox" | tail -20 || echo "  (no line mentions outbox at all)"
+  grep -iE "outbox" <<<"$API_LOG" | tail -20 || echo "  (no line mentions outbox at all)"
   echo "  ----- last 40 lines of the api log -----"
-  printf '%s' "$API_LOG" | tail -40
+  tail -40 <<<"$API_LOG"
 
   # Distinguish "switched off" from "never got there". They need opposite
   # responses — a config change versus a boot investigation — and the original
   # single message conflated them.
-  if printf '%s' "$API_LOG" | grep -q "Outbox worker DISABLED"; then
+  if grep -q "Outbox worker DISABLED" <<<"$API_LOG"; then
     fail "the outbox worker is DISABLED (OUTBOX_WORKER_ENABLED=false in this environment)"
   fi
   fail "the outbox worker did not start; events would accumulate undelivered"
 fi
 ok "outbox worker started with its handlers registered"
 
-if printf '%s' "$API_LOG" | grep -q "outbox.dead_letter"; then
+# Inverted, so the pipefail/SIGPIPE trap above was WORSE here: a log
+# containing dead letters would have reported none.
+if grep -q "outbox.dead_letter" <<<"$API_LOG"; then
   echo "  ----- dead-lettered events -----"
-  printf '%s' "$API_LOG" | grep -A 8 "outbox.dead_letter" | head -40
+  # Same reason: `head` closing the pipe would SIGPIPE `grep`, and under
+  # `set -e` + pipefail that aborts the script before `fail` can say why.
+  grep -A 8 "outbox.dead_letter" <<<"$API_LOG" | head -40 || true
   fail "an outbox event dead-lettered during boot"
 fi
 ok "no dead-lettered outbox events"
