@@ -378,6 +378,32 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
     expect((await work()).status).toBe(403);
   });
 
+  it('no recognition flag buys work access — VIP, Featured, verified or a paid tier', async () => {
+    // Sprint 9B.13. ADR 0005 axis 5: subscription and recognition may change
+    // what a provider is SHOWN, and must never change what they are ALLOWED.
+    // The capability matrix asserts that against the service; this asserts it
+    // at the HTTP boundary with the flags armed, which is where a bypass would
+    // actually be attempted.
+    //
+    // Every flag a future "VIP" or "Featured" feature would plausibly reach
+    // for is set at once, directly in the database — the strongest form of the
+    // attempt, since no API accepts these from a client at all.
+    await prisma.providerProfile.update({
+      where: { id: PP },
+      data: { verified: true, topPro: true },
+    });
+
+    // Still denied. The only thing that opens work is a live grant.
+    expect((await work()).status).toBe(403);
+
+    const grants = await grantsOf();
+    expect(grants).toHaveLength(0);
+
+    // And the flags did not quietly become a verification state either.
+    const profile = await profileRow();
+    expect(profile.verificationState).not.toBe('VERIFIED');
+  });
+
   it('approval opens work access, and the grant carries a real expiry', async () => {
     const caseId = await seedCase();
     expect((await work()).status).toBe(403);

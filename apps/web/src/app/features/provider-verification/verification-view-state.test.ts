@@ -333,3 +333,111 @@ describe('every declared state is reachable', () => {
     expect(reached.size).toBe(14);
   });
 });
+
+// ── Sprint 9B.13 — the shape that actually arrives on the wire ────────────
+//
+// Every fixture above is contract-shaped, which is exactly why this file was
+// green while the provider verification screen crashed in production. The API
+// published `requirements: ProviderVerificationRequirement[]` and sent
+//
+//   requirements: { requirements: [...], policyVersion, verificationRequired }
+//
+// for three sprints. An object is truthy, so `kase?.requirements ?? []` passed
+// it through, and `.filter` threw. Nothing here could have caught that,
+// because nothing here ever asked what the server really sends.
+//
+// The API is fixed and the compiler now guards it. These tests cover the half
+// a client can control: what this function does with a payload it did not
+// expect, and that the ordinary shapes still behave.
+
+describe('what a real case carries', () => {
+  it('reads an empty requirement list as nothing outstanding', () => {
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      verificationCase: kase({ requirements: [], documents: [] }),
+      profile: PROFILE,
+    });
+    expect(view.outstanding).toEqual([]);
+  });
+
+  it('keeps every requirement with its own category', () => {
+    // Two licences for two different trades are two different obligations, and
+    // collapsing them by kind would tell a plumber-electrician they were done
+    // after sending one certificate.
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      verificationCase: kase({
+        requirements: [
+          req(),
+          req({ kind: 'CATEGORY_LICENSE', serviceCategoryId: 'cat-plumbing' }),
+          req({ kind: 'CATEGORY_LICENSE', serviceCategoryId: 'cat-electrical' }),
+        ],
+        documents: [],
+      }),
+      profile: PROFILE,
+    });
+
+    expect(view.outstanding).toHaveLength(3);
+    expect(view.outstanding.map((r) => r.serviceCategoryId)).toEqual([
+      null,
+      'cat-plumbing',
+      'cat-electrical',
+    ]);
+  });
+
+  it('a document satisfies only the requirement it was sent for', () => {
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      verificationCase: kase({
+        requirements: [
+          req({ kind: 'CATEGORY_LICENSE', serviceCategoryId: 'cat-plumbing' }),
+          req({ kind: 'CATEGORY_LICENSE', serviceCategoryId: 'cat-electrical' }),
+        ],
+        documents: [
+          doc({ kind: 'CATEGORY_LICENSE', serviceCategoryId: 'cat-plumbing', scanState: 'CLEAN' }),
+        ],
+      }),
+      profile: PROFILE,
+    });
+
+    expect(view.outstanding).toHaveLength(1);
+    expect(view.outstanding[0].serviceCategoryId).toBe('cat-electrical');
+  });
+});
+
+describe('a payload the server should not have sent', () => {
+  it.each([
+    ['the nested snapshot that actually shipped', { requirements: [req()], policyVersion: 'v1' }],
+    ['null', null],
+    ['a string', 'INDIVIDUAL_IDENTITY'],
+    ['a number', 7],
+  ])('survives requirements as %s', (_label, requirements) => {
+    // Not a hypothetical: the first row is the exact object the API sent for
+    // three sprints. A blank checklist is recoverable; a white screen on the
+    // one page that tells a provider what to do next is not.
+    expect(() =>
+      deriveVerificationView({
+        capabilities: CAPS(),
+        verificationCase: kase({ requirements }),
+        profile: PROFILE,
+      }),
+    ).not.toThrow();
+
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      verificationCase: kase({ requirements }),
+      profile: PROFILE,
+    });
+    expect(view.outstanding).toEqual([]);
+  });
+
+  it('survives documents arriving as something other than a list', () => {
+    expect(() =>
+      deriveVerificationView({
+        capabilities: CAPS(),
+        verificationCase: kase({ documents: { 0: doc() } }),
+        profile: PROFILE,
+      }),
+    ).not.toThrow();
+  });
+});

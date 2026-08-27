@@ -1,4 +1,10 @@
-import { ProviderVerificationCaseService } from './provider-verification-case.service';
+import type { ProviderVerificationCase } from '@homeservicemarketplace/contracts';
+
+import {
+  ProviderVerificationCaseService,
+  unwrapSnapshot,
+  type ProviderCaseView,
+} from './provider-verification-case.service';
 
 // Sprint 9B.2 — the provider asks to start verification.
 //
@@ -313,5 +319,149 @@ describe('current', () => {
     const h = build({ cases: [older, newer] });
     const out = await h.service.current(USER);
     expect(out.case?.id).toBe('new');
+  });
+});
+
+// ── Sprint 9B.13 — the stored snapshot versus the published response ──────
+//
+// The case row keeps the resolution VERBATIM:
+//
+//   { requirements: [...], policyVersion, verificationRequired }
+//
+// because a reviewer's checklist and any later replay must not depend on the
+// policy row still existing, or still saying what it said that day. The
+// CONTRACT publishes something else — a flat array plus a boolean — and for
+// three sprints the API simply handed the snapshot out under the array's name.
+//
+// Nothing caught it. The controller cast `as unknown as`, so the compiler was
+// told not to look; every API test asserted the shape the API produced; and
+// the web tests fed themselves contract-shaped fixtures the API never sent.
+// The provider screen calls `requirements.filter(...)`, and an object is
+// truthy, so its `?? []` guard never fired: the screen threw for every
+// provider who had a case.
+//
+// These tests are about the MAPPER between the two shapes, and in particular
+// about what it does with input it cannot trust — the snapshot is JSON on a
+// row that may be older than any shape this code knows.
+
+describe('unwrapSnapshot — stored snapshot to published response', () => {
+  const snapshot = (over: Record<string, unknown> = {}) => ({
+    policyVersion: 'v1',
+    verificationRequired: true,
+    requirements: [{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null, fromVersion: 'v1' }],
+    ...over,
+  });
+
+  it('flattens the nested list into the contract array', () => {
+    const out = unwrapSnapshot(snapshot());
+    expect(Array.isArray(out.requirements)).toBe(true);
+    expect(out.requirements).toEqual([{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }]);
+  });
+
+  it('lifts verificationRequired to the top level as a boolean', () => {
+    expect(unwrapSnapshot(snapshot()).verificationRequired).toBe(true);
+    expect(unwrapSnapshot(snapshot({ verificationRequired: false })).verificationRequired).toBe(
+      false,
+    );
+  });
+
+  it('drops the snapshot-only bookkeeping, so no nested shape escapes', () => {
+    // `fromVersion` traces a checklist row back to the policy that demanded it,
+    // which is a reviewer's concern. The provider is told what to send.
+    const [first] = unwrapSnapshot(snapshot()).requirements;
+    expect(Object.keys(first).sort()).toEqual(['kind', 'serviceCategoryId']);
+  });
+
+  it('keeps each kind with its own category across several requirements', () => {
+    const out = unwrapSnapshot(
+      snapshot({
+        requirements: [
+          { kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null },
+          { kind: 'CATEGORY_LICENSE', serviceCategoryId: 'cat-plumbing' },
+          { kind: 'CATEGORY_LICENSE', serviceCategoryId: 'cat-electrical' },
+        ],
+      }),
+    );
+    expect(out.requirements).toEqual([
+      { kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null },
+      { kind: 'CATEGORY_LICENSE', serviceCategoryId: 'cat-plumbing' },
+      { kind: 'CATEGORY_LICENSE', serviceCategoryId: 'cat-electrical' },
+    ]);
+  });
+
+  it('an empty requirement list stays an empty ARRAY, never null', () => {
+    // The client maps over this. `null` would crash it just as the nested
+    // object did, for the same reason and with the same stack.
+    expect(unwrapSnapshot(snapshot({ requirements: [] })).requirements).toEqual([]);
+  });
+
+  describe('snapshots it cannot trust', () => {
+    it.each([
+      ['null', null],
+      ['undefined', undefined],
+      ['an empty object', {}],
+      ['a string', 'not-json-we-know'],
+      ['a list where an object belongs', [1, 2, 3]],
+      ['requirements as an object', { requirements: { kind: 'INDIVIDUAL_IDENTITY' } }],
+    ])('%s yields no requirements rather than throwing', (_label, value) => {
+      const out = unwrapSnapshot(value as never);
+      expect(out.requirements).toEqual([]);
+    });
+
+    it('fails CLOSED on verificationRequired when it cannot be read', () => {
+      // "We could not parse this" must never be read as "verification does not
+      // apply". Only an explicit `false` turns it off.
+      expect(unwrapSnapshot(null).verificationRequired).toBe(true);
+      expect(unwrapSnapshot({}).verificationRequired).toBe(true);
+      expect(unwrapSnapshot(snapshot({ verificationRequired: 'no' })).verificationRequired).toBe(
+        true,
+      );
+    });
+
+    it('DROPS a requirement whose kind is not a contract code', () => {
+      // Not coerced to `{ kind: '' }`. A checklist row the client has no label
+      // for is a row the provider cannot satisfy and cannot understand, and
+      // emitting one would only have been to satisfy the type checker.
+      const out = unwrapSnapshot(
+        snapshot({
+          requirements: [
+            { kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null },
+            { kind: 'SOMETHING_FROM_A_FUTURE_CATALOGUE', serviceCategoryId: null },
+            { serviceCategoryId: 'orphan' },
+            null,
+          ],
+        }),
+      );
+      expect(out.requirements).toEqual([{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }]);
+    });
+
+    it('normalises a non-string category to null rather than passing it through', () => {
+      const out = unwrapSnapshot(
+        snapshot({
+          requirements: [{ kind: 'CATEGORY_LICENSE', serviceCategoryId: 42 }],
+        }),
+      );
+      expect(out.requirements).toEqual([{ kind: 'CATEGORY_LICENSE', serviceCategoryId: null }]);
+    });
+  });
+
+  it('is the published contract at the type level, so drift stops compiling', () => {
+    // `ProviderCaseView` is an ALIAS of `ProviderVerificationCase`, not a
+    // lookalike, and the controller no longer casts. This assignment is the
+    // assertion: if the mapper's shape ever diverges again, this file fails to
+    // build long before anything reaches a browser.
+    const view: ProviderCaseView = {
+      id: 'c1',
+      state: 'DRAFT',
+      policyVersion: 'v1',
+      createdAt: new Date().toISOString(),
+      submittedAt: null,
+      verificationRequired: true,
+      requirements: unwrapSnapshot(snapshot()).requirements,
+      documents: [],
+      latestDecision: null,
+    };
+    const contract: ProviderVerificationCase = view;
+    expect(contract.requirements).toHaveLength(1);
   });
 });

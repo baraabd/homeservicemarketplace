@@ -114,8 +114,21 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
   const allowed = new Set(capabilities?.allowed ?? []);
   const reason = capabilities?.primaryReason ?? null;
 
-  const documents = kase?.documents ?? [];
-  const requirements = kase?.requirements ?? [];
+  // Both guards are `Array.isArray`, not `?? []`.
+  //
+  // Sprint 9B.13: the API published `requirements` as an ARRAY and sent a
+  // nested snapshot OBJECT for three sprints. An object is truthy, so `?? []`
+  // let it straight through and `.filter` threw — the provider verification
+  // screen crashed for every provider who had a case, while every test here
+  // passed against contract-shaped fixtures.
+  //
+  // The API is fixed and the compiler now guards it (ProviderCaseView is an
+  // alias of the contract). This stays because a client cannot verify what a
+  // server sent it: a stale deployment, a proxy, or a rolled-back API can all
+  // still put the wrong shape on the wire, and a provider looking at a blank
+  // checklist is recoverable where a white screen is not.
+  const documents = Array.isArray(kase?.documents) ? kase.documents : [];
+  const requirements = Array.isArray(kase?.requirements) ? kase.requirements : [];
   const outstanding = requirements.filter((r) => !satisfies(r, documents));
   const unusable = documents.filter(isUnusable);
   const scanning = documents.filter((d) => !d.superseded && d.scanState === 'PENDING');

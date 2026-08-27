@@ -163,4 +163,26 @@ describe('provider onboarding completeness policy', () => {
       expect(issue.field).toMatch(/^[a-zA-Z]+$/);
     }
   });
+  // ── Sprint 9B.13 ───────────────────────────────────────────────────────
+  //
+  // The wizard no longer SUPPLIES phoneVerified, because nothing in the system
+  // can set it (see provider-onboarding-wizard.service.ts). These two tests pin
+  // both halves of that decision, so neither can be lost by accident: the rule
+  // is intact for anyone who does supply an answer, and a candidate that is
+  // silent on the question is not judged on it.
+
+  it(`still refuses a candidate that reports an unverified phone`, () => {
+    // A number nobody proved they control is a contact method that does not
+    // work, and it is the channel a seeker uses when a provider is late. The
+    // day a verification channel ships, this is the rule that starts biting
+    // again — with no change here.
+    expect(fieldsOf(complete({ phoneVerified: false }))).toContain(`phoneNumber`);
+  });
+
+  it(`does not judge a candidate that is SILENT about phone verification`, () => {
+    // undefined means "not asked", which is the contract this policy already
+    // defines for every Sprint 8 field, so legacy profiles are not failed on
+    // data nobody ever collected from them.
+    expect(fieldsOf(complete({ phoneVerified: undefined }))).not.toContain(`phoneNumber`);
+  });
 });

@@ -302,3 +302,166 @@ for (const lang of ['en', 'ar'] as const) {
     });
   });
 }
+
+// ── Sprint 9B.13 — the two provider flows only a browser can walk ─────────
+//
+// Uploading is a three-call dance (prepare → PUT the bytes → finalize) driven
+// by a hidden file input and an XHR progress handler. A jsdom test can assert
+// that the calls were made; only a real browser can say that a provider who
+// picks a file, fails, and picks it again ends up with a document — which is
+// the actual path a phone on a bad connection takes.
+//
+// The resubmission loop is the other one: "changes requested" is where a real
+// application spends its time, and the screen has to move from asking for a
+// replacement to saying it is with the team, without a reload.
+
+/** Everything the upload dance needs, with each leg independently failable. */
+interface UploadStubs {
+  /** Status for the prepare call. 500 = the first attempt fails. */
+  prepareStatus?: number;
+  onFinalize?: () => void;
+}
+
+async function stubUpload(page: Page, stubs: UploadStubs): Promise<void> {
+  await page.route('**/v1/me/provider/verification/evidence/**', async (route) => {
+    const url = route.request().url();
+    const json = (body: unknown, s = 200) =>
+      route.fulfill({ status: s, contentType: 'application/json', body: JSON.stringify(body) });
+
+    if (url.includes('/prepare')) {
+      if (stubs.prepareStatus && stubs.prepareStatus !== 200) {
+        return json({ success: false, error: { code: 'INTERNAL' } }, stubs.prepareStatus);
+      }
+      return json({ assetId: 'a1', maxBytes: 10485760, expiresAt: '2099-01-01T00:00:00.000Z' });
+    }
+    if (url.includes('/content')) {
+      return json({ assetId: 'a1', sizeBytes: 12, detectedMimeType: 'application/pdf' });
+    }
+    if (url.includes('/finalize')) {
+      stubs.onFinalize?.();
+      return json({ documentId: 'd1', caseId: 'c1' });
+    }
+    return json({});
+  });
+}
+
+const A_PDF = {
+  name: 'passport.pdf',
+  mimeType: 'application/pdf',
+  buffer: Buffer.from('%PDF-1.4\n%%EOF\n', 'utf8'),
+};
+
+test.describe('provider verification — uploading on a phone', () => {
+  test.skip(({ viewport }) => (viewport?.width ?? 0) > 500, 'the provider app is a phone surface');
+
+  test('a failed upload says so, and the retry succeeds', async ({ page }) => {
+    let finalized = 0;
+    await openVerification(page, 'en', {
+      allowed: ['COMPLETE_ONBOARDING'],
+      verificationCase: kase({ state: 'DRAFT' }),
+    });
+    // Registered AFTER openVerification, so it wins over that helper's
+    // catch-all route for the evidence paths only.
+    await stubUpload(page, { prepareStatus: 500, onFinalize: () => (finalized += 1) });
+
+    await page.getByRole('button', { name: 'Add a document' }).click();
+    await page.getByLabel('Choose a document file').setInputFiles(A_PDF);
+
+    // A provider on a phone needs "try again", not a taxonomy of upload codes.
+    await expect(page.getByTestId('verification-error')).toBeVisible();
+    expect(finalized).toBe(0);
+
+    // Second attempt, same file, everything working.
+    await stubUpload(page, { onFinalize: () => (finalized += 1) });
+    await page.getByRole('button', { name: 'Add a document' }).click();
+    await page.getByLabel('Choose a document file').setInputFiles(A_PDF);
+
+    await expect.poll(() => finalized).toBe(1);
+    // The error does not linger past the attempt that cleared it.
+    await expect(page.getByTestId('verification-error')).toHaveCount(0);
+  });
+
+  test('the file picker is not in the tab order when uploading is impossible', async ({ page }) => {
+    // A control that cannot do anything is worse than absent for someone
+    // tabbing through: it is a stop with no outcome.
+    await openVerification(page, 'en', {
+      allowed: [],
+      verificationCase: kase({ state: 'SUBMITTED', submittedAt: '2026-08-02T00:00:00.000Z' }),
+    });
+
+    await expect(page.getByLabel('Choose a document file')).toHaveCount(0);
+  });
+});
+
+test.describe('provider verification — changes requested, then resubmitted', () => {
+  test.skip(({ viewport }) => (viewport?.width ?? 0) > 500, 'the provider app is a phone surface');
+
+  for (const lang of ['en', 'ar'] as const) {
+    const cta = lang === 'en' ? 'Replace the document' : 'استبدال المستند';
+    const title = lang === 'en' ? 'We need something changed' : 'نحتاج إلى تعديل';
+
+    test(`${lang}: the reviewer's reason is shown, and a replacement can be sent`, async ({
+      page,
+    }) => {
+      let finalized = 0;
+      await openVerification(page, lang, {
+        allowed: [],
+        verificationCase: kase({
+          state: 'ACTION_REQUIRED',
+          submittedAt: '2026-08-02T00:00:00.000Z',
+          documents: [
+            {
+              id: 'd0',
+              kind: 'INDIVIDUAL_IDENTITY',
+              serviceCategoryId: null,
+              scanState: 'CLEAN',
+              uploadedAt: '2026-08-02T00:00:00.000Z',
+              superseded: false,
+            },
+          ],
+          latestDecision: {
+            outcome: 'ACTION_REQUIRED',
+            reasonCode: 'DOCUMENT_ILLEGIBLE',
+            decidedAt: '2026-08-03T00:00:00.000Z',
+          },
+        }),
+      });
+      await stubUpload(page, { onFinalize: () => (finalized += 1) });
+
+      // The screen says what happened, in the reviewer's own reason CODE
+      // rendered as prose — never the reviewer's private note.
+      await expect(page.getByText(title)).toBeVisible();
+      await expect(page.getByTestId('verification-reason')).toBeVisible();
+
+      // And it offers the ONE action that moves them forward.
+      await page.getByRole('button', { name: cta }).click();
+      await page
+        .getByLabel(lang === 'en' ? 'Choose a document file' : 'اختر ملف المستند')
+        .setInputFiles(A_PDF);
+
+      await expect.poll(() => finalized).toBe(1);
+    });
+  }
+
+  test('keyboard alone reaches the replacement action, with a visible focus ring', async ({
+    page,
+  }) => {
+    await openVerification(page, 'en', {
+      allowed: [],
+      verificationCase: kase({
+        state: 'ACTION_REQUIRED',
+        submittedAt: '2026-08-02T00:00:00.000Z',
+        latestDecision: {
+          outcome: 'ACTION_REQUIRED',
+          reasonCode: 'DOCUMENT_ILLEGIBLE',
+          decidedAt: '2026-08-03T00:00:00.000Z',
+        },
+      }),
+    });
+
+    const cta = page.getByRole('button', { name: 'Replace the document' });
+    await cta.focus();
+    await expect(cta).toBeFocused();
+    await expectVisibleFocusIndicator(cta, 'replace-document CTA');
+  });
+});
