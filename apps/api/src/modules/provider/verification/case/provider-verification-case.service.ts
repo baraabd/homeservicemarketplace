@@ -38,6 +38,17 @@ export interface ProviderCaseView {
   submittedAt: string | null;
   /** What the provider still has to produce, from the case's own snapshot. */
   requirements: unknown;
+  /** Sprint 9B.11 — what has been supplied, and each file's scan verdict. */
+  documents: Array<{
+    id: string;
+    kind: string;
+    serviceCategoryId: string | null;
+    scanState: string;
+    uploadedAt: string;
+    superseded: boolean;
+  }>;
+  /** Sprint 9B.11 — the latest reviewer decision as a CODE. Never the notes. */
+  latestDecision: { outcome: string; reasonCode: string; decidedAt: string } | null;
 }
 
 export interface CreateCaseResult {
@@ -135,6 +146,7 @@ export class ProviderVerificationCaseService {
     const profile = await this.ownProfile(userId);
     const rows = await this.prisma.client.verificationCase.findMany({
       where: { providerProfileId: profile.id },
+      select: PROVIDER_CASE_SELECT,
       orderBy: [{ createdAt: 'desc' }],
     });
     if (rows.length === 0) return { case: null };
@@ -273,14 +285,62 @@ function translateWriteError(err: unknown): AppError {
   throw err;
 }
 
-function toView(row: {
+/** The columns a provider may see about their own case.
+ *
+ *  NAMED, not spread. `reviewerNotes` sits on the same row and must never
+ *  reach this surface: it is a reviewer's internal prose about a person, and
+ *  Sprint 9B.5 already keeps it off the notification for the same reason. A
+ *  `select` that named the row wholesale would leak it the first time someone
+ *  added a field. */
+export const PROVIDER_CASE_SELECT = {
+  id: true,
+  state: true,
+  policyVersion: true,
+  createdAt: true,
+  submittedAt: true,
+  requirementsSnapshot: true,
+  documents: {
+    select: {
+      id: true,
+      kind: true,
+      serviceCategoryId: true,
+      uploadedAt: true,
+      supersededAt: true,
+      mediaAsset: { select: { scanState: true } },
+    },
+    orderBy: [{ uploadedAt: 'asc' }],
+  },
+  decisions: {
+    select: { outcome: true, reasonCode: true, decidedAt: true },
+    orderBy: [{ decidedAt: 'desc' }],
+    take: 1,
+  },
+  // `satisfies` rather than an annotation or `as const`: it CHECKS the shape
+  // against Prisma's select type while leaving the literals narrow enough for
+  // Prisma to infer the row type. An annotation widens the result to the whole
+  // model; `as const` makes the orderBy arrays readonly, which Prisma rejects.
+} satisfies Prisma.VerificationCaseSelect;
+
+interface CaseRowForView {
   id: string;
   state: VerificationCaseState;
   policyVersion: string;
   createdAt: Date;
   submittedAt: Date | null;
   requirementsSnapshot?: Prisma.JsonValue | null;
-}): ProviderCaseView {
+  documents?: Array<{
+    id: string;
+    kind: string;
+    serviceCategoryId: string | null;
+    uploadedAt: Date;
+    supersededAt: Date | null;
+    mediaAsset: { scanState: string };
+  }>;
+  decisions?: Array<{ outcome: string; reasonCode: string; decidedAt: Date }>;
+}
+
+function toView(row: CaseRowForView): ProviderCaseView {
+  const decision = row.decisions?.[0];
   return {
     id: row.id,
     state: row.state,
@@ -288,5 +348,23 @@ function toView(row: {
     createdAt: row.createdAt.toISOString(),
     submittedAt: row.submittedAt ? row.submittedAt.toISOString() : null,
     requirements: row.requirementsSnapshot ?? null,
+    documents: (row.documents ?? []).map((d) => ({
+      id: d.id,
+      kind: d.kind,
+      serviceCategoryId: d.serviceCategoryId,
+      // The media pipeline's verdict, surfaced verbatim so the client can tell
+      // "still scanning" from "quarantined" from "refused before scanning" —
+      // three different things to say to the person waiting.
+      scanState: d.mediaAsset.scanState,
+      uploadedAt: d.uploadedAt.toISOString(),
+      superseded: d.supersededAt !== null,
+    })),
+    latestDecision: decision
+      ? {
+          outcome: decision.outcome,
+          reasonCode: decision.reasonCode,
+          decidedAt: decision.decidedAt.toISOString(),
+        }
+      : null,
   };
 }
