@@ -46,6 +46,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
+import { PortfolioSection } from './portfolio/PortfolioSection';
 // Sprint 5.3 retired the legacy `useEcosystem` mock from this file —
 // LiveJobsScreen + MyBidsScreen read from the API. Sprint 5.6 (refined)
 // migrated the wallet to the canonical /v1/provider/earnings/* surface:
@@ -2475,6 +2476,15 @@ function ProviderProfileScreen() {
               />
             </button>
           ))}
+        </div>
+
+        {/* Sprint 9B.10 — the provider's public gallery.
+            Placed on the profile screen because a portfolio IS profile
+            content: it is gated on EDIT_OWN_PROFILE server-side, and it sits
+            with the other things a provider edits about themselves rather
+            than behind a tab of its own. */}
+        <div className="px-5 pb-6">
+          <PortfolioSection />
         </div>
 
         {/* Phase 5 Bug 4 — Sign Out wired to useAuth().logout() (clears
