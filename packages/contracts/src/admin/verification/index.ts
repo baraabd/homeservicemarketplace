@@ -29,6 +29,7 @@ export * from './request/update-review-notes.request';
 export * from './request/list-provider-audit.query';
 export * from './response/admin-provider-summary';
 export * from './response/admin-verification-case';
+export * from './response/admin-verification-queue';
 export * from './response/list-admin-providers.response';
 export * from './response/admin-provider-mutation.response';
 export * from './response/provider-audit-event';

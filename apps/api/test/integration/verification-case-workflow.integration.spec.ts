@@ -793,4 +793,132 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       expect(res.body.case.latestDecision).toBeNull();
     });
   });
+
+  // ── Sprint 9B.12 — what a REVIEWER needs that was not on the surface ────
+  describe('the reviewer view of work access', () => {
+    it('reports no grant as null rather than as a false one', async () => {
+      await seedCase('SUBMITTED');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const res = await request(http).get(`/v1/admin/verification/cases/${CASE_ID}`);
+      expect(res.status).toBe(200);
+      expect(res.body.workAccess).toBeNull();
+    });
+
+    it('reports a live grant as active, with its source', async () => {
+      await seedCase('VERIFIED');
+      await prisma.providerWorkAccessGrant.create({
+        data: {
+          providerProfileId: PP,
+          status: 'ACTIVE',
+          source: 'VERIFIED_DOCUMENTS',
+          reason: 'TEST',
+          grantedAt: new Date(Date.now() - 1000),
+          expiresAt: new Date(Date.now() + 86_400_000),
+        },
+      });
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const res = await request(http).get(`/v1/admin/verification/cases/${CASE_ID}`);
+      expect(res.body.workAccess).toMatchObject({ active: true, source: 'VERIFIED_DOCUMENTS' });
+    });
+
+    it('reports an ACTIVE row whose expiry has PASSED as inactive', async () => {
+      // The read-time predicate, on the reviewer's screen. Showing "ACTIVE"
+      // for access that is already gone would have a reviewer revoke
+      // something that lapsed last week — or decline to, believing it live.
+      await seedCase('VERIFIED');
+      await prisma.providerWorkAccessGrant.create({
+        data: {
+          providerProfileId: PP,
+          status: 'ACTIVE',
+          source: 'VERIFIED_DOCUMENTS',
+          reason: 'TEST',
+          grantedAt: new Date(Date.now() - 2 * 86_400_000),
+          expiresAt: new Date(Date.now() - 86_400_000),
+        },
+      });
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const res = await request(http).get(`/v1/admin/verification/cases/${CASE_ID}`);
+      expect(res.body.workAccess.active).toBe(false);
+      // The raw column still says ACTIVE — which is exactly why the computed
+      // answer has to be the one on screen.
+      expect(res.body.workAccess.status).toBe('ACTIVE');
+    });
+
+    it('reports a revoked grant as inactive', async () => {
+      await seedCase('VERIFIED');
+      await prisma.providerWorkAccessGrant.create({
+        data: {
+          providerProfileId: PP,
+          status: 'REVOKED',
+          source: 'VERIFIED_DOCUMENTS',
+          reason: 'TEST',
+          grantedAt: new Date(Date.now() - 1000),
+          revokedAt: new Date(),
+        },
+      });
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+
+      const res = await request(http).get(`/v1/admin/verification/cases/${CASE_ID}`);
+      expect(res.body.workAccess.active).toBe(false);
+      expect(res.body.workAccess.revokedAt).not.toBeNull();
+    });
+  });
+
+  describe('the queue date filter', () => {
+    beforeEach(async () => {
+      await seedCase('SUBMITTED');
+      await prisma.verificationCase.update({
+        where: { id: CASE_ID },
+        data: { submittedAt: new Date('2026-06-15T12:00:00Z') },
+      });
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+    });
+
+    const queue = (q: string) => request(http).get(`/v1/admin/verification/cases?${q}`);
+    const ids = (body: { items: Array<{ id: string }> }) => body.items.map((i) => i.id);
+
+    it('includes a case inside the window', async () => {
+      const res = await queue('submittedFrom=2026-06-01&submittedTo=2026-06-30');
+      expect(ids(res.body)).toContain(CASE_ID);
+    });
+
+    it('excludes a case before the window', async () => {
+      const res = await queue('submittedFrom=2026-07-01');
+      expect(ids(res.body)).not.toContain(CASE_ID);
+    });
+
+    it('excludes a case after the window', async () => {
+      const res = await queue('submittedTo=2026-06-01');
+      expect(ids(res.body)).not.toContain(CASE_ID);
+    });
+
+    it('refuses an unparseable date rather than ignoring it', async () => {
+      // A filter that silently does nothing shows a list that does not match
+      // what was asked for, and it looks like an answer.
+      const res = await queue('submittedFrom=last-tuesday');
+      expect(res.status).toBe(400);
+      expect(res.body?.error?.details?.reason).toBe('UNPARSEABLE_DATE');
+    });
+
+    it('refuses an inverted range rather than returning nothing', async () => {
+      // An empty queue reads as "no work", not as "you typed the dates the
+      // wrong way round".
+      const res = await queue('submittedFrom=2026-07-01&submittedTo=2026-06-01');
+      expect(res.status).toBe(400);
+      expect(res.body?.error?.details?.reason).toBe('INVERTED_DATE_RANGE');
+    });
+
+    it('narrows rather than widens when combined with a state filter', async () => {
+      const res = await queue('state=REJECTED&submittedFrom=2026-06-01');
+      expect(ids(res.body)).not.toContain(CASE_ID);
+    });
+  });
 });

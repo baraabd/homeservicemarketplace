@@ -139,6 +139,25 @@ export class AdminVerificationCaseService {
             decidedAt: true,
           },
         },
+        providerProfile: {
+          select: {
+            // Sprint 9B.12 — the grants this provider holds, newest first.
+            // A reviewer about to revoke needs to see whether there is
+            // anything to revoke, and a reviewer looking at a VERIFIED case
+            // needs to tell a live grant from one that lapsed last week.
+            workAccessGrants: {
+              orderBy: { grantedAt: 'desc' },
+              take: 1,
+              select: {
+                status: true,
+                source: true,
+                grantedAt: true,
+                expiresAt: true,
+                revokedAt: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -233,6 +252,43 @@ export class AdminVerificationCaseService {
       })),
       availableActions: actions,
       blockedReason,
+      workAccess: toWorkAccess(row.providerProfile?.workAccessGrants?.[0] ?? null),
     };
   }
+}
+
+/**
+ * The grant, as an ACCESS answer rather than a row.
+ *
+ * `active` is computed with the same read-time predicate the capability
+ * service uses (ADR 0013): a grant whose expiry has passed is inactive even
+ * though no sweep has relabelled it yet. Reporting the raw status column would
+ * show a reviewer "ACTIVE" for access that is already gone, and they would
+ * revoke something that had already lapsed — or, worse, decline to.
+ */
+function toWorkAccess(
+  grant: {
+    status: string;
+    source: string | null;
+    grantedAt: Date;
+    expiresAt: Date | null;
+    revokedAt: Date | null;
+  } | null,
+): AdminVerificationCase['workAccess'] {
+  if (!grant) return null;
+  const now = Date.now();
+  const active =
+    grant.status === 'ACTIVE' &&
+    grant.revokedAt === null &&
+    grant.grantedAt.getTime() <= now &&
+    (grant.expiresAt === null || grant.expiresAt.getTime() > now);
+
+  return {
+    active,
+    source: grant.source,
+    status: grant.status,
+    grantedAt: grant.grantedAt.toISOString(),
+    expiresAt: grant.expiresAt ? grant.expiresAt.toISOString() : null,
+    revokedAt: grant.revokedAt ? grant.revokedAt.toISOString() : null,
+  };
 }
