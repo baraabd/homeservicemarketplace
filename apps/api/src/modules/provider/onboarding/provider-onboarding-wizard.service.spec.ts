@@ -316,17 +316,28 @@ describe('submit — completeness and idempotency', () => {
     expect(h.trx.providerProfile.update).not.toHaveBeenCalled();
   });
 
-  it('refuses when the phone is present but UNVERIFIED', async () => {
-    // A number nobody proved they control is a contact method that does not
-    // work, and it is the channel a seeker uses when a provider is late.
+  it('submits with an UNVERIFIED phone, because nothing in this system can verify one', async () => {
+    // Sprint 9B.13. This test previously asserted the opposite, and that is
+    // exactly how the defect hid: every OTHER fixture here is built by
+    // `makeCompleteProfile`, which sets `phoneVerifiedAt` — a state no real
+    // provider can reach, because no code path anywhere sets that column.
+    // `patchStep` only ever clears it. There is no SMS port, no challenge and
+    // no route.
+    //
+    // So the suite was green while onboarding was IMPOSSIBLE in production:
+    // every submission was refused with `phoneNumber: NOT_VERIFIED` and no way
+    // to clear it. The flags-ON journey (provider-journey.integration.spec.ts)
+    // walks a real registration and hit it on the first run.
+    //
+    // The RULE is not gone — see the policy test below, which still refuses a
+    // candidate that explicitly reports an unverified phone. What changed is
+    // that the wizard stops ASKING a question it cannot accept an answer to.
+    // When a verification channel ships, `toCandidate` supplies the field
+    // again and this test is the one that should turn red.
     const h = build({ profile: makeCompleteProfile({ phoneVerifiedAt: null }) });
 
-    await expect(h.service.submit('u-1', { version: 3 })).rejects.toMatchObject({
-      status: 422,
-      details: {
-        missing: expect.arrayContaining([{ field: 'phoneNumber', code: 'NOT_VERIFIED' }]),
-      },
-    });
+    await expect(h.service.submit('u-1', { version: 3 })).resolves.toBeDefined();
+    expect(h.trx.providerProfile.update).toHaveBeenCalled();
   });
 
   it('refuses when no weekly availability has been recorded', async () => {

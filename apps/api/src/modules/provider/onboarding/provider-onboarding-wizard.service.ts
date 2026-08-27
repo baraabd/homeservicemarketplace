@@ -801,7 +801,30 @@ export class ProviderOnboardingWizardService {
 
       providerType: p.providerType ?? null,
       legalBusinessName: p.legalBusinessName ?? null,
-      phoneVerified: p.phoneVerifiedAt != null,
+      // ── phoneVerified is deliberately NOT ASKED (Sprint 9B.13) ───────────
+      //
+      // The policy rule is right, and it stays in the policy: a number nobody
+      // demonstrated control of is a contact method that does not work. What
+      // was wrong is asking it here, because NOTHING IN THIS SYSTEM CAN EVER
+      // SET `phoneVerifiedAt`. There is no SMS port, no challenge, no route —
+      // `patchStep` only ever clears the column when the number changes.
+      //
+      // So the requirement was unsatisfiable, and since `toCandidate` supplied
+      // it on every submission, EVERY provider was refused with
+      // `phoneNumber: NOT_VERIFIED` and no way to clear it. Onboarding was
+      // unreachable in production from the day this line was written.
+      //
+      // It survived because every unit fixture builds a profile that already
+      // has `phoneVerifiedAt` set (`makeCompleteProfile`), so the suite only
+      // ever exercised the state the application could not reach. The
+      // flags-ON journey walks a REAL registration and found it immediately.
+      //
+      // Omitting the field means "not asked" — the contract the policy already
+      // defines for exactly this case — rather than "asked and passed". The
+      // rule fires again, with no further change here, the moment a phone
+      // verification channel exists and this line supplies the answer.
+      //
+      // Follow-up: docs/sprint-09b13/PROVIDER_JOURNEY.md §"Phone verification".
       availabilityIntervalCount: ctx.relations.availabilityIntervals.length,
       yearsOfExperience: p.yearsOfExperience ?? null,
       professionSince: p.professionSince ?? null,
