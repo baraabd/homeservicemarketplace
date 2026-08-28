@@ -122,11 +122,38 @@ async function seedFlag(page: Page, on: boolean): Promise<void> {
   );
 }
 
+/** Sprint 9B.17 — BASICS_IDENTITY now renders a real form, which reads the
+ *  onboarding DRAFT. Without this the task route would get the catch-all
+ *  `{items: []}` and render its load-failure state, and the resume tests below
+ *  would be asserting against a broken screen rather than a working one. */
+const DRAFT_VIEW = {
+  state: 'DRAFT',
+  currentStep: 'PROVIDER_TYPE',
+  steps: [],
+  completedSteps: [],
+  percentComplete: 0,
+  nextAction: { kind: 'COMPLETE_STEP', step: 'PROVIDER_TYPE' },
+  complete: false,
+  missing: [],
+  version: 3,
+  policyVersion: 'sprint-08',
+  lastSavedAt: null,
+  editable: true,
+  data: {
+    providerType: null,
+    legalBusinessName: null,
+    displayName: 'Pat Provider',
+    profileImageUrl: null,
+    phoneNumber: null,
+  },
+};
+
 async function stubProvider(page: Page, hub: unknown = HUB): Promise<void> {
   await stubApi(page, {
     me: PROVIDER_ME,
     extra: {
       '/me/provider/onboarding/hub': hub,
+      '/me/provider/onboarding/draft': DRAFT_VIEW,
       '/me/provider/profile': DRAFT_PROFILE,
     },
   });

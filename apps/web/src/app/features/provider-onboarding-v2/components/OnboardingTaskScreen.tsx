@@ -12,6 +12,7 @@ import {
   type Lang,
 } from '../copy/onboarding-hub-copy';
 import { OnboardingShell } from './OnboardingShell';
+import { BasicsTask } from './BasicsTaskScreen';
 
 // Sprint 9B.16 — the per-task route.
 //
@@ -131,7 +132,13 @@ export function OnboardingTaskScreen() {
           </p>
         ) : null}
 
-        {actionable ? (
+        {/* Sprint 9B.17 — Task 1 is built. The others still say so honestly
+            rather than rendering an input that saves nowhere. Gated on
+            `actionable` like everything else: a task the SERVER calls blocked
+            does not get a form just because the client has one. */}
+        {actionable && task.id === 'BASICS_IDENTITY' ? (
+          <BasicsTask lang={lang} />
+        ) : actionable ? (
           <p
             className="break-words text-slate-500 dark:text-slate-400"
             style={{ fontSize: '13px' }}
