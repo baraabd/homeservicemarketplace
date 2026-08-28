@@ -46,6 +46,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
+import { isProviderOnboardingV2Enabled } from '../../../lib/feature-flags';
 import { PortfolioSection } from './portfolio/PortfolioSection';
 import { ProviderVerificationScreen } from '../../features/provider-verification/components/ProviderVerificationScreen';
 // Sprint 5.3 retired the legacy `useEcosystem` mock from this file —
@@ -107,7 +108,7 @@ import {
   iconForCategorySlug,
   mapAvailableJobToLegacy,
 } from '../../../lib/provider/available-jobs-adapter';
-import { useNavigate } from 'react-router';
+import { Navigate, useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth-provider';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { clearIntendedApp } from '../../../lib/intended-app';
@@ -2982,6 +2983,12 @@ function deriveShellIdentity(
 export function ProviderApp() {
   const { lang, dir, darkMode } = useLang();
   const [activeTab, setActiveTab] = useState('jobs');
+  // Sprint 9B.16 — the V2 onboarding surface is a ROUTE, not a tab, so the
+  // entry points below navigate instead of flipping local state. Read once
+  // per render rather than at module scope so a test (and the Playwright
+  // suite) can flip the flag between mounts.
+  const navigate = useNavigate();
+  const onboardingV2 = isProviderOnboardingV2Enabled();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const fontFamily = lang === 'ar' ? "'Cairo', 'Inter', sans-serif" : "'Inter', sans-serif";
 
@@ -3070,7 +3077,18 @@ export function ProviderApp() {
     return (
       <ProviderStatusState
         status={profile.status}
-        onContinueOnboarding={canEnterOnboarding ? () => setActiveTab('profile') : undefined}
+        onContinueOnboarding={
+          canEnterOnboarding
+            ? () => {
+                // V2 is a route; the legacy wizard is a tab on this same
+                // shell. Navigating away is also what keeps the two out of
+                // each other's way — nothing mounts the wizard behind the
+                // full-screen surface.
+                if (onboardingV2) navigate('/provider/onboarding');
+                else setActiveTab('profile');
+              }
+            : undefined
+        }
       />
     );
   }
@@ -3116,7 +3134,15 @@ export function ProviderApp() {
       case 'wallet':
         return <WalletScreen />;
       case 'profile':
-        return showOnboardingWizard ? <ProviderOnboardingWizard /> : <ProviderProfileScreen />;
+        if (!showOnboardingWizard) return <ProviderProfileScreen />;
+        // Defensive: with V2 on, nothing should set this tab (the CTA above
+        // navigates instead). If something ever does, send them to the route
+        // rather than mounting the wizard the flag turned off.
+        return onboardingV2 ? (
+          <Navigate to="/provider/onboarding" replace />
+        ) : (
+          <ProviderOnboardingWizard />
+        );
       default:
         return <LiveJobsScreen />;
     }

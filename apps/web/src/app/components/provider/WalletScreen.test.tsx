@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 
 import type { QueryClient } from '@tanstack/react-query';
@@ -23,15 +24,23 @@ import { ProviderApp } from './ProviderApp';
 //  - Withdraw button is disabled (no fake setTimeout success).
 //  - Summary error state surfaces a safe copy, not the raw payload.
 
+// MemoryRouter, because ProviderApp is a ROUTE component: it reads router
+// context directly (Sprint 9B.16 added the navigation to the onboarding
+// route), and every other ProviderApp suite already mounts it inside one.
+// Mounting it bare was this file being the outlier, and the harness is what
+// was unrealistic — in the product there is no way to reach this screen from
+// outside the router.
 function renderProvider() {
   return render(
-    <AuthProvider client={qc}>
-      <LanguageProvider>
-        <EcosystemProvider>
-          <ProviderApp />
-        </EcosystemProvider>
-      </LanguageProvider>
-    </AuthProvider>,
+    <MemoryRouter initialEntries={['/provider']}>
+      <AuthProvider client={qc}>
+        <LanguageProvider>
+          <EcosystemProvider>
+            <ProviderApp />
+          </EcosystemProvider>
+        </LanguageProvider>
+      </AuthProvider>
+    </MemoryRouter>,
   );
 }
 

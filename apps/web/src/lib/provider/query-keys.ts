@@ -20,6 +20,11 @@ export const providerQueryKeys = {
     // would need merging, and merging is where two sources of truth start.
     root: ['provider', 'onboarding'] as const,
     draft: () => ['provider', 'onboarding', 'draft'] as const,
+    // Sprint 9B.16 — the HUB read-model. A separate slot from `draft`
+    // because it is a different resource with a different shape, not a
+    // projection of the draft the client could derive: the six task
+    // statuses and the progress count are decided server-side.
+    hub: () => ['provider', 'onboarding', 'hub'] as const,
   },
   jobs: {
     root: ['provider', 'jobs'] as const,
