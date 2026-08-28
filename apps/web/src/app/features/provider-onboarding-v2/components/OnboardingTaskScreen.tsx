@@ -13,6 +13,7 @@ import {
 } from '../copy/onboarding-hub-copy';
 import { OnboardingShell } from './OnboardingShell';
 import { BasicsTask } from './BasicsTaskScreen';
+import { ServicesTask } from './ServicesTaskScreen';
 
 // Sprint 9B.16 — the per-task route.
 //
@@ -138,6 +139,8 @@ export function OnboardingTaskScreen() {
             does not get a form just because the client has one. */}
         {actionable && task.id === 'BASICS_IDENTITY' ? (
           <BasicsTask lang={lang} />
+        ) : actionable && task.id === 'SERVICES_EXPERIENCE' ? (
+          <ServicesTask lang={lang} />
         ) : actionable ? (
           <p
             className="break-words text-slate-500 dark:text-slate-400"
