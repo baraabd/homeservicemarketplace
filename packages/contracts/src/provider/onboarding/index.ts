@@ -10,3 +10,6 @@ export * from './enums/provider-onboarding-step';
 export * from './enums/provider-onboarding-lifecycle-state';
 export * from './request/patch-onboarding-step.request';
 export * from './response/provider-onboarding-draft';
+
+// Sprint 9B.16 — the onboarding HUB read-model (six grouped tasks).
+export * from './response/provider-onboarding-hub';
