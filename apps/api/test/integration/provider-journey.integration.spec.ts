@@ -79,6 +79,7 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
   let storageRoot: string;
   let restrictedRoot: string;
   let lifecycleLock: HeldLock;
+  let grantsLock: HeldLock;
   let outboxLock: HeldLock;
 
   const savedEnv: Record<string, string | undefined> = {};
@@ -324,6 +325,17 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
     // suites can deadlock on the pair.
     lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'exclusive');
     outboxLock = await acquireAdvisoryLock('outbox', 'exclusive');
+    // Sprint 9B.21 — SHARED on the grant table, and acquired LAST.
+    //
+    // work-access-enforcement drives the expiry sweep, which scans every
+    // ACTIVE grant TABLE-WIDE and can expire one. Holding this shared keeps
+    // that suite out while this one has grants alive, while letting every
+    // suite here still run beside each other.
+    //
+    // Last, because the order providerLifecycle -> outbox -> workAccessGrants
+    // is the same in every suite. Two suites taking two locks in opposite
+    // orders is a deadlock, and a deadlocked CI job looks like a hang.
+    grantsLock = await acquireAdvisoryLock('workAccessGrants', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -471,6 +483,7 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
     rmSync(restrictedRoot, { recursive: true, force: true });
     await prisma?.$disconnect();
     await outboxLock?.release();
+    await grantsLock?.release();
     await lifecycleLock?.release();
     for (const [k, v] of Object.entries(savedEnv)) {
       if (v === undefined) delete process.env[k];

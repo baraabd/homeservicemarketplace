@@ -49,6 +49,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
    * concurrently with each other and only this suite serialises against them.
    */
   let lifecycleLock: HeldLock;
+  let grantsLock: HeldLock;
 
   /** A provider profile with a chosen legacy status and NULL axes, i.e. what
    *  an upgraded (pre-Sprint-7) database looks like. */
@@ -92,6 +93,17 @@ d('Provider lifecycle backfill (real Postgres)', () => {
 
   beforeAll(async () => {
     lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'exclusive');
+    // Sprint 9B.21 — SHARED on the grant table, and acquired LAST.
+    //
+    // work-access-enforcement drives the expiry sweep, which scans every
+    // ACTIVE grant TABLE-WIDE and can expire one. Holding this shared keeps
+    // that suite out while this one has grants alive, while letting every
+    // suite here still run beside each other.
+    //
+    // Last, because the order providerLifecycle -> outbox -> workAccessGrants
+    // is the same in every suite. Two suites taking two locks in opposite
+    // orders is a deadlock, and a deadlocked CI job looks like a hang.
+    grantsLock = await acquireAdvisoryLock('workAccessGrants', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -132,6 +144,7 @@ d('Provider lifecycle backfill (real Postgres)', () => {
   afterAll(async () => {
     await cleanup();
     await prisma.$disconnect();
+    await grantsLock?.release();
     await lifecycleLock.release();
   });
 
