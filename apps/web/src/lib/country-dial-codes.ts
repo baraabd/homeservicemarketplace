@@ -35,6 +35,14 @@ export const COUNTRY_DIAL_CODES: readonly CountryDialEntry[] = [
   { iso2: 'QA', name: 'Qatar', dialCode: '+974' },
   { iso2: 'SA', name: 'Saudi Arabia', dialCode: '+966' },
   { iso2: 'SE', name: 'Sweden', dialCode: '+46' },
+  // Sprint 9B.19 — Syria and Iraq were missing while the seed data uses
+  // Damascus and Aleppo, the Arabic copy is written for that market, and the
+  // timezone resolver maps both. This list stopped being "the phone prefix
+  // helper" the moment Task 3 used it as the COUNTRY picker: a provider in
+  // the platform's primary market could not name the country they work in.
+  { iso2: 'SY', name: 'Syria', dialCode: '+963' },
+  { iso2: 'IQ', name: 'Iraq', dialCode: '+964' },
+  { iso2: 'YE', name: 'Yemen', dialCode: '+967' },
   { iso2: 'TR', name: 'Turkey', dialCode: '+90' },
   { iso2: 'US', name: 'United States', dialCode: '+1' },
 ];

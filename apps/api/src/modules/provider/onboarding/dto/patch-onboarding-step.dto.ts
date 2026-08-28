@@ -10,6 +10,7 @@ import {
   IsLongitude,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -138,6 +139,21 @@ export class PatchOnboardingStepDto implements PatchOnboardingStepRequest {
   @IsString()
   @MaxLength(80)
   serviceAreaCountry?: string | null;
+
+  // Sprint 9B.19 — ISO 3166-1 alpha-2, beside the display name above.
+  //
+  // Upper-cased here so the stored value has one shape whatever a client
+  // sends. That the code names a country the platform actually knows is the
+  // service's question, not the DTO's: this is the shape gate.
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim().length > 0 ? value.trim().toUpperCase() : null,
+  )
+  @IsString()
+  @Matches(/^[A-Z]{2}$/, {
+    message: 'serviceAreaCountryCode must be a two-letter ISO country code',
+  })
+  serviceAreaCountryCode?: string | null;
 
   @IsOptional()
   @Transform(({ value }) => emptyStringToNull(value))

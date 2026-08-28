@@ -31,6 +31,8 @@ import {
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
 import { referencesRestrictedMedia } from './avatar/avatar-policy';
+import { checkRadius, resolveRadiusPolicy, type RadiusPolicy } from './service-area/radius-policy';
+import { describeTimezone, resolveTimezone } from './service-area/timezone-resolution';
 // The SAME normalisation Sprint 6's fan-out matches on. Imported rather than
 // re-implemented: if the two ever disagree, a provider silently stops being
 // reachable by requests in their own city and nothing errors.
@@ -92,6 +94,7 @@ const STEP_WRITABLE_FIELDS: Record<ProviderOnboardingStep, readonly string[]> = 
   LOCATION: [
     'serviceAreaCity',
     'serviceAreaCountry',
+    'serviceAreaCountryCode',
     'serviceAreaLat',
     'serviceAreaLng',
     'serviceAreaRadiusKm',
@@ -464,9 +467,40 @@ export class ProviderOnboardingWizardService {
         if (body.serviceAreaCountry !== undefined) {
           profileData.serviceAreaCountry = trimToNull(body.serviceAreaCountry);
         }
+        if (body.serviceAreaCountryCode !== undefined) {
+          // Sprint 9B.19 — the machine-readable half. Written beside the
+          // display name rather than instead of it: the name is what the
+          // provider chose to call their country, in their language, and
+          // deriving one from the other by string matching is one spelling
+          // away from resolving to nothing.
+          profileData.serviceAreaCountryCode = body.serviceAreaCountryCode
+            ? body.serviceAreaCountryCode.toUpperCase()
+            : null;
+        }
         if (body.serviceAreaLat !== undefined) profileData.serviceAreaLat = body.serviceAreaLat;
         if (body.serviceAreaLng !== undefined) profileData.serviceAreaLng = body.serviceAreaLng;
         if (body.serviceAreaRadiusKm !== undefined) {
+          // Sprint 9B.19 — bounded by POLICY, not by the DTO's numbers.
+          //
+          // The DTO's @Min/@Max are a blast radius: they stop an absurd
+          // payload being parsed at all. This is the actual rule, and it comes
+          // from the same operator settings the suggestion does — so the
+          // number the screen offers and the number the server accepts cannot
+          // disagree, and raising the ceiling is an admin edit rather than a
+          // deploy.
+          if (body.serviceAreaRadiusKm !== null) {
+            const verdict = checkRadius(body.serviceAreaRadiusKm, ctx.radiusPolicy);
+            if (!verdict.ok) {
+              throw new AppError(
+                'VALIDATION_ERROR',
+                verdict.code === 'ABOVE_MAX'
+                  ? `A service radius cannot be larger than ${ctx.radiusPolicy.maxKm} km.`
+                  : `A service radius cannot be smaller than ${ctx.radiusPolicy.minKm} km.`,
+                400,
+                { reason: verdict.code },
+              );
+            }
+          }
           profileData.serviceAreaRadiusKm = body.serviceAreaRadiusKm;
         }
         if (body.workshopAddressLine !== undefined) {
@@ -902,6 +936,7 @@ export class ProviderOnboardingWizardService {
 
       serviceAreaCity: p.serviceAreaCity ?? null,
       serviceAreaCountry: p.serviceAreaCountry ?? null,
+      serviceAreaCountryCode: p.serviceAreaCountryCode ?? null,
       serviceAreaLat: p.serviceAreaLat ?? null,
       serviceAreaLng: p.serviceAreaLng ?? null,
       serviceAreaRadiusKm: p.serviceAreaRadiusKm ?? null,
@@ -922,6 +957,8 @@ export class ProviderOnboardingWizardService {
       specialties,
       primarySpecialtyId: p.primaryServiceCategoryId ?? null,
       maxSpecialties: ctx.maxSpecialties,
+      radiusPolicy: ctx.radiusPolicy,
+      resolvedTimezone: describeResolvedTimezone(p.serviceAreaCountryCode ?? null, new Date()),
       suggestedTitle: primaryCategory
         ? {
             en: suggestProfessionalTitle({
@@ -1081,6 +1118,12 @@ export class ProviderOnboardingWizardService {
       // and served to the client so the picker's ceiling is the operator's
       // number rather than a constant two places can disagree about.
       maxSpecialties: await this.numberSetting(MAX_SPECIALTIES_KEY, tx),
+      // Sprint 9B.19 — the radius suggestion and its bounds, resolved from
+      // operator settings and the provider's PRIMARY transport. Loaded here so
+      // both the read model and the LOCATION write use one answer.
+      radiusPolicy: await resolveRadiusPolicy(profile.transportMode ?? null, (key) =>
+        this.numberSetting(key, tx),
+      ),
     };
   }
 
@@ -1202,6 +1245,8 @@ interface OnboardingContext {
   }[];
   /** The operator-configured ceiling on held specialties. */
   maxSpecialties: number;
+  /** The suggested service radius and the bounds the server enforces. */
+  radiusPolicy: RadiusPolicy;
 }
 
 /** The schema default for a key, so the wizard and the admin screen agree on
@@ -1301,4 +1346,39 @@ function findPrimaryCategory(ctx: OnboardingContext): ServiceCategory | null {
   if (pending) return pending.serviceCategory;
 
   return ctx.rejectedApplications.find((a) => a.serviceCategory.id === id)?.serviceCategory ?? null;
+}
+
+/**
+ * Sprint 9B.19 — the timezone answer the client renders.
+ *
+ * Three shapes, and the distinction between the last two matters: "we have not
+ * asked you yet" is not a problem, whereas "your country has several zones" is
+ * the one case where the availability step genuinely has to ask. Collapsing
+ * them would put a question in front of every provider who has not reached the
+ * location step.
+ *
+ * `display` never contains the IANA identifier — a city and an offset are what
+ * a person can check against their own clock.
+ */
+function describeResolvedTimezone(
+  countryCode: string | null,
+  now: Date,
+): ProviderOnboardingData['resolvedTimezone'] {
+  const resolution = resolveTimezone(countryCode);
+
+  if (resolution.kind === 'RESOLVED') {
+    return {
+      resolved: resolution.timezone,
+      display: describeTimezone(resolution.timezone, now),
+      needsConfirmation: false,
+    };
+  }
+
+  return {
+    resolved: null,
+    display: null,
+    // UNKNOWN means they have not told us their country yet — nothing to
+    // confirm, because nothing has been claimed.
+    needsConfirmation: resolution.kind === 'AMBIGUOUS',
+  };
 }

@@ -37,6 +37,11 @@ export interface PatchOnboardingStepRequest {
   // ── LOCATION ────────────────────────────────────────────────────────────
   serviceAreaCity?: string | null;
   serviceAreaCountry?: string | null;
+  /** Sprint 9B.19 — ISO 3166-1 alpha-2, beside the display name.
+   *
+   *  The machine-readable half: what timezone and market policy are looked up
+   *  by. The display name stays whatever the provider chose to call it. */
+  serviceAreaCountryCode?: string | null;
   serviceAreaLat?: number | null;
   serviceAreaLng?: number | null;
   serviceAreaRadiusKm?: number | null;
