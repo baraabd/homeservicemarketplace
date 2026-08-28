@@ -56,6 +56,12 @@ export interface OnboardingCandidate {
   /** Selectable LEAF specialties, distinct from serviceCategoryCount which
    *  counts every granted category including legacy roots. */
   leafSpecialtyCount?: number;
+  /** Sprint 9B.18 — specialties applied for and not yet decided.
+   *
+   *  Does not satisfy anything. It changes only what the provider is TOLD:
+   *  "waiting for approval" rather than "you must choose one", which is what
+   *  they already did. */
+  pendingSpecialtyCount?: number;
 }
 
 export function evaluateOnboarding(candidate: OnboardingCandidate): ProviderOnboardingIssue[] {
@@ -105,7 +111,12 @@ export function evaluateOnboarding(candidate: OnboardingCandidate): ProviderOnbo
   }
 
   if (candidate.serviceCategoryCount < 1) {
-    issues.push({ field: 'serviceCategories', code: 'REQUIRED' });
+    // Same distinction as `specialties` below: nothing is granted yet, but
+    // "you have not chosen" and "nobody has looked" are different sentences.
+    issues.push({
+      field: 'serviceCategories',
+      code: (candidate.pendingSpecialtyCount ?? 0) > 0 ? 'AWAITING_REVIEW' : 'REQUIRED',
+    });
   }
 
   // ── Sprint 8: the rest of the onboarding journey ────────────────────────
@@ -172,7 +183,13 @@ export function evaluateOnboarding(candidate: OnboardingCandidate): ProviderOnbo
   // matching actually uses. A provider who ticked only a group has told us
   // nothing a seeker can be matched against.
   if (candidate.leafSpecialtyCount !== undefined && candidate.leafSpecialtyCount < 1) {
-    issues.push({ field: 'specialties', code: 'REQUIRED' });
+    // Sprint 9B.18 — still an issue, still blocks submission, but honest
+    // about WHY. A provider with an application in the queue has done their
+    // part; telling them the field is REQUIRED says they have not.
+    issues.push({
+      field: 'specialties',
+      code: (candidate.pendingSpecialtyCount ?? 0) > 0 ? 'AWAITING_REVIEW' : 'REQUIRED',
+    });
   }
 
   return issues;

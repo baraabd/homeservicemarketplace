@@ -58,6 +58,10 @@ function makeProvider(over: Partial<ProviderProfile> = {}): ProviderProfile {
     yearsOfExperience: null,
     professionSince: null,
     transportMode: null,
+    // Sprint 9B.18 — the full set alongside the primary. Empty here: this
+    // fixture predates the concept and asserts nothing about transport.
+    transportModes: [],
+    primaryServiceCategoryId: null,
     workshopAddressLine: null,
     workshopLat: null,
     workshopLng: null,

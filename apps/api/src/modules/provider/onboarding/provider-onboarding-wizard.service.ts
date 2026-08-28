@@ -3,6 +3,10 @@ import {
   ADMIN_SETTINGS_SCHEMA,
   PROVIDER_ONBOARDING_STEPS,
   isPlausibleE164,
+  suggestProfessionalTitle,
+  type ProviderSpecialtyState,
+  type ProviderSpecialtyView,
+  type ProviderTransportModeCode,
   type PatchOnboardingStepRequest,
   type ProviderOnboardingData,
   type ProviderOnboardingDraftView,
@@ -10,7 +14,7 @@ import {
   type ProviderOnboardingStep,
   type SubmitOnboardingRequest,
 } from '@homeservicemarketplace/contracts';
-import type { Prisma, PrismaTx } from '@homeservicemarketplace/database';
+import type { Prisma, PrismaTx, ServiceCategory } from '@homeservicemarketplace/database';
 
 import {
   ProviderProfileRepository,
@@ -96,8 +100,14 @@ const STEP_WRITABLE_FIELDS: Record<ProviderOnboardingStep, readonly string[]> = 
     'workshopLat',
     'workshopLng',
   ],
-  SPECIALTIES: ['primaryGroupIds', 'specialtyLeafIds'],
-  EXPERIENCE: ['yearsOfExperience', 'professionSince', 'equipmentCodes', 'transportMode'],
+  SPECIALTIES: ['primaryGroupIds', 'specialtyLeafIds', 'primarySpecialtyId'],
+  EXPERIENCE: [
+    'yearsOfExperience',
+    'professionSince',
+    'equipmentCodes',
+    'transportMode',
+    'transportModes',
+  ],
   AVAILABILITY: ['availability', 'timezone'],
   PROFILE: ['headline', 'bio', 'additionalInformation'],
   CONSENT: ['acceptedConsentVersion'],
@@ -364,6 +374,9 @@ export class ProviderOnboardingWizardService {
   ): Promise<Record<string, unknown>> {
     const scratch: Record<string, unknown> = { ...(ctx.scratch ?? {}) };
     const profileData: Record<string, unknown> = {};
+    // The profile as it is BEFORE this patch. Several fields below are
+    // decided against current state rather than in isolation.
+    const p = ctx.profile;
 
     switch (step) {
       case 'PROVIDER_TYPE': {
@@ -491,6 +504,20 @@ export class ProviderOnboardingWizardService {
         if (body.specialtyLeafIds !== undefined) {
           await this.applyForSpecialties(ctx, body.specialtyLeafIds, trx);
         }
+        // Sprint 9B.18 — the one they lead with.
+        //
+        // Applied AFTER the specialties above, so a request that chooses a
+        // specialty and nominates it as primary in the same save works. Doing
+        // it first would reject the primary for not being chosen yet, which is
+        // exactly what the screen does on first use.
+        if (body.primarySpecialtyId !== undefined) {
+          profileData.primaryServiceCategoryId = await this.resolvePrimarySpecialty(
+            ctx,
+            body.primarySpecialtyId,
+            body.specialtyLeafIds,
+            trx,
+          );
+        }
         break;
       }
 
@@ -503,7 +530,47 @@ export class ProviderOnboardingWizardService {
             ? parseIsoDate(body.professionSince)
             : null;
         }
-        if (body.transportMode !== undefined) profileData.transportMode = body.transportMode;
+        // Sprint 9B.18 — the set and the primary, kept consistent HERE.
+        //
+        // A primary that is not in the set is a contradiction, and there are
+        // two ways to reach it: send a set that omits the current primary, or
+        // send a primary that is not in the current set. Resolving that in each
+        // client is how two clients end up resolving it differently, so the
+        // server decides and both are told the answer in the response.
+        if (body.transportModes !== undefined) {
+          // Deduplicated: a repeated mode is not two capabilities, and storing
+          // it twice would make the array a poor set for no benefit.
+          const modes = [...new Set(body.transportModes)];
+          profileData.transportModes = modes;
+
+          const nextPrimary =
+            body.transportMode !== undefined ? body.transportMode : (p.transportMode ?? null);
+
+          if (modes.length === 0) {
+            // Clearing every mode clears the primary too. Leaving a primary
+            // behind an empty set would report a capability the provider just
+            // said they do not have.
+            profileData.transportMode = null;
+          } else if (nextPrimary === null || !modes.includes(nextPrimary)) {
+            // No primary, or one the new set does not contain. The first mode
+            // in the set is the honest default — it is something they DID
+            // choose — and the screen shows which one was picked so it can be
+            // changed in a tap.
+            profileData.transportMode = modes[0];
+          } else {
+            profileData.transportMode = nextPrimary;
+          }
+        } else if (body.transportMode !== undefined) {
+          profileData.transportMode = body.transportMode;
+          // A primary arriving on its own must join the set, or the two
+          // disagree the moment an older client writes only this field.
+          if (body.transportMode !== null) {
+            const current = p.transportModes ?? [];
+            if (!current.includes(body.transportMode)) {
+              profileData.transportModes = [...current, body.transportMode];
+            }
+          }
+        }
         if (body.equipmentCodes !== undefined) {
           const items = await this.drafts.findEquipmentByCodes(body.equipmentCodes, trx);
           const found = new Set(items.map((i) => i.code));
@@ -697,6 +764,56 @@ export class ProviderOnboardingWizardService {
     }
   }
 
+  /**
+   * The primary specialty, validated against what the provider actually holds.
+   *
+   * It may be APPROVED or PENDING — nominating a primary is an intention, not
+   * an authorization, and refusing to let someone name the trade they are
+   * waiting on approval for would leave the screen unusable for exactly the
+   * providers who are mid-application.
+   *
+   * It may NOT be a category they have not chosen: that would produce a title
+   * suggestion for a trade they never claimed. `justChosen` carries the ids
+   * from the same request so choosing and nominating in one save works.
+   */
+  private async resolvePrimarySpecialty(
+    ctx: OnboardingContext,
+    primaryId: string | null,
+    justChosen: string[] | undefined,
+    trx: PrismaTx,
+  ): Promise<string | null> {
+    if (primaryId === null) return null;
+
+    const held = new Set<string>([
+      ...ctx.profile.serviceCategories.map((c) => c.serviceCategoryId),
+      ...ctx.pendingApplicationCategoryIds,
+      ...(justChosen ?? []),
+    ]);
+
+    if (!held.has(primaryId)) {
+      throw new AppError(
+        'VALIDATION_ERROR',
+        'Choose your main service from the specialties you have selected.',
+        400,
+        { reason: 'PRIMARY_NOT_SELECTED' },
+      );
+    }
+
+    // Selected is not the same as selectable. A category that has since been
+    // retired must not become somebody's headline trade.
+    const found = await this.categories.findManyActiveByIds([primaryId], trx);
+    if (found.length === 0 || !found[0].isLeaf) {
+      throw new AppError(
+        'VALIDATION_ERROR',
+        'That service cannot be used as your main service.',
+        400,
+        { reason: 'PRIMARY_UNAVAILABLE' },
+      );
+    }
+
+    return primaryId;
+  }
+
   /** Validate the ticked groups exist and are active. Returns the ids to
    *  store as scratch — deliberately NOT a grant of anything. */
   private async validateGroups(groupIds: string[]): Promise<string[]> {
@@ -773,6 +890,8 @@ export class ProviderOnboardingWizardService {
   private toData(ctx: OnboardingContext): ProviderOnboardingData {
     const p = ctx.profile;
     const scratch = ctx.scratch ?? {};
+    const specialties = buildSpecialtyViews(ctx);
+    const primaryCategory = findPrimaryCategory(ctx);
     return {
       providerType: p.providerType ?? null,
       legalBusinessName: p.legalBusinessName ?? null,
@@ -799,10 +918,32 @@ export class ProviderOnboardingWizardService {
       specialtyLeafIds: ctx.profile.serviceCategories.map((c) => c.serviceCategoryId),
       pendingSpecialtyIds: ctx.pendingApplicationCategoryIds,
 
+      // Sprint 9B.18 — the same specialties, with what HAPPENED to each.
+      specialties,
+      primarySpecialtyId: p.primaryServiceCategoryId ?? null,
+      maxSpecialties: ctx.maxSpecialties,
+      suggestedTitle: primaryCategory
+        ? {
+            en: suggestProfessionalTitle({
+              slug: primaryCategory.slug,
+              labelEn: primaryCategory.labelEn,
+              labelAr: primaryCategory.labelAr,
+              lang: 'en',
+            }),
+            ar: suggestProfessionalTitle({
+              slug: primaryCategory.slug,
+              labelEn: primaryCategory.labelEn,
+              labelAr: primaryCategory.labelAr,
+              lang: 'ar',
+            }),
+          }
+        : null,
+
       yearsOfExperience: p.yearsOfExperience ?? null,
       professionSince: p.professionSince?.toISOString() ?? null,
       equipmentCodes: ctx.relations.equipment.map((e) => e.equipmentItem.code),
       transportMode: p.transportMode ?? null,
+      transportModes: (p.transportModes ?? []) as ProviderTransportModeCode[],
 
       availability: ctx.relations.availabilityIntervals.map((i) => ({
         id: i.id,
@@ -876,6 +1017,9 @@ export class ProviderOnboardingWizardService {
       // treating it as a competency would let a provider submit a complete
       // application on skills nobody has agreed they have.
       leafSpecialtyCount: p.serviceCategories.filter((c) => c.serviceCategory.isLeaf).length,
+      // Sprint 9B.18 — supplied so the policy can say "waiting" instead of
+      // "required" for a provider whose application is in the queue.
+      pendingSpecialtyCount: ctx.pendingApplicationCategoryIds.length,
     };
   }
 
@@ -921,6 +1065,22 @@ export class ProviderOnboardingWizardService {
       pendingApplicationCategoryIds: (profile.categoryApplications ?? []).map(
         (a) => a.serviceCategory.id,
       ),
+      // Sprint 9B.18 — the decisions the shared profile include does not carry.
+      //
+      // PROFILE_INCLUDE deliberately loads only live PENDING rows, because
+      // that is what every other consumer wants and widening it would put a
+      // rejection history on every profile read in the product. The wizard is
+      // the one surface that has to SAY "an admin declined this", so it asks
+      // separately and only for itself.
+      rejectedApplications: await this.applications.listForProvider(
+        profile.id,
+        { status: 'REJECTED' },
+        tx,
+      ),
+      // Read here rather than in toData so the view builder stays synchronous,
+      // and served to the client so the picker's ceiling is the operator's
+      // number rather than a constant two places can disagree about.
+      maxSpecialties: await this.numberSetting(MAX_SPECIALTIES_KEY, tx),
     };
   }
 
@@ -1034,6 +1194,14 @@ interface OnboardingContext {
   scratch: Record<string, unknown>;
   emailVerified: boolean;
   pendingApplicationCategoryIds: string[];
+  /** Newest first. Only the wizard reads these — see buildContext. */
+  rejectedApplications: {
+    serviceCategoryId: string;
+    updatedAt: Date;
+    serviceCategory: ServiceCategory;
+  }[];
+  /** The operator-configured ceiling on held specialties. */
+  maxSpecialties: number;
 }
 
 /** The schema default for a key, so the wizard and the admin screen agree on
@@ -1055,4 +1223,82 @@ function parseIsoDate(value: string): Date {
     throw new AppError('VALIDATION_ERROR', 'That is not a valid date.', 400);
   }
   return parsed;
+}
+
+// ─── Sprint 9B.18: specialty state ──────────────────────────────────────────
+
+/** Is this category still something a provider could be matched for? */
+function isRetired(category: { isActive: boolean; deletedAt: Date | null }): boolean {
+  return !category.isActive || category.deletedAt !== null;
+}
+
+/**
+ * Every chosen specialty, with what actually happened to it.
+ *
+ * PRECEDENCE, and why it is this way round:
+ *
+ *   INACTIVE first. A category that has been retired is retired whether or not
+ *   the provider was approved for it, and it is the only fact they can act on
+ *   — everything else about that row is history. Note this is a DISPLAY
+ *   decision only: the grant row still exists and submission still counts it,
+ *   because taking someone's approval away because an admin tidied the
+ *   catalogue would be a punishment for someone else's housekeeping.
+ *
+ *   Then APPROVED over PENDING over REJECTED. A category that was rejected and
+ *   later approved is approved; one applied for again after a rejection is
+ *   pending. Reading them the other way round would show a provider a refusal
+ *   that has since been overturned.
+ */
+function buildSpecialtyViews(ctx: OnboardingContext): ProviderSpecialtyView[] {
+  const byId = new Map<string, ProviderSpecialtyView>();
+
+  const add = (
+    category: ServiceCategory,
+    state: ProviderSpecialtyState,
+    decidedAt: Date | null,
+  ) => {
+    // First writer wins, and callers below run in precedence order.
+    if (byId.has(category.id)) return;
+    byId.set(category.id, {
+      categoryId: category.id,
+      state: isRetired(category) ? 'INACTIVE' : state,
+      labelEn: category.labelEn,
+      labelAr: category.labelAr,
+      parentId: category.parentId ?? null,
+      decidedAt: decidedAt?.toISOString() ?? null,
+    });
+  };
+
+  for (const grant of ctx.profile.serviceCategories) add(grant.serviceCategory, 'APPROVED', null);
+  for (const app of ctx.profile.categoryApplications ?? [])
+    add(app.serviceCategory, 'PENDING', null);
+  for (const app of ctx.rejectedApplications) {
+    add(app.serviceCategory, 'REJECTED', app.updatedAt);
+  }
+
+  // Catalogue order, so the picker and this list agree about what comes first.
+  return [...byId.values()].sort((a, b) => a.categoryId.localeCompare(b.categoryId));
+}
+
+/**
+ * The catalogue row for the primary specialty, from what is already loaded.
+ *
+ * No extra query: the primary must be one of the provider's own specialties,
+ * and every one of those arrives with its category. A primary pointing at
+ * something not in that set is a row that predates the rule or was written
+ * around it, and returning null there means the title suggestion quietly
+ * disappears rather than being derived from a category the provider no longer
+ * claims.
+ */
+function findPrimaryCategory(ctx: OnboardingContext): ServiceCategory | null {
+  const id = ctx.profile.primaryServiceCategoryId;
+  if (!id) return null;
+
+  const grant = ctx.profile.serviceCategories.find((c) => c.serviceCategoryId === id);
+  if (grant) return grant.serviceCategory;
+
+  const pending = (ctx.profile.categoryApplications ?? []).find((a) => a.serviceCategory.id === id);
+  if (pending) return pending.serviceCategory;
+
+  return ctx.rejectedApplications.find((a) => a.serviceCategory.id === id)?.serviceCategory ?? null;
 }
