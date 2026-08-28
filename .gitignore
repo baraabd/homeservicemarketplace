@@ -70,3 +70,9 @@ vitest-report.xml
 # npm lockfiles: this is a pnpm workspace; a stray package-lock.json
 # silently gives a different tree to anyone who runs npm install.
 package-lock.json
+
+# Local restricted-media store (LocalDiskStorageAdapter's root in development).
+# Holds real verification EVIDENCE — identity documents, business registrations
+# — written by running the app locally. It has never been tracked, and one
+# `git add -A` is all it would take. Ignored so that stays true.
+apps/api/.restricted-uploads/

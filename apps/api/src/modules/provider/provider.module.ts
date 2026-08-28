@@ -27,6 +27,8 @@ import { ProviderCapabilityModule } from './capability/provider-capability.modul
 import { ProviderOnboardingService } from './onboarding/provider-onboarding.service';
 import { ProviderOnboardingWizardController } from './onboarding/provider-onboarding-wizard.controller';
 import { ProviderOnboardingWizardService } from './onboarding/provider-onboarding-wizard.service';
+// Sprint 9B.20 — earned service-area expansion. Default off.
+import { ProviderServiceAreaExpansionService } from './onboarding/service-area/expansion/provider-service-area-expansion.service';
 import { ProviderAvatarService } from './onboarding/avatar/provider-avatar.service';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { ProviderController } from './provider.controller';
@@ -118,6 +120,10 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderOnboardingService,
     // Sprint 8 — the wizard: get, per-step patch, submit, withdraw.
     ProviderOnboardingWizardService,
+    // Sprint 9B.20 — resolves the earned radius ceiling the wizard serves.
+    // Behind provider_service_area_expansion_enabled, which defaults to false:
+    // with it off this service short-circuits before reading a single signal.
+    ProviderServiceAreaExpansionService,
     // Sprint 9B.17 — avatar finalize. Depends on the wizard service so the
     // photo is written through the SAME versioned step path as every other
     // field rather than a second write path with its own rules.

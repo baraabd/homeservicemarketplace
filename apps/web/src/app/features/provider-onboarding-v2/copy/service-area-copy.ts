@@ -58,6 +58,27 @@ export interface ServiceAreaCopy {
   previewApprox: (km: number) => string;
   previewNoLocation: string;
 
+  // ── Sprint 9B.20 — earned service-area expansion ───────────────────────
+  //
+  // THE COPY RULE. A wider radius is PERMISSION, not work. "You will get more
+  // jobs" is a promise the marketplace cannot keep and the provider who drives
+  // further on it pays for the fuel. Every line below is qualified, and a test
+  // forbids the unqualified phrasings.
+
+  rewardLockedTitle: string;
+  rewardUnlockedTitle: (km: number) => string;
+  /** The only benefit claim made anywhere in this feature. */
+  rewardBenefit: string;
+  rewardNoObligation: string;
+  rewardNextTier: (km: number) => string;
+  rewardProgressLabel: string;
+  rewardAtTop: string;
+  rewardMet: string;
+  rewardNotMet: string;
+  rewardCountOf: (current: number, target: number) => string;
+  rewardRatingOf: (current: number, target: number) => string;
+  criterionNames: Record<string, string>;
+
   transportNames: Record<string, string>;
 }
 
@@ -107,6 +128,32 @@ export const SERVICE_AREA_COPY: Record<Lang, ServiceAreaCopy> = {
     previewApprox: (km) => `An approximate area about ${km} km across.`,
     previewNoLocation: 'Add a city to see the area customers will see.',
 
+    rewardLockedTitle: 'Travel further as you go',
+    rewardUnlockedTitle: (km) => `You can now set your radius up to ${km} km`,
+    // Qualified on purpose. Never "will increase your requests".
+    rewardBenefit: 'May help you appear to more nearby customers.',
+    rewardNoObligation:
+      'This raises the limit only. Your radius stays where you set it until you change it.',
+    rewardNextTier: (km) => `Next: up to ${km} km`,
+    rewardProgressLabel: 'What it takes',
+    rewardAtTop: 'You have reached the widest area available here.',
+    rewardMet: 'Done',
+    rewardNotMet: 'Not yet',
+    rewardCountOf: (current, target) => `${current} of ${target}`,
+    rewardRatingOf: (current, target) => `${current.toFixed(1)} of ${target.toFixed(1)}`,
+    criterionNames: {
+      VERIFICATION: 'Identity verified',
+      COMPLETED_JOBS: 'Jobs completed',
+      RATING: 'Average rating',
+      RATING_SAMPLE: 'Reviews received',
+      // The three below carry no numbers, here or from the server: publishing
+      // an anti-abuse threshold turns a limit into a budget.
+      CANCELLATION_RATE: 'Few cancellations by you',
+      COMPLAINTS: 'No open complaints',
+      RESPONSE_TIME: 'Replying to requests promptly',
+      AVAILABILITY: 'Available for work',
+    },
+
     transportNames: {
       ON_FOOT: 'foot',
       MOTORCYCLE: 'motorcycle',
@@ -154,6 +201,28 @@ export const SERVICE_AREA_COPY: Record<Lang, ServiceAreaCopy> = {
     previewTitle: 'ما يراه العملاء',
     previewApprox: (km) => `منطقة تقريبية بعرض ${km} كم تقريباً.`,
     previewNoLocation: 'أضف مدينة لرؤية المنطقة التي سيراها العملاء.',
+
+    rewardLockedTitle: 'وسّع نطاقك مع الوقت',
+    rewardUnlockedTitle: (km) => `يمكنك الآن ضبط نطاقك حتى ${km} كم`,
+    rewardBenefit: 'قد يساعد ذلك في ظهورك لعملاء أقرب إليك.',
+    rewardNoObligation: 'هذا يرفع الحد الأقصى فقط. يبقى نطاقك كما ضبطته حتى تغيّره بنفسك.',
+    rewardNextTier: (km) => `التالي: حتى ${km} كم`,
+    rewardProgressLabel: 'ما الذي يتطلبه ذلك',
+    rewardAtTop: 'لقد وصلت إلى أوسع نطاق متاح هنا.',
+    rewardMet: 'مكتمل',
+    rewardNotMet: 'ليس بعد',
+    rewardCountOf: (current, target) => `${current} من ${target}`,
+    rewardRatingOf: (current, target) => `${current.toFixed(1)} من ${target.toFixed(1)}`,
+    criterionNames: {
+      VERIFICATION: 'تم التحقق من الهوية',
+      COMPLETED_JOBS: 'أعمال مكتملة',
+      RATING: 'متوسط التقييم',
+      RATING_SAMPLE: 'تقييمات مستلمة',
+      CANCELLATION_RATE: 'عدد قليل من الإلغاءات من طرفك',
+      COMPLAINTS: 'لا شكاوى مفتوحة',
+      RESPONSE_TIME: 'الرد على الطلبات بسرعة',
+      AVAILABILITY: 'متاح للعمل',
+    },
 
     transportNames: {
       ON_FOOT: 'المشي',

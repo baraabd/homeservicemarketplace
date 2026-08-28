@@ -12,6 +12,7 @@ import {
   type ProviderOnboardingDraftView,
   type ProviderOnboardingLifecycleState,
   type ProviderOnboardingStep,
+  type ProviderServiceAreaExpansionView,
   type SubmitOnboardingRequest,
 } from '@homeservicemarketplace/contracts';
 import type { Prisma, PrismaTx, ServiceCategory } from '@homeservicemarketplace/database';
@@ -32,6 +33,11 @@ import { TransactionRunner } from '../../../infrastructure/prisma/transaction.ru
 import { AppError } from '../../../shared/errors/app-error';
 import { referencesRestrictedMedia } from './avatar/avatar-policy';
 import { checkRadius, resolveRadiusPolicy, type RadiusPolicy } from './service-area/radius-policy';
+import {
+  ProviderServiceAreaExpansionService,
+  type ExpansionSubject,
+} from './service-area/expansion/provider-service-area-expansion.service';
+import type { ExpansionDecision } from './service-area/expansion/expansion-resolver';
 import { describeTimezone, resolveTimezone } from './service-area/timezone-resolution';
 // The SAME normalisation Sprint 6's fan-out matches on. Imported rather than
 // re-implemented: if the two ever disagree, a provider silently stops being
@@ -131,6 +137,9 @@ export class ProviderOnboardingWizardService {
     private readonly settings: PlatformSettingRepository,
     private readonly audit: AuditService,
     private readonly tx: TransactionRunner,
+    // Sprint 9B.20 — the earned ceiling. Default off; with the switch off it
+    // returns the standard bounds without reading a single provider signal.
+    private readonly expansion: ProviderServiceAreaExpansionService,
   ) {}
 
   /**
@@ -193,6 +202,19 @@ export class ProviderOnboardingWizardService {
       // client sent. The client's view of "is this step done" is a guess; the
       // server's is the one submission is judged against.
       const after = await this.buildContext(userId, trx);
+
+      // Sprint 9B.20 — two steps can change what the expansion resolver
+      // answers: LOCATION picks the market whose ladder applies, and
+      // EXPERIENCE sets the transport the base ceiling comes from. Recording
+      // here rather than on every patch keeps the audit trail to the writes
+      // that could actually have moved a tier.
+      //
+      // buildContext has already resolved the decision from post-write state,
+      // so this persists that answer rather than computing a second one.
+      if (step === 'LOCATION' || step === 'EXPERIENCE') {
+        await this.expansion.record(toExpansionSubject(after), after.expansion, new Date(), trx);
+      }
+
       const progress = computeProgress(
         evaluateOnboarding(this.toCandidate(after)),
         after.profile.onboardingState,
@@ -489,13 +511,23 @@ export class ProviderOnboardingWizardService {
           // disagree, and raising the ceiling is an admin edit rather than a
           // deploy.
           if (body.serviceAreaRadiusKm !== null) {
-            const verdict = checkRadius(body.serviceAreaRadiusKm, ctx.radiusPolicy);
+            // Sprint 9B.20 — against the ceiling for the country being SAVED.
+            //
+            // ctx is the pre-write context, and country and radius travel in
+            // the same step. Since 9B.20 the country selects which expansion
+            // ladder applies, so validating against ctx would judge the new
+            // radius under the old market's ceiling — accepting a radius the
+            // very next read refuses, or refusing one the provider is entitled
+            // to. Re-resolved only when the country actually changes, so the
+            // ordinary radius save costs nothing extra.
+            const policy = await this.radiusPolicyForWrite(ctx, body, trx);
+            const verdict = checkRadius(body.serviceAreaRadiusKm, policy);
             if (!verdict.ok) {
               throw new AppError(
                 'VALIDATION_ERROR',
                 verdict.code === 'ABOVE_MAX'
-                  ? `A service radius cannot be larger than ${ctx.radiusPolicy.maxKm} km.`
-                  : `A service radius cannot be smaller than ${ctx.radiusPolicy.minKm} km.`,
+                  ? `A service radius cannot be larger than ${policy.maxKm} km.`
+                  : `A service radius cannot be smaller than ${policy.minKm} km.`,
                 400,
                 { reason: verdict.code },
               );
@@ -958,6 +990,11 @@ export class ProviderOnboardingWizardService {
       primarySpecialtyId: p.primaryServiceCategoryId ?? null,
       maxSpecialties: ctx.maxSpecialties,
       radiusPolicy: ctx.radiusPolicy,
+      // Sprint 9B.20 — the reward card, decided entirely on the server. The
+      // client renders what is here and asks no questions of its own: an
+      // eligibility formula in React would be a second copy of the rules that
+      // nobody could audit and every provider could read.
+      serviceAreaExpansion: toExpansionView(ctx.expansion),
       resolvedTimezone: describeResolvedTimezone(p.serviceAreaCountryCode ?? null, new Date()),
       suggestedTitle: primaryCategory
         ? {
@@ -1089,7 +1126,7 @@ export class ProviderOnboardingWizardService {
         ? (relations.onboardingDraft.data as Record<string, unknown>)
         : {};
 
-    return {
+    const context: OnboardingContext = {
       userId,
       profile,
       relations,
@@ -1124,7 +1161,33 @@ export class ProviderOnboardingWizardService {
       radiusPolicy: await resolveRadiusPolicy(profile.transportMode ?? null, (key) =>
         this.numberSetting(key, tx),
       ),
+      // Replaced immediately below, once the ceiling it depends on is known.
+      // Declared here so OnboardingContext stays a total type rather than one
+      // with a field that is sometimes missing.
+      expansion: DISABLED_EXPANSION,
     };
+
+    // Sprint 9B.20 — the EARNED ceiling, resolved after the transport-based
+    // one because it takes that number as its floor.
+    //
+    // Folded back into radiusPolicy.maxKm rather than served beside it: the
+    // write path already enforces radiusPolicy through checkRadius(), and a
+    // second ceiling checked somewhere else is a rule that can disagree with
+    // the one the slider was drawn from. One number, one enforcement point.
+    //
+    // Note what does NOT change: suggestedKm. A provider who has earned more
+    // reach is allowed to travel further, not asked to — moving the suggestion
+    // would widen their travel obligations because a metric moved, which is
+    // the failure this whole feature is shaped to avoid.
+    const expansion = await this.expansion.describe(
+      toExpansionSubject(context),
+      context.radiusPolicy.maxKm,
+      new Date(),
+      tx,
+    );
+    context.expansion = expansion;
+    context.radiusPolicy = { ...context.radiusPolicy, maxKm: expansion.allowedMaxKm };
+    return context;
   }
 
   /** The lifecycle state, falling back to the legacy `status` for rows the
@@ -1223,6 +1286,35 @@ export class ProviderOnboardingWizardService {
     return defaultSetting(CONSENT_VERSION_KEY, 'v1') as string;
   }
 
+  /**
+   * The radius bounds to judge THIS write against.
+   *
+   * The same policy the context already resolved, unless the write moves the
+   * provider to a different market — in which case the ceiling belongs to the
+   * market they are moving to, and the earned tier has to be re-resolved
+   * against its ladder.
+   *
+   * Returns ctx.radiusPolicy unchanged in every other case, so the common
+   * save pays for nothing.
+   */
+  private async radiusPolicyForWrite(
+    ctx: OnboardingContext,
+    body: PatchOnboardingStepRequest,
+    tx?: PrismaTx,
+  ): Promise<RadiusPolicy> {
+    if (body.serviceAreaCountryCode === undefined) return ctx.radiusPolicy;
+    const next = body.serviceAreaCountryCode ? body.serviceAreaCountryCode.toUpperCase() : null;
+    if (next === (ctx.profile.serviceAreaCountryCode ?? null)) return ctx.radiusPolicy;
+
+    const expansion = await this.expansion.describe(
+      { ...toExpansionSubject(ctx), countryCode: next },
+      ctx.expansion.baseMaxKm,
+      new Date(),
+      tx,
+    );
+    return { ...ctx.radiusPolicy, maxKm: expansion.allowedMaxKm };
+  }
+
   private async numberSetting(key: string, tx?: PrismaTx): Promise<number> {
     const row = await this.settings.findByKey(key, tx);
     if (typeof row?.value === 'number' && Number.isFinite(row.value)) return row.value;
@@ -1245,8 +1337,85 @@ interface OnboardingContext {
   }[];
   /** The operator-configured ceiling on held specialties. */
   maxSpecialties: number;
-  /** The suggested service radius and the bounds the server enforces. */
+  /** The suggested service radius and the bounds the server enforces.
+   *
+   *  Sprint 9B.20 — `maxKm` here is the EFFECTIVE ceiling: the transport-based
+   *  one, raised by anything the provider has earned. Deliberately the same
+   *  field rather than a second one, so the write path enforces the earned
+   *  bound through checkRadius() without a parallel rule that can drift from
+   *  it. */
   radiusPolicy: RadiusPolicy;
+  /** Sprint 9B.20 — why maxKm is what it is, and whether the reward card may
+   *  be shown. Decided entirely on the server. */
+  expansion: ExpansionDecision;
+}
+
+/**
+ * Sprint 9B.20 — the decision that applies when the feature is switched off.
+ *
+ * A constant rather than a call, because buildContext needs OnboardingContext
+ * to be a total type before it can resolve the real one, and a field that is
+ * "sometimes missing" is how a null slips into a view.
+ *
+ * baseMaxKm and allowedMaxKm are placeholders here: this value never survives
+ * buildContext, which overwrites it on the next line.
+ */
+const DISABLED_EXPANSION: ExpansionDecision = {
+  enabled: false,
+  policyVersion: null,
+  currentRadiusKm: null,
+  baseMaxKm: 0,
+  allowedMaxKm: 0,
+  currentTier: null,
+  nextTier: null,
+  progress: [],
+  reasonCodes: ['FEATURE_DISABLED'],
+  showRewardCard: false,
+};
+
+/** Everything the expansion service needs about a provider, taken from the
+ *  context the wizard has already loaded rather than read again. */
+function toExpansionSubject(ctx: OnboardingContext): ExpansionSubject {
+  const p = ctx.profile;
+  return {
+    providerProfileId: p.id,
+    userId: p.userId ?? null,
+    countryCode: p.serviceAreaCountryCode ?? null,
+    currentRadiusKm: p.serviceAreaRadiusKm ?? null,
+    verificationState: p.verificationState ?? null,
+    standingState: p.standingState ?? null,
+    legacyStatus: p.status,
+    availability: p.availability,
+    completedJobs: p.completedJobs,
+    ratingAvg: p.ratingAvg,
+    reviewCount: p.reviewCount,
+  };
+}
+
+/** The client-facing half of a decision.
+ *
+ *  Everything here is already safe to publish — the withheld thresholds were
+ *  dropped by the resolver, not by this mapping — so it is a rename, not a
+ *  redaction. Doing the redaction here instead would put the privacy rule one
+ *  refactor away from being skipped. */
+function toExpansionView(decision: ExpansionDecision): ProviderServiceAreaExpansionView {
+  return {
+    show: decision.showRewardCard,
+    allowedMaxKm: decision.allowedMaxKm,
+    baseMaxKm: decision.baseMaxKm,
+    currentTier: decision.currentTier,
+    nextTier: decision.nextTier,
+    progress: decision.progress.map((p) => ({
+      key: p.key,
+      met: p.met,
+      progress: p.progress,
+      current: p.current,
+      target: p.target,
+      disclosed: p.disclosed,
+    })),
+    reasonCodes: decision.reasonCodes,
+    policyVersion: decision.policyVersion,
+  };
 }
 
 /** The schema default for a key, so the wizard and the admin screen agree on

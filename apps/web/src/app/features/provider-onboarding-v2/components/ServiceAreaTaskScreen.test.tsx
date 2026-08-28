@@ -51,6 +51,18 @@ const DRAFT = (over: Record<string, unknown> = {}) => {
       serviceAreaLng: null,
       serviceAreaRadiusKm: null,
       radiusPolicy: { suggestedKm: 25, minKm: 1, maxKm: 100, basedOn: 'CAR' },
+      // Sprint 9B.20 — the default-off answer, which is what every
+      // assertion in this file predates and must keep passing against.
+      serviceAreaExpansion: {
+        show: false,
+        allowedMaxKm: 100,
+        baseMaxKm: 100,
+        currentTier: null,
+        nextTier: null,
+        progress: [],
+        reasonCodes: ['FEATURE_DISABLED'],
+        policyVersion: null,
+      },
       resolvedTimezone: { resolved: null, display: null, needsConfirmation: false },
       ...((dataOver as Record<string, unknown>) ?? {}),
     },

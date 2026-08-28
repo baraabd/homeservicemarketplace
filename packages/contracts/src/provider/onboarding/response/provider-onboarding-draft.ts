@@ -53,6 +53,72 @@ export interface ProviderAvailabilityInterval extends ProviderAvailabilityInterv
  *  Echoed back on every response so the client renders from the server's copy
  *  rather than from local state that a failed autosave may have diverged from.
  *  Every field is nullable: this is a half-filled application by definition. */
+/** One criterion of the tier being worked toward. */
+export interface ProviderExpansionCriterionView {
+  key: ProviderExpansionCriterionKey;
+  /** Whether the provider currently satisfies it. Always answered, even for
+   *  the criteria whose numbers are withheld. */
+  met: boolean;
+  /** 0…1, or null when the criterion does not accumulate (a boolean gate, a
+   *  rating average, or anything withheld). */
+  progress: number | null;
+  current: number | null;
+  target: number | null;
+  /** False for the anti-abuse thresholds. `current` and `target` are null
+   *  then, on purpose: publishing "stay under 12% cancellations" turns a limit
+   *  into a budget, and publishing a response-time target is cleared by
+   *  bidding instantly on everything. */
+  disclosed: boolean;
+}
+
+export type ProviderExpansionCriterionKey =
+  | 'VERIFICATION'
+  | 'COMPLETED_JOBS'
+  | 'RATING'
+  | 'RATING_SAMPLE'
+  | 'CANCELLATION_RATE'
+  | 'COMPLAINTS'
+  | 'RESPONSE_TIME'
+  | 'AVAILABILITY';
+
+/** Stable codes, safe to show and safe to log. None of them carries a
+ *  threshold. */
+export type ProviderExpansionReasonCode =
+  | 'FEATURE_DISABLED'
+  | 'NO_POLICY_FOR_MARKET'
+  | 'SAFETY_HOLD'
+  | 'TIER_HELD'
+  | 'NO_TIER_YET'
+  | 'MAX_TIER_HELD'
+  | 'MANUAL_OVERRIDE'
+  | 'OVERRIDE_EXPIRED'
+  | 'CEILING_CLAMPED';
+
+export interface ProviderExpansionTierView {
+  key: string;
+  maxKm: number;
+}
+
+export interface ProviderServiceAreaExpansionView {
+  /** Whether the client may render the reward card AT ALL. Not a hint — the
+   *  answer. */
+  show: boolean;
+  /** The ceiling in force, which is what `radiusPolicy.maxKm` already carries.
+   *  Repeated here so the card can say what changed without the client
+   *  subtracting two numbers it might read at different times. */
+  allowedMaxKm: number;
+  /** The transport-based ceiling this provider would have with no expansion. */
+  baseMaxKm: number;
+  currentTier: ProviderExpansionTierView | null;
+  nextTier: ProviderExpansionTierView | null;
+  /** Progress toward `nextTier`, or against the tier held at the top. */
+  progress: ProviderExpansionCriterionView[];
+  reasonCodes: ProviderExpansionReasonCode[];
+  /** Which published ladder decided this. Null when none was live. Carried so
+   *  a support conversation can name the rules the provider was judged under. */
+  policyVersion: string | null;
+}
+
 export interface ProviderOnboardingData {
   providerType: ProviderTypeCode | null;
   legalBusinessName: string | null;
@@ -118,6 +184,19 @@ export interface ProviderOnboardingData {
      *  Null when the provider has not told us how they travel. */
     basedOn: ProviderTransportModeCode | null;
   };
+
+  // ── Sprint 9B.20 — earned service-area expansion ────────────────────────
+
+  /** The reward card, decided ENTIRELY on the server.
+   *
+   *  The client renders what is here and computes nothing of its own. An
+   *  eligibility formula in React would be a second copy of rules nobody could
+   *  audit, that every provider could read, and that would disagree with the
+   *  server the first time an operator changed a ladder.
+   *
+   *  With the feature off — which is the default — `show` is false, the tiers
+   *  are null and `allowedMaxKm` equals `radiusPolicy.maxKm`. */
+  serviceAreaExpansion: ProviderServiceAreaExpansionView;
 
   /** The provider's timezone, worked out from their country so they never
    *  have to choose one.

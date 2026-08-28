@@ -345,6 +345,47 @@ export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
     min: 1,
     max: 50,
   },
+  {
+    // ── Sprint 9B.20 — earned service-area expansion ─────────────────────
+    //
+    // THE MASTER SWITCH, AND IT IS OFF.
+    //
+    // With this false the feature does not exist as far as any provider is
+    // concerned: no ceiling is raised, no reward card is returned, no manual
+    // override applies, and the radius bounds are exactly the Sprint 9B.19
+    // ones. That is deliberate — an eligibility system decides who gets more
+    // reach, and switching it on is a market decision an operator makes
+    // knowingly, per environment, not something a deploy does for them.
+    //
+    // It is separate from the ladder itself (ServiceAreaExpansionPolicy) on
+    // purpose: publishing a policy to review it must not enrol anyone, and
+    // turning the feature off must not require retiring a policy that is
+    // still the correct record of what was in force.
+    key: 'provider_service_area_expansion_enabled',
+    type: 'boolean',
+    description:
+      'Enable earned service-area expansion. When false, provider radius bounds are the standard transport-based ones and no reward card is shown.',
+    default: false,
+  },
+  {
+    // The absolute ceiling on anything the ladder can hand out.
+    //
+    // The tier maxima live in the published policy, which an admin writes; if
+    // that were the only bound, one mistyped tier would put a provider's feed
+    // across a country. This is the number that makes such a policy refuse to
+    // publish, and it is checked again at resolve time so an already-published
+    // policy cannot outlive a lowered ceiling.
+    //
+    // Must stay at or below MAX_SERVICE_AREA_RADIUS_KM (500), the blast radius
+    // the matching bounding-box query is sized for.
+    key: 'provider_service_area_expansion_max_km',
+    type: 'integer',
+    description:
+      'Hard ceiling on any radius earned through service-area expansion. Bounds the published tier ladder; enforced at publish and again at resolve.',
+    default: 250,
+    min: 1,
+    max: 500,
+  },
 ] as const;
 
 export type AdminSettingKey = (typeof ADMIN_SETTINGS_SCHEMA)[number]['key'];
