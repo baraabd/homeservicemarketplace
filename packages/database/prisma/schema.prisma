@@ -516,6 +516,31 @@ model ProviderProfile {
   /// stored fact stays a fact and does not silently go stale.
   professionSince          DateTime?
   transportMode            ProviderTransportMode?
+  /// Sprint 9B.18 — every mode the provider can actually use.
+  ///
+  /// `transportMode` above stays, and stays the PRIMARY: it is what matching,
+  /// the public profile and every existing reader already consume, and
+  /// replacing it with an array would have meant rewriting all of them in the
+  /// same change that introduced the concept. So the column keeps its meaning
+  /// and this one adds the rest — a strict superset, backfilled from it.
+  ///
+  /// A scalar enum list rather than a join table: there is no per-mode data to
+  /// carry, nothing joins on a single mode, and a two-column table for a
+  /// six-value enum buys a migration and an index for nothing.
+  transportModes           ProviderTransportMode[]          @default([])
+
+  /// Sprint 9B.18 — the ONE service this provider leads with.
+  ///
+  /// Not "the first of serviceCategories": that set is unordered, is a GRANT
+  /// table, and changes when an admin approves something months later — none
+  /// of which should silently change what a provider calls themselves. It is a
+  /// deliberate choice, so it is stored as one.
+  ///
+  /// Nullable, and may point at a specialty still awaiting review: nominating
+  /// a primary is an intention, not an authorization. What a provider is
+  /// allowed to WORK on remains the approved grant set and nothing here.
+  primaryServiceCategoryId String?
+  primaryServiceCategory   ServiceCategory?                 @relation("ProviderPrimaryCategory", fields: [primaryServiceCategoryId], references: [id], onDelete: SetNull)
   /// Fixed premises, if any. Distinct from the service-area centre: a
   /// workshop is where they are, the service area is where they go.
   workshopAddressLine      String?
@@ -532,6 +557,7 @@ model ProviderProfile {
   serviceAreas             ProviderServiceArea[]
   onboardingDraft          ProviderOnboardingDraft?
 
+  @@index([primaryServiceCategoryId])
   @@index([availability])
   @@index([deletedAt])
   @@index([serviceAreaCity])
@@ -649,6 +675,8 @@ model ServiceCategory {
   serviceRequests      ServiceRequest[]
   providerProfiles     ProviderProfileServiceCategory[]
   categoryApplications ProviderCategoryApplication[]
+  /// Sprint 9B.18 — providers who lead with this category.
+  primaryForProviders  ProviderProfile[]                @relation("ProviderPrimaryCategory")
   equipmentItems       EquipmentCatalogItem[]
   verificationPolicies VerificationRequirementPolicy[]
   verificationDocuments VerificationDocument[]
