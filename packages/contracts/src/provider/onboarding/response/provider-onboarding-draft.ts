@@ -64,6 +64,8 @@ export interface ProviderOnboardingData {
 
   serviceAreaCity: string | null;
   serviceAreaCountry: string | null;
+  /** ISO 3166-1 alpha-2. Null on rows written before Sprint 9B.19. */
+  serviceAreaCountryCode: string | null;
   serviceAreaLat: number | null;
   serviceAreaLng: number | null;
   serviceAreaRadiusKm: number | null;
@@ -100,6 +102,38 @@ export interface ProviderOnboardingData {
    *  admin can change, and a client with its own number would either refuse a
    *  selection the server accepts or offer one it is about to reject. */
   maxSpecialties: number;
+
+  // ── Sprint 9B.19 — service area ─────────────────────────────────────────
+
+  /** The suggested service radius and the bounds the server enforces.
+   *
+   *  Served rather than computed in the client: "walking is 3 km" is a MARKET
+   *  judgement an operator tunes per city, not a constant, and a client with
+   *  its own numbers would offer a radius the server is about to refuse. */
+  radiusPolicy: {
+    suggestedKm: number;
+    minKm: number;
+    maxKm: number;
+    /** The transport mode the suggestion came from, so the UI can say why.
+     *  Null when the provider has not told us how they travel. */
+    basedOn: ProviderTransportModeCode | null;
+  };
+
+  /** The provider's timezone, worked out from their country so they never
+   *  have to choose one.
+   *
+   *  Distinct from `timezone` above, which is what the AVAILABILITY step has
+   *  actually stored. This is the server's answer before anyone stores
+   *  anything — and `display` is what the UI shows: a city and an offset a
+   *  person can check against their own clock. The raw IANA identifier is
+   *  carried for that step to STORE, not for anyone to read. */
+  resolvedTimezone: {
+    resolved: string | null;
+    display: { city: string; offset: string } | null;
+    /** True when the country spans several zones, or we have no mapping. The
+     *  one case where the availability step must ask. */
+    needsConfirmation: boolean;
+  };
   /** Suggested from the primary specialty.
    *
    *  A SUGGESTION. Nothing has been published, and the provider has to accept

@@ -410,6 +410,14 @@ model ProviderProfile {
   phoneNumber              String?
   serviceAreaCity          String?
   serviceAreaCountry       String?
+  /// Sprint 9B.19 — the ISO 3166-1 alpha-2 code for the same country.
+  ///
+  /// `serviceAreaCountry` above stays and stays the DISPLAY value: it is what
+  /// the provider typed or chose, in their language, and existing rows carry
+  /// prose there. This is the machine-readable half — what a timezone, a
+  /// currency or a market policy is looked up by — so neither has to be
+  /// derived from the other by string matching.
+  serviceAreaCountryCode   String?
   serviceAreaLat           Float?
   serviceAreaLng           Float?
   serviceAreaRadiusKm      Int?
@@ -558,6 +566,7 @@ model ProviderProfile {
   onboardingDraft          ProviderOnboardingDraft?
 
   @@index([primaryServiceCategoryId])
+  @@index([serviceAreaCountryCode])
   @@index([availability])
   @@index([deletedAt])
   @@index([serviceAreaCity])

@@ -62,6 +62,8 @@ function makeProvider(over: Partial<ProviderProfile> = {}): ProviderProfile {
     transportMode: null,
     // Sprint 9B.18 — the full set alongside the primary. Empty here: this
     // fixture predates the concept and asserts nothing about transport.
+    // Sprint 9B.19 — the normalised country code beside the display name.
+    serviceAreaCountryCode: null,
     transportModes: [],
     primaryServiceCategoryId: null,
     workshopAddressLine: null,

@@ -258,6 +258,93 @@ export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
     min: 64 * 1024,
     max: 10 * 1024 * 1024,
   },
+  {
+    // ── Sprint 9B.19 — service-radius policy ─────────────────────────────
+    //
+    // How far a provider is suggested to travel, BY TRANSPORT. One key per
+    // mode rather than a table baked into a client, because the honest answer
+    // differs per market — 25 km by car is a suburb in one city and three
+    // cities in another — and an operator has to be able to change it without
+    // a deploy.
+    //
+    // These are SUGGESTIONS. The provider may always go lower; the ceiling
+    // below is the only hard bound, and it is policy too.
+    key: 'provider_service_radius_on_foot_km',
+    type: 'integer',
+    description:
+      'Suggested service radius for a provider who travels on foot. A suggestion the provider may reduce, never a floor.',
+    default: 3,
+    min: 1,
+    max: 100,
+  },
+  {
+    key: 'provider_service_radius_motorcycle_km',
+    type: 'integer',
+    description: 'Suggested service radius for a provider who travels by motorcycle.',
+    default: 12,
+    min: 1,
+    max: 200,
+  },
+  {
+    key: 'provider_service_radius_public_transport_km',
+    type: 'integer',
+    description: 'Suggested service radius for a provider who travels by public transport.',
+    default: 15,
+    min: 1,
+    max: 200,
+  },
+  {
+    key: 'provider_service_radius_car_km',
+    type: 'integer',
+    description: 'Suggested service radius for a provider who travels by car.',
+    default: 25,
+    min: 1,
+    max: 300,
+  },
+  {
+    key: 'provider_service_radius_van_km',
+    type: 'integer',
+    description: 'Suggested service radius for a provider who travels by van.',
+    default: 35,
+    min: 1,
+    max: 300,
+  },
+  {
+    key: 'provider_service_radius_truck_km',
+    type: 'integer',
+    description: 'Suggested service radius for a provider who travels by truck.',
+    default: 50,
+    min: 1,
+    max: 400,
+  },
+  {
+    // The one HARD bound. Everything above is advice; this is the ceiling the
+    // server enforces regardless of what a client sends, and it exists because
+    // an unbounded radius turns the feed's bounding-box query into a table
+    // scan (see MAX_SERVICE_AREA_RADIUS_KM, which is the blast radius this
+    // must stay at or below).
+    //
+    // Deliberately NOT derived from the per-transport values: an operator
+    // raising the truck suggestion should not silently raise what every
+    // provider may set by hand.
+    key: 'provider_service_radius_max_km',
+    type: 'integer',
+    description:
+      'Hard ceiling on any provider service radius, whatever their transport. Enforced server-side.',
+    default: 100,
+    min: 1,
+    max: 500,
+  },
+  {
+    // The floor. A radius of zero matches nothing and reads to the provider as
+    // "the marketplace is empty" rather than "you chose not to travel".
+    key: 'provider_service_radius_min_km',
+    type: 'integer',
+    description: 'Smallest service radius a provider may set. Below this they would match nothing.',
+    default: 1,
+    min: 1,
+    max: 50,
+  },
 ] as const;
 
 export type AdminSettingKey = (typeof ADMIN_SETTINGS_SCHEMA)[number]['key'];
