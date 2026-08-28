@@ -54,6 +54,11 @@ export interface PatchOnboardingStepRequest {
    *  turned into ProviderCategoryApplication rows for an admin to decide; they
    *  are NOT granted by this call. */
   specialtyLeafIds?: string[];
+  /** Sprint 9B.18 — the one service the provider leads with.
+   *
+   *  Must be one of the specialties they have chosen — approved OR pending.
+   *  Null clears it. */
+  primarySpecialtyId?: string | null;
 
   // ── EXPERIENCE ──────────────────────────────────────────────────────────
   yearsOfExperience?: number | null;
@@ -61,6 +66,12 @@ export interface PatchOnboardingStepRequest {
   professionSince?: string | null;
   equipmentCodes?: string[];
   transportMode?: ProviderTransportModeCode | null;
+  /** Sprint 9B.18 — every mode the provider can use.
+   *
+   *  Sent alongside `transportMode`, which remains the PRIMARY. The server
+   *  keeps the two consistent: a primary that is not in the set is a
+   *  contradiction, and resolving it in each client is how they drift. */
+  transportModes?: ProviderTransportModeCode[];
 
   // ── AVAILABILITY ────────────────────────────────────────────────────────
   /** Replaces the WHOLE week. Overlap is a property of the set, so validating

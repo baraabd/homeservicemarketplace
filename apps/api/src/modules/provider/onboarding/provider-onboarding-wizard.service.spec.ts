@@ -136,6 +136,8 @@ function build(
     }[];
     advanceCount?: number;
     categories?: { id: string; isLeaf: boolean; isActive: boolean }[];
+    /// Sprint 9B.18 — decided applications the wizard reads separately.
+    rejectedApplications?: unknown[];
   } = {},
 ): Harness {
   const profile = over.profile === undefined ? makeCompleteProfile() : over.profile;
@@ -207,7 +209,12 @@ function build(
     providers as unknown as ProviderProfileRepository,
     drafts as unknown as ProviderOnboardingDraftRepository,
     categories as unknown as ServiceCategoryRepository,
-    {} as unknown as ProviderCategoryApplicationRepository,
+    {
+      // Sprint 9B.18 — the wizard now asks for REJECTED applications so it can
+      // say "an admin declined this" rather than leaving the row unexplained.
+      // Empty by default; the specs that care about rejections override it.
+      listForProvider: jest.fn().mockResolvedValue(over.rejectedApplications ?? []),
+    } as unknown as ProviderCategoryApplicationRepository,
     {
       findById: jest
         .fn()
@@ -360,9 +367,16 @@ describe('submit — completeness and idempotency', () => {
       } as unknown as Partial<ProviderProfileWithCategories>),
     });
 
+    // Sprint 9B.18 — still refused, and that is the load-bearing half. What
+    // changed is the CODE: the provider chose a specialty and is waiting on
+    // an admin, so calling it REQUIRED told them they had not chosen one.
+    // AWAITING_REVIEW blocks submission exactly as hard and says something
+    // true.
     await expect(h.service.submit('u-1', { version: 3 })).rejects.toMatchObject({
       status: 422,
-      details: { missing: expect.arrayContaining([{ field: 'specialties', code: 'REQUIRED' }]) },
+      details: {
+        missing: expect.arrayContaining([{ field: 'specialties', code: 'AWAITING_REVIEW' }]),
+      },
     });
   });
 
@@ -989,5 +1003,369 @@ describe('patchStep — against a real ValidationPipe instance', () => {
     await h.service.patchStep('u-1', 'AVAILABILITY', body);
 
     expect(h.drafts.replaceAvailability).toHaveBeenCalled();
+  });
+});
+
+// ─── Sprint 9B.18 ───────────────────────────────────────────────────────────
+
+const cat = (id: string, over: Record<string, unknown> = {}) => ({
+  id,
+  slug: id,
+  labelEn: 'Label ' + id,
+  labelAr: 'تسمية ' + id,
+  parentId: 'grp-1',
+  isLeaf: true,
+  isActive: true,
+  deletedAt: null,
+  ...over,
+});
+
+describe('specialty state — selection and review are separate facts', () => {
+  it('reports an approved grant as APPROVED', async () => {
+    const h = build({
+      profile: makeCompleteProfile({
+        serviceCategories: [{ serviceCategoryId: 'c-a', serviceCategory: cat('c-a') }],
+        categoryApplications: [],
+      } as never),
+    });
+    const view = await h.service.get('u-1');
+    expect(view.data.specialties).toEqual([
+      expect.objectContaining({ categoryId: 'c-a', state: 'APPROVED' }),
+    ]);
+  });
+
+  it('reports a live application as PENDING, which is NOT a failure', async () => {
+    // The assertion behind the acceptance criterion: a pending admin decision
+    // must never be presented as something the provider got wrong.
+    const h = build({
+      profile: makeCompleteProfile({
+        serviceCategories: [],
+        categoryApplications: [{ serviceCategory: cat('c-p') }],
+      } as never),
+    });
+    const view = await h.service.get('u-1');
+
+    expect(view.data.specialties).toEqual([
+      expect.objectContaining({ categoryId: 'c-p', state: 'PENDING' }),
+    ]);
+    // It DOES still block submission — the canonical rule is that submission
+    // needs APPROVED specialties, and this sprint does not weaken it. What
+    // changes is the code: AWAITING_REVIEW, not REQUIRED, because the
+    // provider chose one and is waiting on somebody else.
+    const specialtyIssue = view.missing.find((m) => m.field === 'specialties');
+    expect(specialtyIssue).toEqual({ field: 'specialties', code: 'AWAITING_REVIEW' });
+    expect(view.complete).toBe(false);
+  });
+
+  it('reports a declined application as REJECTED, with when', async () => {
+    const decidedAt = new Date('2026-08-20T10:00:00Z');
+    const h = build({
+      profile: makeCompleteProfile({ serviceCategories: [], categoryApplications: [] } as never),
+      rejectedApplications: [
+        { serviceCategoryId: 'c-r', updatedAt: decidedAt, serviceCategory: cat('c-r') },
+      ],
+    });
+    const view = await h.service.get('u-1');
+
+    expect(view.data.specialties).toEqual([
+      expect.objectContaining({
+        categoryId: 'c-r',
+        state: 'REJECTED',
+        decidedAt: decidedAt.toISOString(),
+      }),
+    ]);
+  });
+
+  it('reports a retired category as INACTIVE, not as a rejection', async () => {
+    // The provider did nothing wrong. Showing an admin's catalogue
+    // housekeeping as a refusal blames them for it.
+    const h = build({
+      profile: makeCompleteProfile({
+        serviceCategories: [
+          { serviceCategoryId: 'c-x', serviceCategory: cat('c-x', { isActive: false }) },
+        ],
+        categoryApplications: [],
+      } as never),
+    });
+    const view = await h.service.get('u-1');
+    expect(view.data.specialties[0]).toMatchObject({ categoryId: 'c-x', state: 'INACTIVE' });
+  });
+
+  it('treats a soft-deleted category as INACTIVE too', async () => {
+    const h = build({
+      profile: makeCompleteProfile({
+        serviceCategories: [
+          { serviceCategoryId: 'c-d', serviceCategory: cat('c-d', { deletedAt: new Date() }) },
+        ],
+        categoryApplications: [],
+      } as never),
+    });
+    const view = await h.service.get('u-1');
+    expect(view.data.specialties[0].state).toBe('INACTIVE');
+  });
+
+  it('APPROVED wins over a stale REJECTED for the same category', async () => {
+    // Applied, refused, applied again, approved. Showing the refusal would
+    // report a decision that has since been overturned.
+    const h = build({
+      profile: makeCompleteProfile({
+        serviceCategories: [{ serviceCategoryId: 'c-a', serviceCategory: cat('c-a') }],
+        categoryApplications: [],
+      } as never),
+      rejectedApplications: [
+        { serviceCategoryId: 'c-a', updatedAt: new Date(), serviceCategory: cat('c-a') },
+      ],
+    });
+    const view = await h.service.get('u-1');
+    expect(view.data.specialties).toHaveLength(1);
+    expect(view.data.specialties[0].state).toBe('APPROVED');
+  });
+
+  it('PENDING wins over a stale REJECTED — they re-applied', async () => {
+    const h = build({
+      profile: makeCompleteProfile({
+        serviceCategories: [],
+        categoryApplications: [{ serviceCategory: cat('c-p') }],
+      } as never),
+      rejectedApplications: [
+        { serviceCategoryId: 'c-p', updatedAt: new Date(), serviceCategory: cat('c-p') },
+      ],
+    });
+    const view = await h.service.get('u-1');
+    expect(view.data.specialties[0].state).toBe('PENDING');
+  });
+
+  it('carries the labels, so a retired category does not render as a bare id', async () => {
+    const h = build({
+      profile: makeCompleteProfile({
+        serviceCategories: [
+          { serviceCategoryId: 'c-x', serviceCategory: cat('c-x', { isActive: false }) },
+        ],
+        categoryApplications: [],
+      } as never),
+    });
+    const view = await h.service.get('u-1');
+    expect(view.data.specialties[0]).toMatchObject({
+      labelEn: 'Label c-x',
+      labelAr: 'تسمية c-x',
+      parentId: 'grp-1',
+    });
+  });
+
+  it('keeps the legacy id arrays working', async () => {
+    // Every existing client reads these. A richer list must not remove them.
+    const h = build({
+      profile: makeCompleteProfile({
+        serviceCategories: [{ serviceCategoryId: 'c-a', serviceCategory: cat('c-a') }],
+        categoryApplications: [{ serviceCategory: cat('c-p') }],
+      } as never),
+    });
+    const view = await h.service.get('u-1');
+    expect(view.data.specialtyLeafIds).toEqual(['c-a']);
+    expect(view.data.pendingSpecialtyIds).toEqual(['c-p']);
+  });
+});
+
+describe('primary specialty', () => {
+  const withChosen = () =>
+    build({
+      profile: makeCompleteProfile({
+        serviceCategories: [{ serviceCategoryId: 'c-a', serviceCategory: cat('c-a') }],
+        categoryApplications: [{ serviceCategory: cat('c-p') }],
+      } as never),
+      categories: [
+        { id: 'c-a', isLeaf: true, isActive: true },
+        { id: 'c-p', isLeaf: true, isActive: true },
+      ],
+    });
+
+  it('accepts one of the approved specialties', async () => {
+    const h = withChosen();
+    await h.service.patchStep('u-1', 'SPECIALTIES', { version: 3, primarySpecialtyId: 'c-a' });
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ primaryServiceCategoryId: 'c-a' }),
+      }),
+    );
+  });
+
+  it('accepts one still AWAITING review', async () => {
+    // Nominating a primary is an intention, not an authorization. Refusing it
+    // would make the screen unusable for providers who are mid-application.
+    const h = withChosen();
+    await h.service.patchStep('u-1', 'SPECIALTIES', { version: 3, primarySpecialtyId: 'c-p' });
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ primaryServiceCategoryId: 'c-p' }),
+      }),
+    );
+  });
+
+  it('REFUSES a category the provider never chose', async () => {
+    const h = withChosen();
+    await expect(
+      h.service.patchStep('u-1', 'SPECIALTIES', { version: 3, primarySpecialtyId: 'c-other' }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('allows choosing and nominating in the SAME save', async () => {
+    // What the screen does on first use: tick a specialty, then make it the
+    // main one, in one autosave.
+    const h = build({
+      profile: makeCompleteProfile({ serviceCategories: [], categoryApplications: [] } as never),
+      categories: [{ id: 'c-new', isLeaf: true, isActive: true }],
+    });
+    await h.service.patchStep('u-1', 'SPECIALTIES', {
+      version: 3,
+      specialtyLeafIds: ['c-new'],
+      primarySpecialtyId: 'c-new',
+    });
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ primaryServiceCategoryId: 'c-new' }),
+      }),
+    );
+  });
+
+  it('clears cleanly', async () => {
+    const h = withChosen();
+    await h.service.patchStep('u-1', 'SPECIALTIES', { version: 3, primarySpecialtyId: null });
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ primaryServiceCategoryId: null }),
+      }),
+    );
+  });
+
+  it('suggests a localized title from the primary, in BOTH languages', async () => {
+    const h = build({
+      profile: makeCompleteProfile({
+        primaryServiceCategoryId: 'plumbing',
+        serviceCategories: [{ serviceCategoryId: 'plumbing', serviceCategory: cat('plumbing') }],
+        categoryApplications: [],
+      } as never),
+    });
+    const view = await h.service.get('u-1');
+    expect(view.data.suggestedTitle).toEqual({ en: 'Plumber', ar: 'سبّاك' });
+  });
+
+  it('suggests nothing when no primary is chosen', async () => {
+    const h = build({
+      profile: makeCompleteProfile({
+        primaryServiceCategoryId: null,
+        serviceCategories: [],
+        categoryApplications: [],
+      } as never),
+    });
+    const view = await h.service.get('u-1');
+    expect(view.data.suggestedTitle).toBeNull();
+  });
+
+  it('does NOT publish the suggestion anywhere', async () => {
+    // The acceptance criterion: no title is published without user review.
+    // Reading the draft must write nothing at all.
+    const h = build({
+      profile: makeCompleteProfile({
+        primaryServiceCategoryId: 'plumbing',
+        serviceCategories: [{ serviceCategoryId: 'plumbing', serviceCategory: cat('plumbing') }],
+        categoryApplications: [],
+      } as never),
+    });
+    const view = await h.service.get('u-1');
+
+    expect(view.data.suggestedTitle).not.toBeNull();
+    expect(view.data.headline).toBe(makeCompleteProfile().headline);
+    expect(h.trx.providerProfile.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('transport — a set with a primary, kept consistent server-side', () => {
+  it('stores the set and keeps the existing primary when it is still in it', async () => {
+    const h = build({
+      profile: makeCompleteProfile({ transportMode: 'CAR', transportModes: ['CAR'] } as never),
+    });
+    await h.service.patchStep('u-1', 'EXPERIENCE', { version: 3, transportModes: ['CAR', 'VAN'] });
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ transportModes: ['CAR', 'VAN'], transportMode: 'CAR' }),
+      }),
+    );
+  });
+
+  it('re-points the primary when the new set no longer contains it', async () => {
+    // Otherwise the profile advertises a capability the provider just removed.
+    const h = build({
+      profile: makeCompleteProfile({ transportMode: 'CAR', transportModes: ['CAR'] } as never),
+    });
+    await h.service.patchStep('u-1', 'EXPERIENCE', { version: 3, transportModes: ['VAN'] });
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ transportModes: ['VAN'], transportMode: 'VAN' }),
+      }),
+    );
+  });
+
+  it('clears the primary when every mode is cleared', async () => {
+    const h = build({
+      profile: makeCompleteProfile({ transportMode: 'CAR', transportModes: ['CAR'] } as never),
+    });
+    await h.service.patchStep('u-1', 'EXPERIENCE', { version: 3, transportModes: [] });
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ transportModes: [], transportMode: null }),
+      }),
+    );
+  });
+
+  it('honours an explicit primary sent alongside the set', async () => {
+    const h = build();
+    await h.service.patchStep('u-1', 'EXPERIENCE', {
+      version: 3,
+      transportModes: ['CAR', 'VAN'],
+      transportMode: 'VAN',
+    });
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ transportMode: 'VAN' }) }),
+    );
+  });
+
+  it('collapses duplicates rather than storing a mode twice', async () => {
+    const h = build();
+    await h.service.patchStep('u-1', 'EXPERIENCE', {
+      version: 3,
+      transportModes: ['CAR', 'CAR', 'VAN'],
+    });
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ transportModes: ['CAR', 'VAN'] }),
+      }),
+    );
+  });
+
+  it('an OLD client sending only the primary joins it to the set', async () => {
+    // Backward compatibility in the direction that actually happens: a client
+    // built before this sprint writes transportMode alone, and the two must
+    // not silently disagree afterwards.
+    const h = build({
+      profile: makeCompleteProfile({ transportMode: null, transportModes: [] } as never),
+    });
+    await h.service.patchStep('u-1', 'EXPERIENCE', { version: 3, transportMode: 'TRUCK' });
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ transportMode: 'TRUCK', transportModes: ['TRUCK'] }),
+      }),
+    );
+  });
+
+  it('exposes both on the read model', async () => {
+    const h = build({
+      profile: makeCompleteProfile({
+        transportMode: 'MOTORCYCLE',
+        transportModes: ['MOTORCYCLE', 'ON_FOOT'],
+      } as never),
+    });
+    const view = await h.service.get('u-1');
+    expect(view.data.transportMode).toBe('MOTORCYCLE');
+    expect(view.data.transportModes).toEqual(['MOTORCYCLE', 'ON_FOOT']);
   });
 });

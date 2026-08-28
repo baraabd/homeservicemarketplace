@@ -169,6 +169,15 @@ export class PatchOnboardingStepDto implements PatchOnboardingStepRequest {
   @IsString({ each: true })
   serviceAreaIds?: string[];
 
+  // Sprint 9B.18 — the one service the provider leads with. Shape only; that
+  // it is one of THEIR specialties, and still selectable, needs the provider's
+  // state and so belongs to the service.
+  @IsOptional()
+  @Transform(({ value }) => trimToNullable(value))
+  @IsString()
+  @MaxLength(64)
+  primarySpecialtyId?: string | null;
+
   @IsOptional()
   @Transform(({ value }) => trimToNullable(value))
   @IsString()
@@ -230,6 +239,16 @@ export class PatchOnboardingStepDto implements PatchOnboardingStepRequest {
   @IsOptional()
   @IsIn([...TRANSPORT_MODES, null])
   transportMode?: ProviderTransportModeCode | null;
+
+  // Sprint 9B.18 — the full set. Bounded by the enum's own size: a request
+  // carrying more entries than there are modes is malformed by definition,
+  // and duplicates are collapsed server-side rather than rejected, because a
+  // client sending the same mode twice is untidy, not hostile.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(TRANSPORT_MODES.length)
+  @IsIn(TRANSPORT_MODES, { each: true })
+  transportModes?: ProviderTransportModeCode[];
 
   // ── AVAILABILITY ────────────────────────────────────────────────────────
 

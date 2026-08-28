@@ -56,6 +56,22 @@ export interface ProviderOnboardingIssue {
    *                  the account's email; this is a field the PROVIDER must
    *                  prove (their phone), and the two have different fixes.
    *   OUT_OF_RANGE — present, well-formed, and outside the allowed bounds.
+   *
+   * Sprint 9B.18 adds:
+   *   AWAITING_REVIEW — the provider DID supply this and an admin has not
+   *                     decided yet. It still blocks submission, because the
+   *                     canonical rule is that submission needs APPROVED
+   *                     specialties — but it is not a mistake they made, and
+   *                     reporting it as REQUIRED tells someone who chose a
+   *                     specialty that they did not choose one. There is
+   *                     nothing for them to fix and the copy must not imply
+   *                     there is.
    */
-  code: 'REQUIRED' | 'TOO_SHORT' | 'UNVERIFIED' | 'NOT_VERIFIED' | 'OUT_OF_RANGE';
+  code:
+    | 'REQUIRED'
+    | 'TOO_SHORT'
+    | 'UNVERIFIED'
+    | 'NOT_VERIFIED'
+    | 'OUT_OF_RANGE'
+    | 'AWAITING_REVIEW';
 }

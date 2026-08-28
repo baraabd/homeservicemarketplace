@@ -1,3 +1,4 @@
+import type { ProviderSpecialtyView } from './provider-specialty-state';
 import type { ProviderOnboardingIssue } from '../enums/provider-onboarding-field';
 import type { ProviderOnboardingLifecycleState } from '../enums/provider-onboarding-lifecycle-state';
 import type {
@@ -81,12 +82,44 @@ export interface ProviderOnboardingData {
   /** Leaf specialties applied for and awaiting an admin decision. */
   pendingSpecialtyIds: string[];
 
+  // ── Sprint 9B.18 ────────────────────────────────────────────────────────
+
+  /** Every chosen specialty with WHAT HAPPENED to it, in one list.
+   *
+   *  The two id arrays above are kept — every existing client reads them —
+   *  but they cannot express "an admin said no" or "the category was
+   *  retired", and a client that infers those from an id's absence gets both
+   *  wrong. Prefer this. */
+  specialties: ProviderSpecialtyView[];
+  /** The one service the provider leads with. May be PENDING: nominating a
+   *  primary is an intention, not an authorization. */
+  primarySpecialtyId: string | null;
+  /** The operator-configured ceiling on how many specialties may be held.
+   *
+   *  Served rather than hardcoded in the client: it is a platform setting an
+   *  admin can change, and a client with its own number would either refuse a
+   *  selection the server accepts or offer one it is about to reject. */
+  maxSpecialties: number;
+  /** Suggested from the primary specialty.
+   *
+   *  A SUGGESTION. Nothing has been published, and the provider has to accept
+   *  it before anything is. Null when no primary is chosen yet.
+   *
+   *  BOTH languages, together — the same rule the category catalogue follows,
+   *  so switching language does not need a refetch and an Arabic reader is
+   *  never briefly offered an English trade name. */
+  suggestedTitle: { en: string; ar: string } | null;
+
   yearsOfExperience: number | null;
   /** ISO date. An alternative to `yearsOfExperience`; the server derives one
    *  from the other so the stored fact does not silently age. */
   professionSince: string | null;
   equipmentCodes: string[];
   transportMode: ProviderTransportModeCode | null;
+  /** Every mode the provider can use. `transportMode` above is the PRIMARY and
+   *  is always one of these when set — the two are kept in step server-side
+   *  rather than by asking each client to remember. */
+  transportModes: ProviderTransportModeCode[];
 
   availability: ProviderAvailabilityInterval[];
   /** The zone new intervals are recorded in. */

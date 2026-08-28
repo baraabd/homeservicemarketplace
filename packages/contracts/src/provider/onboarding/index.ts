@@ -16,3 +16,7 @@ export * from './response/provider-onboarding-hub';
 
 // Sprint 9B.17 — the phone-number format rule, shared by the form and the API.
 export * from './phone';
+
+// Sprint 9B.18 — per-specialty review state, and the professional-title rule.
+export * from './response/provider-specialty-state';
+export * from './professional-title';
