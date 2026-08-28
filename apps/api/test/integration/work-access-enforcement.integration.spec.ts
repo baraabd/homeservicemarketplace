@@ -90,6 +90,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
 
   let lifecycleLock: HeldLock;
   let outboxLock: HeldLock;
+  let grantsLock: HeldLock;
 
   const REQS = {
     policyVersion: POLICY,
@@ -190,6 +191,10 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   beforeAll(async () => {
     lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
     outboxLock = await acquireAdvisoryLock('outbox', 'shared');
+    // EXCLUSIVE: this suite asserts on the expiry sweep's TABLE-WIDE totals
+    // ("scanned: 0" means nothing anywhere is due), which no fixture prefix can
+    // make true while another suite holds a due grant.
+    grantsLock = await acquireAdvisoryLock('workAccessGrants', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -366,6 +371,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
     await prisma.verificationRequirementPolicy.deleteMany({ where: { version: POLICY } });
     await app?.close();
     await prisma.$disconnect();
+    await grantsLock?.release();
     await outboxLock?.release();
     await lifecycleLock.release();
   });

@@ -45,6 +45,16 @@ const LOCK_KEYS = {
    *  table-wide counts of them, so seeders must not overlap it — or each
    *  other, since two concurrent upserts of the same row race. */
   seed: 907_003,
+  /** `ProviderWorkAccessGrant`. The expiry sweep is a queue CONSUMER like the
+   *  outbox: `runOnce` scans the whole table for grants that are due and
+   *  reports `scanned` as a table-wide count, so no fixture namespace can hide
+   *  another suite's grant from it.
+   *
+   *  Added in Sprint 9B.21 after a NEW, unrelated suite shifted worker
+   *  scheduling and put a grant-creating suite alongside the sweep for the
+   *  first time. The assertion `scanned: 0` — "nothing anywhere is due yet" —
+   *  had been true only by luck of ordering. */
+  workAccessGrants: 907_004,
 } as const;
 
 export type LockResource = keyof typeof LOCK_KEYS;

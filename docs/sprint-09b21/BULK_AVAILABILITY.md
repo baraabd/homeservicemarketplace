@@ -153,6 +153,35 @@ this step. So:
 
 ---
 
+## 7. A latent test-isolation bug this sprint exposed
+
+CI failed on a suite this branch does not touch:
+`work-access-enforcement.integration.spec.ts`, asserting `scanned: 0` from the
+verification expiry sweep.
+
+`VerificationExpiryService.runOnce` is a **queue consumer**: it scans every
+ACTIVE grant table-wide for one that is due, and `scanned` is a global count.
+No fixture prefix can hide another suite's grant from it — and worse, the
+sweep can EXPIRE that other suite's grant, breaking a suite that did nothing
+wrong. The assertion had been true only by luck of worker ordering; adding a
+new suite shifted the schedule and put a grant-creating suite alongside it for
+the first time.
+
+Fixed with the mechanism `db-isolation.ts` already documents for exactly this
+case (it is what the outbox queue uses): a new `workAccessGrants` advisory
+lock, taken EXCLUSIVE by the sweep suite and SHARED by the five suites that
+create grants.
+
+**Acquired last, everywhere.** Every suite now takes
+`providerLifecycle -> outbox -> workAccessGrants` in that order. Two suites
+taking two locks in opposite orders is a deadlock, and a deadlocked CI job
+looks like a hang rather than a failure. Verified by running the six
+contending suites together at `--maxWorkers=4`, twice.
+
+Not papered over with a retry, and the assertion was not weakened.
+
+---
+
 ## 7. Evidence
 
 | Gate                                    | Result                                                 |
