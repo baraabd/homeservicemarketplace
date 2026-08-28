@@ -14,6 +14,7 @@ import {
 import { OnboardingShell } from './OnboardingShell';
 import { BasicsTask } from './BasicsTaskScreen';
 import { ServicesTask } from './ServicesTaskScreen';
+import { ServiceAreaTask } from './ServiceAreaTaskScreen';
 
 // Sprint 9B.16 — the per-task route.
 //
@@ -141,6 +142,8 @@ export function OnboardingTaskScreen() {
           <BasicsTask lang={lang} />
         ) : actionable && task.id === 'SERVICES_EXPERIENCE' ? (
           <ServicesTask lang={lang} />
+        ) : actionable && task.id === 'WORK_AREA' ? (
+          <ServiceAreaTask lang={lang} />
         ) : actionable ? (
           <p
             className="break-words text-slate-500 dark:text-slate-400"
