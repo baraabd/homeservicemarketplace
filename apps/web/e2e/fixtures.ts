@@ -322,6 +322,20 @@ export async function expectNoHorizontalPageOverflow(page: Page): Promise<void> 
 
 /** Every matched element must sit inside its own offsetParent's box. */
 export async function expectContainedInParent(locator: Locator, label: string): Promise<void> {
+  // `count()` is a SNAPSHOT: unlike an `expect(...)` assertion it does not
+  // retry, so asking for it the instant a screen is reached measures whatever
+  // has painted so far. Every caller here asserts "at least one element", and
+  // several of them target content that arrives with its own query — the
+  // portfolio grid renders after the section it lives in. Under a loaded
+  // parallel run that read lands early and the helper fails with "expected at
+  // least one element to check", which reads as a missing element rather than
+  // as the race it is.
+  //
+  // Waiting for the first match makes the precondition explicit. It is an
+  // auto-waiting assertion, not a sleep or a retry: a genuinely absent element
+  // still fails, just with a timeout that says so.
+  await locator.first().waitFor({ state: 'attached' });
+
   const count = await locator.count();
   expect(count, `${label}: expected at least one element to check`).toBeGreaterThan(0);
 
