@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { AppConfigService } from '../../config/app-config.service';
@@ -81,6 +81,61 @@ export class S3StorageAdapter extends StoragePort {
       bytes: input.sizeBytes,
     });
     return { uploadUrl, fileUrl, expiresAt };
+  }
+
+  /**
+   * Sprint 9B.17 — size and leading bytes, for the avatar finalize check.
+   *
+   * A RANGE request, not a whole GetObject: the caller wants a signature, and
+   * with a browser-direct upload this is the API's only look at bytes it never
+   * received. Pulling entire objects back out of the bucket to read twelve of
+   * them would turn every avatar save into an egress charge.
+   *
+   * `ContentRange` carries the FULL object length ("bytes 0-15/40213"), so one
+   * ranged read answers both questions and no HeadObject is needed.
+   */
+  async readObjectHead(
+    key: string,
+    byteCount: number,
+  ): Promise<{ sizeBytes: number; head: Uint8Array } | null> {
+    const bucket = this.config.get('S3_BUCKET');
+    if (!bucket) throw new Error('S3_BUCKET is required when STORAGE_DRIVER=s3');
+
+    const lastByte = Math.max(0, byteCount - 1);
+    try {
+      const res = await this.client.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Range: `bytes=0-${lastByte}`,
+        }),
+      );
+      const body = res.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
+      if (!body?.transformToByteArray) return null;
+      const head = await body.transformToByteArray();
+
+      // "bytes 0-15/40213" — the part after the slash is the WHOLE object.
+      // ContentLength on a ranged response is the length of the range, so
+      // reading the size from it would report every avatar as 16 bytes; it is
+      // only a fallback for a backend that omits the range header.
+      const total = res.ContentRange?.split('/')[1];
+      const parsed = total ? Number.parseInt(total, 10) : (res.ContentLength ?? head.byteLength);
+      return { sizeBytes: Number.isFinite(parsed) ? parsed : head.byteLength, head };
+    } catch {
+      // Missing key, no permission, or a transient fault. All read as "nothing
+      // usable is there", which is the answer finalize needs: it refuses rather
+      // than linking an object it could not inspect.
+      return null;
+    }
+  }
+
+  /** The canonical public read URL for a key, without needing the bucket at
+   *  the call site. Shared with presign so the two can never disagree about
+   *  what a key resolves to. */
+  publicUrlForKey(key: string): string {
+    const bucket = this.config.get('S3_BUCKET');
+    if (!bucket) throw new Error('S3_BUCKET is required when STORAGE_DRIVER=s3');
+    return this.publicReadUrl(bucket, key);
   }
 
   /** Compose the canonical read URL for an uploaded object.

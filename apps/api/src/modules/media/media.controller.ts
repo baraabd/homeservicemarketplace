@@ -1,6 +1,12 @@
 import { AppConfigService } from '../../config/app-config.service';
 import { portfolioOwnerRef } from '../provider/portfolio/portfolio-policy';
 import {
+  AVATAR_KEY_PREFIX,
+  AvatarPolicyError,
+  assertAvatarContentType,
+  avatarOwnerRef,
+} from '../provider/onboarding/avatar/avatar-policy';
+import {
   Body,
   Controller,
   Get,
@@ -116,6 +122,33 @@ export class MediaController {
           const ref = portfolioOwnerRef(user.id, String(this.config.get('JWT_ACCESS_SECRET')));
           return this.storage.presignUpload({
             key: `portfolio/${ref}/${randomUUID()}.${ext}`,
+            contentType: item.contentType as ContentType,
+            sizeBytes: item.sizeBytes,
+          });
+        }
+        // Sprint 9B.17 — avatars. Their own namespace, an opaque owner ref for
+        // the same reason the portfolio has one (an avatar URL is handed out
+        // even more widely), and an allowlist NARROWER than the shared one:
+        // a profile photo is an image, so refusing video here means the
+        // finalize step is not the first thing to notice.
+        //
+        // Refused at presign AND re-checked against the stored bytes at
+        // finalize. This is the cheap check that keeps a pointless upload from
+        // happening; it is not the one that decides what gets linked.
+        if (body.purpose === 'avatar') {
+          // Mapped here rather than left to bubble: an AvatarPolicyError is not
+          // an AppError, so an uncaught one would leave the filter to render a
+          // 500 for what is plainly a bad request.
+          try {
+            assertAvatarContentType(item.contentType);
+          } catch (err) {
+            throw new AppError('VALIDATION_ERROR', (err as Error).message, 400, {
+              reason: (err as AvatarPolicyError).code,
+            });
+          }
+          const ref = avatarOwnerRef(user.id, String(this.config.get('JWT_ACCESS_SECRET')));
+          return this.storage.presignUpload({
+            key: `${AVATAR_KEY_PREFIX}${ref}/${randomUUID()}.${ext}`,
             contentType: item.contentType as ContentType,
             sizeBytes: item.sizeBytes,
           });

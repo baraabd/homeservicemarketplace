@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   ADMIN_SETTINGS_SCHEMA,
   PROVIDER_ONBOARDING_STEPS,
+  isPlausibleE164,
   type PatchOnboardingStepRequest,
   type ProviderOnboardingData,
   type ProviderOnboardingDraftView,
@@ -25,6 +26,7 @@ import {
 } from '../../../infrastructure/persistence/provider/provider-onboarding-draft.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
+import { referencesRestrictedMedia } from './avatar/avatar-policy';
 // The SAME normalisation Sprint 6's fan-out matches on. Imported rather than
 // re-implemented: if the two ever disagree, a provider silently stops being
 // reachable by requests in their own city and nothing errors.
@@ -384,10 +386,51 @@ export class ProviderOnboardingWizardService {
           profileData.displayName = name;
         }
         if (body.profileImageUrl !== undefined) {
-          profileData.profileImageUrl = trimToNull(body.profileImageUrl);
+          const image = trimToNull(body.profileImageUrl);
+          // Sprint 9B.17 — an avatar may never point into the restricted
+          // namespace. The V2 client no longer sends a URL at all (it uploads
+          // and finalizes), but this field is free text and the LEGACY wizard
+          // still types into it, so the refusal belongs here where both paths
+          // meet rather than in one client.
+          //
+          // The public read route already refuses to SERVE a restricted key,
+          // so this is the second half of the same boundary: not merely
+          // unserved, but never stored — a profile row pointing at somebody's
+          // passport is a data-protection incident whether or not the bytes
+          // ever came back over HTTP.
+          if (image !== null && referencesRestrictedMedia(image)) {
+            this.logger.warn({
+              msg: 'provider.avatar.restricted_reference_refused',
+              providerProfileId: ctx.profile.id,
+            });
+            throw new AppError('VALIDATION_ERROR', 'That file cannot be used as a photo.', 400, {
+              reason: 'NOT_AN_AVATAR_KEY',
+            });
+          }
+          profileData.profileImageUrl = image;
         }
         if (body.phoneNumber !== undefined) {
           const next = trimToNull(body.phoneNumber);
+          // Sprint 9B.17 — a real format check, server-side.
+          //
+          // The DTO bounded the LENGTH and nothing else, so "not a phone
+          // number at all" reached the database and surfaced months later as
+          // an unreachable provider. Validated here rather than only in the
+          // form, because a rule that lives in one client is a rule the other
+          // client and every future integration do not have.
+          //
+          // This is a FORMAT check and nothing more. It says the number is
+          // shaped like an international number; it does not claim anyone
+          // proved they hold it — that is `phoneVerifiedAt`, which no code
+          // path sets yet and which onboarding therefore does not demand.
+          if (next !== null && !isPlausibleE164(next)) {
+            throw new AppError(
+              'VALIDATION_ERROR',
+              'Enter a phone number in international format, e.g. +963912345678.',
+              400,
+              { reason: 'PHONE_FORMAT' },
+            );
+          }
           profileData.phoneNumber = next;
           // Changing the number INVALIDATES the verification. Keeping the old
           // proof against a new number is how an unverifiable number ends up

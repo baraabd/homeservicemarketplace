@@ -13,3 +13,6 @@ export * from './response/provider-onboarding-draft';
 
 // Sprint 9B.16 — the onboarding HUB read-model (six grouped tasks).
 export * from './response/provider-onboarding-hub';
+
+// Sprint 9B.17 — the phone-number format rule, shared by the form and the API.
+export * from './phone';

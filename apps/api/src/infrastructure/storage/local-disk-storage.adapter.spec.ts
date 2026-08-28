@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -207,6 +207,44 @@ describe('LocalDiskStorageAdapter', () => {
         actualContentType: 'image/jpeg',
       }),
     ).rejects.toThrow('size-mismatch');
+  });
+
+  // ── Sprint 9B.17 — readObjectHead, the avatar finalize measurement ──────
+
+  it('returns the size and the leading bytes of a stored object', async () => {
+    const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+    const key = 'avatars/ref/photo.png';
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+    await mkdir(join(ROOT, 'avatars', 'ref'), { recursive: true });
+    await writeFile(adapter.absolutePathForKey(key), bytes);
+
+    const head = await adapter.readObjectHead(key, 8);
+
+    // The SIZE is the whole object; the HEAD is only what was asked for.
+    // Reading the whole file to look at eight bytes would be a memory lever.
+    expect(head).not.toBeNull();
+    expect(head!.sizeBytes).toBe(bytes.byteLength);
+    expect(Buffer.from(head!.head)).toEqual(bytes.subarray(0, 8));
+  });
+
+  it('returns null for a key with nothing behind it', async () => {
+    // A dropped PUT. Finalize must refuse rather than link a 404.
+    const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+    await expect(adapter.readObjectHead('avatars/ref/missing.png', 8)).resolves.toBeNull();
+  });
+
+  it('returns null for a DIRECTORY, which opens happily on POSIX', async () => {
+    // Only the fstat on the open handle says what it actually is.
+    const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+    await mkdir(join(ROOT, 'avatars', 'adir'), { recursive: true });
+    await expect(adapter.readObjectHead('avatars/adir', 8)).resolves.toBeNull();
+  });
+
+  it('returns null for an escaping key rather than throwing', async () => {
+    // Indistinguishable from "not there": telling a prober which of their
+    // guesses was structurally valid is itself an answer.
+    const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+    await expect(adapter.readObjectHead('../escape', 8)).resolves.toBeNull();
   });
 
   it('absolutePathForKey rejects keys that escape the root', () => {

@@ -27,6 +27,8 @@ import { ProviderCapabilityModule } from './capability/provider-capability.modul
 import { ProviderOnboardingService } from './onboarding/provider-onboarding.service';
 import { ProviderOnboardingWizardController } from './onboarding/provider-onboarding-wizard.controller';
 import { ProviderOnboardingWizardService } from './onboarding/provider-onboarding-wizard.service';
+import { ProviderAvatarService } from './onboarding/avatar/provider-avatar.service';
+import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { ProviderController } from './provider.controller';
 import { ProviderService } from './provider.service';
 import { ProviderEarningsController } from './wallet/provider-earnings.controller';
@@ -64,6 +66,11 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     NotificationsModule,
     AuditModule,
     ProviderCapabilityModule,
+    // Sprint 9B.17 — the avatar finalize step reads the uploaded object back
+    // out of storage before linking it, so this module needs the public
+    // StoragePort. Restricted evidence storage is a DIFFERENT token and is
+    // deliberately not reachable from here.
+    StorageModule,
   ],
   controllers: [
     ProviderController,
@@ -111,6 +118,10 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderOnboardingService,
     // Sprint 8 — the wizard: get, per-step patch, submit, withdraw.
     ProviderOnboardingWizardService,
+    // Sprint 9B.17 — avatar finalize. Depends on the wizard service so the
+    // photo is written through the SAME versioned step path as every other
+    // field rather than a second write path with its own rules.
+    ProviderAvatarService,
     // Sprint 2 — provider-side skill applications.
     ProviderCategoriesService,
   ],

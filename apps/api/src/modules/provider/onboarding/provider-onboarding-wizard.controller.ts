@@ -28,6 +28,8 @@ import { AppError } from '../../../shared/errors/app-error';
 import { PatchOnboardingStepDto } from './dto/patch-onboarding-step.dto';
 import { SubmitOnboardingDto } from './dto/submit-onboarding.dto';
 import { ProviderOnboardingWizardService } from './provider-onboarding-wizard.service';
+import { ProviderAvatarService } from './avatar/provider-avatar.service';
+import { FinalizeAvatarDto, RemoveAvatarDto } from './avatar/dto/finalize-avatar.dto';
 
 // /v1/me/provider/onboarding/* — the Sprint 8 wizard.
 // docs/adr/0008-category-hierarchy-and-onboarding-draft.md
@@ -62,7 +64,10 @@ import { ProviderOnboardingWizardService } from './provider-onboarding-wizard.se
 @RequireCapability(ProviderCapability.EditOwnProfile)
 @Controller({ path: 'me/provider/onboarding', version: '1' })
 export class ProviderOnboardingWizardController {
-  constructor(private readonly wizard: ProviderOnboardingWizardService) {}
+  constructor(
+    private readonly wizard: ProviderOnboardingWizardService,
+    private readonly avatars: ProviderAvatarService,
+  ) {}
 
   /** The whole application: data, per-step state, progress, next action.
    *
@@ -94,6 +99,41 @@ export class ProviderOnboardingWizardController {
     @Body() body: PatchOnboardingStepDto,
   ): Promise<ProviderOnboardingDraftView> {
     return this.wizard.patchStep(user.id, assertStep(step), body);
+  }
+
+  /**
+   * Sprint 9B.17 — link an uploaded object as the provider's profile photo.
+   *
+   * Separate from `patchStep` because it does something a field write cannot:
+   * it reads the object BACK from storage and checks what actually landed —
+   * the size the backend counted and the type the leading bytes say — before
+   * anything is linked. With a browser-direct upload this is the only moment
+   * the server sees the file at all.
+   *
+   * The body carries a KEY, never a URL. The URL is recomputed from the key
+   * the server itself minted, so a caller cannot have us store a pointer to an
+   * object they do not own.
+   */
+  @UseGuards(CsrfGuard)
+  @Post('avatar')
+  @HttpCode(HttpStatus.OK)
+  finalizeAvatar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: FinalizeAvatarDto,
+  ): Promise<ProviderOnboardingDraftView> {
+    return this.avatars.finalize(user.id, body);
+  }
+
+  /** Remove the profile photo. Goes through the same versioned write as
+   *  setting it, so removal cannot bypass the edit lock. */
+  @UseGuards(CsrfGuard)
+  @Post('avatar/remove')
+  @HttpCode(HttpStatus.OK)
+  removeAvatar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RemoveAvatarDto,
+  ): Promise<ProviderOnboardingDraftView> {
+    return this.avatars.remove(user.id, body.version);
   }
 
   /**
