@@ -12,6 +12,10 @@ import { HomePage } from './pages/HomePage';
 import { AppSelector } from './pages/AppSelector';
 import { ProviderPage } from './pages/ProviderPage';
 import { AdminPage } from './pages/AdminPage';
+import {
+  ProviderOnboardingHubPage,
+  ProviderOnboardingTaskPage,
+} from './pages/ProviderOnboardingPage';
 import { RequireAuth, RequireAdmin, GuestOnly } from '../lib/route-guards';
 
 // ─── Router ───────────────────────────────────────────────────────────────────
@@ -63,6 +67,14 @@ export const router = createBrowserRouter([
           { path: 'home/messages', Component: HomePage },
           { path: 'home/profile', Component: HomePage },
           { path: 'provider', Component: ProviderPage },
+
+          // Sprint 9B.16 — the V2 onboarding surface. Full-screen, so it is a
+          // ROUTE rather than a tab inside ProviderApp: the task the provider
+          // is on has to survive a reload and a login round-trip, and tab
+          // state in a component survives neither. Both paths bounce to
+          // /provider while the flag is off.
+          { path: 'provider/onboarding', Component: ProviderOnboardingHubPage },
+          { path: 'provider/onboarding/:taskId', Component: ProviderOnboardingTaskPage },
         ],
       },
 

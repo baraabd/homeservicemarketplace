@@ -1,0 +1,126 @@
+import { Check, ChevronLeft, ChevronRight, Clock, Lock } from 'lucide-react';
+import type { ProviderOnboardingHubTask } from '@homeservicemarketplace/contracts';
+
+import { isTaskActionable } from '../hub-view-state';
+import { statusExplanation, statusLabel, taskCopy, type Lang } from '../copy/onboarding-hub-copy';
+
+// Sprint 9B.16 — one task row.
+//
+// The row has exactly two shapes, and which one it takes is decided by the
+// SERVER's status, never by anything the client knows about the form behind
+// it:
+//
+//   AVAILABLE  → a real <button>. Focusable, in the tab order, announced as a
+//                button, and it navigates.
+//   everything → a plain container. NOT a disabled button: a disabled control
+//   else         is still announced as a control, still invites a press, and
+//                tells a screen-reader user only that something they cannot
+//                identify is unavailable. A row that is not an action should
+//                not pretend to be one — it should say what it is waiting for.
+//
+// That sentence is the reason `statusExplanation` exists. A greyed row with no
+// explanation leaves the provider with one move: press it again.
+
+interface HubTaskRowProps {
+  task: ProviderOnboardingHubTask;
+  lang: Lang;
+  dir: 'ltr' | 'rtl';
+  onOpen: (taskId: string) => void;
+}
+
+function StatusIcon({ status }: { status: string }) {
+  if (status === 'COMPLETE')
+    return <Check size={16} className="text-emerald-600" aria-hidden="true" />;
+  if (status === 'WAITING')
+    return <Clock size={16} className="text-amber-600" aria-hidden="true" />;
+  if (status === 'AVAILABLE') return null;
+  // BLOCKED, and anything a newer server invents.
+  return <Lock size={16} className="text-slate-400" aria-hidden="true" />;
+}
+
+export function HubTaskRow({ task, lang, dir, onOpen }: HubTaskRowProps) {
+  const copy = taskCopy(task, lang);
+  const actionable = isTaskActionable(task.status);
+  const explanation = statusExplanation(task.status, lang);
+  const badge = statusLabel(task.status, lang);
+  const Chevron = dir === 'rtl' ? ChevronLeft : ChevronRight;
+
+  // Shared inner layout, so the two shapes cannot drift apart visually.
+  const body = (
+    <>
+      <div className="min-w-0 flex-1 text-start">
+        <div className="flex items-center gap-2">
+          <StatusIcon status={task.status} />
+          {/* break-words, not truncate: a task title is the one string on the
+              row the provider must be able to read in full, and Arabic
+              wording runs longer than its English counterpart. */}
+          <span
+            className="min-w-0 break-words text-slate-900 dark:text-white"
+            style={{ fontSize: '14px', fontWeight: 600 }}
+          >
+            {copy.title}
+          </span>
+        </div>
+        <p
+          className="mt-0.5 break-words text-slate-500 dark:text-slate-400"
+          style={{ fontSize: '12px' }}
+        >
+          {copy.description}
+        </p>
+        {explanation ? (
+          <p
+            className="mt-1 break-words text-slate-500 dark:text-slate-400"
+            style={{ fontSize: '12px' }}
+            data-testid={`task-explanation-${task.id}`}
+          >
+            {explanation}
+          </p>
+        ) : null}
+      </div>
+
+      <span
+        className="flex-shrink-0 rounded-full px-2 py-0.5 text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700"
+        style={{ fontSize: '11px', fontWeight: 600 }}
+        data-testid={`task-status-${task.id}`}
+      >
+        {badge}
+      </span>
+
+      {actionable ? <Chevron size={18} className="flex-shrink-0 text-slate-400" /> : null}
+    </>
+  );
+
+  const shared =
+    'w-full flex items-start gap-3 rounded-2xl border p-3 border-slate-200 dark:border-slate-700';
+
+  if (!actionable) {
+    return (
+      <div
+        className={`${shared} bg-slate-50 dark:bg-slate-800/50`}
+        data-testid={`task-row-${task.id}`}
+        data-actionable="false"
+        data-status={task.status}
+        style={{ minHeight: '44px' }}
+      >
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(task.id)}
+      data-testid={`task-row-${task.id}`}
+      data-actionable="true"
+      data-status={task.status}
+      // The accessible name is the task title plus its state, so a
+      // screen-reader user hears WHICH task without having to explore the row.
+      aria-label={`${copy.title} — ${badge}`}
+      className={`${shared} bg-white dark:bg-slate-800 text-start hover:border-blue-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600`}
+      style={{ minHeight: '44px' }}
+    >
+      {body}
+    </button>
+  );
+}
