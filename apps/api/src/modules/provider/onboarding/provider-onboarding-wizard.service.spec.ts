@@ -608,6 +608,63 @@ describe('patchStep — SPECIALTIES never grants a category', () => {
 // IDENTITY, AVAILABILITY, CONSENT
 // ─────────────────────────────────────────────────────────────────────────────
 describe('patchStep — IDENTITY', () => {
+  // ── Sprint 9B.17 ──────────────────────────────────────────────────────
+
+  it('REFUSES a profileImageUrl pointing into the restricted namespace', async () => {
+    // The public read route already refuses to SERVE a restricted key. This is
+    // the other half: never STORED either. A profile row pointing at somebody's
+    // passport is a data-protection incident whether or not the bytes are ever
+    // fetched — and this field is free text that the legacy wizard types into.
+    const h = build();
+    await expect(
+      h.service.patchStep('u-1', 'IDENTITY', {
+        version: 3,
+        profileImageUrl: 'http://localhost:4000/v1/media/files/verification/c-1/passport.jpg',
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(h.trx.providerProfile.update).not.toHaveBeenCalled();
+  });
+
+  it('still accepts an ordinary public image URL', async () => {
+    // The refusal above must not become "no image may be set", which would
+    // break every existing profile and the legacy wizard with it.
+    const h = build();
+    await h.service.patchStep('u-1', 'IDENTITY', {
+      version: 3,
+      profileImageUrl: 'https://cdn.example.com/avatars/abc/def.jpg',
+    });
+    expect(h.trx.providerProfile.update).toHaveBeenCalled();
+  });
+
+  it.each(['not-a-number', '12345', '+0912345678', '+1 800 FLOWERS', '+'])(
+    'REFUSES the malformed phone number %j',
+    async (phoneNumber) => {
+      // Validated server-side, not only in the form: a rule that lives in one
+      // client is a rule the next client and every integration do not have.
+      const h = build();
+      await expect(
+        h.service.patchStep('u-1', 'IDENTITY', { version: 3, phoneNumber }),
+      ).rejects.toMatchObject({ status: 400 });
+    },
+  );
+
+  it('accepts a number typed with spaces, because people type spaces', async () => {
+    const h = build();
+    await h.service.patchStep('u-1', 'IDENTITY', { version: 3, phoneNumber: '+963 912 345 678' });
+    expect(h.trx.providerProfile.update).toHaveBeenCalled();
+  });
+
+  it('does NOT set phoneVerifiedAt when a valid number is saved', async () => {
+    // A well-formed number is not a proven one. Marking it verified here would
+    // be the falsely-passed half of the phone problem; refusing to submit
+    // without verification is the unsatisfiable half. Neither is acceptable.
+    const h = build();
+    await h.service.patchStep('u-1', 'IDENTITY', { version: 3, phoneNumber: '+963912345678' });
+
+    const call = h.trx.providerProfile.update.mock.calls[0][0];
+    expect(call.data.phoneVerifiedAt ?? null).toBeNull();
+  });
+
   it('invalidates phone verification when the number changes', async () => {
     // Keeping the old proof against a new number is how an unverifiable number
     // ends up marked verified. The single most valuable thing to get wrong on

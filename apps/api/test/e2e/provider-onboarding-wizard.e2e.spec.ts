@@ -46,6 +46,7 @@ import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guar
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
 import { ProviderOnboardingWizardController } from '../../src/modules/provider/onboarding/provider-onboarding-wizard.controller';
 import { ProviderOnboardingWizardService } from '../../src/modules/provider/onboarding/provider-onboarding-wizard.service';
+import { ProviderAvatarService } from '../../src/modules/provider/onboarding/avatar/provider-avatar.service';
 import { AppError } from '../../src/shared/errors/app-error';
 
 jest.setTimeout(15_000);
@@ -128,6 +129,16 @@ const withCsrf = (r: request.Test) =>
 const HELD = new Set<string>(['EDIT_OWN_PROFILE']);
 const capabilityService = { can: async (_u: string, c: string) => HELD.has(c) };
 
+// Sprint 9B.17 — the controller also depends on the avatar finalize service.
+// A double, because this file tests the HTTP SURFACE — guards, CSRF, and that
+// the session user id is the only id the service ever sees. What finalize does
+// with an uploaded object is asserted in its own unit spec, against real
+// storage doubles.
+const avatars = {
+  finalize: jest.fn(),
+  remove: jest.fn(),
+};
+
 describe('Provider onboarding wizard — HTTP surface', () => {
   let app: INestApplication;
   let http: ReturnType<INestApplication['getHttpServer']>;
@@ -137,6 +148,7 @@ describe('Provider onboarding wizard — HTTP surface', () => {
       controllers: [ProviderOnboardingWizardController],
       providers: [
         { provide: ProviderOnboardingWizardService, useValue: wizard },
+        { provide: ProviderAvatarService, useValue: avatars },
         { provide: AppConfigService, useValue: makeConfig() },
         { provide: ProviderCapabilityService, useValue: capabilityService },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
@@ -507,6 +519,7 @@ describe('Provider onboarding wizard — the DTO instance reaches the service co
       controllers: [ProviderOnboardingWizardController],
       providers: [
         { provide: ProviderOnboardingWizardService, useValue: wizard },
+        { provide: ProviderAvatarService, useValue: avatars },
         { provide: AppConfigService, useValue: makeConfig() },
         { provide: ProviderCapabilityService, useValue: capabilityService },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },

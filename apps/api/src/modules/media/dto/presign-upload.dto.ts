@@ -56,7 +56,7 @@ export class PresignUploadItemDto {
  *  server-synthesised is that a caller-controlled path is a traversal vector,
  *  and accepting "give me a key under X" would hand that control straight
  *  back. Defaults to 'request', so every existing client is unaffected. */
-export const PRESIGN_PURPOSES = ['request', 'portfolio'] as const;
+export const PRESIGN_PURPOSES = ['request', 'portfolio', 'avatar'] as const;
 export type PresignPurpose = (typeof PRESIGN_PURPOSES)[number];
 
 export class PresignUploadRequestDto {

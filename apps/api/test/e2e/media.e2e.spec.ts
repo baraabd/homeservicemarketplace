@@ -168,6 +168,53 @@ describe('Media upload pipeline (e2e) — Sprint 7.x', () => {
       }
     });
 
+    // ── Sprint 9B.17 — the avatar purpose ────────────────────────────────
+
+    it('mints avatar keys in their own namespace, under an OPAQUE owner ref', async () => {
+      fakeAuthedUser = { id: 'u-1', sessionId: 's', jti: 'j', roles: ['customer', 'provider'] };
+      const res = await request(app.getHttpServer())
+        .post('/v1/media/presigned-url')
+        .send({ purpose: 'avatar', items: [{ contentType: 'image/jpeg', sizeBytes: 1024 }] });
+
+      expect(res.status).toBe(200);
+      const { fileUrl } = res.body.items[0];
+      expect(fileUrl).toMatch(/\/avatars\/[0-9a-f]{24}\/[0-9a-f-]{36}\.jpg$/);
+      // The ref is an HMAC, never the user id: an avatar URL is handed to every
+      // customer who sees this provider, and a raw id in it publishes an
+      // internal identifier that correlates them across every other surface.
+      expect(fileUrl).not.toContain('u-1');
+    });
+
+    it('refuses VIDEO for an avatar even though the shared allowlist permits it', async () => {
+      fakeAuthedUser = { id: 'u-1', sessionId: 's', jti: 'j', roles: ['customer', 'provider'] };
+      const res = await request(app.getHttpServer())
+        .post('/v1/media/presigned-url')
+        .send({ purpose: 'avatar', items: [{ contentType: 'video/mp4', sizeBytes: 1024 }] });
+
+      // A 400, not a 500: the refusal is a bad request and must render as one.
+      expect(res.status).toBe(400);
+    });
+
+    it('refuses GIF and HEIC for an avatar', async () => {
+      fakeAuthedUser = { id: 'u-1', sessionId: 's', jti: 'j', roles: ['customer', 'provider'] };
+      for (const contentType of ['image/gif', 'image/heic']) {
+        const res = await request(app.getHttpServer())
+          .post('/v1/media/presigned-url')
+          .send({ purpose: 'avatar', items: [{ contentType, sizeBytes: 1024 }] });
+        expect(res.status).toBe(400);
+      }
+    });
+
+    it('keeps request media on its existing layout', async () => {
+      // Changing that scheme would orphan every URL already stored in
+      // ServiceRequest.mediaUrls[].
+      fakeAuthedUser = { id: 'u-1', sessionId: 's', jti: 'j', roles: ['customer'] };
+      const res = await request(app.getHttpServer())
+        .post('/v1/media/presigned-url')
+        .send({ items: [{ contentType: 'image/jpeg', sizeBytes: 1024 }] });
+      expect(res.body.items[0].fileUrl).toContain('/requests/u-1/');
+    });
+
     it('rejects content types outside the whitelist with VALIDATION_ERROR', async () => {
       fakeAuthedUser = { id: 'u-1', sessionId: 's', jti: 'j', roles: ['customer'] };
       const res = await request(app.getHttpServer())
