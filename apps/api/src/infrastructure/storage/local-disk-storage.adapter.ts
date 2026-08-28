@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, stat, writeFile } from 'node:fs/promises';
 import { join, normalize, sep } from 'node:path';
 
 import { AppConfigService } from '../../config/app-config.service';
@@ -55,12 +55,18 @@ export class LocalDiskStorageAdapter extends StoragePort {
       `&exp=${exp}` +
       `&ct=${encodeURIComponent(input.contentType)}` +
       `&sz=${input.sizeBytes}`;
-    const fileUrl = `${base}/v1/media/files/${encodedKey}`;
+    const fileUrl = this.publicUrlForKey(input.key);
     return {
       uploadUrl,
       fileUrl,
       expiresAt: new Date(exp * 1000).toISOString(),
     };
+  }
+
+  /** The canonical public read URL. Shared with presign above so the two can
+   *  never disagree about what a key resolves to. */
+  publicUrlForKey(key: string): string {
+    return `${this.publicBaseUrl()}/v1/media/files/${encodeKeyForUrl(key)}`;
   }
 
   // ─── Used by the media controller's PUT handler ────────────────────────
@@ -118,6 +124,42 @@ export class LocalDiskStorageAdapter extends StoragePort {
       throw new Error('path-escape');
     }
     return joined;
+  }
+
+  /**
+   * Sprint 9B.17 — size and leading bytes, for the avatar finalize check.
+   *
+   * Opens and reads only `byteCount` bytes rather than loading the file: the
+   * caller wants a signature, and an avatar route that read whole files into
+   * memory would be a trivially reachable memory-pressure lever.
+   */
+  async readObjectHead(
+    key: string,
+    byteCount: number,
+  ): Promise<{ sizeBytes: number; head: Uint8Array } | null> {
+    let abs: string;
+    try {
+      abs = this.absolutePathForKey(key);
+    } catch {
+      // An invalid or escaping key is "not there" as far as a caller is
+      // concerned. Distinguishing the two would tell a prober which of their
+      // guesses was structurally valid.
+      return null;
+    }
+
+    let handle;
+    try {
+      const s = await stat(abs);
+      if (!s.isFile()) return null;
+      handle = await open(abs, 'r');
+      const buffer = Buffer.alloc(Math.max(0, byteCount));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, 0);
+      return { sizeBytes: s.size, head: new Uint8Array(buffer.subarray(0, bytesRead)) };
+    } catch {
+      return null;
+    } finally {
+      await handle?.close().catch(() => undefined);
+    }
   }
 
   /** True iff the key's underlying file is readable on disk. Used by
