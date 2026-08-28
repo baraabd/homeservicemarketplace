@@ -31,6 +31,19 @@ const ALLOWED_METADATA_KEYS = new Set<string>([
   'policyVersion',
   'caseId',
   'caseState',
+  // Sprint 9B.20 — earned service-area expansion. Identifiers, enum-valued
+  // tier keys and the two DISTANCES a decision produced. Deliberately NOT
+  // the ladder payload or the signal values: the policy version already
+  // points at the exact ladder, immutably, and re-recording a provider
+  // metric into an audit row would put a performance history somewhere
+  // nobody is expecting to find one.
+  'country',
+  'tierKey',
+  'previousTierKey',
+  'earnedMaxKm',
+  'previousEarnedMaxKm',
+  'overrideMaxKm',
+  'overrideExpiresAt',
 ]);
 
 export interface AuditInput {

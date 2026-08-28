@@ -22,23 +22,23 @@ datasource db {
 }
 
 model User {
-  id                         String                    @id @default(cuid())
-  email                      String                    @unique
+  id                         String                         @id @default(cuid())
+  email                      String                         @unique
   passwordHash               String?
   firstName                  String
   lastName                   String
-  isActive                   Boolean                   @default(true)
-  createdAt                  DateTime                  @default(now())
-  updatedAt                  DateTime                  @updatedAt
+  isActive                   Boolean                        @default(true)
+  createdAt                  DateTime                       @default(now())
+  updatedAt                  DateTime                       @updatedAt
   deletedAt                  DateTime?
   emailVerifiedAt            DateTime?
-  failedLoginCount           Int                       @default(0)
+  failedLoginCount           Int                            @default(0)
   lockedUntil                DateTime?
-  mfaEnabled                 Boolean                   @default(false)
+  mfaEnabled                 Boolean                        @default(false)
   mfaEnrolledAt              DateTime?
   mfaSecret                  Bytes?
   passwordUpdatedAt          DateTime?
-  status                     AccountStatus             @default(PENDING_VERIFICATION)
+  status                     AccountStatus                  @default(PENDING_VERIFICATION)
   addresses                  Address[]
   auditEvents                AuditEvent[]
   bookingEvents              BookingEvent[]
@@ -55,15 +55,17 @@ model User {
   userProfile                UserProfile?
   userRoles                  UserRole[]
   verificationTokens         VerificationToken[]
-  disputesOpened             Dispute[]                 @relation("DisputeOpenedBy")
-  disputesResolved           Dispute[]                 @relation("DisputeResolvedBy")
-  disputeEvents              DisputeEvent[]            @relation("DisputeEventActor")
+  disputesOpened             Dispute[]                      @relation("DisputeOpenedBy")
+  disputesResolved           Dispute[]                      @relation("DisputeResolvedBy")
+  disputeEvents              DisputeEvent[]                 @relation("DisputeEventActor")
   platformSettings           PlatformSetting[]
-  adminAccessRequests        AdminAccessRequest[]      @relation("AdminAccessRequestApplicant")
-  adminAccessRequestsDecided AdminAccessRequest[]      @relation("AdminAccessRequestReviewer")
+  adminAccessRequests        AdminAccessRequest[]           @relation("AdminAccessRequestApplicant")
+  adminAccessRequestsDecided AdminAccessRequest[]           @relation("AdminAccessRequestReviewer")
   mediaAssets                MediaAsset[]
-  verificationCasesAssigned  VerificationCase[]        @relation("VerificationCaseAssignee")
-  verificationDecisions      VerificationDecision[]    @relation("VerificationDecisionReviewer")
+  verificationCasesAssigned  VerificationCase[]             @relation("VerificationCaseAssignee")
+  verificationDecisions      VerificationDecision[]         @relation("VerificationDecisionReviewer")
+  /// Sprint 9B.20 — service-area ceilings this admin granted by hand.
+  serviceAreaOverrides       ProviderServiceAreaExpansion[] @relation("ServiceAreaOverrideBy")
 
   @@index([deletedAt])
   @@index([status])
@@ -461,7 +463,7 @@ model ProviderProfile {
   // cityKey using `mode: 'insensitive'`, which is both unindexable (it
   // becomes a citext-less ILIKE) and subtly wrong the moment normalisation
   // does anything beyond lowercasing.
-  serviceAreaCityKey       String?
+  serviceAreaCityKey String?
 
   // ── Sprint 7: provider lifecycle axes ───────────────────────────────────
   //
@@ -475,30 +477,30 @@ model ProviderProfile {
   // work-access grants would deny every provider on the platform.
   //
   // Axis 1 — onboarding. Is the application complete and submitted?
-  onboardingState          ProviderOnboardingState?
+  onboardingState   ProviderOnboardingState?
   // Axis 2 — verification. Have we confirmed WHO they are?
   //
   // Backfilled to UNVERIFIED for every row INCLUDING approved ones: no
   // historical provider ever had a document checked, and recording them as
   // VERIFIED would invent an audit trail.
-  verificationState        ProviderVerificationState?
+  verificationState ProviderVerificationState?
   // Axis 3 — provider standing on the marketplace. Distinct from account
   // standing (User.status), which outranks it — see the precedence table.
-  standingState            ProviderStandingState?
+  standingState     ProviderStandingState?
   // Axis 5 — what they have paid for. Inert: never grants a capability.
-  subscriptionTier         ProviderSubscriptionTier?
+  subscriptionTier  ProviderSubscriptionTier?
   // Where the axis values above came from. LEGACY_APPROVED is deliberately
   // NOT a synonym for verified — it records "approved under the old process,
   // identity never checked", which is what makes those rows findable when
   // verification becomes required.
-  lifecycleSource          ProviderLifecycleSource?
+  lifecycleSource   ProviderLifecycleSource?
   // When the backfill (or new code) last wrote the axes. Null means never.
-  lifecycleSyncedAt        DateTime?
+  lifecycleSyncedAt DateTime?
 
-  onboardingSubmissions    ProviderOnboardingSubmission[]
-  workAccessGrants         ProviderWorkAccessGrant[]
-  verificationCases        VerificationCase[]
-  portfolioItems           ProviderPortfolioItem[]
+  onboardingSubmissions ProviderOnboardingSubmission[]
+  workAccessGrants      ProviderWorkAccessGrant[]
+  verificationCases     VerificationCase[]
+  portfolioItems        ProviderPortfolioItem[]
 
   // ── Sprint 8: onboarding journey fields ─────────────────────────────────
   // docs/adr/0008-category-hierarchy-and-onboarding-draft.md
@@ -508,22 +510,22 @@ model ProviderProfile {
   // profile may be SUBMITTED — not the column definitions.
 
   /// Individual vs business. Changes which other fields are required.
-  providerType             ProviderType?
+  providerType      ProviderType?
   /// Business display name, for BUSINESS providers. Distinct from
   /// displayName, which is the public marketplace name either way.
-  legalBusinessName        String?
+  legalBusinessName String?
   /// Proof the phone is reachable. Presence of a number is not proof.
-  phoneVerifiedAt          DateTime?
-  profileImageUrl          String?
+  phoneVerifiedAt   DateTime?
+  profileImageUrl   String?
   /// Numeric fact, not a display bucket. A bucket ("5-10 years") cannot be
   /// compared, filtered, or aged; this can, and the UI renders whatever band
   /// it likes from it.
-  yearsOfExperience        Int?
+  yearsOfExperience Int?
   /// Alternative to the count, for providers who know when they started. The
   /// policy accepts EITHER and derives years from this when present, so the
   /// stored fact stays a fact and does not silently go stale.
-  professionSince          DateTime?
-  transportMode            ProviderTransportMode?
+  professionSince   DateTime?
+  transportMode     ProviderTransportMode?
   /// Sprint 9B.18 — every mode the provider can actually use.
   ///
   /// `transportMode` above stays, and stays the PRIMARY: it is what matching,
@@ -535,7 +537,7 @@ model ProviderProfile {
   /// A scalar enum list rather than a join table: there is no per-mode data to
   /// carry, nothing joins on a single mode, and a two-column table for a
   /// six-value enum buys a migration and an index for nothing.
-  transportModes           ProviderTransportMode[]          @default([])
+  transportModes    ProviderTransportMode[] @default([])
 
   /// Sprint 9B.18 — the ONE service this provider leads with.
   ///
@@ -548,22 +550,24 @@ model ProviderProfile {
   /// a primary is an intention, not an authorization. What a provider is
   /// allowed to WORK on remains the approved grant set and nothing here.
   primaryServiceCategoryId String?
-  primaryServiceCategory   ServiceCategory?                 @relation("ProviderPrimaryCategory", fields: [primaryServiceCategoryId], references: [id], onDelete: SetNull)
+  primaryServiceCategory   ServiceCategory? @relation("ProviderPrimaryCategory", fields: [primaryServiceCategoryId], references: [id], onDelete: SetNull)
   /// Fixed premises, if any. Distinct from the service-area centre: a
   /// workshop is where they are, the service area is where they go.
   workshopAddressLine      String?
   workshopLat              Float?
   workshopLng              Float?
-  additionalInformation    String?                          @db.Text
+  additionalInformation    String?          @db.Text
   /// The consent document version the provider accepted, and when. A boolean
   /// "agreed" is unfalsifiable the moment the terms change.
   acceptedConsentVersion   String?
   consentAcceptedAt        DateTime?
 
-  availabilityIntervals    ProviderAvailabilityInterval[]
-  equipment                ProviderEquipment[]
-  serviceAreas             ProviderServiceArea[]
-  onboardingDraft          ProviderOnboardingDraft?
+  availabilityIntervals ProviderAvailabilityInterval[]
+  equipment             ProviderEquipment[]
+  serviceAreas          ProviderServiceArea[]
+  onboardingDraft       ProviderOnboardingDraft?
+  /// Sprint 9B.20 — earned service-area ceiling and any manual override.
+  serviceAreaExpansion  ProviderServiceAreaExpansion?
 
   @@index([primaryServiceCategoryId])
   @@index([serviceAreaCountryCode])
@@ -651,16 +655,16 @@ model ProviderCategoryApplication {
 }
 
 model ServiceCategory {
-  id                   String                           @id @default(cuid())
-  slug                 String                           @unique
-  labelEn              String
-  labelAr              String
-  icon                 String
-  sortOrder            Int                              @default(0)
-  isActive             Boolean                          @default(true)
-  createdAt            DateTime                         @default(now())
-  updatedAt            DateTime                         @updatedAt
-  deletedAt            DateTime?
+  id        String    @id @default(cuid())
+  slug      String    @unique
+  labelEn   String
+  labelAr   String
+  icon      String
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   // ── Sprint 8: parent/child hierarchy ────────────────────────────────────
   // docs/adr/0008-category-hierarchy-and-onboarding-draft.md
@@ -669,9 +673,9 @@ model ServiceCategory {
   // Backward compatible by construction: every existing row keeps parentId
   // NULL and isLeaf TRUE, so it stays exactly what it is today — a selectable
   // competency at the root. Nothing that reads ServiceCategory has to change.
-  parentId             String?
-  parent               ServiceCategory?                 @relation("CategoryTree", fields: [parentId], references: [id])
-  children             ServiceCategory[]                @relation("CategoryTree")
+  parentId String?
+  parent   ServiceCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children ServiceCategory[] @relation("CategoryTree")
 
   // Is this a SELECTABLE competency, or an organisational heading?
   //
@@ -679,17 +683,19 @@ model ServiceCategory {
   // the client infer it from "has no children" would make the rule a
   // suggestion, and would silently flip a parent into a selectable leaf the
   // moment its last child was deactivated.
-  isLeaf               Boolean                          @default(true)
+  isLeaf Boolean @default(true)
 
-  serviceRequests      ServiceRequest[]
-  providerProfiles     ProviderProfileServiceCategory[]
-  categoryApplications ProviderCategoryApplication[]
+  serviceRequests       ServiceRequest[]
+  providerProfiles      ProviderProfileServiceCategory[]
+  categoryApplications  ProviderCategoryApplication[]
   /// Sprint 9B.18 — providers who lead with this category.
-  primaryForProviders  ProviderProfile[]                @relation("ProviderPrimaryCategory")
-  equipmentItems       EquipmentCatalogItem[]
-  verificationPolicies VerificationRequirementPolicy[]
+  primaryForProviders   ProviderProfile[]                @relation("ProviderPrimaryCategory")
+  equipmentItems        EquipmentCatalogItem[]
+  verificationPolicies  VerificationRequirementPolicy[]
   verificationDocuments VerificationDocument[]
-  portfolioItems       ProviderPortfolioItem[]
+  portfolioItems        ProviderPortfolioItem[]
+  /// Sprint 9B.3 — evidence uploads prepared against this category licence.
+  pendingEvidenceAssets MediaAsset[]                     @relation("MediaAssetPendingCategory")
 
   @@index([deletedAt])
   @@index([isActive, sortOrder])
@@ -698,8 +704,6 @@ model ServiceCategory {
   // "Every selectable competency", which is what matching and the specialty
   // picker both ask for.
   @@index([isLeaf, isActive])
-  /// Sprint 9B.3 — evidence uploads prepared against this category licence.
-  pendingEvidenceAssets MediaAsset[] @relation("MediaAssetPendingCategory")
 }
 
 model ServiceRequestEvent {
@@ -826,22 +830,22 @@ model Dispute {
 // two real user accounts, retracting a live commercial bid — do not write here
 // at all. They refuse to migrate and hand the decision to an operator.
 model DataRemediationLog {
-  id         String   @id @default(cuid())
+  id             String   @id @default(cuid())
   // The migration directory name, so a row is traceable to the exact
   // forward-only step that wrote it.
-  migration  String
+  migration      String
   // The invariant being established, e.g. "one_default_address_per_user".
   constraintName String
-  entity     String
-  entityId   String
+  entity         String
+  entityId       String
   // What was done: SUPERSEDED, DEMOTED, ... Free-text by design; these rows
   // are read by operators and tests, never branched on by application code.
-  action     String
+  action         String
   // The pre-change column values for the affected row. This is the part that
   // makes the change reversible.
-  before     Json?
-  details    Json?
-  createdAt  DateTime @default(now())
+  before         Json?
+  details        Json?
+  createdAt      DateTime @default(now())
 
   @@index([migration])
   @@index([constraintName])
@@ -1011,6 +1015,17 @@ enum AuditEventType {
   /// provider badly, time simply passed, and an operator reading this history
   /// later must be able to tell the two apart.
   VERIFICATION_CASE_EXPIRED
+  // Sprint 9B.20 — earned service-area expansion. Publishing a ladder
+  // decides who in a market may travel further, and an override decides it
+  // for one person; both are the kind of change an appeal turns on, so both
+  // are named events rather than a metadata field on a generic one.
+  SERVICE_AREA_POLICY_PUBLISHED
+  SERVICE_AREA_POLICY_RETIRED
+  /// The evaluator moved a provider UP a tier. Only emitted on a change:
+  /// re-evaluating an unchanged provider is not an event.
+  SERVICE_AREA_EXPANSION_TIER_CHANGED
+  SERVICE_AREA_EXPANSION_OVERRIDE_SET
+  SERVICE_AREA_EXPANSION_OVERRIDE_CLEARED
 }
 
 enum AddressType {
@@ -1249,7 +1264,7 @@ model OutboxEvent {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  handlerRuns   OutboxHandlerRun[]
+  handlerRuns OutboxHandlerRun[]
 
   // The claim query: WHERE status = ? AND availableAt <= now() ORDER BY
   // availableAt, id. Composite so the ordering is served by the index and
@@ -1384,7 +1399,7 @@ enum ProviderWorkAccessStatus {
 /// Append-only: a resubmission writes a NEW row. Nothing here is ever updated
 /// except the decision fields, which are written once.
 model ProviderOnboardingSubmission {
-  id                String          @id @default(cuid())
+  id                String   @id @default(cuid())
   providerProfileId String
   /// The completeness policy in force when this was submitted, so a later
   /// rule change cannot retroactively fail a queued application.
@@ -1395,18 +1410,18 @@ model ProviderOnboardingSubmission {
   /// Issues outstanding at submission time. Empty for a valid submission;
   /// populated when an admin force-submits on a provider's behalf.
   issues            Json?
-  submittedAt       DateTime        @default(now())
+  submittedAt       DateTime @default(now())
   submittedByUserId String?
 
   /// Decision fields, written once when a reviewer acts.
-  decidedAt         DateTime?
-  decidedByUserId   String?
-  decision          ProviderOnboardingState?
-  decisionNote      String?         @db.Text
+  decidedAt       DateTime?
+  decidedByUserId String?
+  decision        ProviderOnboardingState?
+  decisionNote    String?                  @db.Text
 
-  createdAt         DateTime        @default(now())
+  createdAt DateTime @default(now())
 
-  providerProfile   ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
 
   /// "The newest submission for this provider" — the review queue's hot path.
   @@index([providerProfileId, submittedAt])
@@ -1428,9 +1443,9 @@ model ProviderOnboardingSubmission {
 /// authorization (docs/adr/0007) — no grants exist, so enforcing it would
 /// lock out every provider.
 model ProviderWorkAccessGrant {
-  id                String                   @id @default(cuid())
+  id                String                    @id @default(cuid())
   providerProfileId String
-  status            ProviderWorkAccessStatus @default(ACTIVE)
+  status            ProviderWorkAccessStatus  @default(ACTIVE)
   /// Why this grant exists — e.g. LEGACY_APPROVED, VERIFIED_DOCUMENTS,
   /// MANUAL_OVERRIDE. A string rather than an enum because the set of
   /// justifications will grow faster than the schema should.
@@ -1451,7 +1466,7 @@ model ProviderWorkAccessGrant {
   ///   revokedAt IS NULL AND now() BETWEEN grantedAt AND COALESCE(expiresAt,'infinity')
   /// They were not renamed: the predicate, the index below, and the Sprint 7
   /// read path all name them, and a rename buys no semantics.
-  grantedAt         DateTime                 @default(now())
+  grantedAt         DateTime                  @default(now())
   grantedByUserId   String?
   /// Null means open-ended. Deliberately nullable rather than a far-future
   /// sentinel, so "no expiry" is queryable as IS NULL instead of relying on
@@ -1461,13 +1476,13 @@ model ProviderWorkAccessGrant {
   revokedByUserId   String?
   revokedReason     String?
 
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  providerProfile   ProviderProfile          @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  providerProfile ProviderProfile   @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
   /// SetNull, not Cascade: deleting a case must never silently delete the
   /// grant it issued. The access record outlives the paperwork.
-  case              VerificationCase?        @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  case            VerificationCase? @relation(fields: [caseId], references: [id], onDelete: SetNull)
 
   /// The authorization read: live grants for one provider, newest expiry
   /// first. Leading equality on the two columns every check carries.
@@ -1512,7 +1527,7 @@ enum ProviderTransportMode {
 /// timezone of its own — the zone is stored once on the interval, so a
 /// provider who moves cities does not silently shift every window.
 model ProviderAvailabilityInterval {
-  id                String          @id @default(cuid())
+  id                String   @id @default(cuid())
   providerProfileId String
   /// 0 = Sunday … 6 = Saturday. Matches JS getDay(), so there is no
   /// conversion layer to get wrong.
@@ -1523,13 +1538,11 @@ model ProviderAvailabilityInterval {
   endMinute         Int
   /// IANA zone, e.g. Asia/Damascus.
   timezone          String
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  providerProfile   ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
 
-  /// The availability read: one provider's whole week, in order.
-  @@index([providerProfileId, dayOfWeek, startMinute])
   /// Exact duplicates of the same window are always a mistake. Declared here
   /// rather than left as raw SQL so Prisma owns it and the drift gate stays
   /// green; `map` keeps the descriptive name the migration created.
@@ -1540,6 +1553,8 @@ model ProviderAvailabilityInterval {
   /// evidence. Overlap is validated in the service on every write and tested
   /// there; this closes the cheapest half for free.
   @@unique([providerProfileId, dayOfWeek, startMinute, endMinute], map: "provider_availability_no_exact_duplicate")
+  /// The availability read: one provider's whole week, in order.
+  @@index([providerProfileId, dayOfWeek, startMinute])
 }
 
 /// A piece of equipment a provider owns, from a controlled catalogue.
@@ -1548,20 +1563,20 @@ model ProviderAvailabilityInterval {
 /// capability, and matching cannot work if providers type it. Linked to a
 /// category so the wizard offers plumbers plumbing equipment.
 model EquipmentCatalogItem {
-  id         String              @id @default(cuid())
+  id         String           @id @default(cuid())
   /// Stable, human-readable, never reused. The client keys i18n off this.
-  code       String              @unique
+  code       String           @unique
   labelEn    String
   labelAr    String
   /// Null means it applies to every category — a ladder is a ladder.
   categoryId String?
-  category   ServiceCategory?    @relation(fields: [categoryId], references: [id])
-  isActive   Boolean             @default(true)
-  sortOrder  Int                 @default(0)
-  createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
+  category   ServiceCategory? @relation(fields: [categoryId], references: [id])
+  isActive   Boolean          @default(true)
+  sortOrder  Int              @default(0)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
 
-  providers  ProviderEquipment[]
+  providers ProviderEquipment[]
 
   @@index([categoryId, isActive, sortOrder])
   @@index([isActive, sortOrder])
@@ -1570,10 +1585,10 @@ model EquipmentCatalogItem {
 model ProviderEquipment {
   providerProfileId String
   equipmentItemId   String
-  createdAt         DateTime             @default(now())
+  createdAt         DateTime @default(now())
 
-  providerProfile   ProviderProfile      @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
-  equipmentItem     EquipmentCatalogItem @relation(fields: [equipmentItemId], references: [id], onDelete: Cascade)
+  providerProfile ProviderProfile      @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  equipmentItem   EquipmentCatalogItem @relation(fields: [equipmentItemId], references: [id], onDelete: Cascade)
 
   @@id([providerProfileId, equipmentItemId])
   @@index([equipmentItemId])
@@ -1586,17 +1601,17 @@ model ProviderEquipment {
 /// These add a CANONICAL spine so spellings resolve to one row that districts
 /// can hang off, which free text cannot support.
 model City {
-  id            String                @id @default(cuid())
+  id          String   @id @default(cuid())
   /// btrim+lower match key — the SAME normalisation as Sprint 6's
   /// locationCityKey, so the two join without a translation layer.
-  cityKey       String                @unique
-  labelEn       String
-  labelAr       String
-  countryCode   String
-  isActive      Boolean               @default(true)
-  sortOrder     Int                   @default(0)
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  cityKey     String   @unique
+  labelEn     String
+  labelAr     String
+  countryCode String
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   districts     District[]
   providerAreas ProviderServiceArea[]
@@ -1605,15 +1620,15 @@ model City {
 }
 
 model District {
-  id            String                @id @default(cuid())
-  cityId        String
-  districtKey   String
-  labelEn       String
-  labelAr       String
-  isActive      Boolean               @default(true)
-  sortOrder     Int                   @default(0)
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  id          String   @id @default(cuid())
+  cityId      String
+  districtKey String
+  labelEn     String
+  labelAr     String
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   city          City                  @relation(fields: [cityId], references: [id], onDelete: Cascade)
   neighborhoods Neighborhood[]
@@ -1625,18 +1640,18 @@ model District {
 }
 
 model Neighborhood {
-  id              String                @id @default(cuid())
+  id              String   @id @default(cuid())
   districtId      String
   neighborhoodKey String
   labelEn         String
   labelAr         String
-  isActive        Boolean               @default(true)
-  sortOrder       Int                   @default(0)
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  district        District              @relation(fields: [districtId], references: [id], onDelete: Cascade)
-  providerAreas   ProviderServiceArea[]
+  district      District              @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  providerAreas ProviderServiceArea[]
 
   @@unique([districtId, neighborhoodKey])
   @@index([districtId, isActive, sortOrder])
@@ -1648,17 +1663,17 @@ model Neighborhood {
 /// constraint in the migration: a row with two set has no defined meaning and
 /// would be counted twice by every area query.
 model ProviderServiceArea {
-  id                String          @id @default(cuid())
+  id                String   @id @default(cuid())
   providerProfileId String
   cityId            String?
   districtId        String?
   neighborhoodId    String?
-  createdAt         DateTime        @default(now())
+  createdAt         DateTime @default(now())
 
-  providerProfile   ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
-  city              City?           @relation(fields: [cityId], references: [id])
-  district          District?       @relation(fields: [districtId], references: [id])
-  neighborhood      Neighborhood?   @relation(fields: [neighborhoodId], references: [id])
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  city            City?           @relation(fields: [cityId], references: [id])
+  district        District?       @relation(fields: [districtId], references: [id])
+  neighborhood    Neighborhood?   @relation(fields: [neighborhoodId], references: [id])
 
   @@index([providerProfileId])
   @@index([cityId])
@@ -1673,27 +1688,125 @@ model ProviderServiceArea {
 /// modelling every intermediate state would mean a migration each time a step
 /// is reordered. COMMITTED values live in typed columns on ProviderProfile and
 /// its relations; this is scratch space with a lifetime of one application.
+/// Sprint 9B.20 — one published version of the earned service-area ladder.
+///
+/// docs/sprint-09b20/EARNED_SERVICE_AREA.md
+///
+/// Deliberately a SECOND policy table rather than a reuse of
+/// VerificationRequirementPolicy: that row is a foreign key target for
+/// VerificationCase and its `requirements` JSON is validated against the
+/// document schema, so a service-area ladder stored there would be a policy a
+/// case could legally point at and no reviewer could read. The LIFECYCLE rules
+/// are shared instead — the same version format, the same append-only
+/// publish/retire, the same one-live-per-scope index — which is the part worth
+/// having in common.
+///
+/// APPEND-ONLY. Correcting a ladder means publishing a new version and
+/// retiring the old one, so "what was in force when this provider was told
+/// they qualified" always has an answer.
+model ServiceAreaExpansionPolicy {
+  id                String    @id @default(cuid())
+  /// Opaque, sortable, human-readable. e.g. 2026.08-sy-v1 — the same format
+  /// assertVersionFormat() enforces for verification policies.
+  version           String    @unique
+  /// ISO 3166-1 alpha-2. Null = the global default. This is the "market" in
+  /// market-configurable: a ladder that is right for Damascus is not
+  /// automatically right for Dubai.
+  country           String?
+  /// The tier ladder. JSON because the criteria set is versioned by `version`
+  /// rather than by the schema — adding a signal must not need a migration.
+  /// Validated by expansion-policy-payload.ts at publish time, which is the
+  /// only thing standing between a mistyped request and a ladder nobody can
+  /// climb.
+  tiers             Json
+  publishedAt       DateTime  @default(now())
+  publishedByUserId String?
+  /// Non-destructive withdrawal. A retired ladder still explains every
+  /// expansion granted under it.
+  retiredAt         DateTime?
+
+  createdAt DateTime @default(now())
+
+  grants ProviderServiceAreaExpansion[]
+
+  /// Resolution reads the live ladder for a country.
+  @@index([country, retiredAt])
+  @@index([retiredAt, publishedAt])
+}
+
+/// Sprint 9B.20 — what a provider has actually earned, and what an operator
+/// has manually granted them.
+///
+/// One row per provider, written by the evaluator. It is a CACHE of a pure
+/// function's output plus the two things that are not derivable — the manual
+/// override and its justification — and it exists so that "why is this
+/// provider's ceiling 40 km" is answerable from the database rather than by
+/// re-running the resolver against signals that have since moved.
+///
+/// The row NEVER changes the provider's own radius. It raises a ceiling.
+model ProviderServiceAreaExpansion {
+  id                String    @id @default(cuid())
+  providerProfileId String    @unique
+  /// The ladder version the tier below was decided under. Null when no policy
+  /// was live for the provider's market at evaluation time.
+  policyVersion     String?
+  /// The highest tier whose every criterion was met, or null for none.
+  tierKey           String?
+  /// The ceiling the tier grants, in km. Null when no tier is held; the
+  /// standard transport-based maximum applies.
+  earnedMaxKm       Int?
+  /// When the evaluation that produced the two fields above ran.
+  evaluatedAt       DateTime?
+
+  /// ── Manual override — the appeal path ────────────────────────────────
+  ///
+  /// An operator decision, not an earned one, and stored separately so the
+  /// two are never confused in a report. A sparse market, a provider the
+  /// signals describe badly, or a wrong denial are all resolved here rather
+  /// than by editing a published ladder for everyone.
+  overrideMaxKm     Int?
+  /// Why. Free text, required with the value, and surfaced to reviewers
+  /// rather than to the provider — an override without a stated reason is an
+  /// unattributable change to someone's reach.
+  overrideReason    String?   @db.Text
+  overrideByUserId  String?
+  overrideAt        DateTime?
+  /// Overrides may be temporary. Null = until revoked.
+  overrideExpiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  providerProfile ProviderProfile             @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  policy          ServiceAreaExpansionPolicy? @relation(fields: [policyVersion], references: [version], onDelete: NoAction, onUpdate: NoAction)
+  overrideBy      User?                       @relation("ServiceAreaOverrideBy", fields: [overrideByUserId], references: [id], onDelete: SetNull)
+
+  @@index([policyVersion])
+  @@index([overrideByUserId])
+  @@index([evaluatedAt])
+}
+
 model ProviderOnboardingDraft {
-  id                String          @id @default(cuid())
-  providerProfileId String          @unique
+  id                String   @id @default(cuid())
+  providerProfileId String   @unique
   /// The step to resume on.
   currentStep       String
   /// Steps the SERVER has accepted as complete. Never client-asserted, or a
   /// client could mark itself finished.
-  completedSteps    String[]        @default([])
-  data              Json            @default("{}")
+  completedSteps    String[] @default([])
+  data              Json     @default("{}")
   /// Optimistic concurrency token. Every PATCH presents the version it read;
   /// a mismatch is a 409 rather than a silent overwrite. Two tabs open on one
   /// wizard is the ordinary case, not the exotic one.
-  version           Int             @default(0)
+  version           Int      @default(0)
   /// The completeness policy in force, so a draft is not silently re-judged
   /// under a newer version mid-flight.
   policyVersion     String
-  lastSavedAt       DateTime        @default(now())
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  lastSavedAt       DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  providerProfile   ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
 }
 
 /// Append-only history for platform settings.
@@ -1813,7 +1926,7 @@ model MediaAsset {
   /// Recorded at prepare time so finalize can create the VerificationDocument
   /// without trusting a second client-supplied kind, and so a retried prepare
   /// can be recognised as the same request rather than starting a new upload.
-  pendingDocumentKind VerificationDocumentKind?
+  pendingDocumentKind      VerificationDocumentKind?
   pendingServiceCategoryId String?
 
   /// Sprint 9B.3 — when the prepared upload stops being usable.
@@ -1821,23 +1934,23 @@ model MediaAsset {
   /// Stored rather than computed from createdAt + the configured TTL, so an
   /// admin shortening the TTL cannot retroactively expire uploads that are
   /// already in flight.
-  uploadExpiresAt   DateTime?
+  uploadExpiresAt DateTime?
 
   // ── retention (ADR 0012) ────────────────────────────────────────────────
   /// When the BYTES become eligible for deletion. Null until the owning case
   /// reaches a terminal state and a window can be computed.
-  retainUntil       DateTime?
+  retainUntil    DateTime?
   /// Set only after the object is confirmed gone from storage. Marking first
   /// would produce rows claiming a deletion that did not happen.
-  deletedAt         DateTime?
-  deletionReason    String?
+  deletedAt      DateTime?
+  deletionReason String?
 
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  owner                User?                 @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
-  verificationCase     VerificationCase?     @relation(fields: [verificationCaseId], references: [id], onDelete: SetNull)
-  pendingCategory      ServiceCategory?      @relation("MediaAssetPendingCategory", fields: [pendingServiceCategoryId], references: [id], onDelete: SetNull)
+  owner                User?                   @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  verificationCase     VerificationCase?       @relation(fields: [verificationCaseId], references: [id], onDelete: SetNull)
+  pendingCategory      ServiceCategory?        @relation("MediaAssetPendingCategory", fields: [pendingServiceCategoryId], references: [id], onDelete: SetNull)
   verificationDocument VerificationDocument?
   portfolioItems       ProviderPortfolioItem[]
 
@@ -1896,10 +2009,10 @@ model VerificationRequirementPolicy {
   /// that was judged under it.
   retiredAt         DateTime?
 
-  createdAt         DateTime      @default(now())
+  createdAt DateTime @default(now())
 
-  category          ServiceCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  cases             VerificationCase[]
+  category ServiceCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  cases    VerificationCase[]
 
   /// Resolution reads live policies for a country/type/category triple.
   @@index([country, providerType, categoryId, retiredAt])
@@ -1960,35 +2073,35 @@ model VerificationCase {
   /// provider rather than globally, so two providers cannot collide on a
   /// client-generated value; NULLs stay distinct, which is what allows any
   /// number of keyless cases.
-  idempotencyKey       String?
+  idempotencyKey String?
 
-  submittedAt          DateTime?
+  submittedAt      DateTime?
   /// Workflow, not authorization: an unassigned reviewer with the permission
   /// may still read the case. Assignment prevents two people doing the work,
   /// not two people seeing it.
-  assignedToUserId     String?
-  assignedAt           DateTime?
+  assignedToUserId String?
+  assignedAt       DateTime?
 
   /// Denormalised pointer to when the case closed. The decisions themselves
   /// are append-only and are the record of record.
-  decidedAt            DateTime?
+  decidedAt DateTime?
 
   /// Reviewer free text. Treated as PERSONAL DATA (ADR 0012) and deleted with
   /// the evidence — the durable record is built from reason CODES.
-  reviewerNotes        String?               @db.Text
+  reviewerNotes String? @db.Text
 
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  providerProfile      ProviderProfile                @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
-  policy               VerificationRequirementPolicy? @relation(fields: [policyVersion], references: [version], onDelete: NoAction, onUpdate: NoAction)
-  assignedTo           User?                          @relation("VerificationCaseAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  documents            VerificationDocument[]
+  providerProfile ProviderProfile                @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  policy          VerificationRequirementPolicy? @relation(fields: [policyVersion], references: [version], onDelete: NoAction, onUpdate: NoAction)
+  assignedTo      User?                          @relation("VerificationCaseAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  documents       VerificationDocument[]
   /// Sprint 9B.3 — uploads prepared against this case but not yet finalized.
-  preparedAssets       MediaAsset[]
-  decisions            VerificationDecision[]
-  accessLogs           VerificationAccessLog[]
-  grants               ProviderWorkAccessGrant[]
+  preparedAssets  MediaAsset[]
+  decisions       VerificationDecision[]
+  accessLogs      VerificationAccessLog[]
+  grants          ProviderWorkAccessGrant[]
 
   /// A replayed create-case request returns the case the first one made.
   @@unique([providerProfileId, idempotencyKey])
@@ -2044,15 +2157,15 @@ model VerificationDocument {
   /// shown is part of the record.
   supersededAt      DateTime?
 
-  uploadedAt        DateTime                 @default(now())
-  uploadedByUserId  String?
+  uploadedAt       DateTime @default(now())
+  uploadedByUserId String?
 
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  case              VerificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  mediaAsset        MediaAsset       @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
-  category          ServiceCategory? @relation(fields: [serviceCategoryId], references: [id], onDelete: SetNull)
+  case       VerificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset       @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  category   ServiceCategory? @relation(fields: [serviceCategoryId], references: [id], onDelete: SetNull)
 
   @@index([caseId, kind, supersededAt])
   @@index([serviceCategoryId])
@@ -2114,11 +2227,11 @@ model VerificationDecision {
   /// deleted with the evidence; this is what survives.
   metadata        Json?
 
-  decidedAt       DateTime                    @default(now())
-  createdAt       DateTime                    @default(now())
+  decidedAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  case            VerificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  decidedBy       User?            @relation("VerificationDecisionReviewer", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  case      VerificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  decidedBy User?            @relation("VerificationDecisionReviewer", fields: [decidedByUserId], references: [id], onDelete: SetNull)
 
   @@index([caseId, decidedAt])
   @@index([decidedByUserId, decidedAt])
@@ -2143,7 +2256,7 @@ model VerificationAccessLog {
   userAgentHash String?
   createdAt     DateTime @default(now())
 
-  case          VerificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case VerificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
   @@index([caseId, createdAt])
   @@index([actorUserId, createdAt])
@@ -2192,13 +2305,13 @@ model ProviderPortfolioItem {
   /// Provider-controlled ordering.
   position                Int                      @default(0)
 
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  deletedAt               DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
-  providerProfile         ProviderProfile  @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
-  mediaAsset              MediaAsset       @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
-  category                ServiceCategory? @relation(fields: [serviceCategoryId], references: [id], onDelete: SetNull)
+  providerProfile ProviderProfile  @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  mediaAsset      MediaAsset       @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  category        ServiceCategory? @relation(fields: [serviceCategoryId], references: [id], onDelete: SetNull)
 
   /// The provider own gallery, ordered, excluding soft-deleted.
   @@index([providerProfileId, deletedAt, position])

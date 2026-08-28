@@ -19,6 +19,9 @@ import { AdminVerificationCaseCommandsController } from './verification/admin-ve
 import { AdminVerificationQueueService } from './verification/admin-verification-queue.service';
 import { AdminVerificationPolicyController } from './verification/admin-verification-policy.controller';
 import { AdminVerificationPolicyService } from './verification/admin-verification-policy.service';
+// Sprint 9B.20 — earned service-area expansion ladders and manual overrides.
+import { AdminServiceAreaPolicyController } from './service-area/admin-service-area-policy.controller';
+import { AdminServiceAreaPolicyService } from './service-area/admin-service-area-policy.service';
 import { VerificationSettingsService } from '../provider/verification/verification-settings.service';
 import { AdminVerificationService } from './verification/admin-verification.service';
 import { AdminVerificationCaseService } from './verification/admin-verification-case.service';
@@ -81,6 +84,10 @@ import { AdminCatalogService } from './catalog/admin-catalog.service';
     // Sprint 9B.2 — versioned requirement policies. Per-POLICY, so its own
     // controller rather than more routes under admin/providers/:id.
     AdminVerificationPolicyController,
+    // Sprint 9B.20 — per-MARKET expansion ladders and per-provider overrides.
+    // Same reasoning as the policy controller above: a global configuration
+    // surface does not belong behind a route shaped like one provider.
+    AdminServiceAreaPolicyController,
     AdminDisputesController,
     AdminAnalyticsController,
     AdminFinancialsController,
@@ -102,6 +109,7 @@ import { AdminCatalogService } from './catalog/admin-catalog.service';
     AdminVerificationService,
     AdminVerificationCaseService,
     AdminVerificationPolicyService,
+    AdminServiceAreaPolicyService,
     // Reads verification_policy_max_documents through the canonical
     // PlatformSettingRepository. Provided here rather than exported from the
     // provider module so admin does not import the provider domain.

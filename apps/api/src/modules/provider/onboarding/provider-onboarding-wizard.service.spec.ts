@@ -12,6 +12,7 @@ import type { PlatformSettingRepository } from '../../../infrastructure/persiste
 import type { UserRepository } from '../../../infrastructure/persistence/iam/user.repository';
 import type { ProviderOnboardingDraftRepository } from '../../../infrastructure/persistence/provider/provider-onboarding-draft.repository';
 import type { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
+import type { ProviderServiceAreaExpansionService } from './service-area/expansion/provider-service-area-expansion.service';
 import type { AuditService } from '../../iam/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { ProviderOnboardingWizardService } from './provider-onboarding-wizard.service';
@@ -114,6 +115,9 @@ interface Harness {
   drafts: Record<string, jest.Mock>;
   categories: Record<string, jest.Mock>;
   audit: { record: jest.Mock };
+  /** Sprint 9B.20 — stubbed to the default-off answer. Exposed so a test can
+   *  assert the wizard does not consult it on steps that cannot change it. */
+  expansion: { describe: jest.Mock; record: jest.Mock };
   trx: {
     providerProfile: { update: jest.Mock; updateMany: jest.Mock };
     providerOnboardingSubmission: { create: jest.Mock };
@@ -205,6 +209,24 @@ function build(
 
   const audit = { record: jest.fn().mockResolvedValue(undefined) };
 
+  const expansion = {
+    describe: jest.fn().mockImplementation((_subject: unknown, baseMaxKm: number) =>
+      Promise.resolve({
+        enabled: false,
+        policyVersion: null,
+        currentRadiusKm: null,
+        baseMaxKm,
+        allowedMaxKm: baseMaxKm,
+        currentTier: null,
+        nextTier: null,
+        progress: [],
+        reasonCodes: ['FEATURE_DISABLED'],
+        showRewardCard: false,
+      }),
+    ),
+    record: jest.fn().mockResolvedValue(undefined),
+  };
+
   const service = new ProviderOnboardingWizardService(
     providers as unknown as ProviderProfileRepository,
     drafts as unknown as ProviderOnboardingDraftRepository,
@@ -230,9 +252,15 @@ function build(
     } as unknown as PlatformSettingRepository,
     audit as unknown as AuditService,
     { run: <T>(fn: (t: unknown) => Promise<T>) => fn(trx) } as unknown as TransactionRunner,
+    // Sprint 9B.20 — the expansion service, stubbed to the DEFAULT-OFF answer.
+    // Every assertion in this file predates the feature and must keep passing
+    // with it switched off, which is exactly what this stub asserts by being
+    // the only behaviour these tests ever see. The feature's own behaviour is
+    // covered in expansion-resolver.spec.ts and the integration spec.
+    expansion as unknown as ProviderServiceAreaExpansionService,
   );
 
-  return { service, providers, drafts, categories, audit, trx };
+  return { service, providers, drafts, categories, audit, expansion, trx };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -480,6 +508,64 @@ describe('patchStep — concurrency', () => {
     await expect(
       h.service.patchStep('u-1', 'PROFILE', { version: 3, bio: 'Racing write.' }),
     ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPRINT 9B.20 — THE RADIUS CEILING IS THE ONE FOR THE MARKET BEING SAVED
+//
+// Since 9B.20 the country selects which expansion ladder applies, and country
+// and radius travel in the SAME step. Judging the new radius against the
+// pre-write context would use the old market's ceiling — accepting a radius
+// the very next read refuses, or refusing one the provider is entitled to.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('patchStep — LOCATION and the earned ceiling', () => {
+  it('re-resolves the ceiling for the country being written', async () => {
+    const h = build();
+
+    await h.service.patchStep('u-1', 'LOCATION', {
+      version: 3,
+      serviceAreaCountryCode: 'jo',
+      serviceAreaRadiusKm: 20,
+    });
+
+    // Upper-cased, and it is the INCOMING country, not the stored one.
+    const countries = h.expansion.describe.mock.calls.map(
+      (call: unknown[]) => (call[0] as { countryCode: string | null }).countryCode,
+    );
+    expect(countries).toContain('JO');
+  });
+
+  it('does not re-resolve when the country is unchanged', async () => {
+    // The ordinary radius save must pay for nothing extra.
+    const h = build();
+    h.expansion.describe.mockClear();
+
+    await h.service.patchStep('u-1', 'LOCATION', { version: 3, serviceAreaRadiusKm: 20 });
+
+    // Two context builds happen per patch (load, then post-write). Neither is
+    // the extra re-resolution, which would make a third with a different
+    // country.
+    const countries = new Set(
+      h.expansion.describe.mock.calls.map(
+        (call: unknown[]) => (call[0] as { countryCode: string | null }).countryCode,
+      ),
+    );
+    expect(countries.size).toBe(1);
+  });
+
+  it('records the decision on a LOCATION write', async () => {
+    const h = build();
+    await h.service.patchStep('u-1', 'LOCATION', { version: 3, serviceAreaCity: 'Damascus' });
+    expect(h.expansion.record).toHaveBeenCalled();
+  });
+
+  it('does NOT record on a step that cannot change the answer', async () => {
+    // A timeline full of events describing no change is a timeline nobody
+    // reads.
+    const h = build();
+    await h.service.patchStep('u-1', 'PROFILE', { version: 3, bio: 'Hello.' });
+    expect(h.expansion.record).not.toHaveBeenCalled();
   });
 });
 

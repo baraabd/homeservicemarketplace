@@ -8,6 +8,7 @@ import {
   useOnboardingStepAutosave,
 } from '../../../hooks/provider/useProviderOnboarding';
 import { SERVICE_AREA_COPY, type Lang } from '../copy/service-area-copy';
+import { ServiceAreaRewardCard } from './ServiceAreaRewardCard';
 
 // Sprint 9B.19 — V2 Task 3: where you work.
 //
@@ -359,6 +360,13 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
           {copy.radiusReduceHint}
         </p>
       </section>
+
+      {/* ── Earned expansion ─────────────────────────────────────────────
+          Sprint 9B.20. Rendered only when the SERVER says it may be, and
+          placed directly under the slider it explains: the card's whole
+          subject is why the ceiling on that control is what it is. Absent by
+          default — the feature ships off. */}
+      <ServiceAreaRewardCard expansion={data.serviceAreaExpansion} copy={copy} />
 
       {/* ── What customers see ───────────────────────────────────────────── */}
       <section aria-labelledby="area-preview-heading" className="min-w-0">
