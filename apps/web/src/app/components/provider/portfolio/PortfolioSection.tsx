@@ -15,6 +15,7 @@ import {
   uploadPortfolioFile,
 } from '../../../../lib/provider/provider-portfolio-api';
 import { PORTFOLIO_COPY, portfolioErrorText } from './portfolio-copy';
+import { currentPublicationAck } from '../../../../lib/provider/publication-ack';
 import { Button, IconButton } from '../../ds/Button';
 import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
@@ -65,6 +66,10 @@ export function PortfolioSection() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  // The exact sentence the provider is agreeing to, and the version that
+  // will be recorded against it. One call so the two cannot diverge.
+  const ack = currentPublicationAck(lang === 'ar' ? 'ar' : 'en');
+
   const [consent, setConsent] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -86,6 +91,9 @@ export function PortfolioSection() {
         contentType: file.type,
         sizeBytes: file.size,
         publicationRightAck: true,
+        // Sprint 9B.22 — WHICH wording was shown. The server refuses a stale
+        // version rather than recording agreement to text nobody saw.
+        publicationRightAckVersion: ack.version,
       });
       setPendingFile(null);
       setConsent(false);
@@ -334,10 +342,10 @@ export function PortfolioSection() {
                 type="checkbox"
                 checked={consent}
                 onChange={(e) => setConsent(e.target.checked)}
-                aria-label={t.consentLabel}
+                aria-label={ack.text}
               />
               <span>
-                {t.consentLabel}
+                {ack.text}
                 <span className="block text-xs text-muted-foreground">{t.consentHint}</span>
               </span>
             </label>

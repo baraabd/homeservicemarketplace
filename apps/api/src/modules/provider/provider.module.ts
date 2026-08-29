@@ -1,5 +1,8 @@
 import { ProviderPortfolioController } from './portfolio/provider-portfolio.controller';
 import { ProviderPortfolioService } from './portfolio/provider-portfolio.service';
+// Sprint 9B.22 — the customer-facing projection, served to its own owner.
+import { ProviderPublicProfileController } from './public-profile/provider-public-profile.controller';
+import { ProviderPublicProfileService } from './public-profile/provider-public-profile.service';
 import { MarketplacePreviewController } from './preview/marketplace-preview.controller';
 import { MarketplacePreviewService } from './preview/marketplace-preview.service';
 import { Module } from '@nestjs/common';
@@ -82,6 +85,8 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     // Sprint 9B.10 — the provider's public gallery. EDIT_OWN_PROFILE, because
     // a portfolio is profile content.
     ProviderPortfolioController,
+    // Sprint 9B.22 — read-only preview of the public projection.
+    ProviderPublicProfileController,
     // Sprint 2 — /me/provider/categories/applications. A separate controller
     // rather than more routes on ProviderController: applying for a skill is
     // moderated and asynchronous, editing a profile is neither, and the two
@@ -109,6 +114,7 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
   providers: [
     MarketplacePreviewService,
     ProviderPortfolioService,
+    ProviderPublicProfileService,
     ProviderService,
     ProviderJobsService,
     AvailableRequestsService,

@@ -2,6 +2,7 @@ import type {
   CreateProviderPortfolioItemRequest,
   ProviderPortfolioItem,
   ProviderPortfolioListResponse,
+  ProviderPublicProfilePreviewResponse,
   UpdateProviderPortfolioItemRequest,
 } from '@homeservicemarketplace/contracts';
 
@@ -134,4 +135,24 @@ function storageKeyFromFileUrl(fileUrl: string): string {
   } catch {
     return fileUrl;
   }
+}
+
+// ─── Sprint 9B.22 ────────────────────────────────────────────────────────────
+
+/**
+ * What a customer would see, built by the server from the PUBLIC projection.
+ *
+ * A separate call rather than a field on the onboarding draft, and that is the
+ * point: the draft is the private working copy, and a preview rendered from it
+ * would be a preview of the wrong object. This asks the server the question a
+ * customer's request would ask.
+ */
+export async function fetchPublicProfilePreview(
+  lang: 'en' | 'ar',
+): Promise<ProviderPublicProfilePreviewResponse> {
+  const { data } = await api.get<ProviderPublicProfilePreviewResponse>(
+    '/v1/me/provider/public-profile/preview',
+    { params: { lang } },
+  );
+  return data;
 }

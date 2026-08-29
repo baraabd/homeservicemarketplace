@@ -1,3 +1,5 @@
+export * from './publication-ack';
+
 // Sprint 9B.10 — the provider portfolio contract.
 //
 //   GET    /v1/me/provider/portfolio
@@ -60,6 +62,14 @@ export interface CreateProviderPortfolioItemRequest {
    *  is in it. Required: the schema records the acknowledgement and its
    *  timestamp rather than assuming it silently. */
   publicationRightAck: true;
+  /** Sprint 9B.22 — the WORDING the provider was shown, by version.
+   *
+   *  Sent so the server can refuse a stale one: a tab open since before the
+   *  wording changed would otherwise record agreement to text nobody saw.
+   *  Optional for compatibility with clients that predate the table — those
+   *  are recorded under the legacy sentinel and reported as unversioned
+   *  rather than back-dated onto a version they never displayed. */
+  publicationRightAckVersion?: string;
   // NO idempotencyKey, deliberately. The STORAGE KEY is the idempotency key,
   // and it is a better one than anything a client could generate:
   //

@@ -43,7 +43,6 @@ export const PORTFOLIO_COPY: Record<Lang, Record<string, string>> = {
     uploadRetry: 'Try again',
     uploadCancel: 'Cancel',
 
-    consentLabel: 'I have the right to publish this photo',
     consentHint: 'A customer’s home may be in it. Ask them first.',
 
     captionLabel: 'Caption',
@@ -97,7 +96,6 @@ export const PORTFOLIO_COPY: Record<Lang, Record<string, string>> = {
     uploadRetry: 'أعد المحاولة',
     uploadCancel: 'إلغاء',
 
-    consentLabel: 'لدي الحق في نشر هذه الصورة',
     consentHint: 'قد يظهر فيها منزل عميل. اسأله أولاً.',
 
     captionLabel: 'التسمية',

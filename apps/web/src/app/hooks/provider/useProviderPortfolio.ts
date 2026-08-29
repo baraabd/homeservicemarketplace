@@ -9,6 +9,7 @@ import type {
 import {
   createPortfolioItem,
   deletePortfolioItem,
+  fetchPublicProfilePreview,
   listPortfolio,
   reorderPortfolio,
   updatePortfolioItem,
@@ -32,6 +33,18 @@ export function portfolioErrorCode(err: unknown): string | undefined {
   return body?.error?.details?.reason;
 }
 
+/** Sprint 9B.22 — a mutation changes BOTH the gallery and what a customer
+ *  would see. Invalidating only the gallery leaves the preview beside it
+ *  showing the previous answer, which is worse than showing none.
+ *
+ *  The preview key is invalidated by PREFIX so both languages refresh: a
+ *  provider who switches language after publishing must not be shown a
+ *  cached preview from before it. */
+function invalidateGalleryAndPreview(qc: ReturnType<typeof useQueryClient>): void {
+  void qc.invalidateQueries({ queryKey: portfolioQueryKey });
+  void qc.invalidateQueries({ queryKey: ['provider', 'public-profile', 'preview'] });
+}
+
 export function useProviderPortfolio() {
   return useQuery<ProviderPortfolioListResponse, AxiosError>({
     queryKey: portfolioQueryKey,
@@ -46,7 +59,7 @@ export function useCreatePortfolioItem() {
     // Invalidate rather than patch the cache by hand: the response carries one
     // item, but a create also changes `remainingSlots`, and reconstructing
     // that on the client is a second copy of a rule the server owns.
-    onSuccess: () => qc.invalidateQueries({ queryKey: portfolioQueryKey }),
+    onSuccess: () => invalidateGalleryAndPreview(qc),
   });
 }
 
@@ -60,7 +73,7 @@ export function useUpdatePortfolioItem() {
       itemId: string;
       input: UpdateProviderPortfolioItemRequest;
     }): Promise<ProviderPortfolioItem> => updatePortfolioItem(itemId, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: portfolioQueryKey }),
+    onSuccess: () => invalidateGalleryAndPreview(qc),
   });
 }
 
@@ -79,6 +92,30 @@ export function useDeletePortfolioItem() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (itemId: string) => deletePortfolioItem(itemId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: portfolioQueryKey }),
+    onSuccess: () => invalidateGalleryAndPreview(qc),
+  });
+}
+
+// ─── Sprint 9B.22 ────────────────────────────────────────────────────────────
+
+export const publicProfilePreviewKey = (lang: 'en' | 'ar') =>
+  ['provider', 'public-profile', 'preview', lang] as const;
+
+/**
+ * What a customer would see.
+ *
+ * Keyed by language because the projection localises specialty labels — two
+ * languages are two different public profiles, and sharing one cache entry
+ * would show whichever was fetched first.
+ *
+ * Invalidated by every portfolio mutation below: publishing, editing or
+ * deleting an image changes what the preview should show, and a preview that
+ * disagrees with the gallery beside it is worse than no preview.
+ */
+export function usePublicProfilePreview(lang: 'en' | 'ar') {
+  return useQuery({
+    queryKey: publicProfilePreviewKey(lang),
+    queryFn: () => fetchPublicProfilePreview(lang),
+    staleTime: 0,
   });
 }

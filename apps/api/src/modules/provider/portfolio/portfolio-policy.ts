@@ -1,5 +1,10 @@
 import { createHmac } from 'node:crypto';
 
+import {
+  LEGACY_PUBLICATION_ACK_TEXT,
+  isCurrentPublicationAckVersion,
+} from '@homeservicemarketplace/contracts';
+
 import { ALLOWED_IMAGE_TYPES } from '../../../infrastructure/storage/content-type';
 
 // Sprint 9B.10 — the portfolio rules, with no database in sight.
@@ -53,7 +58,8 @@ export type PortfolioRefusal =
   | 'FILE_TOO_LARGE'
   | 'DISALLOWED_FORMAT'
   | 'NOT_A_PORTFOLIO_KEY'
-  | 'PUBLICATION_RIGHT_NOT_ACKNOWLEDGED';
+  | 'PUBLICATION_RIGHT_NOT_ACKNOWLEDGED'
+  | 'STALE_PUBLICATION_ACK';
 
 export class PortfolioPolicyError extends Error {
   constructor(
@@ -139,6 +145,33 @@ export function assertPublicationRight(ack: unknown): void {
       'You must confirm you may publish this image.',
     );
   }
+}
+
+/**
+ * Which text to RECORD against this acknowledgement.
+ *
+ * Sprint 9B.22. The client sends the version of the wording it displayed, and
+ * anything other than the current version is refused — a tab open since before
+ * the wording changed would otherwise record agreement to text nobody saw. Same
+ * rule the CONSENT step already applies to the terms document.
+ *
+ * An ABSENT version is not a refusal: clients that predate the wording table
+ * still acknowledge honestly, they just cannot say which words they saw. Those
+ * rows keep the original sentinel and are reported as unversioned rather than
+ * back-dated onto a version they never displayed.
+ *
+ * The server never stores wording the client sent. It stores a version, and the
+ * words for that version live in the contracts package forever.
+ */
+export function resolvePublicationAckText(version: string | undefined | null): string {
+  if (version === undefined || version === null) return LEGACY_PUBLICATION_ACK_TEXT;
+  if (!isCurrentPublicationAckVersion(version)) {
+    throw new PortfolioPolicyError(
+      'STALE_PUBLICATION_ACK',
+      'The publication confirmation has been updated. Reload and confirm the current wording.',
+    );
+  }
+  return version;
 }
 
 /**
