@@ -175,7 +175,7 @@ export function PublicProfileTaskScreen({ view, lang, editable }: PublicProfileT
           data-testid="title-help"
           role={titleError ? 'alert' : undefined}
         >
-          {titleError ?? copy.titleTooShort(TITLE_MIN_LENGTH)}
+          {titleError ?? copy.titleTooShort(formatCount(TITLE_MIN_LENGTH, lang))}
         </p>
       </section>
 
@@ -247,7 +247,11 @@ export function PublicProfileTaskScreen({ view, lang, editable }: PublicProfileT
             style={{ fontSize: '12px' }}
             data-testid="bio-help"
           >
-            {bioOver ? copy.bioCounterOver : bioShort ? copy.bioTooShort(MIN_BIO_LENGTH) : ''}
+            {bioOver
+              ? copy.bioCounterOver
+              : bioShort
+                ? copy.bioTooShort(formatCount(MIN_BIO_LENGTH, lang))
+                : ''}
           </p>
           {/* aria-live so a screen reader hears the count change without the
               whole field being re-announced on every keystroke. */}

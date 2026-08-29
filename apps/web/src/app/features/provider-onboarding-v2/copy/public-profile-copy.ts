@@ -22,7 +22,7 @@ export interface PublicProfileCopy {
   titleUse: string;
   titleLabel: string;
   titlePlaceholder: string;
-  titleTooShort: (min: number) => string;
+  titleTooShort: (min: string) => string;
   titleRefusal: Record<string, string>;
 
   // Bio
@@ -32,7 +32,7 @@ export interface PublicProfileCopy {
   bioPlaceholder: string;
   bioExamplesLabel: string;
   bioExamples: string[];
-  bioTooShort: (min: number) => string;
+  bioTooShort: (min: string) => string;
   bioCounter: (used: string, max: string) => string;
   bioCounterOver: string;
 

@@ -201,7 +201,7 @@ describe('the bio', () => {
   it('warns below the minimum the completeness policy enforces', () => {
     renderScreen();
     fireEvent.change(screen.getByTestId('bio-input'), { target: { value: 'Too short.' } });
-    expect(screen.getByTestId('bio-help')).toHaveTextContent(EN.bioTooShort(40));
+    expect(screen.getByTestId('bio-help')).toHaveTextContent(EN.bioTooShort('40'));
   });
 
   it('saves a bio that is long enough', async () => {
@@ -247,6 +247,17 @@ describe('Arabic', () => {
     // ٢٬٠٠٠ — the localised maximum. A Latin "2,000" inside Arabic copy is the
     // thing "a correct localised counter" is asking about.
     expect(screen.getByTestId('bio-counter').textContent).toMatch(/[٠-٩]/);
+  });
+
+  it('localises the digits in the minimum-length hint too', () => {
+    // The hint sits directly beside the counter. Localising one and not the
+    // other puts two digit systems on the same row — "اكتب 40" next to
+    // "٠ من ٢٬٠٠٠" — which reads as a rendering bug rather than as copy.
+    renderScreen(DRAFT(), 'ar');
+    fireEvent.change(screen.getByTestId('bio-input'), { target: { value: 'قصير' } });
+    const hint = screen.getByTestId('bio-help').textContent ?? '';
+    expect(hint).toMatch(/[٠-٩]/);
+    expect(hint).not.toMatch(/[0-9]/);
   });
 
   it('offers the Arabic suggestion, not the English one', () => {
