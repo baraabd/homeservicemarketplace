@@ -14,6 +14,7 @@ import {
   type ProviderOnboardingStep,
   type ProviderServiceAreaExpansionView,
   type SubmitOnboardingRequest,
+  type ProviderOnboardingReview,
 } from '@homeservicemarketplace/contracts';
 import type { Prisma, PrismaTx, ServiceCategory } from '@homeservicemarketplace/database';
 
@@ -31,6 +32,7 @@ import {
 } from '../../../infrastructure/persistence/provider/provider-onboarding-draft.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
+import { buildReview } from './review/onboarding-review-resolver';
 import { referencesRestrictedMedia } from './avatar/avatar-policy';
 import { checkRadius, resolveRadiusPolicy, type RadiusPolicy } from './service-area/radius-policy';
 import {
@@ -282,6 +284,44 @@ export class ProviderOnboardingWizardService {
 
       const candidate = this.toCandidate(ctx);
 
+      // CLAIM THE TRANSITION FIRST, and conditionally.
+      //
+      // Sprint 9B.23. The state check above is a fast path, not a guard: two
+      // simultaneous submits both read DRAFT before either writes, so both
+      // used to pass it and both wrote a submission row and an audit event —
+      // one application handed in twice, which is exactly what a double tap or
+      // a retried request produces.
+      //
+      // So the pre-submit state moves into the WHERE clause, the same idiom
+      // `withdraw` already uses. Postgres serialises the two updates on the
+      // row; the winner sees count 1 and goes on to write the submission, the
+      // loser sees 0 and returns the existing outcome. The claim is the
+      // transition itself, so there is no window between claiming and
+      // transitioning in which a third request could slip through.
+      const claimed = await trx.providerProfile.updateMany({
+        where: {
+          id: ctx.profile.id,
+          // NOT_STARTED and null are included because a profile that never
+          // opened the wizard can still submit a complete application; the
+          // states deliberately absent are the ones that mean "already in".
+          OR: [
+            { onboardingState: null },
+            { onboardingState: { in: ['NOT_STARTED', 'DRAFT', 'RETURNED'] } },
+          ],
+        },
+        data: {
+          onboardingState: 'DOCUMENTS_REQUIRED',
+          status: 'PENDING_REVIEW',
+          submittedForReviewAt: new Date(),
+        },
+      });
+      if (claimed.count === 0) {
+        // Another request won. Idempotent by construction: no second
+        // submission row, no second audit event, and the caller still gets the
+        // application's real state from the view below.
+        return;
+      }
+
       // The snapshot is what the policy actually evaluated, pinned to the
       // policy version that judged it. Without it, a rule added next month
       // makes it impossible to reconstruct why this application was accepted.
@@ -295,21 +335,14 @@ export class ProviderOnboardingWizardService {
         },
       });
 
-      // The ONLY state change. DOCUMENTS_REQUIRED, and nothing else:
+      // The state change happened in the claim above. What it did NOT do is
+      // the part worth restating:
       //   - `verified` is untouched (no badge)
       //   - `verificationState` is untouched (identity still unchecked)
       //   - `standingState` is untouched
       //   - no ProviderWorkAccessGrant row is written (no work access)
-      //   - the legacy `status` moves to PENDING_REVIEW so the existing admin
+      //   - the legacy `status` moved to PENDING_REVIEW so the existing admin
       //     queue still sees the application, and NOT to ACTIVE
-      await trx.providerProfile.update({
-        where: { id: ctx.profile.id },
-        data: {
-          onboardingState: 'DOCUMENTS_REQUIRED',
-          status: 'PENDING_REVIEW',
-          submittedForReviewAt: new Date(),
-        },
-      });
 
       await this.audit.record(
         {
@@ -928,6 +961,57 @@ export class ProviderOnboardingWizardService {
   }
 
   // ── reading ───────────────────────────────────────────────────────────
+
+  /**
+   * GET /v1/me/provider/onboarding/review
+   *
+   * Sprint 9B.23 — the canonical readiness read-model for V2 Task 6.
+   *
+   * Served fresh on every call, which is what lets the screen refresh
+   * readiness immediately before submitting: the `draftVersion` and
+   * `terms.version` in this response are the exact tokens the submit must
+   * echo, so a review that is stale by the time the provider taps produces a
+   * 409 rather than a wrong decision.
+   *
+   * Deliberately NOT a field on the draft view. The draft is the private
+   * working copy the wizard writes through; this is a verdict about it, and
+   * fusing them would mean every autosave re-computed a review nobody asked
+   * for.
+   */
+  async review(userId: string, locale: 'en' | 'ar'): Promise<ProviderOnboardingReview> {
+    const ctx = await this.buildContext(userId);
+    // THE SAME CALL the submit makes. Not a copy of its rules — the call.
+    const issues = evaluateOnboarding(this.toCandidate(ctx));
+    const draft = await this.drafts.findByProfileId(ctx.profile.id);
+
+    const current = await this.consentVersion();
+    const acceptedVersion = ctx.profile.acceptedConsentVersion ?? null;
+
+    return buildReview({
+      issues,
+      lifecycleState: this.lifecycleState(ctx),
+      // 0 when no draft row exists yet, which the submit treats as "no version
+      // to match" — the same reading both sides already agree on.
+      draftVersion: draft?.version ?? 0,
+      terms: {
+        version: current,
+        locale,
+        // Accepting v1 is not consent to v2. Equality, never presence.
+        accepted: acceptedVersion !== null && acceptedVersion === current,
+        acceptedVersion,
+        acceptedAt: ctx.profile.consentAcceptedAt?.toISOString() ?? null,
+      },
+      pendingSpecialtyCount: ctx.pendingApplicationCategoryIds.length,
+      // Sprint 9B.22 established that nothing on this platform approves a
+      // portfolio image, so there is no moderation queue to report a count
+      // from and no honest "waiting" line to draw. The projection supports
+      // both the moment a reviewer exists; sourcing them would mean a new
+      // dependency on this controller, which is how 9B.17 broke every gated
+      // spec that mounts it.
+      awaitingPortfolioReviewCount: 0,
+      portfolioEmpty: false,
+    });
+  }
 
   private async view(userId: string): Promise<ProviderOnboardingDraftView> {
     const ctx = await this.buildContext(userId);
