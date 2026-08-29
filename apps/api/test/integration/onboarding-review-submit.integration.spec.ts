@@ -76,14 +76,6 @@ d('Onboarding review and submission (real Postgres)', () => {
   const patchProfile = (body: Record<string, unknown>) =>
     request(http).patch('/v1/me/provider/onboarding/steps/PROFILE').send(body);
 
-  async function setConsentVersion(value: string): Promise<void> {
-    await prisma.platformSetting.upsert({
-      where: { key: CONSENT_KEY },
-      create: { key: CONSENT_KEY, value, updatedBy: USER },
-      update: { value },
-    });
-  }
-
   /** Everything the completeness policy asks for, so the only remaining
    *  variable in a test is the one that test is about. */
   async function makeComplete(over: Record<string, unknown> = {}): Promise<void> {
@@ -297,7 +289,19 @@ d('Onboarding review and submission (real Postgres)', () => {
 
   beforeEach(async () => {
     currentUser = { id: USER };
-    await setConsentVersion('v1');
+    // DELIBERATELY NOT creating `provider_consent_policy_version`.
+    //
+    // It is a GLOBAL settings row, and `requiredConsentVersion()` treats an
+    // absent row as "no terms requirement at all". Creating it here imposed a
+    // requirement on every OTHER suite's providers — none of whom accept
+    // terms — so their verification submits started failing
+    // TERMS_NOT_ACCEPTED. Sprint 9B.26 caught it: three deterministic failures
+    // in verification-case-workflow that appeared only when this suite ran
+    // beside it, and vanished when it did not.
+    //
+    // The wizard defaults the version to 'v1' when the row is missing, so
+    // every assertion here still has a version to read. Nothing needs the row
+    // to exist; something else needs it NOT to.
     await prisma.providerOnboardingSubmission.deleteMany({ where: { providerProfileId: PP } });
     await prisma.auditEvent.deleteMany({ where: { userId: USER } });
     await prisma.providerProfile.update({
@@ -364,15 +368,32 @@ d('Onboarding review and submission (real Postgres)', () => {
 
     it('an OLD acceptance does not count once the document moves', async () => {
       // The version change between viewing and submitting: the provider agreed
-      // to v1, the operator published v2, and the tick must not survive it.
+      // to one document, a newer one is live, and the tick must not survive it.
+      //
+      // STALENESS IS SIMULATED ON THE PROFILE, NOT BY MOVING THE PLATFORM
+      // SETTING.
+      //
+      // `provider_consent_policy_version` is a GLOBAL row. Publishing "v2" from
+      // here made every other suite's provider — who had accepted v1 — fail
+      // `assessSubmissionReadiness` with TERMS_NOT_ACCEPTED, and their
+      // verification submits were refused mid-run. Sprint 9B.26 caught it:
+      // three failures in verification-case-workflow that reproduced only when
+      // this suite ran beside it.
+      //
+      // The rule under test is `accepted === (acceptedVersion === current)`,
+      // and rewinding the PROFILE exercises exactly that comparison while
+      // touching nothing another suite can see.
       await acceptCurrentTerms();
       expect((await getReview()).body.terms.accepted).toBe(true);
 
-      await setConsentVersion('v2');
+      await prisma.providerProfile.update({
+        where: { id: PP },
+        data: { acceptedConsentVersion: 'v0-superseded' },
+      });
 
       const after = await getReview();
-      expect(after.body.terms.version).toBe('v2');
-      expect(after.body.terms.acceptedVersion).toBe('v1');
+      expect(after.body.terms.version).toBe('v1');
+      expect(after.body.terms.acceptedVersion).toBe('v0-superseded');
       expect(after.body.terms.accepted).toBe(false);
       expect(after.body.canSubmit).toBe(false);
       expect(after.body.blockedReason.code).toBe('STALE_VERSION');
@@ -694,6 +715,134 @@ d('Onboarding review and submission (real Postgres)', () => {
       expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
         0,
       );
+    });
+  });
+
+  // ── Sprint 9B.26 — a draft written before V2 existed ─────────────────────
+
+  describe('a legacy V1 draft opens in V2 without losing anything', () => {
+    /**
+     * A profile as the Sprint 8 wizard left it.
+     *
+     * Everything V2 later added is NULL: provider type, years of experience,
+     * the weekly schedule, the snapped coordinates. This is the shape sitting
+     * in production right now for every provider who started onboarding before
+     * the V2 screens existed, and the release gate turns on whether V2 can
+     * read it.
+     */
+    async function makeLegacyDraft(): Promise<void> {
+      await prisma.providerAvailabilityInterval.deleteMany({
+        where: { providerProfileId: PP },
+      });
+      await prisma.providerProfile.update({
+        where: { id: PP },
+        data: {
+          // What V1 collected.
+          displayName: 'Layla Mansour',
+          headline: 'Certified electrician',
+          bio: 'A sufficiently long biography for the onboarding policy to consider this profile complete and useful.',
+          phoneNumber: '+963900000444',
+          serviceAreaCity: 'ReviewTestCity',
+          serviceAreaCountry: 'SY',
+          serviceAreaRadiusKm: 20,
+          // What V2 added, and a legacy row cannot have.
+          providerType: null,
+          yearsOfExperience: null,
+          serviceAreaLat: null,
+          serviceAreaLng: null,
+          status: 'DRAFT',
+          onboardingState: 'DRAFT',
+        },
+      });
+    }
+
+    it('serves the review rather than failing on the missing fields', async () => {
+      await makeLegacyDraft();
+      const res = await getReview();
+
+      // The whole compatibility question in one assertion: a read-model built
+      // for V2 must not throw on a row that predates it.
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.groups)).toBe(true);
+    });
+
+    it('names the newly-required fields as blockers, each with somewhere to go', async () => {
+      // Not "your application is broken" — a list of things to finish, and a
+      // task id for each. A legacy provider is mid-application, not stuck.
+      await makeLegacyDraft();
+      const res = await getReview();
+
+      const blocking = res.body.groups.find((g: { kind: string }) => g.kind === 'BLOCKING');
+      const fields = blocking.items.map((i: { field: string }) => i.field);
+      expect(fields).toContain('providerType');
+      expect(fields).toContain('yearsOfExperience');
+      expect(fields).toContain('availability');
+      for (const item of blocking.items) expect(item.taskId).toBeTruthy();
+    });
+
+    it('KEEPS every field V1 already collected', async () => {
+      // The data-loss question. Opening the new surface must not blank a
+      // headline someone wrote a month ago.
+      await makeLegacyDraft();
+      await getReview();
+
+      const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(profile.displayName).toBe('Layla Mansour');
+      expect(profile.headline).toBe('Certified electrician');
+      expect(profile.bio).toContain('sufficiently long biography');
+      expect(profile.phoneNumber).toBe('+963900000444');
+      expect(profile.serviceAreaCity).toBe('ReviewTestCity');
+      expect(profile.serviceAreaRadiusKm).toBe(20);
+    });
+
+    it('refuses to submit a legacy draft until the new requirements are met', async () => {
+      // A legacy draft must not slip through the newer policy simply because
+      // it was created under an older one.
+      await makeLegacyDraft();
+      await acceptCurrentTerms();
+      const review = await getReview();
+
+      expect(review.body.canSubmit).toBe(false);
+      const res = await postSubmit({ version: review.body.draftVersion });
+      expect(res.status).toBe(422);
+    });
+
+    it('a V2 write completes the legacy draft rather than replacing it', async () => {
+      // Filling in the V2 fields must leave the V1 ones untouched — the two
+      // vocabularies describe one application, not two.
+      await makeLegacyDraft();
+      const before = await prisma.providerProfile.findUnique({ where: { id: PP } });
+
+      await prisma.providerProfile.update({
+        where: { id: PP },
+        data: { providerType: 'INDIVIDUAL', yearsOfExperience: 5 },
+      });
+
+      const after = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(after.displayName).toBe(before.displayName);
+      expect(after.headline).toBe(before.headline);
+      expect(after.bio).toBe(before.bio);
+      expect(after.providerType).toBe('INDIVIDUAL');
+
+      const res = await getReview();
+      const fields = res.body.groups
+        .find((g: { kind: string }) => g.kind === 'BLOCKING')
+        .items.map((i: { field: string }) => i.field);
+      expect(fields).not.toContain('providerType');
+      expect(fields).not.toContain('yearsOfExperience');
+    });
+
+    it('reports the SAME draft version V1 would have, so a rollback can resume it', async () => {
+      // Rollback to V1 is a flag flip, not a migration. Both surfaces write
+      // through the same versioned draft, so a provider bounced back to the
+      // wizard picks up exactly where V2 left them.
+      await makeLegacyDraft();
+      const review = await getReview();
+
+      const draft = await prisma.providerOnboardingDraft.findFirst({
+        where: { providerProfileId: PP },
+      });
+      expect(review.body.draftVersion).toBe(draft ? draft.version : 0);
     });
   });
 
