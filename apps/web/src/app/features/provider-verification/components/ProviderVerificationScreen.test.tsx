@@ -37,25 +37,40 @@ const doc = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const kase = (over: Record<string, unknown> = {}) => ({
-  case: {
-    id: 'c1',
-    state: 'DRAFT',
-    policyVersion: 'v1',
-    createdAt: '2026-08-01T00:00:00.000Z',
-    submittedAt: null,
-    verificationRequired: true,
-    requirements: [{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }],
-    documents: [],
-    latestDecision: null,
-    // Sprint 9B.24 — the server's own action list. A DRAFT case offers
-    // 'submit', which is what the submit CTA is now gated on; a fixture
-    // without it would be testing a response the API does not send.
-    availableActions: ['submit'],
-    updatedAt: '2026-08-01T00:00:00.000Z',
-    ...over,
-  },
-});
+/**
+ * The actions the SERVER would offer for a given case state.
+ *
+ * Mirrors `offerableCaseActions(state, 'provider')`: the transition table
+ * gives a provider `submit` from DRAFT and from ACTION_REQUIRED — resubmission
+ * is the same edge — and nothing from any other state.
+ *
+ * Defaulting every fixture to `['submit']` would manufacture responses the
+ * API cannot produce (a SUBMITTED case offering submit), and hide exactly the
+ * mismatch these fixtures exist to catch. Tests that need a specific list —
+ * the fail-closed cases — override it explicitly.
+ */
+function actionsFor(state: string): 'submit'[] {
+  return state === 'DRAFT' || state === 'ACTION_REQUIRED' ? ['submit'] : [];
+}
+const kase = (over: Record<string, unknown> = {}) => {
+  const state = (over.state as string) ?? 'DRAFT';
+  return {
+    case: {
+      id: 'c1',
+      state,
+      policyVersion: 'v1',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+      submittedAt: null,
+      verificationRequired: true,
+      requirements: [{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }],
+      documents: [],
+      latestDecision: null,
+      availableActions: actionsFor(state),
+      ...over,
+    },
+  };
+};
 
 const PROFILE = (over: Record<string, unknown> = {}) => ({
   profile: { id: 'pp-1', verified: false, topPro: false, ...over },
@@ -143,6 +158,9 @@ describe('each state gets its own screen', () => {
     ['CHANGES_REQUESTED', { kase: kase({ state: 'ACTION_REQUIRED' }) }],
     ['REJECTED', { kase: kase({ state: 'REJECTED' }) }],
     ['VERIFIED_NO_ACCESS', { kase: kase({ state: 'VERIFIED' }) }],
+    // Sprint 9B.24 — the fifteenth state. An EXPIRED case is a different
+    // instruction from a verified one with no grant, so it gets its own row.
+    ['REVERIFICATION_REQUIRED', { kase: kase({ state: 'EXPIRED' }) }],
   ])('renders %s with its own title', async (state, options) => {
     stub(options as Parameters<typeof stub>[0]);
     renderScreen();

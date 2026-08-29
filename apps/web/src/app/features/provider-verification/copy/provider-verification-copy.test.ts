@@ -123,7 +123,11 @@ describe('a state cannot exist without copy', () => {
         'READY_TO_SUBMIT',
         'CHANGES_REQUESTED',
         'REJECTED',
+        // Sprint 9B.24 — both halves of the split can act, but on DIFFERENT
+        // things: REVERIFICATION_REQUIRED opens a new case, VERIFIED_NO_ACCESS
+        // reaches support because more documents would not help.
         'VERIFIED_NO_ACCESS',
+        'REVERIFICATION_REQUIRED',
       ] as const) {
         expect(STATE_COPY[lang][state].cta, `${lang}.${state}`).toBeTruthy();
       }
