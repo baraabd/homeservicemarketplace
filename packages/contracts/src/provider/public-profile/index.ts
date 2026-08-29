@@ -18,7 +18,12 @@
 //                                 that exists around that introduction.
 //   userId, providerProfileId   — raw internal identifiers correlate a person
 //                                 across every other surface that exposes one.
-//                                 `slug` below is the public handle instead.
+//                                 This shape carries NO identifier at all, and
+//                                 needs none: the preview is served to the
+//                                 provider who already owns it. A public route
+//                                 will have to add an opaque handle — an HMAC
+//                                 ref of the kind portfolio keys already use,
+//                                 never the raw id.
 //   serviceAreaLat/Lng          — exact coordinates. Sprint 9B.19 established
 //                                 that a provider's base is usually their home.
 //   workshopAddressLine         — an exact address, same reason.
