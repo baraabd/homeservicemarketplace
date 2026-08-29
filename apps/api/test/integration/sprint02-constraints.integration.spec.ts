@@ -25,7 +25,11 @@ import { acquireAdvisoryLock, type HeldLock } from '../support/db-isolation';
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
 
-jest.setTimeout(90_000);
+// 180s, matching the other gated suites: this suite now WAITS on the shared
+// ServiceRequest lock while marketplace-preview holds it exclusively, so its
+// beforeAll budget has to exceed the longest exclusive hold plus its own
+// setup — otherwise a slow runner turns a correct wait into a hook timeout.
+jest.setTimeout(180_000);
 
 const TAG = `s2c-${Date.now()}`;
 
@@ -60,6 +64,7 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
   }
 
   let lifecycleLock: HeldLock;
+  let requestsLock: HeldLock;
 
   beforeAll(async () => {
     // SHARED: this suite creates ProviderProfile rows with NULL lifecycle
@@ -67,6 +72,20 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
     // whole-table totals. Shared locks are mutually compatible, so this does
     // not serialise against any suite except that one.
     lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+
+    // SHARED on ServiceRequest. This suite CREATES open requests, and the
+    // marketplace-preview suite reads the open-request set globally and counts
+    // distinct location cells over it — a row of ours is an extra cell to it.
+    // Shared locks are mutually compatible, so this does not serialise against
+    // any suite except that one.
+    //
+    // LAST in the canonical order (test/support/db-isolation.ts), released FIRST,
+    // and never before this suite has deleted the requests it owns.
+    //
+    // Note the rows this suite creates carry NO coordinates, which the preview
+    // projects to a null cell — the specific contamination that broke that
+    // suite on develop after 9B.22.
+    requestsLock = await acquireAdvisoryLock('serviceRequests', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -139,6 +158,7 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
     await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     await prisma.serviceCategory.deleteMany({ where: { id: { in: createdCategoryIds } } });
     await prisma.$disconnect();
+    await requestsLock?.release();
     await lifecycleLock.release();
   });
 

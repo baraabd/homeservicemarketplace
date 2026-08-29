@@ -147,6 +147,7 @@ d('Service-area matching and fan-out (real Postgres)', () => {
 
   let lifecycleLock: HeldLock;
   let outboxLock: HeldLock;
+  let requestsLock: HeldLock;
 
   beforeAll(async () => {
     // SHARED, not exclusive: this suite writes ProviderProfile rows (600 of
@@ -169,6 +170,16 @@ d('Service-area matching and fan-out (real Postgres)', () => {
     // mutual exclusion required: producers may run together, never alongside
     // the consumer.
     outboxLock = await acquireAdvisoryLock('outbox', 'shared');
+
+    // SHARED on ServiceRequest. This suite CREATES open requests, and the
+    // marketplace-preview suite reads the open-request set globally and counts
+    // distinct location cells over it — a row of ours is an extra cell to it.
+    // Shared locks are mutually compatible, so this does not serialise against
+    // any suite except that one.
+    //
+    // LAST in the canonical order (test/support/db-isolation.ts), released FIRST,
+    // and never before this suite has deleted the requests it owns.
+    requestsLock = await acquireAdvisoryLock('serviceRequests', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -227,6 +238,7 @@ d('Service-area matching and fan-out (real Postgres)', () => {
       where: { OR: [{ id: seekerUserId }, { id: { startsWith: PROVIDER_USER_PREFIX } }] },
     });
     await prisma.$disconnect();
+    await requestsLock?.release();
     await outboxLock?.release();
     await lifecycleLock.release();
   });

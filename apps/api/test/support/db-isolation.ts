@@ -31,6 +31,22 @@
  *     run concurrently with each other and only the backfill serialises.
  */
 
+/**
+ * THE CANONICAL LOCK ORDER, which every suite must follow:
+ *
+ *     providerLifecycle -> outbox -> workAccessGrants -> serviceRequests
+ *
+ * Acquire in that order, release in the reverse. Two suites taking two locks
+ * in opposite orders deadlock, and a deadlocked CI job presents as a hang
+ * rather than as a failure — so a new resource goes on the END of this list,
+ * never in the middle, and a suite that needs a subset still takes what it
+ * needs in this relative order.
+ *
+ * A suite must also clean up the rows it owns BEFORE releasing the lock that
+ * guards them; releasing first leaves its fixtures visible to whichever suite
+ * was waiting.
+ */
+
 /** Postgres advisory-lock keys. Arbitrary but must be unique per resource and
  *  stable across runs; collisions would serialise unrelated suites. */
 const LOCK_KEYS = {
@@ -55,6 +71,26 @@ const LOCK_KEYS = {
    *  first time. The assertion `scanned: 0` — "nothing anywhere is due yet" —
    *  had been true only by luck of ordering. */
   workAccessGrants: 907_004,
+  /** `ServiceRequest`. The marketplace preview is a global READER: its query
+   *  is `{ status: 'OPEN_FOR_BIDS', deletedAt: null }` with no ownership
+   *  scope, because that is the production surface — a preview shows the
+   *  marketplace, not the viewer's own rows. So no fixture namespace can hide
+   *  another suite's open request from it, exactly as with the outbox and the
+   *  grant sweep.
+   *
+   *  Added in the 9B.22 post-merge repair. `sprint02-constraints` creates an
+   *  OPEN_FOR_BIDS request with NO coordinates, and the preview projects a
+   *  coordinate-less row to `cellLat: null, cellLng: null` — which the
+   *  reconstruction test counts as a second cell and fails on 'Expected 1,
+   *  Received 2'. `geo-fanout` is the same hazard with real coordinates in a
+   *  different cell. Neither is a snapping defect: the preview's own 25
+   *  fixtures snap to one cell with ~24 km of headroom to the cell edge.
+   *
+   *  The preview suite takes this EXCLUSIVE for its whole run; every suite
+   *  that creates, updates or deletes a ServiceRequest takes it SHARED, so
+   *  those writers still run beside each other and only the global reader
+   *  excludes them. */
+  serviceRequests: 907_005,
 } as const;
 
 export type LockResource = keyof typeof LOCK_KEYS;
