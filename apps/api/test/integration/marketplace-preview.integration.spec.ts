@@ -65,6 +65,7 @@ d('Redacted marketplace preview (real guard, real Postgres, flags ON)', () => {
 
   let lifecycleLock: HeldLock;
   let grantsLock: HeldLock;
+  let requestsLock: HeldLock;
 
   // The seeker's true location, to six decimals. Nothing this precise may
   // appear anywhere on the wire.
@@ -124,6 +125,31 @@ d('Redacted marketplace preview (real guard, real Postgres, flags ON)', () => {
     // is the same in every suite. Two suites taking two locks in opposite
     // orders is a deadlock, and a deadlocked CI job looks like a hang.
     grantsLock = await acquireAdvisoryLock('workAccessGrants', 'shared');
+
+    // EXCLUSIVE on ServiceRequest, and the reason is this suite alone.
+    //
+    // The preview query is deliberately GLOBAL — `{ status: OPEN_FOR_BIDS,
+    // deletedAt: null }`, no ownership scope — because that is the production
+    // surface. So this suite reads every other suite’s open requests, and no
+    // fixture namespace can hide them: the reconstruction test below counts
+    // DISTINCT CELLS over whatever the marketplace returns, and one foreign
+    // row is one extra cell.
+    //
+    // A coordinate-less row is the sharpest version: `redactForPreview` maps
+    // it to `cellLat: null, cellLng: null`, which stringifies to "null,null"
+    // and reads as a second location. That is exactly how this suite failed
+    // on develop after 9B.22 — sprint02-constraints creates such a row.
+    //
+    // Exclusive rather than a narrowed assertion: the invariant under test is
+    // that WALKING EVERY PAGE of the real marketplace yields one cell. Filtering
+    // the result down to this suite’s own rows would assert something weaker
+    // than the privacy property it is named for, and would pass vacuously if
+    // foreign rows ever pushed the owned fixtures past `marketplace_preview_
+    // max_items`.
+    //
+    // LAST in the canonical order (see test/support/db-isolation.ts), released
+    // FIRST.
+    requestsLock = await acquireAdvisoryLock('serviceRequests', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -306,9 +332,13 @@ d('Redacted marketplace preview (real guard, real Postgres, flags ON)', () => {
   });
 
   afterAll(async () => {
+    // Fixtures first, then the locks in reverse acquisition order. Releasing
+    // the ServiceRequest lock while this suite’s 25 open requests still exist
+    // would hand a waiting writer a marketplace full of our rows.
     await cleanupFixtures();
     await app?.close();
     await prisma.$disconnect();
+    await requestsLock?.release();
     await grantsLock?.release();
     await lifecycleLock.release();
   });
@@ -456,6 +486,84 @@ d('Redacted marketplace preview (real guard, real Postgres, flags ON)', () => {
       const res = await get('?cursor=30');
       expect(res.body.items).toEqual([]);
       expect(res.body.nextCursor).toBeNull();
+    });
+  });
+
+  // ── the isolation this suite depends on ─────────────────────────────────
+
+  describe('the marketplace it reads is isolated to its own fixtures', () => {
+    // Sprint 9B.22 post-merge repair.
+    //
+    // The reconstruction test above counts DISTINCT CELLS over whatever the
+    // marketplace returns, and the preview query is global by design. That
+    // assertion is therefore only meaningful while this suite owns every open
+    // request in the database — which the exclusive `serviceRequests` advisory
+    // lock is what actually guarantees (see beforeAll).
+    //
+    // These two tests are that guarantee's alarm and its proof: the first fails
+    // BY NAME if the lock ever stops working, instead of resurfacing as an
+    // inscrutable "Expected 1, Received 2"; the second shows the alarm is not
+    // vacuous by planting the exact row that broke develop.
+
+    /** Ids of open requests this suite does not own. Ids ONLY — never a
+     *  description, an address or a coordinate. */
+    async function foreignOpenRequestIds(): Promise<string[]> {
+      const rows: Array<{ id: string }> = await prisma.serviceRequest.findMany({
+        where: { status: 'OPEN_FOR_BIDS', deletedAt: null },
+        select: { id: true },
+      });
+      return rows.filter((r) => !r.id.startsWith(P)).map((r) => r.id);
+    }
+
+    it('sees no open request that belongs to another suite', async () => {
+      expect(await foreignOpenRequestIds()).toEqual([]);
+    });
+
+    it('a foreign coordinate-less row would show up as a second location', async () => {
+      // EXACTLY what sprint02-constraints' makeOpenRequest() writes: open for
+      // bids, and no coordinates at all. redactForPreview maps that to
+      // { cellLat: null, cellLng: null }, which stringifies to "null,null" and
+      // is counted as a location the 25 fixtures do not share.
+      //
+      // seekerUserId is this suite's own SEEKER so cleanupFixtures() reclaims
+      // the row even if this test dies mid-way; the id is deliberately outside
+      // the fixture prefix, because being foreign is the whole point.
+      const FOREIGN = 'foreign-open-request-simulated';
+      try {
+        await prisma.serviceRequest.create({
+          data: {
+            id: FOREIGN,
+            seekerUserId: SEEKER,
+            status: 'OPEN_FOR_BIDS',
+            scheduleType: 'ASAP',
+            addressSnapshot: { city: 'Aleppo', country: 'SY' },
+          },
+        });
+
+        expect(await foreignOpenRequestIds()).toEqual([FOREIGN]);
+
+        const cells = new Set<string>();
+        let cursor: string | null = null;
+        for (let i = 0; i < 20; i++) {
+          const res: {
+            body: {
+              items: Array<{ area: { cellLat: number | null; cellLng: number | null } }>;
+              nextCursor: string | null;
+            };
+          } = await get(cursor ? `?cursor=${cursor}` : '');
+          for (const it of res.body.items) cells.add(`${it.area.cellLat},${it.area.cellLng}`);
+          cursor = res.body.nextCursor;
+          if (!cursor) break;
+        }
+
+        // The failure develop actually reported, reproduced on demand.
+        expect(cells.size).toBe(2);
+        expect(cells.has('null,null')).toBe(true);
+      } finally {
+        await prisma.serviceRequest.deleteMany({ where: { id: FOREIGN } });
+      }
+
+      expect(await foreignOpenRequestIds()).toEqual([]);
     });
   });
 
