@@ -1,3 +1,4 @@
+import { AutosaveStatus } from './AutosaveStatus';
 import { useCallback, useMemo, useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
@@ -141,7 +142,7 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
 
       {/* What the server actually knows. A schedule that looks saved and is
           not is worse than one that says it failed. */}
-      <SaveStatus status={autosave.status} copy={copy} />
+      <AutosaveStatus status={autosave.status} lang={lang} testIdPrefix="availability" />
 
       {/* ── Time zone ─────────────────────────────────────────────────────
           Resolved from the country in Task 3 and merely STATED. The raw IANA
@@ -372,46 +373,9 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
 
 // ─── Pieces ─────────────────────────────────────────────────────────────────
 
-type Status = ReturnType<typeof useOnboardingStepAutosave>['status'];
-
 /** The same status vocabulary Task 1 uses, for the same reason: a conflict is
  *  a different fact from a failure, and telling the provider "Saved" while the
  *  server holds something else is a lie by omission. */
-function SaveStatus({ status, copy }: { status: Status; copy: AvailabilityCopyShape }) {
-  if (status.kind === 'idle') return null;
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      data-testid="availability-save-status"
-      data-status={status.kind}
-      className="flex flex-wrap items-center gap-2"
-      style={{ fontSize: '12px' }}
-    >
-      {status.kind === 'saving' ? <span className="text-slate-500">{copy.saving}</span> : null}
-      {status.kind === 'saved' ? <span className="text-emerald-700">{copy.saved}</span> : null}
-      {status.kind === 'offline' ? <span className="text-amber-700">{copy.offline}</span> : null}
-      {status.kind === 'conflict' ? (
-        <span className="break-words text-rose-600">{copy.saveConflict}</span>
-      ) : null}
-      {status.kind === 'error' ? (
-        <>
-          <span className="text-rose-600">{copy.saveFailed}</span>
-          <button
-            type="button"
-            onClick={status.retry}
-            data-testid="availability-save-retry"
-            className="rounded-lg px-2 text-blue-700 underline"
-            style={{ fontWeight: 600, minHeight: '44px' }}
-          >
-            {copy.saveRetry}
-          </button>
-        </>
-      ) : null}
-    </div>
-  );
-}
 
 function PresetButton({
   label,

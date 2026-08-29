@@ -1,3 +1,4 @@
+import { AutosaveStatus } from './AutosaveStatus';
 import { useCallback, useMemo, useState } from 'react';
 import { MapPin, ShieldCheck } from 'lucide-react';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
@@ -160,6 +161,11 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
         >
           {copy.baseLegend}
         </h2>
+
+        {/* Sprint 9B.25 — this screen autosaved SILENTLY. A conflict or a
+            failed write produced no visible change at all, so a provider went
+            on believing their service area was saved when it was not. */}
+        <AutosaveStatus status={autosave.status} lang={lang} testIdPrefix="service-area" />
         <p
           className="mb-2 break-words text-slate-500 dark:text-slate-400"
           style={{ fontSize: '12px' }}

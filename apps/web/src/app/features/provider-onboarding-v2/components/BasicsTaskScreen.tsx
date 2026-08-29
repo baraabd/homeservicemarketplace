@@ -1,3 +1,5 @@
+import { AutosaveStatus } from './AutosaveStatus';
+import { mergeAutosaveStatus } from '../autosave-status';
 import { useCallback, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
@@ -109,11 +111,11 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
     setPendingType(null);
   };
 
-  const status = mergeStatus(typeAutosave.status, identityAutosave.status);
+  const status = mergeAutosaveStatus(typeAutosave.status, identityAutosave.status);
 
   return (
     <div className="flex flex-col gap-6" data-testid="basics-task">
-      <SaveStatus status={status} copy={copy} />
+      <AutosaveStatus status={status} lang={lang} testIdPrefix="basics" />
 
       {/* ── How do you work? ────────────────────────────────────────────── */}
       <fieldset className="min-w-0" disabled={!editable}>
@@ -388,65 +390,6 @@ function Field({
       >
         {error ?? hint}
       </p>
-    </div>
-  );
-}
-
-type Status = ReturnType<typeof useOnboardingStepAutosave>['status'];
-
-/**
- * One status line for two autosaves.
- *
- * Precedence is deliberate: a conflict outranks an error outranks saving. The
- * provider needs the most consequential fact, and "Saved" appearing while the
- * other step is mid-conflict would be a lie by omission.
- */
-function mergeStatus(a: Status, b: Status): Status {
-  const rank = (s: Status) =>
-    s.kind === 'conflict'
-      ? 4
-      : s.kind === 'error'
-        ? 3
-        : s.kind === 'offline'
-          ? 2
-          : s.kind === 'saving'
-            ? 1
-            : 0;
-  return rank(a) >= rank(b) ? a : b;
-}
-
-function SaveStatus({ status, copy }: { status: Status; copy: (typeof BASICS_COPY)['en'] }) {
-  if (status.kind === 'idle') return null;
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      data-testid="basics-save-status"
-      data-status={status.kind}
-      className="flex flex-wrap items-center gap-2"
-      style={{ fontSize: '12px' }}
-    >
-      {status.kind === 'saving' ? <span className="text-slate-500">{copy.saving}</span> : null}
-      {status.kind === 'saved' ? <span className="text-emerald-700">{copy.saved}</span> : null}
-      {status.kind === 'offline' ? <span className="text-amber-700">{copy.offline}</span> : null}
-      {status.kind === 'conflict' ? (
-        <span className="break-words text-rose-600">{copy.saveConflict}</span>
-      ) : null}
-      {status.kind === 'error' ? (
-        <>
-          <span className="text-rose-600">{copy.saveFailed}</span>
-          <button
-            type="button"
-            onClick={status.retry}
-            data-testid="basics-save-retry"
-            className="rounded-lg px-2 text-blue-700 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-            style={{ fontWeight: 600, minHeight: '44px' }}
-          >
-            {copy.saveRetry}
-          </button>
-        </>
-      ) : null}
     </div>
   );
 }
