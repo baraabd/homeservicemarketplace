@@ -70,10 +70,11 @@ describe('both languages say the same things', () => {
 
 describe('a state cannot exist without copy', () => {
   it('covers every state the derivation can produce', () => {
-    // The derivation's own test proves all 14 are reachable. This proves each
+    // The derivation's own test proves all 15 are reachable. This proves each
     // reachable one has something to say — a screen that renders `undefined`
     // is worse than one that renders nothing.
     const reachable = [
+      'REVERIFICATION_REQUIRED',
       'ACCOUNT_LOCKED',
       'SUSPENDED',
       'ONBOARDING_INCOMPLETE',

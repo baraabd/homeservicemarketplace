@@ -58,6 +58,13 @@ const ALLOWED_METADATA_KEYS = new Set<string>([
   'newState',
   'grantsWorkAccess',
   'grantsVerifiedBadge',
+  // Sprint 9B.24 — the state a transition came FROM.
+  //
+  // `withdraw()` has recorded it since Sprint 8 and it was dropped here, the
+  // same way the three above were: without it the row says an application
+  // reached DRAFT but not whether it was pulled back from review or from a
+  // documents-required state, which is the only part a reader needs.
+  'previousState',
 ]);
 
 export interface AuditInput {

@@ -48,6 +48,11 @@ const kase = (over: Record<string, unknown> = {}) => ({
     requirements: [{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }],
     documents: [],
     latestDecision: null,
+    // Sprint 9B.24 — the server's own action list. A DRAFT case offers
+    // 'submit', which is what the submit CTA is now gated on; a fixture
+    // without it would be testing a response the API does not send.
+    availableActions: ['submit'],
+    updatedAt: '2026-08-01T00:00:00.000Z',
     ...over,
   },
 });

@@ -72,6 +72,9 @@ d('Onboarding review and submission (real Postgres)', () => {
   const getReview = (q = '') => request(http).get(`/v1/me/provider/onboarding/review${q}`);
   const postSubmit = (body: Record<string, unknown>) =>
     request(http).post('/v1/me/provider/onboarding/submit').send(body);
+  const postWithdraw = () => request(http).post('/v1/me/provider/onboarding/withdraw');
+  const patchProfile = (body: Record<string, unknown>) =>
+    request(http).patch('/v1/me/provider/onboarding/steps/PROFILE').send(body);
 
   async function setConsentVersion(value: string): Promise<void> {
     await prisma.platformSetting.upsert({
@@ -511,6 +514,186 @@ d('Onboarding review and submission (real Postgres)', () => {
 
       const after = await getReview();
       expect(after.body.lifecycleState).toBe('DOCUMENTS_REQUIRED');
+    });
+  });
+
+  // ── Sprint 9B.24 — withdrawal, and the axes that must not collapse ───────
+
+  describe('withdraw for editing', () => {
+    async function submitIt(): Promise<void> {
+      await acceptCurrentTerms();
+      const review = await getReview();
+      expect((await postSubmit({ version: review.body.draftVersion })).status).toBe(200);
+    }
+
+    it('is offered only from the states the command actually accepts', async () => {
+      // The offer and the command read the same list, so a button can never
+      // appear for a state the server would answer with a 409.
+      expect((await getReview()).body.canWithdraw).toBe(false); // DRAFT
+      await submitIt();
+      expect((await getReview()).body.canWithdraw).toBe(true); // DOCUMENTS_REQUIRED
+    });
+
+    it('returns the application to an editable state', async () => {
+      await submitIt();
+      expect((await postWithdraw()).status).toBe(200);
+
+      const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(profile.onboardingState).toBe('DRAFT');
+      expect(profile.submittedForReviewAt).toBeNull();
+    });
+
+    it('PRESERVES the draft data — withdrawing is not deleting', async () => {
+      // The copy must never call this a reset, and neither may the command.
+      await submitIt();
+      const before = await prisma.providerProfile.findUnique({ where: { id: PP } });
+
+      await postWithdraw();
+
+      const after = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(after.displayName).toBe(before.displayName);
+      expect(after.bio).toBe(before.bio);
+      expect(after.headline).toBe(before.headline);
+      expect(after.serviceAreaCity).toBe(before.serviceAreaCity);
+      expect(after.yearsOfExperience).toBe(before.yearsOfExperience);
+      // And the consent they already gave still stands.
+      expect(after.acceptedConsentVersion).toBe(before.acceptedConsentVersion);
+    });
+
+    it('PRESERVES the immutable submission history', async () => {
+      // The application was handed in. Withdrawing it is a later fact, not a
+      // reason to forget the first one.
+      await submitIt();
+      expect(
+        await prisma.providerOnboardingSubmission.count({ where: { providerProfileId: PP } }),
+      ).toBe(1);
+
+      await postWithdraw();
+
+      expect(
+        await prisma.providerOnboardingSubmission.count({ where: { providerProfileId: PP } }),
+      ).toBe(1);
+    });
+
+    it('is auditable in both directions', async () => {
+      await submitIt();
+      await postWithdraw();
+
+      const events = await prisma.auditEvent.findMany({
+        where: { userId: USER },
+        select: { type: true, metadata: true },
+      });
+
+      // Both facts survive as separate rows. NOTE: they share the event TYPE —
+      // withdrawal is recorded as PROVIDER_ONBOARDING_SUBMITTED with
+      // outcome 'withdrawn' rather than under a type of its own, because the
+      // AuditEventType enum has no member for it. Distinguishable, but only by
+      // reading metadata; see the sprint doc.
+      const withdrawn = events.filter(
+        (e: { metadata: { outcome?: string } }) => e.metadata?.outcome === 'withdrawn',
+      );
+      expect(withdrawn).toHaveLength(1);
+      // And the state it was pulled back FROM is recorded, not dropped.
+      expect((withdrawn[0].metadata as { previousState?: string }).previousState).toBeTruthy();
+      expect(events.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('requires a NEW submission afterwards rather than resuming the old one', async () => {
+      await submitIt();
+      await postWithdraw();
+
+      const review = await getReview();
+      expect(review.body.lifecycleState).toBe('DRAFT');
+      expect((await postSubmit({ version: review.body.draftVersion })).status).toBe(200);
+
+      // A second, distinct submission row — the history now has two entries.
+      expect(
+        await prisma.providerOnboardingSubmission.count({ where: { providerProfileId: PP } }),
+      ).toBe(2);
+    });
+
+    it('refuses once a reviewer has already accepted — the decision wins', async () => {
+      // THE RACE. The reviewer’s write lands first; the withdrawal must not
+      // silently undo an acceptance. Deterministic, because the pre-withdrawal
+      // states are in the command’s WHERE clause rather than in a prior read.
+      await submitIt();
+      await prisma.providerProfile.update({
+        where: { id: PP },
+        data: { onboardingState: 'ACCEPTED' },
+      });
+
+      const res = await postWithdraw();
+      expect(res.status).toBe(409);
+
+      const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(profile.onboardingState).toBe('ACCEPTED');
+    });
+
+    it('two concurrent withdrawals leave ONE transition', async () => {
+      await submitIt();
+
+      const results = await Promise.allSettled([postWithdraw(), postWithdraw()]);
+      const ok = results.filter(
+        (r) => r.status === 'fulfilled' && (r.value as { status: number }).status === 200,
+      );
+      expect(ok).toHaveLength(1);
+
+      const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(profile.onboardingState).toBe('DRAFT');
+    });
+  });
+
+  describe('a profile write can never grant verification or access', () => {
+    it('refuses a patch that carries the verification axis', async () => {
+      const review = await getReview();
+      const res = await patchProfile({
+        version: review.body.draftVersion,
+        verified: true,
+        verificationState: 'VERIFIED',
+      });
+
+      // forbidNonWhitelisted: the fields are not merely ignored, they are
+      // refused. Silently dropping them would let a client believe it had
+      // succeeded.
+      expect(res.status).toBe(400);
+    });
+
+    it('leaves the verification axis untouched after such an attempt', async () => {
+      const review = await getReview();
+      await patchProfile({
+        version: review.body.draftVersion,
+        verified: true,
+        verificationState: 'VERIFIED',
+      });
+
+      const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(profile.verified).toBe(false);
+      expect(profile.verificationState).toBe('UNVERIFIED');
+    });
+
+    it('grants no work access, even on a legitimate profile write', async () => {
+      const review = await getReview();
+      const ok = await patchProfile({ version: review.body.draftVersion, bio: 'A'.repeat(120) });
+      expect([200, 409]).toContain(ok.status);
+
+      expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
+        0,
+      );
+    });
+
+    it('a full submission still grants nothing on either axis', async () => {
+      // Restated here beside the profile-write cases so the whole
+      // non-escalation story is readable in one place.
+      await acceptCurrentTerms();
+      const review = await getReview();
+      await postSubmit({ version: review.body.draftVersion });
+
+      const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(profile.verified).toBe(false);
+      expect(profile.verificationState).toBe('UNVERIFIED');
+      expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
+        0,
+      );
     });
   });
 
