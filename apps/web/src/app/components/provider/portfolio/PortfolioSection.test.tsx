@@ -7,6 +7,7 @@ import { api } from '../../../../lib/api';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { PortfolioSection } from './PortfolioSection';
 import { PORTFOLIO_COPY } from './portfolio-copy';
+import { currentPublicationAck } from '../../../../lib/provider/publication-ack';
 
 // Sprint 9B.10 — the portfolio surface.
 //
@@ -200,7 +201,7 @@ describe('uploading', () => {
     const confirm = within(panel).getByRole('button', { name: PORTFOLIO_COPY.en.addButton });
     expect(confirm).toBeDisabled();
 
-    fireEvent.click(within(panel).getByLabelText(PORTFOLIO_COPY.en.consentLabel));
+    fireEvent.click(within(panel).getByLabelText(currentPublicationAck('en').text));
     expect(confirm).toBeEnabled();
   });
 
@@ -217,7 +218,7 @@ describe('uploading', () => {
       target: { files: [file] },
     });
     const panel = await screen.findByTestId('portfolio-consent');
-    fireEvent.click(within(panel).getByLabelText(PORTFOLIO_COPY.en.consentLabel));
+    fireEvent.click(within(panel).getByLabelText(currentPublicationAck('en').text));
     fireEvent.click(within(panel).getByRole('button', { name: PORTFOLIO_COPY.en.addButton }));
 
     // The CODE is mapped to copy. The server's own sentence would arrive in
@@ -239,7 +240,7 @@ describe('uploading', () => {
       target: { files: [file] },
     });
     const panel = await screen.findByTestId('portfolio-consent');
-    fireEvent.click(within(panel).getByLabelText(PORTFOLIO_COPY.en.consentLabel));
+    fireEvent.click(within(panel).getByLabelText(currentPublicationAck('en').text));
     fireEvent.click(within(panel).getByRole('button', { name: PORTFOLIO_COPY.en.addButton }));
 
     // A provider must never be shown a raw server code.

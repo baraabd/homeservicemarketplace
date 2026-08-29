@@ -29,3 +29,6 @@ export * from './preview';
 // Sprint 9B.10 — the public provider portfolio. Strictly separate from the
 // RESTRICTED verification evidence surface.
 export * from './portfolio';
+// Sprint 9B.22 — the shape a CUSTOMER receives. Its own module because it is
+// an allowlist: a field that is not declared there cannot be published.
+export * from './public-profile';

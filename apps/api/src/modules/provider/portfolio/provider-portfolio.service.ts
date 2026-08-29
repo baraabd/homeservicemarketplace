@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ADMIN_SETTINGS_SCHEMA } from '@homeservicemarketplace/contracts';
+import {
+  ADMIN_SETTINGS_SCHEMA,
+  CURRENT_PUBLICATION_ACK_VERSION,
+} from '@homeservicemarketplace/contracts';
 import type {
   CreateProviderPortfolioItemRequest,
   ProviderPortfolioItem,
@@ -22,6 +25,7 @@ import {
   assertPublishableKey,
   assertWithinFileLimit,
   portfolioOwnerRef,
+  resolvePublicationAckText,
   resolveReorder,
 } from './portfolio-policy';
 
@@ -103,8 +107,11 @@ export class ProviderPortfolioService {
     const profileId = await this.requireProfile(userId);
     const limits = await this.limits();
 
+    let ackText: string;
     try {
       assertPublicationRight(input.publicationRightAck);
+      // Sprint 9B.22 — WHICH wording, not merely that a box was ticked.
+      ackText = resolvePublicationAckText(input.publicationRightAckVersion);
       assertPublishableKey(input.storageKey, this.ownerRef(userId));
       assertPublishableContentType(input.contentType);
       assertWithinFileLimit(input.sizeBytes, limits.maxFileBytes);
@@ -154,7 +161,9 @@ export class ProviderPortfolioService {
           description: input.description ?? null,
           serviceCategoryId: input.serviceCategoryId ?? null,
           publicationRightAckAt: new Date(),
-          publicationRightAckText: 'PROVIDER_CONFIRMED_RIGHT_TO_PUBLISH',
+          // The VERSION of the wording, resolved above — or the pre-9B.22
+          // sentinel when the client did not name one.
+          publicationRightAckText: ackText,
           // New work goes to the END of the gallery. Prepending would silently
           // reorder a gallery the provider arranged deliberately.
           position: count,
@@ -401,6 +410,15 @@ function notFound(): AppError {
  *  contract. */
 function toAppError(err: unknown): AppError {
   if (err instanceof PortfolioPolicyError) {
+    // A stale publication acknowledgement is a CONFLICT rather than a bad
+    // request: what the client sent was valid until the wording moved, and the
+    // fix is to reload and re-read it, not to correct a field.
+    if (err.code === 'STALE_PUBLICATION_ACK') {
+      return new AppError('CONFLICT', err.message, 409, {
+        reason: err.code,
+        currentVersion: CURRENT_PUBLICATION_ACK_VERSION,
+      });
+    }
     return new AppError('VALIDATION_ERROR', err.message, 400, { reason: err.code });
   }
   return err as AppError;

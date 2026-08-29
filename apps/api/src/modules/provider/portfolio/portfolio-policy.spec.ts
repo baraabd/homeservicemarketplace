@@ -1,4 +1,10 @@
 import {
+  CURRENT_PUBLICATION_ACK_VERSION,
+  LEGACY_PUBLICATION_ACK_TEXT,
+  publicationAckWording,
+} from '@homeservicemarketplace/contracts';
+
+import {
   EVIDENCE_KEY_PREFIX,
   PORTFOLIO_KEY_PREFIX,
   PortfolioPolicyError,
@@ -9,6 +15,7 @@ import {
   assertWithinFileLimit,
   portfolioOwnerRef,
   resolveReorder,
+  resolvePublicationAckText,
 } from './portfolio-policy';
 
 // Sprint 9B.10 — the portfolio rules, asserted without a database.
@@ -237,5 +244,53 @@ describe('the owner segment of a portfolio key is opaque', () => {
     const mine = portfolioOwnerRef('user-1', SECRET);
     const theirs = portfolioOwnerRef('user-2', SECRET);
     expect(() => assertPublishableKey(`portfolio/${mine}/abc.jpg`, theirs)).toThrow();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 9B.22 — WHICH wording was acknowledged, not merely that a box was
+// ticked. See publication-ack.ts in the contracts package.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolvePublicationAckText', () => {
+  it('records the current version when the client names it', () => {
+    expect(resolvePublicationAckText(CURRENT_PUBLICATION_ACK_VERSION)).toBe(
+      CURRENT_PUBLICATION_ACK_VERSION,
+    );
+  });
+
+  it('refuses a stale version rather than back-dating consent', () => {
+    // A tab open since before the wording changed would otherwise record
+    // agreement to text nobody saw.
+    expect(() => resolvePublicationAckText('2026.01-portfolio-ack-v0')).toThrow(
+      PortfolioPolicyError,
+    );
+    try {
+      resolvePublicationAckText('2026.01-portfolio-ack-v0');
+    } catch (err) {
+      expect((err as PortfolioPolicyError).code).toBe('STALE_PUBLICATION_ACK');
+    }
+  });
+
+  it('refuses the legacy sentinel if a client sends it as a version', () => {
+    // It is a record of an unversioned acknowledgement, not a version anyone
+    // may claim to have read.
+    expect(() => resolvePublicationAckText(LEGACY_PUBLICATION_ACK_TEXT)).toThrow(
+      PortfolioPolicyError,
+    );
+  });
+
+  it('accepts an ABSENT version, and records it as unversioned', () => {
+    // Clients that predate the wording table still acknowledge honestly; they
+    // just cannot say which words they displayed.
+    expect(resolvePublicationAckText(undefined)).toBe(LEGACY_PUBLICATION_ACK_TEXT);
+    expect(resolvePublicationAckText(null)).toBe(LEGACY_PUBLICATION_ACK_TEXT);
+  });
+
+  it('never stores wording the client sent — only a version', () => {
+    // Whatever comes back is either a known version or the sentinel. Free text
+    // from a client would make the column unreadable and forgeable at once.
+    const recorded = resolvePublicationAckText(CURRENT_PUBLICATION_ACK_VERSION);
+    expect(publicationAckWording(recorded)).not.toBeNull();
   });
 });

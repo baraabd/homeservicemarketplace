@@ -97,6 +97,14 @@ class CreatePortfolioItemDto {
    *  that must not pass — a customer's home is in the photo. */
   @Equals(true)
   publicationRightAck!: true;
+
+  /** Sprint 9B.22 — the version of the wording the provider was shown.
+   *  Optional: a client that predates the wording table still acknowledges,
+   *  it just cannot say which words it displayed. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  publicationRightAckVersion?: string;
 }
 
 class UpdatePortfolioItemDto {
