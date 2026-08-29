@@ -20,3 +20,6 @@ export * from './phone';
 // Sprint 9B.18 — per-specialty review state, and the professional-title rule.
 export * from './response/provider-specialty-state';
 export * from './professional-title';
+
+// Sprint 9B.23 — V2 Task 6: the review / submission read-model.
+export * from './response/provider-onboarding-review';

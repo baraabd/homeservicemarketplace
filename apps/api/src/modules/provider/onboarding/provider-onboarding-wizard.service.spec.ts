@@ -274,7 +274,7 @@ describe('submit — the transition, and what it must not do', () => {
     const h = build();
     await h.service.submit('u-1', { version: 3 });
 
-    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+    expect(h.trx.providerProfile.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ onboardingState: 'DOCUMENTS_REQUIRED' }),
       }),
@@ -288,7 +288,7 @@ describe('submit — the transition, and what it must not do', () => {
     const h = build();
     await h.service.submit('u-1', { version: 3 });
 
-    const data = h.trx.providerProfile.update.mock.calls[0][0].data;
+    const data = h.trx.providerProfile.updateMany.mock.calls[0][0].data;
     expect(data.status).toBe('PENDING_REVIEW');
     expect(data.status).not.toBe('ACTIVE');
   });
@@ -297,7 +297,7 @@ describe('submit — the transition, and what it must not do', () => {
     const h = build();
     await h.service.submit('u-1', { version: 3 });
 
-    expect(h.trx.providerProfile.update.mock.calls[0][0].data).not.toHaveProperty('verified');
+    expect(h.trx.providerProfile.updateMany.mock.calls[0][0].data).not.toHaveProperty('verified');
   });
 
   it('does NOT touch the verification axis', async () => {
@@ -305,9 +305,34 @@ describe('submit — the transition, and what it must not do', () => {
     const h = build();
     await h.service.submit('u-1', { version: 3 });
 
-    expect(h.trx.providerProfile.update.mock.calls[0][0].data).not.toHaveProperty(
+    expect(h.trx.providerProfile.updateMany.mock.calls[0][0].data).not.toHaveProperty(
       'verificationState',
     );
+  });
+
+  it('claims the transition CONDITIONALLY, so a second submit cannot win too', async () => {
+    // Sprint 9B.23. The state check at the top of submit() is a fast path: two
+    // simultaneous requests both read DRAFT before either writes. The guard
+    // that actually prevents a duplicate is the pre-submit state in the WHERE
+    // clause, so it is asserted here rather than left to the integration suite.
+    const h = build();
+    await h.service.submit('u-1', { version: 3 });
+
+    const where = h.trx.providerProfile.updateMany.mock.calls[0][0].where;
+    expect(where.id).toBeDefined();
+    expect(where.OR).toBeDefined();
+  });
+
+  it('writes NO submission and NO audit when another request already claimed it', async () => {
+    // The loser of the race. It must return the existing outcome, not a second
+    // application — one hand-in, whatever the client did.
+    const h = build();
+    h.trx.providerProfile.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(h.service.submit('u-1', { version: 3 })).resolves.toBeDefined();
+
+    expect(h.trx.providerOnboardingSubmission.create).not.toHaveBeenCalled();
+    expect(h.audit.record).not.toHaveBeenCalled();
   });
 
   it('does NOT write a work-access grant', async () => {
@@ -372,7 +397,7 @@ describe('submit — completeness and idempotency', () => {
     const h = build({ profile: makeCompleteProfile({ phoneVerifiedAt: null }) });
 
     await expect(h.service.submit('u-1', { version: 3 })).resolves.toBeDefined();
-    expect(h.trx.providerProfile.update).toHaveBeenCalled();
+    expect(h.trx.providerProfile.updateMany).toHaveBeenCalled();
   });
 
   it('refuses when no weekly availability has been recorded', async () => {

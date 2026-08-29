@@ -1,3 +1,5 @@
+import { IsIn, IsOptional } from 'class-validator';
+
 import { RequireCapability } from '../guards/require-capability.decorator';
 import { ProviderCapabilityGuard } from '../guards/provider-capability.guard';
 import {
@@ -9,6 +11,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -16,6 +19,7 @@ import {
   ProviderCapability,
   type ProviderOnboardingDraftView,
   type ProviderOnboardingStep,
+  type ProviderOnboardingReview,
 } from '@homeservicemarketplace/contracts';
 
 import { CurrentUser } from '../../iam/authentication/decorators/current-user.decorator';
@@ -59,6 +63,14 @@ import { FinalizeAvatarDto, RemoveAvatarDto } from './avatar/dto/finalize-avatar
 // could reach this surface yesterday — a regression dressed up as a security
 // fix. EDIT_OWN_PROFILE is held by every state that could already reach it and
 // withheld from exactly the two that should not: SUSPENDED and TERMINATED.
+/** Which locale's terms wording the provider is being shown. Whitelisted
+ *  rather than free text — it names a legal document. */
+export class ReviewQuery {
+  @IsOptional()
+  @IsIn(['en', 'ar'])
+  locale?: 'en' | 'ar';
+}
+
 @UseGuards(JwtAuthGuard, RolesGuard, ProviderCapabilityGuard)
 @Roles('provider')
 @RequireCapability(ProviderCapability.EditOwnProfile)
@@ -134,6 +146,26 @@ export class ProviderOnboardingWizardController {
     @Body() body: RemoveAvatarDto,
   ): Promise<ProviderOnboardingDraftView> {
     return this.avatars.remove(user.id, body.version);
+  }
+
+  /**
+   * Sprint 9B.23 — what the review screen renders, and whether it may submit.
+   *
+   * READ ONLY, so no CsrfGuard: it mutates nothing. Served on demand rather
+   * than folded into the draft, and refreshed by the client immediately before
+   * a submit — the `draftVersion` and `terms.version` it carries are the
+   * exact tokens that submit echoes, so acting on a stale review produces a
+   * 409 instead of a wrong decision.
+   *
+   * The response carries codes, never prose: the client owns the sentence.
+   */
+  @Get('review')
+  @HttpCode(HttpStatus.OK)
+  review(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ReviewQuery,
+  ): Promise<ProviderOnboardingReview> {
+    return this.wizard.review(user.id, query.locale ?? 'en');
   }
 
   /**

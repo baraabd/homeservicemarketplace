@@ -44,6 +44,20 @@ const ALLOWED_METADATA_KEYS = new Set<string>([
   'previousEarnedMaxKm',
   'overrideMaxKm',
   'overrideExpiresAt',
+  // Sprint 9B.23 — the onboarding submission transition.
+  //
+  // `submit()` has recorded these since Sprint 8, with a comment saying the
+  // trail should "say out loud what the transition did NOT do" — but they were
+  // never on this list, so the sanitizer dropped all three and the event kept
+  // only its policy version. The comment described an intention, not the row.
+  //
+  // They are exactly the shape this allowlist is for: one enum-valued state
+  // and two booleans, no free text, no payload. And they are the facts a
+  // reader needs six months later to answer "did handing this application in
+  // grant anyone access?" without inferring it from an absence.
+  'newState',
+  'grantsWorkAccess',
+  'grantsVerifiedBadge',
 ]);
 
 export interface AuditInput {
