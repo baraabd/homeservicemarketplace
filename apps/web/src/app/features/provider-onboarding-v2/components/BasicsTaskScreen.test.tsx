@@ -9,6 +9,7 @@ import { providerQueryKeys } from '../../../../lib/provider/query-keys';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { BasicsTaskScreen } from './BasicsTaskScreen';
 import { BASICS_COPY } from '../copy/basics-copy';
+import { AUTOSAVE_COPY } from '../copy/autosave-copy';
 
 // Sprint 9B.17 — V2 Task 1.
 //
@@ -259,7 +260,9 @@ describe('BasicsTaskScreen — saving', () => {
 
     const status = await screen.findByTestId('basics-save-status', {}, { timeout: 4000 });
     await waitFor(() => expect(status).toHaveAttribute('data-status', 'conflict'));
-    expect(screen.getByText(BASICS_COPY.en.saveConflict)).toBeInTheDocument();
+    // Sprint 9B.25 — the conflict sentence now lives in the shared autosave copy,
+    // so all five task screens say the same thing about the same event.
+    expect(screen.getByText(AUTOSAVE_COPY.en.conflict)).toBeInTheDocument();
   });
 
   it('renders read-only when the server says the application is locked', () => {

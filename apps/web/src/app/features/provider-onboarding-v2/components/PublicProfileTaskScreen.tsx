@@ -1,3 +1,4 @@
+import { AutosaveStatus } from './AutosaveStatus';
 import { useState } from 'react';
 import { Eye, Lock, ShieldCheck } from 'lucide-react';
 import type {
@@ -98,7 +99,7 @@ export function PublicProfileTaskScreen({ view, lang, editable }: PublicProfileT
         {copy.intro}
       </p>
 
-      <SaveStatus status={autosave.status} copy={copy} />
+      <AutosaveStatus status={autosave.status} lang={lang} testIdPrefix="public-profile" />
 
       {/* ── What you do ──────────────────────────────────────────────────── */}
       <section aria-labelledby="title-heading" className="min-w-0">
@@ -486,46 +487,10 @@ function Notice({
 // ─── Pieces ─────────────────────────────────────────────────────────────────
 
 type PublicProfileCopyShape = (typeof PUBLIC_PROFILE_COPY)['en'];
-type Status = ReturnType<typeof useOnboardingStepAutosave>['status'];
 
 /** The same status vocabulary the other tasks use. A conflict is a different
  *  fact from a failure, and "Saved" while the server holds something else is a
  *  lie by omission. */
-function SaveStatus({ status, copy }: { status: Status; copy: PublicProfileCopyShape }) {
-  if (status.kind === 'idle') return null;
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      data-testid="public-profile-save-status"
-      data-status={status.kind}
-      className="flex flex-wrap items-center gap-2"
-      style={{ fontSize: '12px' }}
-    >
-      {status.kind === 'saving' ? <span className="text-slate-500">{copy.saving}</span> : null}
-      {status.kind === 'saved' ? <span className="text-emerald-700">{copy.saved}</span> : null}
-      {status.kind === 'offline' ? <span className="text-amber-700">{copy.offline}</span> : null}
-      {status.kind === 'conflict' ? (
-        <span className="break-words text-rose-600">{copy.saveConflict}</span>
-      ) : null}
-      {status.kind === 'error' ? (
-        <>
-          <span className="text-rose-600">{copy.saveFailed}</span>
-          <button
-            type="button"
-            onClick={status.retry}
-            data-testid="public-profile-save-retry"
-            className="rounded-lg px-2 text-blue-700 underline"
-            style={{ fontWeight: 600, minHeight: '44px' }}
-          >
-            {copy.saveRetry}
-          </button>
-        </>
-      ) : null}
-    </div>
-  );
-}
 
 // ─── Container ──────────────────────────────────────────────────────────────
 

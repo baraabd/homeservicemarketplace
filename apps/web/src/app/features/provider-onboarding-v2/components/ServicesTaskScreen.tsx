@@ -1,3 +1,5 @@
+import { AutosaveStatus } from './AutosaveStatus';
+import { mergeAutosaveStatus } from '../autosave-status';
 import { useMemo, useState } from 'react';
 import type {
   ProviderOnboardingDraftView,
@@ -76,6 +78,10 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
 
   const specialtiesAutosave = useOnboardingStepAutosave('SPECIALTIES');
   const experienceAutosave = useOnboardingStepAutosave('EXPERIENCE');
+  // Sprint 9B.25 — two autosaves, one status line, and until now no line at
+  // all. The merge puts the most consequential state forward, so "Saved" from
+  // one step cannot mask a conflict on the other.
+  const autosaveStatus = mergeAutosaveStatus(specialtiesAutosave.status, experienceAutosave.status);
 
   const catalogue = useServiceCategories();
   const equipment = useEquipmentCatalog();
@@ -171,6 +177,9 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
 
   return (
     <div className="flex flex-col gap-6" data-testid="services-task">
+      {/* Sprint 9B.25 — this screen autosaved SILENTLY across BOTH its steps. */}
+      <AutosaveStatus status={autosaveStatus} lang={lang} testIdPrefix="services" />
+
       {/* ── What do you do? ─────────────────────────────────────────────── */}
       <section aria-labelledby="services-picker-heading">
         <h2

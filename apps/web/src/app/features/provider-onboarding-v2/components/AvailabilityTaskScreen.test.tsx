@@ -9,6 +9,7 @@ import { providerQueryKeys } from '../../../../lib/provider/query-keys';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { AvailabilityTaskScreen } from './AvailabilityTaskScreen';
 import { AVAILABILITY_COPY } from '../copy/availability-copy';
+import { AUTOSAVE_COPY } from '../copy/autosave-copy';
 
 // Sprint 9B.21 — V2 Task 4.
 //
@@ -480,7 +481,9 @@ describe('saving, and saying so truthfully', () => {
         'conflict',
       ),
     );
-    expect(screen.getByTestId('availability-save-status')).toHaveTextContent(EN.saveConflict);
+    expect(screen.getByTestId('availability-save-status')).toHaveTextContent(
+      AUTOSAVE_COPY.en.conflict,
+    );
   });
 
   it('offers a retry when the save simply failed', async () => {
