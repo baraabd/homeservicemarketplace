@@ -25,6 +25,11 @@ export const providerQueryKeys = {
     // projection of the draft the client could derive: the six task
     // statuses and the progress count are decided server-side.
     hub: () => ['provider', 'onboarding', 'hub'] as const,
+    // Sprint 9B.23 — the REVIEW read-model. Keyed by locale because the
+    // response carries the terms wording's language: sharing one slot would
+    // show a provider who switched language the other locale's document while
+    // recording agreement to it.
+    review: (locale: 'en' | 'ar') => ['provider', 'onboarding', 'review', locale] as const,
   },
   jobs: {
     root: ['provider', 'jobs'] as const,

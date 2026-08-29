@@ -17,6 +17,7 @@ import { ServicesTask } from './ServicesTaskScreen';
 import { ServiceAreaTask } from './ServiceAreaTaskScreen';
 import { AvailabilityTask } from './AvailabilityTaskScreen';
 import { PublicProfileTask } from './PublicProfileTaskScreen';
+import { ReviewTask } from './ReviewTaskScreen';
 
 // Sprint 9B.16 — the per-task route.
 //
@@ -150,6 +151,8 @@ export function OnboardingTaskScreen() {
           <AvailabilityTask lang={lang} />
         ) : actionable && task.id === 'PORTFOLIO' ? (
           <PublicProfileTask lang={lang} />
+        ) : actionable && task.id === 'REVIEW_SUBMISSION' ? (
+          <ReviewTask lang={lang} />
         ) : actionable ? (
           <p
             className="break-words text-slate-500 dark:text-slate-400"
