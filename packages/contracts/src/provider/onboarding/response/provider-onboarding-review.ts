@@ -106,6 +106,19 @@ export interface ProviderOnboardingReview {
   /** So the screen can say "already submitted" rather than offering a button
    *  that will 409. */
   lifecycleState: string;
+  /**
+   * Sprint 9B.24 — may the provider pull the application back to edit it?
+   *
+   * Computed from the SAME states `withdraw()` scopes its conditional write
+   * to, so the button appears exactly when the command would succeed. A client
+   * that decided this itself would offer a control the server answers with a
+   * 409 — the D-3 defect, one surface over.
+   *
+   * Withdrawing STOPS THE CURRENT REVIEW and requires a fresh submission. It
+   * does not delete the draft, the uploaded evidence, or the immutable review
+   * history, and the copy must not say otherwise.
+   */
+  canWithdraw: boolean;
 }
 
 /**

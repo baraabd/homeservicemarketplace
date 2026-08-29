@@ -163,9 +163,13 @@ export function ProviderVerificationScreen() {
 
   function primaryAction() {
     switch (view.state) {
+      // Sprint 9B.24 — opening a NEW case is the answer to an expired one.
+      // VERIFIED_NO_ACCESS is deliberately absent from this group: that
+      // provider's documents still stand, and a new case would not restore
+      // their permission to work.
       case 'NOT_STARTED':
       case 'REJECTED':
-      case 'VERIFIED_NO_ACCESS':
+      case 'REVERIFICATION_REQUIRED':
         startMut.mutate();
         return;
       case 'READY_TO_SUBMIT':
@@ -186,6 +190,21 @@ export function ProviderVerificationScreen() {
   }
 
   const busy = startMut.isPending || submitMut.isPending || progress !== null;
+
+  /**
+   * Sprint 9B.24 — submitting is offered only when the SERVER offers it.
+   *
+   * `READY_TO_SUBMIT` is this client's reading of the evidence; whether the
+   * case may actually move is the transition table's answer, and it now
+   * travels on the case as `availableActions`. Gating on the derived state
+   * alone is the second copy of a rule that case-transitions.ts exists to
+   * prevent — it is how a surface offers a button the API answers with a 409.
+   *
+   * Both conditions, not either: the server's permission AND a local state
+   * where pressing it means something.
+   */
+  const canSubmitCase =
+    view.state === 'READY_TO_SUBMIT' && view.availableActions.includes('submit');
 
   /** Only the states where sending a document is actually possible.
    *
@@ -324,7 +343,11 @@ export function ProviderVerificationScreen() {
         />
       )}
 
-      {copy.cta && (
+      {/* Sprint 9B.24 — READY_TO_SUBMIT is the one state whose CTA is a case
+          TRANSITION rather than a local navigation, so it is the one gated on
+          the server's own action list. The others open a file picker or start a
+          new case, neither of which the transition table governs. */}
+      {copy.cta && (view.state !== 'READY_TO_SUBMIT' || canSubmitCase) && (
         <Button
           tone="provider"
           fullWidth

@@ -70,10 +70,11 @@ describe('both languages say the same things', () => {
 
 describe('a state cannot exist without copy', () => {
   it('covers every state the derivation can produce', () => {
-    // The derivation's own test proves all 14 are reachable. This proves each
+    // The derivation's own test proves all 15 are reachable. This proves each
     // reachable one has something to say — a screen that renders `undefined`
     // is worse than one that renders nothing.
     const reachable = [
+      'REVERIFICATION_REQUIRED',
       'ACCOUNT_LOCKED',
       'SUSPENDED',
       'ONBOARDING_INCOMPLETE',
@@ -122,7 +123,11 @@ describe('a state cannot exist without copy', () => {
         'READY_TO_SUBMIT',
         'CHANGES_REQUESTED',
         'REJECTED',
+        // Sprint 9B.24 — both halves of the split can act, but on DIFFERENT
+        // things: REVERIFICATION_REQUIRED opens a new case, VERIFIED_NO_ACCESS
+        // reaches support because more documents would not help.
         'VERIFIED_NO_ACCESS',
+        'REVERIFICATION_REQUIRED',
       ] as const) {
         expect(STATE_COPY[lang][state].cta, `${lang}.${state}`).toBeTruthy();
       }

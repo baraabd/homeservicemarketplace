@@ -138,7 +138,15 @@ describe('ownership', () => {
 
   it('scopes the current-case read to that profile too', async () => {
     const h = build({
-      cases: [{ id: 'c-1', state: 'DRAFT', createdAt: new Date(), idempotencyKey: null }],
+      cases: [
+        {
+          id: 'c-1',
+          state: 'DRAFT',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          idempotencyKey: null,
+        },
+      ],
     });
     await h.service.current(USER);
     expect(h.caseFindMany.mock.calls[0][0].where).toMatchObject({ providerProfileId: PROFILE });
@@ -215,7 +223,13 @@ describe('creating', () => {
 });
 
 describe('resuming', () => {
-  const open = { id: 'case-open', state: 'DRAFT', createdAt: new Date(), idempotencyKey: null };
+  const open = {
+    id: 'case-open',
+    state: 'DRAFT',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    idempotencyKey: null,
+  };
 
   it('returns the open case instead of creating a second one', async () => {
     const h = build({ cases: [open] });
@@ -235,7 +249,15 @@ describe('resuming', () => {
 
   it('refuses to reopen a verified provider', async () => {
     const h = build({
-      cases: [{ id: 'c-v', state: 'VERIFIED', createdAt: new Date(), idempotencyKey: null }],
+      cases: [
+        {
+          id: 'c-v',
+          state: 'VERIFIED',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          idempotencyKey: null,
+        },
+      ],
     });
     await expect(h.service.createOrResume(USER, {})).rejects.toMatchObject({
       code: 'CONFLICT',
@@ -247,8 +269,20 @@ describe('resuming', () => {
   it('fails closed on corrupt history rather than picking a case', async () => {
     const h = build({
       cases: [
-        { id: 'a', state: 'SUBMITTED', createdAt: new Date(), idempotencyKey: null },
-        { id: 'b', state: 'IN_REVIEW', createdAt: new Date(), idempotencyKey: null },
+        {
+          id: 'a',
+          state: 'SUBMITTED',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          idempotencyKey: null,
+        },
+        {
+          id: 'b',
+          state: 'IN_REVIEW',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          idempotencyKey: null,
+        },
       ],
     });
     await expect(h.service.createOrResume(USER, {})).rejects.toMatchObject({ status: 409 });
@@ -297,7 +331,15 @@ describe('current', () => {
 
   it('returns the open case when there is one', async () => {
     const h = build({
-      cases: [{ id: 'c-1', state: 'ACTION_REQUIRED', createdAt: new Date(), idempotencyKey: null }],
+      cases: [
+        {
+          id: 'c-1',
+          state: 'ACTION_REQUIRED',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          idempotencyKey: null,
+        },
+      ],
     });
     const out = await h.service.current(USER);
     expect(out.case).toMatchObject({ id: 'c-1', state: 'ACTION_REQUIRED' });
@@ -308,12 +350,14 @@ describe('current', () => {
       id: 'old',
       state: 'REJECTED',
       createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
       idempotencyKey: null,
     };
     const newer = {
       id: 'new',
       state: 'EXPIRED',
       createdAt: new Date('2026-06-01'),
+      updatedAt: new Date('2026-06-01'),
       idempotencyKey: null,
     };
     const h = build({ cases: [older, newer] });
@@ -455,8 +499,11 @@ describe('unwrapSnapshot — stored snapshot to published response', () => {
       state: 'DRAFT',
       policyVersion: 'v1',
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       submittedAt: null,
       verificationRequired: true,
+      // Sprint 9B.24 — the provider's offerable actions travel with the case.
+      availableActions: ['submit'],
       requirements: unwrapSnapshot(snapshot()).requirements,
       documents: [],
       latestDecision: null,

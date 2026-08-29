@@ -74,20 +74,43 @@ const doc = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const kase = (over: Record<string, unknown> = {}) => ({
-  case: {
-    id: 'c1',
-    state: 'DRAFT',
-    policyVersion: 'v1',
-    createdAt: '2026-08-01T00:00:00.000Z',
-    submittedAt: null,
-    verificationRequired: true,
-    requirements: [{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }],
-    documents: [],
-    latestDecision: null,
-    ...over,
-  },
-});
+/**
+ * The actions the SERVER would offer for a given case state.
+ *
+ * Mirrors `offerableCaseActions(state, 'provider')`: the transition table
+ * gives a provider `submit` from DRAFT and from ACTION_REQUIRED — resubmission
+ * is the same edge — and nothing from any other state.
+ *
+ * Defaulting every fixture to `['submit']` would manufacture responses the
+ * API cannot produce (a SUBMITTED case offering submit), and hide exactly the
+ * mismatch these fixtures exist to catch. Tests that need a specific list —
+ * the fail-closed cases — override it explicitly.
+ */
+function actionsFor(state: string): 'submit'[] {
+  return state === 'DRAFT' || state === 'ACTION_REQUIRED' ? ['submit'] : [];
+}
+const kase = (over: Record<string, unknown> = {}) => {
+  const state = (over.state as string) ?? 'DRAFT';
+  return {
+    case: {
+      id: 'c1',
+      state,
+      policyVersion: 'v1',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+      submittedAt: null,
+      verificationRequired: true,
+      requirements: [{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }],
+      documents: [],
+      latestDecision: null,
+      // STATE-AWARE, and overridable. The submit CTA is gated on this list and
+      // the gate fails closed, so a fixture that omits it renders no button —
+      // which is the correct rendering of a response that offered none.
+      availableActions: actionsFor(state),
+      ...over,
+    },
+  };
+};
 
 /** Only the strings each assertion needs, so a copy edit fails loudly in the
  *  unit tests rather than silently here. */
@@ -102,6 +125,8 @@ const COPY = {
     suspendedTitle: 'Your account is suspended',
     verifiedTitle: 'You are verified',
     renewTitle: 'Your verification needs renewing',
+    noAccessTitle: 'You cannot take work right now',
+    renewCta: 'Renew verification',
   },
   ar: {
     axesHeading: 'حالتك',
@@ -113,6 +138,8 @@ const COPY = {
     suspendedTitle: 'حسابك موقوف',
     verifiedTitle: 'تم توثيقك',
     renewTitle: 'توثيقك بحاجة إلى تجديد',
+    noAccessTitle: 'لا يمكنك استلام أعمال حالياً',
+    renewCta: 'تجديد التوثيق',
   },
 } as const;
 
@@ -189,16 +216,25 @@ for (const lang of ['en', 'ar'] as const) {
       await expectNoHorizontalPageOverflow(page);
     });
 
-    test('verified WITHOUT a grant reads as "renew", not as unverified', async ({ page }) => {
+    test('verified WITHOUT a grant is about the GRANT, not the documents', async ({ page }) => {
       // The distinction the whole sprint turns on. Telling a verified provider
       // they are unverified sends them to re-upload documents that are fine.
+      //
+      // Sprint 9B.24 sharpened it further: this state used to say "send fresh
+      // documents", which is the message for an EXPIRED case. A provider whose
+      // GRANT was revoked would have uploaded documents that could not have
+      // helped them. It now says what is true — the documents stand, the
+      // permission does not.
       await openVerification(page, lang, {
         allowed: [],
         verificationCase: kase({ state: 'VERIFIED' }),
         profile: PROFILE({ verified: true }),
       });
 
-      await expect(page.getByTestId('verification-VERIFIED_NO_ACCESS')).toContainText(c.renewTitle);
+      const section = page.getByTestId('verification-VERIFIED_NO_ACCESS');
+      await expect(section).toContainText(c.noAccessTitle);
+      // And emphatically NOT the renewal message.
+      await expect(section).not.toContainText(c.renewTitle);
       await expect(page.getByTestId('axis-identityVerified')).toHaveAttribute(
         'data-active',
         'true',
@@ -207,6 +243,53 @@ for (const lang of ['en', 'ar'] as const) {
         'data-active',
         'false',
       );
+    });
+
+    test('an EXPIRED case is the one that reads as "renew"', async ({ page }) => {
+      // The other half of the split. Here re-uploading IS the answer, so this
+      // is where the renewal copy belongs — and the CTA has to be reachable by
+      // keyboard like every other primary action on this surface.
+      await openVerification(page, lang, {
+        allowed: [],
+        verificationCase: kase({ state: 'EXPIRED' }),
+        profile: PROFILE({ verified: true }),
+      });
+
+      const section = page.getByTestId('verification-REVERIFICATION_REQUIRED');
+      await expect(section).toContainText(c.renewTitle);
+      // Not the other half of the split.
+      await expect(page.getByTestId('verification-VERIFIED_NO_ACCESS')).toHaveCount(0);
+      await expect(section).not.toContainText(c.noAccessTitle);
+
+      // The renewal action, reachable without a mouse.
+      const cta = page.getByRole('button', { name: c.renewCta });
+      await expect(cta).toBeVisible();
+      await cta.focus();
+      await expect(cta).toBeFocused();
+
+      // And it grants nothing: work access stays off.
+      await expect(page.getByTestId('axis-workAccessActive')).toHaveAttribute(
+        'data-active',
+        'false',
+      );
+    });
+
+    test('a DRAFT case the server did NOT authorise offers no submit button', async ({ page }) => {
+      // FAIL CLOSED. Every requirement is satisfied by a clean document, so
+      // this client's own reading is READY_TO_SUBMIT — and it still must not
+      // offer the transition, because the server did not.
+      //
+      // This is the whole reason availableActions exists: document
+      // completeness is evidence, not authorisation.
+      await openVerification(page, lang, {
+        verificationCase: kase({ documents: [doc()], availableActions: [] }),
+      });
+
+      await expect(page.getByTestId('verification-READY_TO_SUBMIT')).toBeVisible();
+      await expect(page.getByRole('button', { name: c.readyCta })).toHaveCount(0);
+      // Neither language's label, so a copy swap cannot make this pass.
+      await expect(page.getByRole('button', { name: 'Send for review' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'إرسال للمراجعة' })).toHaveCount(0);
     });
 
     test('verified WITH a grant says so', async ({ page }) => {

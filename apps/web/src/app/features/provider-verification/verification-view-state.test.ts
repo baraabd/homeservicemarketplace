@@ -253,8 +253,89 @@ describe('verified, and whether they may actually work', () => {
     ).toBe('VERIFIED_NO_ACCESS');
   });
 
-  it('an EXPIRED case is also VERIFIED_NO_ACCESS', () => {
-    expect(stateOf({ verificationCase: kase({ state: 'EXPIRED' }) })).toBe('VERIFIED_NO_ACCESS');
+  it('an EXPIRED case is REVERIFICATION_REQUIRED, not VERIFIED_NO_ACCESS', () => {
+    // Sprint 9B.24. Both mean "cannot work", but only this one means the
+    // provider has something to DO about it — they can open a new case. The
+    // states were folded together, so an expired provider and one whose grant
+    // was revoked were told the same thing, and only one of them could act on
+    // it.
+    expect(stateOf({ verificationCase: kase({ state: 'EXPIRED' }) })).toBe(
+      'REVERIFICATION_REQUIRED',
+    );
+  });
+
+  it('a VERIFIED case with no live grant stays VERIFIED_NO_ACCESS', () => {
+    // The other half of the split: the documents stand, the permission does
+    // not, and sending more documents would not change that.
+    expect(
+      stateOf({
+        verificationCase: kase({ state: 'VERIFIED' }),
+        capabilities: CAPS({ allowed: [] }),
+      }),
+    ).toBe('VERIFIED_NO_ACCESS');
+  });
+});
+
+describe("the server's action list is passed through, not re-derived", () => {
+  it('carries the actions the case reported', () => {
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      verificationCase: kase({ state: 'DRAFT', availableActions: ['submit'] }),
+      profile: null,
+    });
+    expect(view.availableActions).toEqual(['submit']);
+  });
+
+  it('reports NO actions when the server offered none, whatever the local state', () => {
+    // The point of the field. This client may believe the evidence is complete
+    // and still must not offer a transition the server did not authorise.
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      verificationCase: kase({ state: 'DRAFT', availableActions: [] }),
+      profile: null,
+    });
+    expect(view.availableActions).toEqual([]);
+  });
+
+  it('degrades to NO actions when the server sends an OBJECT instead of an array', () => {
+    // The Sprint 9B.13 failure mode, applied to the new field: an object is
+    // truthy, so `?? []` would let it through and `.includes` would throw.
+    // Array.isArray is the guard, and the safe direction is "offer nothing".
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      verificationCase: kase({
+        state: 'DRAFT',
+        availableActions: { submit: true } as unknown as never,
+      }),
+      profile: null,
+    });
+    expect(view.availableActions).toEqual([]);
+  });
+
+  it('degrades to NO actions when the field is missing or the wrong shape', () => {
+    // Fail closed. A stale deployment or a proxy can put the wrong shape on the
+    // wire, and "offer nothing" is the safe direction — the same reasoning the
+    // requirements/documents guards above are written for.
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      verificationCase: kase({ state: 'DRAFT', availableActions: undefined }),
+      profile: null,
+    });
+    expect(view.availableActions).toEqual([]);
+  });
+
+  it('carries both timestamps for the status screen', () => {
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      verificationCase: kase({
+        state: 'SUBMITTED',
+        submittedAt: '2026-08-01T00:00:00.000Z',
+        updatedAt: '2026-08-02T00:00:00.000Z',
+      }),
+      profile: null,
+    });
+    expect(view.submittedAt).toBe('2026-08-01T00:00:00.000Z');
+    expect(view.updatedAt).toBe('2026-08-02T00:00:00.000Z');
   });
 });
 
@@ -328,9 +409,16 @@ describe('every declared state is reachable', () => {
         verificationCase: kase({ state: 'VERIFIED' }),
       }),
       stateOf({ verificationCase: kase({ state: 'VERIFIED' }) }),
+      // Sprint 9B.24 — the fifteenth. EXPIRED derives to
+      // REVERIFICATION_REQUIRED, which is a different instruction from
+      // VERIFIED_NO_ACCESS: one says "send fresh documents", the other says
+      // "your documents are fine and more will not help".
+      stateOf({ verificationCase: kase({ state: 'EXPIRED' }) }),
     ]);
 
-    expect(reached.size).toBe(14);
+    expect(reached.size).toBe(15);
+    expect(reached.has('REVERIFICATION_REQUIRED')).toBe(true);
+    expect(reached.has('VERIFIED_NO_ACCESS')).toBe(true);
   });
 });
 

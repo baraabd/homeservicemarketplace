@@ -859,6 +859,95 @@ d('Verification case workflow (real Postgres, real routes)', () => {
   // had happened to what was supplied. A provider whose passport is being
   // scanned, was quarantined, or was rejected saw the same screen as one who
   // uploaded nothing — the difference between "wait" and "act".
+  // ── Sprint 9B.24 — the actions the provider is OFFERED ──────────────────
+
+  describe('the provider is told what they may do, and derives nothing', () => {
+    // The D-3 lesson, on the provider side. The reviewer surface has received
+    // server-computed actions since 9B.5; the provider surface was deriving
+    // its buttons from the case state, which is a second copy of the
+    // transition table waiting to disagree with the first.
+
+    it('offers submit from DRAFT', async () => {
+      await seedCase('DRAFT');
+      currentUser = { id: OWNER };
+
+      const res = await request(http).get('/v1/me/provider/verification/case');
+      expect(res.body.case.availableActions).toEqual(['submit']);
+    });
+
+    it('offers submit again from ACTION_REQUIRED, because resubmission is the same edge', async () => {
+      await seedCase('ACTION_REQUIRED');
+      currentUser = { id: OWNER };
+
+      const res = await request(http).get('/v1/me/provider/verification/case');
+      expect(res.body.case.availableActions).toEqual(['submit']);
+    });
+
+    it.each(['SUBMITTED', 'IN_REVIEW', 'VERIFIED', 'REJECTED', 'EXPIRED'])(
+      'offers the provider NOTHING from %s',
+      async (state) => {
+        // Every one of these is somebody else's move, or nobody's. A button
+        // here is a request the server will refuse.
+        await seedCase(state);
+        currentUser = { id: OWNER };
+
+        const res = await request(http).get('/v1/me/provider/verification/case');
+        expect(res.body.case.availableActions).toEqual([]);
+      },
+    );
+
+    it('NEVER offers a reviewer action, whatever the state', async () => {
+      // The security property. approve/reject/requestAction/revoke/reverify are
+      // reviewer verbs; a provider surface that named one — even disabled —
+      // would be describing a decision they might make about themselves.
+      const REVIEWER_VERBS = ['approve', 'reject', 'requestAction', 'revoke', 'reverify', 'assign'];
+      for (const state of ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'ACTION_REQUIRED', 'VERIFIED']) {
+        // Children first: the asset points at the case, so removing the case
+        // first orphans the delete that was supposed to clear it and the next
+        // seedCase collides on the asset's primary key.
+        await prisma.verificationDocument.deleteMany({ where: { caseId: CASE_ID } });
+        await prisma.mediaAsset.deleteMany({ where: { id: `${P}asset` } });
+        await prisma.verificationCase.deleteMany({ where: { id: CASE_ID } });
+        await seedCase(state);
+        currentUser = { id: OWNER };
+
+        const res = await request(http).get('/v1/me/provider/verification/case');
+        for (const verb of REVIEWER_VERBS) {
+          expect(res.body.case.availableActions).not.toContain(verb);
+        }
+      }
+    });
+
+    it('carries both timestamps, so "what I did" and "has anything happened" are separable', async () => {
+      await seedCase('SUBMITTED');
+      await prisma.verificationCase.update({
+        where: { id: CASE_ID },
+        data: { submittedAt: new Date('2026-08-01T00:00:00Z') },
+      });
+      currentUser = { id: OWNER };
+
+      const res = await request(http).get('/v1/me/provider/verification/case');
+      expect(res.body.case.submittedAt).toBe('2026-08-01T00:00:00.000Z');
+      expect(typeof res.body.case.updatedAt).toBe('string');
+    });
+
+    it('keeps verification and work access as two separate facts', async () => {
+      // The acceptance criterion. A VERIFIED case says the DOCUMENTS passed.
+      // It says nothing about whether the provider may work, which is the
+      // grant — and the case view must not imply otherwise.
+      await seedCase('VERIFIED');
+      currentUser = { id: OWNER };
+
+      const res = await request(http).get('/v1/me/provider/verification/case');
+      expect(res.body.case.state).toBe('VERIFIED');
+      const raw = JSON.stringify(res.body);
+      // No grant, no access, no capability travels on this response at all.
+      expect(raw).not.toMatch(/workAccess/i);
+      expect(raw).not.toMatch(/grant/i);
+      expect(raw).not.toMatch(/canWork/i);
+    });
+  });
+
   describe('the provider view of their own case', () => {
     it('carries each uploaded document and its scan verdict', async () => {
       await seedCase('SUBMITTED');

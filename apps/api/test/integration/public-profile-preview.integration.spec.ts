@@ -7,7 +7,7 @@
 
 export {};
 
-import { fixturePrefix } from '../support/db-isolation';
+import { fixturePrefix, withAdvisoryLock } from '../support/db-isolation';
 
 // Sprint 9B.22 — what a customer actually receives, against a REAL Postgres.
 //
@@ -53,7 +53,32 @@ d('Sprint 9B.22 public profile preview (real Postgres)', () => {
   const LNG = 36.29234;
   const WORKSHOP = '12 Baghdad Street, Damascus';
 
+  /**
+   * Guarded by the SHARED lifecycle lock, for the duration of the deletes only.
+   *
+   * This suite creates ProviderProfile rows, which makes it one of the writers
+   * the lifecycle backfill takes that lock EXCLUSIVE against: the backfill
+   * scans the whole table, and a row that vanishes between its read and its
+   * update fails the run outright with `Record to update not found`. That is
+   * exactly what CI hit — this cleanup deleting a row mid-scan.
+   *
+   * Held around the DELETES rather than the whole suite on purpose.
+   * `acquireAdvisoryLock` polls `pg_try_advisory_lock`, which never queues, so
+   * an exclusive waiter only wins at an instant when no shared holder exists.
+   * Taking it for a whole suite adds a minutes-long holder to that pool and
+   * starves the backfill instead — measured, 56 lock timeouts. Held for the
+   * milliseconds a delete takes, the window closes and the pool is unchanged.
+   *
+   * Creating a row mid-scan is harmless by comparison: the backfill either
+   * sees it or does not. Only the delete can break it.
+   */
   async function cleanup(): Promise<void> {
+    await withAdvisoryLock('providerLifecycle', 'shared', async () => {
+      await cleanupRows();
+    });
+  }
+
+  async function cleanupRows(): Promise<void> {
     await prisma.providerPortfolioItem.deleteMany({
       where: { providerProfileId: { startsWith: P } },
     });

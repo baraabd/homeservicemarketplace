@@ -5,6 +5,7 @@ import type {
   ProviderVerificationCase,
   ProviderVerificationDecisionSummary,
   ProviderVerificationRequirement,
+  ProviderVerificationCaseActionCode,
   VerificationCaseStateCode,
   VerificationDocumentKindCode,
 } from '@homeservicemarketplace/contracts';
@@ -18,6 +19,7 @@ import {
   resolveRequirements,
   type CandidatePolicy,
 } from '../policy/requirement-resolver';
+import { offerableCaseActions } from '../policy/case-transitions';
 import { ACTIVE_CASE_STATES, decideCaseCreation, type ExistingCase } from './case-creation-policy';
 
 // Sprint 9B.2 — the provider asks to start verification.
@@ -301,6 +303,7 @@ export const PROVIDER_CASE_SELECT = {
   state: true,
   policyVersion: true,
   createdAt: true,
+  updatedAt: true,
   submittedAt: true,
   requirementsSnapshot: true,
   documents: {
@@ -330,6 +333,7 @@ interface CaseRowForView {
   state: VerificationCaseState;
   policyVersion: string;
   createdAt: Date;
+  updatedAt: Date;
   submittedAt: Date | null;
   requirementsSnapshot?: Prisma.JsonValue | null;
   documents?: Array<{
@@ -428,7 +432,20 @@ function toView(row: CaseRowForView): ProviderCaseView {
     state: row.state as VerificationCaseStateCode,
     policyVersion: row.policyVersion,
     createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
     submittedAt: row.submittedAt ? row.submittedAt.toISOString() : null,
+    // Sprint 9B.24 — from the ONE transition table, with actor 'provider'.
+    //
+    // Not a hand-written list and not derived on the client: the reviewer
+    // surface already receives its actions this way, and the whole point of
+    // case-transitions.ts is that there is one answer to "what may happen to
+    // this case" rather than one per consumer.
+    //
+    // `offerable`, not `available`: legal AND backed by a working command.
+    availableActions: offerableCaseActions(
+      row.state,
+      'provider',
+    ) as ProviderVerificationCaseActionCode[],
     requirements: snapshot.requirements,
     verificationRequired: snapshot.verificationRequired,
     documents: (row.documents ?? []).map((d) => ({

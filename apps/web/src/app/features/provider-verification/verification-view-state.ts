@@ -1,6 +1,7 @@
 import type {
   ProviderCapabilitiesResponse,
   ProviderVerificationCase,
+  ProviderVerificationCaseActionCode,
   ProviderVerificationDocument,
   ProviderVerificationRequirement,
 } from '@homeservicemarketplace/contracts';
@@ -54,7 +55,14 @@ export type VerificationViewState =
   | 'CHANGES_REQUESTED'
   | 'REJECTED'
   | 'VERIFIED_ACTIVE'
-  | 'VERIFIED_NO_ACCESS';
+  | 'VERIFIED_NO_ACCESS'
+  // Sprint 9B.24 — the case EXPIRED or a reviewer asked for fresh evidence.
+  //
+  // Previously folded into VERIFIED_NO_ACCESS, which reads as "wait": both
+  // states mean the provider cannot work, but only this one means they have
+  // something to DO about it. Collapsing "send us new documents" into "your
+  // access lapsed" is the difference between a task and a dead end.
+  | 'REVERIFICATION_REQUIRED';
 
 export interface VerificationView {
   state: VerificationViewState;
@@ -68,6 +76,19 @@ export interface VerificationView {
   scanning: ProviderVerificationDocument[];
   /** The reviewer's reason code, when there is one to act on. */
   reasonCode: string | null;
+  /**
+   * Sprint 9B.24 — what the SERVER says the provider may do, passed straight
+   * through.
+   *
+   * The screen gates its buttons on this rather than on `state`. A state is a
+   * description; an action is a permission, and deriving the second from the
+   * first is how a surface ends up offering a control the API refuses.
+   */
+  availableActions: ProviderVerificationCaseActionCode[];
+  /** When the provider handed it in. Null before they did. */
+  submittedAt: string | null;
+  /** When the case last changed — "has anything happened since?". */
+  updatedAt: string | null;
 }
 
 export interface VerificationInput {
@@ -145,7 +166,20 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
   };
 
   const reasonCode = kase?.latestDecision?.reasonCode ?? null;
-  const base = { axes, outstanding, unusable, scanning, reasonCode };
+  // Array.isArray for the same reason the two above are — a server that sent
+  // the wrong shape must degrade to "no actions offered", never to a crash,
+  // and "no actions" is the safe direction to fail in.
+  const availableActions = Array.isArray(kase?.availableActions) ? kase.availableActions : [];
+  const base = {
+    axes,
+    outstanding,
+    unusable,
+    scanning,
+    reasonCode,
+    availableActions,
+    submittedAt: kase?.submittedAt ?? null,
+    updatedAt: kase?.updatedAt ?? null,
+  };
 
   // ── the precedence, mirroring the server's ranks ────────────────────────
 
@@ -189,7 +223,11 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
     case 'IN_REVIEW':
       return { ...base, state: 'PENDING_REVIEW' };
     case 'EXPIRED':
-      return { ...base, state: 'VERIFIED_NO_ACCESS' };
+      // Sprint 9B.24 — its own state, not VERIFIED_NO_ACCESS. An expired case
+      // (or one a reviewer sent back for re-verification) is something the
+      // provider can act on by opening a new case; a verified provider whose
+      // grant lapsed is not.
+      return { ...base, state: 'REVERIFICATION_REQUIRED' };
     default:
       break;
   }

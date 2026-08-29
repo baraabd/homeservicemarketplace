@@ -99,8 +99,13 @@ export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> 
       cta: null,
     },
     VERIFIED_NO_ACCESS: {
+      title: 'You cannot take work right now',
+      body: 'Your documents are still accepted. What has ended is your permission to take work, which is a separate thing — sending more documents will not change it.',
+      cta: 'Contact support',
+    },
+    REVERIFICATION_REQUIRED: {
       title: 'Your verification needs renewing',
-      body: 'Your documents were accepted before, but your permission to take work has ended. Send fresh documents to start again.',
+      body: 'Your documents were accepted before, but that verification has expired. Send fresh documents to start again.',
       cta: 'Renew verification',
     },
   },
@@ -171,8 +176,13 @@ export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> 
       cta: null,
     },
     VERIFIED_NO_ACCESS: {
+      title: 'لا يمكنك استلام أعمال حالياً',
+      body: 'مستنداتك ما زالت مقبولة. ما انتهى هو صلاحيتك لاستلام الأعمال، وهي أمر منفصل — إرسال مستندات إضافية لن يغيّر ذلك.',
+      cta: 'تواصل مع الدعم',
+    },
+    REVERIFICATION_REQUIRED: {
       title: 'توثيقك بحاجة إلى تجديد',
-      body: 'تم قبول مستنداتك سابقًا، لكن صلاحيتك لاستلام الأعمال انتهت. أرسل مستندات حديثة للبدء من جديد.',
+      body: 'تم قبول مستنداتك سابقًا، لكن صلاحية ذلك التوثيق انتهت. أرسل مستندات حديثة للبدء من جديد.',
       cta: 'تجديد التوثيق',
     },
   },

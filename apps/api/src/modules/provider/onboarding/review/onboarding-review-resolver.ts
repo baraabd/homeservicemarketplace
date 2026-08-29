@@ -51,6 +51,18 @@ export interface ReviewSource {
  * Order within a group is the policy's own issue order, which is stable and
  * already reads top-to-bottom in wizard order.
  */
+/**
+ * The lifecycle states a submitted application can be pulled back from.
+ *
+ * Mirrors the WHERE clause in `ProviderOnboardingWizardService.withdraw`.
+ * ACCEPTED is absent on purpose: once a reviewer has accepted an application,
+ * un-submitting it would silently undo their decision.
+ */
+export const WITHDRAWABLE_STATES: readonly string[] = Object.freeze([
+  'SUBMITTED',
+  'DOCUMENTS_REQUIRED',
+]);
+
 export function buildReview(source: ReviewSource): ProviderOnboardingReview {
   const progress = computeProgress(source.issues, source.lifecycleState);
 
@@ -138,6 +150,10 @@ export function buildReview(source: ReviewSource): ProviderOnboardingReview {
     terms: source.terms,
     draftVersion: source.draftVersion,
     lifecycleState: source.lifecycleState,
+    // The states withdraw() scopes its updateMany to, and nothing else. Kept
+    // beside the states themselves rather than in the client so the offer and
+    // the command cannot drift apart.
+    canWithdraw: WITHDRAWABLE_STATES.includes(source.lifecycleState),
   };
 }
 

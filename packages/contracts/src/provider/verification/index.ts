@@ -27,6 +27,21 @@ export interface ProviderVerificationRequirement {
   serviceCategoryId: string | null;
 }
 
+/**
+ * What a PROVIDER may do to their own case.
+ *
+ * A deliberately separate vocabulary from the reviewer's
+ * `VerificationCaseActionCode`, which names `approve`, `reject`, `revoke` and
+ * the rest. Reusing that type here would make a reviewer's decision
+ * type-reachable from the provider surface — the compiler would stop
+ * complaining about exactly the confusion this contract exists to prevent.
+ *
+ * One member today, and that is the honest size of it: the transition table
+ * gives a provider `submit` (from DRAFT and from ACTION_REQUIRED, which is why
+ * resubmission needs no second code path) and nothing else.
+ */
+export type ProviderVerificationCaseActionCode = 'submit';
+
 export interface ProviderVerificationCase {
   id: string;
   state: VerificationCaseStateCode;
@@ -44,6 +59,28 @@ export interface ProviderVerificationCase {
   documents: ProviderVerificationDocument[];
   /** Sprint 9B.11 — the latest reviewer decision, or null before any. */
   latestDecision: ProviderVerificationDecisionSummary | null;
+  /**
+   * Sprint 9B.24 — what the PROVIDER may do to this case right now.
+   *
+   * Server-computed from the one transition table (`offerableCaseActions`
+   * with actor 'provider'), exactly as the reviewer surface already receives
+   * its own list. The client renders these and derives nothing — which is the
+   * D-3 lesson written into case-transitions.ts: the admin table once offered
+   * an Approve button the backend answered with 409, because two copies of a
+   * rule had drifted.
+   *
+   * Offerable, not merely legal: an action appears here only if a command
+   * behind it actually works today. Withholding is safe; inventing is not.
+   */
+  availableActions: ProviderVerificationCaseActionCode[];
+  /**
+   * When the case last changed, for "last updated" on the status screen.
+   *
+   * Distinct from `submittedAt`, which is when the provider handed it in and
+   * never moves again. A provider watching a case wants both: what they did,
+   * and whether anything has happened since.
+   */
+  updatedAt: string;
 }
 
 /**
