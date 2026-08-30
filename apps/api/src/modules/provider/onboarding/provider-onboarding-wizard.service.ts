@@ -15,6 +15,7 @@ import {
   type ProviderServiceAreaExpansionView,
   type SubmitOnboardingRequest,
   type ProviderOnboardingReview,
+  type ProviderOnboardingHubView,
 } from '@homeservicemarketplace/contracts';
 import type { Prisma, PrismaTx, ServiceCategory } from '@homeservicemarketplace/database';
 
@@ -32,6 +33,7 @@ import {
 } from '../../../infrastructure/persistence/provider/provider-onboarding-draft.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
+import { buildHub } from './hub/onboarding-hub-resolver';
 import { buildReview } from './review/onboarding-review-resolver';
 import { referencesRestrictedMedia } from './avatar/avatar-policy';
 import { checkRadius, resolveRadiusPolicy, type RadiusPolicy } from './service-area/radius-policy';
@@ -961,6 +963,25 @@ export class ProviderOnboardingWizardService {
   }
 
   // ── reading ───────────────────────────────────────────────────────────
+
+  /**
+   * GET /v1/me/provider/onboarding/hub
+   *
+   * Sprint 9B.15, delivered late. The V2 client has called this since 9B.16
+   * and nothing served it, so six sprints of task screens were verified only
+   * against a Playwright stub.
+   *
+   * Built from the SAME `evaluateOnboarding()` call the review and the submit
+   * use. The hub cannot tell a provider they are finished while the submit
+   * refuses them, because there is one policy and three readers of it.
+   */
+  async hub(userId: string): Promise<ProviderOnboardingHubView> {
+    const ctx = await this.buildContext(userId);
+    return buildHub({
+      issues: evaluateOnboarding(this.toCandidate(ctx)),
+      lifecycleState: this.lifecycleState(ctx),
+    });
+  }
 
   /**
    * GET /v1/me/provider/onboarding/review

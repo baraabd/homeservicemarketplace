@@ -73,6 +73,7 @@ d('Onboarding review and submission (real Postgres)', () => {
   const postSubmit = (body: Record<string, unknown>) =>
     request(http).post('/v1/me/provider/onboarding/submit').send(body);
   const postWithdraw = () => request(http).post('/v1/me/provider/onboarding/withdraw');
+  const getHub = () => request(http).get('/v1/me/provider/onboarding/hub');
   const patchProfile = (body: Record<string, unknown>) =>
     request(http).patch('/v1/me/provider/onboarding/steps/PROFILE').send(body);
 
@@ -309,6 +310,23 @@ d('Onboarding review and submission (real Postgres)', () => {
       data: { acceptedConsentVersion: null, consentAcceptedAt: null },
     });
     await makeComplete();
+    // Re-seeded per test, not once in beforeAll: the legacy-draft cases delete
+    // it on purpose, and without this every later test inherits a draft that is
+    // missing its weekly schedule — which looks like a hub defect and is not.
+    const intervals = await prisma.providerAvailabilityInterval.count({
+      where: { providerProfileId: PP },
+    });
+    if (intervals === 0) {
+      await prisma.providerAvailabilityInterval.create({
+        data: {
+          providerProfileId: PP,
+          dayOfWeek: 0,
+          startMinute: 540,
+          endMinute: 1020,
+          timezone: 'Asia/Damascus',
+        },
+      });
+    }
   });
 
   afterAll(async () => {
@@ -843,6 +861,138 @@ d('Onboarding review and submission (real Postgres)', () => {
         where: { providerProfileId: PP },
       });
       expect(review.body.draftVersion).toBe(draft ? draft.version : 0);
+    });
+  });
+
+  // ── Sprint 9B.15 (late) — the hub endpoint, over real HTTP ───────────────
+
+  describe('the hub the V2 shell opens on', () => {
+    it('is SERVED — the endpoint the client has called since 9B.16 now exists', async () => {
+      const res = await getHub();
+      expect(res.status).toBe(200);
+    });
+
+    it('returns the six tasks, and the hub is not one of them', async () => {
+      const res = await getHub();
+      expect(res.body.tasks.map((t: { id: string }) => t.id)).toEqual([
+        'BASICS_IDENTITY',
+        'SERVICES_EXPERIENCE',
+        'WORK_AREA',
+        'WORKING_HOURS',
+        'PORTFOLIO',
+        'REVIEW_SUBMISSION',
+      ]);
+      expect(res.body.progress.total).toBe(6);
+    });
+
+    it('agrees with the REVIEW endpoint about readiness', async () => {
+      // The reason both read one policy. A hub that said "done" while the
+      // review refused to submit would be two answers to one question.
+      await makeComplete({ bio: null });
+      const hub = await getHub();
+      const review = await getReview();
+
+      const hubBlocked = hub.body.tasks.find((t: { id: string }) => t.id === 'PORTFOLIO').status;
+      expect(hubBlocked).toBe('AVAILABLE');
+      expect(review.body.canSubmit).toBe(false);
+    });
+
+    it('counts progress from the real draft, not from a fixture', async () => {
+      await makeComplete({ bio: null, serviceAreaCity: null });
+      const two = await getHub();
+      await makeComplete();
+      const none = await getHub();
+
+      // Completing real columns in Postgres moves the count.
+      expect(none.body.progress.complete).toBeGreaterThan(two.body.progress.complete);
+    });
+
+    it('points at the first outstanding task', async () => {
+      await makeComplete({ bio: null });
+      const res = await getHub();
+      expect(res.body.nextAction).toEqual({ kind: 'COMPLETE_TASK', taskId: 'PORTFOLIO' });
+    });
+
+    it('lets the provider INTO review when only the terms are outstanding', async () => {
+      // `consent` is a completeness field owned by the CONSENT step, which maps
+      // to REVIEW_SUBMISSION — and the terms are accepted ON the review screen.
+      //
+      // This test used to assert BLOCKED / nextAction NONE, which is the
+      // deadlock the Sprint 9B.27 browser journey walked into: five green
+      // tasks, a locked sixth reading "Finish the tasks above first", and no
+      // task above left to finish. The application was unsubmittable and the
+      // hub offered no way forward.
+      //
+      // Enterable, and honest about why: there is still something to do on the
+      // review task, so the next action is to complete it rather than to
+      // Submit. Submit stays disabled on the screen itself, with the server's
+      // own blockedReason next to it.
+      await makeComplete();
+      const res = await getHub();
+
+      const review = res.body.tasks.find((t: { id: string }) => t.id === 'REVIEW_SUBMISSION');
+      expect(review.status).toBe('AVAILABLE');
+      expect(res.body.nextAction).toEqual({
+        kind: 'COMPLETE_TASK',
+        taskId: 'REVIEW_SUBMISSION',
+      });
+      // And the server still refuses the submission itself — the gate moved to
+      // where it belongs, it did not disappear.
+      const blocked = await postSubmit({ version: (await getReview()).body.draftVersion });
+      expect(blocked.status).toBe(422);
+    });
+
+    it('offers SUBMIT once the draft is genuinely complete, consent included', async () => {
+      await makeComplete();
+      await acceptCurrentTerms();
+
+      const res = await getHub();
+      expect(res.body.status).toBe('DRAFT');
+      const review = res.body.tasks.find((t: { id: string }) => t.id === 'REVIEW_SUBMISSION');
+      expect(review.status).toBe('AVAILABLE');
+      expect(res.body.progress.complete).toBe(5);
+      expect(res.body.nextAction).toEqual({ kind: 'SUBMIT' });
+    });
+
+    it('turns every task to WAITING after a real submission', async () => {
+      await acceptCurrentTerms();
+      const review = await getReview();
+      expect((await postSubmit({ version: review.body.draftVersion })).status).toBe(200);
+
+      const res = await getHub();
+      expect(res.body.status).toBe('SUBMITTED');
+      expect(res.body.nextAction).toEqual({ kind: 'AWAIT_REVIEW' });
+      for (const t of res.body.tasks) expect(t.status).toBe('WAITING');
+    });
+
+    it('carries no capability, grant or verification fact', async () => {
+      // The hub is the onboarding axis. Collapsing it with access is the
+      // confusion ADR 0005 exists to prevent.
+      const raw = JSON.stringify((await getHub()).body);
+      expect(raw).not.toMatch(/capabilit/i);
+      expect(raw).not.toMatch(/grant/i);
+      expect(raw).not.toMatch(/workAccess/i);
+    });
+
+    it('refuses an unauthenticated caller', async () => {
+      currentUser = null;
+      try {
+        expect((await getHub()).status).toBe(403);
+      } finally {
+        currentUser = { id: USER };
+      }
+    });
+
+    it('refuses a user with no provider profile at the guard, not the service', async () => {
+      // 403, not 404: ProviderCapabilityGuard answers first, because someone
+      // with no provider profile holds no provider capability. The service is
+      // never reached, so there is no hub to leak the existence of.
+      currentUser = { id: `${P}ghost` };
+      try {
+        expect((await getHub()).status).toBe(403);
+      } finally {
+        currentUser = { id: USER };
+      }
     });
   });
 
