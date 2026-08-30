@@ -4,6 +4,19 @@ Ships **default off** behind `VITE_PROVIDER_ONBOARDING_V2`. With the flag off,
 a provider gets the Sprint 8 wizard, unchanged, and `/provider/onboarding`
 does not exist.
 
+> **Update (9B.26/9B.27):** the hub ENDPOINT this sprint's client was written
+> against did not exist when this document was first written. It does now — see
+> §"The endpoint" below.
+>
+> The browser evidence in §6 was gathered against `stubApi()`, which fulfils
+> the onboarding routes from a fixture. That is why the missing endpoint went
+> unnoticed for six sprints: a spec that stubs the route under test passes
+> whether or not the server implements it. Since 9B.27 there is also a
+> **real-stack** suite — `provider-onboarding-v2-real-api.spec.ts`, browser to
+> real API to real Postgres, nothing intercepted — and that is the coverage to
+> trust for integration claims. See
+> `docs/sprint-09b26/PROVIDER_ONBOARDING_V2_RELEASE.md` §12.
+
 ---
 
 ## 1. What this is
@@ -150,11 +163,20 @@ It does own the **access decision**, and that comes from the server like
 everything else: a task the hub reports as `BLOCKED` cannot be entered by
 typing its id into the address bar.
 
-**The endpoint.** 9B.15 was never delivered — there is no branch, commit, doc or
-PR for it, and `/v1/me/provider/onboarding/hub` does not exist server-side. The
-client is written against the canonical response and every test drives it
-through a mocked transport. **The flow has not been exercised against a real
-API**, and that is the one acceptance item this sprint cannot close on its own.
+**The endpoint.** 9B.15 was not delivered alongside this sprint: for six
+sprints `/v1/me/provider/onboarding/hub` existed only as a TypeScript type and
+a Playwright stub, and the client had never spoken to a server.
+
+**It exists now.** It was implemented in the 9B.26 release-gate branch —
+`apps/api/src/modules/provider/onboarding/hub/onboarding-hub-resolver.ts`, served
+by `@Get('hub')` on the wizard controller — and is covered by unit tests and by
+integration tests that drive the real route over HTTP against real Postgres with
+the real guards. See `docs/sprint-09b26/PROVIDER_ONBOARDING_V2_RELEASE.md` §1.
+
+The resolver restates no rule: task completeness is `evaluateOnboarding()`'s
+answer routed through `stepForField()` and the same `STEP_TO_V2_TASK` map the
+review screen uses, so the hub and the review cannot disagree about whether an
+application is ready.
 
 ---
 

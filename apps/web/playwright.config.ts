@@ -44,12 +44,17 @@ export const VIEWPORTS = {
 
 export default defineConfig({
   testDir: './e2e',
-  // The real-API auth suite is excluded from the default run. It needs a
+  // The two real-API suites are excluded from the default run. They need a
   // booted API, Postgres, Redis and a mail catcher, none of which the
   // stub-everything browser job has — and a spec that silently skips is worse
-  // than one that is deliberately not here. It runs in its own CI job (see
-  // `browser-auth-e2e` in ci.yml) and locally with E2E_REAL_API set.
-  testIgnore: process.env.E2E_REAL_API ? [] : ['**/auth-cookies.spec.ts'],
+  // than one that is deliberately not here. `auth-cookies` runs in its own CI
+  // job (see `browser-auth-e2e` in ci.yml); the V2 onboarding journey needs a
+  // served SPA as well, so it additionally expects E2E_BASE_URL to point at a
+  // preview built with VITE_PROVIDER_ONBOARDING_V2=true. Both run locally with
+  // E2E_REAL_API set — see docs/sprint-09b26/PROVIDER_ONBOARDING_V2_RELEASE.md.
+  testIgnore: process.env.E2E_REAL_API
+    ? []
+    : ['**/auth-cookies.spec.ts', '**/provider-onboarding-v2-real-api.spec.ts'],
   // Deterministic: no test may depend on another's leftovers, and a flake
   // must fail rather than be retried into a pass locally.
   fullyParallel: true,

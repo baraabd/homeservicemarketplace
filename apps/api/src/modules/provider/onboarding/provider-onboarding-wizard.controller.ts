@@ -20,6 +20,7 @@ import {
   type ProviderOnboardingDraftView,
   type ProviderOnboardingStep,
   type ProviderOnboardingReview,
+  type ProviderOnboardingHubView,
 } from '@homeservicemarketplace/contracts';
 
 import { CurrentUser } from '../../iam/authentication/decorators/current-user.decorator';
@@ -146,6 +147,24 @@ export class ProviderOnboardingWizardController {
     @Body() body: RemoveAvatarDto,
   ): Promise<ProviderOnboardingDraftView> {
     return this.avatars.remove(user.id, body.version);
+  }
+
+  /**
+   * Sprint 9B.15 — the six-task hub the V2 shell opens on.
+   *
+   * READ ONLY, so no CsrfGuard. Ownership is the session: there is no path
+   * parameter naming a provider, so there is no id to forge, and the service
+   * scopes every read to `userId`.
+   *
+   * Guarded by the SAME class-level JwtAuthGuard / RolesGuard /
+   * ProviderCapabilityGuard as every other route here, under
+   * EDIT_OWN_PROFILE — the people who may change an application are the people
+   * who may see its task list.
+   */
+  @Get('hub')
+  @HttpCode(HttpStatus.OK)
+  hub(@CurrentUser() user: AuthenticatedUser): Promise<ProviderOnboardingHubView> {
+    return this.wizard.hub(user.id);
   }
 
   /**
