@@ -29,6 +29,7 @@ rollback in §7 a flag flip rather than a migration.
 | Completeness rules        | `evaluateOnboarding()` — server, one copy                   |
 | Step ownership of a field | `stepForField()` — server                                   |
 | Review groups / blockers  | `buildReview()` — pure projection over the above            |
+| Hub task list / progress  | `buildHub()` — the same policy, same STEP_TO_V2_TASK map    |
 | Case transitions          | `case-transitions.ts` — one table, `offerableCaseActions`   |
 | Marketplace access        | `ProviderCapabilitiesResponse` — a separate contract        |
 | Autosave                  | `useOnboardingStepAutosave` — one hook, one status renderer |
@@ -176,10 +177,12 @@ should produce.
 
 Carried forward, each recorded where it was found:
 
-1. **The 9B.15 hub endpoint does not exist.** `GET /v1/me/provider/onboarding/hub`
-   is called by the V2 client and has no server implementation. **Every V2
-   Playwright spec stubs it.** This is the single largest gate on calling V2
-   runtime-verified end to end, and it blocks rollout stage 2 onward.
+1. ~~**The 9B.15 hub endpoint does not exist.**~~ **CLOSED.**
+   `GET /v1/me/provider/onboarding/hub` is implemented and served, with unit
+   coverage and integration tests that drive the real route over HTTP against
+   real Postgres and the real guards. See §1.
+   ~~**Still open:** no browser-level test drives the hub against a real API.~~
+   **Also closed** — see §12.
 2. **No automated accessibility checks** (no axe) — 9B.25 §6.
 3. **No analytics** — §4.
 4. **No code splitting**: one 1842 KB chunk, `leaflet` and `recharts` eager —
@@ -205,3 +208,83 @@ explicit authorization.
 
 **Recommended before GA:** require the `CI gate` and `CodeQL` checks on
 `develop` and `main`.
+
+---
+
+## 12. Browser-to-API coverage (Sprint 9B.27)
+
+The release gap named in §10.1 is closed. `provider-onboarding-v2-real-api.spec.ts`
+drives the journey with **no interception at all**:
+
+```
+Chromium → the built SPA (VITE_PROVIDER_ONBOARDING_V2=true baked in)
+        → the real API (node dist/main.js)
+             → real Postgres, real Redis, all 52 migrations, real guards
+```
+
+15 scenarios × 3 viewports (375 / 768 / 1440). It proves the flag in both
+directions, that the hub renders **the state the server computed**, that a task
+typed in the browser reaches Postgres and survives a reload, deep links, the
+login return path through the real form and OTP screen, that review blockers
+agree with hub statuses, that terms gate submission, that a submission
+persists, and that the public projection carries no private field.
+
+**Why this was worth building rather than deferring again.** The suite is what
+found the two defects below; six sprints of stubbed specs found neither, and
+could not have. A spec that fulfils the endpoint under test cannot fail when
+that endpoint is missing — which is exactly what happened between 9B.16 and
+9B.26, while `GET /onboarding/hub` returned 404 in every real deployment.
+
+**Two defects it caught:**
+
+1. **The consent deadlock.** `CONSENT` maps to `REVIEW_SUBMISSION`, and the
+   hub blocked that task on any requirement it owned — including unaccepted
+   terms. But terms are accepted **on the review screen**. A provider with all
+   five collecting tasks complete saw five green rows, a locked sixth reading
+   "Finish the tasks above first", and no way to submit. Fixed: only the five
+   collecting tasks gate entry to review, and `nextAction` reports
+   `COMPLETE_TASK: REVIEW_SUBMISSION` rather than a `SUBMIT` the server would
+   refuse. The lying button is prevented where it lives — Submit stays disabled
+   on the screen, beside the server's own `blockedReason`.
+
+2. **A stale session after `POST /me/provider/upgrade`** — open, not fixed.
+   `RolesGuard` reads roles from the access token; `upgrade` grants the
+   provider role in the database without reissuing one. So a newly promoted
+   provider gets **403 on every provider route until their session refreshes**.
+   The harness reproduces it rather than hiding it (`registerProvider` refreshes
+   explicitly, and says why). Worth fixing before rollout stage 2: the
+   fresh-signup path is the one cohort most likely to hit it.
+
+### Running it
+
+Needs a real stack on isolated ports — a Postgres, a Redis, a mail catcher, the
+API, and a preview build with the flag baked in:
+
+```bash
+# API on 4011 against isolated Postgres/Redis, SMTP → the mail catcher
+# web:  vite build with VITE_PROVIDER_ONBOARDING_V2=true VITE_API_URL=…:4011
+#       then vite preview on 4174
+E2E_REAL_API=http://127.0.0.1:4011 \
+E2E_MAILPIT=http://127.0.0.1:28025 \
+E2E_BASE_URL=http://127.0.0.1:4174 \
+  pnpm --filter @homeservicemarketplace/web exec playwright test \
+    e2e/provider-onboarding-v2-real-api.spec.ts --workers=3
+```
+
+`playwright.config.ts` excludes the file by `testIgnore` when `E2E_REAL_API` is
+unset, on the same reasoning as `auth-cookies.spec.ts`: an integration-critical
+spec that silently skips is worse than one that is visibly absent.
+
+**Two things the harness had to get right, both real constraints rather than
+test plumbing:**
+
+- **The seeded admin mailbox is shared.** A specialty is an _application_, not
+  a grant — the review reports `AWAITING_REVIEW` until an admin approves it —
+  so the harness signs in as an admin. Two workers signing in as the same admin
+  produce two codes in one mailbox, and one worker verifies a challenge it does
+  not own. Each worker takes its own seeded admin, by `TEST_PARALLEL_INDEX`.
+- **Postgres advisory locks are cluster-wide, not per-database.** Running this
+  stack and the API integration suite against the same Postgres _instance_ — even
+  in different databases — makes the API's background sweeps contend with the
+  suite's isolation locks, and suites time out at 120s in a different place each
+  run. Give them separate instances, not separate databases.
