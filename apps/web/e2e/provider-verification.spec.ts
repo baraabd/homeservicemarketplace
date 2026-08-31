@@ -180,7 +180,7 @@ async function openVerification(
     return json({ items: [], nextCursor: null });
   });
   await page.goto('/provider');
-  await page.getByRole('button', { name: lang === 'ar' ? 'ملفي' : 'Profile' }).click();
+  await page.getByRole('link', { name: lang === 'ar' ? 'ملفي' : 'Profile' }).click();
   await expect(page.getByRole('region', { name: COPY[lang].axesHeading })).toBeVisible();
 }
 

@@ -146,7 +146,7 @@ async function openPortfolio(
   // The portfolio lives on the profile tab. The bottom-nav label is
   // "Profile" / "ملفي" — matched exactly rather than by a loose regex, so this
   // does not silently start clicking some other control if the nav changes.
-  await page.getByRole('button', { name: lang === 'ar' ? 'ملفي' : 'Profile' }).click();
+  await page.getByRole('link', { name: lang === 'ar' ? 'ملفي' : 'Profile' }).click();
   await expect(page.getByRole('region', { name: COPY[lang].section })).toBeVisible();
 }
 

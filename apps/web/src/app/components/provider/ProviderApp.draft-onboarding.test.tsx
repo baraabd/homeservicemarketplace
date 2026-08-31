@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 import type { QueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
@@ -131,12 +131,17 @@ let mock: MockAdapter;
 let qc: QueryClient;
 
 function renderProvider() {
+  // Mounted under `provider/*`, as production mounts it: the workspace owns
+  // real routes now, and rendering it bare resolves its inner <Routes>
+  // against "/" instead of "/provider".
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={['/provider']}>
       <AuthProvider client={qc}>
         <LanguageProvider>
           <EcosystemProvider>
-            <ProviderApp />
+            <Routes>
+              <Route path="/provider/*" element={<ProviderApp />} />
+            </Routes>
           </EcosystemProvider>
         </LanguageProvider>
       </AuthProvider>

@@ -400,18 +400,21 @@ test.describe('Provider onboarding wizard — the journey', () => {
     await openWizard(page, draft({ currentStep: 'AVAILABILITY' }));
     await expect(page.getByRole('heading', { name: /your hours/i })).toBeVisible();
 
+    // The wizard IS a route now (Mode B): /provider/profile, reached through
+    // the workspace router rather than a tab held in component state.
+    await expect(page).toHaveURL(/\/provider\/profile$/);
+
     await page.reload();
 
-    // A reload lands on the provider shell's default tab, so the status
-    // surface is what paints first — the wizard is not a route of its own.
-    // Re-entering is the honest journey, and the point of the test is what
-    // happens AFTER: the server's resume point is still AVAILABILITY, not the
-    // first step, so the provider is returned to where they left off rather
-    // than to the top of a nine-step form.
-    const reenter = page.getByRole('button', { name: /continue onboarding/i });
-    await reenter.waitFor({ state: 'visible' });
-    await reenter.click();
-
+    // Straight back into the wizard, at the step the server names.
+    //
+    // This test used to re-enter through "Continue onboarding" after a reload,
+    // because a reload landed on the shell's default tab and painted the status
+    // surface instead — the wizard had no address to return to. That detour is
+    // gone: the URL survives the reload, so the provider resumes where they
+    // were. Both halves still matter — the right SCREEN and the right STEP —
+    // so both are asserted.
+    await expect(page).toHaveURL(/\/provider\/profile$/);
     await expect(page.getByRole('heading', { name: /your hours/i })).toBeVisible();
   });
 });

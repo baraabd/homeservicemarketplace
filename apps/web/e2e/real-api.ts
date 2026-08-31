@@ -156,12 +156,32 @@ const PASSWORD = 'a-reasonable-passphrase-1';
  */
 export async function registerProvider(): Promise<Account> {
   const jar = newJar();
-  const email = `v2e2e-${Date.now()}-${Math.floor(Math.random() * 1e6)}@itest.local`;
+  const freshEmail = () => `v2e2e-${Date.now()}-${Math.floor(Math.random() * 1e6)}@itest.local`;
 
-  const registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
+  // One retry, and only for a 5xx.
+  //
+  // The first SMTP connection of a run can time out against a cold mail
+  // catcher ("Greeting never received") and surface as a 500 from register.
+  // That is an environment warm-up artefact, not the contract — the same
+  // retry, for the same reason, is in auth-cookies.spec.ts.
+  //
+  // The retry uses a NEW address on purpose: a 500 from the mail step means
+  // the account may already have been created before the send failed, so
+  // reusing the address would collide with it and turn a warm-up blip into a
+  // 409 that looks like a registration bug. A 4xx is NOT retried — that is a
+  // real refusal and must fail here.
+  let email = freshEmail();
+  let registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
     method: 'POST',
     body: { email, password: PASSWORD, firstName: 'Pat', lastName: 'Provider' },
   });
+  if (registered.status >= 500) {
+    email = freshEmail();
+    registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
+      method: 'POST',
+      body: { email, password: PASSWORD, firstName: 'Pat', lastName: 'Provider' },
+    });
+  }
   expect(registered.status, 'register should be accepted').toBeLessThan(400);
 
   const verified = await api(jar, '/v1/auth/verify-otp', {
