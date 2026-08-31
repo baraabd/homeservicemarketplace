@@ -126,6 +126,21 @@ const EN: ReviewCopy = {
     'timezone:REQUIRED': 'Set your timezone.',
     'acceptedConsentVersion:REQUIRED': 'Agree to the terms below.',
     'acceptedConsentVersion:STALE_VERSION': 'The terms have changed — agree to the new version.',
+    // The policy emits the consent issue under the field name `consent`, not
+    // `acceptedConsentVersion` — that is the DRAFT column it writes, not the
+    // issue it raises. Without this key the one blocker standing between a
+    // finished application and submission rendered as the fallback below:
+    // "Something here still needs attention", on the very screen that collects
+    // it. See provider-onboarding.policy.ts.
+    'consent:REQUIRED': 'Agree to the terms below to submit your application.',
+    'phoneNumber:NOT_VERIFIED': 'Confirm your phone number.',
+    // AWAITING_REVIEW is not REQUIRED, and saying so matters: the provider has
+    // done their part and is waiting on us. Telling them a field is required
+    // says they have not.
+    'serviceCategories:AWAITING_REVIEW': 'Your services are with us for review.',
+    'specialties:REQUIRED': 'Choose at least one specialty you work in.',
+    'specialties:AWAITING_REVIEW': 'Your specialties are with us for review.',
+    'yearsOfExperience:OUT_OF_RANGE': 'Check the number of years you entered.',
   },
   blockerFallback: 'Something here still needs attention.',
 
@@ -196,6 +211,12 @@ const AR: ReviewCopy = {
     'timezone:REQUIRED': 'حدّد المنطقة الزمنية.',
     'acceptedConsentVersion:REQUIRED': 'وافق على الشروط أدناه.',
     'acceptedConsentVersion:STALE_VERSION': 'تغيّرت الشروط — وافق على الإصدار الجديد.',
+    'consent:REQUIRED': 'وافق على الشروط أدناه لإرسال طلبك.',
+    'phoneNumber:NOT_VERIFIED': 'أكّد رقم هاتفك.',
+    'serviceCategories:AWAITING_REVIEW': 'خدماتك قيد المراجعة لدينا.',
+    'specialties:REQUIRED': 'اختر تخصصاً واحداً على الأقل.',
+    'specialties:AWAITING_REVIEW': 'تخصصاتك قيد المراجعة لدينا.',
+    'yearsOfExperience:OUT_OF_RANGE': 'راجع عدد السنوات الذي أدخلته.',
   },
   blockerFallback: 'ما زال هناك ما يحتاج انتباهك.',
 

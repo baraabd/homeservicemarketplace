@@ -59,7 +59,7 @@ export function OnboardingShell({
         className="flex-shrink-0 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="flex items-center gap-2 px-3 py-2">
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-2">
           <button
             type="button"
             onClick={onClose}
@@ -101,7 +101,13 @@ export function OnboardingShell({
           The only scroll container. Horizontal overflow is clipped here as
           well as prevented by the layout, so a single long unbroken string
           in server-provided copy cannot make the PAGE scroll sideways. */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">{children}</main>
+      <main className="flex-1 overflow-y-auto overflow-x-hidden">
+        {/* Mode B — a readable measure. The shell is full-bleed now that Root no
+            longer caps provider routes at 430px, so the CONTENT has to own its
+            width: a form line that runs the whole of a 1440px display is
+            harder to read than one that does not. */}
+        <div className="mx-auto w-full max-w-3xl px-4 py-4 md:py-6">{children}</div>
+      </main>
 
       {/* ── Actions ───────────────────────────────────────────────────────
           Padded for the home indicator. `env(...)` with an explicit 0px
@@ -109,10 +115,14 @@ export function OnboardingShell({
           the whole declaration and the button ends up under the bar. */}
       {footer ? (
         <div
-          className="flex-shrink-0 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 pt-3"
+          className="flex-shrink-0 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 pt-3"
           style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
         >
-          {footer}
+          {/* The bar spans the viewport so its border reads as a real edge,
+              but its CONTENT tracks the same measure as the form above it —
+              otherwise the primary action drifts away from the fields it
+              submits on a wide display. */}
+          <div className="mx-auto w-full max-w-3xl px-4">{footer}</div>
         </div>
       ) : null}
     </div>

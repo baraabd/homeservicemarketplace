@@ -39,6 +39,49 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* ── Provider experience tokens (Mode B) ───────────────────────────────
+   * docs/provider-experience-v2/UX_UI_DESIGN_SYSTEM.md §4.
+   *
+   * Namespaced `--pv-` rather than folded into the shadcn scale above,
+   * because these carry PROVIDER-specific meaning (a task is blocked, an
+   * application is with us) that the generic primary/secondary/muted scale
+   * has no word for. Components consume these; nothing hard-codes a hex.
+   */
+  --pv-bg: #f8fafc;
+  --pv-surface: #ffffff;
+  --pv-surface-sunken: #f1f5f9;
+  --pv-border: #e2e8f0;
+  --pv-border-strong: #cbd5e1;
+  --pv-text: #0f172a;
+  /* #475569, not the #94a3b8 the legacy surfaces used: that is ~2.8:1 on
+   * white and fails WCAG AA for body text. */
+  --pv-text-muted: #475569;
+  --pv-accent: #2563eb;
+  --pv-accent-hover: #1d4ed8;
+  --pv-accent-subtle: #eff6ff;
+
+  /* Status. Each is paired with an icon and a word in the UI — never colour
+   * alone, which WCAG 1.4.1 forbids and colour-blind users cannot read. */
+  --pv-done: #15803d;
+  --pv-done-bg: #f0fdf4;
+  --pv-done-border: #bbf7d0;
+  --pv-todo: #475569;
+  --pv-todo-bg: #f8fafc;
+  --pv-todo-border: #e2e8f0;
+  --pv-blocked: #b45309;
+  --pv-blocked-bg: #fffbeb;
+  --pv-blocked-border: #fde68a;
+  --pv-waiting: #4338ca;
+  --pv-waiting-bg: #eef2ff;
+  --pv-waiting-border: #c7d2fe;
+  --pv-danger: #b91c1c;
+  --pv-danger-bg: #fef2f2;
+  --pv-danger-border: #fecaca;
+
+  --pv-focus: #2563eb;
+  --pv-shadow-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.08);
+  --pv-shadow-2: 0 -2px 12px rgb(15 23 42 / 0.08);
 }
 
 .dark {
@@ -76,6 +119,39 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.269 0 0);
   --sidebar-ring: oklch(0.439 0 0);
+
+  /* Provider tokens — dark. Same names, remapped; no component branches on
+   * theme. */
+  --pv-bg: #0f172a;
+  --pv-surface: #1e293b;
+  --pv-surface-sunken: #0f172a;
+  --pv-border: #334155;
+  --pv-border-strong: #475569;
+  --pv-text: #f8fafc;
+  --pv-text-muted: #cbd5e1;
+  --pv-accent: #60a5fa;
+  --pv-accent-hover: #93c5fd;
+  --pv-accent-subtle: #1e3a5f;
+
+  --pv-done: #4ade80;
+  --pv-done-bg: #052e16;
+  --pv-done-border: #166534;
+  --pv-todo: #cbd5e1;
+  --pv-todo-bg: #1e293b;
+  --pv-todo-border: #334155;
+  --pv-blocked: #fbbf24;
+  --pv-blocked-bg: #2c1e04;
+  --pv-blocked-border: #78350f;
+  --pv-waiting: #a5b4fc;
+  --pv-waiting-bg: #1e1b4b;
+  --pv-waiting-border: #3730a3;
+  --pv-danger: #f87171;
+  --pv-danger-bg: #300f0f;
+  --pv-danger-border: #7f1d1d;
+
+  --pv-focus: #60a5fa;
+  --pv-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
+  --pv-shadow-2: 0 -2px 12px rgb(0 0 0 / 0.5);
 }
 
 @theme inline {
@@ -117,6 +193,34 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Provider tokens as Tailwind utilities: bg-pv-surface, text-pv-muted,
+   * border-pv-border, and so on. */
+  --color-pv-bg: var(--pv-bg);
+  --color-pv-surface: var(--pv-surface);
+  --color-pv-surface-sunken: var(--pv-surface-sunken);
+  --color-pv-border: var(--pv-border);
+  --color-pv-border-strong: var(--pv-border-strong);
+  --color-pv-text: var(--pv-text);
+  --color-pv-muted: var(--pv-text-muted);
+  --color-pv-accent: var(--pv-accent);
+  --color-pv-accent-hover: var(--pv-accent-hover);
+  --color-pv-accent-subtle: var(--pv-accent-subtle);
+  --color-pv-done: var(--pv-done);
+  --color-pv-done-bg: var(--pv-done-bg);
+  --color-pv-done-border: var(--pv-done-border);
+  --color-pv-todo: var(--pv-todo);
+  --color-pv-todo-bg: var(--pv-todo-bg);
+  --color-pv-todo-border: var(--pv-todo-border);
+  --color-pv-blocked: var(--pv-blocked);
+  --color-pv-blocked-bg: var(--pv-blocked-bg);
+  --color-pv-blocked-border: var(--pv-blocked-border);
+  --color-pv-waiting: var(--pv-waiting);
+  --color-pv-waiting-bg: var(--pv-waiting-bg);
+  --color-pv-waiting-border: var(--pv-waiting-border);
+  --color-pv-danger: var(--pv-danger);
+  --color-pv-danger-bg: var(--pv-danger-bg);
+  --color-pv-danger-border: var(--pv-danger-border);
 }
 
 @layer base {
