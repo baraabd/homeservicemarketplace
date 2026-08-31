@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 
 import type { QueryClient } from '@tanstack/react-query';
@@ -36,7 +36,9 @@ function renderProvider() {
       <AuthProvider client={qc}>
         <LanguageProvider>
           <EcosystemProvider>
-            <ProviderApp />
+            <Routes>
+              <Route path="/provider/*" element={<ProviderApp />} />
+            </Routes>
           </EcosystemProvider>
         </LanguageProvider>
       </AuthProvider>
@@ -150,8 +152,15 @@ const TX_FIXTURE = {
 
 async function openWalletTab() {
   // Phase 4: the shell mounts only once the provider profile query has
-  // settled (no marketplace flash), so the tab bar must be AWAITED.
-  fireEvent.click(await screen.findByRole('button', { name: /^wallet|المحفظة/i }));
+  // settled (no marketplace flash), so the nav has to be AWAITED.
+  fireEvent.click(await screen.findByRole('link', { name: /^wallet|المحفظة/i }));
+
+  // Mode B: the wallet is a code-split route, so the click starts a dynamic
+  // import and the screen arrives a tick later behind Suspense. Wait for the
+  // screen ITSELF rather than giving the value assertions a longer timeout —
+  // waiting on the thing that has to happen is deterministic, whereas a bigger
+  // timeout just makes a race take longer to lose.
+  await screen.findByText(/Available Balance|الرصيد المتاح/i, undefined, { timeout: 5000 });
 }
 
 describe('WalletScreen — Sprint 5.6 (refined)', () => {

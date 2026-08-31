@@ -237,15 +237,22 @@ test.describe('onboarding v2 — the full-screen shell', () => {
     await openHub(page);
 
     // The provider tab bar, by its labels. None of them belongs on a form.
+    //
+    // Checked without naming a role. The workspace nav became LINKS in Mode B,
+    // and an assertion that only looked for buttons would have gone on passing
+    // for the wrong reason — it would report "no bottom nav" just as happily if
+    // the whole bar were rendered here as links. The nav's own test id is
+    // checked too, so this fails if the bar returns under any markup.
     for (const label of ['Jobs', 'My Bids', 'Chat', 'Wallet']) {
-      await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+      await expect(page.getByText(label, { exact: true })).toHaveCount(0);
     }
+    await expect(page.getByTestId('provider-bottom-nav')).toHaveCount(0);
   });
 
   test('the close control returns to the provider surface', async ({ page }) => {
     await openHub(page);
     await page.getByTestId('onboarding-v2-close').click();
-    await expect(page).toHaveURL(/\/provider$/);
+    await expect(page).toHaveURL(/\/provider\/status$/);
   });
 });
 
@@ -441,7 +448,7 @@ test.describe('onboarding v2 — the flag', () => {
     await page.goto('/provider/onboarding');
 
     // Bounced to /provider, and no V2 chrome anywhere.
-    await expect(page).toHaveURL(/\/provider$/);
+    await expect(page).toHaveURL(/\/provider\/status$/);
     await expect(page.getByTestId('onboarding-v2-shell')).toHaveCount(0);
   });
 
@@ -451,7 +458,7 @@ test.describe('onboarding v2 — the flag', () => {
     await stubProvider(page);
     await page.goto('/provider/onboarding/BASICS_IDENTITY');
 
-    await expect(page).toHaveURL(/\/provider$/);
+    await expect(page).toHaveURL(/\/provider\/status$/);
     await expect(page.getByTestId('onboarding-v2-shell')).toHaveCount(0);
   });
 

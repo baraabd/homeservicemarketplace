@@ -66,15 +66,28 @@ export const router = createBrowserRouter([
           { path: 'home/bookings', Component: HomePage },
           { path: 'home/messages', Component: HomePage },
           { path: 'home/profile', Component: HomePage },
-          { path: 'provider', Component: ProviderPage },
-
           // Sprint 9B.16 — the V2 onboarding surface. Full-screen, so it is a
           // ROUTE rather than a tab inside ProviderApp: the task the provider
           // is on has to survive a reload and a login round-trip, and tab
           // state in a component survives neither. Both paths bounce to
           // /provider while the flag is off.
+          //
+          // Declared BEFORE the workspace splat below. Static segments outrank
+          // a splat in React Router's ranking either way, so this is for the
+          // reader rather than the matcher — but it also keeps onboarding
+          // OUTSIDE the workspace status gate, which matters: that gate sends
+          // a non-ACTIVE provider to /provider/status, and onboarding is the
+          // one place such a provider must still be able to reach.
           { path: 'provider/onboarding', Component: ProviderOnboardingHubPage },
           { path: 'provider/onboarding/:taskId', Component: ProviderOnboardingTaskPage },
+
+          // Mode B — the workspace owns its own routes (jobs / bids /
+          // messages / wallet / profile / status) beneath this splat, for the
+          // same reason onboarding got routes above: a screen held in
+          // component state survives neither a reload nor a login round-trip,
+          // and cannot be linked to at all. Kept as a splat rather than
+          // spelled out here so the workspace stays one mountable unit.
+          { path: 'provider/*', Component: ProviderPage },
         ],
       },
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 
 // Phase 6 (Provider) — LiveJobsScreen mounts a Leaflet MapContainer
@@ -96,17 +96,21 @@ import { ProviderApp } from './ProviderApp';
 //   • Backend errors never render the raw payload.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderProvider() {
-  // Phase 5: ProviderProfileScreen now calls useNavigate() so the
-  // Sign Out button can route to /login. Tests must wrap in a
-  // MemoryRouter to provide router context. /provider is a sensible
-  // initial path even though the bottom-nav drives the in-app route.
+function renderProvider(initialPath = '/provider') {
+  // Mode B — the workspace owns real routes now, so it has to be mounted the
+  // way production mounts it: under `provider/*`. Rendering <ProviderApp />
+  // bare resolves its inner <Routes> against "/" instead of "/provider", and
+  // the catch-all then redirects to /provider forever. Mirroring the real
+  // route entry keeps the test honest about where the component lives, and
+  // lets a test start on any workspace screen by passing its URL.
   return render(
-    <MemoryRouter initialEntries={['/provider']}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <AuthProvider client={qc}>
         <LanguageProvider>
           <EcosystemProvider>
-            <ProviderApp />
+            <Routes>
+              <Route path="/provider/*" element={<ProviderApp />} />
+            </Routes>
           </EcosystemProvider>
         </LanguageProvider>
       </AuthProvider>
@@ -189,7 +193,7 @@ const MOCK_PROFILE = {
 // the live marketplace flash before being replaced. So the tab bar has to be
 // awaited rather than assumed present on the first tick.
 async function openProfileTab() {
-  const tab = await screen.findByRole('button', { name: /^profile|ملفي/i }, { timeout: 5000 });
+  const tab = await screen.findByRole('link', { name: /^profile|ملفي/i }, { timeout: 5000 });
   fireEvent.click(tab);
 }
 
@@ -427,7 +431,7 @@ describe('ProviderApp — shell top bar identity', () => {
     // The Bids tab renders the top bar (Live Jobs hides it).
     // Phase 4: the shell mounts only once the provider profile query has
     // settled (no marketplace flash), so the tab bar must be AWAITED.
-    fireEvent.click(await screen.findByRole('button', { name: /^my bids|عروضي/i }));
+    fireEvent.click(await screen.findByRole('link', { name: /^my bids|عروضي/i }));
 
     await waitFor(() => expect(screen.getAllByText('Grace Hopper').length).toBeGreaterThan(0));
     expect(screen.queryByText(/Omar Al-Khalid/i)).toBeNull();
@@ -446,7 +450,7 @@ describe('ProviderApp — shell top bar identity', () => {
     renderProvider();
     // Phase 4: the shell mounts only once the provider profile query has
     // settled (no marketplace flash), so the tab bar must be AWAITED.
-    fireEvent.click(await screen.findByRole('button', { name: /^my bids|عروضي/i }));
+    fireEvent.click(await screen.findByRole('link', { name: /^my bids|عروضي/i }));
 
     await waitFor(() => expect(screen.getAllByText('Trade Name LLC').length).toBeGreaterThan(0));
     // Auth identity (Grace Hopper) is overridden.

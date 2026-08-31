@@ -120,7 +120,7 @@ test.describe('provider onboarding v2 — real browser, real API', () => {
     await page.goto('/provider/onboarding');
 
     // Bounced out of the V2 route entirely.
-    await expect(page).toHaveURL(/\/provider$/);
+    await expect(page).toHaveURL(/\/provider\/status$/);
     await expect(page.getByTestId('onboarding-v2-shell')).toHaveCount(0);
 
     // And what the provider gets instead is the Sprint 8 wizard, identified by

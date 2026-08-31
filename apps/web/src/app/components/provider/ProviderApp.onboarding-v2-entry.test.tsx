@@ -69,8 +69,14 @@ function renderProvider() {
       <AuthProvider client={qc}>
         <LanguageProvider>
           <EcosystemProvider>
+            {/* Mirrors routes.ts: the onboarding surface is declared BEFORE
+                the workspace splat and is not part of it. Without that first
+                entry the splat swallows /provider/onboarding, and the probe
+                below never sees the navigation this file exists to assert. */}
             <Routes>
-              <Route path="/provider" element={<ProviderApp />} />
+              <Route path="/provider/onboarding" element={<LocationProbe />} />
+              <Route path="/provider/onboarding/:taskId" element={<LocationProbe />} />
+              <Route path="/provider/*" element={<ProviderApp />} />
               <Route path="*" element={<LocationProbe />} />
             </Routes>
           </EcosystemProvider>
