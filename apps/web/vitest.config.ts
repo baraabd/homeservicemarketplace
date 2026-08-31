@@ -21,6 +21,22 @@ export default mergeConfig(
       environment: 'happy-dom',
       setupFiles: ['./src/test-setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
+      // Feature flags start UNSET, whatever the developer has in .env.
+      //
+      // Vitest inherits Vite's env loading, so a local
+      // `VITE_PROVIDER_ONBOARDING_V2=true` — exactly what a developer needs to
+      // see the V2 surface while working on it — silently turned the flag on
+      // inside the test run. "is OFF when nothing is configured" then failed,
+      // and every flag-OFF path rendered V2 instead of the legacy wizard.
+      //
+      // The suite must not depend on a machine's .env: the DEFAULT is a
+      // contract, and a test that only holds on a laptop with no .env is not
+      // testing it. Tests that want the flag on stub it explicitly
+      // (`vi.stubEnv`), which is both clearer and independent of the
+      // environment it runs in.
+      env: {
+        VITE_PROVIDER_ONBOARDING_V2: '',
+      },
       // Must stay comfortably ABOVE the testing-library asyncUtilTimeout set
       // in test-setup.ts. Vitest's default per-test budget is also 5000ms, so
       // leaving it there means a waitFor that is about to fail gets killed by

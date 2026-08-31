@@ -142,6 +142,13 @@ export default defineConfig({
             // The UI-level scenarios never reach the network; the persona workflow
             // spec points at a real API through E2E_API_URL.
             VITE_API_URL: process.env.E2E_API_URL ?? 'http://127.0.0.1:4010',
+            // Feature flags start UNSET here, whatever the developer has in
+            // apps/web/.env — CI has no .env, so inheriting one makes a local
+            // run disagree with CI about which surface the bundle serves. The
+            // specs that need V2 seed the per-browser override themselves, in
+            // both directions, which is what makes both states provable
+            // against one bundle.
+            VITE_PROVIDER_ONBOARDING_V2: '',
           },
         },
       }),
