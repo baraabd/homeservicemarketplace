@@ -6,10 +6,8 @@ import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contra
 
 import { isPlausibleE164 } from '../../../../lib/provider/phone-format';
 import { providerQueryKeys } from '../../../../lib/provider/query-keys';
-import {
-  useOnboardingDraft,
-  useOnboardingStepAutosave,
-} from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { AvatarUploader } from '../avatar/AvatarUploader';
 import { BASICS_COPY, type Lang } from '../copy/basics-copy';
 

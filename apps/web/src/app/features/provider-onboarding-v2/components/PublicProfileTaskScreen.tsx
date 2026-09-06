@@ -7,10 +7,8 @@ import type {
 } from '@homeservicemarketplace/contracts';
 
 import { PortfolioSection } from '../../../components/provider/portfolio/PortfolioSection';
-import {
-  useOnboardingDraft,
-  useOnboardingStepAutosave,
-} from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { usePublicProfilePreview } from '../../../hooks/provider/useProviderPortfolio';
 import {
   TITLE_MAX_LENGTH,

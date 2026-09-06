@@ -9,6 +9,7 @@ import { providerQueryKeys } from '../../../../lib/provider/query-keys';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { ServicesTaskScreen } from './ServicesTaskScreen';
 import { SERVICES_COPY } from '../copy/services-copy';
+import { ProviderOnboardingAutosaveProvider } from '../autosave/ProviderOnboardingAutosaveProvider';
 
 // Sprint 9B.18 — V2 Task 2.
 //
@@ -156,7 +157,9 @@ function renderScreen(view = DRAFT(), lang: 'en' | 'ar' = 'en', editable = true)
     <MemoryRouter>
       <QueryClientProvider client={client}>
         <LanguageProvider>
-          <ServicesTaskScreen view={view as never} lang={lang} editable={editable} />
+          <ProviderOnboardingAutosaveProvider>
+            <ServicesTaskScreen view={view as never} lang={lang} editable={editable} />
+          </ProviderOnboardingAutosaveProvider>
         </LanguageProvider>
       </QueryClientProvider>
     </MemoryRouter>,

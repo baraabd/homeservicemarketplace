@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 
 import { Button } from '../../../components/ds/Button';
 import { useLang } from '../../../i18n/LanguageContext';
@@ -12,6 +12,9 @@ import {
   type Lang,
 } from '../copy/onboarding-hub-copy';
 import { OnboardingShell } from './OnboardingShell';
+import { ExitBlockedNotice } from './ExitBlockedNotice';
+import { useOnboardingExit } from '../autosave/useOnboardingExit';
+import { EXIT_COPY } from '../copy/exit-copy';
 import { BasicsTask } from './BasicsTaskScreen';
 import { ServicesTask } from './ServicesTaskScreen';
 import { ServiceAreaTask } from './ServiceAreaTaskScreen';
@@ -50,15 +53,24 @@ const TASK_COPY_BY_LANG = {
 export function OnboardingTaskScreen() {
   const { lang: rawLang } = useLang();
   const lang = (rawLang === 'ar' ? 'ar' : 'en') as Lang;
-  const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
+
+  // Sprint 9B.28 — the ONLY way out of a task.
+  //
+  // This used to be `() => navigate('/provider/onboarding')`, wired to both
+  // the header Close and the footer button. It is synchronous, so an edit
+  // resting in the autosave debounce — every edit made in the second before
+  // the tap — died with the component that owned the timer. `exit()` drains
+  // the whole draft first and stays put if the drain fails.
+  const exit = useOnboardingExit();
 
   const query = useProviderOnboardingHub();
   const errorStatus = query.error?.response?.status ?? null;
   const view = deriveHubView({ isFetched: query.isFetched, data: query.data, errorStatus });
 
   const local = TASK_COPY_BY_LANG[lang];
-  const backToHub = () => navigate('/provider/onboarding');
+  const exitCopy = EXIT_COPY[lang];
+  const backToHub = () => exit.exit('/provider/onboarding');
 
   // Until the hub has resolved there is nothing to decide. Rendering the task
   // optimistically would mean showing a surface for a task the server may say
@@ -106,13 +118,32 @@ export function OnboardingTaskScreen() {
     <OnboardingShell
       title={copy.title}
       onClose={backToHub}
+      closeBusy={exit.isLeaving}
       footer={
-        <Button variant="secondary" tone="provider" fullWidth onClick={backToHub}>
-          {local.back}
+        <Button
+          variant="secondary"
+          tone="provider"
+          fullWidth
+          onClick={backToHub}
+          state={exit.isLeaving ? 'loading' : 'default'}
+        >
+          {/* The label is the honest one while the flush runs: the button did
+              not fail to respond, it is finishing the provider's last edit. */}
+          {exit.isLeaving ? exitCopy.leaving : local.back}
         </Button>
       }
     >
       <div className="flex flex-col gap-3" data-testid={`task-screen-${task.id}`}>
+        {/* First in the column: it explains why a navigation the provider
+            just asked for did not happen, so it must not be below the fold of
+            a long form. */}
+        <ExitBlockedNotice
+          state={exit.state}
+          lang={lang}
+          onRetry={exit.retry}
+          onDismiss={exit.dismiss}
+        />
+
         <p className="break-words text-slate-500 dark:text-slate-400" style={{ fontSize: '13px' }}>
           {copy.description}
         </p>

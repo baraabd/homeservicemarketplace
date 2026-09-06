@@ -4,10 +4,8 @@ import { MapPin, ShieldCheck } from 'lucide-react';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
 
 import { COUNTRY_DIAL_CODES } from '../../../../lib/country-dial-codes';
-import {
-  useOnboardingDraft,
-  useOnboardingStepAutosave,
-} from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { SERVICE_AREA_COPY, type Lang } from '../copy/service-area-copy';
 import { ServiceAreaRewardCard } from './ServiceAreaRewardCard';
 

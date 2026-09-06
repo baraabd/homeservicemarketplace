@@ -96,7 +96,25 @@ export function useWithdrawOnboarding() {
 }
 
 /**
- * Autosave for one step.
+ * Autosave for one step of the SPRINT 8 (V1) WIZARD. Legacy.
+ *
+ * Sprint 9B.28 — V2 no longer uses this. Its writes go through
+ * `ProviderOnboardingAutosaveProvider`, which owns ONE queue and ONE version
+ * handshake for the whole draft; see that file for why per-component instances
+ * could not be made safe.
+ *
+ * This copy stays because V1 is still the DEFAULT onboarding surface — the V2
+ * flag ships off — and rewriting the live fallback's save semantics is not
+ * this sprint's scope or risk budget. V1 is much less exposed than V2 was: it
+ * mounts ONE step at a time, so the two-instances-one-version race that
+ * produced 409s on the V2 Basics and Services screens cannot occur here.
+ *
+ * What it still carries, and what is tracked as residual risk:
+ *   - `status` has no `dirty` state, so a `saved` chip outlives a newer edit;
+ *   - `flush()` returns early while a write is open, so `saveNow()` is not a
+ *     true drain.
+ *
+ * Do not add callers. New work belongs on the coordinator.
  *
  * Owns four things the wizard would otherwise get wrong in four places:
  *
@@ -111,7 +129,7 @@ export function useWithdrawOnboarding() {
  *                edit is still in memory and fires when the connection
  *                returns, so a provider in a basement does not lose a screen.
  */
-export function useOnboardingStepAutosave(step: ProviderOnboardingStep) {
+export function useLegacyWizardStepAutosave(step: ProviderOnboardingStep) {
   const qc = useQueryClient();
   const [status, setStatus] = useState<AutosaveStatus>({ kind: 'idle' });
   const [isDirty, setDirty] = useState(false);

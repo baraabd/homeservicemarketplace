@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, CloudOff, Loader2 } from 'lucide-react';
+import { AlertTriangle, Check, CloudOff, Loader2, PencilLine, RefreshCw } from 'lucide-react';
 
 import { AUTOSAVE_COPY, type Lang } from '../copy/autosave-copy';
 import type { AutosaveStatusKind } from '../autosave-status';
@@ -48,6 +48,16 @@ export function AutosaveStatus({ status, lang, testIdPrefix }: AutosaveStatusPro
           versus "failed" is exactly the distinction that must not depend on
           hue. The icons are aria-hidden because the adjacent text already
           says it. */}
+      {/* Sprint 9B.28 — 'dirty' is a REAL state now. It renders because a
+          screen that shows nothing between the keystroke and the save is the
+          screen that used to show a stale 'Saved' instead. */}
+      {status.kind === 'dirty' ? (
+        <span className="flex items-center gap-1 text-slate-500">
+          <PencilLine size={12} aria-hidden="true" />
+          {copy.dirty}
+        </span>
+      ) : null}
+
       {status.kind === 'saving' ? (
         <span className="flex items-center gap-1 text-slate-500">
           <Loader2 size={12} className="animate-spin" aria-hidden="true" />
@@ -57,8 +67,16 @@ export function AutosaveStatus({ status, lang, testIdPrefix }: AutosaveStatusPro
 
       {status.kind === 'saved' ? (
         <span className="flex items-center gap-1 text-emerald-700">
-          <Check size={12} aria-hidden="true" />
-          {copy.saved}
+          {/* The write is acknowledged either way — only the DERIVED task
+              statuses are behind — so this stays green and stays 'Saved'.
+              Downgrading it to a warning would tell the provider their data
+              is at risk when it is not. */}
+          {status.projectionStale ? (
+            <RefreshCw size={12} aria-hidden="true" />
+          ) : (
+            <Check size={12} aria-hidden="true" />
+          )}
+          {status.projectionStale ? copy.savedProjectionStale : copy.saved}
         </span>
       ) : null}
 

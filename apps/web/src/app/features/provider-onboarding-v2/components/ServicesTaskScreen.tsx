@@ -10,10 +10,8 @@ import type {
 
 import { validateProfessionalTitle } from '../../../../lib/provider/title-format';
 import { useEquipmentCatalog, useServiceCategories } from '../../../../lib/use-service-categories';
-import {
-  useOnboardingDraft,
-  useOnboardingStepAutosave,
-} from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { SpecialtyPicker } from '../services/SpecialtyPicker';
 import { SERVICES_COPY, STATE_TONE, type Lang } from '../copy/services-copy';
 
