@@ -131,13 +131,18 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
     (Number.isFinite(yearNumber) && yearNumber >= MIN_START_YEAR && yearNumber <= thisYear);
   const derivedYears = yearValid && startYear !== '' ? thisYear - yearNumber : null;
 
-  const commitStartYear = () => {
-    if (!yearValid) return;
+  const commitStartYear = (next: string = startYear) => {
+    // Validity is recomputed from the value being committed, not read from the
+    // render closure: on a keystroke the closure still describes the previous
+    // character, so a half-typed "20" would be judged by "2"'s verdict.
+    const n = Number(next);
+    const valid = next === '' || (Number.isInteger(n) && n >= MIN_START_YEAR && n <= thisYear);
+    if (!valid) return;
     // Stored as a DATE, not a bucket. The server derives years from it so the
     // stored fact does not silently age — which is the whole reason the schema
     // carries professionSince alongside the count.
     experienceAutosave.save({
-      professionSince: startYear === '' ? null : `${startYear}-01-01T00:00:00.000Z`,
+      professionSince: next === '' ? null : `${next}-01-01T00:00:00.000Z`,
     });
   };
 
@@ -306,8 +311,14 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
           disabled={!editable}
           aria-invalid={!yearValid || undefined}
           aria-describedby="profession-start-year-hint"
-          onChange={(event) => setStartYear(event.target.value)}
-          onBlur={commitStartYear}
+          onChange={(event) => {
+            setStartYear(event.target.value);
+            // Sprint 9B.28 — the coordinator hears the keystroke now, so the
+            // status goes `dirty` immediately instead of showing the previous
+            // write's "Saved" until blur.
+            commitStartYear(event.target.value);
+          }}
+          onBlur={() => commitStartYear(startYear)}
           className="w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           style={{ fontSize: '14px', minHeight: '44px' }}
         />

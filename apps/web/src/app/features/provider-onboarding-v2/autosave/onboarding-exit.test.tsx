@@ -42,6 +42,7 @@ const HUB = {
     hubTask('WORK_AREA', 'COVERAGE'),
     hubTask('WORKING_HOURS', 'COVERAGE'),
     hubTask('PORTFOLIO', 'PROFILE'),
+    hubTask('REVIEW_SUBMISSION', 'REVIEW'),
   ],
   progress: { complete: 0, total: 6 },
   nextAction: { kind: 'COMPLETE_TASK', taskId: 'BASICS_IDENTITY' },
@@ -92,6 +93,12 @@ const DRAFT = (version = 3) => ({
       policyVersion: null,
     },
     resolvedTimezone: { resolved: null, display: null, needsConfirmation: false },
+    availability: [],
+    timezone: null,
+    equipment: [],
+    transportModes: [],
+    primaryServiceCategoryId: null,
+    professionSince: null,
   },
 });
 
@@ -212,6 +219,25 @@ const TASKS = [
       const title = await screen.findByTestId('title-input');
       fireEvent.change(title, { target: { value: 'Master electrician' } });
       fireEvent.blur(title);
+    },
+  },
+  {
+    id: 'WORKING_HOURS',
+    step: 'AVAILABILITY',
+    edit: async () => {
+      // The timezone select commits on change: a picker has no half-typed
+      // state to protect, so there is nothing to hold back.
+      const tz = await screen.findByTestId('timezone-select');
+      fireEvent.change(tz, { target: { value: 'Asia/Damascus' } });
+    },
+  },
+  {
+    id: 'SERVICES_EXPERIENCE',
+    step: 'EXPERIENCE',
+    edit: async () => {
+      const year = await screen.findByTestId('profession-start-year');
+      fireEvent.change(year, { target: { value: '2015' } });
+      fireEvent.blur(year);
     },
   },
 ] as const;
@@ -413,5 +439,24 @@ describe('a keystroke reaches the coordinator before the blur does', () => {
 
     await waitFor(() => expect(patchesFor('IDENTITY').length).toBeGreaterThan(0));
     expect(patchesFor('IDENTITY').at(-1)?.data).toContain('Ada');
+  });
+});
+
+describe('REVIEW_SUBMISSION: the task that collects nothing', () => {
+  it('exits immediately, with no write, because there is nothing queued', async () => {
+    // The sixth task owns no autosaved field — consent is an explicit button,
+    // not a form that saves as you go. Its exit must therefore be INSTANT.
+    //
+    // This is the other half of the guard's contract and the easier half to
+    // get wrong: a flush-before-navigate that waits on a clean draft would
+    // make every exit feel slow, and gating it on "is anything dirty?" is what
+    // keeps it honest.
+    renderTask('REVIEW_SUBMISSION');
+    await screen.findByTestId('task-screen-REVIEW_SUBMISSION');
+
+    fireEvent.click(screen.getByTestId('onboarding-v2-close'));
+
+    await waitFor(() => expect(onHub()).toBe(true));
+    expect(mock.history.patch).toHaveLength(0);
   });
 });
