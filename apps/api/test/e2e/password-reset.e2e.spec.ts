@@ -23,6 +23,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 
 import { withAdvisoryLock } from '../support/db-isolation';
+import { makeTestSecret } from '../support/test-secrets';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -105,7 +106,7 @@ d('Password reset — real HTTP round trip', () => {
     const { AppConfigService } = require('../../src/config/app-config.service');
     const { AllExceptionsFilter } = require('../../src/infrastructure/http/all-exceptions.filter');
 
-    const SECRET = 'e2e_secret_at_least_32_chars_1234567890';
+    const SECRET = makeTestSecret('password-reset-e2e');
     const config = {
       get: (k: string) => {
         const v: Record<string, unknown> = {

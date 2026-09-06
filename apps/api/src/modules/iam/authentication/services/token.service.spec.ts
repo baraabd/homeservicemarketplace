@@ -2,8 +2,9 @@ import { JwtService } from '@nestjs/jwt';
 
 import type { AppConfigService } from '../../../../config/app-config.service';
 import { TokenService } from './token.service';
+import { makeTestSecret } from '../../../../../test/support/test-secrets';
 
-const SECRET = 'test_secret_at_least_32_characters_long_1234';
+const SECRET = makeTestSecret('iam-jwt');
 
 function mkConfig(overrides: Record<string, unknown> = {}): AppConfigService {
   const defaults: Record<string, unknown> = {

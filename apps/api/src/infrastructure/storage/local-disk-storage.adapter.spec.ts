@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 
 import type { AppConfigService } from '../../config/app-config.service';
 import { LocalDiskStorageAdapter, signToken, validateKey } from './local-disk-storage.adapter';
+import { makeTestSecret } from '../../../test/support/test-secrets';
 
 // Pure-function + filesystem-level coverage. The HTTP plumbing (PUT
 // /v1/media/uploads/* + GET /v1/media/files/*) is covered separately
@@ -11,7 +12,7 @@ import { LocalDiskStorageAdapter, signToken, validateKey } from './local-disk-st
 
 function makeConfig(over: Record<string, string | undefined> = {}): AppConfigService {
   const defaults: Record<string, string | undefined> = {
-    JWT_ACCESS_SECRET: 'test-jwt-secret-at-least-32-bytes-long-aaaaa',
+    JWT_ACCESS_SECRET: makeTestSecret('media-jwt'),
     PORT: '4000',
     PUBLIC_API_URL: '',
     LOCAL_STORAGE_DIR: '',
@@ -154,7 +155,11 @@ describe('LocalDiskStorageAdapter', () => {
     const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
     const expired = Math.floor(Date.now() / 1000) - 60;
     const sig = signToken({
-      secret: 'test-jwt-secret-at-least-32-bytes-long-aaaaa',
+      // The SAME secret the adapter is configured with: MEDIA_SIGNING_SECRET
+      // is empty here, so it falls back to JWT_ACCESS_SECRET. Signing with a
+      // different one would fail this as 'signature-mismatch' and stop it
+      // testing expiry at all — which is the test directly above.
+      secret: makeTestSecret('media-jwt'),
       key: 'r/k.jpg',
       exp: expired,
       contentType: 'image/jpeg',

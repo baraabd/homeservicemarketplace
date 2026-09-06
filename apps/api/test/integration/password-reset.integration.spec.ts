@@ -19,6 +19,7 @@ export {}; // module marker — see migration-bootstrap.spec.ts.
 // real admin@admin.com and all seeded data are left untouched.
 
 import { withAdvisoryLock } from '../support/db-isolation';
+import { makeTestSecret } from '../support/test-secrets';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -139,7 +140,7 @@ d('Password reset flow (real Postgres)', () => {
     const { AuditService } = require('../../src/modules/iam/audit/audit.service');
     const { InMemoryMailAdapter } = require('../../src/infrastructure/mail/in-memory-mail.adapter');
 
-    const SECRET = 'integration_secret_at_least_32_chars_123456';
+    const SECRET = makeTestSecret('password-reset');
     const config = {
       get: (k: string) => {
         const v: Record<string, unknown> = {
