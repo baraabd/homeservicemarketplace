@@ -372,3 +372,46 @@ describe('repeated taps', () => {
     await waitFor(() => expect(onHub()).toBe(true));
   });
 });
+
+describe('a keystroke reaches the coordinator before the blur does', () => {
+  it('goes dirty on the first character, over a previous "Saved"', async () => {
+    // Sprint 9B.28 — caught by the real-stack journey, not by a unit test,
+    // which is why it is pinned here now.
+    //
+    // The text fields committed on BLUR only. Between the keystroke and the
+    // blur the coordinator knew nothing, so the chip kept showing the PREVIOUS
+    // write's "Saved" over text the server had never seen. Every exit control
+    // happens to blur the field on its way to being clicked, so the DATA was
+    // safe — but the status was not, and a status that lies about saved data
+    // is the whole defect this sprint is named after.
+    renderTask('BASICS_IDENTITY');
+    await screen.findByTestId('task-screen-BASICS_IDENTITY');
+    const field = await screen.findByTestId('field-displayName');
+
+    // One complete save, so a real "Saved" exists to go stale.
+    fireEvent.change(field, { target: { value: 'First value' } });
+    fireEvent.blur(field);
+    await waitFor(() =>
+      expect(screen.getByTestId('basics-save-status')).toHaveAttribute('data-status', 'saved'),
+    );
+
+    // Type again and do NOT blur.
+    fireEvent.change(field, { target: { value: 'Second value' } });
+    expect(screen.getByTestId('basics-save-status')).not.toHaveAttribute('data-status', 'saved');
+  });
+
+  it('commits the character just typed, not the one before it', async () => {
+    // `onCommit` takes the value as an argument for this reason: on a
+    // keystroke the render closure still holds the previous value, so a
+    // closure-read commit writes the text one character behind the screen.
+    renderTask('BASICS_IDENTITY');
+    await screen.findByTestId('task-screen-BASICS_IDENTITY');
+    const field = await screen.findByTestId('field-displayName');
+
+    fireEvent.change(field, { target: { value: 'Ada' } });
+    fireEvent.click(screen.getByTestId('onboarding-v2-close'));
+
+    await waitFor(() => expect(patchesFor('IDENTITY').length).toBeGreaterThan(0));
+    expect(patchesFor('IDENTITY').at(-1)?.data).toContain('Ada');
+  });
+});
