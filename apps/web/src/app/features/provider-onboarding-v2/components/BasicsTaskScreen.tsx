@@ -6,10 +6,8 @@ import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contra
 
 import { isPlausibleE164 } from '../../../../lib/provider/phone-format';
 import { providerQueryKeys } from '../../../../lib/provider/query-keys';
-import {
-  useOnboardingDraft,
-  useOnboardingStepAutosave,
-} from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { AvatarUploader } from '../avatar/AvatarUploader';
 import { BASICS_COPY, type Lang } from '../copy/basics-copy';
 
@@ -208,7 +206,7 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
           value={legalName}
           disabled={!editable}
           onChange={setLegalName}
-          onCommit={() => typeAutosave.save({ legalBusinessName: legalName })}
+          onCommit={(next) => typeAutosave.save({ legalBusinessName: next })}
         />
       ) : null}
 
@@ -222,11 +220,11 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
         value={displayName}
         disabled={!editable}
         onChange={setDisplayName}
-        onCommit={() => {
+        onCommit={(next) => {
           // Never write an empty display name: the column is NOT NULL and the
           // server refuses it, so sending it would turn a blank field into an
           // error banner the provider cannot act on.
-          if (displayName.trim() !== '') identityAutosave.save({ displayName });
+          if (next.trim() !== '') identityAutosave.save({ displayName: next });
         }}
       />
 
@@ -243,13 +241,16 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
         type="tel"
         error={phoneError}
         onChange={setPhone}
-        onCommit={() => {
+        onCommit={(next) => {
           setPhoneTouched(true);
           // Only send something the server will accept. A round-trip whose
           // only outcome is a 400 teaches nothing the inline message has not
-          // already said.
-          if (phone.trim() === '' || isPlausibleE164(phone)) {
-            identityAutosave.save({ phoneNumber: phone.trim() === '' ? null : phone });
+          // already said. A half-typed number is therefore NOT queued — which
+          // is correct, and is why the phone field can still show "Saved" from
+          // an earlier write while an invalid number is on screen. The inline
+          // error is what speaks for that state.
+          if (next.trim() === '' || isPlausibleE164(next)) {
+            identityAutosave.save({ phoneNumber: next.trim() === '' ? null : next });
           }
         }}
       />
@@ -343,7 +344,13 @@ function Field({
   hint: string;
   value: string;
   onChange: (next: string) => void;
-  onCommit: () => void;
+  /** Called with the CURRENT value on every keystroke and again on blur.
+   *
+   *  Sprint 9B.28 — it takes the value as an argument rather than reading the
+   *  caller's closure, because on a keystroke that closure still holds the
+   *  PREVIOUS render's value; committing it would write the text one character
+   *  behind what is on screen. */
+  onCommit: (next: string) => void;
   disabled: boolean;
   required?: boolean;
   requiredLabel?: string;
@@ -375,11 +382,19 @@ function Field({
         disabled={disabled}
         aria-invalid={error ? true : undefined}
         aria-describedby={`${id}-hint`}
-        onChange={(event) => onChange(event.target.value)}
-        // Save on BLUR as well as on the debounce inside the autosave hook, so
-        // leaving a field commits it rather than waiting out a timer the
-        // provider cannot see.
-        onBlur={onCommit}
+        onChange={(event) => {
+          onChange(event.target.value);
+          // Sprint 9B.28 — the coordinator hears about the keystroke NOW.
+          //
+          // It debounces, so typing a sentence is still one write. What
+          // changes is that the status goes `dirty` on the first character
+          // instead of showing the PREVIOUS write's "Saved" until blur — and
+          // that an exit taken without blurring still has the text to flush.
+          onCommit(event.target.value);
+        }}
+        // Still on blur as well: leaving a field commits it rather than waiting
+        // out a timer the provider cannot see.
+        onBlur={() => onCommit(value)}
         className="w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900 disabled:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
         style={{ fontSize: '14px', minHeight: '44px' }}
       />

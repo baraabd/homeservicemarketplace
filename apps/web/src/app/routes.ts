@@ -15,6 +15,7 @@ import { AdminPage } from './pages/AdminPage';
 import {
   ProviderOnboardingHubPage,
   ProviderOnboardingTaskPage,
+  ProviderOnboardingLayout,
 } from './pages/ProviderOnboardingPage';
 import { RequireAuth, RequireAdmin, GuestOnly } from '../lib/route-guards';
 
@@ -78,8 +79,21 @@ export const router = createBrowserRouter([
           // OUTSIDE the workspace status gate, which matters: that gate sends
           // a non-ACTIVE provider to /provider/status, and onboarding is the
           // one place such a provider must still be able to reach.
-          { path: 'provider/onboarding', Component: ProviderOnboardingHubPage },
-          { path: 'provider/onboarding/:taskId', Component: ProviderOnboardingTaskPage },
+          //
+          // Sprint 9B.28 — both paths now sit under a LAYOUT route whose only
+          // job is to mount the autosave coordinator above them. Moving
+          // between the hub and a task, or between two tasks, must not unmount
+          // the write queue: the previous design put one autosave instance
+          // inside each task component, so leaving a task destroyed the timer
+          // holding the edit that leaving was supposed to save.
+          {
+            path: 'provider/onboarding',
+            Component: ProviderOnboardingLayout,
+            children: [
+              { index: true, Component: ProviderOnboardingHubPage },
+              { path: ':taskId', Component: ProviderOnboardingTaskPage },
+            ],
+          },
 
           // Mode B — the workspace owns its own routes (jobs / bids /
           // messages / wallet / profile / status) beneath this splat, for the

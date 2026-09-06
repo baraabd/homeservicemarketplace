@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { createMemoryRouter, Outlet, RouterProvider, useLocation } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { api } from '../../../../lib/api';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { OnboardingTaskScreen } from './OnboardingTaskScreen';
+import { ProviderOnboardingAutosaveProvider } from '../autosave/ProviderOnboardingAutosaveProvider';
 
 // Sprint 9B.16 — the per-task route: what makes the hub resumable.
 //
@@ -53,21 +54,47 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
-/** Enter directly at the task URL — this is what a reload does. */
+/**
+ * Enter directly at the task URL — this is what a reload does.
+ *
+ * Sprint 9B.28 — a DATA router, and the coordinator mounted on a LAYOUT route
+ * above the task, because that is now the production shape (see routes.ts).
+ * Two things depend on it:
+ *
+ *   - the exit guard blocks browser Back through `useBlocker`, which only
+ *     exists on a data router. A `MemoryRouter` here would have tested a
+ *     component that cannot render in the app.
+ *   - the autosave coordinator has to OUTLIVE the task component. Mounting it
+ *     inside the task route would reproduce the very defect this sprint fixed
+ *     while appearing to test the fix.
+ */
 function renderTask(taskId: string, lang: 'en' | 'ar' = 'en') {
   window.localStorage.setItem('hsm.lang', lang);
   const client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } });
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/provider/onboarding',
+        element: (
+          <ProviderOnboardingAutosaveProvider>
+            <Outlet />
+          </ProviderOnboardingAutosaveProvider>
+        ),
+        children: [
+          { index: true, element: <LocationProbe /> },
+          { path: ':taskId', element: <OnboardingTaskScreen /> },
+        ],
+      },
+      { path: '*', element: <LocationProbe /> },
+    ],
+    { initialEntries: [`/provider/onboarding/${taskId}`] },
+  );
   return render(
-    <MemoryRouter initialEntries={[`/provider/onboarding/${taskId}`]}>
-      <QueryClientProvider client={client}>
-        <LanguageProvider>
-          <Routes>
-            <Route path="/provider/onboarding/:taskId" element={<OnboardingTaskScreen />} />
-            <Route path="*" element={<LocationProbe />} />
-          </Routes>
-        </LanguageProvider>
-      </QueryClientProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <LanguageProvider>
+        <RouterProvider router={router} />
+      </LanguageProvider>
+    </QueryClientProvider>,
   );
 }
 

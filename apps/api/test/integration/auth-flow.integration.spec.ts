@@ -15,6 +15,7 @@ export {}; // module marker — see migration-bootstrap.spec.ts.
 // wrapping transaction).
 
 import { fixtureEmailDomain, withAdvisoryLock } from '../support/db-isolation';
+import { makeTestSecret } from '../support/test-secrets';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -108,7 +109,7 @@ d('IAM end-to-end flow (real Postgres)', () => {
     const { AuditService } = require('../../src/modules/iam/audit/audit.service');
     const { InMemoryMailAdapter } = require('../../src/infrastructure/mail/in-memory-mail.adapter');
 
-    const SECRET = 'integration_secret_at_least_32_chars_123456';
+    const SECRET = makeTestSecret('auth-flow');
     const config = {
       get: (k: string) => {
         const v: Record<string, unknown> = {

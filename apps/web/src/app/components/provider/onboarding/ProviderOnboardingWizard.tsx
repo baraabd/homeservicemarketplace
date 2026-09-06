@@ -34,7 +34,7 @@ import { useLang } from '../../../i18n/LanguageContext';
 import { useEquipmentCatalog, useServiceCategories } from '../../../../lib/use-service-categories';
 import {
   useOnboardingDraft,
-  useOnboardingStepAutosave,
+  useLegacyWizardStepAutosave,
   useSubmitOnboarding,
   useWithdrawOnboarding,
 } from '../../../hooks/provider/useProviderOnboarding';
@@ -376,7 +376,7 @@ function StepRail({
 function SaveIndicator({
   status,
 }: {
-  status: ReturnType<typeof useOnboardingStepAutosave>['status'];
+  status: ReturnType<typeof useLegacyWizardStepAutosave>['status'];
 }) {
   const { lang } = useLang();
   const copy = UI[lang];
@@ -471,7 +471,7 @@ function StepBody({
   // The server's ordering again — Back and Next must walk the same list the
   // rail renders, or the two disagree the moment a step is added.
   const order = view.steps.map((s) => s.step);
-  const autosave = useOnboardingStepAutosave(step);
+  const autosave = useLegacyWizardStepAutosave(step);
   const heading = useRef<HTMLHeadingElement | null>(null);
 
   // Move focus to the step heading on every step change. Without it a keyboard
@@ -571,7 +571,7 @@ function StepBody({
   );
 }
 
-type SaveFn = ReturnType<typeof useOnboardingStepAutosave>['save'];
+type SaveFn = ReturnType<typeof useLegacyWizardStepAutosave>['save'];
 type ErrorFn = (field: string) => string | undefined;
 
 interface StepProps {

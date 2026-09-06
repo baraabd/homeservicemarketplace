@@ -54,7 +54,15 @@ export default defineConfig({
   // E2E_REAL_API set — see docs/sprint-09b26/PROVIDER_ONBOARDING_V2_RELEASE.md.
   testIgnore: process.env.E2E_REAL_API
     ? []
-    : ['**/auth-cookies.spec.ts', '**/provider-onboarding-v2-real-api.spec.ts'],
+    : [
+        '**/auth-cookies.spec.ts',
+        '**/provider-onboarding-v2-real-api.spec.ts',
+        // Sprint 9B.28 — the persistence journey. Same rule and same reason:
+        // it reads the draft back through an independent API client and a
+        // second browser context, so a stubbed run could not prove anything
+        // it claims to.
+        '**/provider-onboarding-v2-persistence.spec.ts',
+      ],
   // Deterministic: no test may depend on another's leftovers, and a flake
   // must fail rather than be retried into a pass locally.
   fullyParallel: true,

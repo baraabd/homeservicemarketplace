@@ -7,10 +7,8 @@ import type {
 } from '@homeservicemarketplace/contracts';
 
 import { PortfolioSection } from '../../../components/provider/portfolio/PortfolioSection';
-import {
-  useOnboardingDraft,
-  useOnboardingStepAutosave,
-} from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { usePublicProfilePreview } from '../../../hooks/provider/useProviderPortfolio';
 import {
   TITLE_MAX_LENGTH,
@@ -78,18 +76,21 @@ export function PublicProfileTaskScreen({ view, lang, editable }: PublicProfileT
   const bioOver = bioLength > MAX_BIO_LENGTH;
   const bioShort = bioLength > 0 && bioLength < MIN_BIO_LENGTH;
 
-  const commitTitle = () => {
+  const commitTitle = (next: string = title) => {
     if (!editable) return;
-    const trimmed = title.trim();
+    const trimmed = next.trim();
     // Never save a title the server's own validator refuses. Sending it anyway
     // would trade a clear inline message for a 422 the provider has to decode.
     if (trimmed !== '' && !validateProfessionalTitle(trimmed).ok) return;
     autosave.save({ headline: trimmed === '' ? null : trimmed });
   };
 
-  const commitBio = () => {
-    if (!editable || bioOver) return;
-    const trimmed = bio.trim();
+  const commitBio = (next: string = bio) => {
+    if (!editable) return;
+    const trimmed = next.trim();
+    // Recomputed from the value being committed rather than read from the
+    // render closure, which still describes the previous keystroke.
+    if (trimmed.length > MAX_BIO_LENGTH) return;
     autosave.save({ bio: trimmed === '' ? null : trimmed });
   };
 
@@ -163,8 +164,11 @@ export function PublicProfileTaskScreen({ view, lang, editable }: PublicProfileT
             placeholder={copy.titlePlaceholder}
             aria-invalid={titleError ? true : undefined}
             aria-describedby="title-help"
-            onChange={(event) => setTitle(event.target.value)}
-            onBlur={commitTitle}
+            onChange={(event) => {
+              setTitle(event.target.value);
+              commitTitle(event.target.value);
+            }}
+            onBlur={() => commitTitle(title)}
             className="w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
             style={{ minHeight: '44px', fontSize: '15px' }}
           />
@@ -235,8 +239,11 @@ export function PublicProfileTaskScreen({ view, lang, editable }: PublicProfileT
             placeholder={copy.bioPlaceholder}
             aria-describedby="bio-counter bio-help"
             aria-invalid={bioOver ? true : undefined}
-            onChange={(event) => setBio(event.target.value)}
-            onBlur={commitBio}
+            onChange={(event) => {
+              setBio(event.target.value);
+              commitBio(event.target.value);
+            }}
+            onBlur={() => commitBio(bio)}
             className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
             style={{ fontSize: '15px' }}
           />

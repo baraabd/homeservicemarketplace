@@ -10,6 +10,7 @@ import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { BasicsTaskScreen } from './BasicsTaskScreen';
 import { BASICS_COPY } from '../copy/basics-copy';
 import { AUTOSAVE_COPY } from '../copy/autosave-copy';
+import { ProviderOnboardingAutosaveProvider } from '../autosave/ProviderOnboardingAutosaveProvider';
 
 // Sprint 9B.17 — V2 Task 1.
 //
@@ -77,7 +78,9 @@ function renderScreen(
     <MemoryRouter>
       <QueryClientProvider client={client}>
         <LanguageProvider>
-          <BasicsTaskScreen view={view as never} lang={lang} editable={editable} />
+          <ProviderOnboardingAutosaveProvider>
+            <BasicsTaskScreen view={view as never} lang={lang} editable={editable} />
+          </ProviderOnboardingAutosaveProvider>
         </LanguageProvider>
       </QueryClientProvider>
     </MemoryRouter>,

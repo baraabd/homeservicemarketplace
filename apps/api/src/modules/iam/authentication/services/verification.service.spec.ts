@@ -9,8 +9,9 @@ import type { AppConfigService } from '../../../../config/app-config.service';
 import type { VerificationTokenRepository } from '../../../../infrastructure/persistence/iam/verification-token.repository';
 import { TokenService } from './token.service';
 import { VerificationService } from './verification.service';
+import { makeTestSecret } from '../../../../../test/support/test-secrets';
 
-const SECRET = 'test_secret_at_least_32_characters_long_1234';
+const SECRET = makeTestSecret('iam-jwt');
 
 function makeConfig(overrides: Record<string, unknown> = {}): AppConfigService {
   const values: Record<string, unknown> = {

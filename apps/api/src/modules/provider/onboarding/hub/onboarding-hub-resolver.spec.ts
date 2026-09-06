@@ -198,3 +198,60 @@ describe('the application axis is not the task axis', () => {
     expect(raw).not.toMatch(/verified/i);
   });
 });
+
+// ── Sprint 9B.28 ────────────────────────────────────────────────────────────
+//
+// docs/sprint-09b28/PROVIDER_ONBOARDING_PERSISTENCE_MOBILE_FIRST.md
+describe('an administrative review is not missing provider input', () => {
+  it('marks a task WAITING when its only outstanding issue is AWAITING_REVIEW', () => {
+    // `specialties` belongs to the SPECIALTIES step → SERVICES_EXPERIENCE.
+    // The provider HAS chosen a specialty; it is sitting in the approval
+    // queue. `evaluateOnboarding` says so with a distinct code, and the hub
+    // used to throw that away and render "Required".
+    const v = buildHub(source({ issues: [{ field: 'specialties', code: 'AWAITING_REVIEW' }] }));
+    expect(task(v, 'SERVICES_EXPERIENCE').status).toBe('WAITING');
+  });
+
+  it('still says AVAILABLE when the same task ALSO has provider work outstanding', () => {
+    // One issue is ours, the other is theirs. Theirs wins: there is something
+    // they can actually do on that screen, and sending them away from it would
+    // be worse than the label being imprecise.
+    const v = buildHub(
+      source({
+        issues: [
+          { field: 'specialties', code: 'AWAITING_REVIEW' },
+          { field: 'yearsOfExperience', code: 'REQUIRED' },
+        ],
+      }),
+    );
+    expect(task(v, 'SERVICES_EXPERIENCE').status).toBe('AVAILABLE');
+  });
+
+  it('leaves an AWAITING_REVIEW task OUT of the completed count', () => {
+    // WAITING is not COMPLETE. The application genuinely is not finished — an
+    // approval is outstanding — and counting it would tell the provider they
+    // are further along than they are.
+    const v = buildHub(source({ issues: [{ field: 'specialties', code: 'AWAITING_REVIEW' }] }));
+    expect(task(v, 'SERVICES_EXPERIENCE').status).not.toBe('COMPLETE');
+    expect(v.progress.complete).toBe(4);
+  });
+
+  it('keeps REVIEW_SUBMISSION blocked while an approval is outstanding', () => {
+    // The corollary of the above, and the reason this could not be fixed by
+    // dropping the issue: the application is not submittable until the
+    // specialty is approved, so the submit screen must stay shut.
+    const v = buildHub(source({ issues: [{ field: 'specialties', code: 'AWAITING_REVIEW' }] }));
+    expect(task(v, 'REVIEW_SUBMISSION').status).toBe('BLOCKED');
+  });
+
+  it('a submitted application still makes every task WAITING regardless of code', () => {
+    // The lifecycle axis outranks the issue axis, exactly as before.
+    const v = buildHub(
+      source({
+        issues: [{ field: 'bio', code: 'REQUIRED' }],
+        lifecycleState: 'SUBMITTED',
+      }),
+    );
+    for (const t of v.tasks) expect(t.status).toBe('WAITING');
+  });
+});

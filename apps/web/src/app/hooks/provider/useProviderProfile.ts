@@ -19,6 +19,7 @@ import {
   upgradeToProvider,
 } from '../../../lib/provider/provider-profile-api';
 import { providerQueryKeys } from '../../../lib/provider/query-keys';
+import { refresh as refreshSession } from '../../../lib/auth-api';
 
 // React Query hook for the authenticated user's Provider profile. A
 // 403 (no provider role) and a 404 (provider role but no profile row
@@ -42,16 +43,70 @@ export function useProviderProfile() {
 // All three mutations seed the profile cache from the response and
 // invalidate the root so any future reader picks up the canonical
 // state. The caller doesn't need to refetch manually.
+
+/**
+ * Become a provider — and end up with a SESSION that says so.
+ *
+ * Sprint 9B.28 — the second half of that sentence is the fix.
+ *
+ * THE BUG
+ *
+ * `POST /me/provider/upgrade` assigns the provider role in the database and
+ * returns the new profile. It does not touch the caller's session. But
+ * `JwtStrategy.validate` takes `roles` FROM THE ACCESS TOKEN — deliberately,
+ * and it says so in a comment — so the token minted at login still carried the
+ * pre-upgrade role set. `RolesGuard` read that token and answered 403 to every
+ * `/v1/me/provider/**` call the freshly-upgraded provider made, including the
+ * onboarding draft, hub and review this sprint exists to repair.
+ *
+ * Invalidating the cached `/v1/auth/me` — which is all this used to do — could
+ * not fix it. That refetch goes out on the SAME token and comes back with the
+ * same roles.
+ *
+ * And it presented as 403, not 401, so the api client's refresh interceptor
+ * never engaged: that interceptor is scoped to 401 on purpose, because a 403
+ * normally means "correctly identified, genuinely not allowed" and retrying it
+ * after a refresh would be a privilege-escalation retry loop. Nothing was
+ * wrong with the interceptor. The upgrade simply left the session behind.
+ *
+ * THE FIX
+ *
+ * Rotate the session immediately after the upgrade commits.
+ * `AuthenticationService.refresh` re-reads the role rows from the database
+ * before minting — `peekByRefreshRaw` then `users.listRoles` — so the new
+ * access token carries `provider` because the SERVER looked it up, not because
+ * the client asked for it. No new endpoint, no client-side claim, no
+ * capability the user was not already granted by the upgrade itself.
+ *
+ * Awaited, and inside `onSuccess`, so `mutateAsync` does not resolve until the
+ * new cookie is set. A caller that navigates into a provider surface on
+ * resolution therefore arrives with a usable token rather than into a 403.
+ *
+ * A failed rotation is deliberately NOT fatal to the upgrade: the role is
+ * committed server-side either way, and the ordinary 401 → refresh → retry
+ * path recovers the session on the next call. Throwing here would report a
+ * successful upgrade as a failure and invite the provider to run it again.
+ */
 export function useUpgradeToProvider() {
   const qc = useQueryClient();
   return useMutation<UpgradeToProviderResponse, AxiosError, void>({
     mutationFn: upgradeToProvider,
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       qc.setQueryData(providerQueryKeys.profile.get(), { profile: res.profile });
+
+      try {
+        await refreshSession();
+      } catch {
+        // Intentionally swallowed — see above. Nothing is logged: a failed
+        // rotation carries the refresh cookie's own failure detail, and that
+        // is not something to put in a browser console.
+      }
+
+      // AFTER the rotation, so anything that refetches on invalidation goes
+      // out on the new token instead of racing the old one into a 403.
       qc.invalidateQueries({ queryKey: providerQueryKeys.profile.root });
-      // The user's role set just changed (a refresh of /v1/auth/me will
-      // surface "provider"). Drop the cached MeResponse so consumers
-      // that role-gate on it pick up the new role.
+      // The role set changed, so the cached MeResponse is stale in a way that
+      // matters for every role gate in the app.
       qc.invalidateQueries({ queryKey: ['auth', 'me'] });
     },
   });
