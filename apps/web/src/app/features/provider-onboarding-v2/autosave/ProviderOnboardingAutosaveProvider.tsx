@@ -314,7 +314,18 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
       if (!draining.current) {
         if (pending.current.size === 0 && !inFlight.current) {
           syncBusy();
-          return lastResult.current;
+          // Nothing queued and nothing open, so navigating loses nothing —
+          // whatever happened LAST time is not a reason to hold the provider
+          // on this screen now.
+          //
+          // This returned `lastResult` and trapped them. A 409 DROPS its patch
+          // (re-sending it would overwrite the other writer), so the queue
+          // empties — and every later flush then replayed the stale conflict
+          // and refused the exit again. The provider could not leave the task
+          // at all except by reloading. The conflict is reported once, by the
+          // drain that produced it, and stays visible in the status chip;
+          // it is not a permanent veto on navigation.
+          return OK;
         }
         const run = drain().finally(() => {
           if (draining.current === run) draining.current = null;

@@ -210,6 +210,30 @@ describe('failures, one per status code', () => {
     expect(mock.history.patch.length).toBe(before);
   });
 
+  it('does not trap the provider on the task after a conflict', async () => {
+    // The conflict DROPS its patch, so the queue empties. A later flush must
+    // therefore answer "yes, you may leave" — it has nothing to lose. It used
+    // to replay the stale conflict from `lastResult` and refuse every exit
+    // forever, so the only way off the screen was a reload.
+    mock.onPatch(PATCH).reply(409, { code: 'CONFLICT', details: { expectedVersion: 9 } });
+    const h = mount();
+
+    let first;
+    await act(async () => {
+      h().save({ displayName: 'x' });
+      first = await h().flushAll();
+    });
+    expect(first).toMatchObject({ ok: false, reason: 'conflict' });
+
+    // Reported once. The chip still says conflict; navigation is not vetoed.
+    let second;
+    await act(async () => {
+      second = await h().flushAll();
+    });
+    expect(second).toEqual({ ok: true });
+    expect(kind()).toBe('conflict');
+  });
+
   it('a network failure is retryable and the retry actually resends', async () => {
     mock.onPatch(PATCH).networkErrorOnce();
     mock.onPatch(PATCH).reply(200, DRAFT(2));
