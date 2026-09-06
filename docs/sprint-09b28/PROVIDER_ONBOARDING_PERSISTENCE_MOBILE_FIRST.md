@@ -321,11 +321,11 @@ Exact commands and counts are in the PR description and §7 below. Summary:
 
 | Gate                                        | Before                  | After                                                         |
 | ------------------------------------------- | ----------------------- | ------------------------------------------------------------- |
-| web unit                                    | 1450 passed / 100 files | **1494 passed / 103 files** (+44)                             |
+| web unit (CI, clean runner)                 | 1450 passed / 99 files  | **1500 passed / 102 files**                                   |
 | api unit (jest, hermetic)                   | —                       | **2975 passed, 602 skipped**                                  |
 | api DB+Redis gated (`RUN_DB_INTEGRATION=1`) | —                       | **3573 passed, 4 skipped** on isolated pg 15433 / redis 63791 |
 | hub resolver spec                           | 27                      | **32** (+5)                                                   |
-| Playwright — mocked V2                      | 308 passed              | **308 passed, 52 skipped**                                    |
+| Playwright — full matrix, ×2 consecutive    | 639 passed / 96 skipped | **696 passed / 96 skipped**, identical both runs              |
 | Playwright — mobile-first matrix            | —                       | **57 passed**                                                 |
 | Playwright — real-stack persistence         | —                       | **6 passed** (browser → real API → real Postgres)             |
 
@@ -377,16 +377,78 @@ un-apply.
    prompt, and the offline copy says "keep this page open" rather than promising durability
    we do not have. Durable, identity-bound local persistence was deliberately not
    implemented — the brief requires it not be claimed unless tested, and it is not.
-3. **Two web unit suites flake under full-suite parallel load** — `WalletScreen.test.tsx`,
-   `ProviderApp.test.tsx`, and once `ProviderStatusState.test.tsx`. The failing set
-   **varies between runs** and every one of them passes in isolation. They are
-   `findByText` timeouts on provider screens that do not import anything this sprint
-   changed. Not introduced here, not fixed here, and not hidden: see §9 of the PR.
-4. **`SERVICES_EXPERIENCE` browser coverage is thinner than the other tasks.** Its controls
-   are a catalogue-driven picker; the real-stack spec asserts the outcome that matters
-   (no 409s, no lost value) but drives fewer controls than a full multi-select scenario
-   would.
+3. **Two or three web unit suites flake on THIS development machine under full-suite
+   parallel load** — `WalletScreen.test.tsx`, `ProviderApp.test.tsx`, and once
+   `ProviderStatusState.test.tsx`. The failing set **varies between runs**, each passes
+   in isolation, and they are `findByText` timeouts on provider screens that import
+   nothing this sprint changed.
+
+   **CI settles it**: the same suite runs green on a clean runner — 1500 passed, 102
+   files, zero failures. So this is a local resource artefact (the developer stack plus
+   Chromium workers on one laptop), not a defect in the suite or in this branch. Nothing
+   was reduced, retried or skipped to make it go away.
+
+4. **`SERVICES_EXPERIENCE` browser coverage is thinner than the other tasks.** Its
+   specialty picker is catalogue-driven; the real-stack spec asserts the outcome that
+   matters (no 409s, no lost value) and the component suite drives its experience field,
+   but neither drives a full multi-select of specialties, equipment and transport modes.
+   All six tasks ARE covered for the exit contract.
 5. The `AWAITING_REVIEW` → `WAITING` change makes an approval-blocked application show
    `WAITING` with `REVIEW_SUBMISSION` still `BLOCKED`. That is correct and honest, but it
    is a state in which the provider has **nothing to do but wait**, and the hub does not yet
    offer an explicit "we are reviewing your specialty" banner.
+
+---
+
+## 9. CI, and one red check that is not this branch's
+
+`ci.yml` and `codeql.yml` trigger only on `push` and `pull_request` against
+`main`/`develop`. This PR is stacked onto a feature branch, so **no checks are created
+for it automatically** — a stacked PR here looks unverified when it is merely
+untriggered. Both workflows were therefore dispatched explicitly against the branch ref,
+which runs the same jobs CI would run on `develop`.
+
+Green on the final SHA: install/lockfile, contracts, database, API
+(lint/typecheck/unit/build), web (lint/typecheck/unit/build — **0 lint errors**, 35
+pre-existing warnings, 1500 unit tests), Integration & E2E on real Postgres/Redis,
+auth cookie contract, **Docker cold build + production boot**, **Compose stack smoke**,
+Browser E2E, CodeQL, and the JS/TS analysis.
+
+**Red: "Dependency, secret, and container scans."** It fails at exactly one step:
+
+```
+success   | Production dependency audit (ZERO high or critical)
+failure   | Secret scan
+skipped   | Container image scan
+```
+
+The Secret scan reports 10 leaks. **All ten are already in `develop`** — dummy constants
+in `.spec.ts` files from `37c90005` (2026-04-15), `f3cce56e` (2026-05-03) and
+`6d63dc35` (2026-08-21), each verified an ancestor of `origin/develop` with
+`git merge-base --is-ancestor`. **No commit on this branch appears in the findings.**
+
+It is red here and green on `develop` because `gitleaks-action` scopes by event: a
+`push`/`pull_request` scans the commit range, a `workflow_dispatch` has no range and
+scans the **entire history**. Dispatching manually — forced by the stacking — is what
+turned a range scan into a full-history one. A local `gitleaks detect` over all 388
+commits reproduces it identically.
+
+**The gate was not weakened**: no allowlist, no `.gitleaksignore`, no skip. A baseline
+for historical findings is real repository hygiene, but it changes a security gate's
+configuration and is the repository owner's decision, not a side effect of this PR.
+
+**Consequence, stated rather than glossed:** the job aborts before the container image
+scan, so that scan is **skipped, not run**, and is not evidenced on this SHA. Nothing
+here touches a Dockerfile, base image or dependency — `pnpm-lock.yaml` and every
+`package.json` are untouched, and the cold build and Compose smoke both passed — but
+that is reasoning, not a scan result, and is offered as such.
+
+## 10. What was NOT run
+
+- **Docker cold build and Compose smoke were not run on the development machine.** Both
+  ran in CI on a clean runner and passed; that is better evidence than a laptop already
+  hosting seven containers would have produced, but it is CI evidence, not local.
+- **The container image scan** — see §9.
+- **No axe run and no manual screen-reader audit.** The mobile-first suite asserts focus
+  visibility, 44px targets, one scroll container, no horizontal overflow and correct RTL,
+  in a real layout engine. That is not the same as an accessibility audit.
