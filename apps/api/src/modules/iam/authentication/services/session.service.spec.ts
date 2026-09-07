@@ -18,8 +18,9 @@ import type { AuditService } from '../../audit/audit.service';
 import { SecurityEventsBus } from '../../../../shared/security-events/security-events.bus';
 import { SessionService } from './session.service';
 import { TokenService } from './token.service';
+import { makeTestSecret } from '../../../../../test/support/test-secrets';
 
-const SECRET = 'test_secret_at_least_32_characters_long_1234';
+const SECRET = makeTestSecret('iam-jwt');
 
 function makeConfig(): AppConfigService {
   const values: Record<string, unknown> = {

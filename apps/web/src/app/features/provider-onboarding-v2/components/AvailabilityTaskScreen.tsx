@@ -4,10 +4,8 @@ import { Plus, Trash2, X } from 'lucide-react';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
 
 import { DAY_LABELS } from '../../../components/provider/onboarding/wizard-copy';
-import {
-  useOnboardingDraft,
-  useOnboardingStepAutosave,
-} from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { AVAILABILITY_COPY, type Lang } from '../copy/availability-copy';
 import {
   DAY_PRESETS,

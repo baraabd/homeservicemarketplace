@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router';
 import type { ProviderOnboardingHubTask } from '@homeservicemarketplace/contracts';
 
-import { Button } from '../../../components/ds/Button';
+import { ProviderButton, ProviderNotice, ProviderSkeleton } from '../../provider-ui';
 import { useLang } from '../../../i18n/LanguageContext';
 import { useProviderOnboardingHub } from '../../../hooks/provider/useProviderOnboardingHub';
 import { deriveHubView, groupTasks, nextActionTaskId } from '../hub-view-state';
@@ -97,33 +97,21 @@ export function OnboardingHubScreen() {
           aria-live="polite"
         >
           {view.state === 'LOADING' ? (
-            <>
+            <div className="w-full" data-testid="hub-loading-spinner">
+              {/* A skeleton the size of the task list, not a spinner in the
+                  place content will appear: it says what is coming and stops
+                  the layout jumping when it arrives. */}
               <span className="sr-only">{screen.title}</span>
-              <div
-                className="w-10 h-10 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin"
-                data-testid="hub-loading-spinner"
-              />
-            </>
+              <ProviderSkeleton rows={4} />
+            </div>
           ) : (
             <>
-              <h2
-                className="break-words text-slate-900 dark:text-white"
-                style={{ fontSize: '16px', fontWeight: 700 }}
-              >
-                {screen.title}
-              </h2>
-              <p
-                className="max-w-[34ch] break-words text-slate-500 dark:text-slate-400"
-                style={{ fontSize: '13px' }}
-              >
-                {screen.body}
-              </p>
+              <h2 className="break-words text-[18px] font-bold text-pv-text">{screen.title}</h2>
+              <p className="max-w-[46ch] break-words text-[14px] text-pv-muted">{screen.body}</p>
               {screen.cta ? (
-                <div className="pt-2 w-full max-w-[260px]">
-                  <Button variant="primary" tone="provider" fullWidth onClick={onCta}>
-                    {screen.cta}
-                  </Button>
-                </div>
+                <ProviderButton className="mt-2 min-w-[220px]" onClick={onCta}>
+                  {screen.cta}
+                </ProviderButton>
               ) : null}
             </>
           )}
@@ -138,40 +126,48 @@ export function OnboardingHubScreen() {
   const target = ctaTarget({ nextAction: data!.nextAction, tasks });
   const ctaLabel = nextActionLabel(data!.nextAction?.kind ?? 'NONE', lang);
 
+  // Full width on a phone, sized to its label past that.
+  //
+  // Once the 430px frame came off, `fullWidth` became a 768px-wide primary
+  // button on desktop — a control whose size implied an importance nothing
+  // else on the screen had, and a click target that spanned the window.
   const footer =
     ctaLabel && target ? (
-      <Button variant="primary" tone="provider" fullWidth onClick={() => openTask(target)}>
-        {ctaLabel}
-      </Button>
+      <div className="flex justify-end">
+        <ProviderButton
+          className="w-full md:w-auto md:min-w-[220px]"
+          onClick={() => openTask(target)}
+        >
+          {ctaLabel}
+        </ProviderButton>
+      </div>
     ) : null;
 
   return (
     <OnboardingShell title={title} subtitle={subtitle} onClose={backToProfile} footer={footer}>
       {view.state === 'ACTION_REQUIRED' ? (
-        <div
-          className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3"
-          data-testid="hub-state-ACTION_REQUIRED"
-          role="status"
-          aria-live="polite"
-        >
-          <h2 className="break-words text-amber-900" style={{ fontSize: '14px', fontWeight: 700 }}>
-            {SCREEN_COPY[lang].ACTION_REQUIRED.title}
-          </h2>
-          <p className="mt-1 break-words text-amber-800" style={{ fontSize: '12px' }}>
-            {SCREEN_COPY[lang].ACTION_REQUIRED.body}
-          </p>
+        <div className="mb-4" data-testid="hub-state-ACTION_REQUIRED">
+          <ProviderNotice
+            tone="blocked"
+            title={SCREEN_COPY[lang].ACTION_REQUIRED.title}
+            description={SCREEN_COPY[lang].ACTION_REQUIRED.body}
+          />
         </div>
       ) : null}
 
       <div className="flex flex-col gap-5" data-testid="hub-task-list">
         {groups.map(({ group, tasks: groupTaskList }) => (
           <section key={group} aria-labelledby={`hub-group-${group}`}>
+            {/* Sentence case at a readable size, not 11px tracked-out caps.
+                The baseline's group labels were decoration that happened to
+                contain words: too small to scan and too light to read, which
+                is a poor trade for the one thing that tells a provider how the
+                application is organised. */}
             <h2
               id={`hub-group-${group}`}
-              className="mb-2 break-words text-slate-500 dark:text-slate-400"
-              style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em' }}
+              className="mb-2 break-words text-[15px] font-semibold text-pv-muted"
             >
-              {groupLabel(group, lang).toUpperCase()}
+              {groupLabel(group, lang)}
             </h2>
             <div className="flex flex-col gap-2">
               {groupTaskList.map((task) => (

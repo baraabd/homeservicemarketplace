@@ -136,15 +136,19 @@ describe('OnboardingHubScreen — the task list', () => {
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
     // Five groups, because the response sends five. The two COVERAGE tasks
     // share one heading rather than repeating it.
+    //
+    // Sentence case, not caps: Mode B replaced 11px tracked-out all-caps grey
+    // — decoration that happened to contain words — with a readable heading.
+    // The COPY is unchanged; only the transform applied to it is gone.
     expect(headings).toEqual([
-      'BASICS',
-      'YOUR SERVICES',
-      'WHERE AND WHEN YOU WORK',
-      'YOUR PROFILE',
-      'REVIEW',
+      'Basics',
+      'Your services',
+      'Where and when you work',
+      'Your profile',
+      'Review',
     ]);
 
-    const coverage = screen.getByRole('region', { name: 'WHERE AND WHEN YOU WORK' });
+    const coverage = screen.getByRole('region', { name: 'Where and when you work' });
     expect(within(coverage).getAllByTestId(/^task-row-/)).toHaveLength(2);
   });
 

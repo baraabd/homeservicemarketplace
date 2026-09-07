@@ -33,6 +33,7 @@ import { STORAGE_PORT } from '../../src/infrastructure/storage/storage.port';
 import { MediaController } from '../../src/modules/media/media.controller';
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
+import { makeTestSecret } from '../support/test-secrets';
 
 jest.setTimeout(15_000);
 
@@ -40,7 +41,7 @@ const ROOT = join(tmpdir(), `hsm-media-e2e-${Date.now()}`);
 
 function makeConfig(): AppConfigService {
   const env: Record<string, string | undefined> = {
-    JWT_ACCESS_SECRET: 'test-jwt-secret-at-least-32-bytes-long-aaaaa',
+    JWT_ACCESS_SECRET: makeTestSecret('media-e2e-jwt'),
     PORT: '4000',
     PUBLIC_API_URL: 'http://localhost:4000',
     LOCAL_STORAGE_DIR: ROOT,

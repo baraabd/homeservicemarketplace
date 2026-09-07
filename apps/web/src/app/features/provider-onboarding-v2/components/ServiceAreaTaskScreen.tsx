@@ -4,10 +4,8 @@ import { MapPin, ShieldCheck } from 'lucide-react';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
 
 import { COUNTRY_DIAL_CODES } from '../../../../lib/country-dial-codes';
-import {
-  useOnboardingDraft,
-  useOnboardingStepAutosave,
-} from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { SERVICE_AREA_COPY, type Lang } from '../copy/service-area-copy';
 import { ServiceAreaRewardCard } from './ServiceAreaRewardCard';
 
@@ -187,7 +185,15 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
           value={city}
           disabled={!editable}
           placeholder={copy.cityPlaceholder}
-          onChange={(event) => setCity(event.target.value)}
+          onChange={(event) => {
+            setCity(event.target.value);
+            // Sprint 9B.28 — commit on the keystroke as well as the blur, so
+            // the status cannot claim "Saved" over a city that has not been
+            // sent. Empty is still never written: the field is required and
+            // the server refuses it.
+            const next = event.target.value;
+            if (next.trim() !== '') autosave.save({ serviceAreaCity: next.trim() });
+          }}
           onBlur={() => {
             if (city.trim() !== '') autosave.save({ serviceAreaCity: city.trim() });
           }}

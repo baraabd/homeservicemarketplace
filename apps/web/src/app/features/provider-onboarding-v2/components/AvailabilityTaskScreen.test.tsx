@@ -10,6 +10,7 @@ import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { AvailabilityTaskScreen } from './AvailabilityTaskScreen';
 import { AVAILABILITY_COPY } from '../copy/availability-copy';
 import { AUTOSAVE_COPY } from '../copy/autosave-copy';
+import { ProviderOnboardingAutosaveProvider } from '../autosave/ProviderOnboardingAutosaveProvider';
 
 // Sprint 9B.21 — V2 Task 4.
 //
@@ -75,7 +76,9 @@ function renderScreen(view = DRAFT(), lang: 'en' | 'ar' = 'en', editable = true)
     <MemoryRouter>
       <QueryClientProvider client={client}>
         <LanguageProvider>
-          <AvailabilityTaskScreen view={view as never} lang={lang} editable={editable} />
+          <ProviderOnboardingAutosaveProvider>
+            <AvailabilityTaskScreen view={view as never} lang={lang} editable={editable} />
+          </ProviderOnboardingAutosaveProvider>
         </LanguageProvider>
       </QueryClientProvider>
     </MemoryRouter>,
@@ -515,7 +518,9 @@ describe('saving, and saying so truthfully', () => {
       <MemoryRouter>
         <QueryClientProvider client={client}>
           <LanguageProvider>
-            <AvailabilityTaskScreen view={server as never} lang="en" editable />
+            <ProviderOnboardingAutosaveProvider>
+              <AvailabilityTaskScreen view={server as never} lang="en" editable />
+            </ProviderOnboardingAutosaveProvider>
           </LanguageProvider>
         </QueryClientProvider>
       </MemoryRouter>,

@@ -1,395 +1,1081 @@
-# CLAUDE.md - Project Identity & Rules
+CLAUDE.md — Project Identity, Delivery Modes, and Quality Rules
 
-## Project Identity
+Project Identity
 
-This project is a production-grade service marketplace platform similar to TaskRabbit / Thumbtack / regional on-demand service apps.
+HomeServiceMarketplace is a production-grade service marketplace comparable to
+TaskRabbit, Thumbtack, and regional on-demand service platforms.
 
 Primary goals:
 
-- scalability
-- security
-- maintainability
-- testability
-- clean architecture
-- production readiness
-- safe deployments
-- minimal technical debt
+security and privacy;
+
+scalability;
+
+maintainability;
+
+testability;
+
+clean architecture;
+
+excellent user experience;
+
+production readiness;
+
+safe deployments;
+
+minimal technical debt.
 
 Core stack:
 
-- Node.js
-- TypeScript
-- PostgreSQL + Prisma
-- MongoDB
-- Redis
-- Docker
-- pnpm workspace / monorepo
-- Vercel-compatible frontend deployment
+Node.js;
 
----
+TypeScript;
 
-## Current Delivery Phase: Backend-Frontend Integration
+React and Vite;
 
-This phase has strict priority over general feature expansion.
+PostgreSQL and Prisma;
 
-### Phase Objective
+MongoDB;
 
-The frontend is already substantially built and should be treated as the reference UI.
-The current goal is to stabilize and complete backend behavior, then integrate the existing frontend with real backend flows.
+Redis;
 
-### Mandatory Rules For This Phase
+Docker;
 
-1. Do not redesign, restyle, or restructure the frontend unless strictly required for:
-   - API integration
-   - validation correctness
-   - loading, error, empty, and success state handling
-   - accessibility-critical fixes
-   - security fixes
+pnpm workspace / monorepo;
 
-2. Default priority order:
-   - backend core correctness first:
-     - DTOs
-     - validation
-     - services
-     - repositories
-     - auth
-     - persistence
-     - env and runtime correctness
-   - integration second:
-     - connect existing frontend screens to real backend behavior
-   - minimal frontend logic third:
-     - API wiring
-     - state synchronization
-     - auth/session handling
-     - loading/error handling
-     - safe field mapping
+Vercel-compatible frontend deployment.
 
-3. Do not introduce design drift:
-   - no unnecessary changes to spacing
-   - no unnecessary changes to colors
-   - no unnecessary changes to typography
-   - no unnecessary component rewrites
-   - no unrelated UI refactors
+Instruction Precedence and Scope
 
-4. Do not patch backend, schema, database, or auth defects only in the frontend.
+Follow instructions in this order:
 
-5. Integration is not complete until the relevant flow works end-to-end at runtime.
+platform, security, privacy, legal, and data-integrity requirements;
 
----
+the user's explicit task prompt and acceptance criteria;
 
-## Environment and Deployment Parity
+task-specific ADRs, contracts, designs, screenshots, and approved references;
 
-All meaningful work must be verified across the relevant environments:
+this file's default delivery-mode rules;
 
-- local development
-- clean local build
-- local production-like execution
-- Vercel-compatible frontend build
-- backend production-like boot
+existing implementation conventions.
 
-Do not consider a task complete if it only works in one environment.
+An explicit, scoped request to redesign UX/UI activates UX/UI Redesign Mode
+for the named surfaces. In that scope, the redesign instructions in the task
+prompt override this file's default UI-preservation rules.
+
+This authority never overrides:
+
+authorization or ownership boundaries;
+
+backend contracts and server-owned policy;
+
+privacy and restricted-media boundaries;
+
+validation and data integrity;
+
+auditability;
+
+migration safety;
+
+required tests and deployment gates.
+
+Do not use a generic "preserve the existing frontend" rule to refuse, dilute,
+or silently reinterpret an explicit redesign request.
+
+Do not broaden a redesign beyond the routes, journeys, components, or product
+area named by the task.
+
+Delivery Modes
+
+Every non-trivial task must identify its active mode before implementation.
+
+Mode A — Integration and Bug-Fix Mode (default)
+
+Use this mode when the task concerns backend integration, correctness,
+security, validation, reliability, or a narrow defect and does not explicitly
+request a redesign.
+
+In this mode:
+
+treat the existing frontend as the visual baseline;
+
+avoid unrelated spacing, color, typography, navigation, and layout changes;
+
+make the smallest coherent UI change required by the real behavior;
+
+preserve existing design-system usage;
+
+fix backend, schema, auth, and policy defects at their owning layer;
+
+do not hide server defects with frontend-only patches.
+
+Mode B — UX/UI Redesign Mode
+
+Activate this mode when the task explicitly requests any of the following:
+
+UX/UI redesign;
+
+a new user journey or information architecture;
+
+visual modernization;
+
+a new responsive application shell;
+
+matching an approved screenshot, Figma design, prototype, or reference;
+
+replacing a wizard, navigation model, dashboard, form system, or workflow;
+
+improving usability, accessibility, conversion, clarity, or visual hierarchy
+as a primary objective.
+
+In this mode, Claude is explicitly authorized and expected to change, when the
+approved scope requires it:
+
+information architecture;
+
+navigation;
+
+route composition;
+
+page and shell layout;
+
+responsive behavior;
+
+spacing and density;
+
+typography hierarchy;
+
+color application;
+
+cards, forms, status surfaces, and empty states;
+
+component boundaries;
+
+frontend folder structure;
+
+visual tokens and reusable primitives;
+
+user-facing copy and interaction patterns;
+
+motion and progressive disclosure.
+
+The current UI is evidence of the starting point, not an immutable reference.
+Reuse existing components only when they serve the target experience. Extend,
+replace, or retire them when reuse would preserve a known UX defect or create
+an incoherent design.
+
+Mode C — Product Feature Mode
+
+Use this mode for new product capability that is neither a narrow bug fix nor a
+dedicated redesign.
+
+In this mode:
+
+preserve established product behavior outside the feature;
+
+reuse the design system;
+
+add new reusable UI primitives only when existing ones cannot express the
+required semantics;
+
+use the task prompt to decide whether a local redesign is part of scope.
+
+If a task mixes modes, state the boundary explicitly. Example: backend policy
+work remains in Integration Mode while the named onboarding routes use UX/UI
+Redesign Mode.
+
+Current Delivery Phase
+
+The project is in a combined backend–frontend integration and controlled UX
+modernization phase.
+
+The frontend is substantially built, but it is not automatically the final
+design. Existing screens are authoritative only in Integration and Bug-Fix
+Mode. When an explicit redesign brief exists, the approved brief and its
+acceptance criteria become the visual and interaction target.
+
+Priority order within a redesign task:
+
+preserve security, privacy, authorization, and data integrity;
+
+understand the real end-to-end user journey and server constraints;
+
+define the target information architecture and responsive behavior;
+
+establish or extend design-system primitives;
+
+implement the new UX/UI against real backend contracts;
+
+verify functional, visual, responsive, accessibility, and runtime behavior;
+
+document rollout, rollback, and remaining risks.
+
+Integration is not complete until the real flow works. A redesign is not
+complete until the intended surface is visible and visually verified in the
+same runtime configuration the user will evaluate.
+
+UX/UI Redesign Workflow
+
+When UX/UI Redesign Mode is active, use the following workflow.
+
+1. Establish the exact baseline
+
+Before changing code:
+
+verify branch, HEAD, worktree, and applicable feature flags;
+
+identify the exact route and component currently rendered;
+
+confirm whether the user is seeing a legacy fallback or the new surface;
+
+trace the browser route through guards, flags, layout shells, hooks, API
+clients, contracts, and server endpoints;
+
+capture or inspect the current experience at representative viewports;
+
+inventory existing design tokens, components, copy, state ownership, and
+responsive constraints;
+
+identify monoliths, duplicated UI, inline styling, and obsolete shells;
+
+record backend contracts and server-owned state machines that must remain
+authoritative.
+
+Do not redesign the wrong route. Do not accept a mocked or feature-flagged test
+surface as proof that the user's runtime displays it.
+
+2. Produce a UX gap matrix
+
+For each relevant screen or state, record:
+
+current route and component;
+
+user goal;
+
+current friction or failure;
+
+desired behavior;
+
+server dependency;
+
+responsive requirements;
+
+Arabic/English requirements;
+
+accessibility requirements;
+
+target component or pattern;
+
+acceptance evidence.
+
+Distinguish among:
+
+functional defects;
+
+information-architecture defects;
+
+visual-design defects;
+
+content/copy defects;
+
+responsive defects;
+
+accessibility defects;
+
+environment or feature-flag defects.
+
+Do not call a feature absent when it is merely disabled, and do not call it
+delivered when users cannot reach it.
+
+3. Define the target before large implementation
+
+Use the task's approved design, reference images, or written brief as the
+target. If the task supplies reference screens, treat them as acceptance
+evidence, not optional inspiration, unless the prompt says otherwise.
+
+Before a large visual rewrite, define:
+
+navigation and information architecture;
+
+screen inventory;
+
+user flows and recovery paths;
+
+mobile, tablet, and desktop layouts;
+
+component hierarchy;
+
+design tokens;
+
+typography scale;
+
+spacing and density;
+
+surface and elevation rules;
+
+form, validation, and feedback patterns;
+
+loading, empty, error, success, offline, locked, and submitted states;
+
+dark-mode behavior if the product supports it;
+
+rollout and rollback behavior.
+
+If the prompt already contains a sufficiently detailed approved design and
+acceptance criteria, proceed without asking for redundant confirmation.
+
+4. Implement a system, not isolated screenshots
+
+Prefer reusable, domain-appropriate primitives over screen-specific Tailwind
+copies. Centralize stable decisions in tokens and variants.
+
+Examples of reusable surface ownership include:
+
+application shell;
+
+page header;
+
+task or step navigation;
+
+section and card surfaces;
+
+form fields and validation summary;
+
+status banners and timelines;
+
+empty/error/loading states;
+
+sticky actions;
+
+responsive navigation;
+
+metrics and summary rows.
+
+Avoid:
+
+scattered inline fontSize, color, radius, and spacing values;
+
+duplicating the same card or field chrome across feature files;
+
+growing orchestration files into multi-thousand-line monoliths;
+
+nested conditional rendering that acts as an undocumented route registry;
+
+a second state store or API client for the same domain;
+
+copying server transition tables into the frontend.
+
+Reuse semantics, contracts, and proven behavior. Do not preserve poor visual
+structure merely because it already exists.
+
+5. Responsive requirements
+
+Every redesigned customer or provider surface must be deliberately designed
+for:
+
+320px narrow mobile;
+
+390px typical mobile;
+
+768px tablet;
+
+1024px small desktop;
+
+1440px desktop;
+
+200% zoom where applicable.
+
+Do not force desktop and tablet into a fixed phone-width container unless the
+approved product brief explicitly requires a phone-only PWA presentation.
+
+Use adaptive navigation and layout:
+
+mobile may use bottom navigation for primary operational destinations;
+
+focused onboarding, checkout, verification, and submission flows should not
+show irrelevant application navigation;
+
+tablet and desktop should use the available space deliberately, such as a
+side rail, two-column task layout, wider content, or contextual summary;
+
+essential actions must remain reachable without covering content;
+
+no fixed header, footer, bottom bar, or keyboard may obscure fields or
+actions;
+
+no horizontal overflow, clipped Arabic text, overlapping headings, or
+unreachable content is permitted.
+
+6. Bilingual and RTL/LTR requirements
+
+Arabic and English are equal product experiences.
+
+Required:
+
+one established i18n mechanism;
+
+complete key parity;
+
+semantic language and direction attributes;
+
+logical CSS properties where direction matters;
+
+correct icon and navigation direction;
+
+copy that reads naturally rather than as literal translation;
+
+layouts tested with long Arabic strings;
+
+no hard-coded alignment that only works in LTR;
+
+numerals, dates, times, currencies, and units formatted intentionally.
+
+Changing language must not lose form data, navigation state, or autosave state.
+
+7. Accessibility requirements
+
+Target WCAG 2.2 AA for redesigned surfaces.
+
+Required where applicable:
+
+semantic landmarks and heading order;
+
+programmatic labels and descriptions;
+
+visible keyboard focus;
+
+complete keyboard operation;
+
+error summary plus field-level errors;
+
+aria-live for meaningful asynchronous feedback;
+
+status communicated by text/icon as well as color;
+
+touch targets of approximately 44×44px;
+
+editable text at a mobile-safe size;
+
+contrast in every supported theme;
+
+reduced-motion support;
+
+focus management for dialogs, route transitions, and failed submission.
+
+Accessibility checks supplement, but do not replace, real keyboard and
+screen-level review.
+
+8. Visual acceptance is mandatory
+
+Passing unit, integration, and Playwright assertions is not proof of good UX or
+visual quality.
+
+For redesigned surfaces, verify the real rendered UI using screenshots or
+equivalent browser evidence for the required matrix:
+
+mobile, tablet, and desktop;
+
+Arabic/RTL and English/LTR;
+
+light and dark themes when supported;
+
+loading, populated, incomplete, error, submitted, locked, and
+action-required states as applicable.
+
+Review the evidence for:
+
+hierarchy;
+
+spacing;
+
+alignment;
+
+density;
+
+text wrapping;
+
+overlap and clipping;
+
+action prominence;
+
+consistency;
+
+brand coherence;
+
+proximity of errors to their cause;
+
+safe areas and virtual-keyboard behavior.
+
+When a reference design exists, produce a screen-by-screen comparison and
+report material deviations. Do not silently substitute a simpler design.
+
+Visual acceptance must use the real route and intended feature-flag state. A
+stub-only browser test cannot establish end-to-end or visual delivery.
+
+9. UX/UI completion rule
+
+Do not print COMPLETE, FULLY VERIFIED, SAFE TO MERGE, or equivalent for a
+redesign unless all of the following are true:
+
+the intended route renders the redesigned surface;
+
+the user's normal runtime can reach it;
+
+feature flags and activation steps are documented and verified;
+
+real APIs and persisted data are exercised where relevant;
+
+the approved responsive and language matrix is verified;
+
+visual evidence has been inspected, not merely generated;
+
+no legacy fallback was mistaken for the new surface;
+
+functional, accessibility, and visual gates pass on the same final SHA;
+
+known deviations and residual risks are reported honestly;
+
+any required user/design approval has been obtained.
+
+CI green means technical gates passed. It does not by itself mean the UX is
+accepted.
+
+Feature Flags, Rollout, and Visibility
+
+Feature flags are allowed for safe rollout, but they must not hide delivery
+status.
+
+For every feature-flagged surface, report:
+
+flag name;
+
+default value;
+
+precedence among build env, runtime config, local storage, account cohort,
+and server setting;
+
+exact activation and rollback procedure;
+
+routes and entry points affected;
+
+whether the user's local environment currently has it enabled;
+
+whether production has it enabled;
+
+which browser tests use flag ON and flag OFF.
+
+If the feature is default-off, say implemented but not visible by default.
+Do not say the user journey was replaced globally.
+
+Test the intended rollout configuration. A special E2E build with a flag on is
+not proof that the normal development or production build exposes it.
+
+Feature flags must not grant authorization or bypass backend policy.
+
+Environment and Deployment Parity
+
+All meaningful work must be verified across relevant environments:
+
+local development;
+
+clean local build;
+
+local production-like execution;
+
+Vercel-compatible frontend build;
+
+backend production-like boot;
+
+intended feature-flag configuration.
 
 Do not rely on:
 
-- stale dist folders
-- stale generated clients
-- stale workspace outputs
-- hidden local state
-- machine-specific fixes
-- cached artifacts as proof of correctness
+stale dist folders;
 
-When builds or runtime behavior differ by environment, identify and fix the root cause rather than masking it.
+stale generated clients;
 
----
+stale workspace outputs;
 
-## Operating Mode
+cached bundles;
 
-Always work in this order unless explicitly instructed otherwise:
+hidden local state;
 
-1. inspect current codebase
-2. plan before coding
-3. implement in small safe increments
-4. add or update tests
-5. run typecheck, lint, test, and build
-6. verify runtime flows
-7. self-review
-8. patch discovered issues
-9. summarize changes, evidence, and remaining risks
+machine-specific fixes;
 
-For any non-trivial task, always output:
+an old Vite process with different build-time flags;
 
-- assumptions
-- root causes
-- files to create or update
-- risks
-- implementation steps
+a different API process than the one reported;
 
-Never jump directly into large code generation without first planning.
+mocked browser data as proof of real integration.
 
----
+Before starting another server, identify which process owns the intended port.
+Do not run local and Docker API instances on the same host port and then guess
+which one the browser reached.
 
-## Monorepo and Command Discipline
+When environments differ, identify the root cause rather than masking it.
 
-This repository uses pnpm workspace.
-Prefer package-scoped commands when verifying changes.
+Operating Mode
+
+Unless the task explicitly requires a different safe sequence:
+
+inspect the current codebase and instructions;
+
+establish exact branch, SHA, flags, and runtime;
+
+identify the active delivery mode;
+
+reproduce the real current behavior;
+
+document assumptions, root causes, and the scoped plan;
+
+implement in small, reviewable increments;
+
+add or update appropriate tests;
+
+run formatting, lint, typecheck, tests, and build;
+
+verify real runtime flows;
+
+inspect visual evidence when UI changed;
+
+self-review for regressions, security, accessibility, and design drift;
+
+patch discovered issues;
+
+report exact evidence and remaining risks.
+
+Never jump directly into a large rewrite without understanding route ownership,
+state ownership, contracts, and rollback.
+
+Monorepo and Command Discipline
+
+This repository uses a pnpm workspace. Prefer package-scoped commands.
 
 Examples:
 
-- `pnpm --filter @homeservicemarketplace/api typecheck`
-- `pnpm --filter @homeservicemarketplace/api test`
-- `pnpm --filter @homeservicemarketplace/web build`
-- `pnpm --filter @homeservicemarketplace/contracts build`
+pnpm --filter @homeservicemarketplace/api typecheck;
 
-Do not report a green result from a root-level command if the relevant package-level command was not verified.
+pnpm --filter @homeservicemarketplace/api test;
 
-When reporting command results:
+pnpm --filter @homeservicemarketplace/web lint;
 
-- list the exact commands actually run
-- do not claim success for commands that were not run
-- separate static checks from runtime verification
+pnpm --filter @homeservicemarketplace/web typecheck;
 
----
+pnpm --filter @homeservicemarketplace/web test;
 
-## Integration-Specific Acceptance Rules
+pnpm --filter @homeservicemarketplace/web build;
 
-For integration tasks, completion requires all relevant items below:
+pnpm --filter @homeservicemarketplace/contracts build.
 
-- request and response shapes align exactly between frontend and backend
-- DTOs, enums, Prisma schema, database values, shared contracts, and frontend expectations are consistent
-- migrations are in sync with code
-- generated clients and artifacts are up to date
-- auth and session flows work in practice
-- validation works server-side and is reflected safely in the UI
-- loading, error, empty, and success states are handled safely
-- required env vars are documented and validated
-- local and Vercel-compatible builds succeed
-- backend production-like boot succeeds
-- raw internal, Prisma, database, and infrastructure errors are not leaked to the UI
+Do not report a green root command as proof when the relevant package command
+was not verified.
 
-No green report is allowed without runtime verification of the relevant user-facing flow.
+When reporting results:
 
----
+list exact commands actually run;
 
-## Runtime Acceptance Flows
+list exact pass, failure, warning, and skip counts;
 
-For auth and integration work, verify the relevant real flows when applicable:
+separate static, functional, visual, and runtime evidence;
 
-- signup
-- email verification
-- OTP verification
-- login
-- auth/me
-- forgot password
-- reset password
-- logout
-- session invalidation
-- protected route access
-- error-state handling for invalid credentials or expired tokens
+do not claim a command or environment was verified when it was not.
 
-A task is not complete if these flows fail at runtime even when lint, typecheck, test, and build pass.
+Integration-Specific Acceptance Rules
 
----
+For integration work, verify as applicable:
 
-## Prisma, Database, and Schema Discipline
+request and response shapes align exactly;
+
+DTOs, enums, Prisma schema, database values, contracts, and frontend
+expectations remain consistent;
+
+migrations and generated clients are in sync;
+
+authentication and session flows work in practice;
+
+validation is enforced server-side and represented clearly in the UI;
+
+loading, error, empty, success, offline, and conflict states are safe;
+
+required environment variables and flags are documented and validated;
+
+local and production-like builds succeed;
+
+real user-facing runtime paths work;
+
+raw infrastructure and database errors never reach the UI.
+
+No green report is allowed without runtime verification of the relevant flow.
+
+Runtime Acceptance Flows
+
+Verify relevant real flows when applicable:
+
+signup;
+
+email and OTP verification;
+
+login and refresh;
+
+role or application upgrade followed by usable session claims;
+
+auth/me;
+
+forgot and reset password;
+
+logout and session invalidation;
+
+protected-route access;
+
+invalid, expired, and revoked credentials;
+
+intended application selection and return path;
+
+feature-flag ON and OFF behavior;
+
+deep-link and reload recovery.
+
+A role written to the database but absent from the active token is not a
+completed upgrade flow.
+
+Backend and Server-Owned Truth
+
+The backend remains authoritative for:
+
+authorization;
+
+ownership;
+
+state transitions;
+
+eligibility and capabilities;
+
+prices and payment amounts;
+
+verification decisions;
+
+work-access grants;
+
+policy and readiness;
+
+sensitive-media access;
+
+audit records.
+
+The frontend may project and explain server state, but must not create a second
+transition table, permission resolver, or readiness policy.
+
+UX/UI redesign may reorganize how these facts are presented. It may not change
+their meaning silently.
+
+Prisma, Database, and Schema Discipline
 
 Use Prisma for PostgreSQL access unless explicitly justified otherwise.
 
-After schema changes, verify all relevant steps:
+After schema changes, verify:
 
-- migration creation for development
-- `prisma generate`
-- production-safe migration application path
-- test impact review
-- enum and contract parity review
+forward migration creation;
 
-Enum and contract parity must be verified across:
+Prisma validation and generation;
 
-- Prisma schema
-- generated Prisma client
-- database enum values
-- backend code
-- shared contracts
-- frontend assumptions
+production-safe migration application;
 
-Do not fix schema drift in only one layer.
+drift and migration verification;
 
-Important relational tables should include:
+enum and contract parity;
 
-- `createdAt`
-- `updatedAt`
-- `deletedAt` where soft delete is appropriate
+indexes and constraints;
 
-Every meaningful schema change must come with:
+rollback or forward-repair strategy;
 
-- migration
-- rollback consideration
-- index review
-- test impact review
+test impact.
 
----
+Verify parity across:
 
-## Env and Config Hygiene
+Prisma schema;
 
-- no duplicate environment keys with conflicting values
-- all required env vars must be documented
-- dev and production expectations must be explicit
-- missing env vars must fail clearly and safely
-- local development config must not silently diverge from production-like behavior
-- security-sensitive defaults must never be weakened for convenience without explicit justification
+generated client;
 
-Never hardcode:
+database values;
 
-- API keys
-- secrets
-- tokens
-- passwords
-- SMTP credentials
-- database credentials
+backend code;
 
-Use placeholders only when examples are necessary.
+shared contracts;
 
----
+frontend assumptions.
 
-## Architecture and Folder Discipline
+Do not patch schema drift in one layer only.
 
-### Architecture Style
+Environment and Configuration Hygiene
 
-Default to a modular monolith with strict bounded contexts, written in a microservice-ready way:
+no duplicate environment keys with conflicting values;
 
-- explicit module ownership
-- no circular dependencies
-- no hidden shared state
-- clear boundaries
-- safe extraction paths later if needed
+required variables and feature flags must be documented;
 
-### Preferred Structure
+development and production expectations must be explicit;
 
-- `src/modules/<domain>/`
-- `src/shared/`
-- `src/infrastructure/`
-- `src/config/`
-- `src/lib/`
-- `src/types/`
-- `src/tests/`
+missing required variables must fail clearly and safely;
 
-### Naming
+local development must not silently diverge from production-like behavior;
 
-- use `camelCase` for variables and functions
-- use `PascalCase` for classes, DTOs, interfaces, schemas, and types
-- use clear file names
-- avoid unclear abbreviations
+security-sensitive defaults must not be weakened for convenience;
 
----
+browser-visible URLs must use host-reachable addresses, not container-only
+hostnames.
 
-## Security Rules
+Never hardcode real:
 
-These are non-negotiable.
+API keys;
 
-- never trust client-sent role, price, ownership, payment amount, duration, or status
-- validate and sanitize all untrusted input
-- do not leak stack traces, raw Prisma errors, SQL details, token values, or internal hostnames to the client
-- backend must map internal failures into safe, stable client-facing errors
-- frontend must never render raw stack traces, raw database errors, or file paths
-- never introduce insecure shortcuts, bypasses, or temporary debug backdoors
-- never log passwords, OTPs, reset tokens, or sensitive personal data unmasked
+secrets;
 
----
+tokens;
 
-## Testing and Quality
+passwords;
 
-Testing is required, not optional.
+SMTP credentials;
 
-For meaningful work, generate or update as relevant:
+database credentials.
 
-- unit tests
-- integration tests
-- edge case tests
-- auth tests
-- validation tests
-- regression tests
-- security-focused negative tests
+Architecture and Folder Discipline
 
-For integration and auth tasks:
+Default to a modular monolith with strict bounded contexts and safe extraction
+paths.
 
-- tests must not be limited to unit tests
-- verify the real runtime flow manually or through integration or e2e coverage where practical
+Required qualities:
 
-No task is complete until the relevant commands pass:
+explicit module and feature ownership;
 
-- `pnpm lint`
-- `pnpm typecheck`
-- `pnpm test`
-- `pnpm build`
+no circular dependencies;
 
-Run package-scoped equivalents where appropriate for the monorepo.
+no hidden shared state;
 
-Do not claim success based on static checks alone.
+clear server/client boundaries;
 
-Do not claim tests passed if they were not actually run.
+route-level and feature-level composition;
 
----
+orchestration components kept small;
 
-## Observability and Runtime Reliability
+reusable primitives separated from domain logic;
 
-Code should be production-debuggable.
+no new global state library without explicit justification;
+
+no duplicated API client or query-key factory.
+
+For frontend features, prefer a structure such as:
+
+features/<feature>/
+api/
+components/
+copy/
+hooks/
+routes/
+state/
+tests/
+
+Use clear names. Prefer camelCase for variables/functions and PascalCase
+for components, classes, DTOs, interfaces, and schemas.
+
+Security and Privacy Rules
+
+These rules are non-negotiable in every delivery mode.
+
+never trust client-sent role, ownership, price, amount, duration, status, or
+capability;
+
+validate and sanitize untrusted input;
+
+enforce authorization and ownership on the server;
+
+do not leak raw Prisma, SQL, stack, filesystem, token, storage-key, or
+internal-host details;
+
+do not log passwords, OTPs, reset tokens, access tokens, refresh tokens, or
+unmasked sensitive data;
+
+preserve restricted-media and public-media boundaries;
+
+do not introduce debug backdoors, test-only production routes, or auth
+bypasses;
+
+do not weaken privacy to make a preview or redesign easier;
+
+audit sensitive state transitions and reads according to existing policy.
+
+Testing and Quality
+
+Testing is required, but test type must match the claim.
+
+Use as relevant:
+
+unit tests;
+
+contract tests;
+
+integration tests;
+
+real-database tests;
+
+API E2E;
+
+browser E2E;
+
+visual regression;
+
+accessibility checks;
+
+security-focused negative tests;
+
+concurrency and rollback tests.
+
+Rules:
+
+do not limit integration/auth work to unit tests;
+
+do not use mocked API fixtures as the only proof of an end-to-end claim;
+
+do not use DOM assertions as the only proof of visual acceptance;
+
+do not reduce workers to hide isolation races;
+
+do not add skips or reduce test counts without explicit justification;
+
+run affected suites repeatedly when concurrency or timing changed;
+
+report pre-existing warnings honestly;
+
+never invent passing results.
+
+Observability and Runtime Reliability
 
 Prefer:
 
-- structured logs
-- request IDs or correlation IDs
-- health endpoints
-- metrics endpoints
-- clear failure boundaries
-- safe timeout handling
-- safe retry logic only where justified
+structured logs;
 
-Development-only logging convenience must never crash application boot.
+request/correlation IDs;
 
----
+health and readiness endpoints;
 
-## Output Contract
+metrics;
 
-For implementation or bug-fix tasks, always return:
+clear error boundaries;
 
-1. Assumptions
-2. Root Causes
-3. Plan
-4. Files Changed and Why
-5. Tests Added or Updated
-6. Commands Actually Run
-7. Environment Verification Results
-8. Security Notes
-9. Risks or Remaining Issues
-10. Final Status:
+safe timeout handling;
 
-- fixed
-- partially fixed
-- blocked
+retries only when semantically safe;
+
+idempotency for retryable commands;
+
+production-debuggable failure messages without sensitive data.
+
+Development-only convenience must not crash boot or alter production security.
+
+Git and Change Discipline
+
+inspect the current branch, SHA, worktree, and stashes before editing;
+
+preserve unrelated user changes;
+
+do not reset, rebase, amend, squash, force-push, delete stashes, or merge
+unless explicitly authorized;
+
+keep commits purpose-separated;
+
+do not mix a visual redesign with unrelated backend cleanup;
+
+after a pushed change, verify required checks on the new final SHA;
+
+previous green checks do not validate a newer SHA;
+
+do not call a draft or feature complete while required checks are pending.
+
+Output Contract
+
+For non-trivial implementation, bug-fix, integration, or redesign work, report:
+
+active delivery mode and scope;
+
+assumptions;
+
+root causes and UX gap matrix where applicable;
+
+target architecture or design decisions;
+
+files changed and why;
+
+contracts, routes, flags, and migrations;
+
+tests added or updated;
+
+exact commands and counts;
+
+runtime and environment verification;
+
+visual and responsive evidence for UI work;
+
+accessibility, security, and privacy notes;
+
+rollout and rollback;
+
+warnings, skips, residual risks, and known deviations;
+
+final SHA, PR/check status, worktree, and stash state when applicable;
+
+final status: fixed, partially fixed, or blocked.
 
 Do not overstate success.
 
----
-
-## Forbidden Behaviors
+Forbidden Behaviors
 
 Do not:
 
-- redesign frontend UI without explicit instruction
-- claim integration is complete without runtime verification
-- patch backend problems only in the frontend
-- patch database or schema drift in only one layer
-- add TODO placeholders in critical security or auth paths
-- expose internal admin endpoints publicly
-- disable validation for speed
-- invent passing tests
-- claim production readiness without verification
-- stop at static checks when runtime flows are broken
-- delete orphan or unused UI files unless they are proven to break the build or are explicitly approved for cleanup
+redesign UI without an explicit scoped redesign instruction;
+
+refuse or dilute an explicit scoped redesign by citing the default
+preservation mode;
+
+treat existing UI as visually authoritative when the task supplies a new
+approved design target;
+
+claim UX acceptance from CI or DOM tests alone;
+
+claim a hidden default-off surface replaced the visible user journey;
+
+test one feature-flag state and report the other;
+
+mistake a legacy fallback for the implemented surface;
+
+preserve a known UX defect solely to maximize component reuse;
+
+create a parallel frontend state machine for server-owned policy;
+
+patch backend, database, schema, or auth defects only in the frontend;
+
+patch schema drift in one layer;
+
+disable validation, authorization, tests, or security gates for speed;
+
+expose internal or admin endpoints publicly;
+
+add critical TODO placeholders;
+
+invent tests, screenshots, approvals, or passing results;
+
+claim production readiness without real runtime evidence;
+
+delete legacy or fallback UI before rollout and rollback requirements permit
+it;
+
+merge without explicit authorization.
 
 If blocked:
 
-- explain exactly what is blocked
-- explain why it is blocked
-- reproduce locally first
-- investigate from the codebase first
-- request external evidence only if truly necessary
+identify the exact blocker;
+
+explain why it blocks the acceptance criteria;
+
+reproduce and investigate from the codebase first;
+
+provide the safest bounded next action;
+
+request external evidence or authority only when genuinely necessary.

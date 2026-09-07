@@ -112,9 +112,22 @@ export function buildHub(source: HubSource): ProviderOnboardingHubView {
   // Which tasks own an unmet requirement. Routed through the same two
   // functions the review screen uses, so the two surfaces cannot disagree.
   const blockedTasks = new Set<string>();
+  // Sprint 9B.28 — and which of those are waiting on US rather than on THEM.
+  //
+  // `evaluateOnboarding` already distinguishes these: a specialty that has been
+  // chosen and is sitting in the admin approval queue is raised as
+  // `AWAITING_REVIEW`, not `REQUIRED`. The hub threw that distinction away and
+  // labelled both "Required", so a provider who had done everything asked of
+  // them was told they had not — and had no action available that could
+  // possibly clear it, because the outstanding move was an administrator's.
+  const awaitingReviewTasks = new Set<string>();
+  const providerActionTasks = new Set<string>();
   for (const issue of source.issues) {
     const step = stepForField(issue.field);
-    blockedTasks.add(STEP_TO_V2_TASK[step ?? 'REVIEW']);
+    const task = STEP_TO_V2_TASK[step ?? 'REVIEW'];
+    blockedTasks.add(task);
+    if (issue.code === 'AWAITING_REVIEW') awaitingReviewTasks.add(task);
+    else providerActionTasks.add(task);
   }
 
   const collectingComplete = COLLECTING_TASKS.every((t) => !blockedTasks.has(t.id));
@@ -124,7 +137,13 @@ export function buildHub(source: HubSource): ProviderOnboardingHubView {
     return {
       id: t.id,
       group: t.group,
-      status: taskStatusOf(t.id, blockedTasks, collectingComplete, editable),
+      status: taskStatusOf(t.id, {
+        blockedTasks,
+        awaitingReviewTasks,
+        providerActionTasks,
+        collectingComplete,
+        editable,
+      }),
       title: text.title,
       description: text.description,
     };
@@ -142,12 +161,19 @@ export function buildHub(source: HubSource): ProviderOnboardingHubView {
   };
 }
 
-function taskStatusOf(
-  id: string,
-  blockedTasks: Set<string>,
-  collectingComplete: boolean,
-  editable: boolean,
-): ProviderOnboardingHubTaskStatus {
+interface TaskStatusInput {
+  blockedTasks: Set<string>;
+  /** Tasks whose ONLY outstanding issues are with an administrator. */
+  awaitingReviewTasks: Set<string>;
+  /** Tasks with at least one issue the provider can actually act on. */
+  providerActionTasks: Set<string>;
+  collectingComplete: boolean;
+  editable: boolean;
+}
+
+function taskStatusOf(id: string, input: TaskStatusInput): ProviderOnboardingHubTaskStatus {
+  const { blockedTasks, awaitingReviewTasks, providerActionTasks, collectingComplete, editable } =
+    input;
   // With the platform, not the provider. Applies to every task at once,
   // including ones that are individually complete — the application as a whole
   // is not theirs to edit right now.
@@ -174,7 +200,22 @@ function taskStatusOf(
     return collectingComplete ? 'AVAILABLE' : 'BLOCKED';
   }
 
-  return blockedTasks.has(id) ? 'AVAILABLE' : 'COMPLETE';
+  if (!blockedTasks.has(id)) return 'COMPLETE';
+
+  // Sprint 9B.28 — WAITING when the only thing left is ours to do.
+  //
+  // `AVAILABLE` renders as "Required" and invites the provider into a screen
+  // where every field they are allowed to touch is already filled in. The
+  // honest status for "you have chosen a specialty and we have not approved it
+  // yet" is the same one a submitted application gets: it is with us.
+  //
+  // Note it stays in `blockedTasks`, so `collectingComplete` is still false
+  // and REVIEW_SUBMISSION stays BLOCKED. That is correct — the application
+  // genuinely is not submittable yet — and it is why this cannot be expressed
+  // by simply dropping the issue.
+  if (awaitingReviewTasks.has(id) && !providerActionTasks.has(id)) return 'WAITING';
+
+  return 'AVAILABLE';
 }
 
 function nextActionOf(

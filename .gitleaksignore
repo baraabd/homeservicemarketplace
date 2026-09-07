@@ -1,0 +1,42 @@
+# Gitleaks baseline — historical test fixtures ONLY.
+#
+# docs/security/gitleaks-historical-baseline.md carries the review, the
+# classification and the removal procedure. Read it before touching this file.
+#
+# RULES FOR THIS FILE, which exist because a secret baseline is the easiest
+# security control in a repository to quietly hollow out:
+#
+#   * Fingerprints only. One line, one finding, `commit:path:rule:line`.
+#   * No path globs, no directory exclusions, no rule disables, no regexes.
+#     Every entry here stops exactly one occurrence in exactly one historical
+#     commit and nothing else.
+#   * A finding at a NEW commit, or at a new line, produces a DIFFERENT
+#     fingerprint and still fails CI. That is the point.
+#   * Nothing is added here without an individual security review recorded in
+#     the document above.
+#
+# Each entry below was verified to be a synthetic value that has never existed
+# outside a `.spec.ts` / `.test.tsx` file anywhere in the repository's history
+# (`git log --all -S`, 398 commits), and never in any environment or
+# deployment file. None resembles a provider credential.
+
+# ── 37c90005 (2026-04-15) — one shared JWT signing secret for the IAM unit
+#    and integration specs. Feeds a mock AppConfigService; 44 characters so it
+#    satisfies the >= 32 character check in env.schema.ts.
+37c90005ba71ecd058a22bb2d72ea133e992a88a:apps/api/src/modules/iam/authentication/services/token.service.spec.ts:generic-api-key:6
+37c90005ba71ecd058a22bb2d72ea133e992a88a:apps/api/src/modules/iam/authentication/services/verification.service.spec.ts:generic-api-key:13
+37c90005ba71ecd058a22bb2d72ea133e992a88a:apps/api/src/modules/iam/authentication/services/session.service.spec.ts:generic-api-key:21
+37c90005ba71ecd058a22bb2d72ea133e992a88a:apps/api/test/integration/auth-flow.integration.spec.ts:generic-api-key:75
+
+# ── f3cce56e (2026-05-03) — the media signing secret used to prove that an
+#    EXPIRED upload signature is refused. Local disk storage adapter only.
+f3cce56eb5fc6b97df100ecd748d2b003e6480d1:apps/api/src/infrastructure/storage/local-disk-storage.adapter.spec.ts:generic-api-key:14
+f3cce56eb5fc6b97df100ecd748d2b003e6480d1:apps/api/src/infrastructure/storage/local-disk-storage.adapter.spec.ts:generic-api-key:157
+f3cce56eb5fc6b97df100ecd748d2b003e6480d1:apps/api/test/e2e/media.e2e.spec.ts:generic-api-key:43
+
+# ── 6d63dc35 (2026-08-21) — the password-reset suite. Two mock-config signing
+#    secrets, plus a 15-character URL-safe reset token whose whole purpose is
+#    to prove that `-` and `_` survive the route round-trip verbatim.
+6d63dc35cfb9a578d01081e3fc0e5c09a8b9e4c9:apps/api/test/e2e/password-reset.e2e.spec.ts:generic-api-key:95
+6d63dc35cfb9a578d01081e3fc0e5c09a8b9e4c9:apps/api/test/integration/password-reset.integration.spec.ts:generic-api-key:132
+6d63dc35cfb9a578d01081e3fc0e5c09a8b9e4c9:apps/web/src/app/pages/AuthPages.test.tsx:generic-api-key:240

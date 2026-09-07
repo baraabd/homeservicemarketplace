@@ -109,6 +109,36 @@ function RootInner() {
       ? "'Cairo', 'Inter', sans-serif"
       : "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
 
+  // ── Provider: full-screen, no phone shell ─────────────────────────────────
+  //
+  // Mode B. The phone frame below caps EVERY non-/select route at 430px on a
+  // dark gradient, so at 1440 the provider application was a narrow strip with
+  // roughly 70% of the viewport spent on decoration — a provider comparing
+  // bids or reconciling earnings on a laptop did it through a phone-shaped
+  // slot. Admin already opts out by living outside this layout; Provider is
+  // the surface people work in all day and had no such exemption.
+  //
+  // Opting out here rather than widening the frame keeps the Seeker experience
+  // exactly as it is: the phone shell is deliberate there, and this changes
+  // nothing about it.
+  //
+  // The provider surfaces own their own width from here — see the shells,
+  // which centre content on a readable measure instead of stretching a phone
+  // column across a desktop.
+  if (isProvider) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900" style={{ fontFamily }} dir={dir}>
+        <Outlet context={ctx} />
+        <Toaster
+          position="top-center"
+          richColors
+          closeButton
+          toastOptions={{ className: 'hsm-toast hsm-toast--provider' }}
+        />
+      </div>
+    );
+  }
+
   // ── App selector: full-screen, no phone shell ─────────────────────────────
   if (isSelect) {
     return (

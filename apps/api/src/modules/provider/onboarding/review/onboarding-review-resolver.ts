@@ -82,10 +82,24 @@ export function buildReview(source: ReviewSource): ProviderOnboardingReview {
     };
   });
 
-  // Consent is a submission requirement but not a completeness FIELD, so it
-  // would otherwise be invisible here. Appended rather than woven in, so the
-  // policy's own list stays recognisable.
-  if (!source.terms.accepted) {
+  // Consent, once, not twice.
+  //
+  // This block was written when consent was a submission requirement and NOT a
+  // completeness field, so it would otherwise have been invisible here. That
+  // stopped being true: `evaluateOnboarding` raises `consent: REQUIRED` of its
+  // own accord, and appending unconditionally put TWO blocker cards for one
+  // requirement in front of the provider — "Agree to the terms below to submit
+  // your application." immediately followed by "Agree to the terms below."
+  //
+  // The append still earns its place for the case the policy CANNOT see. The
+  // policy only knows whether a version string is stored; it cannot know
+  // whether that version is still the live one, so STALE_VERSION — agreed to,
+  // but to superseded terms — is raised only here.
+  //
+  // Deduplicated on the FIELD rather than on a status flag: whichever rule
+  // raised it, the provider needs to be told once.
+  const consentAlreadyRaised = blocking.some((item) => item.field === 'consent');
+  if (!source.terms.accepted && !consentAlreadyRaised) {
     blocking.push({
       id: 'blocking:terms',
       field: 'acceptedConsentVersion',

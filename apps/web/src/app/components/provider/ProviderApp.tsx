@@ -148,7 +148,11 @@ function ProviderTopBar({
   const { lang } = useLang();
   return (
     <div className="flex-shrink-0 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 shadow-sm z-20">
-      <div className="flex items-center justify-between px-5 py-3.5">
+      {/* Mode B — the bar spans the viewport so its border reads as a real
+          edge, while its contents track a measure. Root no longer caps
+          provider routes at 430px, so without this the identity block and the
+          bell fly to opposite ends of a 1440px display. */}
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-3.5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-sm">
             <span className="text-white" style={{ fontSize: '12px', fontWeight: 800 }}>
@@ -192,7 +196,7 @@ function ProviderBottomNav() {
       aria-label={lang === 'ar' ? 'أقسام مساحة العمل' : 'Workspace sections'}
       data-testid="provider-bottom-nav"
     >
-      <div className="flex items-center justify-around px-2 pt-2 pb-3">
+      <div className="mx-auto flex w-full max-w-2xl items-center justify-around px-2 pt-2 pb-3">
         {PROVIDER_NAV.map(({ to, icon: Icon, labelEn, labelAr }) => (
           <NavLink
             key={to}
