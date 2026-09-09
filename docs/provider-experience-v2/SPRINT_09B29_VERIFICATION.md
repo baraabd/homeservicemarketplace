@@ -3529,6 +3529,11 @@ repository squash-merges every sprint PR anyway (`develop`'s history is
 
 ## 5.9 Phase 3 — closed
 
+> **Amended by §5.10.** The gate table below records the `7ff2112` run and
+> stands. The commit that added this section then failed one integration test —
+> a pre-existing race this sprint made likelier, not one it introduced. §5.10
+> records it and the repair, and the final verdict is the last SHA's run.
+
 Draft PR **#73**, branch
 `feat/sprint-09b29-provider-onboarding-v2-activation`, one commit onto
 `develop` `563cfe73`. PR #72 is closed and superseded, its branch preserved.
@@ -3604,3 +3609,68 @@ describes. The full suite re-runs on it, and the claim "CI and CodeQL green on
 the same SHA" is only true once that run is also green — which is the state
 this document is published in. A record of a green run cannot be inside the
 commit it describes without a second run; this is that second run.
+
+## 5.10 Defect 8 — a table-wide assertion in a suite this sprint never touched
+
+The commit adding §5.9 failed `Integration & E2E`: **1 test of 3867**, in
+`service-area-expansion.integration.spec.ts` — a Sprint 9B.20 suite this sprint
+does not modify.
+
+The diff between that commit and the green one before it is **78 lines of
+Markdown and nothing else**, which is what makes the diagnosis unambiguous: the
+change cannot have caused it.
+
+### The defect
+
+```
+Sprint 9B.20 earned service-area expansion › with the feature switched on
+  › records the tier and audits the change exactly once
+    Expected: 1
+    Received: 2
+```
+
+The test name is a claim about **one provider** — evaluate twice, audit once.
+The assertion was written as a count across the whole table:
+
+```ts
+prisma.auditEvent.count({ where: { type: 'SERVICE_AREA_EXPANSION_TIER_CHANGED' } });
+```
+
+so any other tier-change row present when it ran made it fail. Earlier cases in
+the same file evaluate their own providers, and `audit.record` is awaited inside
+a transaction that commits after the call returns — so a neighbouring case's row
+can land while this count runs. Every second row it can see is a false positive.
+
+This is the same class as §4.5 Defect 1, and the honest framing is the same one
+recorded there: **this sprint's ten new integration suites did not create the
+race, they made it likely enough to surface.** More suites in the shared
+database means more concurrent writers, and a global reader with no ownership
+scope is a matter of timing after that.
+
+### The repair
+
+Scope the count by `metadata.providerProfileId` — a field the service already
+writes — so the assertion tests exactly what its name claims and nothing about
+the rest of the table. No lock was added, no worker count reduced, no retry
+introduced, and the suite was not reordered: those would hide the race rather
+than remove the reason it matters.
+
+**Verified against a real database rather than pushed and hoped for**, because a
+Prisma JSON-path filter is only checked at runtime:
+
+| Step                                                       | Result                       |
+| ---------------------------------------------------------- | ---------------------------- |
+| throwaway Postgres + Redis, ephemeral ports, tmpfs storage | up                           |
+| `migrate:deploy`                                           | exit 0                       |
+| `seed`                                                     | exit 0                       |
+| `service-area-expansion.integration.spec.ts`, gates ON     | **24 passed, 0 failed**      |
+| teardown                                                   | 0 containers, 0 volumes left |
+| developer's stack afterwards                               | all 5 containers healthy     |
+
+### Why this is reported rather than retried
+
+Re-running CI until the race lost would have produced a green tick and left the
+defect in place, and the repository's own rules forbid exactly that: _"do not
+reduce workers to hide isolation races"_. One test in 3867 failing is precisely
+the signal that gets waved away as flake; it was the only thing standing between
+this sprint and an untrue completion claim.

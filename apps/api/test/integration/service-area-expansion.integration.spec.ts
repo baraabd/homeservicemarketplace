@@ -427,8 +427,26 @@ d('Sprint 9B.20 earned service-area expansion (real Postgres)', () => {
         version: V('rec'),
       });
 
+      // Scoped to THIS provider, not the whole table.
+      //
+      // The assertion is "evaluating twice audits once", which is a statement
+      // about one provider — but it was written as a table-wide count, so any
+      // other tier change present when it ran made it fail. It did, on CI, with
+      // `Expected 1, Received 2`, in a run whose only diff from a green one was
+      // 78 lines of Markdown.
+      //
+      // Every source of a second row is a false positive here: earlier cases in
+      // this file evaluate their own providers, and `audit.record` is awaited
+      // inside a transaction that commits after the call returns, so a
+      // neighbouring case's row can land while this count runs. Scoping by
+      // `metadata.providerProfileId` — the field the service already writes —
+      // asserts exactly what the test name claims and nothing about the rest of
+      // the table.
       const events = await prisma.auditEvent.count({
-        where: { type: 'SERVICE_AREA_EXPANSION_TIER_CHANGED' },
+        where: {
+          type: 'SERVICE_AREA_EXPANSION_TIER_CHANGED',
+          metadata: { path: ['providerProfileId'], equals: p.id },
+        },
       });
       expect(events).toBe(1);
     });
