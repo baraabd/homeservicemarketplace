@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { AppConfigService } from '../../config/app-config.service';
@@ -136,6 +141,45 @@ export class S3StorageAdapter extends StoragePort {
     const bucket = this.config.get('S3_BUCKET');
     if (!bucket) throw new Error('S3_BUCKET is required when STORAGE_DRIVER=s3');
     return this.publicReadUrl(bucket, key);
+  }
+
+  /**
+   * Remove one object. Idempotent — see `StoragePort.deleteObject`.
+   *
+   * S3's DeleteObject is already idempotent: deleting a key that is not
+   * there answers 204, exactly as deleting one that is. So the ordinary
+   * path needs no special handling, and the cleanup worker's
+   * delete-then-record ordering survives a crash between the two steps.
+   *
+   * NoSuchKey / NotFound are mapped to success for the backends that answer
+   * that way instead (MinIO and some R2 configurations), so behaviour does
+   * not depend on which S3-compatible provider an operator chose.
+   *
+   * Everything else RETHROWS. AccessDenied in particular must stay a
+   * failure: a bucket policy that forbids deletion is precisely the case
+   * where the object is still publicly readable, and swallowing it would
+   * let the worker write `deletedAt` for bytes that are still being served.
+   */
+  async deleteObject(key: string): Promise<void> {
+    const bucket = this.config.get('S3_BUCKET');
+    if (!bucket) throw new Error('S3_BUCKET is required when STORAGE_DRIVER=s3');
+    try {
+      await this.client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    } catch (err) {
+      const name = (err as { name?: string })?.name;
+      const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata
+        ?.httpStatusCode;
+      // Absent is the end state this asked for.
+      if (name === 'NoSuchKey' || name === 'NotFound' || status === 404) {
+        this.log.log({ msg: 'storage.s3.delete.absent', key });
+        return;
+      }
+      // The KEY only, and no URL: this runs on every cleanup pass, and both
+      // the signed and the public URL are things that must not reach a log.
+      this.log.warn({ msg: 'storage.s3.delete.failed', key, error: name ?? 'unknown' });
+      throw err;
+    }
+    this.log.log({ msg: 'storage.s3.delete', key });
   }
 
   /** Compose the canonical read URL for an uploaded object.

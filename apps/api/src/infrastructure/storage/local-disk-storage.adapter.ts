@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdir, open, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, rm, stat, writeFile } from 'node:fs/promises';
 import { join, normalize, sep } from 'node:path';
 
 import { AppConfigService } from '../../config/app-config.service';
@@ -187,6 +187,32 @@ export class LocalDiskStorageAdapter extends StoragePort {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Remove one object. Idempotent — see `StoragePort.deleteObject`.
+   *
+   * `absolutePathForKey` runs `validateKey` first, so a traversal attempt is
+   * refused here exactly as it is on every read and write path. The cleanup
+   * worker only ever passes a key it read out of `MediaAsset.storageKey`,
+   * which the SERVER minted — but this is the layer that must not depend on
+   * that being true.
+   *
+   * `force: true` makes absence a success, which the worker's
+   * delete-then-record ordering requires: a crash between the two leaves an
+   * object already gone and a row still asking for it. Mirrors the restricted
+   * adapter deliberately — one deletion behaviour, not two that can drift.
+   *
+   * A permission or I/O error still throws. Swallowing one would let the
+   * worker record a deletion that did not happen.
+   */
+  async deleteObject(key: string): Promise<void> {
+    const abs = this.absolutePathForKey(key);
+    await rm(abs, { force: true });
+    // The KEY only. Never the signed URL and never the public URL: this line
+    // is written on every cleanup pass and both of those are credentials or
+    // personal media locations.
+    this.log.log({ msg: 'storage.local.delete', key });
   }
 
   // ─── Internals ─────────────────────────────────────────────────────────
