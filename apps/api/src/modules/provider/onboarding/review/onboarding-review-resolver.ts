@@ -8,6 +8,7 @@ import { STEP_TO_V2_TASK } from '@homeservicemarketplace/contracts';
 import type { ProviderOnboardingIssue } from '@homeservicemarketplace/contracts';
 
 import { computeProgress, stepForField } from '../onboarding-steps';
+import { providerActionIssues } from '../provider-onboarding.policy';
 
 // Sprint 9B.23 — the review read-model, as a PURE function.
 //
@@ -66,7 +67,16 @@ export const WITHDRAWABLE_STATES: readonly string[] = Object.freeze([
 export function buildReview(source: ReviewSource): ProviderOnboardingReview {
   const progress = computeProgress(source.issues, source.lifecycleState);
 
-  const blocking: ReviewItem[] = source.issues.map((issue) => {
+  // Sprint 09B.29 — BLOCKING carries only what the provider can act on.
+  //
+  // An `AWAITING_REVIEW` issue is already represented in the WAITING group
+  // below, sourced from `pendingSpecialtyCount`. Listing it here as well put a
+  // blocker card in front of a provider with no action attached to it and made
+  // `canSubmit` false, which is the deadlock this phase removes. Nothing is
+  // hidden: the same fact still appears, on the axis it belongs to.
+  const actionable = providerActionIssues(source.issues);
+
+  const blocking: ReviewItem[] = actionable.map((issue) => {
     const step = stepForField(issue.field);
     return {
       id: `blocking:${issue.field}:${issue.code}`,
@@ -144,8 +154,23 @@ export function buildReview(source: ReviewSource): ProviderOnboardingReview {
       count: null,
     }));
 
-  // The policy is the authority, not the group we just built.
-  const canSubmit = source.issues.length === 0 && source.terms.accepted;
+  // THE AUTHORITATIVE ANSWER THE CLIENT RENDERS.
+  //
+  // Two independent conditions, and both are required: the provider's own input
+  // must be complete, AND the current terms version must be accepted. Provider
+  // input alone is not submission eligibility — that is why this is not simply
+  // `isProviderInputComplete`.
+  //
+  // The submit COMMAND remains the final authority and enforces more than this
+  // read-model can see: the lifecycle state, the draft version for optimistic
+  // concurrency, authorization, and the atomic claim that makes a concurrent
+  // retry a conflict rather than a second application. A true here means "we
+  // know of no reason to refuse", not "the command cannot refuse".
+  //
+  // Pending moderation is reported in WAITING and does not withhold the button;
+  // activation and work access remain gated by the verification decision and
+  // the work-access grant, which read none of this.
+  const canSubmit = actionable.length === 0 && source.terms.accepted;
 
   const groups: ReviewGroup[] = [
     { kind: 'BLOCKING', items: blocking },

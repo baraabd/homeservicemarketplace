@@ -59,13 +59,24 @@ export interface ProviderOnboardingIssue {
    *
    * Sprint 9B.18 adds:
    *   AWAITING_REVIEW — the provider DID supply this and an admin has not
-   *                     decided yet. It still blocks submission, because the
-   *                     canonical rule is that submission needs APPROVED
-   *                     specialties — but it is not a mistake they made, and
+   *                     decided yet. It is not a mistake they made, and
    *                     reporting it as REQUIRED tells someone who chose a
    *                     specialty that they did not choose one. There is
    *                     nothing for them to fix and the copy must not imply
    *                     there is.
+   *
+   *                     Sprint 09B.29 — it no longer blocks submission. The
+   *                     rule up to 9B.18 was "submission needs APPROVED
+   *                     specialties", which deadlocked: the provider could not
+   *                     clear the item, and the approval it waited on is
+   *                     prompted by the submission it was blocking. Pending
+   *                     moderation is now its own axis — it still gates
+   *                     ACTIVATION and WORK ACCESS, and never final review or
+   *                     submission.
+   *
+   *                     Consumers deciding whether a provider may proceed must
+   *                     filter with `providerActionIssues()` rather than
+   *                     testing `issues.length === 0`.
    */
   code:
     | 'REQUIRED'

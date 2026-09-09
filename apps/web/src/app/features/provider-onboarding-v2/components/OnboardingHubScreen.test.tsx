@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { api } from '../../../../lib/api';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
+import { statusExplanation, statusLabel } from '../copy/onboarding-hub-copy';
 import { OnboardingHubScreen } from './OnboardingHubScreen';
 
 // Sprint 9B.16 — the hub, as a provider experiences it.
@@ -224,6 +225,108 @@ describe('OnboardingHubScreen — what can be pressed', () => {
   });
 });
 
+// Sprint 09B.29 Phase 3, JOURNEY B — the client half of the deadlock repair.
+//
+// The server no longer blocks submission on a specialty the platform has not
+// yet approved, and `phase3-journey-b-work-access-denied.integration.spec.ts`
+// pins the server side. This block pins the SCREEN, because the deadlock was
+// only half a server bug: a hub that renders the waiting specialty as the
+// provider's own outstanding task sends them back into a form on which every
+// editable field is already filled in, and no amount of server correctness
+// fixes that.
+//
+// The payload below is the one the API actually returns for that state,
+// transcribed from the integration journey: SERVICES_EXPERIENCE WAITING,
+// REVIEW_SUBMISSION AVAILABLE, progress 5 of 6, nextAction SUBMIT.
+const PENDING_MODERATION = hub({
+  tasks: CANONICAL.tasks.map((t) => {
+    if (t.id === 'SERVICES_EXPERIENCE') return { ...t, status: 'WAITING' };
+    if (t.id === 'REVIEW_SUBMISSION') return { ...t, status: 'AVAILABLE' };
+    return { ...t, status: 'COMPLETE' };
+  }),
+  progress: { complete: 5, total: 6 },
+  nextAction: { kind: 'SUBMIT' },
+});
+
+describe('OnboardingHubScreen — a specialty still in moderation', () => {
+  it('does not present the waiting specialty as the provider’s own work', async () => {
+    mock.onGet(HUB_URL).reply(200, PENDING_MODERATION);
+    renderHub();
+
+    const row = await screen.findByTestId('task-row-SERVICES_EXPERIENCE');
+    // The exact regression: an openable row here is an invitation to redo work
+    // that is already done and is not what is holding the application up.
+    expect(row.tagName).not.toBe('BUTTON');
+    expect(row).toHaveAttribute('data-actionable', 'false');
+    expect(within(row).queryByRole('button')).toBeNull();
+  });
+
+  it('explains it as ours to finish, not theirs', async () => {
+    mock.onGet(HUB_URL).reply(200, PENDING_MODERATION);
+    renderHub();
+
+    // Asserted against the copy module rather than a frozen string, so
+    // rewording stays free while a MAPPING error — the waiting specialty
+    // explained as "finish the tasks above first", which is the instruction
+    // that sent providers back into a completed form — fails here.
+    const explanation = await screen.findByTestId('task-explanation-SERVICES_EXPERIENCE');
+    expect(explanation).toHaveTextContent(statusExplanation('WAITING', 'en') ?? '');
+    expect(explanation.textContent).not.toBe(statusExplanation('BLOCKED', 'en'));
+
+    const row = screen.getByTestId('task-row-SERVICES_EXPERIENCE');
+    expect(row).toHaveTextContent(statusLabel('WAITING', 'en'));
+    // Not labelled as something to do.
+    expect(row).not.toHaveTextContent(statusLabel('AVAILABLE', 'en'));
+  });
+
+  it('keeps the review task open — moderation does not bar submission', async () => {
+    mock.onGet(HUB_URL).reply(200, PENDING_MODERATION);
+    renderHub();
+
+    const review = await screen.findByTestId('task-row-REVIEW_SUBMISSION');
+    expect(review.tagName).toBe('BUTTON');
+    expect(review).toHaveAttribute('data-actionable', 'true');
+    expect(review).toBeEnabled();
+  });
+
+  it('points the primary action at submitting, not back at the waiting task', async () => {
+    mock.onGet(HUB_URL).reply(200, PENDING_MODERATION);
+    renderHub();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Submit application' }));
+    await waitFor(() => expect(at()).toBe('/provider/onboarding/REVIEW_SUBMISSION'));
+  });
+
+  it('counts the provider’s own part as done, from the server’s number', async () => {
+    mock.onGet(HUB_URL).reply(200, PENDING_MODERATION);
+    renderHub();
+    // Before the repair this read 4 of 6 and told a provider who had finished
+    // that they had not.
+    expect(await screen.findByTestId('onboarding-v2-progress')).toHaveTextContent(
+      '5 of 6 complete',
+    );
+  });
+
+  it('raises no action-required banner — nothing is being asked of them', async () => {
+    mock.onGet(HUB_URL).reply(200, PENDING_MODERATION);
+    renderHub();
+
+    await screen.findByTestId('hub-task-list');
+    expect(screen.queryByTestId('hub-state-ACTION_REQUIRED')).toBeNull();
+  });
+
+  it('reads the same way in Arabic', async () => {
+    mock.onGet(HUB_URL).reply(200, PENDING_MODERATION);
+    renderHub('ar');
+
+    const row = await screen.findByTestId('task-row-SERVICES_EXPERIENCE');
+    expect(row).toHaveAttribute('data-actionable', 'false');
+    // The Arabic CTA, not a transliteration and not the English string.
+    expect(screen.getByRole('button', { name: 'إرسال الطلب' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Submit application' })).toBeNull();
+  });
+});
+
 describe('OnboardingHubScreen — the dynamic CTA', () => {
   it('opens the task named by nextAction', async () => {
     mock
@@ -300,10 +403,38 @@ describe('OnboardingHubScreen — states', () => {
     await screen.findByTestId('hub-task-list');
   });
 
-  it.each([401, 403])('shows the unauthorized state on %i', async (status) => {
-    mock.onGet(HUB_URL).reply(status);
+  it('shows the unauthorized state on 401', async () => {
+    mock.onGet(HUB_URL).reply(401);
     renderHub();
     await screen.findByTestId('hub-state-UNAUTHORIZED');
+  });
+
+  // Sprint 9B.29 — 403 gets its OWN screen. This case used to be folded into
+  // the 401 assertion above, which is how a freshly-upgraded provider whose
+  // token predates the role grant was told their session had expired and sent
+  // to sign in again — advice that cannot fix a stale role claim.
+  it('shows the forbidden state on 403, never the session-expired copy', async () => {
+    mock.onGet(HUB_URL).reply(403);
+    // The recovery rotation fires once on the first 403. Both calls are stubbed
+    // so the attempt resolves deterministically instead of hitting the network;
+    // the role set comes back WITHOUT `provider`, which is the "genuine
+    // refusal" branch and leaves the forbidden screen on display.
+    mock.onPost('/v1/auth/refresh').reply(200);
+    mock.onGet('/v1/auth/me').reply(200, {
+      id: 'u1',
+      email: 'p@example.com',
+      firstName: 'P',
+      lastName: 'R',
+      status: 'ACTIVE',
+      emailVerifiedAt: null,
+      mfaEnabled: false,
+      roles: ['seeker'],
+    });
+
+    renderHub();
+
+    await screen.findByTestId('hub-state-FORBIDDEN');
+    expect(screen.queryByTestId('hub-state-UNAUTHORIZED')).toBeNull();
   });
 
   it('shows the empty state, not an error, on 404', async () => {

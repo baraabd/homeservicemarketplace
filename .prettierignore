@@ -5,3 +5,26 @@ coverage
 .turbo
 .next
 pnpm-lock.yaml
+# ── Sprint 09B.29 — files whose BYTES are the contract ─────────────────────
+#
+# Prettier must not touch these. The root `format` script and the husky
+# `lint-staged` hook both run `prettier --write` over `*.md`/`*.json`/`*.js`,
+# so without these entries an ordinary commit silently rewrites them.
+#
+# Third-party assets vendored byte-for-byte so the visual gate is
+# deterministic. Each is recorded with its SHA-256 in `manifest.json`;
+# reformatting one invalidates the manifest and the reference capture with it.
+apps/web/e2e/assets/vendor/
+
+# The approved design reference. Its SHA-256 is the drift guard that proves the
+# prototype still produces the committed reference screenshots.
+docs/provider-experience-v2/reference/
+
+# An approved design source the project rule forbids changing.
+docs/provider-experience-v2/UX_UI_DESIGN_SYSTEM.md
+
+# The canonical agent rule (Sprint 09B.29 conflict C5). Prettier would rewrite
+# its YAML front-matter quote style — the exact dimension the two copies had
+# already drifted along — and invalidate the SHA-256 recorded in the
+# verification document.
+.claude/rules/

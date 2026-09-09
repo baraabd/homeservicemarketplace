@@ -236,3 +236,52 @@ describe('everything at once', () => {
     expect(text).not.toMatch(/\.pdf|\.png|verification\/|[0-9a-f]{64}/);
   });
 });
+
+// ── Sprint 09B.29 — a queued approval is not the provider's homework ────────
+//
+// `ONBOARDING_INCOMPLETE` is rendered to a provider as something to go and fix.
+// Reporting a pending specialty approval through it both misdescribed the state
+// and blocked the verification-case submission — the third of the five sites
+// that enforced the deadlock.
+describe('pending moderation versus case submission', () => {
+  const awaitingModeration = {
+    ...COMPLETE_ONBOARDING,
+    serviceCategoryCount: 0,
+    leafSpecialtyCount: 0,
+    pendingSpecialtyCount: 1,
+  };
+
+  it('does not block case submission on an approval the provider cannot give', () => {
+    const r = assess({ onboarding: awaitingModeration });
+    expect(r.ready).toBe(true);
+    expect(codes(r.blockers)).not.toContain('ONBOARDING_INCOMPLETE');
+  });
+
+  it('still blocks on a field the provider CAN complete', () => {
+    const r = assess({ onboarding: { ...awaitingModeration, bio: null } });
+    expect(r.ready).toBe(false);
+    expect(codes(r.blockers)).toContain('ONBOARDING_INCOMPLETE');
+    // The blocker names their field, not our queue.
+    expect(
+      r.blockers.filter((b) => b.code === 'ONBOARDING_INCOMPLETE').map((b) => b.field),
+    ).toEqual(['bio']);
+  });
+
+  it('leaves every other gate exactly as it was', () => {
+    // The change is scoped to the onboarding blocker. Evidence and terms still
+    // decide submission, and pending moderation does not excuse either — this
+    // is what keeps activation gated while submission is open.
+    expect(codes(assess({ onboarding: awaitingModeration, documents: [] }).blockers)).toContain(
+      'MISSING_EVIDENCE',
+    );
+    expect(
+      codes(
+        assess({
+          onboarding: awaitingModeration,
+          terms: { requiredVersion: 'terms-2026-02', acceptedVersion: 'terms-2026-01' },
+        }).blockers,
+      ),
+    ).toContain('TERMS_NOT_ACCEPTED');
+    expect(assess({ onboarding: awaitingModeration, state: 'SUBMITTED' }).ready).toBe(false);
+  });
+});

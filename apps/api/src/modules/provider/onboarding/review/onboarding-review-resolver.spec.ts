@@ -371,3 +371,58 @@ describe('an already-submitted application', () => {
     expect(r.lifecycleState).toBe('DOCUMENTS_REQUIRED');
   });
 });
+
+// ── Sprint 09B.29 — pending moderation does not withhold Submit ─────────────
+//
+// The review screen was the second place the deadlock was enforced: an
+// `AWAITING_REVIEW` issue landed in the BLOCKING group and made `canSubmit`
+// false, so a provider who had completed every field they control saw a
+// disabled Submit with a blocker card they could do nothing about.
+describe('moderation is a separate axis from submission', () => {
+  const pendingSpecialty = () =>
+    source({
+      issues: [{ field: 'specialties', code: 'AWAITING_REVIEW' }],
+      pendingSpecialtyCount: 1,
+    });
+
+  it('allows submission when the only outstanding item is our approval', () => {
+    const r = buildReview(pendingSpecialty());
+    expect(r.canSubmit).toBe(true);
+    expect(r.blockedReason).toBeNull();
+  });
+
+  it('keeps the moderation item visible, on the WAITING axis', () => {
+    // Not hidden — moved to where it belongs. A provider must still be able to
+    // see that something is under review.
+    const r = buildReview(pendingSpecialty());
+    expect(group(r, 'WAITING').items.map((i) => i.code)).toContain('SPECIALTY_REVIEW');
+  });
+
+  it('never lists a moderation item as a BLOCKING one', () => {
+    // A blocker card carries a "Complete now" deep link. Pointing one at a
+    // screen where every editable field is already filled in is the defect.
+    const r = buildReview(pendingSpecialty());
+    expect(group(r, 'BLOCKING').items.map((i) => i.code)).not.toContain('AWAITING_REVIEW');
+  });
+
+  it('still refuses submission for a gap the provider CAN close', () => {
+    const r = buildReview(
+      source({
+        issues: [
+          { field: 'specialties', code: 'AWAITING_REVIEW' },
+          { field: 'bio', code: 'REQUIRED' },
+        ],
+        pendingSpecialtyCount: 1,
+      }),
+    );
+    expect(r.canSubmit).toBe(false);
+    expect(r.blockedReason?.field).toBe('bio');
+    // ...and the reason named is theirs, never ours.
+    expect(group(r, 'BLOCKING').items.map((i) => i.code)).toEqual(['REQUIRED']);
+  });
+
+  it('still requires accepted terms — consent is the provider’s move', () => {
+    const r = buildReview({ ...pendingSpecialty(), terms: { ...TERMS_OK, accepted: false } });
+    expect(r.canSubmit).toBe(false);
+  });
+});

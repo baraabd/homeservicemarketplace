@@ -132,3 +132,71 @@ Before promoting to production, confirm:
 - [ ] TLS termination in front of the API; `X-Forwarded-*` headers trusted by the platform.
 - [ ] Database backups enabled on Postgres.
 - [ ] `/health/ready` green before traffic is shifted.
+
+## 6. Provider verification and work access (Sprint 09B.29)
+
+The provider journey ends in a `ProviderWorkAccessGrant`. Nothing issues one
+except an approved verification case, and a verification case cannot be
+submitted until the uploaded identity evidence has been scanned CLEAN. That
+makes the scan sweep a **hard prerequisite for onboarding any provider at all**.
+
+### 6.1 The chain, and what gates each link
+
+| Link                                       | Requires                                                                               |
+| ------------------------------------------ | -------------------------------------------------------------------------------------- |
+| provider submits onboarding                | nothing extra                                                                          |
+| admin approves the application             | `admin` role                                                                           |
+| admin approves the specialty               | `admin` role                                                                           |
+| provider uploads evidence                  | —                                                                                      |
+| **evidence is scanned CLEAN**              | **`EVIDENCE_SCANNER_DRIVER` = a real scanner AND `EVIDENCE_SCAN_WORKER_ENABLED=true`** |
+| provider submits the case                  | evidence CLEAN                                                                         |
+| admin approves the case → **grant issued** | `verification:decide` permission                                                       |
+
+### 6.2 Required settings
+
+```bash
+EVIDENCE_MAX_BYTES=10485760          # REQUIRED — the API will not boot without it
+EVIDENCE_SCANNER_DRIVER=clamav       # `test` THROWS at boot in production, by design
+CLAMAV_HOST=…                        # see clamav-scanner.adapter.ts
+EVIDENCE_SCAN_WORKER_ENABLED=true    # default false
+EVIDENCE_SCAN_INTERVAL_MS=60000
+EVIDENCE_SCAN_BATCH_SIZE=25
+WORK_ACCESS_ENFORCED=true            # decide work access from the grant
+VERIFICATION_ENFORCED=true           # decide on the verification axis
+```
+
+### 6.3 Failure modes, and which direction each fails in
+
+- **Worker off** — evidence is stored and never judged. Providers can complete
+  onboarding and submit an application, and then cannot proceed: case
+  submission is refused `EVIDENCE_NOT_CLEAN` indefinitely. Denies access; never
+  grants it.
+- **Worker on, `EVIDENCE_SCANNER_DRIVER=none`** — the sweep runs, examines
+  every asset and clears none: `EvidenceScanService` refuses to write CLEAN
+  unless the adapter reports `isRealScanner`. Same outcome as off.
+- **`EVIDENCE_SCANNER_DRIVER=test` in production** — the API refuses to boot.
+  That adapter can mark a file CLEAN without scanning it, so
+  `resolveScannerSelection` throws rather than start.
+
+It is safe to run the sweep on every replica. Selection is not a claim: the
+write is conditional on the state the worker observed, so a racing replica's
+write moves zero rows and produces no second audit record and no second outbox
+event. The outbox `dedupeKey` is `evidence.scanned:<assetId>:<state>`.
+
+The scheduler cannot overlap itself: the next timer is armed in `.finally()`,
+so a pass slower than its interval delays the next one instead of running two.
+
+### 6.4 ROLLOUT BLOCKER — no production deployment configuration exists
+
+As of Sprint 09B.29 this repository contains **no committed production
+deployment configuration**: no `vercel.json`, `render.yaml`, `fly.toml`,
+Kubernetes manifests or Terraform, and `infra/docker/docker-compose.yml` is
+`NODE_ENV=development` and sets none of the variables above.
+
+There is therefore **nowhere that enables `EVIDENCE_SCAN_WORKER_ENABLED` with a
+real scanner**, and no environment in which the provider journey completes.
+
+Until a production configuration exists and sets §6.2, the provider onboarding
+and verification journey is **verified but not deployable**. This is recorded
+rather than worked around; see
+`docs/provider-experience-v2/SPRINT_09B29_VERIFICATION.md` §3.12.5.

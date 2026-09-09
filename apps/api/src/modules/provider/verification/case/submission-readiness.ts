@@ -5,6 +5,7 @@ import type {
 
 import {
   evaluateOnboarding,
+  providerActionIssues,
   type OnboardingCandidate,
 } from '../../onboarding/provider-onboarding.policy';
 import { isLegalCaseTransition } from '../policy/case-transitions';
@@ -126,7 +127,19 @@ export function assessSubmissionReadiness(input: {
 
   // Delegated, not re-decided. Two definitions of "complete profile" is how a
   // provider passes one screen and is refused by the next.
-  for (const issue of evaluateOnboarding(onboarding)) {
+  //
+  // Sprint 09B.29 — the PROVIDER-action half. `ONBOARDING_INCOMPLETE` is shown
+  // to a provider as something to go and fix, so an item sitting in our own
+  // approval queue must not be reported through it: there is nothing for them
+  // to do, and blocking the case submission on it is the deadlock this phase
+  // removes. The moderation state is carried on its own axis and still gates
+  // activation and work access.
+  //
+  // Note this is one of SEVERAL blockers assembled here. Provider-input
+  // completeness is a necessary condition for case submission, never a
+  // sufficient one: the evidence requirements above and the terms check below
+  // are evaluated independently, and `ready` is the conjunction of all of them.
+  for (const issue of providerActionIssues(evaluateOnboarding(onboarding))) {
     blockers.push({ code: 'ONBOARDING_INCOMPLETE', field: issue.field });
   }
 

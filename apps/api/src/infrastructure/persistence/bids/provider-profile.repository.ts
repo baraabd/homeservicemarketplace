@@ -4,6 +4,7 @@ import type {
   PrismaTx,
   ProviderProfile,
   ProviderAvailability,
+  ProviderOnboardingState,
   ProviderProfileServiceCategory,
   ProviderProfileStatus,
   ServiceCategory,
@@ -336,6 +337,21 @@ export class ProviderProfileRepository {
   //   DRAFT | PENDING_REVIEW | SUSPENDED  → REJECTED
   //   PENDING_REVIEW | SUSPENDED          → ACTIVE
   //   ACTIVE                              → SUSPENDED
+  //
+  // Sprint 9B.29 — `onboardingState` moves in the SAME statement.
+  //
+  // It used to be left behind, and that was a deadlock. A rejected application
+  // kept the `DOCUMENTS_REQUIRED` its submission had written, so
+  // `lifecycleState` — which prefers the explicit axis and only falls back to
+  // the legacy status when the axis is NULL — never reported `RETURNED`.
+  // `assertEditable` then refused the edit (409) and the submit claim, which
+  // accepts only NULL/NOT_STARTED/DRAFT/RETURNED, silently matched nothing. The
+  // provider was told to wait for a decision that had already been made, and
+  // could neither correct nor resubmit.
+  //
+  // Writing both axes together, under the same conditional WHERE, is what keeps
+  // them from disagreeing: there is no window in which one has moved and the
+  // other has not.
   async decideIfInStatus(
     id: string,
     input: {
@@ -343,6 +359,9 @@ export class ProviderProfileRepository {
       to: ProviderProfileStatus;
       reviewedByUserId: string;
       rejectionReason: string | null;
+      /** The onboarding axis this decision implies. Omitted leaves the axis
+       *  untouched, for callers that are not deciding an application. */
+      onboardingState?: ProviderOnboardingState;
     },
     tx?: PrismaTx,
   ): Promise<number> {
@@ -353,6 +372,56 @@ export class ProviderProfileRepository {
         reviewedAt: new Date(),
         reviewedByUserId: input.reviewedByUserId,
         rejectionReason: input.rejectionReason,
+        ...(input.onboardingState ? { onboardingState: input.onboardingState } : {}),
+      },
+    });
+    return result.count;
+  }
+
+  /**
+   * Sprint 9B.29 — stamp a reviewer's decision onto the submission it decided.
+   *
+   * `ProviderOnboardingSubmission` has carried `decidedAt`, `decidedByUserId`
+   * and `decision` since Sprint 8, described in the schema as "written once
+   * when a reviewer acts". Nothing wrote them, so the submission history could
+   * not answer who decided an application or how — the first question an appeal
+   * asks.
+   *
+   * Stamps EXACTLY ONE row: the most recent undecided submission, which is the
+   * application the reviewer was looking at.
+   *
+   * It used to be an `updateMany` over every undecided submission, and that was
+   * wrong. Two undecided rows are reachable through ordinary use — submit,
+   * withdraw, submit — and the withdrawn first attempt was never reviewed by
+   * anybody. Stamping it with the verdict on a LATER application puts a
+   * decision in the permanent record that nobody made about it, attributed to a
+   * reviewer who never saw it.
+   *
+   * The `decidedAt: null` predicate is kept in the UPDATE as well as the read,
+   * so two concurrent decisions cannot both write the same row: the second
+   * moves zero rows rather than overwriting the first reviewer's verdict.
+   *
+   * Returns the number of rows stamped (0 or 1), so a caller can tell "decided
+   * one" from "there was nothing outstanding to decide".
+   */
+  async stampSubmissionDecision(
+    providerProfileId: string,
+    input: { decidedByUserId: string; decision: ProviderOnboardingState },
+    tx?: PrismaTx,
+  ): Promise<number> {
+    const target = await this.db(tx).providerOnboardingSubmission.findFirst({
+      where: { providerProfileId, decidedAt: null },
+      orderBy: { submittedAt: 'desc' },
+      select: { id: true },
+    });
+    if (!target) return 0;
+
+    const result = await this.db(tx).providerOnboardingSubmission.updateMany({
+      where: { id: target.id, decidedAt: null },
+      data: {
+        decidedAt: new Date(),
+        decidedByUserId: input.decidedByUserId,
+        decision: input.decision,
       },
     });
     return result.count;

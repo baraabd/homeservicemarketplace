@@ -34,6 +34,27 @@ const PREBUILT = process.env.E2E_PREBUILT === '1';
 // the actual fix.
 const REAL_API_RUN = Boolean(process.env.E2E_REAL_API);
 
+// Sprint 09B.29 — the pixel-exact prototype reference capture is a LOCAL
+// visual-acceptance instrument, and opt-in for that reason.
+//
+// It compares a screenshot byte-for-byte against baselines committed under
+// `e2e/__screenshots__/reference/`. Those baselines were captured on the
+// developer's Windows host, and CI runs Linux. Vendoring the fonts and pinning
+// the icon script removes every source of drift ABOVE the rasterizer, but not
+// the rasterizer itself: Skia's glyph hinting and antialiasing differ between
+// the two platforms, so the same DOM renders a different bitmap. The first CI
+// run of this spec proved it — 12 failures, all of them the snapshot
+// comparison, across all three viewports and both languages.
+//
+// So this gate cannot be made green in CI by fixing the code; it would need
+// Linux baselines committed beside the Windows ones. Until those exist the
+// honest arrangement is the one this config already argues for elsewhere: a
+// spec that is deliberately not in the run, rather than one that silently
+// skips or is loosened with a pixel tolerance until it stops meaning anything.
+//
+// Run it where its baselines are valid:  E2E_VISUAL_REFERENCE=1 pnpm exec playwright test
+const VISUAL_REFERENCE_RUN = Boolean(process.env.E2E_VISUAL_REFERENCE);
+
 // The three viewports the acceptance criteria name. Declared once so a
 // scenario cannot silently run at only one size.
 export const VIEWPORTS = {
@@ -52,17 +73,71 @@ export default defineConfig({
   // served SPA as well, so it additionally expects E2E_BASE_URL to point at a
   // preview built with VITE_PROVIDER_ONBOARDING_V2=true. Both run locally with
   // E2E_REAL_API set — see docs/sprint-09b26/PROVIDER_ONBOARDING_V2_RELEASE.md.
-  testIgnore: process.env.E2E_REAL_API
-    ? []
-    : [
-        '**/auth-cookies.spec.ts',
-        '**/provider-onboarding-v2-real-api.spec.ts',
-        // Sprint 9B.28 — the persistence journey. Same rule and same reason:
-        // it reads the draft back through an independent API client and a
-        // second browser context, so a stubbed run could not prove anything
-        // it claims to.
-        '**/provider-onboarding-v2-persistence.spec.ts',
-      ],
+  testIgnore: [
+    // Platform-specific baselines; see VISUAL_REFERENCE_RUN above.
+    ...(VISUAL_REFERENCE_RUN ? [] : ['**/prototype-reference.spec.ts']),
+    ...(REAL_API_RUN
+      ? []
+      : [
+          '**/auth-cookies.spec.ts',
+          '**/provider-onboarding-v2-real-api.spec.ts',
+          // Sprint 9B.28 — the persistence journey. Same rule and same reason:
+          // it reads the draft back through an independent API client and a
+          // second browser context, so a stubbed run could not prove anything
+          // it claims to.
+          '**/provider-onboarding-v2-persistence.spec.ts',
+          // Sprint 09B.29 — the activation / session-synchronization journey.
+          // Same rule and same reason: it drives a real upgrade and a real
+          // session rotation, and asserts that the PRE-upgrade credential is
+          // still refused afterwards. Against a stub that proves nothing.
+          '**/provider-activation-session.real-api.spec.ts',
+          '**/provider-activation-visual.real-api.spec.ts',
+          // Sprint 09B.29 — the accessibility gate for the same two screens. It
+          // drives the real upgrade to reach the synchronization states, so it
+          // belongs with the other real-API specs rather than the stubbed run.
+          '**/provider-activation-a11y.real-api.spec.ts',
+          // The temporary measurement harness. Skips itself without the real
+          // stack, but listing it keeps the default run's spec count honest.
+          '**/_diagnostic-visual.real-api.spec.ts',
+          // Sprint 09B.29 Phase 3 — the browser acceptance journeys and the
+          // running-API activation chain. Same rule and same reason as every
+          // entry above: they register real accounts, poll a real mail catcher
+          // and drive real admin decisions, none of which exists in the
+          // stub-everything run.
+          //
+          // `phase3-activation-chain` in particular has no `test.skip` guard of
+          // its own — it is API-only, so there is no page to skip on — and
+          // without this line the default matrix ran it against an unset
+          // E2E_REAL_API and failed three times over. Listing it here is the fix;
+          // adding a skip would have made it silently do nothing, which this
+          // config's own comment argues against.
+          '**/phase3-activation-chain.real-api.spec.ts',
+          '**/phase3-v2-journey.real-api.spec.ts',
+          '**/phase3-v1-flag-off.real-api.spec.ts',
+        ]),
+  ],
+  // Sprint 09B.29 — one stable snapshot location, shared by the spec that
+  // captures the approved prototype and the spec that captures the
+  // implementation.
+  //
+  // The default template embeds the project name and the platform, which would
+  // give those two specs different files and make the comparison compare
+  // nothing. Dropping the project is the point and stays.
+  //
+  // Dropping the PLATFORM was justified here by the claim that these captures
+  // are "deterministic by construction (pinned icon script, vendored fonts,
+  // fixed viewport, animations off), so the platform suffix would only hide
+  // drift". CI has since disproved the second half of that: pinning removes
+  // every source of drift above the rasterizer, but Skia hints and antialiases
+  // glyphs differently on Linux than on Windows, so the same DOM produces a
+  // different bitmap and a Windows baseline can never match a Linux run.
+  //
+  // The template is left as it is — one shared location is what lets the
+  // reference and implementation captures be compared at all — and the
+  // consequence is handled where it belongs, by making the pixel-exact spec
+  // opt-in (see VISUAL_REFERENCE_RUN). Committing per-platform baselines would
+  // restore it as a CI gate and is the recorded follow-up.
+  snapshotPathTemplate: '{testDir}/__screenshots__/{arg}{ext}',
   // Deterministic: no test may depend on another's leftovers, and a flake
   // must fail rather than be retried into a pass locally.
   fullyParallel: true,

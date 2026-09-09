@@ -90,6 +90,11 @@ function draft(over: Record<string, unknown> = {}) {
     nextAction: { kind: 'COMPLETE_STEP', step: 'PROVIDER_TYPE' },
     complete: false,
     missing: [{ field: 'providerType', code: 'REQUIRED' }],
+    // Sprint 09B.29 — the contract makes this REQUIRED. The stub omitted it,
+    // which is fixture drift of exactly the kind recorded in
+    // ProviderOnboardingWizard.test.tsx: a fixture that does not match the
+    // shape the component actually receives.
+    awaitingReview: [],
     version: 0,
     policyVersion: 'v3',
     lastSavedAt: null,
@@ -141,6 +146,7 @@ function completeDraft(over: Record<string, unknown> = {}): Draft {
     nextAction: { kind: 'SUBMIT' },
     complete: true,
     missing: [],
+    awaitingReview: [],
     version: 8,
     data: {
       ...base.data,

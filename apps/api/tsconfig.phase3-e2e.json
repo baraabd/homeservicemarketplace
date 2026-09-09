@@ -1,0 +1,17 @@
+{
+  // Sprint 09B.29 Phase 3 — a build that collides with nothing.
+  //
+  // Three separate owners of an API build output now exist on this machine:
+  //   · `dist`              — the developer's `nest start --watch`
+  //   · `dist-phase2-e2e`   — the Phase 2 browser API, still running on 4011
+  //   · `dist-phase3-e2e`   — this one, for the Phase 3 browser journey on 4012
+  //
+  // Phase 2's artifact is accepted evidence and its process is still serving,
+  // so rebuilding into it would invalidate a gate that has already passed.
+  // Nothing else differs from tsconfig.build.json.
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "outDir": "./dist-phase3-e2e",
+    "tsBuildInfoFile": "./dist-phase3-e2e/.tsbuildinfo"
+  }
+}

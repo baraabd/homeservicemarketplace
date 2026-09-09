@@ -89,6 +89,7 @@ interface Mocks {
     listForAdmin: jest.Mock;
     findByIdForAdmin: jest.Mock;
     updateStatus: jest.Mock;
+    decideIfPending: jest.Mock;
     ensureProviderHasCategory: jest.Mock;
   };
   audit: { record: jest.Mock };
@@ -110,6 +111,17 @@ function makeMocks(
         note(`status:${status}`);
         if (current) current = { ...current, status };
         return current!;
+      }),
+      // Sprint 9B.29 — the CONDITIONAL claim that replaced the unconditional
+      // `updateStatus` on the decision path. Modelled faithfully: it moves the
+      // row only from PENDING, and reports how many rows it moved, so a test
+      // asserting the double-review conflict exercises the same edge the
+      // database enforces.
+      decideIfPending: jest.fn().mockImplementation(async (_id, status) => {
+        if (!current || current.status !== 'PENDING') return 0;
+        note(`status:${status}`);
+        current = { ...current, status };
+        return 1;
       }),
       ensureProviderHasCategory: jest.fn().mockImplementation(async () => {
         note('joinRow');
@@ -184,7 +196,11 @@ describe('AdminCategoryApplicationsService', () => {
         'cat-plumbing',
         undefined,
       );
-      expect(m.applications.updateStatus).toHaveBeenCalledWith('app-1', 'APPROVED', undefined);
+      // Sprint 9B.29 — the flip goes through the CONDITIONAL claim, not the
+      // unconditional `updateStatus`. The unconditional one let concurrent
+      // reviewers all win; see `decideIfPending`.
+      expect(m.applications.decideIfPending).toHaveBeenCalledWith('app-1', 'APPROVED', undefined);
+      expect(m.applications.updateStatus).not.toHaveBeenCalled();
       expect(out.status).toBe('APPROVED');
     });
 
@@ -196,8 +212,32 @@ describe('AdminCategoryApplicationsService', () => {
       });
 
       expect(m.applications.ensureProviderHasCategory).not.toHaveBeenCalled();
-      expect(m.applications.updateStatus).toHaveBeenCalledWith('app-1', 'REJECTED', undefined);
+      expect(m.applications.decideIfPending).toHaveBeenCalledWith('app-1', 'REJECTED', undefined);
+      expect(m.applications.updateStatus).not.toHaveBeenCalled();
       expect(out.status).toBe('REJECTED');
+    });
+
+    // Sprint 9B.29 — the race the read-then-write could not survive.
+    //
+    // The service still reads the row first, and that read still owns the 404
+    // and the human-readable message. But at READ COMMITTED two reviewers both
+    // see PENDING, so the read cannot be the guarantee: against a real database
+    // six simultaneous approvals produced one join row and SIX
+    // ADMIN_CATEGORY_APPLICATION_APPROVED audit rows — one decision recorded as
+    // six. `phase3-journey-c-activation.integration.spec.ts` drives that race
+    // for real; this pins the contract at the unit boundary.
+    it('treats a lost race as a conflict, and records nothing', async () => {
+      const m = makeMocks();
+      // The row still reads PENDING — this caller passed the guard — but the
+      // conditional claim moves zero rows because someone else got there first.
+      m.applications.decideIfPending.mockResolvedValueOnce(0);
+
+      await expect(
+        makeService(m).review('admin-1', 'app-1', { action: 'APPROVE' }),
+      ).rejects.toMatchObject({ code: 'CONFLICT', status: 409 });
+
+      // The loser must leave no trace: no decision recorded, no second audit.
+      expect(m.audit.record).not.toHaveBeenCalled();
     });
 
     it('rejects double-review on a row that is already APPROVED with 409', async () => {

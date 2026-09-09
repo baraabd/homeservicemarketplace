@@ -1,0 +1,104 @@
+# Sprint 09B.29 Phase 3 — a throwaway PostgreSQL/Redis/Mailpit stack.
+#
+# SEPARATE FROM PHASE 2 ON PURPOSE
+#
+# `docker-compose.integration.yml` pins `name: hsm-phase2-it` and fixed
+# container names, so it cannot be reused under a second project without
+# colliding. Phase 3's journeys create, approve and revoke real moderation and
+# work-access rows; running them against the Phase 2 database would leave that
+# evidence contaminated and make a Phase 2 re-run prove something different.
+#
+# Nothing here shares a name, a volume, a database or a fixed port with the
+# developer's stack (`hsm-postgres`, `hsm-redis`, the `docker_*_data` volumes)
+# or with Phase 2, so a teardown of this file cannot reach either.
+#
+# WHY DYNAMIC HOST PORTS
+#
+# The short form `- "5432"` publishes to an EPHEMERAL host port chosen by
+# Docker. Jest runs on the host so the ports must be published, but pinning
+# them would collide with the developer's stack — and a collision that
+# SUCCEEDED would silently point migrations at their development database. An
+# ephemeral port cannot collide by construction; the runner discovers it with
+# `docker compose port`.
+#
+# WHY tmpfs FOR POSTGRES
+#
+# The data directory is RAM. There is no named volume to leak, nothing to clean
+# up if a run is killed, and no possibility of a later run inheriting state from
+# an earlier one — which matters more here than in Phase 2, because these
+# journeys deliberately leave a provider in an approved, granted state.
+#
+# Usage (never `docker compose down` without `-p`, and never `-v` on the
+# developer's project):
+#
+#   docker compose -p hsm-phase3-it -f infra/docker/docker-compose.phase3.yml up -d
+#   docker compose -p hsm-phase3-it -f infra/docker/docker-compose.phase3.yml down -v
+
+name: hsm-phase3-it
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hsm-phase3-it-postgres
+    environment:
+      POSTGRES_USER: hsm_p3
+      POSTGRES_PASSWORD: hsm_p3_local_only
+      # A distinct database NAME as well as a distinct port and cluster. Three
+      # independent reasons a connection string meant for this stack cannot
+      # resolve to the developer's `homeservicemarketplace` database or to
+      # Phase 2's `hsm_phase2_it`.
+      POSTGRES_DB: hsm_phase3_it
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - max_connections=200
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - '5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hsm_p3 -d hsm_phase3_it']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  # The browser journeys register real accounts, so the OTP needs somewhere to
+  # land. Its own catcher rather than the developer's `hsm-mailpit`: two runs
+  # sharing one mailbox is how a worker verifies a challenge it does not own.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: hsm-phase3-it-mailpit
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: '1'
+      MP_SMTP_AUTH_ALLOW_INSECURE: '1'
+    ports:
+      - '1025'
+      - '8025'
+    healthcheck:
+      test: ['CMD', 'sh', '-c', 'nc -z 127.0.0.1 1025 && nc -z 127.0.0.1 8025']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  redis:
+    image: redis:7-alpine
+    container_name: hsm-phase3-it-redis
+    # No persistence: this cache must never outlive the run that created it.
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s

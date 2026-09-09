@@ -409,10 +409,24 @@ describe('submit — completeness and idempotency', () => {
     });
   });
 
-  it('refuses when only a PENDING specialty application exists', async () => {
-    // A pending application is a request, not a competency. Counting it would
-    // let a provider submit a complete application built on skills nobody has
-    // agreed they have.
+  it('ACCEPTS a submission whose only outstanding item is a PENDING specialty', async () => {
+    // Sprint 09B.29 — this test asserted the opposite until now, and the
+    // opposite was a deadlock.
+    //
+    // 9B.18 renamed the issue from REQUIRED to AWAITING_REVIEW so the copy
+    // stopped telling a provider they had not chosen a specialty they HAD
+    // chosen, and left the consequence in place: "AWAITING_REVIEW blocks
+    // submission exactly as hard". But the provider cannot clear it — the
+    // decision is an administrator's — and the administrator is prompted by the
+    // application being submitted. Refusing the submission is therefore
+    // refusing the only event that could unblock it.
+    //
+    // The old reasoning was that accepting would "let a provider submit an
+    // application built on skills nobody has agreed they have". Submitting is
+    // not being granted those skills: activation and work access are decided by
+    // the verification case and by the work-access grant, neither of which
+    // reads this policy. What the provider gets by submitting is a place in the
+    // queue, which is exactly what they should get.
     const h = build({
       profile: makeCompleteProfile({
         serviceCategories: [],
@@ -420,17 +434,34 @@ describe('submit — completeness and idempotency', () => {
       } as unknown as Partial<ProviderProfileWithCategories>),
     });
 
-    // Sprint 9B.18 — still refused, and that is the load-bearing half. What
-    // changed is the CODE: the provider chose a specialty and is waiting on
-    // an admin, so calling it REQUIRED told them they had not chosen one.
-    // AWAITING_REVIEW blocks submission exactly as hard and says something
-    // true.
+    await expect(h.service.submit('u-1', { version: 3 })).resolves.toBeDefined();
+  });
+
+  it('still refuses when a PROVIDER-actionable field is missing, pending specialty or not', async () => {
+    // The other half, and the one that stops the change above from being a
+    // hole: a real gap the provider CAN fix still refuses, and the refusal
+    // names only what they can act on — the pending specialty is not listed as
+    // something for them to go and do.
+    const h = build({
+      profile: makeCompleteProfile({
+        bio: null,
+        serviceCategories: [],
+        categoryApplications: [{ serviceCategory: { id: 'cat-leaf-9' } }],
+      } as unknown as Partial<ProviderProfileWithCategories>),
+    });
+
     await expect(h.service.submit('u-1', { version: 3 })).rejects.toMatchObject({
       status: 422,
       details: {
-        missing: expect.arrayContaining([{ field: 'specialties', code: 'AWAITING_REVIEW' }]),
+        missing: expect.arrayContaining([{ field: 'bio', code: 'REQUIRED' }]),
       },
     });
+
+    // A moderation item must never be reported back as provider work: there is
+    // nothing on any screen for them to change about it.
+    const err = await h.service.submit('u-1', { version: 3 }).catch((e: unknown) => e);
+    const missing = (err as { details: { missing: Array<{ code: string }> } }).details.missing;
+    expect(missing.map((m) => m.code)).not.toContain('AWAITING_REVIEW');
   });
 
   it('is idempotent: re-submitting does not transition twice', async () => {
@@ -1159,13 +1190,44 @@ describe('specialty state — selection and review are separate facts', () => {
     expect(view.data.specialties).toEqual([
       expect.objectContaining({ categoryId: 'c-p', state: 'PENDING' }),
     ]);
-    // It DOES still block submission — the canonical rule is that submission
-    // needs APPROVED specialties, and this sprint does not weaken it. What
-    // changes is the code: AWAITING_REVIEW, not REQUIRED, because the
-    // provider chose one and is waiting on somebody else.
-    const specialtyIssue = view.missing.find((m) => m.field === 'specialties');
+    // Sprint 09B.29 — this asserted `view.complete === false` until now, on the
+    // reasoning that "submission needs APPROVED specialties". That reasoning
+    // was the deadlock, and the test's own title already disagreed with it:
+    // a live application is NOT a failure, so it must not read as one.
+    //
+    // The contract defines `complete` as "submission would succeed". It now
+    // means exactly that, computed the same way `submit()` decides — which is
+    // the stricter property, because the two had silently diverged: submission
+    // would have succeeded while this field said it would not.
+    //
+    // The item is REPORTED and does not BLOCK, and it is reported on the axis
+    // that says whose move it is. `missing` is the provider's own to-do list —
+    // the wizard renders it as amber "still to do" entries — so a platform
+    // approval belongs in `awaitingReview` instead. Both halves are asserted so
+    // neither can be lost.
+    const specialtyIssue = view.awaitingReview.find((m) => m.field === 'specialties');
     expect(specialtyIssue).toEqual({ field: 'specialties', code: 'AWAITING_REVIEW' });
-    expect(view.complete).toBe(false);
+    expect(view.missing.map((m) => m.code)).not.toContain('AWAITING_REVIEW');
+    expect(view.complete).toBe(true);
+
+    // The per-step view still carries it, so a screen can show "with us"
+    // against the step that owns it without it becoming a task.
+    const specialties = view.steps.find((s) => s.step === 'SPECIALTIES');
+    expect(specialties?.issues).toEqual(
+      expect.arrayContaining([{ field: 'specialties', code: 'AWAITING_REVIEW' }]),
+    );
+    expect(specialties?.complete).toBe(true);
+
+    // The guard: a gap the provider CAN close still makes it false, so the
+    // change above is about ownership and not about relaxing completeness.
+    const blocked = build({
+      profile: makeCompleteProfile({
+        bio: null,
+        serviceCategories: [],
+        categoryApplications: [{ serviceCategory: { id: 'c-p' } }],
+      } as unknown as Partial<ProviderProfileWithCategories>),
+    });
+    expect((await blocked.service.get('u-1')).complete).toBe(false);
   });
 
   it('reports a declined application as REJECTED, with when', async () => {

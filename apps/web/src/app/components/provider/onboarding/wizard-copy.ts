@@ -190,6 +190,16 @@ export const UI = {
     submittedNotApproved: 'This is not approval yet.',
     awaitingTitle: 'With our team',
     awaitingBody: 'Your application is being reviewed. We will let you know as soon as we decide.',
+    // Sprint 09B.29 — the PLATFORM-owned half of the two-axis contract.
+    //
+    // A specialty awaiting moderation is not something the provider can act
+    // on, so it is stated as status and never joins the amber "still to do"
+    // list. The wording deliberately says what WE owe, not what they owe:
+    // before this, the pending approval was rendered as a task and sent people
+    // back into a specialty form on which every field was already filled in.
+    moderationTitle: 'We are checking your services',
+    moderationBody:
+      'You do not need to do anything. This does not delay your application — you can send it now.',
     // Fields
     individual: 'Individual',
     individualHint: 'You work under your own name.',
@@ -262,6 +272,8 @@ export const UI = {
     submittedNotApproved: 'هذه ليست موافقة نهائية بعد.',
     awaitingTitle: 'قيد المراجعة',
     awaitingBody: 'طلبك قيد المراجعة. سنعلمك فور صدور القرار.',
+    moderationTitle: 'نراجع الخدمات التي اخترتها',
+    moderationBody: 'لا حاجة إلى أي إجراء منك. هذا لا يؤخّر طلبك — يمكنك إرساله الآن.',
     individual: 'فرد',
     individualHint: 'تعمل باسمك الشخصي.',
     business: 'منشأة',

@@ -1,0 +1,21 @@
+{
+  // Sprint 09B.29 — a build that does not collide with the developer's
+  // `nest start --watch`.
+  //
+  // That watcher owns `apps/api/dist` and rewrites it continuously. Running the
+  // ordinary production build for the browser E2E would race it: `nest build`
+  // wipes `dist` (deleteOutDir), the watcher rebuilds into the same place, and
+  // whichever finishes last decides what `node dist/main` actually runs — for
+  // BOTH of us. The developer's dev server would also be restarted onto an
+  // artifact it did not produce.
+  //
+  // A separate output directory removes the shared resource entirely. Nothing
+  // else differs from tsconfig.build.json.
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "outDir": "./dist-phase2-e2e",
+    // Same reasoning as the base file: the incremental cache lives inside the
+    // output directory so wiping the directory also invalidates the cache.
+    "tsBuildInfoFile": "./dist-phase2-e2e/.tsbuildinfo"
+  }
+}

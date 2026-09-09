@@ -16,8 +16,23 @@ import type {
 export type HubViewState =
   /** No answer from the server yet. */
   | 'LOADING'
-  /** 401/403 — no session, or no provider role. */
+  /** 401 — the session is missing or expired. Signing in again is the fix. */
   | 'UNAUTHORIZED'
+  /**
+   * 403 — authenticated, but not allowed *yet*.
+   *
+   * Sprint 9B.29. Split out of `UNAUTHORIZED`, which used to absorb both.
+   *
+   * The dominant cause on this surface is a stale role claim: `/upgrade` writes
+   * the provider role to the database, but `JwtStrategy.validate` reads roles
+   * from the ACCESS TOKEN, so a token minted before the upgrade still says
+   * "seeker" and `RolesGuard` answers 403. The session is perfectly valid.
+   *
+   * Telling that provider "your session has ended, please sign in again" is
+   * wrong twice over: it misdescribes the fault, and the remedy it offers does
+   * not address it. The recovery is to rotate the session — once — and retry.
+   */
+  | 'FORBIDDEN'
   /** Something failed that retrying might fix. */
   | 'ERROR'
   /** The server answered, and there is no application to show. */
@@ -54,7 +69,10 @@ export function deriveHubView(query: HubQueryLike): HubView {
   if (!query.isFetched) return { state: 'LOADING', showsTasks: false };
 
   const status = query.errorStatus;
-  if (status === 401 || status === 403) return { state: 'UNAUTHORIZED', showsTasks: false };
+  // Two statuses, two answers. See the note on `FORBIDDEN`: collapsing these is
+  // how a valid session gets reported as an expired one.
+  if (status === 401) return { state: 'UNAUTHORIZED', showsTasks: false };
+  if (status === 403) return { state: 'FORBIDDEN', showsTasks: false };
   // 404 is "provider role, but no application to show" — an answer, not a
   // fault, and telling the provider something went wrong would be untrue.
   if (status === 404) return { state: 'EMPTY', showsTasks: false };

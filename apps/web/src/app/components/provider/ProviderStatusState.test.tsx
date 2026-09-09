@@ -10,6 +10,15 @@ import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import { ProviderApp } from './ProviderApp';
 
+// Sprint 09B.29 — resolve the code-split screens before any assertion window.
+// See the note in `ProviderApp.routing.test.tsx`: same cause, same fix, and
+// nothing about timeouts, skips, concurrency or retries is changed.
+await import('./screens/LiveJobsScreen');
+await import('./screens/MyBidsScreen');
+await import('./screens/WalletScreen');
+await import('./screens/ProviderProfileScreen');
+await import('./screens/ProviderChatScreen');
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sprint 5.1.2 — non-ACTIVE provider state surface.
 //

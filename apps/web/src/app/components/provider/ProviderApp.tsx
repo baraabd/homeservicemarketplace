@@ -10,6 +10,7 @@ import { useProviderProfile } from '../../hooks/provider/useProviderProfile';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { ProviderStatusState } from './ProviderStatusState';
 import { ProviderOnboardingWizard } from './onboarding/ProviderOnboardingWizard';
+import { ProviderActivationScreen } from '../../features/provider-onboarding-v2/components/ProviderActivationScreen';
 import {
   ProviderNotificationsBellButton,
   ProviderNotificationsDrawer,
@@ -160,7 +161,7 @@ function ProviderTopBar({
             </span>
           </div>
           <div>
-            <p className="text-slate-400" style={{ fontSize: '11px' }}>
+            <p className="text-[11px] text-pv-muted">
               {lang === 'ar' ? 'مرحباً 👋' : 'Welcome back 👋'}
             </p>
             <p
@@ -215,15 +216,19 @@ function ProviderBottomNav() {
                 )}
                 <Icon
                   size={22}
-                  className={`relative z-10 transition-colors ${isActive ? 'text-blue-600' : 'text-slate-400'}`}
+                  className={`relative z-10 transition-colors ${isActive ? 'text-pv-accent' : 'text-pv-muted'}`}
                 />
+                {/* Sprint 09B.29 — semantic tokens, not literals.
+                 *
+                 * The inactive label was `#94a3b8` (2.56:1 on the white bar);
+                 * at 10px the large-text allowance does not apply, so axe
+                 * reported it SERIOUS on every workspace screen.
+                 * `--pv-text-muted` is 7.58:1 and `--pv-accent` 5.17:1, and
+                 * both already carry dark-theme values. */}
                 <span
-                  className="relative z-10"
-                  style={{
-                    fontSize: '10px',
-                    fontWeight: isActive ? 700 : 500,
-                    color: isActive ? '#2563eb' : '#94a3b8',
-                  }}
+                  className={`relative z-10 text-[10px] ${
+                    isActive ? 'font-bold text-pv-accent' : 'font-medium text-pv-muted'
+                  }`}
                 >
                   {lang === 'ar' ? labelAr : labelEn}
                 </span>
@@ -366,6 +371,26 @@ export function ProviderApp() {
         }
       />
 
+      {/* Sprint 09B.29 — prototype screens 0 and 1.
+          Deliberately OUTSIDE WorkspaceChrome: onboarding shows no workspace
+          navigation until work access is active, and activation is the first
+          screen of onboarding. Flag-gated so V1 is unaffected; a provider who
+          already has a profile is sent on, because activation is not a screen
+          you can return to. */}
+      <Route
+        path="activate"
+        element={
+          !onboardingV2 ? (
+            <Navigate to={home} replace />
+          ) : (
+            <ProviderActivationScreen
+              hasProfile={Boolean(profile)}
+              alreadyActivatedDestination={home}
+            />
+          )
+        }
+      />
+
       <Route
         path="jobs"
         element={
@@ -425,8 +450,16 @@ export function ProviderApp() {
             {/* No profile yet: this screen owns the Activate call that creates
                 one. Mounting the marketplace here instead would fire calls
                 that all 403 and paint a broken marketplace over what is
-                really an unfinished signup. */}
-            {isActive || !profile ? (
+                really an unfinished signup.
+
+                Sprint 09B.29 — with V2 on, a provider with no profile gets the
+                approved activation surface instead (prototype screens 0 and 1),
+                which is the only place the post-upgrade session rotation is
+                visible and recoverable. V1 keeps ProviderProfileScreen, so the
+                flag remains a true rollback. */}
+            {!profile && onboardingV2 ? (
+              <Navigate to="/provider/activate" replace />
+            ) : isActive || !profile ? (
               <ProviderProfileScreen />
             ) : mayOnboard ? (
               onboardingV2 ? (

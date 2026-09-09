@@ -50,11 +50,37 @@ describe('deriveHubView', () => {
     expect(deriveHubView(q()).state).toBe('HUB');
   });
 
-  it.each([401, 403])('is UNAUTHORIZED on %i', (status) => {
-    expect(deriveHubView(q({ data: undefined, errorStatus: status }))).toEqual({
+  // Sprint 9B.29 — 401 and 403 are DIFFERENT ANSWERS and get different screens.
+  //
+  // This block used to be `it.each([401, 403])('is UNAUTHORIZED on %i')`, which
+  // encoded the defect rather than catching it: a freshly-upgraded provider
+  // whose access token predates the role grant gets 403, and the hub told them
+  // "Your session has ended. Please sign in again." Signing in again is not the
+  // fix — the session is valid, the ROLE CLAIM is stale — and the advice sends
+  // them back through an upgrade they have already completed.
+  //
+  // The prototype states the boundary explicitly on screen 16: "This message
+  // appears only for a 401 response."
+  it('is UNAUTHORIZED on 401 — the session really is missing or expired', () => {
+    expect(deriveHubView(q({ data: undefined, errorStatus: 401 }))).toEqual({
       state: 'UNAUTHORIZED',
       showsTasks: false,
     });
+  });
+
+  it('is FORBIDDEN on 403 — authenticated, but the role claim is not usable yet', () => {
+    expect(deriveHubView(q({ data: undefined, errorStatus: 403 }))).toEqual({
+      state: 'FORBIDDEN',
+      showsTasks: false,
+    });
+  });
+
+  it('never labels a 403 as a session problem', () => {
+    // Guards the specific regression: whatever else changes, these two must not
+    // collapse back into one state.
+    const unauth = deriveHubView(q({ data: undefined, errorStatus: 401 })).state;
+    const forbidden = deriveHubView(q({ data: undefined, errorStatus: 403 })).state;
+    expect(forbidden).not.toBe(unauth);
   });
 
   it('treats 404 as EMPTY, not an error — there is simply no application', () => {

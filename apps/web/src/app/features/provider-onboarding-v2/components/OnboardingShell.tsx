@@ -59,8 +59,31 @@ export interface OnboardingShellProps {
   /** Disables the close control while an exit is already draining, so a second
    *  tap cannot start a second one. */
   closeBusy?: boolean;
+  /**
+   * Application progress, 0–100, drawn as a 4px rule under the header.
+   *
+   * Sprint 09B.29 — the prototype carries this on every screen. It is a
+   * SERVER-DERIVED number everywhere it is non-zero; the two activation
+   * screens are the exception because no application exists yet, and they pass
+   * literals (0 and 5) exactly as the reference does.
+   *
+   * Omitted rather than defaulted to 0: a screen with no progress concept
+   * should draw no rule, not an empty one that reads as "you have done
+   * nothing".
+   */
+  progress?: number;
   /** Sticky footer actions. Sits above the bottom safe-area inset. */
   footer?: ReactNode;
+  /**
+   * Whether the shell supplies the content gutter.
+   *
+   * Default `true` — the 16px inset every form screen uses. A screen that
+   * centres itself in the remaining space (the prototype's `.hsm-center`, which
+   * is `align-content: center` with its own `28px 20px 110px`) needs the full
+   * box and its own padding, so it opts out rather than fighting the shell's
+   * with negative margins.
+   */
+  padded?: boolean;
   children: ReactNode;
 }
 
@@ -69,7 +92,9 @@ export function OnboardingShell({
   subtitle,
   onClose,
   closeBusy = false,
+  progress,
   footer,
+  padded = true,
   children,
 }: OnboardingShellProps) {
   const { lang, dir, darkMode } = useLang();
@@ -110,10 +135,29 @@ export function OnboardingShell({
             is a fixed-size square that never shrinks — at 320px the TITLE
             gives up space, never the way out. */}
         <header
-          className="flex-shrink-0 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800"
+          className="flex-shrink-0 bg-pv-surface"
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
-          <div className="flex w-full items-center gap-2 px-3 py-2">
+          {/* The topbar row, transcribed from the prototype's `.hsm-topbar`.
+              Three things here are load-bearing and each was measured against
+              the reference rather than guessed:
+
+              GRID, `44px minmax(0,1fr) 44px`, no column gap. The flex version
+              added an 8px gap that pushed the title 8px inward on every
+              onboarding screen.
+
+              `min-height: 64px` WITH the bottom border on this row. Under
+              `box-sizing: border-box` the prototype's border sits inside its
+              64px box, and the 4px progress rule follows it. Carrying the
+              border on the parent `<header>` instead made the header 65px and
+              put the progress rule — and everything below it — one pixel low.
+
+              17px/1.45 type. It was 15px, which shortened the bar and shifted
+              the whole screen. */}
+          <div
+            className="grid w-full items-center border-b border-pv-border px-3 py-2"
+            style={{ minHeight: '64px', gridTemplateColumns: '44px minmax(0,1fr) 44px' }}
+          >
             <button
               type="button"
               onClick={onClose}
@@ -124,10 +168,17 @@ export function OnboardingShell({
               // 44x44 is the minimum comfortable touch target, and it is set
               // on the BUTTON rather than an icon wrapper so the whole square
               // is pressable rather than just the glyph inside it.
-              className="flex-shrink-0 flex items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              className="flex-shrink-0 flex items-center justify-center rounded-xl text-pv-muted hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               style={{ minWidth: '44px', minHeight: '44px' }}
             >
-              <X size={20} aria-hidden="true" />
+              {/* 16px, and `text-pv-muted` rather than `text-slate-500`.
+                  Both were measured against the prototype: its pinned lucide
+                  build substitutes an `<svg>` for the `<i>` WITHOUT carrying
+                  the requested size across, so every icon in the reference
+                  resolves to 16px whatever the markup asks for; and
+                  `.hsm-icon-action` is `--hsm-muted` (#475569), which is
+                  `--pv-text-muted`, not slate-500 (#64748b). */}
+              <X size={16} aria-hidden="true" />
             </button>
 
             {/* min-w-0 is load-bearing: without it this flex child refuses to
@@ -135,22 +186,50 @@ export function OnboardingShell({
                 the document — into horizontal overflow on a 320px screen. */}
             <div className="min-w-0 flex-1">
               <h1
-                className="truncate text-slate-900 dark:text-white"
-                style={{ fontSize: '15px', fontWeight: 700 }}
+                className="truncate text-pv-text"
+                style={{ fontSize: '17px', lineHeight: 1.45, fontWeight: 700 }}
               >
                 {title}
               </h1>
               {subtitle ? (
                 <p
-                  className="truncate text-slate-500 dark:text-slate-400"
-                  style={{ fontSize: '12px' }}
+                  className="truncate text-pv-muted dark:text-slate-400"
+                  // `.hsm-topbar p` sets a 12px size and no line-height, so it
+                  // inherits the wrapper's `line-height: 21px` — a LENGTH, not
+                  // a ratio, so it does not scale down with the font. At 18px
+                  // (12 x 1.5) this line was 3px short and pushed the title 2px
+                  // down on every screen that carries a subtitle.
+                  style={{ fontSize: '12px', lineHeight: '21px', marginTop: '1px' }}
                   data-testid="onboarding-v2-progress"
                 >
                   {subtitle}
                 </p>
               ) : null}
             </div>
+            <span aria-hidden="true" data-testid="onboarding-v2-header-spacer" />
           </div>
+
+          {/* The 4px rule the prototype draws under every header.
+              `role="progressbar"` with the three aria-value attributes rather
+              than a bare div: the width alone is invisible to a screen reader,
+              and the count in the subtitle above is the same fact only on the
+              screens that carry one. */}
+          {progress !== undefined ? (
+            <div
+              className="h-1 w-full bg-pv-surface-sunken"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
+              aria-label={copy.progressAria}
+              data-testid="onboarding-v2-progress-bar"
+            >
+              <span
+                className="block h-full bg-pv-accent transition-[width] duration-200 motion-reduce:transition-none"
+                style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+              />
+            </div>
+          ) : null}
         </header>
 
         {/* ── Content ─────────────────────────────────────────────────────
@@ -161,8 +240,28 @@ export function OnboardingShell({
             No inner max-width any more: the COLUMN is the measure now, so a
             second cap here would indent the form inside an already narrow
             card — the "card in a card" the mobile-first brief rules out. */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="w-full px-4 py-4">{children}</div>
+        {/* `bg-pv-bg`, not the surface colour.
+            The approved prototype draws its content area on the app background
+            (`--pv-bg`, #f8fafc) with cards and panels in white on top of it;
+            the header and the sticky action bar are the white surfaces. This
+            was white here, which flattened the card against its own background
+            and was the second difference the visual gate reported against
+            screen 0. */}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-pv-bg">
+          {/* A flex column that fills the scroll area, so a screen that centres
+              itself vertically has a box with a resolved height to centre in.
+              `min-h-full` alone left the child measuring 100% of an AUTO height,
+              which collapses to zero — the centred screen simply stacked from
+              the top and the diff blamed the content position. */}
+          <div
+            className={
+              padded
+                ? 'flex min-h-full w-full flex-col px-4 py-4'
+                : 'flex min-h-full w-full flex-col'
+            }
+          >
+            {children}
+          </div>
         </main>
 
         {/* ── Actions ─────────────────────────────────────────────────────
@@ -171,8 +270,16 @@ export function OnboardingShell({
             the whole declaration and the button ends up under the bar. */}
         {footer ? (
           <div
-            className="flex-shrink-0 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 pt-3"
-            style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+            data-testid="onboarding-v2-sticky"
+            className="flex-shrink-0 border-t border-pv-border bg-pv-surface/96 pt-3"
+            style={{
+              paddingBottom: 'calc(18px + env(safe-area-inset-bottom, 0px))',
+              // The prototype's `.hsm-sticky` lifts itself off the content with
+              // an upward shadow. Without it the six rows above the bar differ
+              // from the reference on every screen that has a sticky action —
+              // which was the single largest remaining block in the visual diff.
+              boxShadow: '0 -6px 18px color-mix(in srgb, var(--pv-text) 7%, transparent)',
+            }}
           >
             <div className="w-full px-4">{footer}</div>
           </div>

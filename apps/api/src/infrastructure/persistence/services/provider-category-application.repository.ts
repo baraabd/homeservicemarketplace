@@ -97,6 +97,37 @@ export class ProviderCategoryApplicationRepository {
     }) as Promise<ProviderCategoryApplicationWithJoins>;
   }
 
+  /**
+   * Sprint 9B.29 — claim a PENDING application for a decision.
+   *
+   * The double-review guard used to be a service-layer READ followed by an
+   * unconditional `updateStatus`. Prisma's interactive transactions run at READ
+   * COMMITTED, so concurrent reviewers all read PENDING and all proceeded: six
+   * simultaneous approvals produced ONE join row (the unique constraint and
+   * `skipDuplicates` saw to that) but SIX approvals and six
+   * `ADMIN_CATEGORY_APPLICATION_APPROVED` audit rows — a decision recorded as
+   * having been taken six times, by whoever happened to race.
+   *
+   * Scoping the UPDATE to `status: 'PENDING'` makes exactly one caller win, the
+   * same way `ProviderProfileRepository.decideIfInStatus` does for the provider
+   * status axis. Returns the number of rows moved: 1 = this caller decided it,
+   * 0 = someone else already had.
+   *
+   * The service keeps its read: it still owns the 404 and the human-readable
+   * conflict message. What it no longer owns is the guarantee.
+   */
+  async decideIfPending(
+    id: string,
+    status: ProviderCategoryApplicationStatus,
+    tx?: PrismaTx,
+  ): Promise<number> {
+    const result = await this.db(tx).providerCategoryApplication.updateMany({
+      where: { id, status: 'PENDING' },
+      data: { status },
+    });
+    return result.count;
+  }
+
   // ── provider-scoped reads and writes (Sprint 2) ────────────────────────
   //
   // Every method below takes providerProfileId as its FIRST argument and
