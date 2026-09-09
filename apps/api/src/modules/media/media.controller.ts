@@ -27,6 +27,7 @@ import { createReadStream } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
 import { LocalDiskStorageAdapter } from '../../infrastructure/storage/local-disk-storage.adapter';
+import { PublicMediaLedgerService } from './public-media-ledger.service';
 import {
   STORAGE_PORT,
   StoragePort,
@@ -84,6 +85,7 @@ export class MediaController {
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly local: LocalDiskStorageAdapter,
     private readonly config: AppConfigService,
+    private readonly ledger: PublicMediaLedgerService,
   ) {}
 
   // ─── Presign batch ───────────────────────────────────────────────────────
@@ -100,7 +102,7 @@ export class MediaController {
     // validated contentType. Path layout: `requests/<userId>/<uuid>.<ext>`
     // so a future cleanup job can scope by user.
     const items = await Promise.all(
-      body.items.map((item) => {
+      body.items.map(async (item) => {
         const ext = extensionForContentType(item.contentType as ContentType);
         // Sprint 9B.10 — namespace by purpose, from a WHITELIST. Portfolio
         // media is public and permanent; request media is public and tied to a
@@ -120,8 +122,22 @@ export class MediaController {
         // would orphan every URL already stored in ServiceRequest.mediaUrls[].
         if (body.purpose === 'portfolio') {
           const ref = portfolioOwnerRef(user.id, String(this.config.get('JWT_ACCESS_SECRET')));
+          const portfolioKey = `portfolio/${ref}/${randomUUID()}.${ext}`;
+          // Sprint 09B.29 Phase 4 — the row exists BEFORE the URL does.
+          //
+          // An upload abandoned between the PUT and the attach used to leave an
+          // object nothing could find. Reserving first means the sweep can
+          // retire it even if the client never comes back. Awaited, so a
+          // ledger failure refuses the upload rather than authorising an
+          // object we cannot account for.
+          await this.ledger.reserve({
+            userId: user.id,
+            storageKey: portfolioKey,
+            contentType: item.contentType,
+            sizeBytes: item.sizeBytes,
+          });
           return this.storage.presignUpload({
-            key: `portfolio/${ref}/${randomUUID()}.${ext}`,
+            key: portfolioKey,
             contentType: item.contentType as ContentType,
             sizeBytes: item.sizeBytes,
           });
@@ -147,8 +163,18 @@ export class MediaController {
             });
           }
           const ref = avatarOwnerRef(user.id, String(this.config.get('JWT_ACCESS_SECRET')));
+          const avatarKey = `${AVATAR_KEY_PREFIX}${ref}/${randomUUID()}.${ext}`;
+          // Reserved before the URL, for the same reason as the portfolio
+          // branch above: an avatar abandoned mid-upload was previously
+          // invisible to every query.
+          await this.ledger.reserve({
+            userId: user.id,
+            storageKey: avatarKey,
+            contentType: item.contentType,
+            sizeBytes: item.sizeBytes,
+          });
           return this.storage.presignUpload({
-            key: `${AVATAR_KEY_PREFIX}${ref}/${randomUUID()}.${ext}`,
+            key: avatarKey,
             contentType: item.contentType as ContentType,
             sizeBytes: item.sizeBytes,
           });

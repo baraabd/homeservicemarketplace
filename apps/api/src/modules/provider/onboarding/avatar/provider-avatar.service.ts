@@ -9,8 +9,10 @@ import {
 } from '../../../../infrastructure/storage/image-signature';
 import { STORAGE_PORT, StoragePort } from '../../../../infrastructure/storage/storage.port';
 import { AppError } from '../../../../shared/errors/app-error';
+import { PublicMediaLedgerService } from '../../../media/public-media-ledger.service';
 import { ProviderOnboardingWizardService } from '../provider-onboarding-wizard.service';
 import {
+  AVATAR_KEY_PREFIX,
   AvatarPolicyError,
   assertAvatarKey,
   assertAvatarWithinLimit,
@@ -62,6 +64,7 @@ export class ProviderAvatarService {
   constructor(
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly config: AppConfigService,
+    private readonly ledger: PublicMediaLedgerService,
     private readonly wizard: ProviderOnboardingWizardService,
   ) {}
 
@@ -131,6 +134,38 @@ export class ProviderAvatarService {
       return current;
     }
 
+    // Sprint 09B.29 Phase 4 — CLAIM THE RESERVATION.
+    //
+    // The row was created at presign, before the upload URL existed. Claiming
+    // it here is what turns an abandoned-upload candidate into an attached
+    // asset, and the claim is conditional on owner + key + PUBLIC + unclaimed:
+    // a client cannot finalize a key it was never issued, cannot claim another
+    // provider's reservation, and two concurrent finalizations produce one
+    // winner.
+    //
+    // A refusal is NOT fatal to the link. The bytes passed every check above
+    // and the provider's photo should appear; what a missing claim means is
+    // that the ledger row is absent or already used, and the sweep's job is to
+    // find objects nobody claimed — not to hold up a valid upload. It is
+    // logged so the case is visible rather than silent.
+    const claimed = await this.ledger.claim({ userId, storageKey: input.key });
+    if (!claimed) {
+      this.log.warn({ msg: 'provider.avatar.finalize.unclaimed_reservation', userId });
+    }
+
+    // The photo being REPLACED becomes eligible for byte deletion. Intent
+    // only — `retainUntil`, never `deletedAt`, which the cleanup sweep writes
+    // after storage confirms the object is gone. Without this, every
+    // replacement left its predecessor in the bucket for ever (O-2).
+    const previousKey = keyFromPublicUrl(current.data.profileImageUrl ?? null);
+    if (previousKey && previousKey !== input.key) {
+      await this.ledger.retire({
+        userId,
+        storageKey: previousKey,
+        reason: AVATAR_REPLACED_REASON,
+      });
+    }
+
     const view = await this.wizard.patchStep(userId, 'IDENTITY', {
       version: input.version,
       profileImageUrl: fileUrl,
@@ -144,6 +179,25 @@ export class ProviderAvatarService {
   async remove(userId: string, version: number): Promise<ProviderOnboardingDraftView> {
     const current = await this.wizard.get(userId);
     if (current.data.profileImageUrl === null) return current;
+
+    // Sprint 09B.29 Phase 4 — retire the bytes as well as the pointer (O-3).
+    //
+    // Clearing `profileImageUrl` used to be the whole operation, so the object
+    // stayed in the bucket permanently and stayed readable at its URL. The
+    // provider had asked for their photo to be gone; only the reference went.
+    //
+    // Intent only. `PublicMediaCleanupService` writes `deletedAt`, after
+    // storage has confirmed the object is actually absent — and the retirement
+    // is scoped to a PUBLIC asset owned by this user, so it can never reach
+    // another provider's media or an evidence row.
+    //
+    // Ordered BEFORE the patch so a failure to record the intent fails the
+    // whole operation, rather than clearing the pointer and losing the only
+    // handle on the bytes.
+    const key = keyFromPublicUrl(current.data.profileImageUrl);
+    if (key) {
+      await this.ledger.retire({ userId, storageKey: key, reason: AVATAR_REMOVED_REASON });
+    }
 
     return this.wizard.patchStep(userId, 'IDENTITY', { version, profileImageUrl: null });
   }
@@ -169,4 +223,35 @@ export function mimeForAvatarKey(key: string): string | null {
   const mime =
     ext === 'jpg' ? 'image/jpeg' : ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : '';
   return isAvatarMimeType(mime) ? mime : null;
+}
+
+/** Why a previous avatar's bytes became eligible for deletion. */
+export const AVATAR_REPLACED_REASON = 'PROVIDER_REPLACED_AVATAR';
+/** Why a removed avatar's bytes became eligible for deletion. */
+export const AVATAR_REMOVED_REASON = 'PROVIDER_REMOVED_AVATAR';
+
+/**
+ * The storage key a stored avatar URL points at, or null.
+ *
+ * Sprint 09B.29 Phase 4. Reads from the `avatars/` prefix rather than parsing
+ * the URL, because the URL shape is the ADAPTER's business and differs between
+ * them: local disk serves `/v1/media/files/<key>`, S3 serves
+ * `<bucket-or-cdn>/<key>`. Anchoring on the key prefix the server itself
+ * minted gives one answer for both, and cannot be fooled into returning a key
+ * outside the avatar namespace.
+ *
+ * Only used to RETIRE a previous object, and the retirement is scoped to the
+ * owner in the ledger — so even a malformed stored URL cannot reach another
+ * provider's media.
+ */
+export function keyFromPublicUrl(url: string | null): string | null {
+  if (!url) return null;
+  const at = url.indexOf(AVATAR_KEY_PREFIX);
+  if (at < 0) return null;
+  const raw = url.slice(at).split('?')[0];
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }

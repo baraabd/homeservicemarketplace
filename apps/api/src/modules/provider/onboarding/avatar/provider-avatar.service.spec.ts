@@ -58,8 +58,23 @@ function build(
   };
   const config = { get: (k: string) => (k === 'JWT_ACCESS_SECRET' ? SECRET : undefined) };
 
-  const service = new ProviderAvatarService(storage as never, config as never, wizard as never);
-  return { service, storage, wizard };
+  // Sprint 09B.29 Phase 4 — the reservation ledger. A no-op double here: this
+  // suite is about the FINALIZE contract (key ownership, size, signature,
+  // idempotent replay), and the ledger's own conditional-claim behaviour is
+  // covered by its own spec rather than asserted twice from here.
+  const ledger = {
+    claim: jest.fn(async () => ({ id: 'asset-1' })),
+    retire: jest.fn(async () => undefined),
+    reserve: jest.fn(async () => undefined),
+  };
+
+  const service = new ProviderAvatarService(
+    storage as never,
+    config as never,
+    ledger as never,
+    wizard as never,
+  );
+  return { service, storage, wizard, ledger };
 }
 
 async function refusal(fn: () => Promise<unknown>): Promise<AppError> {
