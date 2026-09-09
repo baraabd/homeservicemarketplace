@@ -13,6 +13,7 @@ import { EvidenceUploadService } from './media/evidence-upload.service';
 import { VerificationSettingsService } from './verification-settings.service';
 import { EvidenceReadService } from './media/evidence-read.service';
 import { EvidenceScanService } from './media/evidence-scan.service';
+import { EvidenceScanJob } from './media/evidence-scan.job';
 import { VerificationCaseWorkflowService } from './case/verification-case-workflow.service';
 import { VerificationExpiryJob } from './expiry/verification-expiry.job';
 import { VerificationExpiryService } from './expiry/verification-expiry.service';
@@ -107,6 +108,16 @@ import { Logger } from '@nestjs/common';
     // Sprint 9B.4. No controller either, for the same reason as the cleanup
     // sweep: a route that scans on demand is a route that can be aimed.
     EvidenceScanService,
+    // Sprint 09B.29 — the scheduled adapter that CALLS it.
+    //
+    // Registered unconditionally, deciding for itself whether to schedule, for
+    // the same reason `VerificationExpiryJob` is: the wiring must not depend on
+    // config read order at module-construction time. EVIDENCE_SCAN_WORKER_ENABLED
+    // (default false) is what arms it.
+    //
+    // Without this the sweep had no production caller at all, so uploaded
+    // evidence was never judged and no provider could ever be verified.
+    EvidenceScanJob,
     EvidenceScannedHandler,
     // Sprint 9B.5 — the only class allowed to act on the case transition table.
     // Exported so the admin case-commands controller can drive the same
