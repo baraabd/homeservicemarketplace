@@ -57,21 +57,41 @@ export class PublicMediaLedgerService {
    */
   async reserve(input: ReserveInput, now = new Date()): Promise<void> {
     const expiresAt = new Date(now.getTime() + RESERVATION_TTL_MS);
-    await this.prisma.client.mediaAsset.upsert({
-      where: { storageKey: input.storageKey },
-      create: {
-        visibility: 'PUBLIC',
-        storageKey: input.storageKey,
-        declaredMimeType: input.contentType,
-        sizeBytes: input.sizeBytes,
-        ownerUserId: input.userId,
-        // NULL is the point: this is what makes the row a reservation rather
-        // than an attachment, and what the sweep looks for.
-        uploadCompletedAt: null,
-        uploadExpiresAt: expiresAt,
-      },
-      update: { uploadExpiresAt: expiresAt },
-    });
+    try {
+      await this.prisma.client.mediaAsset.upsert({
+        where: { storageKey: input.storageKey },
+        create: {
+          visibility: 'PUBLIC',
+          storageKey: input.storageKey,
+          declaredMimeType: input.contentType,
+          sizeBytes: input.sizeBytes,
+          ownerUserId: input.userId,
+          // NULL is the point: this is what makes the row a reservation rather
+          // than an attachment, and what the sweep looks for.
+          uploadCompletedAt: null,
+          uploadExpiresAt: expiresAt,
+        },
+        update: { uploadExpiresAt: expiresAt },
+      });
+    } catch (err) {
+      // An upsert is a read then a write, so two of them for the same key can
+      // both find nothing and both insert; the loser gets P2002 on the unique
+      // `storageKey`. The row it wanted now exists, which is exactly the state
+      // this method promises, so a duplicate is SUCCESS rather than a 500 on a
+      // presign that had nothing wrong with it.
+      //
+      // Unreachable in production today — every presign mints a fresh uuid, so
+      // two concurrent reserves of one key would need the same uuid — but the
+      // contract above says "idempotent on storageKey", and a claim that holds
+      // only for sequential retries is not that claim. An integration test
+      // fires two of these at real Postgres.
+      //
+      // Narrow on purpose: only the unique-constraint code, and only for this
+      // field. Every other failure still rejects, so a ledger that cannot
+      // write still refuses the upload.
+      if (!isDuplicateStorageKey(err)) throw err;
+      this.log.log({ msg: 'public.media.reserve.duplicate', userId: input.userId });
+    }
     // No key, and no URL. This line is written on every presign.
     this.log.log({ msg: 'public.media.reserved', userId: input.userId });
   }
@@ -144,4 +164,22 @@ export class PublicMediaLedgerService {
       data: { retainUntil: now, deletionReason: input.reason },
     });
   }
+}
+
+/**
+ * Is this Prisma's "a row with that storageKey already exists"?
+ *
+ * Matched structurally rather than with `instanceof
+ * Prisma.PrismaClientKnownRequestError`, because importing the Prisma
+ * namespace here to narrow one error would pull the generated client into a
+ * module that otherwise only needs the service. Both the code AND the field
+ * are checked, so a unique violation on some other column still rejects.
+ */
+function isDuplicateStorageKey(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { code?: unknown; meta?: { target?: unknown } };
+  if (e.code !== 'P2002') return false;
+  const target = e.meta?.target;
+  if (Array.isArray(target)) return target.includes('storageKey');
+  return target === 'storageKey';
 }

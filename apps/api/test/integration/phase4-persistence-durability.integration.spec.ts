@@ -10,7 +10,12 @@ import { Test } from '@nestjs/testing';
 import { INestApplication, VersioningType } from '@nestjs/common';
 import request from 'supertest';
 
-import { fixtureEmailDomain, withAdvisoryLock } from '../support/db-isolation';
+import {
+  acquireAdvisoryLock,
+  fixtureEmailDomain,
+  withAdvisoryLock,
+  type HeldLock,
+} from '../support/db-isolation';
 import { clearAuthRateBudget } from '../support/rate-limit-reset';
 import { makeTestSecret } from '../support/test-secrets';
 
@@ -73,6 +78,23 @@ d('Phase 4 — onboarding persistence is durable across sessions (real Postgres 
    *  real regression in them would be invisible behind the lock. */
   const PROVIDER_C = addr('durable-c');
   const PASSWORD = 'Durable!Passw0rd';
+
+  /**
+   * The outbox queue, held SHARED for this suite's whole run.
+   *
+   * Sprint 09B.29 Phase 4. The submission task is a PRODUCER: submitting
+   * enqueues `PROVIDER_ONBOARDING_SUBMITTED`, and `claimBatch` is a queue
+   * CONSUMER that claims whatever is pending — no fixture namespace can hide a
+   * row from it. Without this lock, `outbox.integration.spec.ts` claimed a row
+   * this suite had enqueued and then failed when this suite's cleanup deleted
+   * it out from under the worker.
+   *
+   * That failure landed on a suite Phase 4 never touched, which is exactly the
+   * shape db-isolation.ts warns about: the reset was the bug, not either
+   * suite. SHARED rather than exclusive, so this still runs beside every other
+   * producer and only the consumer excludes us.
+   */
+  let outboxLock: HeldLock;
 
   let app: INestApplication;
   let http: any;
@@ -247,6 +269,12 @@ d('Phase 4 — onboarding persistence is durable across sessions (real Postgres 
       await prisma.providerProfileServiceCategory.deleteMany({ where: { providerProfileId } });
       await prisma.providerProfile.deleteMany({ where: { userId } });
     });
+    // The submission enqueues an outbox event keyed by the provider profile.
+    // Left behind, it is a PENDING row the outbox worker will claim in another
+    // suite — and the row's owner will have been deleted by then.
+    await prisma.outboxEvent.deleteMany({
+      where: { aggregateId: { in: [...profiles.map((p: { id: string }) => p.id), ...ids] } },
+    });
     await prisma.auditEvent.deleteMany({ where: { userId } });
     await prisma.session.deleteMany({ where: { userId } });
     await prisma.verificationToken.deleteMany({ where: { userId } });
@@ -267,6 +295,11 @@ d('Phase 4 — onboarding persistence is durable across sessions (real Postgres 
   }
 
   beforeAll(async () => {
+    // The canonical order is providerLifecycle -> outbox -> ...; this suite
+    // takes providerLifecycle only inside cleanupFixtures, so taking outbox
+    // here cannot invert the order against any suite that holds both.
+    outboxLock = await acquireAdvisoryLock('outbox', 'shared');
+
     for (const [k, v] of Object.entries(ENV)) {
       savedEnv[k] = process.env[k];
       process.env[k] = v;
@@ -326,6 +359,9 @@ d('Phase 4 — onboarding persistence is durable across sessions (real Postgres 
   afterAll(async () => {
     await cleanupFixtures();
     await cleanupCategories();
+    // AFTER the cleanup: releasing first would leave this suite's queue rows
+    // visible to whichever consumer was waiting on the lock.
+    await outboxLock?.release();
     await app?.close();
     for (const [k, v] of Object.entries(savedEnv)) {
       if (v === undefined) delete process.env[k];

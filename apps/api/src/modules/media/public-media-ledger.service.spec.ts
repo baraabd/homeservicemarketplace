@@ -135,6 +135,59 @@ describe('PublicMediaLedgerService — reserve', () => {
     expect(create.uploadExpiresAt).toEqual(new Date(NOW.getTime() + RESERVATION_TTL_MS));
   });
 
+  it('treats a CONCURRENT duplicate as success, not a failed presign', async () => {
+    // Two upserts for one key can both read nothing and both insert; the
+    // loser gets P2002 on the unique storageKey. The row it wanted now
+    // exists, which is what reserve promises — so a 500 here would fail a
+    // presign that had nothing wrong with it.
+    const h = harness();
+    h.mediaAsset.upsert.mockRejectedValueOnce(
+      Object.assign(new Error('Unique constraint failed'), {
+        code: 'P2002',
+        meta: { target: ['storageKey'] },
+      }),
+    );
+
+    await expect(
+      h.service.reserve(
+        { userId: 'user-a', storageKey: 'k.jpg', contentType: 'image/jpeg', sizeBytes: 1 },
+        NOW,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('still REJECTS a unique violation on any other field', async () => {
+    // The tolerance is narrow on purpose. A ledger that cannot write must
+    // still refuse the upload, or the invisible-object hole comes straight
+    // back for a different reason.
+    const h = harness();
+    h.mediaAsset.upsert.mockRejectedValueOnce(
+      Object.assign(new Error('Unique constraint failed'), {
+        code: 'P2002',
+        meta: { target: ['somethingElse'] },
+      }),
+    );
+
+    await expect(
+      h.service.reserve(
+        { userId: 'user-a', storageKey: 'k.jpg', contentType: 'image/jpeg', sizeBytes: 1 },
+        NOW,
+      ),
+    ).rejects.toThrow('Unique constraint failed');
+  });
+
+  it('still REJECTS any other database failure', async () => {
+    const h = harness();
+    h.mediaAsset.upsert.mockRejectedValueOnce(new Error('connection refused'));
+
+    await expect(
+      h.service.reserve(
+        { userId: 'user-a', storageKey: 'k.jpg', contentType: 'image/jpeg', sizeBytes: 1 },
+        NOW,
+      ),
+    ).rejects.toThrow('connection refused');
+  });
+
   it('is idempotent for a repeated presign of the same key', async () => {
     // storageKey is unique, so a bare `create` here would throw on a retry and
     // turn a harmless duplicate into a failed upload.

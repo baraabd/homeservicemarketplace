@@ -725,9 +725,20 @@ d('Provider portfolio (real guard, real Postgres)', () => {
 
     it('two concurrent creates of one key produce exactly one item', async () => {
       const body = goodBody();
-      const [a, b] = await Promise.all([create(body), create(body)]);
+      // ONE reservation, then two concurrent attaches — which is the real
+      // shape of this race. A double-tap sends the second attach for a key the
+      // first presign already reserved; it does not presign twice.
+      //
+      // Sprint 09B.29 Phase 4: reserving inside both `create` calls raced the
+      // unique `storageKey` and threw out of the FIXTURE rather than the code
+      // under test. CI caught it; the local run had not.
+      await reserveKey(body.storageKey);
+      const [a, b] = await Promise.all([
+        request(http).post(base).send(body),
+        request(http).post(base).send(body),
+      ]);
 
-      // One may lose the unique-constraint race; neither may produce a second
+      // One may lose the conditional-claim race; neither may produce a second
       // item, and at least one must succeed.
       expect([a.status, b.status].filter((s) => s === 200).length).toBeGreaterThanOrEqual(1);
       expect((await list()).body.items).toHaveLength(1);

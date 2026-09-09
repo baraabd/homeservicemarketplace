@@ -152,6 +152,25 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
       expect(objectExists(k)).toBe(false);
     });
 
+    it('survives two CONCURRENT reserves of one key', async () => {
+      // The case the fake cannot establish, and the one CI found in this
+      // sprint's own fixture: an upsert is a read then a write, so two of them
+      // can both find nothing and both insert, and Postgres raises P2002 on
+      // the loser. The row it wanted exists either way, so a duplicate must
+      // resolve rather than fail a presign that had nothing wrong with it.
+      const k = key('raced-reserve');
+      const input = { userId: OWNER, storageKey: k, contentType: 'image/jpeg', sizeBytes: 1 };
+
+      await expect(
+        Promise.all([ledger.reserve(input), ledger.reserve(input), ledger.reserve(input)]),
+      ).resolves.toBeDefined();
+
+      const rows = await prisma.mediaAsset.findMany({ where: { storageKey: k } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].ownerUserId).toBe(OWNER);
+      expect(rows[0].uploadCompletedAt).toBeNull();
+    });
+
     it('is idempotent on the unique storageKey', async () => {
       const k = key('twice');
       const input = { userId: OWNER, storageKey: k, contentType: 'image/jpeg', sizeBytes: 1 };

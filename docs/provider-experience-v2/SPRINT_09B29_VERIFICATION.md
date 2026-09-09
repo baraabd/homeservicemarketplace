@@ -4325,3 +4325,98 @@ fails safely, migrations apply to an empty database, readiness answers 200 under
 `NODE_ENV=production`, no demo accounts are seeded, the scan worker arms, real
 clamd clears a valid PNG and never clears EICAR, an idle sweep writes nothing,
 and no dedupe key produces a duplicate outbox event.
+
+---
+
+## 4.11 Two defects the FIRST CI run found that no local gate had
+
+The local DB-gated stack was green twice before the push — 206 suites, 3943
+tests, zero failures — and CI still found two things. Both were real, and both
+are recorded here rather than re-run until they went away.
+
+### D-14 — a fixture that raced the unique key it was supposed to reserve
+
+`Integration & E2E (real Postgres / Redis)` failed on **one** test:
+
+```
+● Provider portfolio › idempotency and concurrency
+    › two concurrent creates of one key produce exactly one item
+
+  PrismaClientKnownRequestError:
+  Invalid `prisma.mediaAsset.upsert()` invocation in
+    provider-portfolio.integration.spec.ts:87
+  Unique constraint failed on the fields: (`storageKey`)
+```
+
+The throw came out of the **fixture**, not the code under test. `create` now
+reserves before it attaches, and this test fires two `create`s at once — so two
+`upsert`s raced the unique `storageKey` and the loser threw before the endpoint
+was ever reached.
+
+The scenario was also wrong about what it models. A double-tap sends the second
+**attach** for a key the first presign already reserved; it does not presign
+twice. So the test now reserves **once** and fires two concurrent attaches,
+which is the race it names.
+
+**Why local runs missed it.** The same code, the same two-worker Jest
+configuration, twice, both green. An upsert races only when two of them
+interleave between the read and the write, and CI's runner is slower and more
+contended than this machine. The honest reading is that the local runs were
+lucky, not that CI is flaky.
+
+**And the code was hardened too, because the contract deserved it.**
+`PublicMediaLedgerService.reserve` documents itself as "idempotent on
+`storageKey`", and an upsert delivers that only for _sequential_ retries. It now
+treats a concurrent duplicate — P2002, and only on `storageKey` — as success:
+the row it wanted exists, which is the state the method promises, so a 500 there
+would fail a presign that had nothing wrong with it. Every other failure,
+including a unique violation on any other field, still rejects, so a ledger that
+cannot write still refuses the upload.
+
+Unreachable in production today — every presign mints a fresh uuid, so two
+concurrent reserves of one key would need the same uuid — but a claim that holds
+only for sequential retries is not the claim the doc comment makes. Proved three
+ways: two unit tests for the narrow tolerance and its limits, and an integration
+test that fires three concurrent reserves at real Postgres.
+
+### D-15 — a new producer without the queue's lock
+
+Fixing D-14 and re-running turned up a **different** failure, in
+`outbox.integration.spec.ts` — a suite Phase 4 never touched:
+
+```
+● Outbox delivery guarantees › parallel workers
+    › four workers drain a backlog with every event handled exactly once
+  Record to update not found.
+```
+
+`§4.10`'s new `REVIEW_SUBMISSION` test made this suite a queue **producer** for
+the first time: submitting enqueues `PROVIDER_ONBOARDING_SUBMITTED`. `claimBatch`
+is a queue **consumer** — it claims whatever is pending, and no fixture
+namespace can hide a row from it — so the outbox worker claimed a row this suite
+owned and then failed when this suite's cleanup deleted it mid-flight.
+
+This is precisely the hazard `test/support/db-isolation.ts` documents, and the
+fix is the boundary it prescribes rather than a retry: the durability suite now
+holds the `outbox` lock **SHARED** for its whole run, deletes its own queue rows
+scoped by aggregate id, and releases the lock **after** that cleanup — releasing
+first would leave its rows visible to whichever consumer was waiting. Taken in
+canonical order (`providerLifecycle → outbox → …`), so it cannot invert against
+a suite holding both.
+
+**Neither suite had a bug.** The reset did — the same sentence that suite's own
+comment already carried about a previous instance of this, which is the third
+time this class of defect has appeared and the reason the lock registry exists.
+
+### After the repair
+
+The full DB-gated stack was run **twice more**, end to end, on isolated
+ephemeral stacks:
+
+| Run | Result                                          |
+| --- | ----------------------------------------------- |
+| 1   | **206 suites, 3947 tests, 0 failed, 0 skipped** |
+| 2   | **206 suites, 3947 tests, 0 failed, 0 skipped** |
+
+Twice on purpose: the first repair was for a race, and one green run after a
+concurrency fix is not evidence.
