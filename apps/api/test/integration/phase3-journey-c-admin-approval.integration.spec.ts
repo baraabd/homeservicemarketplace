@@ -20,6 +20,11 @@ import request from 'supertest';
 import { ProviderCapabilityDenialReason } from '@homeservicemarketplace/contracts';
 
 import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { makeTestSecret } from '../support/test-secrets';
+
+// Derived, never written: a literal here is indistinguishable from a real
+// key to the CI secret scanner. See test/support/test-secrets.ts.
+const SECRET = makeTestSecret('phase3-journey-c-approval');
 
 // Sprint 09B.29 Phase 3, JOURNEY C — the canonical admin approval.
 //
@@ -322,7 +327,7 @@ d('Phase 3 Journey C — canonical admin approval (real Postgres)', () => {
     // access?" would be answered by a legacy fallback rather than by the rule
     // this sprint is shipping.
     const FLAGS: Record<string, unknown> = {
-      JWT_ACCESS_SECRET: 'phase3-journey-c-secret',
+      JWT_ACCESS_SECRET: SECRET,
       WORK_ACCESS_ENFORCED: true,
       VERIFICATION_ENFORCED: true,
     };

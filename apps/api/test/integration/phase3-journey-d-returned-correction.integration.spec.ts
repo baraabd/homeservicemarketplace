@@ -18,6 +18,11 @@ import {
 import request from 'supertest';
 
 import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { makeTestSecret } from '../support/test-secrets';
+
+// Derived, never written: a literal here is indistinguishable from a real
+// key to the CI secret scanner. See test/support/test-secrets.ts.
+const SECRET = makeTestSecret('phase3-journey-d');
 
 // Sprint 09B.29 Phase 3, JOURNEY D — a returned application must be correctable.
 //
@@ -270,7 +275,7 @@ d('Phase 3 Journey D — a returned application is correctable (real Postgres)',
     const { STORAGE_PORT } = require('../../src/infrastructure/storage/storage.port');
 
     const FLAGS: Record<string, unknown> = {
-      JWT_ACCESS_SECRET: 'phase3-journey-d-secret',
+      JWT_ACCESS_SECRET: SECRET,
       WORK_ACCESS_ENFORCED: true,
       VERIFICATION_ENFORCED: true,
     };

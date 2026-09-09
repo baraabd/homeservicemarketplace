@@ -20,6 +20,11 @@ import request from 'supertest';
 import { ADMIN_PROVIDER_TRANSITIONS } from '@homeservicemarketplace/contracts';
 
 import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { makeTestSecret } from '../support/test-secrets';
+
+// Derived, never written: a literal here is indistinguishable from a real
+// key to the CI secret scanner. See test/support/test-secrets.ts.
+const SECRET = makeTestSecret('phase3-stamping');
 
 // Sprint 09B.29 Phase 3 — SEMANTIC AUDIT of the Journey D production change.
 //
@@ -286,7 +291,7 @@ d('Phase 3 — submission-stamping semantic audit (real Postgres)', () => {
     const { STORAGE_PORT } = r('../../src/infrastructure/storage/storage.port');
 
     const FLAGS: Record<string, unknown> = {
-      JWT_ACCESS_SECRET: 'phase3-stamping-secret',
+      JWT_ACCESS_SECRET: SECRET,
       WORK_ACCESS_ENFORCED: true,
       VERIFICATION_ENFORCED: true,
     };

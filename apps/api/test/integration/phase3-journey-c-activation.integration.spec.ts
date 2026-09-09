@@ -23,6 +23,11 @@ import request from 'supertest';
 import { ProviderCapabilityDenialReason } from '@homeservicemarketplace/contracts';
 
 import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { makeTestSecret } from '../support/test-secrets';
+
+// Derived, never written: a literal here is indistinguishable from a real
+// key to the CI secret scanner. See test/support/test-secrets.ts.
+const SECRET = makeTestSecret('phase3-journey-c-activation');
 
 // Sprint 09B.29 Phase 3, JOURNEY C (REOPENED) — the COMPLETE canonical
 // activation journey: pending moderation → authorised provider work.
@@ -532,7 +537,7 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     // port, because the isolated stack publishes an ephemeral one.
     const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379');
     const FLAGS: Record<string, unknown> = {
-      JWT_ACCESS_SECRET: 'phase3-journey-ca-secret',
+      JWT_ACCESS_SECRET: SECRET,
       WORK_ACCESS_ENFORCED: true,
       VERIFICATION_ENFORCED: true,
       REDIS_HOST: redisUrl.hostname,

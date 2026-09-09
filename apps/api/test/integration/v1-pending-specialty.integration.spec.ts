@@ -17,6 +17,11 @@ import {
 import request from 'supertest';
 
 import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { makeTestSecret } from '../support/test-secrets';
+
+// Derived, never written: a literal here is indistinguishable from a real
+// key to the CI secret scanner. See test/support/test-secrets.ts.
+const SECRET = makeTestSecret('v1-pending-specialty');
 
 // Sprint 09B.29, Phase 3 — the LEGACY V1 surface, over real HTTP.
 //
@@ -151,7 +156,7 @@ d('V1 legacy onboarding — pending specialty over real HTTP (real Postgres)', (
     const { AppConfigService } = require('../../src/config/app-config.service');
 
     const FLAGS: Record<string, unknown> = {
-      JWT_ACCESS_SECRET: 'v1-pending-test-secret',
+      JWT_ACCESS_SECRET: SECRET,
       WORK_ACCESS_ENFORCED: true,
       VERIFICATION_ENFORCED: true,
     };

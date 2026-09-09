@@ -11,6 +11,11 @@ import { INestApplication, VersioningType } from '@nestjs/common';
 import request from 'supertest';
 
 import { fixtureEmailDomain } from '../support/db-isolation';
+import { makeTestSecret } from '../support/test-secrets';
+
+// Derived, never written: a literal here is indistinguishable from a real
+// key to the CI secret scanner. See test/support/test-secrets.ts.
+const SECRET = makeTestSecret('provider-upgrade-session');
 
 // Sprint 09B.29, repair A — the provider-upgrade authorization transition,
 // proved against the REAL application.
@@ -69,7 +74,7 @@ d('Provider upgrade → session rotation → provider access (real Postgres / Re
     NODE_ENV: 'test',
     // Low-entropy and self-describing on purpose: a random-looking literal in
     // a spec file is indistinguishable from a leaked key to a secret scanner.
-    JWT_ACCESS_SECRET: 'test-only-not-a-secret-not-a-secret-value',
+    JWT_ACCESS_SECRET: SECRET,
     // Production setting. The OTP round trip is how a real session is created,
     // and this suite is about what that session can and cannot reach.
     AUTH_REQUIRE_EMAIL_VERIFICATION: 'true',

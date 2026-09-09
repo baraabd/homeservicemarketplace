@@ -24,6 +24,11 @@ import type {
 } from '@homeservicemarketplace/contracts';
 
 import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { makeTestSecret } from '../support/test-secrets';
+
+// Derived, never written: a literal here is indistinguishable from a real
+// key to the CI secret scanner. See test/support/test-secrets.ts.
+const SECRET = makeTestSecret('pending-specialty');
 
 /** One entry of a review group. Derived from the contract rather than
  *  redeclared, so it cannot drift from it. */
@@ -238,7 +243,7 @@ d('Pending specialty moderation does not deadlock onboarding (real Postgres)', (
     // submission opens while WORK ACCESS stays shut, and with the flag off the
     // gate falls back to the legacy status and would prove nothing.
     const FLAGS: Record<string, unknown> = {
-      JWT_ACCESS_SECRET: 'pending-specialty-test-secret',
+      JWT_ACCESS_SECRET: SECRET,
       WORK_ACCESS_ENFORCED: true,
       VERIFICATION_ENFORCED: true,
     };
