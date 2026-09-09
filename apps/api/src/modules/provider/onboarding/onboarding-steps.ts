@@ -1,3 +1,4 @@
+import { providerActionIssues } from './provider-onboarding.policy';
 import type { ProviderOnboardingIssue } from '@homeservicemarketplace/contracts';
 import {
   PROVIDER_ONBOARDING_STEPS,
@@ -110,7 +111,16 @@ export function computeProgress(
 
   const steps: StepView[] = PROVIDER_ONBOARDING_STEPS.map((step) => {
     const stepIssues = byStep.get(step) ?? [];
-    return { step, complete: stepIssues.length === 0, issues: stepIssues };
+    // Sprint 09B.29 — a step is complete when the PROVIDER has finished it.
+    //
+    // `issues` still carries everything, including an item queued for our
+    // approval, so the screen can say "with us". But `complete` decides
+    // `completedSteps`, `percentComplete` and — through `nextAction` below —
+    // where the provider is sent next. Counting a queued approval as
+    // incomplete sent them back to a screen on which every editable field was
+    // already filled in, which is the same defect the hub had and is fixed the
+    // same way: ownership decides, and ownership comes from the canonical map.
+    return { step, complete: providerActionIssues(stepIssues).length === 0, issues: stepIssues };
   });
 
   // REVIEW is complete only when every step before it is. Reading back an

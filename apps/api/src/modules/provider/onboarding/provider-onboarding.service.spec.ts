@@ -266,3 +266,176 @@ describe('ProviderOnboardingService', () => {
     });
   });
 });
+
+// ── Sprint 09B.29, Phase 3 — the legacy V1 path had the deadlock too ────────
+//
+// V2 was given the PENDING/REQUIRED distinction in 9B.18. V1 never was: its
+// `toCandidate` supplied no `pendingSpecialtyCount`, so the policy could not
+// tell "has not chosen a service" from "chose one and is waiting on us" and
+// raised `serviceCategories: REQUIRED` for both. The legacy surface therefore
+// told a provider who HAD chosen a specialty to go and choose one, and refused
+// a submission they could do nothing to unblock.
+//
+// This matters because the committed deployment configuration still defaults
+// the V2 flag OFF, so V1 is what a production provider actually meets.
+//
+// A pending application is modelled the way the shared profile include loads
+// it: live PENDING rows on `categoryApplications`, with no granted
+// `serviceCategories` row until an administrator approves.
+describe('V1 — pending specialty moderation does not deadlock the legacy path', () => {
+  /** Chose a service; nobody has approved it. */
+  const pendingOnly = () =>
+    makeProfile({
+      serviceCategories: [],
+      categoryApplications: [{ serviceCategory: { id: 'cat-1' } }],
+    } as unknown as Partial<ProviderProfileWithCategories>);
+
+  /** Chose nothing at all. */
+  const nothingChosen = () =>
+    makeProfile({
+      serviceCategories: [],
+      categoryApplications: [],
+    } as unknown as Partial<ProviderProfileWithCategories>);
+
+  // 1 — pending specialty permits completion and submission
+  it('reports complete and allows submission when the only gap is our approval', async () => {
+    const h = build({ profile: pendingOnly() });
+
+    const status = await h.service.getStatus('u-1');
+    expect(status.complete).toBe(true);
+    expect(status.missing).toEqual([]);
+
+    await expect(h.service.submitForReview('u-1')).resolves.toBeDefined();
+    expect(h.providers.submitForReviewIfDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the moderation visible on its own axis rather than dropping it', async () => {
+    // The item is not hidden to make `complete` true — it moves to the
+    // additive `awaitingReview` field, so a legacy client can still say "your
+    // services are with us".
+    const status = await build({ profile: pendingOnly() }).service.getStatus('u-1');
+    expect(status.awaitingReview).toEqual([
+      { field: 'serviceCategories', code: 'AWAITING_REVIEW' },
+    ]);
+  });
+
+  it('preserves the contract invariant that missing is empty when complete', async () => {
+    const status = await build({ profile: pendingOnly() }).service.getStatus('u-1');
+    expect(status.complete).toBe(true);
+    expect(status.missing).toHaveLength(0);
+  });
+
+  // 2 — missing specialty still blocks
+  it('still blocks when the provider has chosen nothing', async () => {
+    const h = build({ profile: nothingChosen() });
+
+    const status = await h.service.getStatus('u-1');
+    expect(status.complete).toBe(false);
+    expect(status.missing).toContainEqual({ field: 'serviceCategories', code: 'REQUIRED' });
+    // ...and says REQUIRED, not AWAITING_REVIEW: nobody is holding anything.
+    expect(status.awaitingReview).toEqual([]);
+
+    await expect(h.service.submitForReview('u-1')).rejects.toMatchObject({ status: 422 });
+    expect(h.providers.submitForReviewIfDraft).not.toHaveBeenCalled();
+  });
+
+  // 3 — a rejected/returned active selection is provider work again
+  it('treats a rejected selection as the provider’s move, not as waiting', async () => {
+    // A REJECTED application is neither granted nor live-pending, so the shared
+    // include drops it and the provider is back to having chosen nothing. That
+    // is provider work, and it must read as REQUIRED.
+    const h = build({ profile: nothingChosen() });
+    const status = await h.service.getStatus('u-1');
+    expect(status.missing).toContainEqual({ field: 'serviceCategories', code: 'REQUIRED' });
+    expect(status.complete).toBe(false);
+  });
+
+  // 4 — a historical rejection alongside a granted category does not block
+  it('does not let a historical rejection block a provider who holds a category', async () => {
+    // The granted row is what counts. The rejected application is history and
+    // is not loaded as pending, so it contributes nothing.
+    const status = await build({ profile: makeProfile() }).service.getStatus('u-1');
+    expect(status.complete).toBe(true);
+    expect(status.missing).toEqual([]);
+    expect(status.awaitingReview).toEqual([]);
+  });
+
+  // 5 — pending moderation grants nothing
+  it('grants no category and no activation by allowing the submission', async () => {
+    const h = build({ profile: pendingOnly() });
+    await h.service.submitForReview('u-1');
+
+    // The only write is the DRAFT → PENDING_REVIEW transition and its audit
+    // row. Nothing here approves a category, sets `verified`, or issues a
+    // work-access grant — those are the admin review path's to make.
+    expect(h.providers.submitForReviewIfDraft).toHaveBeenCalledTimes(1);
+    expect(h.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'PROVIDER_ONBOARDING_SUBMITTED',
+        metadata: { previousStatus: 'DRAFT', newStatus: 'PENDING_REVIEW' },
+      }),
+      undefined,
+    );
+  });
+
+  // 6 — submission remains idempotent / concurrency-safe
+  it('keeps the conditional transition, so a lost race is a 409 not a second application', async () => {
+    // `submitForReviewIfDraft` is scoped to DRAFT in its WHERE clause; a second
+    // caller sees 0 rows moved. Allowing the submission must not weaken that.
+    const h = build({ profile: pendingOnly(), submitCount: 0 });
+    await expect(h.service.submitForReview('u-1')).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('still refuses from a non-DRAFT state', async () => {
+    const h = build({
+      profile: makeProfile({
+        status: 'PENDING_REVIEW' as never,
+        serviceCategories: [],
+        categoryApplications: [{ serviceCategory: { id: 'cat-1' } }],
+      } as unknown as Partial<ProviderProfileWithCategories>),
+    });
+    await expect(h.service.submitForReview('u-1')).rejects.toMatchObject({ status: 409 });
+  });
+
+  // 7 — legacy response fields remain compatible
+  it('keeps every pre-existing response field, adding one rather than changing shape', async () => {
+    const status = await build({ profile: pendingOnly() }).service.getStatus('u-1');
+    expect(Object.keys(status).sort()).toEqual(
+      [
+        'awaitingReview',
+        'complete',
+        'editable',
+        'missing',
+        'reviewedAt',
+        'rejectionReason',
+        'submittedForReviewAt',
+      ].sort(),
+    );
+    expect(typeof status.complete).toBe('boolean');
+    expect(Array.isArray(status.missing)).toBe(true);
+    expect(Array.isArray(status.awaitingReview)).toBe(true);
+    expect(status.editable).toBe(true);
+  });
+
+  it('still blocks on a provider-actionable field while moderation is pending', async () => {
+    // The guard: allowing the submission above must not let a genuine gap
+    // through, and the refusal must name the field rather than the queue.
+    const h = build({
+      profile: makeProfile({
+        bio: null,
+        serviceCategories: [],
+        categoryApplications: [{ serviceCategory: { id: 'cat-1' } }],
+      } as unknown as Partial<ProviderProfileWithCategories>),
+    });
+
+    const status = await h.service.getStatus('u-1');
+    expect(status.complete).toBe(false);
+    expect(status.missing.map((m) => m.field)).toContain('bio');
+    expect(status.missing.map((m) => m.code)).not.toContain('AWAITING_REVIEW');
+
+    await expect(h.service.submitForReview('u-1')).rejects.toMatchObject({
+      status: 422,
+      details: { missing: expect.arrayContaining([{ field: 'bio', code: 'REQUIRED' }]) },
+    });
+  });
+});

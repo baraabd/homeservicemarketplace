@@ -227,21 +227,56 @@ describe('an administrative review is not missing provider input', () => {
     expect(task(v, 'SERVICES_EXPERIENCE').status).toBe('AVAILABLE');
   });
 
-  it('leaves an AWAITING_REVIEW task OUT of the completed count', () => {
-    // WAITING is not COMPLETE. The application genuinely is not finished — an
-    // approval is outstanding — and counting it would tell the provider they
-    // are further along than they are.
+  it('COUNTS an AWAITING_REVIEW task as the provider having done their part', () => {
+    // Sprint 09B.29 — this asserted `progress.complete === 4` until now.
+    //
+    // The count answers "how much of YOUR part is done", and the provider's
+    // part of this task IS done; what remains is our approval. The task keeps
+    // its own WAITING status so the moderation axis stays visible — the number
+    // and the status say different, both-true things. The approved prototype's
+    // completed hub draws the same idea: tasks rendered in the waiting state
+    // still count towards the total it reports.
+    //
+    // 5, not 6: REVIEW_SUBMISSION is never COMPLETE — it is the action the
+    // provider is about to take, so the five collecting tasks are the ceiling
+    // until the application is handed in. Before this change the same case
+    // counted 4, because the waiting task was excluded.
     const v = buildHub(source({ issues: [{ field: 'specialties', code: 'AWAITING_REVIEW' }] }));
-    expect(task(v, 'SERVICES_EXPERIENCE').status).not.toBe('COMPLETE');
+    expect(task(v, 'SERVICES_EXPERIENCE').status).toBe('WAITING');
+    expect(v.progress.complete).toBe(5);
+  });
+
+  it('still leaves a PROVIDER-actionable task out of the completed count', () => {
+    // The guard on the rule above: only moderation counts as "their part done".
+    // A field they can fill in is still outstanding work and still uncounted.
+    const v = buildHub(source({ issues: [{ field: 'bio', code: 'REQUIRED' }] }));
+    expect(task(v, 'PORTFOLIO').status).toBe('AVAILABLE');
     expect(v.progress.complete).toBe(4);
   });
 
-  it('keeps REVIEW_SUBMISSION blocked while an approval is outstanding', () => {
-    // The corollary of the above, and the reason this could not be fixed by
-    // dropping the issue: the application is not submittable until the
-    // specialty is approved, so the submit screen must stay shut.
+  it('OPENS REVIEW_SUBMISSION while an approval is outstanding', () => {
+    // Sprint 09B.29 — this asserted BLOCKED until now, and BLOCKED was the
+    // deadlock. The provider cannot approve their own specialty, and the
+    // approval is prompted by the submission the block prevented. Pending
+    // moderation gates activation and work access; it does not gate the door to
+    // the review screen.
     const v = buildHub(source({ issues: [{ field: 'specialties', code: 'AWAITING_REVIEW' }] }));
+    expect(task(v, 'REVIEW_SUBMISSION').status).toBe('AVAILABLE');
+  });
+
+  it('keeps REVIEW_SUBMISSION blocked when the provider still has work to do', () => {
+    // Unchanged, and the reason opening the door above is safe: a real gap the
+    // provider can close still shuts the review screen.
+    const v = buildHub(source({ issues: [{ field: 'bio', code: 'REQUIRED' }] }));
     expect(task(v, 'REVIEW_SUBMISSION').status).toBe('BLOCKED');
+  });
+
+  it('points nextAction at SUBMIT, not back at the waiting task', () => {
+    // The provider has nothing left to do, so the hub must say so. Sending them
+    // into SERVICES_EXPERIENCE would open a screen whose every editable field
+    // is already filled in.
+    const v = buildHub(source({ issues: [{ field: 'specialties', code: 'AWAITING_REVIEW' }] }));
+    expect(v.nextAction).toEqual({ kind: 'SUBMIT' });
   });
 
   it('a submitted application still makes every task WAITING regardless of code', () => {

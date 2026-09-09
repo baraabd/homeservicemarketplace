@@ -17,6 +17,7 @@ import {
   NotificationType,
   type AuditEventType,
   type ProviderProfile,
+  type ProviderOnboardingState,
   type ProviderProfileStatus,
 } from '@homeservicemarketplace/database';
 
@@ -31,6 +32,33 @@ import { AdminAuditService } from '../admin-audit.service';
 const DEFAULT_PAGE_SIZE = 50;
 
 const AUDIT_DEFAULT_PAGE_SIZE = 50;
+
+/**
+ * Sprint 9B.29 — the onboarding axis each admin decision implies.
+ *
+ * This is ADR 0007's legacy-status → onboarding-state mapping, and it is
+ * deliberately the SAME table that `ProviderCapabilityService.onboardingFromLegacy`
+ * and `ProviderOnboardingWizardService.lifecycleState` already apply as a
+ * fallback for rows the Sprint 7 backfill never reached. Those two read the
+ * mapping when the axis is NULL; this one WRITES it, so new decisions stop
+ * producing rows that need the fallback in the first place.
+ *
+ * REJECTED → RETURNED is the entry that fixes the deadlock: `RETURNED` is the
+ * only decided state the submit claim accepts as a source, and the only one
+ * `hubStatusOf` renders as ACTION_REQUIRED. The schema says it plainly — "a
+ * returned applicant is in good standing and may edit and resubmit" — and
+ * before this nothing in the API ever wrote the value.
+ *
+ * SUSPENDED → ACCEPTED because suspension is a CONDUCT decision, not an
+ * application one: a suspended provider's application was still accepted, and
+ * rewriting their onboarding axis would tell them to fill the wizard in again
+ * to fix a problem the wizard cannot fix.
+ */
+const ONBOARDING_AXIS_FOR: Partial<Record<ProviderProfileStatus, ProviderOnboardingState>> = {
+  ACTIVE: 'ACCEPTED',
+  SUSPENDED: 'ACCEPTED',
+  REJECTED: 'RETURNED',
+};
 
 @Injectable()
 export class AdminVerificationService {
@@ -84,6 +112,8 @@ export class AdminVerificationService {
       to: 'ACTIVE' as ProviderProfileStatus,
       auditType: 'ADMIN_PROVIDER_APPROVED' as AuditEventType,
       auditMetadata: note ? { note } : {},
+      // An APPLICATION decision: this reviewer read the submission.
+      stampsSubmissionAs: 'ACCEPTED',
       notification: {
         type: NotificationType.SYSTEM,
         title: 'You are approved',
@@ -107,6 +137,8 @@ export class AdminVerificationService {
       to: 'REJECTED' as ProviderProfileStatus,
       auditType: 'ADMIN_PROVIDER_REJECTED' as AuditEventType,
       auditMetadata: reasonText ? { reason: reasonText } : {},
+      // Also an APPLICATION decision: sending it back IS a verdict on it.
+      stampsSubmissionAs: 'RETURNED',
       // Persisted on the profile so the Provider app can tell a rejected
       // applicant WHAT TO FIX, instead of showing a generic account-problem
       // message that conflates provider standing with account standing.
@@ -187,6 +219,18 @@ export class AdminVerificationService {
     notification: { type: NotificationType; title: string; body: string };
     conflictMessage: string;
     rejectionReason?: string | null;
+    /**
+     * The verdict to record against the submission this decision decided, for
+     * APPLICATION decisions only.
+     *
+     * Deliberately separate from the onboarding axis. `approve` and
+     * `reactivate` both move the status to ACTIVE and both map the axis to
+     * ACCEPTED, but only one of them is a judgement about an application:
+     * reactivation lifts a suspension and says nothing about the paperwork.
+     * Omitted by `suspend` and `reactivate`, so a conduct decision can never
+     * put a reviewer's name and a verdict on an application nobody read.
+     */
+    stampsSubmissionAs?: ProviderOnboardingState;
   }): Promise<AdminProviderMutationResponse> {
     const result = await this.tx.run(async (tx) => {
       const existing = await this.providers.findByIdForAdmin(args.providerProfileId, tx);
@@ -201,6 +245,14 @@ export class AdminVerificationService {
       // proceed; scoping the UPDATE to the legal source statuses makes exactly
       // one of them win. The read stays for the 404 and for the friendly
       // per-source-state conflict message.
+      // Sprint 9B.29 — the ONBOARDING axis moves with the status, in the same
+      // conditional write. See `decideIfInStatus` for the deadlock that came
+      // of leaving it behind, and ONBOARDING_AXIS_FOR for the mapping.
+      const onboardingState = ONBOARDING_AXIS_FOR[args.to];
+      // ...and it is DELIBERATELY not the same thing as deciding the
+      // application. See `stampsSubmissionAs`.
+      const stampsSubmissionAs = args.stampsSubmissionAs;
+
       const moved = await this.providers.decideIfInStatus(
         args.providerProfileId,
         {
@@ -210,11 +262,29 @@ export class AdminVerificationService {
           // Cleared on any non-rejection so a provider is never shown a stale
           // rejection reason after being approved or reactivated.
           rejectionReason: args.to === 'REJECTED' ? (args.rejectionReason ?? null) : null,
+          onboardingState,
         },
         tx,
       );
       if (moved === 0) {
         throw new AppError('CONFLICT', args.conflictMessage, 409);
+      }
+
+      // Stamp the decision onto the submission it decided, in the same
+      // transaction, so the profile and its history cannot disagree.
+      //
+      // Driven by `stampsSubmissionAs` — set ONLY by `approve` and `reject` —
+      // rather than by the onboarding axis. Keying it off the axis was wrong:
+      // `suspend` and `reactivate` also map to ACCEPTED, so a suspension would
+      // stamp any still-undecided application with a verdict, a date and a
+      // reviewer, from an operator who was making a CONDUCT decision and had
+      // not looked at the application at all.
+      if (stampsSubmissionAs) {
+        await this.providers.stampSubmissionDecision(
+          args.providerProfileId,
+          { decidedByUserId: args.adminUserId, decision: stampsSubmissionAs },
+          tx,
+        );
       }
 
       await this.audit.record(

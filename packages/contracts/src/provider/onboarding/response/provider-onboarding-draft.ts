@@ -278,10 +278,38 @@ export interface ProviderOnboardingDraftView {
   percentComplete: number;
   nextAction: ProviderOnboardingNextAction;
 
-  /** True when nothing is outstanding and submission would succeed. */
+  /**
+   * PROVIDER-INPUT completion: every provider-controlled required input is
+   * present. Equivalent to `missing.length === 0`.
+   *
+   * Sprint 09B.29. This is NOT the whole submission decision. `POST …/submit`
+   * additionally enforces the lifecycle state, the accepted terms version, the
+   * draft version for concurrency, authorization and idempotency, and may
+   * refuse for any of them while this is true. Treat it as "the form is
+   * finished", not as "the button will work".
+   *
+   * It is also not an activation or work-access answer; both are decided
+   * elsewhere and neither reads this.
+   */
   complete: boolean;
-  /** Every unmet requirement, across all steps. */
+  /**
+   * What the PROVIDER still has to do. Empty when `complete` is true.
+   *
+   * Sprint 09B.29 narrowed this to provider-action issues. It previously
+   * carried platform-owned items too, which the wizard rendered in the same
+   * amber "still to do" list as the provider's own gaps — telling someone to
+   * fix a specialty approval they cannot influence. Those items moved to
+   * `awaitingReview` rather than being dropped.
+   */
   missing: ProviderOnboardingIssue[];
+  /**
+   * What the PLATFORM still owes a decision on — currently pending specialty
+   * moderation.
+   *
+   * Additive in Sprint 09B.29 and never a reason the provider cannot proceed.
+   * Render it as status, not as a task.
+   */
+  awaitingReview: ProviderOnboardingIssue[];
 
   data: ProviderOnboardingData;
 

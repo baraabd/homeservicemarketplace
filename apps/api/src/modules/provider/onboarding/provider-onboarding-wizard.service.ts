@@ -54,7 +54,12 @@ import {
   validateAvailability,
 } from './availability-intervals';
 import { computeProgress, resumeStep } from './onboarding-steps';
-import { evaluateOnboarding, type OnboardingCandidate } from './provider-onboarding.policy';
+import {
+  evaluateOnboarding,
+  moderationIssues,
+  providerActionIssues,
+  type OnboardingCandidate,
+} from './provider-onboarding.policy';
 
 // Sprint 8 — the provider onboarding WIZARD.
 // docs/adr/0008-category-hierarchy-and-onboarding-draft.md
@@ -271,16 +276,32 @@ export class ProviderOnboardingWizardService {
         throw await this.conflict(userId, draft.version, body.version);
       }
 
+      // Sprint 09B.29 — refuse only for what the PROVIDER can fix.
+      //
+      // `evaluateOnboarding` still reports everything; this gate consults the
+      // provider-action half of it. Refusing a submission because a specialty
+      // is queued for approval is the deadlock: the provider cannot clear it,
+      // and the approval is prompted by the very submission being refused.
+      // Pending moderation continues to gate activation and work access, which
+      // are decided by the verification case rather than here.
+      //
+      // THIS COMMAND IS THE AUTHORITATIVE SUBMISSION DECISION, and provider
+      // input is only one of its conditions. The lifecycle guard above, the
+      // draft-version check above it, and the conditional claim below are the
+      // others; each can refuse an application whose input is complete. Nothing
+      // may treat `isProviderInputComplete` as equivalent to this gate.
       const issues = evaluateOnboarding(this.toCandidate(ctx));
-      if (issues.length > 0) {
+      const actionable = providerActionIssues(issues);
+      if (actionable.length > 0) {
         // 422, not 400: the payload is well-formed, the RESOURCE is
         // incomplete. `details.missing` is machine-readable so the wizard can
-        // send the provider straight to the offending step.
+        // send the provider straight to the offending step, and it carries only
+        // the items they can actually act on.
         throw new AppError(
           'VALIDATION_ERROR',
           'Your provider application is not complete yet.',
           422,
-          { missing: issues },
+          { missing: actionable },
         );
       }
 
@@ -1047,8 +1068,24 @@ export class ProviderOnboardingWizardService {
       completedSteps: progress.completedSteps,
       percentComplete: progress.percentComplete,
       nextAction: progress.nextAction,
-      complete: issues.length === 0,
-      missing: issues,
+      // Sprint 09B.29 — the two axes, reported separately.
+      //
+      // `complete` is PROVIDER-INPUT completion, not the whole submission
+      // decision: `submit()` additionally enforces lifecycle, terms, draft
+      // version and authorization, and may refuse while this is true.
+      //
+      // `missing` carries only what the provider can act on. It previously
+      // carried platform-owned items too, and the wizard renders this list as
+      // amber "still to do" entries — so a provider with an unrelated gap saw
+      // a specialty approval presented as their own homework. Those items are
+      // in `awaitingReview` instead, which is status rather than a task.
+      //
+      // `steps[].issues` deliberately still carries EVERYTHING, so a screen can
+      // show "with us" against the step that owns it; `steps[].complete` uses
+      // ownership, so it does not call that step unfinished.
+      complete: providerActionIssues(issues).length === 0,
+      missing: providerActionIssues(issues),
+      awaitingReview: moderationIssues(issues),
       data: this.toData(ctx),
       version: ctx.relations.onboardingDraft?.version ?? 0,
       policyVersion:
