@@ -8,7 +8,10 @@ import type {
 
 import { PortfolioSection } from '../../../components/provider/portfolio/PortfolioSection';
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
-import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
+import {
+  useOnboardingAutosave,
+  useOnboardingStepAutosave,
+} from '../autosave/ProviderOnboardingAutosaveProvider';
 import { usePublicProfilePreview } from '../../../hooks/provider/useProviderPortfolio';
 import {
   TITLE_MAX_LENGTH,
@@ -55,6 +58,11 @@ const MAX_BIO_LENGTH = 2000;
 export function PublicProfileTaskScreen({ view, lang, editable }: PublicProfileTaskScreenProps) {
   const copy = PUBLIC_PROFILE_COPY[lang];
   const autosave = useOnboardingStepAutosave('PROFILE');
+  // Sprint 09B.29 Phase 4 — a portfolio upload is an atomic mutation outside
+  // the autosave queue, so it registers itself with the exit contract by hand.
+  // Without it the gate saw an idle queue and let the provider leave between
+  // the PUT landing and the attach.
+  const { trackExternalWork } = useOnboardingAutosave();
   const preview = usePublicProfilePreview(lang);
 
   const data = view.data;
@@ -279,7 +287,7 @@ export function PublicProfileTaskScreen({ view, lang, editable }: PublicProfileT
       {/* ── Portfolio ────────────────────────────────────────────────────── */}
       {/* The Sprint 9B.10 component, as-is. See the header. */}
       <section className="min-w-0" data-testid="public-profile-portfolio">
-        <PortfolioSection />
+        <PortfolioSection trackWork={trackExternalWork} />
       </section>
 
       {/* ── Preview ──────────────────────────────────────────────────────── */}

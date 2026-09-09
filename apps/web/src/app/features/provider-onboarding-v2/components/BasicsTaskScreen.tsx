@@ -7,7 +7,10 @@ import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contra
 import { isPlausibleE164 } from '../../../../lib/provider/phone-format';
 import { providerQueryKeys } from '../../../../lib/provider/query-keys';
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
-import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
+import {
+  useOnboardingAutosave,
+  useOnboardingStepAutosave,
+} from '../autosave/ProviderOnboardingAutosaveProvider';
 import { AvatarUploader } from '../avatar/AvatarUploader';
 import { BASICS_COPY, type Lang } from '../copy/basics-copy';
 
@@ -51,6 +54,10 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
   const copy = BASICS_COPY[lang];
   const qc = useQueryClient();
 
+  // Sprint 09B.29 Phase 4 — the photo upload joins the exit contract, and
+  // this screen is where the two meet: it already holds the coordinator, and
+  // AvatarUploader stays a component that does not care where it is mounted.
+  const { trackExternalWork } = useOnboardingAutosave();
   const typeAutosave = useOnboardingStepAutosave('PROVIDER_TYPE');
   const identityAutosave = useOnboardingStepAutosave('IDENTITY');
 
@@ -268,6 +275,7 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
         version={view.version}
         lang={lang}
         onSaved={onAvatarSaved}
+        trackWork={trackExternalWork}
         disabled={!editable}
       />
     </div>
