@@ -69,13 +69,19 @@ export class AdminCategoryApplicationsService {
       if (!existing) {
         throw new AppError('NOT_FOUND', 'Category application not found.', 404);
       }
-      // Double-review guard. Once APPROVED or REJECTED the row is the
-      // historical record of that decision; a second admin attempting
-      // to flip it back must use a fresh application instead, so the
-      // audit trail stays linear.
+      // Double-review guard, part one: the friendly answer. Once APPROVED or
+      // REJECTED the row is the historical record of that decision; a second
+      // admin attempting to flip it back must use a fresh application instead,
+      // so the audit trail stays linear.
+      //
+      // Sprint 9B.29 — this read is no longer the GUARANTEE, only the message.
+      // Part two is the conditional write below.
       if (existing.status !== 'PENDING') {
         throw new AppError('CONFLICT', 'This application has already been reviewed.', 409);
       }
+
+      const conflict = () =>
+        new AppError('CONFLICT', 'This application has already been reviewed.', 409);
 
       if (input.action === 'APPROVE') {
         // Mirror the join row FIRST so a Prisma error on the unique
@@ -84,19 +90,35 @@ export class AdminCategoryApplicationsService {
         // idempotent (skipDuplicates), covering the case where the
         // provider was already attached via PATCH /me/provider/profile
         // categoryIds in parallel.
+        //
+        // A loser of the race below rolls this back with the rest of its
+        // transaction, so the join row belongs to the winner alone.
         await this.applications.ensureProviderHasCategory(
           existing.providerProfileId,
           existing.serviceCategoryId,
           tx,
         );
-        const approved = await this.applications.updateStatus(applicationId, 'APPROVED', tx);
+        // Sprint 9B.29 — the state-machine edge is enforced by the WRITE.
+        // The read above cannot do it: two reviewers acting at once both see
+        // PENDING, and the previous unconditional update let both proceed —
+        // one join row, but SIX approvals and six audit rows under a
+        // six-way race.
+        if ((await this.applications.decideIfPending(applicationId, 'APPROVED', tx)) === 0) {
+          throw conflict();
+        }
+        const approved = await this.applications.findByIdForAdmin(applicationId, tx);
+        if (!approved) throw new AppError('NOT_FOUND', 'Category application not found.', 404);
         await this.recordDecision(adminUserId, 'ADMIN_CATEGORY_APPLICATION_APPROVED', approved, tx);
         return approved;
       }
 
       // REJECT — no join-table mutation. The row stays so a future
       // re-apply can show prior context.
-      const rejected = await this.applications.updateStatus(applicationId, 'REJECTED', tx);
+      if ((await this.applications.decideIfPending(applicationId, 'REJECTED', tx)) === 0) {
+        throw conflict();
+      }
+      const rejected = await this.applications.findByIdForAdmin(applicationId, tx);
+      if (!rejected) throw new AppError('NOT_FOUND', 'Category application not found.', 404);
       await this.recordDecision(adminUserId, 'ADMIN_CATEGORY_APPLICATION_REJECTED', rejected, tx);
       return rejected;
     });

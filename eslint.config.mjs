@@ -16,12 +16,47 @@ export default tseslint.config(
       '**/.next/**',
       '**/generated/**',
       '**/*.d.ts',
+      // Sprint 09B.29 — build outputs that live beside `dist` rather than in
+      // it, because two Playwright configurations must not share one output
+      // directory. `**/dist/**` does not cover them, and without these the
+      // web package linted its own minified bundle: 4,034 errors in generated
+      // code, which buries the 35 real warnings the gate exists to watch.
+      '**/dist-realapi/**',
+      '**/dist-phase2-e2e/**',
+      // Phase 3 adds three more, for the same reason: proving a BUILD-TIME
+      // feature flag needs two web bundles that cannot overwrite each other,
+      // and the API serving them cannot share an output with either the
+      // developer's watcher or the still-running Phase 2 build.
+      '**/dist-phase3-e2e/**',
+      '**/dist-phase3-v2/**',
+      '**/dist-phase3-v1/**',
+      // Third-party assets vendored byte-for-byte so the visual gate is
+      // deterministic (lucide, floating-ui, the font stylesheet). They are
+      // pinned upstream builds recorded with SHA-256 in `manifest.json`;
+      // linting them would report on code this repository must not edit.
+      'apps/web/e2e/assets/vendor/**',
     ],
   },
 
   js.configs.recommended,
   ...tseslint.configs.recommended,
   eslintConfigPrettier,
+
+  {
+    // Sprint 09B.29 — Node scripts under `e2e/` that carry in-page callbacks.
+    //
+    // `diff-regions.mjs` runs in Node but its comparison body is handed to
+    // `page.evaluate()` and executes in Chromium, so `document` and `Image`
+    // are legitimately in scope there. Node globals stay available because the
+    // script's own body reads files and argv.
+    files: ['apps/web/e2e/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+      },
+    },
+  },
 
   {
     files: ['apps/web/**/*.{ts,tsx}'],

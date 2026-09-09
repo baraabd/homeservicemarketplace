@@ -172,6 +172,16 @@ export const SCREEN_COPY: Record<Lang, Record<HubViewState, ScreenCopy>> = {
       body: 'Your session has ended, so we cannot show your application.',
       cta: 'Go to sign in',
     },
+    // Sprint 9B.29 — the 403 screen, and it deliberately does NOT mention
+    // signing in. Wording follows the prototype's synchronization screen: the
+    // session is fine, the permissions attached to it are behind, and that is
+    // ours to fix rather than something the provider can act on by
+    // re-authenticating.
+    FORBIDDEN: {
+      title: 'Finishing your provider setup',
+      body: 'Your account was upgraded and we are refreshing its permissions. This is not an expired session, and you do not need to sign in again.',
+      cta: 'Try again',
+    },
     ERROR: {
       title: 'We could not load your application',
       body: 'Something went wrong on our side. Your answers are safe.',
@@ -205,6 +215,11 @@ export const SCREEN_COPY: Record<Lang, Record<HubViewState, ScreenCopy>> = {
       title: 'يرجى تسجيل الدخول مرة أخرى',
       body: 'انتهت جلستك، لذلك لا يمكننا عرض طلبك.',
       cta: 'الذهاب إلى تسجيل الدخول',
+    },
+    FORBIDDEN: {
+      title: 'نكمل تجهيز حسابك المهني',
+      body: 'تمت ترقية حسابك ونقوم بتحديث صلاحياته الآن. هذه ليست جلسة منتهية، ولا تحتاج إلى تسجيل الدخول من جديد.',
+      cta: 'إعادة المحاولة',
     },
     ERROR: {
       title: 'تعذّر تحميل طلبك',

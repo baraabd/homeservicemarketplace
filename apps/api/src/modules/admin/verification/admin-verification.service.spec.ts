@@ -74,6 +74,9 @@ function makeMocks(
       // updateMany, so the write reports how many rows it actually moved.
       // 1 = this caller won; 0 = a concurrent reviewer got there first.
       decideIfInStatus: jest.fn().mockResolvedValue(1),
+      // Sprint 9B.29: the decision is also stamped onto the submission row it
+      // decided, so the history can answer who decided an application and how.
+      stampSubmissionDecision: jest.fn().mockResolvedValue(1),
       updateReviewNotesById: jest
         .fn()
         .mockImplementation((_id, notes) =>
@@ -185,6 +188,88 @@ describe('AdminVerificationService', () => {
     expect(auditCall.metadata).not.toHaveProperty('reason');
     const notifyCall = (m.notifications.createForUser as jest.Mock).mock.calls[0][0];
     expect(notifyCall.body).toBe('Your provider application was rejected.');
+  });
+
+  // Sprint 9B.29 — the ONBOARDING axis moves with the status.
+  //
+  // Leaving it behind was a deadlock: a rejected application kept the
+  // `DOCUMENTS_REQUIRED` its submission wrote, so `lifecycleState` never
+  // reported RETURNED, `assertEditable` refused the correction with a 409, and
+  // the submit claim — which accepts only NULL/NOT_STARTED/DRAFT/RETURNED —
+  // silently matched nothing. The provider was told to wait for a decision that
+  // had already been made. `phase3-journey-d-returned-correction.integration.spec.ts`
+  // drives the whole loop against a real database; these pin the mapping.
+  describe('the onboarding axis moves with the decision', () => {
+    it('rejection returns the application so it can be corrected', async () => {
+      const m = makeMocks(makeProfile({ status: 'PENDING_REVIEW' }));
+      await makeService(m).reject('admin-1', 'pp-1', 'Headline is too vague.');
+      expect(m.providers.decideIfInStatus).toHaveBeenCalledWith(
+        'pp-1',
+        expect.objectContaining({ to: 'REJECTED', onboardingState: 'RETURNED' }),
+        undefined,
+      );
+      expect(m.providers.stampSubmissionDecision).toHaveBeenCalledWith(
+        'pp-1',
+        { decidedByUserId: 'admin-1', decision: 'RETURNED' },
+        undefined,
+      );
+    });
+
+    it('approval accepts the application', async () => {
+      const m = makeMocks(makeProfile({ status: 'PENDING_REVIEW' }));
+      await makeService(m).approve('admin-1', 'pp-1', null);
+      expect(m.providers.decideIfInStatus).toHaveBeenCalledWith(
+        'pp-1',
+        expect.objectContaining({ to: 'ACTIVE', onboardingState: 'ACCEPTED' }),
+        undefined,
+      );
+      expect(m.providers.stampSubmissionDecision).toHaveBeenCalledWith(
+        'pp-1',
+        { decidedByUserId: 'admin-1', decision: 'ACCEPTED' },
+        undefined,
+      );
+    });
+
+    it('suspension keeps the application ACCEPTED — it is a conduct decision', async () => {
+      // Rewriting a suspended provider's onboarding axis would send them back
+      // into the wizard to fix something the wizard cannot fix.
+      const m = makeMocks(makeProfile({ status: 'ACTIVE' }));
+      await makeService(m).suspend('admin-1', 'pp-1', 'Under investigation.');
+      expect(m.providers.decideIfInStatus).toHaveBeenCalledWith(
+        'pp-1',
+        expect.objectContaining({ to: 'SUSPENDED', onboardingState: 'ACCEPTED' }),
+        undefined,
+      );
+    });
+
+    // Sprint 9B.29 — moving the AXIS and DECIDING THE APPLICATION are two
+    // different things, and conflating them was a real defect.
+    //
+    // `suspend` and `reactivate` both map the onboarding axis to ACCEPTED, the
+    // same value `approve` maps to. Driving the submission stamp off that
+    // mapping meant a suspension stamped any still-undecided application with
+    // a verdict, a date and a reviewer — from an operator making a CONDUCT
+    // decision who had never read it. Two undecided submissions are reachable
+    // through ordinary use (submit → withdraw → submit), so this was not
+    // hypothetical. `phase3-submission-stamping-audit.integration.spec.ts`
+    // demonstrates it end to end.
+    it('suspension does NOT decide a submission', async () => {
+      const m = makeMocks(makeProfile({ status: 'ACTIVE' }));
+      await makeService(m).suspend('admin-1', 'pp-1', 'Under investigation.');
+      expect(m.providers.stampSubmissionDecision).not.toHaveBeenCalled();
+    });
+
+    it('reactivation does NOT decide a submission', async () => {
+      // Lifting a suspension says nothing about the paperwork.
+      const m = makeMocks(makeProfile({ status: 'SUSPENDED' }));
+      await makeService(m).reactivate('admin-1', 'pp-1');
+      expect(m.providers.decideIfInStatus).toHaveBeenCalledWith(
+        'pp-1',
+        expect.objectContaining({ to: 'ACTIVE', onboardingState: 'ACCEPTED' }),
+        undefined,
+      );
+      expect(m.providers.stampSubmissionDecision).not.toHaveBeenCalled();
+    });
   });
 
   it('reactivate: SUSPENDED → ACTIVE writes audit + notifies (Sprint 5.1.4)', async () => {

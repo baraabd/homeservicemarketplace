@@ -13,7 +13,12 @@ import { TransactionRunner } from '../../../infrastructure/prisma/transaction.ru
 import { AuditService } from '../../iam/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { toProviderProfileSummary } from '../provider-profile.mapper';
-import { evaluateOnboarding, type OnboardingCandidate } from './provider-onboarding.policy';
+import {
+  evaluateOnboarding,
+  moderationIssues,
+  providerActionIssues,
+  type OnboardingCandidate,
+} from './provider-onboarding.policy';
 
 // Phase 4 — provider onboarding.
 //
@@ -62,11 +67,21 @@ export class ProviderOnboardingService {
    */
   async getStatus(userId: string): Promise<ProviderOnboardingStatus> {
     const { profile, emailVerified } = await this.load(userId);
-    const missing = evaluateOnboarding(toCandidate(profile, emailVerified));
+    const issues = evaluateOnboarding(toCandidate(profile, emailVerified));
+    // Sprint 09B.29 — the two axes, on the legacy surface too.
+    //
+    // `complete` answers "can I submit?", which is what this endpoint's own
+    // doc comment has always said it answers. `missing` carries only what the
+    // provider can act on, so the contract's "empty when complete is true"
+    // invariant still holds, and the moderation items move to `awaitingReview`
+    // rather than disappearing.
+    const missing = providerActionIssues(issues);
+    const awaitingReview = moderationIssues(issues);
 
     return {
       complete: missing.length === 0,
       missing,
+      awaitingReview,
       submittedForReviewAt: profile.submittedForReviewAt?.toISOString() ?? null,
       reviewedAt: profile.reviewedAt?.toISOString() ?? null,
       rejectionReason: profile.rejectionReason ?? null,
@@ -92,7 +107,13 @@ export class ProviderOnboardingService {
         throw notSubmittable(profile.status);
       }
 
-      const missing = evaluateOnboarding(toCandidate(profile, emailVerified));
+      // Sprint 09B.29 — refuse only for what the PROVIDER can fix, exactly as
+      // the V2 submit command does. Refusing because a specialty is queued for
+      // approval is the deadlock: they cannot clear it, and the approval is
+      // prompted by the submission being refused. Pending moderation continues
+      // to gate activation and work access, which are decided by the admin
+      // review path and the work-access grant rather than here.
+      const missing = providerActionIssues(evaluateOnboarding(toCandidate(profile, emailVerified)));
       if (missing.length > 0) {
         // 422, not 400: the payload is well-formed, the RESOURCE is
         // incomplete. `details.missing` is machine-readable so the app can
@@ -235,6 +256,22 @@ function toCandidate(
     serviceAreaRadiusKm: profile.serviceAreaRadiusKm,
     serviceCategoryCount: profile.serviceCategories.length,
     emailVerified,
+    // Sprint 09B.29 — the legacy path could not SEE pending moderation.
+    //
+    // Without this the policy had no way to tell "has not chosen a service"
+    // from "chose one and is waiting on us", so it raised
+    // `serviceCategories: REQUIRED` for both — telling a provider who had
+    // chosen a specialty to go and choose one, and blocking a submission they
+    // could do nothing to unblock. V2 was given this in 9B.18; V1 never was.
+    //
+    // `categoryApplications` is already eager-loaded on the shared profile
+    // include (live PENDING rows only), so this needs no extra query.
+    //
+    // `leafSpecialtyCount` is deliberately NOT supplied: the policy treats an
+    // absent field as "not asked", and the legacy surface has never collected
+    // leaf specialties. Supplying it would fail every legacy applicant on data
+    // nobody ever asked them for.
+    pendingSpecialtyCount: profile.categoryApplications.length,
   };
 }
 

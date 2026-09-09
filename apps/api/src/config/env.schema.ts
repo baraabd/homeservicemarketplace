@@ -132,6 +132,24 @@ const baseEnvSchema = z.object({
   // runs instead of holding a connection for minutes.
   VERIFICATION_EXPIRY_BATCH_SIZE: z.coerce.number().int().positive().default(100),
 
+  // Sprint 09B.29 — the evidence scan sweep.
+  //
+  // `EvidenceScanService.scanPending` is the only thing that moves restricted
+  // evidence off PENDING, and until this sprint nothing in production called
+  // it: uploads were stored and never judged, so no case could be submitted and
+  // no provider could ever be verified. `EvidenceScanJob` is the adapter.
+  //
+  // Default OFF, like the expiry sweep and for the same reason: the read path
+  // serves CLEAN only, and the service refuses to write CLEAN unless a real
+  // scanner said so. Off costs availability of the feature, never trust.
+  EVIDENCE_SCAN_WORKER_ENABLED: trueish.default(false),
+  // One minute. Evidence sits in front of a person waiting to submit a case, so
+  // this is far tighter than the expiry sweep's fifteen.
+  EVIDENCE_SCAN_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  // Assets per pass. Each one is read out of object storage and handed to the
+  // scanner, so the batch is deliberately small.
+  EVIDENCE_SCAN_BATCH_SIZE: z.coerce.number().int().positive().default(25),
+
   // ── Sprint 9: restricted evidence retention (ADR 0012) ────────────────
   // Engineering defaults chosen to be conservative-SHORT. They are not legal
   // advice; legal review is recorded as outstanding in the sprint report.

@@ -1,0 +1,163 @@
+# Sprint 09B.29 Phase 3 — production-like smoke for the provider verification chain.
+#
+# WHY THIS EXISTS
+#
+# Phase 3 proved the activation chain against an isolated stack that used
+# `EVIDENCE_SCANNER_DRIVER=test` — the deterministic adapter that
+# `resolveScannerSelection` REFUSES to load in production. That proves the
+# chain, and it deliberately proves nothing about deployability.
+#
+# This overlay closes that gap with the settings a real deployment must use:
+# NODE_ENV=production, a real ClamAV daemon, the scan worker armed, and both
+# Sprint 9 authorization axes enforced.
+#
+# WHAT IT IS NOT
+#
+# It is NOT a hosting configuration. This repository declares no production
+# platform, and inventing one (Render, Fly, Vercel, Kubernetes, Terraform)
+# would be fabricating a deployment target that does not exist. This is a
+# LOCAL PROOF that the code is production-CAPABLE — the operator still has to
+# supply a real environment and real values. See docs/deployment.md §6.
+#
+# ISOLATION
+#
+# Used as an overlay on docker-compose.yml with its own project name, so it
+# shares nothing with the developer's stack:
+#   · no `container_name` collides — every service is renamed
+#   · no fixed host port — all publish to ephemeral ports
+#   · its own volumes, created and destroyed with the project
+#
+#   docker compose -p hsm-prodsmoke \
+#     -f infra/docker/docker-compose.yml \
+#     -f infra/docker/docker-compose.prod-smoke.yml \
+#     --profile app up -d
+#
+# Driven by scripts/ci/prod-scanner-smoke.sh.
+
+services:
+  postgres:
+    container_name: hsm-prodsmoke-postgres
+    environment:
+      POSTGRES_DB: hsm_prodsmoke
+    # The base file's named volume is kept rather than replaced with tmpfs:
+    # Compose MERGES volume lists, so `volumes: []` cannot remove it and the
+    # two would conflict. It does not matter — Compose namespaces volumes by
+    # project, so this is `hsm-prodsmoke_postgres_data`, entirely separate from
+    # the developer's, and `down -v` destroys it with the project.
+    # !override so these REPLACE the base file's fixed host mappings instead of
+    # being appended to them. Without it Compose merges the lists and the base's
+    # `5432:5432` / `1025:1025` / `8025:8025` stay published — which would
+    # collide head-on with the developer's own containers.
+    ports: !override
+      - '5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d hsm_prodsmoke']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    container_name: hsm-prodsmoke-redis
+    ports: !override
+      - '6379'
+
+  mailpit:
+    container_name: hsm-prodsmoke-mailpit
+    ports: !override
+      - '1025'
+      - '8025'
+
+  # The production scanner driver this repository supports.
+  #
+  # `clamd` needs its signature database before it will answer, and the first
+  # start unpacks it, so the healthcheck is generous. Nothing is CLEARED until
+  # this reports healthy — that is the point: a scanner that is not ready must
+  # not be mistaken for a scanner that found nothing.
+  clamav:
+    image: clamav/clamav:stable
+    container_name: hsm-prodsmoke-clamav
+    profiles: ['app']
+    restart: 'no'
+    environment:
+      # The image refreshes signatures on boot by default; the bundled set is
+      # enough for a smoke and avoids depending on the network mid-test.
+      CLAMAV_NO_FRESHCLAMD: 'true'
+    ports: !override
+      - '3310'
+    healthcheck:
+      test: ['CMD-SHELL', 'clamdscan --ping 1 || exit 1']
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 60s
+
+  api-migrate:
+    container_name: hsm-prodsmoke-api-migrate
+    image: hsm-api-migrate:prodsmoke
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hsm_prodsmoke
+
+  api:
+    container_name: hsm-prodsmoke-api
+    image: hsm-api:prodsmoke
+    depends_on:
+      clamav:
+        condition: service_healthy
+    environment:
+      # ── the whole point of this file ──────────────────────────────────
+      NODE_ENV: production
+      # `prod`, not `production` — the schema's enum is
+      # dev | test | staging | prod, and the mismatch made the API refuse to
+      # boot before it ever reached the scanner checks.
+      APP_ENV: prod
+      LOG_LEVEL: info
+
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hsm_prodsmoke
+
+      # A real scanner. `test` is rejected at boot when NODE_ENV=production —
+      # asserted by the smoke rather than assumed.
+      EVIDENCE_SCANNER_DRIVER: clamav
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
+      CLAMAV_TIMEOUT_MS: 60000
+
+      # The sweep this sprint added. Without it, uploaded evidence is never
+      # judged and no provider can ever be verified.
+      EVIDENCE_SCAN_WORKER_ENABLED: 'true'
+      EVIDENCE_SCAN_INTERVAL_MS: 5000
+      EVIDENCE_SCAN_BATCH_SIZE: 25
+
+      # Both Sprint 9 authorization axes, armed.
+      WORK_ACCESS_ENFORCED: 'true'
+      VERIFICATION_ENFORCED: 'true'
+
+      # Evidence limits and retention (ADR 0012).
+      EVIDENCE_MAX_BYTES: '10485760'
+      EVIDENCE_RETAIN_VERIFIED_DAYS: '90'
+
+      # Hardened-mode requirements. `validateEnv` REFUSES to boot when
+      # NODE_ENV is not development/test and any of these is relaxed, so they
+      # are here to satisfy a real production posture rather than to work
+      # around a check.
+      AUTH_REGISTER_THROTTLE_LIMIT: '5'
+      AUTH_REGISTER_THROTTLE_TTL_SECONDS: '3600'
+      AUTH_REQUIRE_EMAIL_VERIFICATION: 'true'
+      THROTTLE_REDIS_REQUIRED: 'true'
+
+      # This smoke reaches the API over plain HTTP on loopback, so a Secure
+      # cookie would never be sent and every login would silently fail. A real
+      # deployment terminates TLS and MUST leave COOKIE_SECURE at its default.
+      # Called out here so nobody copies this line into a real environment.
+      COOKIE_SECURE: 'false'
+      COOKIE_SAMESITE: lax
+
+      # Not a secret: this stack is created and destroyed by one script and is
+      # reachable only on an ephemeral loopback port. A real deployment
+      # supplies its own.
+      JWT_ACCESS_SECRET: prod-smoke-only-not-a-real-secret-00000000
+      MEDIA_SIGNING_SECRET: prod-smoke-only-media-signing-00000000
+    ports: !override
+      - '4000'
+
+volumes:
+  media_data:

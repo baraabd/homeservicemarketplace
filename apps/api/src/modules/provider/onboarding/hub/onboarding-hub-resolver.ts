@@ -8,6 +8,7 @@ import type {
 import { STEP_TO_V2_TASK } from '@homeservicemarketplace/contracts';
 
 import { stepForField } from '../onboarding-steps';
+import { isProviderActionIssue } from '../provider-onboarding.policy';
 
 // Sprint 9B.15 (delivered late, in 9B.27) — the onboarding HUB read-model.
 //
@@ -126,11 +127,28 @@ export function buildHub(source: HubSource): ProviderOnboardingHubView {
     const step = stepForField(issue.field);
     const task = STEP_TO_V2_TASK[step ?? 'REVIEW'];
     blockedTasks.add(task);
-    if (issue.code === 'AWAITING_REVIEW') awaitingReviewTasks.add(task);
-    else providerActionTasks.add(task);
+    // Sprint 09B.29 — ownership comes from the canonical map, not from an
+    // inline code comparison. This file used to test `code === 'AWAITING_REVIEW'`
+    // itself, which meant a second place to update when the classification
+    // changes, and a second place to forget.
+    if (isProviderActionIssue(issue)) providerActionTasks.add(task);
+    else awaitingReviewTasks.add(task);
   }
 
-  const collectingComplete = COLLECTING_TASKS.every((t) => !blockedTasks.has(t.id));
+  // Sprint 09B.29 — PROVIDER-action tasks, not every blocked task.
+  //
+  // This single word is the deadlock. `blockedTasks` includes tasks whose only
+  // outstanding item is an administrator's approval, so a provider who had
+  // completed every field they control still saw REVIEW_SUBMISSION BLOCKED and
+  // could never hand the application in — which is what would have prompted the
+  // approval. The task itself stays WAITING below, so the moderation axis is
+  // still visible; what changes is that it no longer bars the door.
+  //
+  // This opens the REVIEW SCREEN. It is not a submission verdict: the review
+  // read-model's `canSubmit` folds in the accepted terms version as well, and
+  // the submit command enforces lifecycle, draft version and authorization on
+  // top of that. "You may go and look" is all this decides.
+  const collectingComplete = COLLECTING_TASKS.every((t) => !providerActionTasks.has(t.id));
 
   const tasks: ProviderOnboardingHubTask[] = HUB_TASKS.map((t) => {
     const text = FALLBACK_TEXT[t.id] ?? { title: t.id, description: '' };
@@ -151,12 +169,22 @@ export function buildHub(source: HubSource): ProviderOnboardingHubView {
 
   // COUNT, not percentage, and `total` is authoritative — the client renders
   // this rather than measuring `tasks.length`.
-  const complete = tasks.filter((t) => t.status === 'COMPLETE').length;
+  //
+  // Sprint 09B.29 — WAITING counts. The count answers "how much of YOUR part is
+  // done", and a task whose only outstanding item is our approval is done as
+  // far as the provider is concerned. The approved prototype's completed hub
+  // (screen 10) says "6 of 6 tasks complete" while two of those six are drawn
+  // in the waiting state, which is exactly this rule. The moderation axis stays
+  // visible in the task's own status; it is not folded into the number.
+  const complete = tasks.filter((t) => t.status === 'COMPLETE' || t.status === 'WAITING').length;
 
   return {
     tasks,
     progress: { complete, total: HUB_TASKS.length },
-    nextAction: nextActionOf(tasks, status, blockedTasks.has('REVIEW_SUBMISSION')),
+    // Also provider-action only: an `AWAITING_REVIEW` issue that maps to REVIEW
+    // is not work the provider can do on the review screen, so it must not turn
+    // `SUBMIT` into `COMPLETE_TASK` and send them somewhere with nothing to do.
+    nextAction: nextActionOf(tasks, status, providerActionTasks.has('REVIEW_SUBMISSION')),
     status,
   };
 }
@@ -209,10 +237,13 @@ function taskStatusOf(id: string, input: TaskStatusInput): ProviderOnboardingHub
   // honest status for "you have chosen a specialty and we have not approved it
   // yet" is the same one a submitted application gets: it is with us.
   //
-  // Note it stays in `blockedTasks`, so `collectingComplete` is still false
-  // and REVIEW_SUBMISSION stays BLOCKED. That is correct — the application
-  // genuinely is not submittable yet — and it is why this cannot be expressed
-  // by simply dropping the issue.
+  // Sprint 09B.29 — the note that used to sit here said this task staying in
+  // `blockedTasks` kept REVIEW_SUBMISSION shut, and called that correct because
+  // "the application genuinely is not submittable yet". That was the deadlock.
+  // A provider who has done everything they control must be able to submit; the
+  // approval is our move and it is tracked on its own axis. `collectingComplete`
+  // now reads `providerActionTasks`, so this task reports WAITING — visible,
+  // honest — without barring the review screen.
   if (awaitingReviewTasks.has(id) && !providerActionTasks.has(id)) return 'WAITING';
 
   return 'AVAILABLE';

@@ -72,6 +72,12 @@ destinations, not a re-introduction of tab state.
 for Seeker; Provider opts out the way Admin already does. This is the single
 highest-impact change in the redesign.
 
+### 3.1 The workspace contract (outside onboarding)
+
+Applies to the ACTIVE provider workspace — home, opportunities, jobs, messages,
+earnings, profile, verification and the rest of `/provider/*` **except**
+`/provider/onboarding` and `/provider/onboarding/*`.
+
 | Width     | Layout                                                               |
 | --------- | -------------------------------------------------------------------- |
 | 320–767   | single column, edge-to-edge, safe-area insets, sticky action bar     |
@@ -79,7 +85,42 @@ highest-impact change in the redesign.
 | 1024–1279 | two-column: content + persistent rail (task list / summary)          |
 | ≥1280     | workspace sidebar + content, max content measure ~1120px             |
 
-Rules that hold at every width:
+### 3.2 The onboarding exception (approved 09B.29)
+
+**Provider onboarding does not use the table above.** It is a focused,
+one-decision-at-a-time submission flow, and the rail/sidebar arrangement that
+serves a provider reconciling earnings on a laptop actively harms it: at 768px
+and beyond, labels and their inputs drift far enough apart that the form stops
+reading as a sequence.
+
+Onboarding stays mobile-first at every width:
+
+| Width  | Layout                                                                  |
+| ------ | ----------------------------------------------------------------------- |
+| 320–639 | full viewport width, single column, safe-area insets, sticky actions    |
+| ≥640    | one centred column, `max-width: 480px`, on a neutral page background    |
+
+And, at every width:
+
+- do not stretch onboarding forms across the desktop viewport;
+- do not use the old dark decorative phone frame;
+- do not show workspace bottom navigation while onboarding is `DRAFT`,
+  `RETURNED`, or `SUBMITTED`.
+
+The breakpoint is `640px` (`sm:`) rather than `768px` (`md:`) deliberately:
+768px is itself an acceptance viewport, and a rule engaging only above it would
+leave the tablet full-bleed — the exact case this exception exists to fix.
+
+This is scoped by route, not global. `Root.tsx` is unchanged and the old global
+430px cap stays removed; the constraint lives in the onboarding shell, so it
+reaches `/provider/onboarding/*` and nothing else.
+
+> Recorded as a documentation correction: the implementation
+> (`OnboardingShell.tsx`) already behaved this way, and §3's single table did not
+> say so. The departure was real and undocumented; per this document's preamble
+> the document is what gets corrected.
+
+Rules that hold at every width, in both contracts:
 
 - no horizontal overflow at 320px;
 - text inputs ≥16px on touch (iOS zoom);

@@ -82,6 +82,44 @@
   --pv-focus: #2563eb;
   --pv-shadow-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.08);
   --pv-shadow-2: 0 -2px 12px rgb(15 23 42 / 0.08);
+
+  /* Sprint 09B.29 — the activation hero.
+   *
+   * The one gradient in the provider surface, and it exists because the
+   * approved prototype draws it on screen 0
+   * (`linear-gradient(135deg, #2563eb, #6d28d9)`). It lives here as a token
+   * rather than inline in the screen for the reason every other colour does:
+   * a screen component that hard-codes a hex is a value nobody can find
+   * again. Both stops are recorded so the pair cannot drift apart.
+   *
+   * `--pv-hero-fg` is fixed white in BOTH themes on purpose: the gradient it
+   * sits on does not change with the theme, so a foreground that did would
+   * fail contrast in one of them. */
+  --pv-hero-from: #2563eb;
+  --pv-hero-to: #6d28d9;
+  --pv-hero-fg: #ffffff;
+  --pv-hero-fg-muted: #e0e7ff;
+
+  /* Sprint 09B.29 — the language toggle.
+   *
+   * NOT `--pv-*`: `LangToggle` is shared application chrome and appears on
+   * seeker surfaces too, so a provider-namespaced token would be a lie about
+   * its scope.
+   *
+   * These replace hard-coded `#F59E0B` and `#94a3b8`, which measured 2.15:1
+   * and 2.34:1 against the toggle's own track — both SERIOUS axe violations on
+   * every screen the toggle appears on, which is all of them. At 11-12px the
+   * large-text allowance does not apply, so 4.5:1 is required.
+   *
+   *   light  active   #b45309 on the white pill   5.02:1
+   *          inactive #475569 on the slate track  6.92:1
+   *   dark   active   #fbbf24 on the slate pill   4.54:1
+   *          inactive #cbd5e1 on the slate track  6.97:1
+   *
+   * The hue is unchanged in both themes, so "this one is selected" still reads
+   * as warm-accent-versus-muted rather than relying on the colour alone. */
+  --lang-toggle-active: #b45309;
+  --lang-toggle-inactive: #475569;
 }
 
 .dark {
@@ -148,6 +186,10 @@
   --pv-danger: #f87171;
   --pv-danger-bg: #300f0f;
   --pv-danger-border: #7f1d1d;
+
+  /* Sprint 09B.29 — see the light-theme note. Lifted for the dark track. */
+  --lang-toggle-active: #fbbf24;
+  --lang-toggle-inactive: #cbd5e1;
 
   --pv-focus: #60a5fa;
   --pv-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
@@ -221,6 +263,15 @@
   --color-pv-danger: var(--pv-danger);
   --color-pv-danger-bg: var(--pv-danger-bg);
   --color-pv-danger-border: var(--pv-danger-border);
+  /* Activation hero (prototype screen 0). */
+  --color-pv-hero-from: var(--pv-hero-from);
+  --color-pv-hero-to: var(--pv-hero-to);
+  --color-pv-hero-fg: var(--pv-hero-fg);
+  --color-pv-hero-fg-muted: var(--pv-hero-fg-muted);
+
+  /* Language toggle (shared chrome, not provider-scoped). */
+  --color-lang-toggle-active: var(--lang-toggle-active);
+  --color-lang-toggle-inactive: var(--lang-toggle-inactive);
 }
 
 @layer base {

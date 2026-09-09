@@ -1389,7 +1389,7 @@ function ReviewStep({
           is disabled is spelled out rather than left to be inferred from a
           greyed-out control. */}
       {!view.complete ? (
-        <ul className="mt-3 space-y-1">
+        <ul className="mt-3 space-y-1" data-testid="wizard-missing">
           {view.missing.map((issue) => (
             <li
               key={`${issue.field}:${issue.code}`}
@@ -1401,6 +1401,33 @@ function ReviewStep({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {/* Sprint 09B.29 — the PLATFORM axis, rendered as status.
+
+          Separate from the amber list above and NOT conditioned on
+          `view.complete`, because the two are independent facts: the provider's
+          part can be finished while a specialty is still with us, and that is
+          precisely the state the old build got wrong. Blue rather than amber,
+          and no per-item "fix this" affordance — there is nothing here for the
+          provider to do, and the submit button above stays enabled. */}
+      {/* Read defensively. `awaitingReview` is REQUIRED by the contract, so a
+          conformant server always sends it — but a client can talk to an older
+          API for the length of a rolling deploy, and `undefined.length` would
+          white-screen the whole wizard rather than degrade to "no platform
+          items". The Playwright stub not sending it is what surfaced this. */}
+      {(view.awaitingReview?.length ?? 0) > 0 ? (
+        <div
+          data-testid="wizard-awaiting-review"
+          role="status"
+          className="mt-3 rounded-2xl border border-pv-waiting-border bg-pv-waiting-bg p-3"
+        >
+          <p className="flex items-center gap-1.5 text-xs font-extrabold text-pv-waiting">
+            <Clock size={12} className="shrink-0" aria-hidden />
+            {copy.moderationTitle}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-pv-waiting">{copy.moderationBody}</p>
+        </div>
       ) : null}
 
       {submit.isError ? (

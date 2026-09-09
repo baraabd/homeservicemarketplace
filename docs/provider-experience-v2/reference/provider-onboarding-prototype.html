@@ -1,0 +1,1722 @@
+<!doctype html>
+<html lang="en" data-visualize-standalone>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>HomeServiceMarketplace Provider Onboarding Prototype</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="HomeServiceMarketplace Provider Onboarding Prototype" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot; data-visualize-standalone&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;HomeServiceMarketplace Provider Onboarding Prototype&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --icon-size: 16px;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --corner-shape: round;
+  --radius: var(--border-radius-lg, 10px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: var(--visualize-paint-gutter, 0px);
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans) !important;
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+:root:not([data-app-block-surface], [data-visualize-standalone]) &gt; body {
+  padding: 12px;
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: var(--corner-shape);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The shared runtime owns data-tooltip; suppress AppBlock&#x27;s pseudo-tooltip. */
+main [data-tooltip]::after {
+  content: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+hr {
+  width: 100%;
+  height: 1px;
+  margin-block: 6px;
+  border: 0;
+  background: var(--border);
+}
+
+.nav {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.progress {
+  display: flex;
+  height: 8px;
+  margin-block: calc((var(--line-height-normal, 1.5em) - 8px) / 2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar:only-child {
+  border-radius: var(--radius-full);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.nav-link,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn,
+.nav-link {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover,
+.nav-link:not(:disabled):not([aria-disabled=&quot;true&quot;]):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.nav-pills .nav-link {
+  min-width: 0;
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.nav-justified .nav-link {
+  flex: 1 1 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.nav-pills .nav-link.active {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.btn:disabled,
+.nav-link:disabled,
+.nav-link[aria-disabled=&quot;true&quot;] {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: var(--corner-shape);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed=&quot;true&quot;],
+  [aria-selected=&quot;true&quot;],
+  .is-selected
+) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible,
+.nav-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .btn,
+  .nav-link,
+  .form-control,
+  .form-select {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Keep small-screen WebKit from zooming when a text field receives focus. */
+  .form-control,
+  .form-select {
+    font-size: max(16px, var(--font-size-normal));
+  }
+
+  .form-control[type=&quot;file&quot;]::file-selector-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .form-control-color[type=&quot;color&quot;] {
+    width: 44px;
+    height: 44px;
+  }
+
+  .form-control:is(
+    [type=&quot;date&quot;],
+    [type=&quot;datetime-local&quot;],
+    [type=&quot;month&quot;],
+    [type=&quot;time&quot;],
+    [type=&quot;week&quot;]
+  ) {
+    min-width: 0;
+    max-width: 100%;
+    padding-block: 8px;
+  }
+
+  .form-check {
+    min-height: 44px;
+    padding-inline: 15px;
+  }
+
+  .form-check-input {
+    position: relative;
+  }
+
+  .form-check-input::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    content: &quot;&quot;;
+    transform: translate(-50%, -50%);
+  }
+
+  .form-check-label {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .form-range {
+    height: 44px;
+    touch-action: pan-y;
+  }
+
+  .form-range::-webkit-slider-runnable-track {
+    height: 44px;
+  }
+
+  .form-range::-moz-range-track {
+    height: 44px;
+  }
+
+  .form-range::-webkit-slider-thumb {
+    margin-top: 12px;
+  }
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: var(--icon-size) !important;
+  height: var(--icon-size) !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;hsm-provider-journey&quot;&gt;
+  &lt;div class=&quot;hsm-prototype-toolbar&quot; aria-label=&quot;Prototype controls&quot;&gt;
+    &lt;button type=&quot;button&quot; id=&quot;hsm-prev&quot; aria-label=&quot;Previous screen&quot;&gt;&lt;i data-lucide=&quot;chevron-left&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+    &lt;label&gt;
+      &lt;span class=&quot;sr-only&quot;&gt;Current screen&lt;/span&gt;
+      &lt;select id=&quot;hsm-screen-picker&quot; aria-label=&quot;Current screen&quot;&gt;&lt;/select&gt;
+    &lt;/label&gt;
+    &lt;button type=&quot;button&quot; id=&quot;hsm-next&quot; aria-label=&quot;Next screen&quot;&gt;&lt;i data-lucide=&quot;chevron-right&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+    &lt;button type=&quot;button&quot; id=&quot;hsm-lang&quot; aria-pressed=&quot;true&quot;&gt;AR&lt;/button&gt;
+  &lt;/div&gt;
+  &lt;p id=&quot;hsm-screen-meta&quot; class=&quot;hsm-screen-meta&quot; aria-live=&quot;polite&quot;&gt;&lt;/p&gt;
+  &lt;section class=&quot;hsm-phone&quot; aria-label=&quot;Provider onboarding mobile prototype&quot;&gt;
+    &lt;div class=&quot;hsm-safe-top&quot;&gt;&lt;/div&gt;
+    &lt;div id=&quot;hsm-phone-content&quot;&gt;&lt;/div&gt;
+  &lt;/section&gt;
+&lt;/div&gt;
+
+&lt;style&gt;
+  #hsm-provider-journey {
+    --hsm-bg: light-dark(#f8fafc, #0f172a);
+    --hsm-surface: light-dark(#ffffff, #111827);
+    --hsm-sunken: light-dark(#f1f5f9, #1e293b);
+    --hsm-border: light-dark(#e2e8f0, #334155);
+    --hsm-border-strong: light-dark(#cbd5e1, #475569);
+    --hsm-text: light-dark(#0f172a, #f8fafc);
+    --hsm-muted: light-dark(#475569, #cbd5e1);
+    --hsm-accent: light-dark(#2563eb, #60a5fa);
+    --hsm-accent-strong: light-dark(#1d4ed8, #93c5fd);
+    --hsm-accent-soft: light-dark(#eff6ff, #172554);
+    --hsm-success: light-dark(#15803d, #4ade80);
+    --hsm-success-soft: light-dark(#f0fdf4, #052e16);
+    --hsm-warning: light-dark(#b45309, #fbbf24);
+    --hsm-warning-soft: light-dark(#fffbeb, #451a03);
+    --hsm-danger: light-dark(#b91c1c, #f87171);
+    --hsm-danger-soft: light-dark(#fef2f2, #450a0a);
+    --hsm-waiting: light-dark(#4338ca, #a5b4fc);
+    --hsm-waiting-soft: light-dark(#eef2ff, #1e1b4b);
+    color-scheme: light dark;
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    width: 100%;
+    color: var(--hsm-text);
+    font-family: Inter, Arial, sans-serif;
+  }
+  #hsm-provider-journey * { box-sizing: border-box; }
+  #hsm-provider-journey [dir=&quot;rtl&quot;] { font-family: Cairo, Tahoma, Arial, sans-serif; }
+  .hsm-prototype-toolbar {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px 52px;
+    gap: 8px;
+    align-items: center;
+    width: min(390px, 100%);
+  }
+  .hsm-prototype-toolbar button,
+  .hsm-prototype-toolbar select {
+    min-height: 44px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+  }
+  .hsm-prototype-toolbar button { display: grid; place-items: center; cursor: pointer; }
+  .hsm-prototype-toolbar label,
+  .hsm-prototype-toolbar select { width: 100%; }
+  .hsm-prototype-toolbar select { padding-inline: 10px; }
+  .hsm-screen-meta { margin: 0; color: var(--muted-foreground); font-size: 12px; }
+  .hsm-phone {
+    width: min(390px, 100%);
+    min-height: 780px;
+    overflow: hidden;
+    border: 1px solid var(--hsm-border-strong);
+    border-radius: 28px;
+    background: var(--hsm-surface);
+    box-shadow: 0 18px 48px color-mix(in srgb, var(--foreground) 16%, transparent);
+  }
+  .hsm-safe-top { height: 16px; background: var(--hsm-surface); }
+  #hsm-phone-content { min-height: 764px; display: flex; flex-direction: column; background: var(--hsm-bg); }
+  .hsm-topbar {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+    min-height: 64px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--hsm-border);
+    background: var(--hsm-surface);
+  }
+  .hsm-topbar-title { min-width: 0; text-align: start; }
+  .hsm-topbar h1 { margin: 0; font-size: 17px; line-height: 1.45; font-weight: 700; }
+  .hsm-topbar p { margin: 1px 0 0; color: var(--hsm-muted); font-size: 12px; }
+  .hsm-icon-action { width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: var(--hsm-muted); display: grid; place-items: center; cursor: pointer; }
+  .hsm-progress { height: 4px; background: var(--hsm-sunken); }
+  .hsm-progress span { display: block; height: 100%; background: var(--hsm-accent); transition: width .2s ease; }
+  .hsm-main { flex: 1; display: flex; flex-direction: column; gap: 18px; padding: 20px 16px 112px; }
+  .hsm-main-tight { gap: 12px; }
+  .hsm-kicker { margin: 0; color: var(--hsm-accent-strong); font-size: 13px; font-weight: 700; }
+  .hsm-heading { margin: 0; font-size: 24px; line-height: 1.35; font-weight: 700; }
+  .hsm-lead { margin: -8px 0 0; color: var(--hsm-muted); font-size: 14px; line-height: 1.75; }
+  .hsm-hero {
+    padding: 24px 20px;
+    color: #ffffff;
+    background: linear-gradient(135deg, #2563eb, #6d28d9);
+  }
+  .hsm-hero .hsm-heading { color: #ffffff; }
+  .hsm-hero .hsm-lead { margin-top: 8px; color: #e0e7ff; }
+  .hsm-hero-icon { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; margin-bottom: 16px; background: rgba(255,255,255,.16); }
+  .hsm-panel { padding: 16px; border: 1px solid var(--hsm-border); border-radius: 14px; background: var(--hsm-surface); }
+  .hsm-panel h2 { margin: 0 0 5px; font-size: 16px; }
+  .hsm-panel p { margin: 0; color: var(--hsm-muted); font-size: 13px; line-height: 1.65; }
+  .hsm-field { display: grid; gap: 7px; }
+  .hsm-field label { font-size: 13px; font-weight: 700; }
+  .hsm-field input,
+  .hsm-field textarea,
+  .hsm-field select {
+    width: 100%; min-height: 48px; padding: 12px 13px;
+    border: 1px solid var(--hsm-border-strong); border-radius: 10px;
+    background: var(--hsm-surface); color: var(--hsm-text); font: inherit; font-size: 16px;
+  }
+  .hsm-field textarea { min-height: 104px; resize: none; }
+  .hsm-help { color: var(--hsm-muted); font-size: 12px; line-height: 1.6; }
+  .hsm-choice-list { display: grid; gap: 8px; }
+  .hsm-choice {
+    display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: center;
+    min-height: 52px; width: 100%; padding: 10px 12px;
+    border: 1px solid var(--hsm-border-strong); border-radius: 12px;
+    background: var(--hsm-surface); color: var(--hsm-text); text-align: start; font: inherit; cursor: pointer;
+  }
+  .hsm-choice[aria-pressed=&quot;true&quot;] { border-color: var(--hsm-accent); background: var(--hsm-accent-soft); }
+  .hsm-choice strong { font-size: 14px; }
+  .hsm-choice small { color: var(--hsm-muted); font-size: 11px; }
+  .hsm-check { width: 20px; height: 20px; border: 1.5px solid var(--hsm-border-strong); border-radius: 6px; display: grid; place-items: center; }
+  .hsm-choice[aria-pressed=&quot;true&quot;] .hsm-check { border-color: var(--hsm-accent); background: var(--hsm-accent); color: white; }
+  .hsm-search { position: relative; }
+  .hsm-search input { padding-inline-start: 42px; }
+  .hsm-search svg { position: absolute; inset-inline-start: 13px; top: 14px; color: var(--hsm-muted); }
+  .hsm-stepper { display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; gap: 10px; }
+  .hsm-stepper button { min-height: 48px; border: 1px solid var(--hsm-border-strong); border-radius: 10px; background: var(--hsm-surface); color: var(--hsm-text); display: grid; place-items: center; }
+  .hsm-stepper output { text-align: center; font-size: 20px; font-weight: 700; }
+  .hsm-map { position: relative; height: 190px; overflow: hidden; border-radius: 14px; background: linear-gradient(25deg, #e2e8f0 0 18%, #f8fafc 18% 35%, #dbeafe 35% 37%, #f1f5f9 37% 63%, #e2e8f0 63% 66%, #f8fafc 66%); }
+  .hsm-map-ring { position: absolute; left: 50%; top: 50%; width: 122px; height: 122px; transform: translate(-50%,-50%); border: 2px solid var(--hsm-accent); border-radius: 50%; background: color-mix(in srgb, var(--hsm-accent) 12%, transparent); display: grid; place-items: center; color: var(--hsm-accent-strong); }
+  .hsm-reward { display: grid; grid-template-columns: 32px 1fr; gap: 10px; padding: 14px; border-radius: 12px; background: var(--hsm-warning-soft); color: var(--hsm-warning); }
+  .hsm-reward p { margin: 0; font-size: 13px; line-height: 1.65; }
+  .hsm-days { display: flex; flex-wrap: wrap; gap: 7px; }
+  .hsm-day { min-width: 44px; min-height: 44px; border: 1px solid var(--hsm-border-strong); border-radius: 10px; background: var(--hsm-surface); color: var(--hsm-text); }
+  .hsm-day[aria-pressed=&quot;true&quot;] { border-color: var(--hsm-accent); background: var(--hsm-accent); color: white; }
+  .hsm-time-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .hsm-upload { min-height: 128px; border: 1.5px dashed var(--hsm-border-strong); border-radius: 14px; background: var(--hsm-surface); display: grid; place-items: center; text-align: center; padding: 18px; color: var(--hsm-accent-strong); }
+  .hsm-upload p { margin: 8px 0 0; font-size: 13px; font-weight: 700; }
+  .hsm-photos { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+  .hsm-photo { aspect-ratio: 1; border-radius: 10px; background: linear-gradient(145deg,#dbeafe,#c4b5fd); display: grid; place-items: center; color: #1e3a8a; position: relative; overflow: hidden; }
+  .hsm-photo span { position: absolute; inset-inline: 5px; bottom: 5px; padding: 3px 6px; border-radius: 6px; background: rgba(255,255,255,.9); color: #334155; font-size: 9px; }
+  .hsm-task-group { display: grid; gap: 8px; }
+  .hsm-group-title { margin: 6px 2px 2px; color: var(--hsm-muted); font-size: 13px; font-weight: 700; }
+  .hsm-task {
+    display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center;
+    min-height: 68px; width: 100%; padding: 11px 12px;
+    border: 1px solid var(--hsm-border); border-radius: 13px;
+    background: var(--hsm-surface); color: var(--hsm-text); text-align: start; font: inherit; cursor: pointer;
+  }
+  .hsm-task-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: var(--hsm-sunken); color: var(--hsm-muted); }
+  .hsm-task strong { display: block; font-size: 14px; }
+  .hsm-task small { display: block; margin-top: 2px; color: var(--hsm-muted); font-size: 11px; }
+  .hsm-badge { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .hsm-badge-done { color: var(--hsm-success); background: var(--hsm-success-soft); }
+  .hsm-badge-todo { color: var(--hsm-muted); background: var(--hsm-sunken); }
+  .hsm-badge-waiting { color: var(--hsm-waiting); background: var(--hsm-waiting-soft); }
+  .hsm-badge-attention { color: var(--hsm-warning); background: var(--hsm-warning-soft); }
+  .hsm-summary-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: start; padding: 13px 0; border-bottom: 1px solid var(--hsm-border); }
+  .hsm-summary-row:last-child { border-bottom: 0; }
+  .hsm-summary-row strong { font-size: 13px; }
+  .hsm-summary-row p { margin: 3px 0 0; color: var(--hsm-muted); font-size: 12px; }
+  .hsm-alert { display: grid; grid-template-columns: 24px 1fr; gap: 10px; padding: 14px; border-radius: 12px; }
+  .hsm-alert h2 { margin: 0 0 4px; font-size: 14px; }
+  .hsm-alert p { margin: 0; font-size: 12px; line-height: 1.65; }
+  .hsm-alert-warning { color: var(--hsm-warning); background: var(--hsm-warning-soft); }
+  .hsm-alert-danger { color: var(--hsm-danger); background: var(--hsm-danger-soft); }
+  .hsm-alert-waiting { color: var(--hsm-waiting); background: var(--hsm-waiting-soft); }
+  .hsm-alert-success { color: var(--hsm-success); background: var(--hsm-success-soft); }
+  .hsm-timeline { display: grid; gap: 0; }
+  .hsm-timeline-row { display: grid; grid-template-columns: 28px 1fr; gap: 10px; min-height: 62px; }
+  .hsm-timeline-mark { position: relative; display: grid; justify-items: center; }
+  .hsm-timeline-mark::after { content:&quot;&quot;; position:absolute; top:24px; bottom:0; width:2px; background:var(--hsm-border); }
+  .hsm-timeline-row:last-child .hsm-timeline-mark::after { display:none; }
+  .hsm-dot { z-index:1; width:22px; height:22px; border:2px solid var(--hsm-border-strong); border-radius:50%; background:var(--hsm-surface); display:grid; place-items:center; }
+  .hsm-dot-done { border-color: var(--hsm-success); background: var(--hsm-success); color:white; }
+  .hsm-dot-current { border-color: var(--hsm-waiting); background: var(--hsm-waiting-soft); color:var(--hsm-waiting); }
+  .hsm-timeline-row strong { display:block; font-size:13px; }
+  .hsm-timeline-row small { color:var(--hsm-muted); font-size:11px; }
+  .hsm-consent { display:flex; align-items:flex-start; gap:10px; padding:14px; border:1px solid var(--hsm-border); border-radius:12px; background:var(--hsm-surface); font-size:13px; line-height:1.6; }
+  .hsm-consent input { width:20px; height:20px; margin-top:2px; }
+  .hsm-sticky {
+    position: absolute; inset-inline: 0; bottom: 0; display: grid; gap: 7px;
+    padding: 12px 16px 18px; border-top: 1px solid var(--hsm-border);
+    background: color-mix(in srgb, var(--hsm-surface) 96%, transparent);
+    box-shadow: 0 -6px 18px color-mix(in srgb, var(--hsm-text) 7%, transparent);
+  }
+  .hsm-phone-inner { position: relative; min-height: 764px; display:flex; flex-direction:column; }
+  .hsm-primary, .hsm-secondary, .hsm-danger-action {
+    min-height: 48px; width:100%; border-radius:11px; font:inherit; font-size:14px; font-weight:700; cursor:pointer;
+  }
+  .hsm-primary { border:1px solid var(--hsm-accent); background:var(--hsm-accent); color:white; }
+  .hsm-secondary { border:1px solid var(--hsm-border-strong); background:var(--hsm-surface); color:var(--hsm-text); }
+  .hsm-danger-action { border:1px solid var(--hsm-danger); background:var(--hsm-surface); color:var(--hsm-danger); }
+  .hsm-save-state { display:flex; justify-content:center; align-items:center; gap:5px; color:var(--hsm-muted); font-size:11px; }
+  .hsm-center { flex:1; display:grid; align-content:center; gap:16px; padding:28px 20px 110px; text-align:center; }
+  .hsm-center-icon { width:72px; height:72px; margin:auto; border-radius:24px; display:grid; place-items:center; background:var(--hsm-accent-soft); color:var(--hsm-accent-strong); }
+  .hsm-center h1 { margin:0; font-size:24px; line-height:1.4; }
+  .hsm-center p { margin:0; color:var(--hsm-muted); font-size:14px; line-height:1.8; }
+  .hsm-axis { display:grid; gap:8px; padding:14px; border:1px solid var(--hsm-border); border-radius:12px; background:var(--hsm-surface); text-align:start; }
+  .hsm-axis-row { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; font-size:12px; }
+  .hsm-footer-inline { display:grid; grid-template-columns:1fr 1.6fr; gap:8px; }
+  @media (max-width: 350px) {
+    .hsm-prototype-toolbar { grid-template-columns: 44px minmax(0,1fr) 44px; }
+    #hsm-lang { grid-column: 1 / -1; }
+    .hsm-phone { border-radius: 18px; }
+    .hsm-main { padding-inline: 12px; }
+    .hsm-task { grid-template-columns: 30px 1fr; }
+    .hsm-task .hsm-badge { grid-column: 2; justify-self:start; }
+  }
+  @media (prefers-reduced-motion: reduce) { #hsm-provider-journey * { transition:none !important; } }
+&lt;/style&gt;
+
+&lt;script&gt;
+  const hsmRoot = document.getElementById(&#x27;hsm-provider-journey&#x27;);
+  const hsmPhone = document.getElementById(&#x27;hsm-phone-content&#x27;);
+  const hsmPicker = document.getElementById(&#x27;hsm-screen-picker&#x27;);
+  const hsmMeta = document.getElementById(&#x27;hsm-screen-meta&#x27;);
+  const hsmState = { index: 0, lang: &#x27;ar&#x27; };
+  const hsmScreens = [
+    [&#x27;activate&#x27;,&#x27;تفعيل حساب المهني&#x27;,&#x27;Activate provider account&#x27;],
+    [&#x27;sync&#x27;,&#x27;مزامنة الصلاحيات&#x27;,&#x27;Syncing permissions&#x27;],
+    [&#x27;hub&#x27;,&#x27;لوحة إكمال الطلب&#x27;,&#x27;Application hub&#x27;],
+    [&#x27;basics&#x27;,&#x27;البيانات الأساسية&#x27;,&#x27;Basic details&#x27;],
+    [&#x27;services&#x27;,&#x27;اختيار الخدمات&#x27;,&#x27;Choose services&#x27;],
+    [&#x27;experience&#x27;,&#x27;الخبرة والتنقل&#x27;,&#x27;Experience and transport&#x27;],
+    [&#x27;area&#x27;,&#x27;نطاق العمل&#x27;,&#x27;Work area&#x27;],
+    [&#x27;hours&#x27;,&#x27;ساعات العمل&#x27;,&#x27;Working hours&#x27;],
+    [&#x27;profile&#x27;,&#x27;ملفك العام&#x27;,&#x27;Public profile&#x27;],
+    [&#x27;portfolio&#x27;,&#x27;معرض الأعمال&#x27;,&#x27;Portfolio&#x27;],
+    [&#x27;hubComplete&#x27;,&#x27;كل المهام مكتملة&#x27;,&#x27;All tasks complete&#x27;],
+    [&#x27;review&#x27;,&#x27;المراجعة النهائية&#x27;,&#x27;Final review&#x27;],
+    [&#x27;terms&#x27;,&#x27;الموافقة والإرسال&#x27;,&#x27;Consent and submit&#x27;],
+    [&#x27;submitted&#x27;,&#x27;تم إرسال الطلب&#x27;,&#x27;Application submitted&#x27;],
+    [&#x27;waiting&#x27;,&#x27;مركز الحالة&#x27;,&#x27;Status centre&#x27;],
+    [&#x27;returned&#x27;,&#x27;إجراء مطلوب&#x27;,&#x27;Action required&#x27;],
+    [&#x27;expired&#x27;,&#x27;انتهت الجلسة&#x27;,&#x27;Session expired&#x27;],
+    [&#x27;active&#x27;,&#x27;تم تفعيل الحساب&#x27;,&#x27;Account activated&#x27;]
+  ];
+  const hsmT = (ar,en) =&gt; hsmState.lang === &#x27;ar&#x27; ? ar : en;
+  const hsmDir = () =&gt; hsmState.lang === &#x27;ar&#x27; ? &#x27;rtl&#x27; : &#x27;ltr&#x27;;
+  const hsmIcon = (name,size=18) =&gt; `&lt;i data-lucide=&quot;${name}&quot; style=&quot;width:${size}px;height:${size}px&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;`;
+  const hsmTop = (title,sub,progress,back=true) =&gt; `&lt;div class=&quot;hsm-topbar&quot;&gt;
+    &lt;button type=&quot;button&quot; class=&quot;hsm-icon-action&quot; data-go=&quot;${back ? &#x27;back&#x27; : &#x27;close&#x27;}&quot; aria-label=&quot;${hsmT(&#x27;رجوع&#x27;,&#x27;Back&#x27;)}&quot;&gt;${hsmIcon(back ? (hsmState.lang===&#x27;ar&#x27;?&#x27;arrow-right&#x27;:&#x27;arrow-left&#x27;) : &#x27;x&#x27;,20)}&lt;/button&gt;
+    &lt;div class=&quot;hsm-topbar-title&quot;&gt;&lt;h1&gt;${title}&lt;/h1&gt;${sub?`&lt;p&gt;${sub}&lt;/p&gt;`:&#x27;&#x27;}&lt;/div&gt;
+    &lt;span aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+  &lt;/div&gt;&lt;div class=&quot;hsm-progress&quot; aria-label=&quot;${hsmT(&#x27;تقدم الطلب&#x27;,&#x27;Application progress&#x27;)}&quot;&gt;&lt;span style=&quot;width:${progress}%&quot;&gt;&lt;/span&gt;&lt;/div&gt;`;
+  const hsmSticky = (label,next,secondary=&#x27;&#x27;) =&gt; `&lt;div class=&quot;hsm-sticky&quot;&gt;
+    ${secondary?`&lt;div class=&quot;hsm-footer-inline&quot;&gt;&lt;button type=&quot;button&quot; class=&quot;hsm-secondary&quot; data-go=&quot;back&quot;&gt;${secondary}&lt;/button&gt;&lt;button type=&quot;button&quot; class=&quot;hsm-primary&quot; data-go=&quot;${next}&quot;&gt;${label}&lt;/button&gt;&lt;/div&gt;`:`&lt;button type=&quot;button&quot; class=&quot;hsm-primary&quot; data-go=&quot;${next}&quot;&gt;${label}&lt;/button&gt;`}
+    &lt;div class=&quot;hsm-save-state&quot;&gt;${hsmIcon(&#x27;cloud-check&#x27;,14)} ${hsmT(&#x27;حُفظت التغييرات • 12:42&#x27;,&#x27;Changes saved • 12:42&#x27;)}&lt;/div&gt;
+  &lt;/div&gt;`;
+  const hsmChoice = (label,selected=true,meta=&#x27;&#x27;) =&gt; `&lt;button type=&quot;button&quot; class=&quot;hsm-choice&quot; aria-pressed=&quot;${selected}&quot;&gt;
+    &lt;span class=&quot;hsm-check&quot;&gt;${selected?hsmIcon(&#x27;check&#x27;,14):&#x27;&#x27;}&lt;/span&gt;&lt;strong&gt;${label}&lt;/strong&gt;${meta?`&lt;small&gt;${meta}&lt;/small&gt;`:&#x27;&#x27;}
+  &lt;/button&gt;`;
+  const hsmField = (label,value,help=&#x27;&#x27;,type=&#x27;text&#x27;) =&gt; `&lt;div class=&quot;hsm-field&quot;&gt;&lt;label&gt;${label}&lt;/label&gt;&lt;input type=&quot;${type}&quot; value=&quot;${value}&quot; aria-describedby=&quot;hsm-help-${label.length}&quot;&gt;${help?`&lt;span class=&quot;hsm-help&quot; id=&quot;hsm-help-${label.length}&quot;&gt;${help}&lt;/span&gt;`:&#x27;&#x27;}&lt;/div&gt;`;
+  const hsmTask = (icon,title,sub,status,go) =&gt; {
+    const cls=status===&#x27;done&#x27;?&#x27;hsm-badge-done&#x27;:status===&#x27;waiting&#x27;?&#x27;hsm-badge-waiting&#x27;:status===&#x27;attention&#x27;?&#x27;hsm-badge-attention&#x27;:&#x27;hsm-badge-todo&#x27;;
+    const label=status===&#x27;done&#x27;?hsmT(&#x27;مكتمل&#x27;,&#x27;Complete&#x27;):status===&#x27;waiting&#x27;?hsmT(&#x27;قيد المراجعة&#x27;,&#x27;In review&#x27;):status===&#x27;attention&#x27;?hsmT(&#x27;إجراء مطلوب&#x27;,&#x27;Action required&#x27;):hsmT(&#x27;مطلوب&#x27;,&#x27;Required&#x27;);
+    return `&lt;button type=&quot;button&quot; class=&quot;hsm-task&quot; data-screen=&quot;${go}&quot;&gt;&lt;span class=&quot;hsm-task-icon&quot;&gt;${hsmIcon(icon,17)}&lt;/span&gt;&lt;span&gt;&lt;strong&gt;${title}&lt;/strong&gt;&lt;small&gt;${sub}&lt;/small&gt;&lt;/span&gt;&lt;span class=&quot;hsm-badge ${cls}&quot;&gt;${label}&lt;/span&gt;&lt;/button&gt;`;
+  };
+  function hsmShell(body,sticky=&#x27;&#x27;){ return `&lt;div class=&quot;hsm-phone-inner&quot; dir=&quot;${hsmDir()}&quot;&gt;${body}${sticky}&lt;/div&gt;`; }
+  function hsmRenderScreen(id){
+    if(id===&#x27;activate&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;ابدأ كمهني&#x27;,&#x27;Start as a provider&#x27;),&#x27;&#x27;,0,false)}&lt;div class=&quot;hsm-hero&quot;&gt;&lt;div class=&quot;hsm-hero-icon&quot;&gt;${hsmIcon(&#x27;briefcase&#x27;,26)}&lt;/div&gt;&lt;h2 class=&quot;hsm-heading&quot;&gt;${hsmT(&#x27;حوّل خبرتك إلى فرص عمل&#x27;,&#x27;Turn your skills into work&#x27;)}&lt;/h2&gt;&lt;p class=&quot;hsm-lead&quot;&gt;${hsmT(&#x27;أكمل ست مهام قصيرة، ثم أرسل طلبك للمراجعة. لن يظهر تنقل مساحة العمل قبل التفعيل.&#x27;,&#x27;Complete six short tasks, then submit your application. Workspace navigation stays hidden until activation.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;main class=&quot;hsm-main&quot;&gt;&lt;div class=&quot;hsm-panel&quot;&gt;&lt;h2&gt;${hsmT(&#x27;ما الذي تحتاجه؟&#x27;,&#x27;What you need&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;رقم هاتف، صورة شخصية، خدماتك، منطقة العمل، أوقاتك ونبذة عنك.&#x27;,&#x27;Phone number, profile photo, services, work area, availability and a short introduction.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/main&gt;`, `&lt;div class=&quot;hsm-sticky&quot;&gt;&lt;button class=&quot;hsm-primary&quot; type=&quot;button&quot; data-go=&quot;sync&quot;&gt;${hsmT(&#x27;تفعيل حساب المهني&#x27;,&#x27;Activate provider account&#x27;)}&lt;/button&gt;&lt;/div&gt;`);
+    if(id===&#x27;sync&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;تفعيل الحساب&#x27;,&#x27;Account activation&#x27;),hsmT(&#x27;تتم مزامنة صلاحياتك&#x27;,&#x27;Syncing your permissions&#x27;),5,false)}&lt;div class=&quot;hsm-center&quot;&gt;&lt;div class=&quot;hsm-center-icon&quot;&gt;${hsmIcon(&#x27;refresh-cw&#x27;,30)}&lt;/div&gt;&lt;h1&gt;${hsmT(&#x27;نجهّز حسابك المهني&#x27;,&#x27;Preparing your provider account&#x27;)}&lt;/h1&gt;&lt;p&gt;${hsmT(&#x27;تم إنشاء الملف. نحدّث الجلسة الآن قبل فتح طلبك حتى لا تواجه خطأ صلاحيات.&#x27;,&#x27;Your profile was created. We are refreshing the session before opening the application to prevent a permission error.&#x27;)}&lt;/p&gt;&lt;div class=&quot;hsm-alert hsm-alert-waiting&quot;&gt;&lt;span&gt;${hsmIcon(&#x27;shield-check&#x27;,20)}&lt;/span&gt;&lt;div&gt;&lt;h2&gt;${hsmT(&#x27;لا تسجّل الدخول من جديد&#x27;,&#x27;No sign-in needed&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;هذه مزامنة دور وليست جلسة منتهية. سنعيد المحاولة مرة واحدة تلقائياً.&#x27;,&#x27;This is role synchronization, not an expired session. We will retry once automatically.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;`, `&lt;div class=&quot;hsm-sticky&quot;&gt;&lt;button class=&quot;hsm-primary&quot; type=&quot;button&quot; data-go=&quot;hub&quot;&gt;${hsmT(&#x27;متابعة بعد المزامنة&#x27;,&#x27;Continue after sync&#x27;)}&lt;/button&gt;&lt;/div&gt;`);
+    if(id===&#x27;hub&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;أكمل طلبك&#x27;,&#x27;Complete your application&#x27;),hsmT(&#x27;1 من 6 مهام مكتملة&#x27;,&#x27;1 of 6 tasks complete&#x27;),17,false)}&lt;main class=&quot;hsm-main hsm-main-tight&quot;&gt;&lt;p class=&quot;hsm-lead&quot;&gt;${hsmT(&#x27;ابدأ بالمهمة التالية أو افتح أي مهمة متاحة. يحفظ النظام كل تغيير ناجح.&#x27;,&#x27;Continue with the next task or open any available task. Every successful change is saved.&#x27;)}&lt;/p&gt;&lt;div class=&quot;hsm-task-group&quot;&gt;&lt;p class=&quot;hsm-group-title&quot;&gt;${hsmT(&#x27;الأساسيات&#x27;,&#x27;Basics&#x27;)}&lt;/p&gt;${hsmTask(&#x27;user&#x27;,hsmT(&#x27;البيانات الأساسية&#x27;,&#x27;Basic details&#x27;),hsmT(&#x27;الاسم والهاتف والصورة&#x27;,&#x27;Name, phone and photo&#x27;),&#x27;done&#x27;,&#x27;basics&#x27;)}&lt;p class=&quot;hsm-group-title&quot;&gt;${hsmT(&#x27;خدماتك&#x27;,&#x27;Your services&#x27;)}&lt;/p&gt;${hsmTask(&#x27;wrench&#x27;,hsmT(&#x27;الخدمات والخبرة&#x27;,&#x27;Services and experience&#x27;),hsmT(&#x27;التخصص، الخبرة، وسيلة النقل&#x27;,&#x27;Specialty, experience and transport&#x27;),&#x27;todo&#x27;,&#x27;services&#x27;)}&lt;p class=&quot;hsm-group-title&quot;&gt;${hsmT(&#x27;مكان ووقت العمل&#x27;,&#x27;Where and when&#x27;)}&lt;/p&gt;${hsmTask(&#x27;map-pin&#x27;,hsmT(&#x27;نطاق العمل&#x27;,&#x27;Work area&#x27;),hsmT(&#x27;نقطة الانطلاق والتغطية&#x27;,&#x27;Starting point and coverage&#x27;),&#x27;todo&#x27;,&#x27;area&#x27;)}${hsmTask(&#x27;calendar-days&#x27;,hsmT(&#x27;ساعات العمل&#x27;,&#x27;Working hours&#x27;),hsmT(&#x27;الأيام والفترات المتاحة&#x27;,&#x27;Available days and time ranges&#x27;),&#x27;todo&#x27;,&#x27;hours&#x27;)}&lt;p class=&quot;hsm-group-title&quot;&gt;${hsmT(&#x27;ملفك العام&#x27;,&#x27;Public profile&#x27;)}&lt;/p&gt;${hsmTask(&#x27;image&#x27;,hsmT(&#x27;النبذة ومعرض الأعمال&#x27;,&#x27;Bio and portfolio&#x27;),hsmT(&#x27;ما يراه العملاء&#x27;,&#x27;What customers see&#x27;),&#x27;todo&#x27;,&#x27;profile&#x27;)}${hsmTask(&#x27;file-check&#x27;,hsmT(&#x27;المراجعة والإرسال&#x27;,&#x27;Review and submission&#x27;),hsmT(&#x27;تأكيد البيانات والشروط&#x27;,&#x27;Confirm details and terms&#x27;),&#x27;todo&#x27;,&#x27;review&#x27;)}&lt;/div&gt;&lt;/main&gt;`, `&lt;div class=&quot;hsm-sticky&quot;&gt;&lt;button class=&quot;hsm-primary&quot; type=&quot;button&quot; data-go=&quot;services&quot;&gt;${hsmT(&#x27;ابدأ: خدماتك&#x27;,&#x27;Start: Your services&#x27;)}&lt;/button&gt;&lt;/div&gt;`);
+    if(id===&#x27;basics&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;البيانات الأساسية&#x27;,&#x27;Basic details&#x27;),hsmT(&#x27;المهمة 1 من 6&#x27;,&#x27;Task 1 of 6&#x27;),17)}&lt;main class=&quot;hsm-main&quot;&gt;&lt;div class=&quot;hsm-upload&quot;&gt;${hsmIcon(&#x27;camera&#x27;,26)}&lt;p&gt;${hsmT(&#x27;التقط صورة أو اختر من المعرض&#x27;,&#x27;Take a photo or choose from gallery&#x27;)}&lt;/p&gt;&lt;/div&gt;${hsmField(hsmT(&#x27;الاسم الذي يراه العملاء&#x27;,&#x27;Customer-facing name&#x27;),&#x27;Ahmad Fatal&#x27;)}${hsmField(hsmT(&#x27;رقم الهاتف&#x27;,&#x27;Phone number&#x27;),&#x27;0936706600&#x27;,hsmT(&#x27;التوثيق عبر الرسائل غير مفعّل حالياً ولن يمنع الإرسال.&#x27;,&#x27;SMS verification is not active yet and will not block submission.&#x27;),&#x27;tel&#x27;)}&lt;/main&gt;`,hsmSticky(hsmT(&#x27;حفظ والمتابعة&#x27;,&#x27;Save and continue&#x27;),&#x27;services&#x27;,hsmT(&#x27;العودة للمهام&#x27;,&#x27;Back to tasks&#x27;)));
+    if(id===&#x27;services&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;اختر خدماتك&#x27;,&#x27;Choose your services&#x27;),hsmT(&#x27;المهمة 2 من 6 • الجزء 1&#x27;,&#x27;Task 2 of 6 • Part 1&#x27;),28)}&lt;main class=&quot;hsm-main&quot;&gt;&lt;div&gt;&lt;p class=&quot;hsm-kicker&quot;&gt;${hsmT(&#x27;اختر ما تتقنه فعلاً&#x27;,&#x27;Choose what you genuinely offer&#x27;)}&lt;/p&gt;&lt;h2 class=&quot;hsm-heading&quot;&gt;${hsmT(&#x27;ما الخدمات التي تقدمها؟&#x27;,&#x27;Which services do you provide?&#x27;)}&lt;/h2&gt;&lt;/div&gt;&lt;div class=&quot;hsm-search hsm-field&quot;&gt;&lt;label&gt;${hsmT(&#x27;ابحث في الخدمات&#x27;,&#x27;Search services&#x27;)}&lt;/label&gt;${hsmIcon(&#x27;search&#x27;,18)}&lt;input type=&quot;search&quot; placeholder=&quot;${hsmT(&#x27;مثال: دهانات&#x27;,&#x27;Example: Painting&#x27;)}&quot;&gt;&lt;/div&gt;&lt;div class=&quot;hsm-choice-list&quot;&gt;${hsmChoice(hsmT(&#x27;دهانات داخلية&#x27;,&#x27;Interior painting&#x27;),true,hsmT(&#x27;الأساسية&#x27;,&#x27;Primary&#x27;))}${hsmChoice(hsmT(&#x27;دهانات خارجية&#x27;,&#x27;Exterior painting&#x27;),true)}${hsmChoice(hsmT(&#x27;ترميم الجدران&#x27;,&#x27;Wall repair&#x27;),false)}${hsmChoice(hsmT(&#x27;تنظيف بعد الدهان&#x27;,&#x27;Post-paint cleaning&#x27;),false)}&lt;/div&gt;&lt;div class=&quot;hsm-alert hsm-alert-waiting&quot;&gt;&lt;span&gt;${hsmIcon(&#x27;clock&#x27;,20)}&lt;/span&gt;&lt;div&gt;&lt;h2&gt;${hsmT(&#x27;تُراجع التخصصات لاحقاً&#x27;,&#x27;Specialties are reviewed later&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;اختياراتك تكمل مهمتك الآن. ستبقى حالة الموافقة منفصلة ولن تمنع إرسال طلبك.&#x27;,&#x27;Your selections complete this task now. Approval stays separate and will not block submission.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/div&gt;&lt;/main&gt;`,hsmSticky(hsmT(&#x27;متابعة إلى الخبرة&#x27;,&#x27;Continue to experience&#x27;),&#x27;experience&#x27;,hsmT(&#x27;العودة للمهام&#x27;,&#x27;Back to tasks&#x27;)));
+    if(id===&#x27;experience&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;الخبرة والتنقل&#x27;,&#x27;Experience and transport&#x27;),hsmT(&#x27;المهمة 2 من 6 • الجزء 2&#x27;,&#x27;Task 2 of 6 • Part 2&#x27;),34)}&lt;main class=&quot;hsm-main&quot;&gt;&lt;div class=&quot;hsm-field&quot;&gt;&lt;label&gt;${hsmT(&#x27;سنوات الخبرة&#x27;,&#x27;Years of experience&#x27;)}&lt;/label&gt;&lt;div class=&quot;hsm-stepper&quot;&gt;&lt;button type=&quot;button&quot; aria-label=&quot;${hsmT(&#x27;إنقاص&#x27;,&#x27;Decrease&#x27;)}&quot;&gt;${hsmIcon(&#x27;minus&#x27;)}&lt;/button&gt;&lt;output&gt;14&lt;/output&gt;&lt;button type=&quot;button&quot; aria-label=&quot;${hsmT(&#x27;زيادة&#x27;,&#x27;Increase&#x27;)}&quot;&gt;${hsmIcon(&#x27;plus&#x27;)}&lt;/button&gt;&lt;/div&gt;&lt;span class=&quot;hsm-help&quot;&gt;${hsmT(&#x27;استخدم + و− لتجنب أخطاء الكتابة.&#x27;,&#x27;Use + and − to avoid typing errors.&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;hsm-field&quot;&gt;&lt;label&gt;${hsmT(&#x27;كيف تصل إلى موقع العميل؟&#x27;,&#x27;How do you reach customers?&#x27;)}&lt;/label&gt;&lt;div class=&quot;hsm-choice-list&quot;&gt;${hsmChoice(hsmT(&#x27;سيارة&#x27;,&#x27;Car&#x27;),true,hsmT(&#x27;النطاق 15 كم&#x27;,&#x27;15 km range&#x27;))}${hsmChoice(hsmT(&#x27;دراجة نارية&#x27;,&#x27;Motorbike&#x27;),false)}${hsmChoice(hsmT(&#x27;سيراً على الأقدام&#x27;,&#x27;On foot&#x27;),false)}${hsmChoice(hsmT(&#x27;مواصلات عامة&#x27;,&#x27;Public transport&#x27;),true)}&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;hsm-panel&quot;&gt;&lt;h2&gt;${hsmT(&#x27;المسمى المقترح&#x27;,&#x27;Suggested title&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;فني دهانات • تم توليده من خدمتك الأساسية ويمكن تعديله لاحقاً.&#x27;,&#x27;Painting professional • Generated from your primary service and editable later.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/main&gt;`,hsmSticky(hsmT(&#x27;حفظ والمتابعة&#x27;,&#x27;Save and continue&#x27;),&#x27;area&#x27;,hsmT(&#x27;العودة للمهام&#x27;,&#x27;Back to tasks&#x27;)));
+    if(id===&#x27;area&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;نطاق العمل&#x27;,&#x27;Work area&#x27;),hsmT(&#x27;المهمة 3 من 6&#x27;,&#x27;Task 3 of 6&#x27;),50)}&lt;main class=&quot;hsm-main&quot;&gt;${hsmField(hsmT(&#x27;المدينة أو الحي&#x27;,&#x27;City or neighborhood&#x27;),hsmT(&#x27;حلب، الفرقان&#x27;,&#x27;Aleppo, Al-Furqan&#x27;),hsmT(&#x27;هذه نقطة الانطلاق وليست عنوان سكن منشوراً.&#x27;,&#x27;This is your starting point, not a published home address.&#x27;))}&lt;div class=&quot;hsm-map&quot; role=&quot;img&quot; aria-label=&quot;${hsmT(&#x27;خريطة نطاق عمل 15 كيلومتراً&#x27;,&#x27;Map showing a 15 kilometre work radius&#x27;)}&quot;&gt;&lt;div class=&quot;hsm-map-ring&quot;&gt;${hsmIcon(&#x27;map-pin&#x27;,24)}&lt;strong&gt;15 km&lt;/strong&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;hsm-reward&quot;&gt;&lt;span&gt;${hsmIcon(&#x27;star&#x27;,22)}&lt;/span&gt;&lt;p&gt;${hsmT(&#x27;نطاقك الحالي 15 كم بسبب اختيار السيارة. بعد 3 تقييمات ممتازة يتوسع إلى 25 كم.&#x27;,&#x27;Your current radius is 15 km because you selected a car. After 3 excellent ratings, it expands to 25 km.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/main&gt;`,hsmSticky(hsmT(&#x27;حفظ والمتابعة&#x27;,&#x27;Save and continue&#x27;),&#x27;hours&#x27;,hsmT(&#x27;العودة للمهام&#x27;,&#x27;Back to tasks&#x27;)));
+    if(id===&#x27;hours&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;ساعات العمل&#x27;,&#x27;Working hours&#x27;),hsmT(&#x27;المهمة 4 من 6&#x27;,&#x27;Task 4 of 6&#x27;),67)}&lt;main class=&quot;hsm-main&quot;&gt;&lt;div&gt;&lt;p class=&quot;hsm-kicker&quot;&gt;${hsmT(&#x27;حدد عدة أيام معاً&#x27;,&#x27;Select several days at once&#x27;)}&lt;/p&gt;&lt;h2 class=&quot;hsm-heading&quot;&gt;${hsmT(&#x27;متى تستقبل الطلبات؟&#x27;,&#x27;When can you take requests?&#x27;)}&lt;/h2&gt;&lt;/div&gt;&lt;div class=&quot;hsm-days&quot;&gt;${[&#x27;ح&#x27;,&#x27;ن&#x27;,&#x27;ث&#x27;,&#x27;ر&#x27;,&#x27;خ&#x27;,&#x27;ج&#x27;,&#x27;س&#x27;].map((d,i)=&gt;`&lt;button type=&quot;button&quot; class=&quot;hsm-day&quot; aria-pressed=&quot;${i&lt;5}&quot;&gt;${hsmState.lang===&#x27;ar&#x27;?d:[&#x27;Su&#x27;,&#x27;Mo&#x27;,&#x27;Tu&#x27;,&#x27;We&#x27;,&#x27;Th&#x27;,&#x27;Fr&#x27;,&#x27;Sa&#x27;][i]}&lt;/button&gt;`).join(&#x27;&#x27;)}&lt;/div&gt;&lt;div class=&quot;hsm-time-row&quot;&gt;${hsmField(hsmT(&#x27;من&#x27;,&#x27;From&#x27;),&#x27;09:00&#x27;,&#x27;&#x27;,&#x27;time&#x27;)}${hsmField(hsmT(&#x27;إلى&#x27;,&#x27;To&#x27;),&#x27;17:00&#x27;,&#x27;&#x27;,&#x27;time&#x27;)}&lt;/div&gt;&lt;button type=&quot;button&quot; class=&quot;hsm-secondary&quot;&gt;${hsmT(&#x27;تطبيق على الأيام المحددة&#x27;,&#x27;Apply to selected days&#x27;)}&lt;/button&gt;&lt;label class=&quot;hsm-consent&quot;&gt;&lt;input type=&quot;checkbox&quot;&gt;&lt;span&gt;&lt;strong&gt;${hsmT(&#x27;غير متاح في أيام محددة&#x27;,&#x27;Unavailable on selected days&#x27;)}&lt;/strong&gt;&lt;br&gt;&lt;span class=&quot;hsm-help&quot;&gt;${hsmT(&#x27;يعطّل الأيام من دون حذف الفترات المحفوظة.&#x27;,&#x27;Disables days without deleting saved time ranges.&#x27;)}&lt;/span&gt;&lt;/span&gt;&lt;/label&gt;&lt;/main&gt;`,hsmSticky(hsmT(&#x27;حفظ والمتابعة&#x27;,&#x27;Save and continue&#x27;),&#x27;profile&#x27;,hsmT(&#x27;العودة للمهام&#x27;,&#x27;Back to tasks&#x27;)));
+    if(id===&#x27;profile&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;ملفك العام&#x27;,&#x27;Your public profile&#x27;),hsmT(&#x27;المهمة 5 من 6 • الجزء 1&#x27;,&#x27;Task 5 of 6 • Part 1&#x27;),76)}&lt;main class=&quot;hsm-main&quot;&gt;&lt;div class=&quot;hsm-field&quot;&gt;&lt;label&gt;${hsmT(&#x27;عرّف العملاء بخبرتك&#x27;,&#x27;Tell customers about your experience&#x27;)}&lt;/label&gt;&lt;textarea&gt;${hsmT(&#x27;فني دهانات بخبرة 14 عاماً. ألتزم بالمواعيد وأحافظ على نظافة المكان أثناء العمل.&#x27;,&#x27;Painting professional with 14 years of experience. I arrive on time and keep the work area clean.&#x27;)}&lt;/textarea&gt;&lt;span class=&quot;hsm-help&quot;&gt;${hsmT(&#x27;اكتب بلغة واضحة وتجنب أرقام الهاتف والعناوين الخاصة.&#x27;,&#x27;Use clear language and avoid phone numbers or private addresses.&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;hsm-panel&quot;&gt;&lt;h2&gt;${hsmT(&#x27;معاينة ما يراه العميل&#x27;,&#x27;Customer preview&#x27;)}&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;${hsmT(&#x27;فني دهانات&#x27;,&#x27;Painting professional&#x27;)}&lt;/strong&gt;&lt;br&gt;${hsmT(&#x27;حلب • نطاق 15 كم • خبرة 14 عاماً&#x27;,&#x27;Aleppo • 15 km radius • 14 years experience&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/main&gt;`,hsmSticky(hsmT(&#x27;متابعة إلى الصور&#x27;,&#x27;Continue to photos&#x27;),&#x27;portfolio&#x27;,hsmT(&#x27;العودة للمهام&#x27;,&#x27;Back to tasks&#x27;)));
+    if(id===&#x27;portfolio&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;معرض الأعمال&#x27;,&#x27;Portfolio&#x27;),hsmT(&#x27;المهمة 5 من 6 • الجزء 2&#x27;,&#x27;Task 5 of 6 • Part 2&#x27;),82)}&lt;main class=&quot;hsm-main&quot;&gt;&lt;div class=&quot;hsm-upload&quot;&gt;${hsmIcon(&#x27;image-plus&#x27;,28)}&lt;p&gt;${hsmT(&#x27;التقط صورة أو اختر من المعرض&#x27;,&#x27;Take a photo or choose from gallery&#x27;)}&lt;/p&gt;&lt;span class=&quot;hsm-help&quot;&gt;${hsmT(&#x27;يمكنك القص وإعادة الترتيب قبل الحفظ.&#x27;,&#x27;Crop and reorder before saving.&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;hsm-photos&quot;&gt;&lt;div class=&quot;hsm-photo&quot;&gt;${hsmIcon(&#x27;paintbrush&#x27;,22)}&lt;span&gt;${hsmT(&#x27;الصورة الرئيسية&#x27;,&#x27;Cover photo&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;hsm-photo&quot;&gt;${hsmIcon(&#x27;paintbrush&#x27;,22)}&lt;/div&gt;&lt;div class=&quot;hsm-photo&quot;&gt;${hsmIcon(&#x27;paintbrush&#x27;,22)}&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;hsm-alert hsm-alert-waiting&quot;&gt;&lt;span&gt;${hsmIcon(&#x27;clock&#x27;,20)}&lt;/span&gt;&lt;div&gt;&lt;h2&gt;${hsmT(&#x27;الصور قيد الفحص&#x27;,&#x27;Photos are being checked&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;تم رفع الصور بنجاح. الفحص لا يمنع إكمال طلبك، لكنه يحدد متى تظهر الصور للعملاء.&#x27;,&#x27;Photos uploaded successfully. Review does not block application completion, but controls when photos become visible.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/div&gt;&lt;/main&gt;`,hsmSticky(hsmT(&#x27;حفظ والعودة للمهام&#x27;,&#x27;Save and return to tasks&#x27;),&#x27;hubComplete&#x27;));
+    if(id===&#x27;hubComplete&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;أكمل طلبك&#x27;,&#x27;Complete your application&#x27;),hsmT(&#x27;6 من 6 مهام مكتملة&#x27;,&#x27;6 of 6 tasks complete&#x27;),100,false)}&lt;main class=&quot;hsm-main hsm-main-tight&quot;&gt;&lt;div class=&quot;hsm-alert hsm-alert-success&quot;&gt;&lt;span&gt;${hsmIcon(&#x27;circle-check&#x27;,20)}&lt;/span&gt;&lt;div&gt;&lt;h2&gt;${hsmT(&#x27;أكملت كل ما عليك&#x27;,&#x27;You completed your part&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;بعض الخدمات والصور قيد المراجعة، لكن يمكنك إرسال الطلب الآن.&#x27;,&#x27;Some services and photos are under review, but you can submit now.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;hsm-task-group&quot;&gt;${hsmTask(&#x27;user&#x27;,hsmT(&#x27;البيانات الأساسية&#x27;,&#x27;Basic details&#x27;),hsmT(&#x27;الاسم والهاتف والصورة&#x27;,&#x27;Name, phone and photo&#x27;),&#x27;done&#x27;,&#x27;basics&#x27;)}${hsmTask(&#x27;wrench&#x27;,hsmT(&#x27;الخدمات والخبرة&#x27;,&#x27;Services and experience&#x27;),hsmT(&#x27;اختياراتك محفوظة&#x27;,&#x27;Selections saved&#x27;),&#x27;waiting&#x27;,&#x27;services&#x27;)}${hsmTask(&#x27;map-pin&#x27;,hsmT(&#x27;نطاق العمل&#x27;,&#x27;Work area&#x27;),hsmT(&#x27;حلب • 15 كم&#x27;,&#x27;Aleppo • 15 km&#x27;),&#x27;done&#x27;,&#x27;area&#x27;)}${hsmTask(&#x27;calendar-days&#x27;,hsmT(&#x27;ساعات العمل&#x27;,&#x27;Working hours&#x27;),hsmT(&#x27;الأحد–الخميس • 09:00–17:00&#x27;,&#x27;Sunday–Thursday • 09:00–17:00&#x27;),&#x27;done&#x27;,&#x27;hours&#x27;)}${hsmTask(&#x27;image&#x27;,hsmT(&#x27;النبذة ومعرض الأعمال&#x27;,&#x27;Bio and portfolio&#x27;),hsmT(&#x27;3 صور مرفوعة&#x27;,&#x27;3 photos uploaded&#x27;),&#x27;waiting&#x27;,&#x27;portfolio&#x27;)}${hsmTask(&#x27;file-check&#x27;,hsmT(&#x27;المراجعة والإرسال&#x27;,&#x27;Review and submission&#x27;),hsmT(&#x27;جاهز للمراجعة&#x27;,&#x27;Ready to review&#x27;),&#x27;todo&#x27;,&#x27;review&#x27;)}&lt;/div&gt;&lt;/main&gt;`,`&lt;div class=&quot;hsm-sticky&quot;&gt;&lt;button class=&quot;hsm-primary&quot; type=&quot;button&quot; data-go=&quot;review&quot;&gt;${hsmT(&#x27;مراجعة الطلب&#x27;,&#x27;Review application&#x27;)}&lt;/button&gt;&lt;/div&gt;`);
+    if(id===&#x27;review&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;راجع طلبك&#x27;,&#x27;Review your application&#x27;),hsmT(&#x27;قبل الإرسال&#x27;,&#x27;Before submission&#x27;),100)}&lt;main class=&quot;hsm-main hsm-main-tight&quot;&gt;&lt;p class=&quot;hsm-lead&quot;&gt;${hsmT(&#x27;تأكد من المعلومات. حالة مراجعة التخصصات والصور مستقلة ولا تمنع الإرسال.&#x27;,&#x27;Check your information. Specialty and photo moderation are separate and do not block submission.&#x27;)}&lt;/p&gt;&lt;div class=&quot;hsm-panel&quot;&gt;&lt;div class=&quot;hsm-summary-row&quot;&gt;&lt;span&gt;&lt;strong&gt;${hsmT(&#x27;البيانات الأساسية&#x27;,&#x27;Basic details&#x27;)}&lt;/strong&gt;&lt;p&gt;Ahmad Fatal • 0936706600&lt;/p&gt;&lt;/span&gt;&lt;button type=&quot;button&quot; class=&quot;hsm-icon-action&quot; data-screen=&quot;basics&quot; aria-label=&quot;${hsmT(&#x27;تعديل&#x27;,&#x27;Edit&#x27;)}&quot;&gt;${hsmIcon(&#x27;pencil&#x27;,17)}&lt;/button&gt;&lt;/div&gt;&lt;div class=&quot;hsm-summary-row&quot;&gt;&lt;span&gt;&lt;strong&gt;${hsmT(&#x27;الخدمات والخبرة&#x27;,&#x27;Services and experience&#x27;)}&lt;/strong&gt;&lt;p&gt;${hsmT(&#x27;دهانات داخلية • 14 عاماً • سيارة&#x27;,&#x27;Interior painting • 14 years • Car&#x27;)}&lt;/p&gt;&lt;/span&gt;&lt;span class=&quot;hsm-badge hsm-badge-waiting&quot;&gt;${hsmT(&#x27;قيد المراجعة&#x27;,&#x27;In review&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;hsm-summary-row&quot;&gt;&lt;span&gt;&lt;strong&gt;${hsmT(&#x27;نطاق العمل&#x27;,&#x27;Work area&#x27;)}&lt;/strong&gt;&lt;p&gt;${hsmT(&#x27;حلب، الفرقان • 15 كم&#x27;,&#x27;Aleppo, Al-Furqan • 15 km&#x27;)}&lt;/p&gt;&lt;/span&gt;&lt;button type=&quot;button&quot; class=&quot;hsm-icon-action&quot; data-screen=&quot;area&quot; aria-label=&quot;${hsmT(&#x27;تعديل&#x27;,&#x27;Edit&#x27;)}&quot;&gt;${hsmIcon(&#x27;pencil&#x27;,17)}&lt;/button&gt;&lt;/div&gt;&lt;div class=&quot;hsm-summary-row&quot;&gt;&lt;span&gt;&lt;strong&gt;${hsmT(&#x27;ساعات العمل&#x27;,&#x27;Working hours&#x27;)}&lt;/strong&gt;&lt;p&gt;${hsmT(&#x27;الأحد–الخميس • 09:00–17:00&#x27;,&#x27;Sunday–Thursday • 09:00–17:00&#x27;)}&lt;/p&gt;&lt;/span&gt;&lt;button type=&quot;button&quot; class=&quot;hsm-icon-action&quot; data-screen=&quot;hours&quot; aria-label=&quot;${hsmT(&#x27;تعديل&#x27;,&#x27;Edit&#x27;)}&quot;&gt;${hsmIcon(&#x27;pencil&#x27;,17)}&lt;/button&gt;&lt;/div&gt;&lt;/div&gt;&lt;/main&gt;`,hsmSticky(hsmT(&#x27;متابعة إلى الموافقة&#x27;,&#x27;Continue to consent&#x27;),&#x27;terms&#x27;,hsmT(&#x27;العودة للمهام&#x27;,&#x27;Back to tasks&#x27;)));
+    if(id===&#x27;terms&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;الموافقة والإرسال&#x27;,&#x27;Consent and submit&#x27;),hsmT(&#x27;الخطوة الأخيرة&#x27;,&#x27;Final step&#x27;),100)}&lt;main class=&quot;hsm-main&quot;&gt;&lt;div class=&quot;hsm-alert hsm-alert-success&quot;&gt;&lt;span&gt;${hsmIcon(&#x27;shield-check&#x27;,20)}&lt;/span&gt;&lt;div&gt;&lt;h2&gt;${hsmT(&#x27;طلبك جاهز&#x27;,&#x27;Your application is ready&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;لا توجد بيانات ناقصة. ستراجع المنصة الخدمات والصور بعد الإرسال.&#x27;,&#x27;Nothing is missing. The platform will review services and photos after submission.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/div&gt;&lt;label class=&quot;hsm-consent&quot;&gt;&lt;input type=&quot;checkbox&quot; checked&gt;&lt;span&gt;&lt;strong&gt;${hsmT(&#x27;قرأت شروط مقدمي الخدمة وأوافق عليها&#x27;,&#x27;I have read and accept the provider terms&#x27;)}&lt;/strong&gt;&lt;br&gt;&lt;span class=&quot;hsm-help&quot;&gt;${hsmT(&#x27;الإصدار sprint-09b&#x27;,&#x27;Version sprint-09b&#x27;)}&lt;/span&gt;&lt;/span&gt;&lt;/label&gt;&lt;div class=&quot;hsm-panel&quot;&gt;&lt;h2&gt;${hsmT(&#x27;بعد الإرسال&#x27;,&#x27;After submission&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;لن تتمكن من تعديل الطلب أثناء المراجعة إلا بسحبه. سنرسل إشعاراً عند تغير الحالة.&#x27;,&#x27;You cannot edit during review unless you withdraw it. We will notify you when the status changes.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/main&gt;`,hsmSticky(hsmT(&#x27;إرسال للمراجعة&#x27;,&#x27;Submit for review&#x27;),&#x27;submitted&#x27;,hsmT(&#x27;رجوع&#x27;,&#x27;Back&#x27;)));
+    if(id===&#x27;submitted&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;تم إرسال الطلب&#x27;,&#x27;Application submitted&#x27;),&#x27;&#x27;,100,false)}&lt;div class=&quot;hsm-center&quot;&gt;&lt;div class=&quot;hsm-center-icon&quot;&gt;${hsmIcon(&#x27;send&#x27;,30)}&lt;/div&gt;&lt;h1&gt;${hsmT(&#x27;وصل طلبك بنجاح&#x27;,&#x27;Your application is on its way&#x27;)}&lt;/h1&gt;&lt;p&gt;${hsmT(&#x27;نتوقع الرد خلال 24 ساعة عمل. ستصلك نتيجة المراجعة عبر إشعار داخل التطبيق.&#x27;,&#x27;Expect a response within 24 business hours. You will receive an in-app notification when the review changes.&#x27;)}&lt;/p&gt;&lt;div class=&quot;hsm-timeline&quot;&gt;&lt;div class=&quot;hsm-timeline-row&quot;&gt;&lt;div class=&quot;hsm-timeline-mark&quot;&gt;&lt;span class=&quot;hsm-dot hsm-dot-done&quot;&gt;${hsmIcon(&#x27;check&#x27;,12)}&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;strong&gt;${hsmT(&#x27;تم الإرسال&#x27;,&#x27;Submitted&#x27;)}&lt;/strong&gt;&lt;small&gt;${hsmT(&#x27;اليوم • 12:43&#x27;,&#x27;Today • 12:43&#x27;)}&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;hsm-timeline-row&quot;&gt;&lt;div class=&quot;hsm-timeline-mark&quot;&gt;&lt;span class=&quot;hsm-dot hsm-dot-current&quot;&gt;${hsmIcon(&#x27;clock&#x27;,12)}&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;strong&gt;${hsmT(&#x27;قيد المراجعة&#x27;,&#x27;Under review&#x27;)}&lt;/strong&gt;&lt;small&gt;${hsmT(&#x27;الخطوة الحالية&#x27;,&#x27;Current step&#x27;)}&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;hsm-timeline-row&quot;&gt;&lt;div class=&quot;hsm-timeline-mark&quot;&gt;&lt;span class=&quot;hsm-dot&quot;&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;strong&gt;${hsmT(&#x27;تفعيل الحساب&#x27;,&#x27;Account activation&#x27;)}&lt;/strong&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;`,`&lt;div class=&quot;hsm-sticky&quot;&gt;&lt;button class=&quot;hsm-primary&quot; type=&quot;button&quot; data-go=&quot;waiting&quot;&gt;${hsmT(&#x27;عرض حالة الطلب&#x27;,&#x27;View application status&#x27;)}&lt;/button&gt;&lt;/div&gt;`);
+    if(id===&#x27;waiting&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;حالة حسابك&#x27;,&#x27;Your account status&#x27;),hsmT(&#x27;آخر تحديث اليوم 12:43&#x27;,&#x27;Updated today at 12:43&#x27;),100,false)}&lt;main class=&quot;hsm-main&quot;&gt;&lt;div class=&quot;hsm-alert hsm-alert-waiting&quot;&gt;&lt;span&gt;${hsmIcon(&#x27;clock&#x27;,20)}&lt;/span&gt;&lt;div&gt;&lt;h2&gt;${hsmT(&#x27;نراجع طلبك&#x27;,&#x27;We are reviewing your application&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;لا تحتاج إلى إجراء الآن. سنطلب منك شيئاً فقط إذا ظهرت ملاحظة محددة.&#x27;,&#x27;No action is needed now. We will only contact you if a specific item needs attention.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;hsm-axis&quot;&gt;&lt;div class=&quot;hsm-axis-row&quot;&gt;&lt;span&gt;${hsmT(&#x27;اكتمال الطلب&#x27;,&#x27;Application completion&#x27;)}&lt;/span&gt;&lt;span class=&quot;hsm-badge hsm-badge-done&quot;&gt;${hsmT(&#x27;مكتمل&#x27;,&#x27;Complete&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;hsm-axis-row&quot;&gt;&lt;span&gt;${hsmT(&#x27;مراجعة التخصصات&#x27;,&#x27;Specialty review&#x27;)}&lt;/span&gt;&lt;span class=&quot;hsm-badge hsm-badge-waiting&quot;&gt;${hsmT(&#x27;قيد المراجعة&#x27;,&#x27;In review&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;hsm-axis-row&quot;&gt;&lt;span&gt;${hsmT(&#x27;التحقق&#x27;,&#x27;Verification&#x27;)}&lt;/span&gt;&lt;span class=&quot;hsm-badge hsm-badge-waiting&quot;&gt;${hsmT(&#x27;قيد المراجعة&#x27;,&#x27;In review&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;hsm-axis-row&quot;&gt;&lt;span&gt;${hsmT(&#x27;إمكانية استقبال العمل&#x27;,&#x27;Work access&#x27;)}&lt;/span&gt;&lt;span class=&quot;hsm-badge hsm-badge-todo&quot;&gt;${hsmT(&#x27;غير مفعّل&#x27;,&#x27;Not active&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;button type=&quot;button&quot; class=&quot;hsm-secondary&quot; data-go=&quot;returned&quot;&gt;${hsmT(&#x27;معاينة حالة إجراء مطلوب&#x27;,&#x27;Preview action-required state&#x27;)}&lt;/button&gt;&lt;/main&gt;`,`&lt;div class=&quot;hsm-sticky&quot;&gt;&lt;button class=&quot;hsm-secondary&quot; type=&quot;button&quot;&gt;${hsmT(&#x27;سحب الطلب للتعديل&#x27;,&#x27;Withdraw application to edit&#x27;)}&lt;/button&gt;&lt;/div&gt;`);
+    if(id===&#x27;returned&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;إجراء مطلوب&#x27;,&#x27;Action required&#x27;),hsmT(&#x27;طلبك محفوظ&#x27;,&#x27;Your application is saved&#x27;),92,false)}&lt;main class=&quot;hsm-main&quot;&gt;&lt;div class=&quot;hsm-alert hsm-alert-warning&quot;&gt;&lt;span&gt;${hsmIcon(&#x27;triangle-alert&#x27;,20)}&lt;/span&gt;&lt;div&gt;&lt;h2&gt;${hsmT(&#x27;استبدل صورة العمل الأولى&#x27;,&#x27;Replace the first work photo&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;الصورة غير واضحة. بقية الطلب مقبول ولن تحتاج إلى إعادة إدخال بياناتك.&#x27;,&#x27;The photo is unclear. The rest of your application is accepted and does not need to be entered again.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;hsm-panel&quot;&gt;&lt;h2&gt;${hsmT(&#x27;المطلوب منك&#x27;,&#x27;What you need to do&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;ارفع صورة مضاءة جيداً تُظهر النتيجة النهائية للعمل، ثم أعد الإرسال.&#x27;,&#x27;Upload a well-lit photo showing the finished work, then resubmit.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;button type=&quot;button&quot; class=&quot;hsm-secondary&quot; data-screen=&quot;portfolio&quot;&gt;${hsmT(&#x27;إكمال الآن: معرض الأعمال&#x27;,&#x27;Complete now: Portfolio&#x27;)}&lt;/button&gt;&lt;/main&gt;`,`&lt;div class=&quot;hsm-sticky&quot;&gt;&lt;button class=&quot;hsm-primary&quot; type=&quot;button&quot; data-go=&quot;active&quot;&gt;${hsmT(&#x27;معاينة الموافقة&#x27;,&#x27;Preview approval&#x27;)}&lt;/button&gt;&lt;/div&gt;`);
+    if(id===&#x27;expired&#x27;) return hsmShell(`${hsmTop(hsmT(&#x27;تسجيل الدخول مطلوب&#x27;,&#x27;Sign in required&#x27;),&#x27;&#x27;,0,false)}&lt;div class=&quot;hsm-center&quot;&gt;&lt;div class=&quot;hsm-center-icon&quot;&gt;${hsmIcon(&#x27;log-in&#x27;,30)}&lt;/div&gt;&lt;h1&gt;${hsmT(&#x27;انتهت جلستك&#x27;,&#x27;Your session has expired&#x27;)}&lt;/h1&gt;&lt;p&gt;${hsmT(&#x27;هذا التنبيه يظهر فقط عند 401. سجّل الدخول مجدداً ثم سنعيدك إلى آخر مهمة محفوظة.&#x27;,&#x27;This message appears only for a 401 response. Sign in again and we will return you to the last saved task.&#x27;)}&lt;/p&gt;&lt;div class=&quot;hsm-alert hsm-alert-danger&quot;&gt;&lt;span&gt;${hsmIcon(&#x27;lock&#x27;,20)}&lt;/span&gt;&lt;div&gt;&lt;h2&gt;${hsmT(&#x27;بياناتك محفوظة&#x27;,&#x27;Your data is safe&#x27;)}&lt;/h2&gt;&lt;p&gt;${hsmT(&#x27;لن تفقد المهام التي حفظها الخادم بنجاح.&#x27;,&#x27;Successfully saved tasks will not be lost.&#x27;)}&lt;/p&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;`,`&lt;div class=&quot;hsm-sticky&quot;&gt;&lt;button class=&quot;hsm-primary&quot; type=&quot;button&quot; data-go=&quot;activate&quot;&gt;${hsmT(&#x27;الذهاب لتسجيل الدخول&#x27;,&#x27;Go to sign in&#x27;)}&lt;/button&gt;&lt;/div&gt;`);
+    return hsmShell(`${hsmTop(hsmT(&#x27;تم تفعيل الحساب&#x27;,&#x27;Account activated&#x27;),&#x27;&#x27;,100,false)}&lt;div class=&quot;hsm-center&quot;&gt;&lt;div class=&quot;hsm-center-icon&quot;&gt;${hsmIcon(&#x27;badge-check&#x27;,32)}&lt;/div&gt;&lt;h1&gt;${hsmT(&#x27;أصبحت جاهزاً لاستقبال الطلبات&#x27;,&#x27;You are ready to receive requests&#x27;)}&lt;/h1&gt;&lt;p&gt;${hsmT(&#x27;تم قبول الطلب وتفعيل الوصول إلى مساحة عمل المهني. يظهر التنقل المهني الآن لأول مرة.&#x27;,&#x27;Your application was approved and provider workspace access is active. Provider navigation appears now for the first time.&#x27;)}&lt;/p&gt;&lt;div class=&quot;hsm-axis&quot;&gt;&lt;div class=&quot;hsm-axis-row&quot;&gt;&lt;span&gt;${hsmT(&#x27;اكتمال الطلب&#x27;,&#x27;Application completion&#x27;)}&lt;/span&gt;&lt;span class=&quot;hsm-badge hsm-badge-done&quot;&gt;${hsmT(&#x27;مكتمل&#x27;,&#x27;Complete&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;hsm-axis-row&quot;&gt;&lt;span&gt;${hsmT(&#x27;حالة الحساب&#x27;,&#x27;Account standing&#x27;)}&lt;/span&gt;&lt;span class=&quot;hsm-badge hsm-badge-done&quot;&gt;${hsmT(&#x27;سليم&#x27;,&#x27;Good&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;hsm-axis-row&quot;&gt;&lt;span&gt;${hsmT(&#x27;التحقق&#x27;,&#x27;Verification&#x27;)}&lt;/span&gt;&lt;span class=&quot;hsm-badge hsm-badge-done&quot;&gt;${hsmT(&#x27;موثّق&#x27;,&#x27;Verified&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;hsm-axis-row&quot;&gt;&lt;span&gt;${hsmT(&#x27;إمكانية استقبال العمل&#x27;,&#x27;Work access&#x27;)}&lt;/span&gt;&lt;span class=&quot;hsm-badge hsm-badge-done&quot;&gt;${hsmT(&#x27;مفعّل&#x27;,&#x27;Active&#x27;)}&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;`,`&lt;div class=&quot;hsm-sticky&quot;&gt;&lt;button class=&quot;hsm-primary&quot; type=&quot;button&quot;&gt;${hsmT(&#x27;فتح مساحة العمل&#x27;,&#x27;Open provider workspace&#x27;)}&lt;/button&gt;&lt;/div&gt;`);
+  }
+  function hsmRefresh(){
+    const [id,ar,en]=hsmScreens[hsmState.index];
+    hsmPhone.innerHTML=hsmRenderScreen(id);
+    hsmPicker.value=String(hsmState.index);
+    hsmMeta.textContent=`${hsmState.index+1} / ${hsmScreens.length} • ${hsmState.lang===&#x27;ar&#x27;?ar:en}`;
+    document.getElementById(&#x27;hsm-lang&#x27;).textContent=hsmState.lang===&#x27;ar&#x27;?&#x27;EN&#x27;:&#x27;AR&#x27;;
+    document.getElementById(&#x27;hsm-lang&#x27;).setAttribute(&#x27;aria-pressed&#x27;,String(hsmState.lang===&#x27;ar&#x27;));
+    hsmPhone.querySelectorAll(&#x27;[data-go]&#x27;).forEach(el=&gt;el.addEventListener(&#x27;click&#x27;,()=&gt;{
+      const go=el.getAttribute(&#x27;data-go&#x27;);
+      if(go===&#x27;back&#x27;) hsmState.index=Math.max(0,hsmState.index-1);
+      else if(go===&#x27;close&#x27;) hsmState.index=0;
+      else { const idx=hsmScreens.findIndex(s=&gt;s[0]===go); if(idx&gt;=0) hsmState.index=idx; }
+      hsmRefresh();
+    }));
+    hsmPhone.querySelectorAll(&#x27;[data-screen]&#x27;).forEach(el=&gt;el.addEventListener(&#x27;click&#x27;,()=&gt;{
+      const idx=hsmScreens.findIndex(s=&gt;s[0]===el.getAttribute(&#x27;data-screen&#x27;)); if(idx&gt;=0){hsmState.index=idx;hsmRefresh();}
+    }));
+    hsmPhone.querySelectorAll(&#x27;.hsm-choice,.hsm-day&#x27;).forEach(el=&gt;el.addEventListener(&#x27;click&#x27;,()=&gt;{
+      el.setAttribute(&#x27;aria-pressed&#x27;,String(el.getAttribute(&#x27;aria-pressed&#x27;)!==&#x27;true&#x27;));
+    }));
+    if(window.lucide) window.lucide.createIcons({attrs:{width:18,height:18,&#x27;stroke-width&#x27;:1.8}});
+  }
+  hsmScreens.forEach((s,i)=&gt;{const o=document.createElement(&#x27;option&#x27;);o.value=String(i);o.textContent=`${i+1}. ${s[1]} / ${s[2]}`;hsmPicker.appendChild(o);});
+  hsmPicker.addEventListener(&#x27;change&#x27;,()=&gt;{hsmState.index=Number(hsmPicker.value);hsmRefresh();});
+  document.getElementById(&#x27;hsm-prev&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;{hsmState.index=(hsmState.index-1+hsmScreens.length)%hsmScreens.length;hsmRefresh();});
+  document.getElementById(&#x27;hsm-next&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;{hsmState.index=(hsmState.index+1)%hsmScreens.length;hsmRefresh();});
+  document.getElementById(&#x27;hsm-lang&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;{hsmState.lang=hsmState.lang===&#x27;ar&#x27;?&#x27;en&#x27;:&#x27;ar&#x27;;hsmRefresh();});
+  hsmRefresh();
+&lt;/script&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+  let lastPointerWasTouch = false;
+  let pinnedByTouch = false;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    pinnedByTouch = false;
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handlePointer = (event) =&gt; {
+    lastPointerWasTouch =
+      event.type === &quot;pointerdown&quot; &amp;&amp; event.pointerType === &quot;touch&quot;;
+  };
+  const handleTouchClick = (event) =&gt; {
+    const isTouch = event.pointerType === &quot;touch&quot; || lastPointerWasTouch;
+    lastPointerWasTouch = false;
+    if (!isTouch || event.detail === 0) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (
+      trigger == null ||
+      !trigger.isConnected ||
+      getContent(trigger).length === 0 ||
+      (pinnedByTouch &amp;&amp; activeTrigger === trigger)
+    ) {
+      if (pinnedByTouch) {
+        closeTooltip();
+      }
+      return;
+    }
+    openTooltip(trigger);
+    pinnedByTouch = activeTrigger === trigger;
+    window.setTimeout(() =&gt; {
+      if (activeTrigger === trigger &amp;&amp; !trigger.isConnected) {
+        closeTooltip(false);
+      }
+    }, 0);
+  };
+  const handleLeave = (event) =&gt; {
+    if (pinnedByTouch) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    lastPointerWasTouch = false;
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    lastPointerWasTouch = false;
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerdown&quot;, handlePointer);
+    document.removeEventListener(&quot;pointercancel&quot;, handlePointer);
+    document.removeEventListener(&quot;click&quot;, handleTouchClick);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerdown&quot;, handlePointer);
+  document.addEventListener(&quot;pointercancel&quot;, handlePointer);
+  document.addEventListener(&quot;click&quot;, handleTouchClick);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-tabs&quot;&gt;
+(() =&gt; {
+  const selector = &#x27;.nav[role=&quot;tablist&quot;] [role=&quot;tab&quot;]&#x27;;
+  const disabled = &#x27;:disabled,[aria-disabled=&quot;true&quot;]&#x27;;
+  const selectTab = (selected) =&gt; {
+    const panelId = selected.getAttribute(&quot;aria-controls&quot;);
+    for (const tab of selected.closest(&#x27;[role=&quot;tablist&quot;]&#x27;).querySelectorAll(&#x27;[role=&quot;tab&quot;]&#x27;)) {
+      const active = tab === selected;
+      tab.classList.toggle(&quot;active&quot;, active);
+      tab.setAttribute(&quot;aria-selected&quot;, String(active));
+      const id = tab.getAttribute(&quot;aria-controls&quot;);
+      const panel = id &amp;&amp; document.getElementById(id);
+      if (panel != null) {
+        panel.hidden = id !== panelId;
+        if (!panel.hidden &amp;&amp; selected.id) {
+          panel.setAttribute(&quot;aria-labelledby&quot;, selected.id);
+        }
+      }
+    }
+  };
+  const interact = (event) =&gt; {
+    const tab = event.target?.closest?.(selector);
+    if (event.defaultPrevented || tab == null || tab.matches(disabled)) {
+      return;
+    }
+    if (event.type === &quot;click&quot;) {
+      selectTab(tab);
+      return;
+    }
+    const tabs = Array.from(
+      tab.closest(&#x27;[role=&quot;tablist&quot;]&#x27;).querySelectorAll(&#x27;[role=&quot;tab&quot;]&#x27;),
+    ).filter((candidate) =&gt; !candidate.matches(disabled));
+    const current = tabs.indexOf(tab);
+    let next;
+    if (event.key === &quot;ArrowRight&quot; || event.key === &quot;ArrowDown&quot;) {
+      next = (current + 1) % tabs.length;
+    } else if (event.key === &quot;ArrowLeft&quot; || event.key === &quot;ArrowUp&quot;) {
+      next = (current + tabs.length - 1) % tabs.length;
+    } else if (event.key === &quot;Home&quot;) {
+      next = 0;
+    } else if (event.key === &quot;End&quot;) {
+      next = tabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    tabs[next].focus();
+    selectTab(tabs[next]);
+  };
+
+  for (const list of document.querySelectorAll(&#x27;.nav[role=&quot;tablist&quot;]&#x27;)) {
+    const selected =
+      list.querySelector(&#x27;[role=&quot;tab&quot;][aria-selected=&quot;true&quot;]&#x27;) ??
+      list.querySelector(&#x27;[role=&quot;tab&quot;].active&#x27;) ??
+      list.querySelector(&#x27;[role=&quot;tab&quot;]&#x27;);
+    if (selected != null) {
+      selectTab(selected);
+    }
+  }
+  document.addEventListener(&quot;click&quot;, interact);
+  document.addEventListener(&quot;keydown&quot;, interact);
+  window.addEventListener(&quot;pagehide&quot;, () =&gt; {
+    document.removeEventListener(&quot;click&quot;, interact);
+    document.removeEventListener(&quot;keydown&quot;, interact);
+  }, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

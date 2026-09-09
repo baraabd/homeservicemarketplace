@@ -1,0 +1,106 @@
+# Throwaway PostgreSQL and Redis for the DB-gated API suites.
+#
+# Sprint 09B.29. Deliberately SEPARATE from docker-compose.yml, which owns the
+# developer's long-lived stack (`hsm-postgres`, `hsm-redis`, and the
+# `docker_*_data` volumes). Nothing here shares a name, a volume, or a fixed
+# port with that stack, so a teardown of this file cannot reach it.
+#
+# WHY DYNAMIC HOST PORTS
+#
+# The short form `- "5432"` publishes to an EPHEMERAL host port chosen by
+# Docker. Jest runs on the host, so the ports have to be published — but
+# pinning them to 5432/6379 would collide with the developer's running stack,
+# and worse, a collision that *succeeded* would silently point the migrations
+# at their development database. An ephemeral port cannot collide by
+# construction, and the runner discovers it with `docker compose port`.
+#
+# WHY tmpfs FOR POSTGRES
+#
+# The data directory is a tmpfs, so the database exists only in RAM for the
+# life of the container. There is no named volume to leak, nothing to clean up
+# if the run is killed, and no possibility of a later run inheriting state from
+# an earlier one. `fsync=off` is safe for the same reason and makes the
+# migration run substantially faster.
+#
+# Usage (never `docker compose down` without `-p`, and never `-v` on the
+# developer's project):
+#
+#   docker compose -p hsm-phase2-it -f infra/docker/docker-compose.integration.yml up -d
+#   docker compose -p hsm-phase2-it -f infra/docker/docker-compose.integration.yml down -v
+
+name: hsm-phase2-it
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hsm-phase2-it-postgres
+    environment:
+      POSTGRES_USER: hsm_it
+      POSTGRES_PASSWORD: hsm_it_local_only
+      # A distinct database NAME as well as a distinct port. Two independent
+      # reasons a connection string meant for this stack cannot resolve to the
+      # developer's `homeservicemarketplace` database.
+      POSTGRES_DB: hsm_phase2_it
+      # The suites create and drop a shadow database for the migration-drift
+      # check; trust here is scoped to a container with no published fixed port
+      # and no persistent storage.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - synchronous_commit=off
+      # The gated suites run in parallel workers, each with its own bounded
+      # Prisma pool. The default 100 is enough today; raising it here costs
+      # nothing in RAM-backed storage and removes a failure mode that presents
+      # as an unrelated flake.
+      - -c
+      - max_connections=200
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      # Ephemeral host port. See the header.
+      - '5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hsm_it -d hsm_phase2_it']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  # The browser E2E registers real accounts, so it needs somewhere for the OTP
+  # to land. Its own catcher rather than the developer's `hsm-mailpit`: two
+  # runs sharing one mailbox is how a worker verifies a challenge it does not
+  # own, and reading the developer's mail is not this suite's business.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: hsm-phase2-it-mailpit
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: '1'
+      MP_SMTP_AUTH_ALLOW_INSECURE: '1'
+    ports:
+      - '1025'
+      - '8025'
+    healthcheck:
+      test: ['CMD', 'sh', '-c', 'nc -z 127.0.0.1 1025 && nc -z 127.0.0.1 8025']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  redis:
+    image: redis:7-alpine
+    container_name: hsm-phase2-it-redis
+    # No persistence: this cache must never outlive the run that created it.
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s

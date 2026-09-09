@@ -5,6 +5,12 @@ import MockAdapter from 'axios-mock-adapter';
 import type { QueryClient } from '@tanstack/react-query';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
 
+import {
+  onboardingDataFixture,
+  onboardingDraftFixture,
+  pendingModerationDraftFixture,
+} from '../../../../test-support/provider-onboarding-fixtures';
+
 import { api } from '../../../../lib/api';
 import { AuthProvider, createAuthQueryClient } from '../../../../lib/auth-provider';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
@@ -42,58 +48,35 @@ const MOCK_ME = {
   roles: ['customer' as const, 'provider' as const],
 };
 
-/** A draft with everything answered, so a test can break exactly one thing. */
+/**
+ * A draft with everything answered, so a test can break exactly one thing.
+ *
+ * Sprint 09B.29 — delegates to the shared typed factory. This fixture used to
+ * build the object inline while DECLARING it a `ProviderOnboardingDraftView`,
+ * and it omitted `serviceAreaCountryCode`, `specialties`, `primarySpecialtyId`,
+ * `maxSpecialties`, `radiusPolicy`, `serviceAreaExpansion`, `resolvedTimezone`,
+ * `suggestedTitle` and `transportModes`. Nothing caught it, because
+ * `tsconfig.app.json` excludes test files from the typecheck — so the fixture
+ * quietly diverged from the shape the component actually receives, and every
+ * later contract addition widened the gap.
+ *
+ * The factory lives in `src/test-support/`, which IS typechecked, so the
+ * compiler now guarantees conformance. The values this file's assertions depend
+ * on are pinned here as overrides rather than moved, so no existing test
+ * changes meaning.
+ */
 function completeView(
   over: Partial<ProviderOnboardingDraftView> = {},
 ): ProviderOnboardingDraftView {
-  const steps = [
-    'PROVIDER_TYPE',
-    'IDENTITY',
-    'LOCATION',
-    'SPECIALTIES',
-    'EXPERIENCE',
-    'AVAILABILITY',
-    'PROFILE',
-    'CONSENT',
-    'REVIEW',
-  ] as const;
-
-  return {
-    state: 'DRAFT',
-    currentStep: 'REVIEW',
-    steps: steps.map((step) => ({ step, complete: true, issues: [] })),
-    completedSteps: [...steps],
-    percentComplete: 100,
-    nextAction: { kind: 'SUBMIT' },
-    complete: true,
-    missing: [],
-    version: 3,
-    policyVersion: 'v3',
-    lastSavedAt: '2026-08-24T10:00:00.000Z',
-    editable: true,
-    data: {
-      providerType: 'INDIVIDUAL',
-      legalBusinessName: null,
+  return onboardingDraftFixture({
+    data: onboardingDataFixture({
       displayName: 'Grace Hopper',
-      profileImageUrl: null,
-      phoneNumber: '+46701234567',
-      phoneVerified: true,
-      serviceAreaCity: 'Gothenburg',
-      serviceAreaCountry: 'Sweden',
-      serviceAreaLat: null,
-      serviceAreaLng: null,
-      serviceAreaRadiusKm: 25,
-      serviceAreaIds: [],
-      workshopAddressLine: null,
-      workshopLat: null,
-      workshopLng: null,
       primaryGroupIds: [],
       specialtyLeafIds: ['cat-leaf-1'],
-      pendingSpecialtyIds: [],
-      yearsOfExperience: 10,
-      professionSince: null,
-      equipmentCodes: [],
+      primarySpecialtyId: 'cat-leaf-1',
+      specialties: [],
       transportMode: 'VAN',
+      transportModes: ['VAN'],
       availability: [
         {
           id: 'iv-1',
@@ -103,15 +86,10 @@ function completeView(
           timezone: 'Europe/Stockholm',
         },
       ],
-      timezone: 'Europe/Stockholm',
-      headline: 'Certified electrician, 10 years',
-      bio: 'I handle residential and light commercial electrical work, including fault finding.',
-      additionalInformation: null,
-      acceptedConsentVersion: 'v3',
-      consentAcceptedAt: '2026-08-23T00:00:00.000Z',
-    },
+      suggestedTitle: null,
+    }),
     ...over,
-  };
+  });
 }
 
 /** An empty draft, resuming at the first step. */
@@ -889,5 +867,86 @@ describe('dark mode', () => {
     cards.forEach((card) => {
       expect(card.className).toMatch(/dark:bg-slate-800/);
     });
+  });
+});
+
+// Sprint 09B.29 — V1's half of the two-axis contract.
+//
+// The server narrowed `missing` to provider-action issues and moved pending
+// specialty moderation to `awaitingReview`. Before that, V1 rendered the
+// platform's pending approval in the same amber "still to do" list as the
+// provider's own gaps — telling someone to fix an approval they cannot
+// influence, and sending them back into a specialty form on which every field
+// was already filled in.
+//
+// This block is the V1 counterpart to
+// `OnboardingHubScreen.test.tsx > a specialty still in moderation`. It runs on
+// the V1 component, which is what a provider sees with
+// VITE_PROVIDER_ONBOARDING_V2=false.
+describe('V1 — a specialty still awaiting moderation', () => {
+  /** The review step, where the submit button and both lists live. */
+  async function renderAtReview(lang: 'en' | 'ar' = 'en') {
+    if (lang === 'ar') window.localStorage.setItem('hsm.lang', 'ar');
+    mockCatalog();
+    mock
+      .onGet('/v1/me/provider/onboarding/draft')
+      .reply(200, pendingModerationDraftFixture({ currentStep: 'REVIEW' }));
+    renderWizard();
+    return screen.findByTestId('wizard-awaiting-review');
+  }
+
+  it('shows the pending moderation as its own status block', async () => {
+    const block = await renderAtReview();
+    expect(block).toHaveTextContent(/We are checking your services/i);
+    // Announced, because it appears without the provider doing anything.
+    expect(block).toHaveAttribute('role', 'status');
+  });
+
+  it('does NOT put it in the provider-action list', async () => {
+    await renderAtReview();
+    // `complete` is true, so the amber list is not rendered at all — the
+    // platform item must not have resurrected it.
+    expect(screen.queryByTestId('wizard-missing')).toBeNull();
+  });
+
+  it('tells the provider there is nothing for them to do', async () => {
+    const block = await renderAtReview();
+    expect(block).toHaveTextContent(/do not need to do anything/i);
+    // And it is not styled as an outstanding task.
+    expect(block.className).not.toMatch(/amber/);
+  });
+
+  it('does not block submission — moderation is not a submission gate', async () => {
+    await renderAtReview();
+    // Every control offering to send the application is enabled. Queried as a
+    // set rather than singularly: the review screen renders the action in more
+    // than one place, and 'the enabled one' is the claim, not 'the only one'.
+    const submits = screen.getAllByRole('button', { name: 'Send application' });
+    expect(submits.length).toBeGreaterThan(0);
+    submits.forEach((b) => expect(b).toBeEnabled());
+  });
+
+  it('does not send the provider back to redo the specialty form', async () => {
+    await renderAtReview();
+    // The status block offers no control at all: nothing to press, so nothing
+    // that could navigate back into a completed form.
+    const block = screen.getByTestId('wizard-awaiting-review');
+    expect(within(block).queryByRole('button')).toBeNull();
+    expect(within(block).queryByRole('link')).toBeNull();
+  });
+
+  it('preserves the rest of the V1 review screen', async () => {
+    // Additive, not a redesign: the submit control and the step chrome are
+    // still there.
+    await renderAtReview();
+    expect(screen.getAllByRole('button', { name: 'Send application' }).length).toBeGreaterThan(0);
+  });
+
+  it('reads naturally in Arabic', async () => {
+    const block = await renderAtReview('ar');
+    expect(block).toHaveTextContent('نراجع الخدمات التي اخترتها');
+    expect(block).toHaveTextContent('لا حاجة إلى أي إجراء منك');
+    // Not the English string, and not a transliteration of it.
+    expect(block).not.toHaveTextContent(/We are checking/i);
   });
 });

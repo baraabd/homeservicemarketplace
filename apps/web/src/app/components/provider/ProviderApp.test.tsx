@@ -83,6 +83,28 @@ import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import { ProviderApp } from './ProviderApp';
 
+// Sprint 09B.29 — resolve the code-split screens BEFORE any assertion window.
+//
+// `ProviderApp` loads its tabs with `React.lazy(() => import('./screens/...'))`.
+// In a browser that is a fetch of an already-built chunk. Under Vitest it is an
+// on-demand ESM transform, and its cost lands inside whichever `findBy*` window
+// happens to be open when the tab is clicked. At full worker concurrency
+// (measured: 19 node processes, ~2 GB peak) that transform has exceeded the 5s
+// `asyncUtilTimeout`, and the test then failed reporting "Unable to find an
+// element with the text: 540" — blaming the product for what was actually the
+// bundler.
+//
+// Awaiting the imports here moves the transform outside the assertion window.
+// Nothing is concealed: no timeout is raised, no test is skipped, concurrency
+// is untouched and no retry is added. The assertions still prove each screen
+// renders the values the API gave it; they simply no longer race the module
+// loader to do it.
+await Promise.all([
+  import('./screens/LiveJobsScreen'),
+  import('./screens/MyBidsScreen'),
+  import('./screens/ProviderProfileScreen'),
+]);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sprint 5 Slice 5.1 — Provider Profile foundation.
 //

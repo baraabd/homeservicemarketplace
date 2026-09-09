@@ -1,0 +1,117 @@
+{
+  "generated": "2026-09-07T12:28:21.469Z",
+  "entries": [
+    {
+      "kind": "script",
+      "source": "https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js",
+      "file": "lucide-1.17.0.umd.js",
+      "licence": "ISC (lucide)",
+      "bytes": 601680,
+      "sha256": "fde878a4f7aebe548b071eaaf343d898f66d275e93970abe95d8ca5fda290b51"
+    },
+    {
+      "kind": "script",
+      "source": "https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js",
+      "file": "floating-ui.core-1.7.3.umd.min.js",
+      "licence": "MIT (@floating-ui/core)",
+      "bytes": 12529,
+      "sha256": "6985ce661153c01d97f6be9babb6a9566f923c716c2b7fbead48fbb09f419ba8"
+    },
+    {
+      "kind": "script",
+      "source": "https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js",
+      "file": "floating-ui.dom-1.7.4.umd.min.js",
+      "licence": "MIT (@floating-ui/dom)",
+      "bytes": 10251,
+      "sha256": "b8199f76adccb9b17b3ab57124c42585dc19197127d1a5d19307d1983f80bd89"
+    },
+    {
+      "kind": "font",
+      "source": "https://fonts.gstatic.com/s/cairo/v31/SLXVc1nY6HkvangtZmpQdkhzfH5lkSscQyyS4J0.woff2",
+      "file": "font-6c9f4bab97d6bc5fd440.woff2",
+      "licence": "SIL Open Font License 1.1",
+      "bytes": 30896,
+      "sha256": "748022f50c427456ad66031e855349be3448ee1f05a5f1eb59574ebe0c686749"
+    },
+    {
+      "kind": "font",
+      "source": "https://fonts.gstatic.com/s/cairo/v31/SLXVc1nY6HkvangtZmpQdkhzfH5lkSscSCyS4J0.woff2",
+      "file": "font-e8fc56ad5aa556a116b3.woff2",
+      "licence": "SIL Open Font License 1.1",
+      "bytes": 16648,
+      "sha256": "da6ada83c3a87c2f0211325dc0a123702e1d4a940958b3e943ac4f37b31d5371"
+    },
+    {
+      "kind": "font",
+      "source": "https://fonts.gstatic.com/s/cairo/v31/SLXVc1nY6HkvangtZmpQdkhzfH5lkSscRiyS.woff2",
+      "file": "font-3270f0cb47fdabc3501e.woff2",
+      "licence": "SIL Open Font License 1.1",
+      "bytes": 33820,
+      "sha256": "82c13cbd1352d76e97c3d335caa912ae68fecdc3949a43cf8d149eb892384c1b"
+    },
+    {
+      "kind": "font",
+      "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2JL7SUc.woff2",
+      "file": "font-95b9ea830580b57efca1.woff2",
+      "licence": "SIL Open Font License 1.1",
+      "bytes": 25960,
+      "sha256": "ca157063339ac4ad418f214f3abfed119b0798ab4d377386ce5c9e5a7a435ebd"
+    },
+    {
+      "kind": "font",
+      "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7SUc.woff2",
+      "file": "font-1e8edb2fc100b7f74bc3.woff2",
+      "licence": "SIL Open Font License 1.1",
+      "bytes": 18748,
+      "sha256": "71d5ee93cc1e9f1d520a3a8b66456de18c7879d8df09d57fcd2eaff75fef0075"
+    },
+    {
+      "kind": "font",
+      "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2ZL7SUc.woff2",
+      "file": "font-6d0a674525fee3ddd769.woff2",
+      "licence": "SIL Open Font License 1.1",
+      "bytes": 11232,
+      "sha256": "6e9e020a25f9b56d418f2c085b1d3c09725a4da23fe693a5b463064606732190"
+    },
+    {
+      "kind": "font",
+      "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1pL7SUc.woff2",
+      "file": "font-dbc85b0dfbaaa3152a6b.woff2",
+      "licence": "SIL Open Font License 1.1",
+      "bytes": 18996,
+      "sha256": "1be3448e292fbf05ffe176fe1e43f135013d50b1e7d324ad1a558f623d3bb6f6"
+    },
+    {
+      "kind": "font",
+      "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2pL7SUc.woff2",
+      "file": "font-4c2d4a14f23a8ed50857.woff2",
+      "licence": "SIL Open Font License 1.1",
+      "bytes": 10252,
+      "sha256": "5c66f9e07e90c6d4ac4922cc68d60de26c17b1858e677fb5e603fce3952b3ff2"
+    },
+    {
+      "kind": "font",
+      "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7SUc.woff2",
+      "file": "font-a9d11b3ffe7aa5371e2b.woff2",
+      "licence": "SIL Open Font License 1.1",
+      "bytes": 85068,
+      "sha256": "34b9c504cab7a73e37b746343a449132e56cf7b5481af2cb81dc74dcff25c956"
+    },
+    {
+      "kind": "font",
+      "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+      "file": "font-e3237528af752eed937e.woff2",
+      "licence": "SIL Open Font License 1.1",
+      "bytes": 48256,
+      "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+    },
+    {
+      "kind": "stylesheet",
+      "source": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Cairo:wght@300;400;500;600;700;800;900&display=swap",
+      "file": "fonts.css",
+      "licence": "SIL Open Font License 1.1 (font data)",
+      "bytes": 29463,
+      "sha256": "cb1ba10838ca4eb7115433b5d4ac12a73d8474224c9d891737c1533042f199e6"
+    }
+  ]
+}

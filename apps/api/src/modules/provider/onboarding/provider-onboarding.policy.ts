@@ -203,6 +203,178 @@ export function yearsSince(since: Date, now: Date = new Date()): number {
   return Math.floor(ms / (365.2425 * 24 * 60 * 60 * 1000));
 }
 
+// ── Sprint 09B.29 — the two axes, separated ────────────────────────────────
+//
+// `evaluateOnboarding` reports EVERYTHING outstanding, and it keeps doing so:
+// it is not weakened here, and `AWAITING_REVIEW` is still raised exactly as
+// before. What changes is who each issue is addressed to.
+//
+// THE DEADLOCK THIS ENDS
+//
+// 9B.18 introduced `AWAITING_REVIEW` to stop telling a provider that a
+// specialty they HAD chosen was "Required". It fixed the wording and left the
+// consequence: the issue still counted against completeness, so a provider
+// whose only outstanding item was an administrator's approval could not reach
+// final review and could not submit. The hub resolver's own comment recorded
+// this as correct ("the application genuinely is not submittable yet"), and a
+// hub test pinned it. It is not correct, and the sprint mandate is explicit:
+// pending specialty moderation may block ACTIVATION and WORK ACCESS, and must
+// not block final review or submission.
+//
+// The provider had done their part. Holding the submission hostage to a queue
+// they cannot influence means the application is never handed in, so the
+// approval that would unblock it is never prompted for — the deadlock is
+// literal, not theoretical.
+//
+// Activation and work access are unaffected by this split: they are granted by
+// `ProviderCapabilityService` from a live work-access grant, which is an
+// administrator's decision and reads none of this.
+
+/**
+ * WHOSE MOVE IS IT?
+ *
+ * One canonical mapping, exhaustive over the issue codes the shared contract
+ * defines. Everything that needs to know who owns an issue reads this — the
+ * hub, the review resolver, the submission-readiness check, the V1 service and
+ * the V2 wizard — so the layers cannot drift into disagreeing about it, which
+ * is exactly how the deadlock survived five sprints.
+ *
+ *   PROVIDER  something they can go and correct on a screen.
+ *   PLATFORM  something WE owe them a decision on. Never reported as work for
+ *             them to do, never a submission blocker, and never a reason to
+ *             grant activation or work access either.
+ *
+ * There is deliberately NO `default:` branch and no `!==` shortcut. The
+ * `Record<ProviderOnboardingIssueCode, IssueOwner>` type means adding a code to
+ * the shared contract without classifying it here is a TypeScript error at this
+ * file, not a silent assumption that it belongs to the provider. An
+ * exhaustiveness test pins the same property at runtime for anyone who reaches
+ * this through JavaScript.
+ */
+export type IssueOwner = 'PROVIDER' | 'PLATFORM';
+
+/** The issue codes the shared contract defines, as a value. Kept beside the
+ *  map so the two are read together and the exhaustiveness test can iterate. */
+export const ONBOARDING_ISSUE_CODES = [
+  'REQUIRED',
+  'TOO_SHORT',
+  'UNVERIFIED',
+  'NOT_VERIFIED',
+  'OUT_OF_RANGE',
+  'AWAITING_REVIEW',
+] as const satisfies ReadonlyArray<ProviderOnboardingIssue['code']>;
+
+export const ISSUE_OWNER: Record<ProviderOnboardingIssue['code'], IssueOwner> = {
+  /** Absent or blank. They fill it in. */
+  REQUIRED: 'PROVIDER',
+  /** Present but below the minimum useful length. They lengthen it. */
+  TOO_SHORT: 'PROVIDER',
+  /** Their account email is unverified. They complete the verification. */
+  UNVERIFIED: 'PROVIDER',
+  /** A field they must prove, such as their phone. They prove it. */
+  NOT_VERIFIED: 'PROVIDER',
+  /** Well-formed and outside the allowed bounds. They correct it. */
+  OUT_OF_RANGE: 'PROVIDER',
+  /**
+   * They supplied it and an administrator has not decided yet.
+   *
+   * The only PLATFORM-owned code today. It must never be reported as provider
+   * work, must never block final review or submission, and must never by itself
+   * grant activation or work access — those are the verification decision and
+   * the work-access grant, which read none of this.
+   */
+  AWAITING_REVIEW: 'PLATFORM',
+};
+
+/** Who owns this issue? The single question every layer asks. */
+export function ownerOfIssue(issue: ProviderOnboardingIssue): IssueOwner {
+  return ISSUE_OWNER[issue.code];
+}
+
+/**
+ * Is this issue the PROVIDER's move, as opposed to ours?
+ *
+ * Delegates to the canonical map. Kept as a named predicate because it reads
+ * better at the call sites than `ownerOfIssue(i) === 'PROVIDER'` and because it
+ * is the shape `Array.filter` wants.
+ */
+export function isProviderActionIssue(issue: ProviderOnboardingIssue): boolean {
+  return ownerOfIssue(issue) === 'PROVIDER';
+}
+
+/** The subset a provider can actually act on. Order is preserved, so "the
+ *  first blocker" stays the first blocker in policy order. */
+export function providerActionIssues(
+  issues: readonly ProviderOnboardingIssue[],
+): ProviderOnboardingIssue[] {
+  return issues.filter(isProviderActionIssue);
+}
+
+/** Issues that are waiting on US. Reported as a separate axis, never as a
+ *  reason the provider cannot proceed. */
+export function moderationIssues(
+  issues: readonly ProviderOnboardingIssue[],
+): ProviderOnboardingIssue[] {
+  return issues.filter((i) => ownerOfIssue(i) === 'PLATFORM');
+}
+
+/**
+ * Has the provider completed every provider-controlled required INPUT?
+ *
+ * True when nothing the provider can act on is outstanding. An approval sitting
+ * in an administrator's queue does not make it false, because there is nothing
+ * for them to do about it — that is the whole of the Sprint 09B.29 repair.
+ *
+ * ┌ THIS IS NOT "MAY THEY SUBMIT?" ───────────────────────────────────────────┐
+ * │ It answers one input of that decision. The submit command additionally    │
+ * │ enforces, and may refuse on, any of:                                      │
+ * │   · the lifecycle state (already submitted, accepted, withdrawn)          │
+ * │   · the accepted terms VERSION, which can move between view and submit    │
+ * │   · the draft version, for optimistic concurrency                         │
+ * │   · authorization, ownership and CSRF                                     │
+ * │   · idempotency, so a retry is not a second application                    │
+ * │ A caller that treats this as the whole answer will enable a button that   │
+ * │ then fails — the exact defect the completeness policy was introduced to   │
+ * │ prevent.                                                                  │
+ * └───────────────────────────────────────────────────────────────────────────┘
+ *
+ * The authoritative submission decision is the submit command itself, and the
+ * value clients should render is the server's `canSubmit`.
+ */
+export function isProviderInputComplete(candidate: OnboardingCandidate): boolean {
+  return providerActionIssues(evaluateOnboarding(candidate)).length === 0;
+}
+
+/**
+ * Is there nothing outstanding AT ALL — including our own approvals?
+ *
+ * Sprint 09B.29 restored this to its original meaning after briefly redefining
+ * it. The redefinition was inert (this function had, and has, no production
+ * caller) but it was a trap: the name says "complete", and the next caller to
+ * reach for it might be gating activation, a work-access grant, a verification
+ * decision or a report — none of which may treat a queued approval as done.
+ *
+ * ┌ WHICH ANSWER DO I WANT? ──────────────────────────────────────────────────┐
+ * │ "is their form finished?"               → `isProviderInputComplete`       │
+ * │ "is EVERYTHING settled, us included?"   → `isOnboardingComplete`          │
+ * │ "MAY THEY SUBMIT?"                      → NEITHER on its own. The submit  │
+ * │                                           command is authoritative; the   │
+ * │                                           value to render is the server's │
+ * │                                           `canSubmit`, which folds in     │
+ * │                                           terms, lifecycle, version and   │
+ * │                                           authorization as well as input. │
+ * │ "may they see jobs / bid / be paid?"    → NEITHER. Ask                    │
+ * │                                           `ProviderCapabilityService`,    │
+ * │                                           which reads the work-access     │
+ * │                                           grant an administrator issued.  │
+ * │ "are they activated?"                   → NEITHER. That is the            │
+ * │                                           verification case decision.     │
+ * └───────────────────────────────────────────────────────────────────────────┘
+ *
+ * Neither function grants anything. Both answer questions about the ONBOARDING
+ * axis only; account standing, moderation and work access are separate axes and
+ * are decided elsewhere.
+ */
 export function isOnboardingComplete(candidate: OnboardingCandidate): boolean {
   return evaluateOnboarding(candidate).length === 0;
 }

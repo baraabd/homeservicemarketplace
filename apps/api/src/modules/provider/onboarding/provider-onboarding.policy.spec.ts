@@ -1,8 +1,17 @@
+import type { ProviderOnboardingIssue } from '@homeservicemarketplace/contracts';
+
 import {
+  ISSUE_OWNER,
   MIN_BIO_LENGTH,
   MIN_HEADLINE_LENGTH,
+  ONBOARDING_ISSUE_CODES,
   evaluateOnboarding,
   isOnboardingComplete,
+  isProviderActionIssue,
+  isProviderInputComplete,
+  moderationIssues,
+  ownerOfIssue,
+  providerActionIssues,
   type OnboardingCandidate,
 } from './provider-onboarding.policy';
 
@@ -184,5 +193,182 @@ describe('provider onboarding completeness policy', () => {
     // defines for every Sprint 8 field, so legacy profiles are not failed on
     // data nobody ever collected from them.
     expect(fieldsOf(complete({ phoneVerified: undefined }))).not.toContain(`phoneNumber`);
+  });
+});
+
+// ── Sprint 09B.29 — the two axes ────────────────────────────────────────────
+//
+// The deadlock these tests pin the end of: a provider whose only outstanding
+// item was an administrator's approval could not be "complete", so could not
+// submit, so the approval was never prompted for.
+describe('provider-action issues versus moderation issues', () => {
+  // A candidate whose ONLY gap is a specialty sitting in the approval queue:
+  // the leaf count is zero, and a pending application explains why.
+  const awaitingModeration = () =>
+    complete({ serviceCategoryCount: 0, leafSpecialtyCount: 0, pendingSpecialtyCount: 1 });
+
+  // The same shape with nothing pending — the provider simply has not chosen.
+  const nothingChosen = () =>
+    complete({ serviceCategoryCount: 0, leafSpecialtyCount: 0, pendingSpecialtyCount: 0 });
+
+  it('still RAISES the moderation issue — the policy is not weakened', () => {
+    // The repair is in how consumers read the answer, not in what is reported.
+    // Dropping the issue would hide the moderation axis entirely.
+    const issues = evaluateOnboarding(awaitingModeration());
+    expect(issues).toEqual(
+      expect.arrayContaining([{ field: 'specialties', code: 'AWAITING_REVIEW' }]),
+    );
+  });
+
+  it('classifies AWAITING_REVIEW as ours and everything else as theirs', () => {
+    expect(isProviderActionIssue({ field: 'specialties', code: 'AWAITING_REVIEW' })).toBe(false);
+    expect(isProviderActionIssue({ field: 'bio', code: 'REQUIRED' })).toBe(true);
+    expect(isProviderActionIssue({ field: 'headline', code: 'TOO_SHORT' })).toBe(true);
+    expect(isProviderActionIssue({ field: 'phoneNumber', code: 'NOT_VERIFIED' })).toBe(true);
+  });
+
+  it('treats a provider whose only gap is OUR approval as PROVIDER-INPUT complete', () => {
+    // The precise function, not the ambiguous one. `isOnboardingComplete` asks
+    // whether anything at all is outstanding — a queued approval is — and it is
+    // deliberately still false here; see the dedicated comparison suite below.
+    expect(isProviderInputComplete(awaitingModeration())).toBe(true);
+    expect(isOnboardingComplete(awaitingModeration())).toBe(false);
+    expect(providerActionIssues(evaluateOnboarding(awaitingModeration()))).toEqual([]);
+    expect(moderationIssues(evaluateOnboarding(awaitingModeration())).map((i) => i.field)).toEqual(
+      expect.arrayContaining(['serviceCategories', 'specialties']),
+    );
+  });
+
+  it('does NOT treat "you have not chosen a specialty" as complete', () => {
+    // The guard that stops the rule above from being a hole. No pending
+    // application means the provider genuinely has not done this.
+    expect(isOnboardingComplete(nothingChosen())).toBe(false);
+    expect(providerActionIssues(evaluateOnboarding(nothingChosen()))).toEqual(
+      expect.arrayContaining([{ field: 'specialties', code: 'REQUIRED' }]),
+    );
+  });
+
+  it('a real gap still blocks even while moderation is pending', () => {
+    const both = awaitingModeration();
+    both.bio = null;
+    expect(isOnboardingComplete(both)).toBe(false);
+    expect(providerActionIssues(evaluateOnboarding(both)).map((i) => i.field)).toContain('bio');
+    // ...and the moderation item is never reported as something to go and fix.
+    expect(providerActionIssues(evaluateOnboarding(both)).map((i) => i.code)).not.toContain(
+      'AWAITING_REVIEW',
+    );
+  });
+
+  it('preserves policy order, so "the first blocker" is still the first', () => {
+    const messy = complete({
+      displayName: null,
+      bio: null,
+      serviceCategoryCount: 0,
+      leafSpecialtyCount: 0,
+      pendingSpecialtyCount: 1,
+    });
+    const fields = providerActionIssues(evaluateOnboarding(messy)).map((i) => i.field);
+    expect(fields.indexOf('displayName')).toBeLessThan(fields.indexOf('bio'));
+  });
+});
+
+// ── Sprint 09B.29 — issue ownership is canonical and exhaustive ─────────────
+//
+// One mapping, in the policy layer, that every other layer reads. The property
+// under test is not "AWAITING_REVIEW is platform-owned" — that is one row. It
+// is that NO code can exist without an explicit owner, so a future code cannot
+// default into being the provider's problem and quietly re-create the deadlock.
+describe('canonical issue ownership', () => {
+  it('classifies every code the shared contract defines', () => {
+    // If a code is added to the contract and not to the map, TypeScript fails
+    // at the policy file first. This is the runtime backstop for anyone who
+    // reaches the map through JavaScript, and for the case where the contract
+    // and the map are edited in the same commit but the list below is not.
+    for (const code of ONBOARDING_ISSUE_CODES) {
+      expect(ISSUE_OWNER[code]).toBeDefined();
+      expect(['PROVIDER', 'PLATFORM']).toContain(ISSUE_OWNER[code]);
+    }
+    expect(Object.keys(ISSUE_OWNER).sort()).toEqual([...ONBOARDING_ISSUE_CODES].sort());
+  });
+
+  it('owns AWAITING_REVIEW by the PLATFORM and everything else by the PROVIDER', () => {
+    expect(ISSUE_OWNER.AWAITING_REVIEW).toBe('PLATFORM');
+    for (const code of ONBOARDING_ISSUE_CODES) {
+      if (code === 'AWAITING_REVIEW') continue;
+      expect(ISSUE_OWNER[code]).toBe('PROVIDER');
+    }
+  });
+
+  it('has no unmapped code — an unknown code must not read as provider-actionable', () => {
+    // The failure this forbids: a `default: 'PROVIDER'` branch, or an
+    // `issue.code !== 'AWAITING_REVIEW'` shortcut, either of which silently
+    // classifies a code nobody has thought about yet.
+    const unknown = 'SOME_FUTURE_CODE' as unknown as ProviderOnboardingIssue['code'];
+    expect(ISSUE_OWNER[unknown]).toBeUndefined();
+  });
+
+  it('routes every helper through the same map', () => {
+    const provider: ProviderOnboardingIssue = { field: 'bio', code: 'REQUIRED' };
+    const platform: ProviderOnboardingIssue = { field: 'specialties', code: 'AWAITING_REVIEW' };
+
+    expect(ownerOfIssue(provider)).toBe('PROVIDER');
+    expect(ownerOfIssue(platform)).toBe('PLATFORM');
+    expect(isProviderActionIssue(provider)).toBe(true);
+    expect(isProviderActionIssue(platform)).toBe(false);
+    expect(providerActionIssues([provider, platform])).toEqual([provider]);
+    expect(moderationIssues([provider, platform])).toEqual([platform]);
+  });
+
+  it('does not depend on message text', () => {
+    // Ownership is a property of the CODE. Nothing may branch on prose, which
+    // is translated and therefore not a contract.
+    const a: ProviderOnboardingIssue = { field: 'bio', code: 'AWAITING_REVIEW' };
+    const b: ProviderOnboardingIssue = { field: 'specialties', code: 'AWAITING_REVIEW' };
+    expect(ownerOfIssue(a)).toBe(ownerOfIssue(b));
+  });
+});
+
+// ── Sprint 09B.29 — the two completion questions are different questions ────
+describe('isOnboardingComplete versus isProviderInputComplete', () => {
+  const awaitingModeration = () =>
+    complete({ serviceCategoryCount: 0, leafSpecialtyCount: 0, pendingSpecialtyCount: 1 });
+
+  it('AWAITING_REVIEW makes full completion false but provider input true', () => {
+    // The whole distinction, in one case. `isOnboardingComplete` answers "is
+    // anything outstanding at all, us included" — an approval in a queue is.
+    // `isProviderInputComplete` answers "have they finished their part" — they
+    // have.
+    expect(isOnboardingComplete(awaitingModeration())).toBe(false);
+    expect(isProviderInputComplete(awaitingModeration())).toBe(true);
+  });
+
+  it('a provider-action issue makes BOTH false', () => {
+    const gap = complete({ bio: null });
+    expect(isOnboardingComplete(gap)).toBe(false);
+    expect(isProviderInputComplete(gap)).toBe(false);
+  });
+
+  it('no issues at all makes BOTH true', () => {
+    expect(isOnboardingComplete(complete())).toBe(true);
+    expect(isProviderInputComplete(complete())).toBe(true);
+  });
+
+  it('a provider-action issue alongside pending moderation makes both false', () => {
+    const both = awaitingModeration();
+    both.bio = null;
+    expect(isOnboardingComplete(both)).toBe(false);
+    expect(isProviderInputComplete(both)).toBe(false);
+  });
+
+  it('neither function is a work-access or activation decision', () => {
+    // Documented here as an executable reminder rather than only in prose: the
+    // functions answer questions about the ONBOARDING axis. Work access is a
+    // grant an administrator issues and is read by ProviderCapabilityService;
+    // activation is the verification decision. A candidate object carries
+    // neither, so neither function could decide them even if a caller tried.
+    const c = awaitingModeration();
+    expect(Object.keys(c)).not.toContain('workAccess');
+    expect(Object.keys(c)).not.toContain('verificationState');
+    expect(Object.keys(c)).not.toContain('status');
   });
 });
