@@ -3311,3 +3311,80 @@ is this sprint's design _input_ — the execution guide, the implementation
 prompt, the prototype and flow references, the agent rule, and a devcontainer
 lock. So the pull request is this sprint's work plus its own brief, not a
 replay of an already-merged sprint.
+
+## 5.7 What CI found that every local gate had missed
+
+The branch was pushed as `fix/sprint-09b29-provider-onboarding-v2-parity` and
+opened as **draft PR #72** into `develop`. The first run on `b03c405` is the
+most useful result in this document, because two jobs failed and **neither
+failure was reproducible by any gate run locally** — they are exactly the class
+of defect the "publish and let CI judge it" step exists to catch.
+
+Everything expensive passed on the first attempt: `Integration & E2E (real
+Postgres / Redis)`, `Docker cold build + production boot`, `Compose stack
+smoke`, `Auth cookie contract`, and all five `Verify` jobs.
+
+### Defect 5 — ten new specs wrote a secret-shaped literal
+
+`Dependency, secret, and container scans` failed: **gitleaks, 7 findings**, all
+`generic-api-key`, all of the form
+
+```ts
+JWT_ACCESS_SECRET: 'phase3-journey-a-secret',
+```
+
+in the Phase 3 integration specs.
+
+This is not a false positive to be silenced. Sprint 9B.28 had already fixed
+exactly this habit and left the cure in the tree —
+`apps/api/test/support/test-secrets.ts`, whose header says in as many words
+that its purpose is to close _the source_ of these findings so "a future edit
+to one of these lines cannot resurrect the failure under a new fingerprint".
+This sprint's specs did not use it. The gate caught the regression that the
+previous sprint's remediation was designed to prevent.
+
+`.gitleaksignore` was **not** touched. Its own rules restrict it to reviewed
+_historical_ fixtures, one fingerprint per finding; adding ten new entries for
+code written this week is precisely the quiet hollowing-out that file warns
+about.
+
+Instead all **ten** new integration specs — the three gitleaks did not flag
+included, since the habit and not the entropy score is the defect — now follow
+the established shape: a module-level `const SECRET = makeTestSecret('<label>')`
+referenced as `JWT_ACCESS_SECRET: SECRET`. The value is derived at runtime, so
+there is no literal in the blob to match, and the line carries no quoted string
+at all.
+
+Verified locally afterwards: `api typecheck` exit 0, `eslint "test/**/*.ts"`
+exit 0, and both edited suites still load and skip cleanly with the DB gates
+unset (2 suites, 32 tests skipped, no import error).
+
+### Defect 6 — four CodeQL alerts, one of them a real weakness
+
+`CodeQL` failed with 4 new alerts (1 high, 3 medium) — the analysis itself
+succeeded; the check fails on the alerts.
+
+**High, `js/incomplete-url-substring-sanitization`,
+`e2e/prototype-assets.ts`.** The vendored-asset router decided whether a request
+was for the Google Fonts stylesheet with `url.includes('fonts.googleapis.com')`.
+CodeQL is right and this is a real defect, not a lint nicety: the host name can
+appear anywhere in a URL, so `https://evil.test/?x=fonts.googleapis.com`
+satisfies the check and any intercepted origin could be served the vendored
+stylesheet. Fixed by parsing and comparing the hostname for equality
+(`hostnameOf(url) === 'fonts.googleapis.com'`), which only the host itself can
+satisfy.
+
+**Medium ×3, `js/http-to-file-access`, `e2e/assets/vendor-prototype-assets.mjs`.**
+Network data written to a file. The script's entire purpose is to download
+pinned third-party assets and write them to disk, so the flow is intended — but
+the alert pointed at something genuinely missing: it wrote whatever arrived,
+with **no integrity check at all**, and recorded the hash only afterwards. A
+compromised or silently-updated CDN would have rewritten the visual baselines,
+and the change would have surfaced as an unexplained pixel diff rather than as
+the supply-chain event it was.
+
+Every download now goes through `writeVerified()`, which compares the bytes
+against the SHA-256 already pinned in `manifest.json` and **throws rather than
+writing** on a mismatch. Accepting new bytes is opt-in
+(`REVENDOR_ACCEPT_NEW_HASHES=1`), so bumping a pinned version is an explicit act
+visible in review. A re-run is now a verification, not a refresh.
