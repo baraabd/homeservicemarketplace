@@ -270,6 +270,11 @@ d('Phase 3 — submission-stamping semantic audit (real Postgres)', () => {
     const { ProviderAvatarService } = r(
       '../../src/modules/provider/onboarding/avatar/provider-avatar.service',
     );
+    // Sprint 09B.29 Phase 4 — ProviderAvatarService claims and retires
+    // reservations now, so its ledger has to exist here too. The REAL one:
+    // this suite has a database, and a double would leave the claim's
+    // ownership conditions untested in the one place they can be.
+    const { PublicMediaLedgerService } = r('../../src/modules/media/public-media-ledger.service');
     const { ProviderServiceAreaExpansionService } = r(
       '../../src/modules/provider/onboarding/service-area/expansion/provider-service-area-expansion.service',
     );
@@ -312,6 +317,7 @@ d('Phase 3 — submission-stamping semantic audit (real Postgres)', () => {
         ProviderOnboardingService,
         ProviderService,
         ProviderAvatarService,
+        PublicMediaLedgerService,
         ProviderServiceAreaExpansionService,
         ProviderCapabilityService,
         ProviderCapabilityGuard,

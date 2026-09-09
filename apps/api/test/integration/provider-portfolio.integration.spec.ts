@@ -68,7 +68,41 @@ d('Provider portfolio (real guard, real Postgres)', () => {
 
   const base = '/v1/me/provider/portfolio';
   const list = () => request(http).get(base);
-  const create = (body: Record<string, unknown>) => request(http).post(base).send(body);
+  /**
+   * Reserve a key for the CURRENT user, exactly as `POST /media/presigned-url`
+   * does, then attach it.
+   *
+   * Sprint 09B.29 Phase 4. `create` used to post a key the server had never
+   * issued, and the endpoint accepted it — which is the hole the reservation
+   * ledger closes (O-4). Reserving here keeps every assertion in this file
+   * about what it was about, instead of turning the whole suite into repeated
+   * proof of the one new refusal. That refusal has its own test below.
+   *
+   * Unconditional: keys that fail the namespace check are rejected before the
+   * claim is even attempted, so reserving one changes nothing about those
+   * cases, and an unused reservation row is torn down with the rest.
+   */
+  async function reserveKey(storageKey: unknown): Promise<void> {
+    if (typeof storageKey !== 'string' || !currentUser) return;
+    await prisma.mediaAsset.upsert({
+      where: { storageKey },
+      create: {
+        visibility: 'PUBLIC',
+        storageKey,
+        declaredMimeType: 'image/jpeg',
+        sizeBytes: 1024,
+        ownerUserId: currentUser.id,
+        uploadCompletedAt: null,
+        uploadExpiresAt: new Date(Date.now() + 3_600_000),
+      },
+      update: {},
+    });
+  }
+
+  const create = async (body: Record<string, unknown>) => {
+    await reserveKey(body.storageKey);
+    return request(http).post(base).send(body);
+  };
   const patch = (id: string, body: Record<string, unknown>) =>
     request(http).patch(`${base}/${id}`).send(body);
   const reorder = (itemIds: string[]) => request(http).post(`${base}/reorder`).send({ itemIds });
@@ -394,6 +428,61 @@ d('Provider portfolio (real guard, real Postgres)', () => {
       expect(victim.position).toBe(0);
     });
 
+    it('cannot publish a key the server never issued, even a well-formed one', async () => {
+      // Sprint 09B.29 Phase 4. The key below is shaped correctly and sits
+      // under the CALLER's own opaque ref, so every check that existed
+      // before this sprint passes it. What refuses it is that no presign ever
+      // reserved it — which is what stops a client attaching an object it
+      // guessed rather than one the server handed it.
+      const res = await request(http)
+        .post(base)
+        .send({
+          storageKey: `portfolio/${otherRef}/${P}never-reserved.jpg`,
+          contentType: 'image/jpeg',
+          sizeBytes: 1024,
+          publicationRightAck: true,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body?.error?.details?.reason).toBe('UPLOAD_NOT_RESERVED');
+    });
+
+    it('cannot claim a reservation belonging to another provider', async () => {
+      // The key passes every SHAPE check for this caller — it sits under
+      // their own opaque ref — but the ledger says the reservation belongs to
+      // the other provider. The claim matches on the owner COLUMN, so the
+      // attach is refused on ownership rather than on the key's spelling.
+      // This is the case a prefix check alone could never catch.
+      const stolen = `portfolio/${otherRef}/${P}not-mine.jpg`;
+      await prisma.mediaAsset.upsert({
+        where: { storageKey: stolen },
+        create: {
+          visibility: 'PUBLIC',
+          storageKey: stolen,
+          declaredMimeType: 'image/jpeg',
+          sizeBytes: 1024,
+          ownerUserId: OWNER,
+          uploadCompletedAt: null,
+          uploadExpiresAt: new Date(Date.now() + 3_600_000),
+        },
+        update: {},
+      });
+
+      const res = await request(http).post(base).send({
+        storageKey: stolen,
+        contentType: 'image/jpeg',
+        sizeBytes: 1024,
+        publicationRightAck: true,
+      });
+
+      expect(res.status).toBe(400);
+      // And the victim's reservation is untouched, so a failed theft cannot
+      // even consume the upload it was aimed at.
+      const row = await prisma.mediaAsset.findUnique({ where: { storageKey: stolen } });
+      expect(row.ownerUserId).toBe(OWNER);
+      expect(row.uploadCompletedAt).toBeNull();
+    });
+
     it('cannot publish a file uploaded by another provider', async () => {
       // Ownership is inside the storage key, so guessing one is not enough.
       const res = await create(goodBody({ storageKey: `portfolio/${ownerRef}/${P}stolen.jpg` }));
@@ -453,7 +542,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
       expect(after.visibility).toBe('RESTRICTED');
     });
 
-    it('a portfolio delete marks only the PUBLIC asset it owns', async () => {
+    it('a portfolio delete RETIRES only the PUBLIC asset it owns', async () => {
       // Non-vacuity for the test above: the scoped update must still work for
       // the case it is meant for.
       const created = await create(goodBody());
@@ -464,11 +553,24 @@ d('Provider portfolio (real guard, real Postgres)', () => {
       await remove(created.body.id);
 
       const asset = await prisma.mediaAsset.findUnique({ where: { id: before.mediaAssetId } });
-      expect(asset.deletedAt).not.toBeNull();
-      expect(asset.deletionReason).toBe('PROVIDER_REMOVED_PORTFOLIO_ITEM');
-      // SOFT: the bytes are marked, not erased, so a moderation record does not
-      // end up describing a file nobody can look at.
       expect(asset).not.toBeNull();
+      expect(asset.retainUntil).not.toBeNull();
+      expect(asset.deletionReason).toBe('PROVIDER_REMOVED_PORTFOLIO_ITEM');
+
+      // Sprint 09B.29 Phase 4 — THIS ASSERTION WAS INVERTED, and that was the
+      // O-5 defect.
+      //
+      // The delete used to write `deletedAt` here, and this test used to
+      // require it. But the schema defines that column as "confirmed gone from
+      // storage", and nothing deleted the object — so the row asserted the
+      // image was gone while it was still being served at its public URL, and
+      // the test certified the lie.
+      //
+      // The delete now records INTENT (`retainUntil` + a reason), and
+      // `PublicMediaCleanupService` writes `deletedAt` after storage confirms
+      // the bytes are actually absent. See
+      // phase4-public-media-lifecycle.integration.spec.ts for the other half.
+      expect(asset.deletedAt).toBeNull();
     });
   });
 

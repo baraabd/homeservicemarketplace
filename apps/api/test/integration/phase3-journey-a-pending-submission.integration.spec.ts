@@ -243,6 +243,13 @@ d('Phase 3 Journey A — pending specialty permits submission (real Postgres)', 
     const {
       ProviderAvatarService,
     } = require('../../src/modules/provider/onboarding/avatar/provider-avatar.service');
+    // Sprint 09B.29 Phase 4 — ProviderAvatarService claims and retires
+    // reservations now, so its ledger has to exist here too. The REAL one:
+    // this suite has a database, and a double would leave the claim's
+    // ownership conditions untested in the one place they can be.
+    const {
+      PublicMediaLedgerService,
+    } = require('../../src/modules/media/public-media-ledger.service');
     const {
       ProviderServiceAreaExpansionService,
     } = require('../../src/modules/provider/onboarding/service-area/expansion/provider-service-area-expansion.service');
@@ -281,6 +288,7 @@ d('Phase 3 Journey A — pending specialty permits submission (real Postgres)', 
         ProviderOnboardingService,
         ProviderService,
         ProviderAvatarService,
+        PublicMediaLedgerService,
         ProviderServiceAreaExpansionService,
         ProviderCapabilityService,
         ProviderCapabilityGuard,
