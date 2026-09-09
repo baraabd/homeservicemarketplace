@@ -314,12 +314,37 @@ export interface ProviderOnboardingDraftView {
   data: ProviderOnboardingData;
 
   /**
+   * Which draft `version` counts for. Null before a draft row exists.
+   *
+   * Sprint 09B.29 Phase 4 — `version` ALONE IS NOT AN IDENTITY.
+   *
+   * A client comparing two responses to decide which is newer was comparing
+   * bare integers, and integers from different drafts are not comparable. The
+   * cache slot this view lands in is keyed by resource, not by provider, so
+   * the two values being compared could belong to:
+   *
+   *   - two different providers, if a sign-out left anything behind. Provider
+   *     A at version 50 would make provider B's legitimate version 3 look
+   *     stale, and B would be shown — and could submit — A's application.
+   *   - two generations of one provider's draft. A draft row that is deleted
+   *     and recreated restarts at version 0, and a monotonic rule with no
+   *     identity would pin the client to the dead generation indefinitely.
+   *
+   * This id is the draft ROW's, so it changes on both. Compare versions only
+   * when the ids match; when they differ the newer response is simply a
+   * different document and wins outright.
+   */
+  draftId: string | null;
+
+  /**
    * Optimistic-concurrency token. Echo it back on the next PATCH; a mismatch
    * is a 409 rather than a silent overwrite.
    *
    * Two tabs open on one wizard is the ordinary case, not the exotic one, and
    * without this the failure mode is a provider watching half their answers
    * disappear with no error.
+   *
+   * Only meaningful WITHIN one `draftId`. See above.
    */
   version: number;
   /** The completeness policy in force for THIS draft, pinned when it was

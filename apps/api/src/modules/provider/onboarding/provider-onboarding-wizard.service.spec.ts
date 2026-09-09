@@ -130,7 +130,13 @@ function build(
   over: {
     profile?: ProviderProfileWithCategories | null;
     emailVerified?: boolean;
-    draft?: { version: number; policyVersion: string; lastSavedAt: Date; data: unknown } | null;
+    draft?: {
+      id: string;
+      version: number;
+      policyVersion: string;
+      lastSavedAt: Date;
+      data: unknown;
+    } | null;
     intervals?: {
       id: string;
       dayOfWeek: number;
@@ -151,6 +157,8 @@ function build(
   const draft =
     over.draft === undefined
       ? {
+          // Sprint 09B.29 Phase 4 — the identity `version` is a version OF.
+          id: 'draft-1',
           version: 3,
           policyVersion: 'sprint-08',
           lastSavedAt: new Date('2026-08-20T12:00:00Z'),
@@ -1042,6 +1050,34 @@ describe('get', () => {
     expect(view.complete).toBe(false);
     expect(view.currentStep).toBe('PROFILE');
     expect(view.nextAction).toEqual({ kind: 'COMPLETE_STEP', step: 'PROFILE' });
+  });
+
+  // Sprint 09B.29 Phase 4 — `version` alone is not an identity.
+  //
+  // The client keeps the higher-versioned draft when a stale read lands after
+  // a write. That rule is only sound WITHIN one draft: the browser cache slot
+  // is keyed by resource, so without an identity the comparison can be between
+  // two providers (one of whom then sees and could submit the other's
+  // application) or between two generations of one draft after the row is
+  // recreated (which restarts at 0 and would be pinned out forever).
+  //
+  // The server is the only thing that can say which draft a version belongs
+  // to, so it says.
+  it('names the draft its version belongs to', async () => {
+    const view = await build().service.get('u-1');
+
+    expect(view.draftId).toBe('draft-1');
+  });
+
+  it('reports a null draftId when there is no draft row, rather than inventing one', async () => {
+    // `version` is 0 here. A client that compared 0 against a previous
+    // provider's 50 would treat a real answer as stale; a null id tells it not
+    // to compare at all.
+    const h = build({ draft: null });
+    const view = await h.service.get('u-1');
+
+    expect(view.draftId).toBeNull();
+    expect(view.version).toBe(0);
   });
 
   it('echoes the collected data back from the SERVER copy', async () => {
