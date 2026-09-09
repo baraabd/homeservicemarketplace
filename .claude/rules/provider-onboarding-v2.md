@@ -1,13 +1,13 @@
 ---
 paths:
-  - 'apps/web/src/app/features/provider-onboarding-v2/**'
-  - 'apps/web/src/app/components/provider/**'
-  - 'apps/web/src/app/hooks/provider/**'
-  - 'apps/web/src/lib/api.ts'
-  - 'apps/api/src/modules/provider/onboarding/**'
-  - 'packages/contracts/**'
-  - 'tests/**/provider*onboarding*'
-  - 'docs/provider-experience-v2/**'
+  - "apps/web/src/app/features/provider-onboarding-v2/**"
+  - "apps/web/src/app/components/provider/**"
+  - "apps/web/src/app/hooks/provider/**"
+  - "apps/web/src/lib/api.ts"
+  - "apps/api/src/modules/provider/onboarding/**"
+  - "packages/contracts/**"
+  - "tests/**/provider*onboarding*"
+  - "docs/provider-experience-v2/**"
 ---
 
 # Provider Onboarding V2 — Mandatory Implementation Rule

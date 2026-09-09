@@ -1,5 +1,23 @@
 # Running the Provider Onboarding V2 mandate in Claude Code
 
+> **Status (Sprint 09B.29, Phase 1): steps 1 and 2 are done.** The four reference
+> files were moved into `docs/provider-experience-v2/reference/` with `git mv` and
+> SHA-256 proof that their contents are unchanged, and the rule now lives at
+> `.claude/rules/provider-onboarding-v2.md`. Evidence:
+> `SPRINT_09B29_BASELINE.md` §2.
+>
+> **Conflict C5 is resolved (Phase 3 closure).** `.claude/` was gitignored, so
+> the rule survived in version control only as a hand-copied duplicate in this
+> directory — and the two had already begun to drift (YAML quote style).
+>
+> `.gitignore` now carries a narrow exception that un-ignores
+> `.claude/rules/*.md` and nothing else, so the rule the agent actually loads is
+> the one under version control. The duplicate
+> (`provider-onboarding-v2-claude-rule.md`) has been deleted.
+>
+> **Canonical, single source of truth:** `.claude/rules/provider-onboarding-v2.md`
+> (SHA-256 `a1185140d002ced0e63473ee9eeafe22d5c253b02a8cc85c59fb5856d2b30baa`).
+
 ## 1. Add the approved references to the repository
 
 Create this directory:
@@ -23,15 +41,18 @@ Keep the existing design contract here:
 docs/provider-experience-v2/UX_UI_DESIGN_SYSTEM.md
 ```
 
-## 2. Add the persistent Claude rule
+## 2. The persistent Claude rule
 
-Copy `provider-onboarding-v2-claude-rule.md` to:
+The rule is already in the repository, at its canonical path:
 
 ```text
 .claude/rules/provider-onboarding-v2.md
 ```
 
-Commit that rule with the implementation so every future Claude Code session working on these paths receives the same constraints.
+Nothing to copy. It is version-controlled through the narrow `.gitignore`
+exception described above, so every future Claude Code session working on these
+paths receives the same constraints — and there is exactly one copy to keep
+current.
 
 ## 3. Confirm Claude loaded the project context
 
