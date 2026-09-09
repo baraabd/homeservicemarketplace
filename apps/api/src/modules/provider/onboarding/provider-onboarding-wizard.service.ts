@@ -1087,6 +1087,11 @@ export class ProviderOnboardingWizardService {
       missing: providerActionIssues(issues),
       awaitingReview: moderationIssues(issues),
       data: this.toData(ctx),
+      // Sprint 09B.29 Phase 4 — what `version` is a version OF. A client that
+      // compares bare integers across two different drafts (two providers, or
+      // two generations of one provider's draft after a row is recreated) is
+      // comparing values that were never on the same scale.
+      draftId: ctx.relations.onboardingDraft?.id ?? null,
       version: ctx.relations.onboardingDraft?.version ?? 0,
       policyVersion:
         ctx.relations.onboardingDraft?.policyVersion ?? CURRENT_ONBOARDING_POLICY_VERSION,

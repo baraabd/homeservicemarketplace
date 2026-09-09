@@ -1,7 +1,7 @@
 import { AlertTriangle, CloudOff, RefreshCw } from 'lucide-react';
 
 import { EXIT_COPY, type Lang } from '../copy/exit-copy';
-import { isRetryable, type ExitState } from '../autosave/useOnboardingExit';
+import { isRetryable, isUploadFailure, type ExitState } from '../autosave/useOnboardingExit';
 
 // Sprint 9B.28 — why the provider is still on this screen.
 //
@@ -23,23 +23,34 @@ interface ExitBlockedNoticeProps {
   lang: Lang;
   onRetry: () => void;
   onDismiss: () => void;
+  /** Leave without the failed upload. Sprint 09B.29 Phase 4. */
+  onDiscard: () => void;
 }
 
-export function ExitBlockedNotice({ state, lang, onRetry, onDismiss }: ExitBlockedNoticeProps) {
+export function ExitBlockedNotice({
+  state,
+  lang,
+  onRetry,
+  onDismiss,
+  onDiscard,
+}: ExitBlockedNoticeProps) {
   const copy = EXIT_COPY[lang];
   if (state.kind !== 'blocked') return null;
 
   const { result } = state;
   const conflict = result.reason === 'conflict';
   const offline = result.reason === 'offline';
+  const uploadFailed = isUploadFailure(result);
 
-  const body = conflict
-    ? copy.blockedConflict
-    : offline
-      ? copy.blockedOffline
-      : result.reason === 'not-loaded'
-        ? copy.blockedNotLoaded
-        : copy.blockedError;
+  const body = uploadFailed
+    ? copy.blockedUpload
+    : conflict
+      ? copy.blockedConflict
+      : offline
+        ? copy.blockedOffline
+        : result.reason === 'not-loaded'
+          ? copy.blockedNotLoaded
+          : copy.blockedError;
 
   return (
     <div
@@ -103,6 +114,28 @@ export function ExitBlockedNotice({ state, lang, onRetry, onDismiss }: ExitBlock
             style={{ fontSize: '13px', fontWeight: 600, minHeight: '44px' }}
           >
             {copy.retry}
+          </button>
+        ) : null}
+
+        {uploadFailed ? (
+          // Leaving WITHOUT the photo, and named for what it gives up.
+          //
+          // Retrying is not offered here: the exit cannot re-run an upload,
+          // only the uploader can, and it still has the file and its own retry
+          // control on the screen behind this notice. Offering a Retry that
+          // re-ran the flush would look like it was re-trying the photo and
+          // would resolve nothing.
+          //
+          // This is also the ONLY thing that clears the failure, so pressing
+          // Close a second time cannot become the discard by accident.
+          <button
+            type="button"
+            onClick={onDiscard}
+            data-testid="onboarding-exit-discard"
+            className="rounded-xl bg-amber-700 px-3 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            style={{ fontSize: '13px', fontWeight: 600, minHeight: '44px' }}
+          >
+            {copy.discardUpload}
           </button>
         ) : null}
 

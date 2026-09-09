@@ -53,7 +53,27 @@ import {
 
 const ACCEPTED = 'image/jpeg,image/png,image/webp';
 
-export function PortfolioSection() {
+export interface PortfolioSectionProps {
+  /**
+   * Register a portfolio upload with the onboarding exit contract.
+   *
+   * Sprint 09B.29 Phase 4. A portfolio upload is a standalone atomic mutation
+   * — it does not go through the autosave queue — so without this the exit
+   * gate saw nothing in flight and let the provider leave mid-upload. The
+   * presign had already reserved a key and the PUT may already have landed;
+   * what was lost was the attach, which is precisely the window that strands
+   * an object in storage (O-4).
+   *
+   * INJECTED, not read from context. This component is mounted on the provider
+   * profile screen as well as inside onboarding, and a context hook here would
+   * either throw there or need an optional variant whose only purpose is to
+   * paper over a wiring mistake. Absent means "no exit contract to join",
+   * which is the correct state outside onboarding rather than a degraded one.
+   */
+  trackWork?: (work: Promise<unknown>) => void;
+}
+
+export function PortfolioSection({ trackWork }: PortfolioSectionProps = {}) {
   const { lang, dir } = useLang();
   const t = PORTFOLIO_COPY[lang];
 
@@ -102,9 +122,29 @@ export function PortfolioSection() {
       // server's sentence: that arrives in one language whatever the UI is
       // set to, and a provider reading Arabic would get English.
       setErrorCode(portfolioErrorCode(err) ?? 'UPLOAD_FAILED');
+      // Sprint 09B.29 Phase 4 — RETHROW after rendering the failure.
+      //
+      // The screen already shows the error and its retry, so nothing more is
+      // owed to the user here. What the rethrow is for is the coordinator: a
+      // resolved promise would tell it this upload FINISHED, and it would
+      // release the provider into a navigation that silently dropped the
+      // image. `trackUpload` below is the only caller and terminates the
+      // rejection, so this never becomes an unhandled rejection.
+      throw err;
     } finally {
       setProgress(null);
     }
+  }
+
+  /**
+   * Register an upload with the exit contract, then end the chain.
+   *
+   * Outside onboarding `trackWork` is absent and this is simply the place the
+   * rejection stops.
+   */
+  function trackUpload(work: Promise<unknown>): void {
+    trackWork?.(work);
+    void work.catch(() => {});
   }
 
   function move(index: number, delta: number) {
@@ -353,7 +393,7 @@ export function PortfolioSection() {
               <Button
                 tone="provider"
                 state={progress !== null ? 'loading' : !consent ? 'disabled' : 'default'}
-                onClick={() => void runUpload(pendingFile)}
+                onClick={() => trackUpload(runUpload(pendingFile))}
               >
                 {t.addButton}
               </Button>

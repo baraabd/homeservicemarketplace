@@ -44,6 +44,19 @@ interface AvatarUploaderProps {
    *  caller can seed its cache rather than refetch. */
   onSaved: (view: unknown) => void;
   disabled?: boolean;
+  /**
+   * Register the whole upload with the onboarding exit contract.
+   *
+   * Sprint 09B.29 Phase 4 — INJECTED, not reached for. This component is
+   * rendered inside onboarding today and its own unit suite renders it bare;
+   * a context lookup here would make it care where it is mounted, and would
+   * add a third hook export to the coordinator module for one caller's
+   * benefit. The screen that already holds the coordinator passes this in.
+   *
+   * Omitted outside onboarding, where there is no exit contract to join —
+   * which is correct rather than a degraded mode.
+   */
+  trackWork?: (work: Promise<unknown>) => void;
 }
 
 export function AvatarUploader({
@@ -52,6 +65,7 @@ export function AvatarUploader({
   lang,
   onSaved,
   disabled = false,
+  trackWork,
 }: AvatarUploaderProps) {
   const copy = AVATAR_COPY[lang];
   const [state, setState] = useState<UploadState>({ kind: 'idle' });
@@ -77,6 +91,52 @@ export function AvatarUploader({
   // the retry button reaches it without the declaration referring to itself.
   const runRef = useRef<((file: File, turns: number) => void) | null>(null);
   const removeRef = useRef<(() => void) | null>(null);
+
+  // Sprint 09B.29 Phase 4 — THE VERSION IS READ WHEN THE WRITE HAPPENS.
+  //
+  // `finalizeAvatar` and `removeAvatar` both go through
+  // `patchStep('IDENTITY', …)`, under the same optimistic lock as every text
+  // field. Reading `version` out of the closure meant presenting the value as
+  // it was when the file was PICKED — seconds, and one whole upload, earlier.
+  //
+  // A provider who carries on typing their name while the photo uploads moves
+  // the draft 3 -> 4 underneath it. Finalize then presented 3, the server
+  // answered 409, and bytes already sitting in object storage were never
+  // attached to anything: an upload bar that filled to the end and then
+  // reported failure.
+  //
+  // A ref rather than a dependency because the in-flight invocation of `run`
+  // cannot be re-created mid-upload; it has to be able to READ forward.
+  const versionRef = useRef(version);
+  useEffect(() => {
+    versionRef.current = version;
+  }, [version]);
+
+  /**
+   * Register the WHOLE operation, not the byte transfer.
+   *
+   * The promise handed over covers process → presign → PUT → finalize →
+   * `onSaved` (which seeds the authoritative view and version). Registering
+   * only the PUT would release navigation in the window between the bytes
+   * landing and the server attaching them, which is exactly the window that
+   * strands an object in storage.
+   */
+  const track = useCallback(
+    <T,>(work: Promise<T>): void => {
+      trackWork?.(work);
+      // The chain ENDS here, always.
+      //
+      // `run` rethrows so the coordinator can tell a failed upload from a
+      // finished one, and the component has already put that failure on screen
+      // with its own retry. Nothing further is owed to this promise — but a
+      // rejection with no handler is an unhandled rejection, which is a crash
+      // under strict runtimes and a noisy warning everywhere else. Outside
+      // onboarding there is no coordinator at all, so this is the only
+      // handler there is.
+      void work.catch(() => {});
+    },
+    [trackWork],
+  );
 
   const setPreviewUrl = useCallback((url: string | null) => {
     // Object URLs are a leak if they are not revoked, and this component can
@@ -121,7 +181,7 @@ export function AvatarUploader({
         setState({ kind: 'finalizing' });
         const view = await finalizeAvatar({
           key: keyFromUploadUrl(presigned.uploadUrl),
-          version,
+          version: versionRef.current,
         });
 
         onSaved(view);
@@ -140,15 +200,29 @@ export function AvatarUploader({
           // presigned URL expires and a half-finished upload is not resumable.
           retry: () => runRef.current?.(file, quarterTurns),
         });
+        // Sprint 09B.29 Phase 4 — AND TELL THE EXIT CONTRACT.
+        //
+        // Swallowing this here is what let a failed upload look like a
+        // completed one to `trackExternalWork`: the promise resolved, the
+        // coordinator counted the work done, and the provider was released
+        // into a navigation that discarded the photo without ever saying so.
+        //
+        // The rethrow is consumed by `track` below, which is the only caller;
+        // it never reaches an unhandled rejection.
+        throw err;
       }
     },
-    [onSaved, setPreviewUrl, version],
+    // `version` is deliberately NOT a dependency: it is read through
+    // `versionRef` at write time, and re-creating this callback mid-upload
+    // would not help the invocation already running.
+    [onSaved, setPreviewUrl],
   );
 
   // Kept current so the retry closures above reach the latest callbacks.
   useEffect(() => {
-    runRef.current = (file, quarterTurns) => void run(file, quarterTurns);
-  }, [run]);
+    // Retry is a fresh full operation, so it is tracked like any other.
+    runRef.current = (file, quarterTurns) => track(run(file, quarterTurns));
+  }, [run, track]);
 
   const onPick = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -160,9 +234,9 @@ export function AvatarUploader({
       original.current = file;
       setHasPicked(true);
       setTurns(0);
-      void run(file, 0);
+      track(run(file, 0));
     },
-    [run],
+    [run, track],
   );
 
   const onRotate = useCallback(() => {
@@ -170,13 +244,13 @@ export function AvatarUploader({
     if (!file) return;
     const next = (turns + 1) % 4;
     setTurns(next);
-    void run(file, next);
-  }, [run, turns]);
+    track(run(file, next));
+  }, [run, track, turns]);
 
   const onRemove = useCallback(async () => {
     try {
       setState({ kind: 'finalizing' });
-      const view = await removeAvatar(version);
+      const view = await removeAvatar(versionRef.current);
       original.current = null;
       setHasPicked(false);
       setTurns(0);
@@ -186,11 +260,11 @@ export function AvatarUploader({
     } catch {
       setState({ kind: 'failed', code: 'REMOVE_FAILED', retry: () => removeRef.current?.() });
     }
-  }, [onSaved, setPreviewUrl, version]);
+  }, [onSaved, setPreviewUrl]);
 
   useEffect(() => {
-    removeRef.current = () => void onRemove();
-  }, [onRemove]);
+    removeRef.current = () => track(onRemove());
+  }, [onRemove, track]);
 
   const busy =
     state.kind === 'processing' || state.kind === 'uploading' || state.kind === 'finalizing';
@@ -292,7 +366,7 @@ export function AvatarUploader({
               testId="avatar-remove"
               icon={<Trash2 size={16} aria-hidden="true" />}
               label={copy.remove}
-              onClick={() => void onRemove()}
+              onClick={() => track(onRemove())}
               disabled={disabled || busy}
             />
           </>

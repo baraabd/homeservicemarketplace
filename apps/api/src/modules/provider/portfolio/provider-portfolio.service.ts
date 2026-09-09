@@ -143,15 +143,41 @@ export class ProviderPortfolioService {
 
     const created = await this.tx.run(async (trx) => {
       const client = trx as unknown as typeof this.prisma.client;
-      const asset = await client.mediaAsset.create({
-        data: {
-          visibility: 'PUBLIC',
+      // Sprint 09B.29 Phase 4 — CLAIM the reservation, do not mint a new row.
+      //
+      // The MediaAsset is created at PRESIGN now, before the upload URL is
+      // issued, so that an upload abandoned between the PUT and this call is
+      // still discoverable and can be swept (O-4). Creating a second row here
+      // would collide on the unique storageKey, and — worse — would mean the
+      // only row for an abandoned upload never existed.
+      //
+      // The claim is conditional on owner + key + PUBLIC + unclaimed, so a
+      // client cannot attach a key it was never issued, cannot attach another
+      // provider's reservation, and two concurrent creates resolve to one.
+      const claimedAsset = await client.mediaAsset.updateMany({
+        where: {
           storageKey: input.storageKey,
-          declaredMimeType: input.contentType,
-          sizeBytes: input.sizeBytes,
           ownerUserId: userId,
-          uploadCompletedAt: new Date(),
+          visibility: 'PUBLIC',
+          uploadCompletedAt: null,
+          deletedAt: null,
         },
+        data: { uploadCompletedAt: new Date() },
+      });
+      if (claimedAsset.count !== 1) {
+        // No reservation to claim: either it was never made, it belongs to
+        // somebody else, or it is already attached. All three are the same
+        // answer to the caller, so the surface cannot be probed for which.
+        throw new AppError(
+          'VALIDATION_ERROR',
+          'We could not find that upload. Please try again.',
+          400,
+          { reason: 'UPLOAD_NOT_RESERVED' },
+        );
+      }
+      const asset = await client.mediaAsset.findUniqueOrThrow({
+        where: { storageKey: input.storageKey },
+        select: { id: true },
       });
       return client.providerPortfolioItem.create({
         data: {
@@ -282,7 +308,27 @@ export class ProviderPortfolioService {
         // never be able to mark a RESTRICTED evidence asset for cleanup, even
         // if a mis-linked row pointed at one.
         where: { id: item.mediaAssetId, ownerUserId: userId, visibility: 'PUBLIC' },
-        data: { deletedAt: now, deletionReason: PORTFOLIO_DELETION_REASON },
+        // Sprint 09B.29 Phase 4 — INTENT, NOT FACT.
+        //
+        // This used to write `deletedAt` here. `schema.prisma` says of that
+        // column: "Set only after the object is confirmed gone from storage.
+        // Marking first would produce rows claiming a deletion that did not
+        // happen." That is exactly what it did — and because no sweep existed
+        // for PUBLIC media, the bytes stayed in the bucket and stayed readable
+        // at their URL while the database asserted they were gone. A false
+        // retention record is worse than a leak, because it is the record a
+        // data-protection answer would be drawn from.
+        //
+        // `retainUntil` is the column for "eligible for deletion", and the
+        // schema indexes `[deletedAt, retainUntil]` precisely for the query
+        // "due for deletion and not yet deleted". `now` because a provider
+        // removing their own photo asks for it to go immediately; the worker's
+        // grace period does not apply to a deliberate removal, only to
+        // reservations that may still be mid-upload.
+        //
+        // `PublicMediaCleanupService` writes `deletedAt`, after `deleteObject`
+        // has confirmed the bytes are gone.
+        data: { retainUntil: now, deletionReason: PORTFOLIO_DELETION_REASON },
       });
 
       // Close the gap the removal left, so positions stay dense and a client

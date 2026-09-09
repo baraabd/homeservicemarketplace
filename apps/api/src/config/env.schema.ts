@@ -150,6 +150,31 @@ const baseEnvSchema = z.object({
   // scanner, so the batch is deliberately small.
   EVIDENCE_SCAN_BATCH_SIZE: z.coerce.number().int().positive().default(25),
 
+  // Sprint 09B.29 Phase 4 — the PUBLIC media cleanup sweep.
+  //
+  // Avatars and portfolio images had no retirement path at all: a replaced
+  // avatar, a removed one, a deleted portfolio image and any upload abandoned
+  // between the PUT and the finalize all stayed in the bucket permanently. The
+  // portfolio delete additionally wrote `MediaAsset.deletedAt` immediately, so
+  // the database asserted bytes were gone while they were still readable.
+  //
+  // Default OFF, and for a stronger reason than the other workers: this one
+  // DELETES BYTES. Off means objects accumulate — a leak, and a visible one in
+  // a storage bill. On-by-default with a bug in the eligibility query means
+  // somebody's photos are gone. The failure direction is chosen deliberately.
+  PUBLIC_MEDIA_CLEANUP_WORKER_ENABLED: trueish.default(false),
+  // Fifteen minutes. Nothing waits on this — no provider is watching a screen
+  // for it to finish — so it is paced like the expiry sweep, not the scanner.
+  PUBLIC_MEDIA_CLEANUP_INTERVAL_MS: z.coerce.number().int().positive().default(900_000),
+  // Objects per pass. Each one is a storage round trip.
+  PUBLIC_MEDIA_CLEANUP_BATCH_SIZE: z.coerce.number().int().positive().default(50),
+  // How long AFTER a reservation expires before its object is considered
+  // abandoned. Deliberately generous: an unfinished reservation may be a dead
+  // upload, or a live one on a slow connection, and deleting the object out
+  // from under a provider watching a progress bar is worse than the leak.
+  // Twenty-four hours on top of the presign TTL.
+  PUBLIC_MEDIA_CLEANUP_RESERVATION_GRACE_MS: z.coerce.number().int().positive().default(86_400_000),
+
   // ── Sprint 9: restricted evidence retention (ADR 0012) ────────────────
   // Engineering defaults chosen to be conservative-SHORT. They are not legal
   // advice; legal review is recorded as outstanding in the sprint report.

@@ -158,6 +158,10 @@ export function onboardingDraftFixture(
 
     data: onboardingDataFixture(),
 
+    // Sprint 09B.29 Phase 4 — which draft `version` is a version OF. The
+    // client compares versions only within one draftId, because two drafts'
+    // integers are not on the same scale.
+    draftId: 'draft-fixture',
     version: 3,
     policyVersion: 'v3',
     lastSavedAt: '2026-08-24T10:00:00.000Z',

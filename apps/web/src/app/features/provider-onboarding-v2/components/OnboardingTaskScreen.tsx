@@ -142,6 +142,7 @@ export function OnboardingTaskScreen() {
           lang={lang}
           onRetry={exit.retry}
           onDismiss={exit.dismiss}
+          onDiscard={exit.discard}
         />
 
         <p className="break-words text-slate-500 dark:text-slate-400" style={{ fontSize: '13px' }}>

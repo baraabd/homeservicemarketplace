@@ -53,6 +53,61 @@ export function useOnboardingDraft(options: { enabled?: boolean } = {}) {
     // mutation seeds the cache. Refetching on focus would replace a form the
     // provider is mid-edit in with the server's copy.
     refetchOnWindowFocus: false,
+    // Sprint 09B.29 Phase 4 — THE CACHE SLOT MUST NOT GO BACKWARDS.
+    //
+    // This slot has two writers: this query, and the autosave coordinator's
+    // `setQueryData` after a successful PATCH. React Query has no idea the
+    // second one exists, so a fetch result always overwrites whatever is
+    // there — including a NEWER view written while the request was open.
+    //
+    // A GET issued when the task mounted, resolving after a PATCH that
+    // advanced the draft, therefore put the pre-PATCH version back. The next
+    // edit then presented a token the server had already moved past, the
+    // server answered 409, and the coordinator DROPS a conflicted payload by
+    // design (re-sending it would overwrite whoever else wrote). The
+    // provider's typing was discarded and the chip told them to reload.
+    //
+    // `structuralSharing` is the documented hook for deciding what actually
+    // lands in the cache. Keeping the higher version makes the slot
+    // monotonic, which is the invariant the optimistic lock assumes and was
+    // silently relying on.
+    //
+    // A stale read is not a reason to forget a write the server committed.
+    //
+    // SCOPED TO `draftId`, AND THAT SCOPE IS THE SAFETY PROPERTY.
+    //
+    // Comparing bare versions would be worse than the bug it fixes. This slot
+    // is keyed by RESOURCE, not by provider, so two values in it can belong to
+    // two different people or to two generations of one draft:
+    //
+    //   cross-provider   provider A at version 50, then a sign-out that left
+    //                    anything behind, then provider B at version 3. A
+    //                    version-only rule keeps A — and B is shown, and could
+    //                    submit, another provider's application.
+    //   reset draft      a draft row deleted and recreated restarts at 0. A
+    //                    version-only rule pins the client to the dead
+    //                    generation until the cache is dropped.
+    //
+    // So versions are only compared when they are versions of the SAME draft.
+    // A different id is not a stale read, it is a different document, and it
+    // wins outright. A null id on either side means the server has no draft
+    // row to compare and the newer response is taken as-is.
+    //
+    // The sign-out path (`purgeNonAuthQueries`) already removes this key, so
+    // in a correct session the cross-provider case never arises. This does not
+    // rely on that: a guard whose safety depends on a distant module staying
+    // correct is a guard that fails the first time that module changes.
+    structuralSharing: (prev, next) => {
+      const previous = prev as ProviderOnboardingDraftView | undefined;
+      const incoming = next as ProviderOnboardingDraftView;
+      const sameDraft =
+        previous != null &&
+        previous.draftId != null &&
+        incoming.draftId != null &&
+        previous.draftId === incoming.draftId;
+      if (sameDraft && incoming.version < previous.version) return previous;
+      return incoming;
+    },
     // 401, 403 and 404 are ANSWERS, not transient failures.
     //
     //   401 — the session is gone. The api client already fired

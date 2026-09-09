@@ -80,6 +80,34 @@ export abstract class StoragePort {
    * thing we validated.
    */
   abstract publicUrlForKey(key: string): string;
+
+  /**
+   * Remove one object. Idempotent.
+   *
+   * Sprint 09B.29 Phase 4 — the public side had no way to delete anything.
+   * `RestrictedObjectStorage` has had `deleteObject` since Sprint 9B, and
+   * `EvidenceCleanupService` uses it; public media had no equivalent, so an
+   * avatar or portfolio object that was replaced, removed, or uploaded and
+   * then abandoned stayed in the bucket for ever.
+   *
+   * IDEMPOTENT BY CONTRACT, and that is load-bearing rather than a
+   * convenience. The cleanup worker deletes the object BEFORE it records the
+   * deletion, so a crash between the two leaves an object that is already gone
+   * and a row that still asks for it to go. The next pass must treat that as
+   * success or the row can never be retired.
+   *
+   * "Already absent" is therefore success. Everything else — denied, refused,
+   * unreachable — is a failure, and must stay a failure: swallowing a
+   * permission error would let the worker write `deletedAt` for bytes that are
+   * still publicly readable, which is the exact lie this subsystem exists to
+   * stop telling.
+   *
+   * Deliberately NOT on this port: list, and delete-by-prefix. A sweep that
+   * enumerates a bucket derives ownership from a key string; ownership here
+   * comes from `MediaAsset.ownerUserId`, and a prefix scan would be a second
+   * answer to a question that must only have one.
+   */
+  abstract deleteObject(key: string): Promise<void>;
 }
 
 /** DI token. Symbol so two unrelated modules can't accidentally bind

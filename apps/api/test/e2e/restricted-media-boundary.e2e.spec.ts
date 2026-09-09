@@ -7,6 +7,7 @@ import express from 'express';
 jest.setTimeout(30_000);
 
 import { MediaController } from '../../src/modules/media/media.controller';
+import { PublicMediaLedgerService } from '../../src/modules/media/public-media-ledger.service';
 import { LocalDiskStorageAdapter } from '../../src/infrastructure/storage/local-disk-storage.adapter';
 import { STORAGE_PORT } from '../../src/infrastructure/storage/storage.port';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
@@ -66,6 +67,25 @@ async function bootApp(): Promise<INestApplication> {
       // testing Nest's default handler rather than the route's actual wire
       // behaviour.
       { provide: AppConfigService, useValue: { get: () => 'test' } },
+      // Sprint 09B.29 Phase 4 — MediaController now reserves a ledger row at
+      // presign. This suite drives the GET boundary only and has no database,
+      // so the ledger is a throwing stub: if a read path ever starts touching
+      // it, that is a behaviour change and these tests will say so rather than
+      // quietly passing against a permissive double.
+      {
+        provide: PublicMediaLedgerService,
+        useValue: {
+          reserve: () => {
+            throw new Error('the restricted-media read boundary must not reserve');
+          },
+          claim: () => {
+            throw new Error('the restricted-media read boundary must not claim');
+          },
+          retire: () => {
+            throw new Error('the restricted-media read boundary must not retire');
+          },
+        },
+      },
       { provide: APP_FILTER, useClass: AllExceptionsFilter },
     ],
   })

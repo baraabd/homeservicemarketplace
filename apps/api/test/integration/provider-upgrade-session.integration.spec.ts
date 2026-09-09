@@ -11,6 +11,7 @@ import { INestApplication, VersioningType } from '@nestjs/common';
 import request from 'supertest';
 
 import { fixtureEmailDomain } from '../support/db-isolation';
+import { clearAuthRateBudget } from '../support/rate-limit-reset';
 import { makeTestSecret } from '../support/test-secrets';
 
 // Derived, never written: a literal here is indistinguishable from a real
@@ -173,18 +174,17 @@ d('Provider upgrade → session rotation → provider access (real Postgres / Re
     };
   }
 
-  /** Clear the registration budget for loopback plus one address. */
+  /** Clear the auth budgets for loopback plus one address.
+   *
+   *  Sprint 09B.29 Phase 4 widened this from the registration bucket to the
+   *  generic `@Throttle` one as well: this suite registers and signs in a
+   *  fresh account per test, and the login budget is 10 per minute for the
+   *  whole IP — shared with every other integration suite running beside it.
+   *  See test/support/rate-limit-reset.ts for why this cannot hide a throttle
+   *  regression. */
   async function clearRegistrationBudget(email?: string): Promise<void> {
     const { RedisService } = require('../../src/infrastructure/redis/redis.service');
-    const redis = app.get(RedisService).getClient();
-    const identities = ['127.0.0.1', '::1', '::ffff:127.0.0.1', ...(email ? [email] : [])];
-    const keys = identities.flatMap((id) => [
-      `rl:auth:register:ip:${id}`,
-      `rl:auth:register:ip:${id}:blocked`,
-      `rl:auth:register:email:${id}`,
-      `rl:auth:register:email:${id}:blocked`,
-    ]);
-    await redis.del(...keys);
+    await clearAuthRateBudget(app.get(RedisService).getClient(), email ? [email] : []);
   }
 
   /** Remove only what THIS suite created, scoped by its own email domain, in

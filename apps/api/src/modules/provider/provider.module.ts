@@ -7,6 +7,8 @@ import { MarketplacePreviewController } from './preview/marketplace-preview.cont
 import { MarketplacePreviewService } from './preview/marketplace-preview.service';
 import { Module } from '@nestjs/common';
 
+import { PublicMediaLedgerModule } from '../media/public-media-ledger.module';
+
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
 import { AuthorizationModule } from '../iam/authorization/authorization.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -76,6 +78,12 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     // StoragePort. Restricted evidence storage is a DIFFERENT token and is
     // deliberately not reachable from here.
     StorageModule,
+    // Sprint 09B.29 Phase 4 — the public-media reservation ledger. Avatar
+    // finalize CLAIMS the row created at presign, and a replaced or removed
+    // photo is RETIRED through it so the cleanup sweep can delete the bytes.
+    // Its own module because the portfolio and media modules need it too, and
+    // it depends on nothing but Prisma.
+    PublicMediaLedgerModule,
   ],
   controllers: [
     ProviderController,

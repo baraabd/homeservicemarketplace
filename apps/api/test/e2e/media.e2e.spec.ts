@@ -31,6 +31,7 @@ import { LocalDiskStorageAdapter } from '../../src/infrastructure/storage/local-
 import { S3StorageAdapter } from '../../src/infrastructure/storage/s3-storage.adapter';
 import { STORAGE_PORT } from '../../src/infrastructure/storage/storage.port';
 import { MediaController } from '../../src/modules/media/media.controller';
+import { PublicMediaLedgerService } from '../../src/modules/media/public-media-ledger.service';
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
 import { makeTestSecret } from '../support/test-secrets';
@@ -57,6 +58,24 @@ function makeConfig(): AppConfigService {
     },
   } as unknown as AppConfigService;
 }
+
+// Sprint 09B.29 Phase 4 — every presign now RESERVES the key in the media
+// ledger before the upload URL is handed out, so an upload abandoned after the
+// PUT is still discoverable by the cleanup sweep.
+//
+// This suite has no database, so the ledger is a recorder rather than the real
+// service — its conditional-claim semantics are proved against real Postgres in
+// public-media-ledger.service.spec.ts and the Phase 4 integration suite. What
+// it is used for HERE is the ordering property those suites cannot see from the
+// wire: that a reservation exists for every key the presign response contains.
+const reservations: Array<{ userId: string; storageKey: string }> = [];
+const fakeLedger = {
+  reserve: jest.fn(async (input: { userId: string; storageKey: string }) => {
+    reservations.push({ userId: input.userId, storageKey: input.storageKey });
+  }),
+  claim: jest.fn(async () => null),
+  retire: jest.fn(async () => undefined),
+};
 
 let fakeAuthedUser: { id: string; sessionId: string; jti: string; roles: string[] } | null = null;
 
@@ -91,6 +110,7 @@ async function bootApp(): Promise<INestApplication> {
         inject: [LocalDiskStorageAdapter],
         useFactory: (local: LocalDiskStorageAdapter) => local,
       },
+      { provide: PublicMediaLedgerService, useValue: fakeLedger },
       { provide: APP_FILTER, useFactory: () => new AllExceptionsFilter(config) },
     ],
   })
@@ -135,6 +155,8 @@ describe('Media upload pipeline (e2e) — Sprint 7.x', () => {
 
   beforeEach(() => {
     fakeAuthedUser = null;
+    reservations.length = 0;
+    fakeLedger.reserve.mockClear();
   });
 
   describe('POST /v1/media/presigned-url', () => {
@@ -167,6 +189,83 @@ describe('Media upload pipeline (e2e) — Sprint 7.x', () => {
         );
         expect(new Date(item.expiresAt).toString()).not.toBe('Invalid Date');
       }
+    });
+
+    // ── Sprint 09B.29 Phase 4 — the reservation happens at presign ───────
+
+    it('RESERVES an avatar key before returning the upload URL', async () => {
+      fakeAuthedUser = { id: 'u-1', sessionId: 's', jti: 'j', roles: ['customer', 'provider'] };
+      const res = await request(app.getHttpServer())
+        .post('/v1/media/presigned-url')
+        .send({ purpose: 'avatar', items: [{ contentType: 'image/jpeg', sizeBytes: 1024 }] });
+
+      expect(res.status).toBe(200);
+      // The exact key that was handed out, not merely 'a reservation happened'.
+      // A reservation for some other key would leave this upload invisible to
+      // the sweep, which is the whole failure being closed here (O-1).
+      const key = new URL(res.body.items[0].fileUrl).pathname.replace('/v1/media/files/', '');
+      expect(reservations).toEqual([{ userId: 'u-1', storageKey: key }]);
+    });
+
+    it('RESERVES a portfolio key before returning the upload URL', async () => {
+      fakeAuthedUser = { id: 'u-2', sessionId: 's', jti: 'j', roles: ['customer', 'provider'] };
+      const res = await request(app.getHttpServer())
+        .post('/v1/media/presigned-url')
+        .send({ purpose: 'portfolio', items: [{ contentType: 'image/jpeg', sizeBytes: 1024 }] });
+
+      expect(res.status).toBe(200);
+      const key = new URL(res.body.items[0].fileUrl).pathname.replace('/v1/media/files/', '');
+      expect(reservations).toEqual([{ userId: 'u-2', storageKey: key }]);
+    });
+
+    it('reserves once per item in a batch', async () => {
+      fakeAuthedUser = { id: 'u-3', sessionId: 's', jti: 'j', roles: ['customer', 'provider'] };
+      const res = await request(app.getHttpServer())
+        .post('/v1/media/presigned-url')
+        .send({
+          purpose: 'portfolio',
+          items: [
+            { contentType: 'image/jpeg', sizeBytes: 1024 },
+            { contentType: 'image/png', sizeBytes: 2048 },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(reservations).toHaveLength(2);
+      // Distinct keys, so a batch cannot collapse two uploads onto one row and
+      // leave the second object unaccounted for.
+      expect(new Set(reservations.map((r) => r.storageKey)).size).toBe(2);
+    });
+
+    it('a ledger failure REFUSES the presign rather than issuing an unaccounted key', async () => {
+      fakeAuthedUser = { id: 'u-4', sessionId: 's', jti: 'j', roles: ['customer', 'provider'] };
+      fakeLedger.reserve.mockRejectedValueOnce(new Error('db down'));
+
+      const res = await request(app.getHttpServer())
+        .post('/v1/media/presigned-url')
+        .send({ purpose: 'avatar', items: [{ contentType: 'image/jpeg', sizeBytes: 1024 }] });
+
+      // Handing out an upload URL we could not record would recreate the exact
+      // invisible-object hole the ledger exists to close, so the await is
+      // load-bearing and this asserts it.
+      expect(res.status).toBeGreaterThanOrEqual(500);
+      expect(res.body.items).toBeUndefined();
+    });
+
+    it('does NOT reserve request media, whose lifecycle is not the public sweep', async () => {
+      fakeAuthedUser = { id: 'u-5', sessionId: 's', jti: 'j', roles: ['customer'] };
+      const res = await request(app.getHttpServer())
+        .post('/v1/media/presigned-url')
+        .send({ items: [{ contentType: 'image/jpeg', sizeBytes: 1024 }] });
+
+      expect(res.status).toBe(200);
+      // Deliberate, and asserted so it cannot drift silently. Request media is
+      // attached as a bare URL in ServiceRequest.mediaUrls[] — nothing ever
+      // claims a MediaAsset row for it — so a reservation here would age into
+      // an 'abandoned' candidate and the sweep would delete LIVE request
+      // photos. Its orphan lifecycle is a separate piece of work, recorded in
+      // SPRINT_09B29_VERIFICATION.md §4.3.
+      expect(reservations).toEqual([]);
     });
 
     // ── Sprint 9B.17 — the avatar purpose ────────────────────────────────

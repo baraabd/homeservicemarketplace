@@ -30,6 +30,13 @@ export interface ExitCopy {
   reload: string;
   /** Abandon the exit and carry on editing. */
   stay: string;
+  /** Body for a binary upload that failed. Retrying belongs to the uploader,
+   *  which still has the file; the exit can only offer to go on without it. */
+  blockedUpload: string;
+  /** Leave WITHOUT the photo that failed. Explicit, and named for what it
+   *  costs — "Leave" alone would not say the photo is the thing being given
+   *  up. */
+  discardUpload: string;
 }
 
 const EN: ExitCopy = {
@@ -49,6 +56,9 @@ const EN: ExitCopy = {
   retry: 'Try again',
   reload: 'Reload and review',
   stay: 'Keep editing',
+  blockedUpload:
+    'Your photo did not finish uploading, so we kept you on this page. Try the upload again, or leave without it.',
+  discardUpload: 'Leave without the photo',
 };
 
 const AR: ExitCopy = {
@@ -63,6 +73,8 @@ const AR: ExitCopy = {
   retry: 'حاول مرة أخرى',
   reload: 'أعد التحميل والمراجعة',
   stay: 'متابعة التحرير',
+  blockedUpload: 'لم يكتمل رفع صورتك، لذلك أبقيناك في هذه الصفحة. أعد المحاولة، أو غادر بدونها.',
+  discardUpload: 'المغادرة بدون الصورة',
 };
 
 export const EXIT_COPY: Record<Lang, ExitCopy> = { en: EN, ar: AR };
