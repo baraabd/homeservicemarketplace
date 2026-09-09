@@ -64,7 +64,7 @@ function BookingTransitionPanel({
 }) {
   if (!bookingId || !bookingStatus) {
     return (
-      <p role="status" className="text-slate-400 text-center py-2" style={{ fontSize: '12px' }}>
+      <p role="status" className="text-pv-muted text-center py-2" style={{ fontSize: '12px' }}>
         {labels.pendingBooking}
       </p>
     );
@@ -224,7 +224,7 @@ export function MyBidsScreen() {
     },
     rejected: {
       bg: 'bg-red-100 dark:bg-red-900/30',
-      text: 'text-red-600 dark:text-red-400',
+      text: 'text-pv-danger',
       label: L.rejected,
     },
   };
@@ -281,7 +281,7 @@ export function MyBidsScreen() {
               >
                 {L.noBids}
               </p>
-              <p className="text-slate-400 mt-1" style={{ fontSize: '13px' }}>
+              <p className="text-pv-muted mt-1" style={{ fontSize: '13px' }}>
                 {L.noBidsSub}
               </p>
             </div>
@@ -315,7 +315,7 @@ export function MyBidsScreen() {
                         {ss.label}
                       </span>
                     </div>
-                    <p className="text-slate-400" style={{ fontSize: '12px' }}>
+                    <p className="text-pv-muted" style={{ fontSize: '12px' }}>
                       {L.for} {bid.seekerName} · {bid.submittedAt}
                     </p>
                   </div>
@@ -323,7 +323,7 @@ export function MyBidsScreen() {
 
                 <div className="flex gap-3 mb-3">
                   <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
-                    <p className="text-slate-400" style={{ fontSize: '10px' }}>
+                    <p className="text-pv-muted" style={{ fontSize: '10px' }}>
                       {L.price}
                     </p>
                     <p
@@ -334,7 +334,7 @@ export function MyBidsScreen() {
                     </p>
                   </div>
                   <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
-                    <p className="text-slate-400" style={{ fontSize: '10px' }}>
+                    <p className="text-pv-muted" style={{ fontSize: '10px' }}>
                       {L.time}
                     </p>
                     <p

@@ -1,5 +1,8 @@
+import { useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import type { ProviderOnboardingHubTask } from '@homeservicemarketplace/contracts';
+
+import { useStaleRoleRecovery } from '../session/useStaleRoleRecovery';
 
 import { ProviderButton, ProviderNotice, ProviderSkeleton } from '../../provider-ui';
 import { useLang } from '../../../i18n/LanguageContext';
@@ -62,6 +65,17 @@ export function OnboardingHubScreen() {
     errorStatus,
   });
 
+  // Sprint 9B.29 — the post-upgrade stale-role transition, recovered once.
+  //
+  // Scoped to `FORBIDDEN` rather than to any failure: this rotates the session,
+  // and doing that for a 500 or a network blip would log providers out of
+  // problems that have nothing to do with their token. On success the hub query
+  // is refetched by name — the hook does not guess which query was refused.
+  const refetchHub = useCallback(() => {
+    void query.refetch();
+  }, [query]);
+  const recovery = useStaleRoleRecovery(view.state === 'FORBIDDEN', refetchHub);
+
   const data = query.data;
   const screen = SCREEN_COPY[lang][view.state];
   const backToProfile = () => navigate('/provider');
@@ -83,6 +97,13 @@ export function OnboardingHubScreen() {
       if (view.state === 'ERROR') return void query.refetch();
       if (view.state === 'UNAUTHORIZED')
         return navigate('/login', { state: { returnTo: '/provider/onboarding' } });
+      // Sprint 9B.29 — a 403 is NOT a sign-in problem, so its CTA does not go
+      // to /login. The automatic recovery has already run once by the time this
+      // is pressable; this hands the provider the same rotation deliberately.
+      if (view.state === 'FORBIDDEN') {
+        recovery.retry();
+        return;
+      }
       return backToProfile();
     };
 

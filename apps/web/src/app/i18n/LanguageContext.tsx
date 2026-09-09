@@ -118,25 +118,26 @@ export function LangToggle() {
         animate={{ left: lang === 'en' ? '2px' : 'calc(50%)' }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
       />
+      {/* Sprint 09B.29 — the colours are semantic tokens, not literals.
+       *
+       * These were hard-coded `#F59E0B` and `#94a3b8`, measuring 2.15:1 and
+       * 2.34:1 against the toggle's own track: a SERIOUS axe violation on every
+       * screen, because this toggle is in the shell header and so appears on
+       * all of them. `--lang-toggle-*` carries the replacement in both themes
+       * (see styles/theme.css for the ratios). */}
       <span
-        className="relative z-10 px-2.5 py-1 rounded-lg transition-colors select-none"
-        style={{
-          fontSize: '11px',
-          fontWeight: 700,
-          color: lang === 'en' ? '#F59E0B' : '#94a3b8',
-          fontFamily: "'Inter', sans-serif",
-        }}
+        className={`relative z-10 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors select-none ${
+          lang === 'en' ? 'text-lang-toggle-active' : 'text-lang-toggle-inactive'
+        }`}
+        style={{ fontFamily: "'Inter', sans-serif" }}
       >
         EN
       </span>
       <span
-        className="relative z-10 px-2.5 py-1 rounded-lg transition-colors select-none"
-        style={{
-          fontSize: '12px',
-          fontWeight: 700,
-          color: lang === 'ar' ? '#F59E0B' : '#94a3b8',
-          fontFamily: "'Cairo', sans-serif",
-        }}
+        className={`relative z-10 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors select-none ${
+          lang === 'ar' ? 'text-lang-toggle-active' : 'text-lang-toggle-inactive'
+        }`}
+        style={{ fontFamily: "'Cairo', sans-serif" }}
       >
         ع
       </span>

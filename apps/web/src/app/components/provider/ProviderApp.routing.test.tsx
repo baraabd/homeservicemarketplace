@@ -34,6 +34,27 @@ import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import { ProviderApp } from './ProviderApp';
 
+// Sprint 09B.29 — resolve the code-split screens BEFORE any assertion window.
+//
+// The same cause documented in `ProviderApp.test.tsx` and
+// `WalletScreen.test.tsx`, in a file the first pass missed. `ProviderApp` loads
+// its tabs with `React.lazy(() => import('./screens/...'))`; under Vitest that
+// is an on-demand ESM transform whose cost lands inside whichever `findBy*`
+// window is open. At full worker concurrency it has exceeded the 5s
+// `asyncUtilTimeout`, and the failure then reads "Unable to find an element
+// with the text: /Available Balance/i" — blaming the product for the bundler.
+// These two files pass in isolation and failed only in the full suite, which is
+// the signature.
+//
+// Nothing is concealed: no timeout is raised, no test is skipped, concurrency
+// is untouched and no retry is added. The transform simply happens outside the
+// window the assertion is timing.
+await import('./screens/LiveJobsScreen');
+await import('./screens/MyBidsScreen');
+await import('./screens/WalletScreen');
+await import('./screens/ProviderProfileScreen');
+await import('./screens/ProviderChatScreen');
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Mode B — the workspace routing contract.
 //

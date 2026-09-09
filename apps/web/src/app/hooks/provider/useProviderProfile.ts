@@ -1,15 +1,22 @@
+import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import type {
   ApplyForCategoryRequest,
   ApplyForCategoryResponse,
   GetProviderProfileResponse,
+  RoleName,
   UpdateProviderAvailabilityRequest,
   UpdateProviderAvailabilityResponse,
   UpdateProviderProfileRequest,
   UpdateProviderProfileResponse,
   UpgradeToProviderResponse,
 } from '@homeservicemarketplace/contracts';
+
+import {
+  classifyRecovery,
+  type RecoveryState,
+} from '../../features/provider-onboarding-v2/session/stale-role-recovery';
 
 import {
   applyForCategory,
@@ -19,7 +26,7 @@ import {
   upgradeToProvider,
 } from '../../../lib/provider/provider-profile-api';
 import { providerQueryKeys } from '../../../lib/provider/query-keys';
-import { refresh as refreshSession } from '../../../lib/auth-api';
+import { getMe, refresh as refreshSession } from '../../../lib/auth-api';
 
 // React Query hook for the authenticated user's Provider profile. A
 // 403 (no provider role) and a 404 (provider role but no profile row
@@ -86,30 +93,91 @@ export function useProviderProfile() {
  * committed server-side either way, and the ordinary 401 → refresh → retry
  * path recovers the session on the next call. Throwing here would report a
  * successful upgrade as a failure and invite the provider to run it again.
+ *
+ * Sprint 9B.29 — the rotation is no longer SILENT, and it is VERIFIED.
+ *
+ * 9B.28 wrapped the rotation in `try { … } catch {}`. The reasoning given was
+ * sound as far as it went — the role is committed server-side either way, so
+ * failing the upgrade would be untrue — but swallowing the error left the
+ * provider with a session that cannot open the thing the button just created,
+ * and nothing on screen said so. They were navigated into a 403 and told their
+ * session had expired.
+ *
+ * So the failure is now REPORTED rather than either thrown or discarded:
+ * `mutateAsync` still resolves (the upgrade did succeed), and the hook
+ * additionally exposes `sync`, which the activation surface renders as a
+ * recoverable synchronization error with a retry.
+ *
+ * And the rotation is checked rather than assumed. A refresh that returns 200
+ * but produces a session still missing `provider` has not synchronized
+ * anything; `classifyRecovery` reads the authoritative role set and says so.
+ *
+ * Invalidation order is deterministic and AWAITED — `auth/me` first because
+ * every role gate in the app reads it, then the provider profile, then the
+ * onboarding read-models. Previously the onboarding keys were not invalidated
+ * at all, so the hub could serve a projection built under the old token, and
+ * the calls were not awaited, so `mutateAsync` resolved before any of them had
+ * refetched.
  */
 export function useUpgradeToProvider() {
   const qc = useQueryClient();
-  return useMutation<UpgradeToProviderResponse, AxiosError, void>({
+  const [sync, setSync] = useState<RecoveryState>({ kind: 'idle' });
+
+  /**
+   * Rotate, verify, then refresh every cache the new role changes the answer
+   * for. Returns the outcome instead of throwing: the caller needs to know the
+   * upgrade succeeded AND that the session lagged, which an exception collapses
+   * into one fact.
+   */
+  const synchronize = useCallback(async (): Promise<RecoveryState> => {
+    setSync({ kind: 'recovering' });
+
+    // No initializer: both branches below assign it.
+    let roles: RoleName[] | null;
+    try {
+      await refreshSession();
+      // Read the AUTHORITATIVE session rather than trusting the rotation's
+      // status code. This is the check that distinguishes "the token now says
+      // provider" from "the request that should have made it say so returned
+      // 200".
+      roles = (await getMe()).roles;
+    } catch {
+      // Deliberately no logging: the failure detail belongs to the refresh
+      // cookie, and that is not something to put in a browser console.
+      roles = null;
+    }
+
+    const outcome = classifyRecovery(roles);
+    setSync(outcome);
+
+    // Only worth refreshing caches when the session actually changed. Doing it
+    // after a failed rotation would fire every provider query on the old token
+    // and collect a fan of 403s.
+    if (outcome.kind === 'recovered') {
+      await qc.invalidateQueries({ queryKey: ['auth', 'me'] });
+      await qc.invalidateQueries({ queryKey: providerQueryKeys.profile.root });
+      await qc.invalidateQueries({ queryKey: providerQueryKeys.onboarding.root });
+    }
+
+    return outcome;
+  }, [qc]);
+
+  const mutation = useMutation<UpgradeToProviderResponse, AxiosError, void>({
     mutationFn: upgradeToProvider,
     onSuccess: async (res) => {
       qc.setQueryData(providerQueryKeys.profile.get(), { profile: res.profile });
-
-      try {
-        await refreshSession();
-      } catch {
-        // Intentionally swallowed — see above. Nothing is logged: a failed
-        // rotation carries the refresh cookie's own failure detail, and that
-        // is not something to put in a browser console.
-      }
-
-      // AFTER the rotation, so anything that refetches on invalidation goes
-      // out on the new token instead of racing the old one into a 403.
-      qc.invalidateQueries({ queryKey: providerQueryKeys.profile.root });
-      // The role set changed, so the cached MeResponse is stale in a way that
-      // matters for every role gate in the app.
-      qc.invalidateQueries({ queryKey: ['auth', 'me'] });
+      await synchronize();
     },
   });
+
+  return {
+    ...mutation,
+    /** The session-synchronization axis, separate from the upgrade's own
+     *  success. `retry` re-runs only the rotation — the upgrade is idempotent
+     *  but re-running it would be a second write for a problem that is not
+     *  there. */
+    sync: { state: sync, retry: synchronize },
+  };
 }
 
 export function useUpdateProviderProfile() {

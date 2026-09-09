@@ -10,6 +10,24 @@ import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import { ProviderApp } from './ProviderApp';
 
+// Sprint 09B.29 — resolve the code-split screen BEFORE any assertion window.
+//
+// `ProviderApp` loads its tabs with `React.lazy(() => import('./screens/...'))`.
+// In a browser that is a fetch of an already-built chunk. Under Vitest it is an
+// on-demand ESM transform, and its cost lands inside whichever `findBy*` window
+// happens to be open when the tab is clicked — here the 5s wait in
+// `openWalletTab()`. At full worker concurrency (measured: 19 node processes,
+// ~2 GB peak) that transform has exceeded the budget, and the test then failed
+// reporting "Unable to find an element with the text: /Available Balance/" —
+// blaming the product for what was actually the bundler.
+//
+// Awaiting the import here moves the transform outside the assertion window.
+// Nothing is concealed: no timeout is raised, no test is skipped, concurrency
+// is untouched and no retry is added. The assertions still prove the screen
+// renders the values the API gave it; they simply no longer race the module
+// loader to do it.
+await import('./screens/WalletScreen');
+
 // Sprint 5.6 (refined) — wallet is wired to /v1/provider/earnings/*.
 //
 // What these tests pin:
