@@ -347,7 +347,7 @@ async function signInAsAdmin(): Promise<Jar> {
   return admin;
 }
 
-async function adminJar(): Promise<Jar> {
+export async function adminJar(): Promise<Jar> {
   if (!adminSession) {
     // One retry, for the backstop case above only. Not a blanket retry: a
     // failure for any other reason fails again immediately and is reported.

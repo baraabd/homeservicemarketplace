@@ -62,7 +62,46 @@ export default defineConfig({
         // second browser context, so a stubbed run could not prove anything
         // it claims to.
         '**/provider-onboarding-v2-persistence.spec.ts',
+        // Sprint 09B.29 — the activation / session-synchronization journey.
+        // Same rule and same reason: it drives a real upgrade and a real
+        // session rotation, and asserts that the PRE-upgrade credential is
+        // still refused afterwards. Against a stub that proves nothing.
+        '**/provider-activation-session.real-api.spec.ts',
+        '**/provider-activation-visual.real-api.spec.ts',
+        // Sprint 09B.29 — the accessibility gate for the same two screens. It
+        // drives the real upgrade to reach the synchronization states, so it
+        // belongs with the other real-API specs rather than the stubbed run.
+        '**/provider-activation-a11y.real-api.spec.ts',
+        // The temporary measurement harness. Skips itself without the real
+        // stack, but listing it keeps the default run's spec count honest.
+        '**/_diagnostic-visual.real-api.spec.ts',
+        // Sprint 09B.29 Phase 3 — the browser acceptance journeys and the
+        // running-API activation chain. Same rule and same reason as every
+        // entry above: they register real accounts, poll a real mail catcher
+        // and drive real admin decisions, none of which exists in the
+        // stub-everything run.
+        //
+        // `phase3-activation-chain` in particular has no `test.skip` guard of
+        // its own — it is API-only, so there is no page to skip on — and
+        // without this line the default matrix ran it against an unset
+        // E2E_REAL_API and failed three times over. Listing it here is the fix;
+        // adding a skip would have made it silently do nothing, which this
+        // config's own comment argues against.
+        '**/phase3-activation-chain.real-api.spec.ts',
+        '**/phase3-v2-journey.real-api.spec.ts',
+        '**/phase3-v1-flag-off.real-api.spec.ts',
       ],
+  // Sprint 09B.29 — one stable snapshot location, shared by the spec that
+  // captures the approved prototype and the spec that captures the
+  // implementation.
+  //
+  // The default template embeds the project name and the platform, which would
+  // give those two specs different files and make the comparison compare
+  // nothing. It also means a reference captured on one machine is invisible to
+  // another; these captures are deterministic by construction (pinned icon
+  // script, vendored fonts, fixed viewport, animations off), so the platform
+  // suffix would only hide drift.
+  snapshotPathTemplate: '{testDir}/__screenshots__/{arg}{ext}',
   // Deterministic: no test may depend on another's leftovers, and a flake
   // must fail rather than be retried into a pass locally.
   fullyParallel: true,
