@@ -3674,3 +3674,654 @@ defect in place, and the repository's own rules forbid exactly that: _"do not
 reduce workers to hide isolation races"_. One test in 3867 failing is precisely
 the signal that gets waved away as flake; it was the only thing standing between
 this sprint and an untrue completion claim.
+
+# Phase 4 — durable persistence and truthful autosave
+
+Branch `fix/sprint-09b29-phase4-durable-autosave`, cut from `origin/develop`
+`0744e74e77f8d3fac3a0bd540450433f0ceb60f5` — the merge commit for PR #73, which
+the entry gate confirmed is `origin/develop` itself.
+
+## 4.0 Entry gate
+
+| Fact                       | Value                                                   |
+| -------------------------- | ------------------------------------------------------- |
+| Branch                     | `fix/sprint-09b29-phase4-durable-autosave`              |
+| Base                       | `0744e74` (= `origin/develop`)                          |
+| `merge-base --is-ancestor` | **exit 0**                                              |
+| Working tree at entry      | 0 staged, 0 unstaged, 0 untracked                       |
+| `git diff --check`         | exit 0                                                  |
+| Stashes                    | **4**, all intact                                       |
+| Node / pnpm                | v20.18.1 / 10.32.1                                      |
+| Containers                 | 5 developer-owned, healthy; port 5173 is the dev server |
+
+Local `develop` was at `428dfb9`, behind the remote. Verified a strict ancestor
+with **zero local-only commits** before `--ff-only` — staleness, not the
+divergence that would have halted the gate.
+
+Reference hashes unchanged: prototype `c5ceb93a…`, flow svg `694af15d…`, flow
+png `fbbcaabb…`, delivery readme `f765e326…`, agent rule `a1185140…b30baa`.
+
+Baseline before any change: contracts build / api typecheck / web typecheck all
+exit 0; V2 feature suite **23 files, 532 tests, 0 failures**; API onboarding
+**18 suites, 556 tests, 0 failures**.
+
+## 4.1 The persistence call-chain matrix
+
+Two maps decide where a field may be written, and they are not the same map.
+`STEP_FIELDS` (`onboarding-steps.ts`) says which step OWNS a completeness
+requirement; `STEP_WRITABLE_FIELDS` (`provider-onboarding-wizard.service.ts`)
+says which fields a PATCH to that step may set, and
+`assertFieldsBelongToStep` rejects the rest. Every client write below was
+checked against the second.
+
+All V2 text writes share one path: screen → `useOnboardingStepAutosave(step)` →
+coordinator queue (900 ms debounce, serial, one version handshake) →
+`PATCH /v1/me/provider/onboarding/steps/:step` → `patchStep` inside
+`this.tx.run(trx)` → read-compare on `draft.version` **and** a conditional
+`advanceIfVersion` UPDATE → whole-view response → `setQueryData(draft)`.
+
+| Task (V2)             | Field                                           | Step          | Client writer                                          | Server sink                                                          |
+| --------------------- | ----------------------------------------------- | ------------- | ------------------------------------------------------ | -------------------------------------------------------------------- |
+| `BASICS_IDENTITY`     | `providerType`                                  | PROVIDER_TYPE | `typeAutosave.save`                                    | `ProviderProfile.providerType`                                       |
+| `BASICS_IDENTITY`     | `legalBusinessName`                             | PROVIDER_TYPE | `typeAutosave.save` (blur+keystroke)                   | `ProviderProfile.legalBusinessName`                                  |
+| `BASICS_IDENTITY`     | `displayName`                                   | IDENTITY      | `identityAutosave.save`, empty refused                 | `ProviderProfile.displayName`                                        |
+| `BASICS_IDENTITY`     | `phoneNumber`                                   | IDENTITY      | `identityAutosave.save`, E.164-gated                   | `ProviderProfile.phoneNumber` (+ clears `phoneVerifiedAt` on change) |
+| `BASICS_IDENTITY`     | `profileImageUrl`                               | IDENTITY      | **AvatarUploader → `POST …/avatar`**                   | `patchStep('IDENTITY')` — same lock                                  |
+| `SERVICES_EXPERIENCE` | `specialtyLeafIds`                              | SPECIALTIES   | `specialtiesAutosave.save`                             | applications / granted categories                                    |
+| `SERVICES_EXPERIENCE` | `primarySpecialtyId`                            | SPECIALTIES   | `specialtiesAutosave.save`                             | reconciled server-side against the set                               |
+| `SERVICES_EXPERIENCE` | `professionSince`                               | EXPERIENCE    | `experienceAutosave.save`                              | `ProviderProfile.professionSince`                                    |
+| `SERVICES_EXPERIENCE` | `transportModes`                                | EXPERIENCE    | `experienceAutosave.save`                              | deduplicated server-side                                             |
+| `SERVICES_EXPERIENCE` | `equipmentCodes`                                | EXPERIENCE    | `experienceAutosave.save`                              | `replaceEquipment(…, trx)`                                           |
+| `SERVICES_EXPERIENCE` | job title (`headline`)                          | —             | **local only, by design** — see §4.2                   | none from this screen                                                |
+| `WORK_AREA`           | `serviceAreaCity`                               | LOCATION      | `autosave.save` (keystroke + blur)                     | `ProviderProfile.serviceAreaCity`                                    |
+| `WORK_AREA`           | `serviceAreaCountryCode` + `serviceAreaCountry` | LOCATION      | one `save` carrying both                               | kept consistent in one write                                         |
+| `WORK_AREA`           | `serviceAreaLat/Lng`                            | LOCATION      | `autosave.save`, and a null-pair clear                 | coordinates                                                          |
+| `WORK_AREA`           | `serviceAreaRadiusKm`                           | LOCATION      | `autosave.save`, bounded by server numbers             | radius                                                               |
+| `WORKING_HOURS`       | `availability`                                  | AVAILABILITY  | `autosave.save` with `timezone`                        | `replaceAvailability(…, trx)` — atomic                               |
+| `WORKING_HOURS`       | `timezone`                                      | AVAILABILITY  | `autosave.save`; a lone zone change re-stamps the week | validated against the IANA set                                       |
+| `PORTFOLIO`           | `headline`, `bio`                               | PROFILE       | `autosave.save`, empty → null                          | `ProviderProfile.headline` / `.bio`                                  |
+| `PORTFOLIO`           | portfolio items                                 | —             | **separate REST resource** — see §4.3                  | `ProviderPortfolioItem` rows                                         |
+| `REVIEW_SUBMISSION`   | `acceptedConsentVersion`                        | CONSENT       | `useAcceptTerms` → `patchStep('CONSENT')`              | version + timestamp, DB CHECK-paired                                 |
+| `REVIEW_SUBMISSION`   | submission                                      | —             | `useSubmitApplication` → `POST …/submit`               | lifecycle transition, idempotent                                     |
+
+### Writable server fields with no V2 writer, and why each is not a gap
+
+| Field                                                      | Why                                                                                                                                                                                                                    |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yearsOfExperience`                                        | The policy derives it: `yearsOfExperience ?? yearsSince(professionSince)`. V2 asks for the date, which is the comparable fact. **Checked, because a required field with no writer would be an unsatisfiable blocker.** |
+| `transportMode` (singular)                                 | Superseded by `transportModes`; kept writable for V1.                                                                                                                                                                  |
+| `additionalInformation`                                    | V1-only field; not part of the approved V2 screens.                                                                                                                                                                    |
+| `primaryGroupIds`                                          | V2 selects leaves and a primary; groups are derived.                                                                                                                                                                   |
+| `serviceAreaIds`, `workshopAddressLine`, `workshopLat/Lng` | V2 deliberately asks for a city and a radius, not a street address — recorded in `BasicsTaskScreen`'s own "what is deliberately not here".                                                                             |
+
+### Defects the matrix did NOT find, stated because their absence was checked
+
+- No field updates React state without a writer except the one in §4.2.
+- No screen writes a field belonging to another step;
+  `assertFieldsBelongToStep` would reject it and none do.
+- No mutation ignores its response: every one seeds or invalidates.
+- `ReviewTaskScreen` performs **no** draft write — the read-only review rule
+  holds (`0` occurrences of `.save(`).
+
+## 4.2 Repairs proven in Phase 4
+
+| #    | Defect                                                                                                                                                                                                            | Reproduced by                               | Fix                                                                                                                        | Mutation proof                                                                                  |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| P4-1 | A GET issued before a PATCH lands after it and restores the pre-PATCH version. The next edit presents a stale token, the server 409s, and the coordinator drops the payload — the provider's typing is discarded. | `onboarding-hydration-race.test.tsx` (3)    | `structuralSharing` on `useOnboardingDraft` keeps the higher version                                                       | guard removed → **3 of 3 fail**                                                                 |
+| P4-2 | The monotonic guard compared bare integers across drafts. Provider A at v50 made provider B's legitimate v3 look stale, so **B was shown, and could submit, A's application**.                                    | `onboarding-identity-boundary.test.tsx` (5) | `draftId` added to the contract; versions compared only within one draft                                                   | scoping removed → **3 of 5 fail**, incl. `expected 'draft-provider-a' to be 'draft-provider-b'` |
+| P4-3 | `finalizeAvatar` presented the version captured when the file was PICKED. Typing during an upload moved the draft underneath it → 409, bytes stranded in storage.                                                 | `avatar-version-race.test.tsx` (2)          | version read at write time via `versionRef`                                                                                | before fix → **1 of 2 fail**                                                                    |
+| P4-4 | An in-flight upload was invisible to the exit contract: Close/Back/logout aborted it, and `beforeunload` never warned.                                                                                            | `onboarding-upload-exit.test.tsx` (5)       | `trackExternalWork` — uploads join the exit contract without joining the debounce queue                                    | tracking removed → **4 of 5 fail**                                                              |
+| P4-5 | A **rejected** upload was treated as settled, so navigation was released silently.                                                                                                                                | same file                                   | `run` rethrows; failure recorded at rejection time; `flushAll` returns `upload-failed`; explicit "Leave without the photo" | included above                                                                                  |
+
+Submission ordering (§9.8) was found **already safe** and is now pinned by
+`onboarding-submission-race.test.tsx` (3): review is rendered by
+`OnboardingTaskScreen`, which arms the router blocker, so reaching it flushes.
+Blocker disarmed → 1 of 3 fails.
+
+### Test defects found in this phase's own tests
+
+Recorded because two of them produced wrong production changes before they were
+understood:
+
+1. `waitFor` on an already-true condition resolves on its first check. An early
+   upload-exit test asserted "still on the task" that way and stayed green with
+   the tracking mutated out.
+2. A 60 ms sleep replaced it — an arbitrary delay standing in for a correctness
+   property, which this sprint's rules forbid. Failed 3 of 5 runs under load.
+   Replaced by recording `router.state.location.pathname` inside the finalize
+   mock, so the ordering assertion contains no clock.
+3. A captured `notice` node went stale across a re-render. `within(staleNode)`
+   found a **detached** button, and clicking it dispatched into a tree React no
+   longer listened to. This was misdiagnosed twice as a product race and
+   produced a `leaving`-guard reset and then a generation counter, both of which
+   were **reverted** once instrumentation showed `discard` was never called.
+
+## 4.3 Orphaned public media — audit
+
+Traced presign → PUT → finalize/attach → abort/failure → retry → removal →
+cleanup, for both binary paths.
+
+**`StoragePort` (public) exposes `presignUpload`, `readObjectHead` and
+`publicUrlForKey`. There is no delete and no list.** `RestrictedObjectStorage`
+(evidence) has `deleteObject`, and `EvidenceCleanupService` sweeps with it —
+but it scopes `visibility: 'RESTRICTED'`, so it never touches public bytes.
+
+| #   | Path                                           | Object written | DB row                                   | Bytes ever deleted                 |
+| --- | ---------------------------------------------- | -------------- | ---------------------------------------- | ---------------------------------- |
+| O-1 | avatar: presign → PUT → abort before finalize  | yes            | **none** — presign creates no ledger row | **never**                          |
+| O-2 | avatar: photo replaced                         | yes (new key)  | `profileImageUrl` repointed              | previous object **never**          |
+| O-3 | avatar: photo removed                          | —              | `profileImageUrl = null`                 | object **never**                   |
+| O-4 | portfolio: presign → PUT → abort before create | yes            | **none**                                 | **never**                          |
+| O-5 | portfolio: item deleted                        | —              | `MediaAsset.deletedAt` set               | **never** — no public sweep exists |
+
+### O-5 is worse than a leak: the row is untrue
+
+`schema.prisma` documents `MediaAsset.deletedAt` as _"Set only after the object
+is confirmed gone from storage. Marking first would produce rows claiming a
+deletion that did not happen."_ `EvidenceCleanupService` honours that exactly —
+it deletes the object first, then claims the row.
+
+`ProviderPortfolioService.remove()` sets `deletedAt` at the moment the provider
+taps delete, and its own comment says _"The retention sweep owns the bytes"_.
+No such sweep exists for public media. So the database asserts the bytes are
+gone while they remain publicly readable at their CDN URL.
+
+Confirmed not load-bearing for visibility: the gallery and preview filter on
+`ProviderPortfolioItem.deletedAt`, not on the asset's. So the image does
+disappear from the product — it is the _retention record_ that is false, which
+is a data-protection statement rather than a display bug.
+
+### Status
+
+**NOT FIXED IN THIS PHASE.** Closing O-1…O-5 requires a public delete on
+`StoragePort` plus both adapters, a presign-time ledger row so an aborted
+upload is discoverable at all, reconciliation in the avatar and portfolio
+finalize paths, and a sweep job — a byte-deleting subsystem that must not be
+shipped without its own ownership, idempotency and concurrency tests. It is
+recorded here in full rather than half-built.
+
+## 4.4 Public-media lifecycle and cleanup — implemented
+
+### The lifecycle, on existing columns
+
+No migration was needed, and that is a finding rather than a shortcut: every
+state the mandate names is already expressible on `MediaAsset`, and adding
+parallel columns would have created a second answer to questions the schema
+already answers.
+
+| State             | Expressed as                                                        |
+| ----------------- | ------------------------------------------------------------------- |
+| RESERVED          | row exists, `uploadCompletedAt IS NULL`, `uploadExpiresAt` set      |
+| ATTACHED / ACTIVE | `uploadCompletedAt` set, `retainUntil IS NULL`, `deletedAt IS NULL` |
+| DELETE_REQUESTED  | `retainUntil <= now`, `deletedAt IS NULL`, `deletionReason` set     |
+| DELETED           | `deletedAt` set — **and only ever after storage confirmed absence** |
+
+Ownership is `MediaAsset.ownerUserId`. The storage-key prefix is never the
+ownership mechanism; the sweep does not list or scan the bucket at all, and
+`StoragePort` deliberately gained no `list` or delete-by-prefix operation.
+
+### Repairs
+
+| Area                                | Change                                                                                                                                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `StoragePort`                       | gained `deleteObject(key)`, idempotent by contract — absence is success, permission/transport failures stay failures                                                                            |
+| `LocalDiskStorageAdapter`           | `rm(..., { force: true })` behind `absolutePathForKey`, so `validateKey` refuses traversal on the delete path exactly as on read and write                                                      |
+| `S3StorageAdapter`                  | `DeleteObjectCommand`; `NoSuchKey`/`NotFound`/404 mapped to success for MinIO and R2; **everything else rethrows**, because AccessDenied is precisely the case where the bytes are still public |
+| `ProviderPortfolioService.remove()` | writes `retainUntil` + `deletionReason` (intent) instead of `deletedAt` (fact) — **this is the O-5 root cause**                                                                                 |
+| `PublicMediaCleanupService`         | new: deletes the object, then conditionally claims the row                                                                                                                                      |
+| `PublicMediaCleanupJob`             | new: unref'd timer chain, `runOnce` for tests and operators, no overlap in-process                                                                                                              |
+
+### Measured
+
+| Gate                                 | Result                                                          |
+| ------------------------------------ | --------------------------------------------------------------- |
+| `jest src/modules/media`             | **13 passed / 13**, exit 0                                      |
+| `pnpm --filter api test` (full unit) | exit 0 — **166 suites, 3069 passed**, 0 failed (was 165 / 3056) |
+| `api typecheck`                      | exit 0                                                          |
+
+### Mutation proof — and the two gaps it found
+
+Six mutations of `PublicMediaCleanupService`, each applied, run, and reverted:
+
+| Mutation                                        | Result            |
+| ----------------------------------------------- | ----------------- |
+| mark before storage delete                      | KILLED — 8 failed |
+| swallow storage failure                         | KILLED — 2 failed |
+| drop the `PUBLIC` scope                         | KILLED — 1 failed |
+| unconditional row claim                         | KILLED — 1 failed |
+| treat every unfinished reservation as abandoned | KILLED — 1 failed |
+| re-examine already-recorded rows                | KILLED — 2 failed |
+
+**Two of those initially SURVIVED**, and the cause was the test double rather
+than the code: the Prisma fake enforced `deletedAt IS NULL` and the `PUBLIC`
+scope _itself_, instead of evaluating the `where` the service actually passed.
+So the service could stop asking for either and every test still passed — the
+fake was being credited for the code's work. It now reads every condition out
+of the query it is given, and all six mutations are killed.
+
+### Public URL and cache guarantee (mandate §7)
+
+`S3StorageAdapter.publicUrlForKey` returns `S3_PUBLIC_BASE_URL` + key when an
+operator has put a CDN in front, otherwise the virtual-hosted S3 URL. **The URL
+is key-derived, stable and unsigned** — not versioned, not short-lived.
+
+So the honest guarantee is:
+
+- **Origin**: deletion is immediate and the object becomes unreadable.
+- **CDN**: any cached copy remains served until that cache's TTL expires. **No
+  invalidation is issued anywhere in this repository**, and the TTL is operator
+  configuration this codebase cannot see.
+
+Therefore "the bytes are gone" is true of the origin only. A deployment that
+sets `S3_PUBLIC_BASE_URL` has an unbounded-from-here retention window at the
+edge, and closing it requires either a CDN invalidation call on delete or
+versioned/short-lived URLs. **Neither is implemented.** This is recorded as an
+open risk rather than claimed as covered.
+
+### What was NOT closed at the time §4.4 was written
+
+O-1 to O-4 remained open when this section was first written. They needed a
+reservation row created at **presign** time, because an upload abandoned
+between the PUT and the finalize left an object no query could find. The sweep
+was built and proven and would retire those rows the moment they existed; the
+presign ledger and the finalize-side claim were not yet written.
+
+O-5 was already closed: the intent is recorded truthfully, and the sweep turns
+it into a confirmed deletion.
+
+**All five are closed as of §4.5 below.** This paragraph is left standing rather
+than rewritten, because the order in which the pieces landed is part of the
+evidence: the sweep was proved against a fake before anything depended on it.
+
+---
+
+## 4.5 The reservation ledger — O-1 to O-4 closed
+
+§4.4 closed O-5 and built the sweep, and then said plainly what was still
+missing: the sweep could only retire rows that existed, and for an abandoned
+upload no row ever existed. That is now written.
+
+### The shape of the fix
+
+An upload is a **row before it is an object**.
+
+```
+POST /v1/media/presigned-url
+  └─ PublicMediaLedgerService.reserve()      ← row created HERE, before the URL
+       MediaAsset { PUBLIC, ownerUserId, storageKey, uploadCompletedAt: NULL,
+                    uploadExpiresAt: now + 1h }
+  └─ storage.presignUpload()                 ← only now is a URL handed out
+
+PUT <uploadUrl>                              (S3: never touches this API)
+
+POST …/avatar/finalize   |   POST …/portfolio
+  └─ conditional CLAIM: storageKey + ownerUserId + PUBLIC + uploadCompletedAt IS NULL
+```
+
+The ordering is the whole point. A row written _after_ the PUT would leave
+exactly the same hole, because the case being closed is the upload that never
+comes back.
+
+### Why each claim condition is load-bearing
+
+| Condition                   | What it refuses                                                        |
+| --------------------------- | ---------------------------------------------------------------------- |
+| `storageKey`                | a key the server never minted — there is no row for one                |
+| `ownerUserId`               | provider B claiming provider A's reservation, **even knowing the key** |
+| `visibility: 'PUBLIC'`      | a public finalize reaching a RESTRICTED evidence row                   |
+| `uploadCompletedAt IS NULL` | a second claim of an already-attached object                           |
+| `deletedAt IS NULL`         | resurrecting a row the sweep already recorded as gone                  |
+
+`updateMany` rather than `update`, so a miss is `count === 0` rather than a
+thrown record-not-found: "somebody else's, or already claimed" is an ordinary
+answer here, not an exception. And all four refusals return the **same** message
+and the same `UPLOAD_NOT_RESERVED` reason, so the surface cannot be probed to
+learn which one fired.
+
+**Ownership is a column, not a substring of the path.** The key carries an
+opaque owner ref so a public URL does not publish an internal id, but no code
+path derives permission by parsing it, the sweep never lists a bucket, and there
+is no delete-by-prefix anywhere in the subsystem.
+
+### Where each orphan now goes
+
+| id  | path                                     | closed by                                                      |
+| --- | ---------------------------------------- | -------------------------------------------------------------- |
+| O-1 | avatar uploaded, never finalized         | reservation ages past `uploadExpiresAt + grace`; sweep retires |
+| O-2 | avatar replaced                          | `retire()` on the previous key at finalize                     |
+| O-3 | avatar removed                           | `retire()` in `ProviderAvatarService.remove`                   |
+| O-4 | portfolio image uploaded, never attached | reservation ages out exactly as O-1                            |
+| O-5 | portfolio item deleted                   | `retire()` (closed in §4.4)                                    |
+
+### A failure to reserve REFUSES the presign
+
+`await this.ledger.reserve(...)` precedes `presignUpload` and is awaited. A
+ledger failure therefore fails the request rather than handing out an upload URL
+for an object the server could not record — which would recreate the invisible
+object the ledger exists to prevent. Asserted from the wire in
+`media.e2e.spec.ts`.
+
+### What is deliberately NOT reserved
+
+Request media (`purpose` omitted, prefix `requests/`) gets **no** reservation.
+It is attached as a bare URL in `ServiceRequest.mediaUrls[]` and nothing ever
+claims a `MediaAsset` row for it, so a reservation would age past its grace
+period and the sweep would delete **live** seeker photos. Its orphan lifecycle
+is separate work and is out of Phase 4's scope. There is a test asserting the
+absence, so this cannot drift into existence by accident.
+
+### An unclaimed reservation does not block a valid avatar
+
+`ProviderAvatarService.finalize` logs a refused claim and links the photo
+anyway. The bytes already passed the namespace, size and signature checks; a
+missing ledger row means the sweep has nothing to find, not that the provider's
+photo should vanish. The sweep's job is to find objects nobody claimed, not to
+hold up an upload that is demonstrably good.
+
+---
+
+## 4.6 The portfolio upload joins the exit contract
+
+Phase 4 taught the avatar uploader to register with the exit contract. The
+portfolio was still outside it, and it is the worse of the two: an interrupted
+avatar loses a photo the provider can pick again, while a portfolio upload
+interrupted **between the PUT and the attach** leaves an object in the bucket
+that, before the ledger, nothing could ever find.
+
+`PortfolioSection` now takes an optional `trackWork` prop, injected by
+`PublicProfileTaskScreen` from `useOnboardingAutosave().trackExternalWork`.
+
+**Injected, not read from context.** `PortfolioSection` is also mounted on
+`ProviderProfileScreen`, outside onboarding. A context hook inside it would
+either throw there or need an optional variant whose only purpose is to paper
+over a wiring mistake. Absent means "no exit contract to join" — the correct
+state outside onboarding, not a degraded one. This is the same pattern
+`AvatarUploader` already uses, for the same reason.
+
+`runUpload` now **rethrows** after rendering its error. The screen already shows
+the failure and its retry, so nothing further is owed to the user; the rethrow
+exists for the coordinator, because a resolved promise would say the upload
+FINISHED and release the provider into a navigation that silently dropped the
+image. `trackUpload` is the only caller and terminates the rejection.
+
+---
+
+## 4.7 The cleanup worker
+
+`PublicMediaCleanupJob` — shaped exactly like `EvidenceScanJob`,
+`VerificationExpiryJob` and `OutboxCleanupJob`: an unref'd `setTimeout` chain, a
+public `runOnce` for tests and for an operator draining a backlog by hand, and a
+config flag. No scheduling dependency was added; `@nestjs/schedule`, a queue or
+a cron container would each be a new failure domain for a pass that deletes a
+handful of objects.
+
+**Default off, for a stronger reason than the other workers.** Every other
+default-off worker in this repository is off because enabling it _grants_
+something. This one is off because enabling it _destroys_ something. Failing
+safe here means the leak persists — objects accumulate — rather than bytes
+disappearing that should not have. That is the opposite direction from the scan
+worker, and it is the correct one for a destructive sweep.
+
+**Safe on every replica.** Selection is not a claim: two replicas may pick the
+same asset, the object delete is idempotent, and the row write is conditional on
+`deletedAt` still being null — so one wins and the other counts a race. There is
+no leader election to get wrong.
+
+### Configuration
+
+| Variable                                    | Default    | Meaning                         |
+| ------------------------------------------- | ---------- | ------------------------------- |
+| `PUBLIC_MEDIA_CLEANUP_WORKER_ENABLED`       | `false`    | the worker runs at all          |
+| `PUBLIC_MEDIA_CLEANUP_INTERVAL_MS`          | `900000`   | 15 minutes between passes       |
+| `PUBLIC_MEDIA_CLEANUP_BATCH_SIZE`           | `50`       | rows per pass                   |
+| `PUBLIC_MEDIA_CLEANUP_RESERVATION_GRACE_MS` | `86400000` | slack on top of the presign TTL |
+
+Documented in `.env.example` and `docs/deployment.md` §7.
+
+The grace period is the interesting one. A reservation with no
+`uploadCompletedAt` may be a dead upload — or a live one, still transferring on
+a slow phone connection. Deleting the object out from under a provider watching
+a progress bar would be a worse bug than the leak, so eligibility needs
+`uploadExpiresAt` to have passed **and** a further day to have elapsed.
+
+---
+
+## 4.8 CDN and edge-cache deletion — resolved, and stated honestly
+
+The mandate asked for this to be resolved rather than left as a note. The
+resolution is a decision, not an implementation, and the reasoning is recorded
+so it can be argued with.
+
+**What is true per driver:**
+
+| Driver          | Origin deletion | Edge copy                                  |
+| --------------- | --------------- | ------------------------------------------ |
+| local disk      | immediate       | none — the API serves the bytes itself     |
+| S3, no CDN      | immediate       | browsers only, bounded by `Cache-Control`  |
+| S3 behind a CDN | immediate       | **unbounded from here** — distribution TTL |
+
+**No invalidation call is issued, and none is stubbed.** A CloudFront/Fastly
+invalidation needs a distribution id, an IAM permission and a rate budget, none
+of which exist in this repository — and §6.4 already records that _no production
+deployment configuration exists at all_. A stub would be worse than the gap,
+because it would read as though the problem were handled.
+
+**What that costs, accepted explicitly:**
+
+1. A provider who removes their photo may see it served from an edge for some
+   time after the API reports success. The UI does not claim otherwise — it
+   reports the removal, which did happen at the origin.
+2. `deletedAt` means "gone from the origin store". It does not mean "no copy
+   exists anywhere", and the schema comment says so.
+3. A privacy-driven deletion — a takedown, a data-subject request — is therefore
+   **not complete** when `deletedAt` is written, if a CDN sits in front of the
+   bucket. Closing that needs an invalidation step, which is out of Phase 4's
+   scope and is carried as a residual risk.
+
+**One thing that is NOT a risk:** keys are never reused — every presign mints a
+fresh uuid — so a stale edge copy can never be served in place of a _different_
+provider's newer image. The failure mode is a lingering copy of the same object,
+never a cross-owner mix-up.
+
+Written up in `docs/deployment.md` §7.3 so an operator meets it before enabling
+the worker, rather than only here.
+
+---
+
+## 4.9 Test-harness defects this phase found in ITS OWN suites
+
+Five, all of them cases where a test was certifying the harness rather than the
+code. Recorded because each one had been passing for sprints.
+
+### D-9 — ten harnesses built a module the code no longer fits
+
+`MediaController` and `ProviderAvatarService` gained a `PublicMediaLedgerService`
+dependency, and twelve suites build their own `TestingModule` rather than
+importing `AppModule`. Ten of them fell over with
+
+```
+Nest can't resolve dependencies of the ProviderAvatarService
+(Symbol(HSM_STORAGE_PORT), AppConfigService, ?, ProviderOnboardingWizardService).
+```
+
+Fixed by registering the **real** service in every DB-gated harness — not a
+double. Those suites have a database; a double there would leave the claim's
+ownership conditions untested in the one place they can actually be exercised.
+The two hermetic media suites take doubles instead, and the restricted-media
+read-boundary harness takes a **throwing** stub, so a read path that ever starts
+touching the ledger fails loudly rather than passing against a permissive fake.
+
+### D-10 — `provider-portfolio.integration.spec.ts` invented its own storage keys
+
+Every fixture posted a `storageKey` the server had never issued, and the
+endpoint accepted it. That is precisely the hole the reservation ledger closes,
+so the suite was proof that the hole existed. The `create` helper now reserves
+first, exactly as a real presign does, and **two new tests** assert the refusals
+directly: a well-formed key that was never reserved, and a key whose reservation
+belongs to another provider.
+
+### D-11 — a test that required the O-5 defect
+
+```
+expect(asset.deletedAt).not.toBeNull();
+expect(asset.deletionReason).toBe('PROVIDER_REMOVED_PORTFOLIO_ITEM');
+```
+
+`a portfolio delete marks only the PUBLIC asset it owns` **required** the row to
+claim the object was gone while it was still being served. The assertion is now
+inverted — `retainUntil` set, `deletedAt` still null — with the reason written
+into the test so nobody restores the old expectation as a "fix".
+
+### D-12 — the login budget is shared by every integration suite from loopback
+
+`POST /auth/login` allows 10 per minute per IP. Phase 4's durability proofs sign
+out and back in for every field, and several suites run in parallel from
+127.0.0.1, so a 429 landed on whichever assertion was unlucky — including one in
+a suite this sprint never touched.
+
+The repository already had the technique (`provider-journey` has cleared the
+_registration_ budget since Sprint 9); it is now one shared helper,
+`test/support/rate-limit-reset.ts`, extended to the generic `@Throttle` bucket.
+
+**This does not hide a throttle regression**, and the helper's own comment says
+why: nothing that asserts a throttle asserts it from loopback.
+`registration-throttle.integration.spec.ts` drives synthetic `198.51.100.x`
+identities and `auth.e2e.spec.ts` is hermetic with no Redis, so the budgets
+cleared are exactly the ones no test is watching.
+
+### D-13 — two browser tests asserted a screen the product does not render
+
+The new `WORKING_HOURS` journey checked `day-summary-0` on the way back into the
+task, and the new `REVIEW_SUBMISSION` journey waited for `review-submitted`
+after clicking Submit. Both failed, and both were the test's error:
+
+- `isTaskActionable` renders a form only for a task the server reports
+  `AVAILABLE`. A week is all `WORKING_HOURS` needs, so applying one moves the
+  task to COMPLETE and the form is correctly gone.
+- Submission may hand the provider back to the hub; "the application left my
+  hands" is a fact about the server, not about which component mounted next.
+
+Rewritten to assert the server's answer plus what a returning provider actually
+reads. Neither assertion was loosened — both got _stronger_: the fresh sign-in
+now checks that `review-submit` and `terms-accept` are absent from the page
+entirely, not merely disabled.
+
+---
+
+## 4.10 Phase 4 gate results
+
+Every command below was run in this session, on the final Phase 4 tree. Exit
+codes captured per gate; nothing is inferred from a wrapper's exit status.
+
+### Static and unit
+
+| Gate                | Result                                                  |
+| ------------------- | ------------------------------------------------------- |
+| `api typecheck`     | exit 0                                                  |
+| `api lint`          | exit 0, **0 problems**                                  |
+| `web typecheck`     | exit 0                                                  |
+| `web lint`          | exit 0, **35 warnings, 0 errors** — baseline, unchanged |
+| `web test` (vitest) | **112 files, 1582 tests, 0 failed**                     |
+| `git diff --check`  | clean                                                   |
+
+### API, with the DB-gated suites ARMED
+
+Isolated Compose project (`hsm-p4c-$$`), ephemeral ports, tmpfs Postgres. The
+developer's `hsm-postgres` / `hsm-redis` were verified untouched at teardown, and
+zero containers and zero volumes were left behind.
+
+| Gate                                                           | Result                                          |
+| -------------------------------------------------------------- | ----------------------------------------------- |
+| `migrate:deploy` / `database build` / `seed`                   | exit 0                                          |
+| `verify:migrations`                                            | exit 0                                          |
+| Phase 4 suites (`--runInBand`)                                 | **2 suites, 27 tests, 0 failed**                |
+| Full API suite, `RUN_DB_INTEGRATION=1 RUN_REDIS_INTEGRATION=1` | **206 suites, 3943 tests, 0 failed, 0 skipped** |
+
+Note the skip count. The hermetic run skips 37 suites / 820 tests for want of a
+database; armed, **nothing is skipped at all**.
+
+### Browser — stubbed matrix
+
+`E2E_PREBUILT=1 playwright test`, three projects (375 / 768 / 1440), EN and AR.
+
+| Result                               |               |
+| ------------------------------------ | ------------- |
+| **636 passed, 96 skipped, 0 failed** | 16.0m, exit 0 |
+
+The 96 skips are viewport guards that predate this sprint — desktop-only admin
+screens and phone-only provider surfaces, each declared once and skipped by the
+two projects it does not apply to. No skip was added by Phase 4.
+
+### Browser — REAL API, nothing stubbed
+
+```
+Chromium → built SPA (VITE_PROVIDER_ONBOARDING_V2=true baked in)
+         → node dist/main.js on :4011
+         → real Postgres, real Redis, real Mailpit, real guards
+```
+
+| Result                  |               |
+| ----------------------- | ------------- |
+| **69 passed, 0 failed** | 12.9m, exit 0 |
+
+`AUTH_REGISTER_THROTTLE_LIMIT` is raised for this run, exactly as the
+`browser-auth-e2e` CI job does and for the identical reason (ci.yml sets 200).
+Every scenario registers a fresh account from loopback against a 5-per-hour
+limiter. `env.validation.ts` refuses a widened limit under
+`NODE_ENV=production`, so the setting cannot reach a deployment.
+
+**All six tasks now prove the full journey in a real browser** — hub navigation,
+hard reload, and sign-out with a fresh sign-in through the real login screen:
+
+| Task                | Browser journey | Fresh sign-in leg |
+| ------------------- | --------------- | ----------------- |
+| BASICS_IDENTITY     | ✔               | ✔ (pre-existing)  |
+| SERVICES_EXPERIENCE | ✔               | ✔ **added**       |
+| WORK_AREA           | ✔               | ✔ **added**       |
+| WORKING_HOURS       | ✔ **added**     | ✔ **added**       |
+| PORTFOLIO           | ✔               | ✔ **added**       |
+| REVIEW_SUBMISSION   | ✔ **added**     | ✔ **added**       |
+
+Each fresh sign-in enters at the **task URL**, is bounced to `/login`, signs in
+through the real form and OTP, and must land back on that exact task — so the
+`returnTo` requirement is proved by the same assertion.
+
+### Supply chain
+
+| Gate                                                                 | Result                                          |
+| -------------------------------------------------------------------- | ----------------------------------------------- |
+| Clean-room `pnpm install --frozen-lockfile`                          | exit 0, 455s, **lockfile byte-identical after** |
+| `prisma:validate` / `generate`                                       | exit 0 — client generated from a bare tree      |
+| clean-room `database` / `contracts` / `api` builds + `web typecheck` | all exit 0                                      |
+| `pnpm audit --prod --audit-level high`                               | exit 0 — **0 high, 0 critical**                 |
+| `pnpm audit --prod --audit-level moderate`                           | **2 moderate**, both `qs` via `express`         |
+| gitleaks (working tree)                                              | 1 finding, in a **git-ignored, untracked** file |
+
+The two moderate advisories are `GHSA-4mjr-xmp4-gh2g` and its sibling, reached
+through `apps/api > express > qs`. Phase 4 changed no dependency and the CI gate
+is `--audit-level high`, which passes; they are reported rather than suppressed.
+
+The gitleaks finding is a token inside `.claude/settings.local.json`, which
+`.gitignore` excludes and `git ls-files` does not know. It is not in the tree
+being published; CI's `gitleaks-action` scans commits and never sees it.
+
+### Containers
+
+| Gate                            | Result                                             |
+| ------------------------------- | -------------------------------------------------- |
+| `docker build --no-cache` (API) | **exit 0 on the second attempt** — see below       |
+| Production-like Compose smoke   | **PASS**, all 12 checks, 0 containers/volumes left |
+
+**The first cold build failed and it is recorded rather than hidden.**
+`RUN apk add --no-cache python3 make g++ openssl` exited 2 with no diagnostic
+output — a transient Alpine mirror failure. The rebuild, also `--no-cache`,
+completed every stage including the image's own assertions: express resolves
+from the deployed bundle, the Prisma client and its query engine load, and
+`/out` carries no sources and no TypeScript toolchain.
+
+The Compose smoke re-ran unchanged from Phase 3 and still passes end to end:
+production refuses the deterministic test scanner, a real driver with no host
+fails safely, migrations apply to an empty database, readiness answers 200 under
+`NODE_ENV=production`, no demo accounts are seeded, the scan worker arms, real
+clamd clears a valid PNG and never clears EICAR, an idle sweep writes nothing,
+and no dedupe key produces a duplicate outbox event.

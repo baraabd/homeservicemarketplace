@@ -200,3 +200,109 @@ Until a production configuration exists and sets §6.2, the provider onboarding
 and verification journey is **verified but not deployable**. This is recorded
 rather than worked around; see
 `docs/provider-experience-v2/SPRINT_09B29_VERIFICATION.md` §3.12.5.
+
+---
+
+## 7. Public media retention — the sweep that deletes provider photos
+
+_Sprint 09B.29 Phase 4._
+
+`EvidenceCleanupService` has deleted **RESTRICTED** bytes since Sprint 9B.
+Nothing did the same for **PUBLIC** ones. Five paths produced objects that
+nothing would ever remove:
+
+| id  | path                                     | what was left behind                             |
+| --- | ---------------------------------------- | ------------------------------------------------ |
+| O-1 | avatar uploaded, never finalized         | object, and no row at all                        |
+| O-2 | avatar replaced                          | the previous object                              |
+| O-3 | avatar removed                           | the object; only the pointer went                |
+| O-4 | portfolio image uploaded, never attached | object, and no row at all                        |
+| O-5 | portfolio item deleted                   | the object — **and a row that said it was gone** |
+
+O-5 was the worst, and not because of the bytes: the delete path wrote
+`MediaAsset.deletedAt` immediately, so the database asserted the object was
+gone while it was still readable at its public URL.
+
+### 7.1 The lifecycle contract
+
+| column              | written by                                   | means                              |
+| ------------------- | -------------------------------------------- | ---------------------------------- |
+| `uploadExpiresAt`   | presign (`PublicMediaLedgerService.reserve`) | this key was authorised            |
+| `uploadCompletedAt` | finalize / attach (`claim`)                  | a provider attached this object    |
+| `retainUntil`       | replace / remove / delete (`retire`)         | **intent** — eligible for deletion |
+| `deletedAt`         | `PublicMediaCleanupService` **only**         | **confirmed gone from storage**    |
+
+`deletedAt` is never written by a request path. The sweep deletes the object
+first and records only afterwards, so the failure mode is an object deleted
+twice — harmless, `deleteObject` treats absence as success — rather than a row
+that lies.
+
+### 7.2 Settings
+
+```bash
+PUBLIC_MEDIA_CLEANUP_WORKER_ENABLED=false          # DEFAULT OFF — see below
+PUBLIC_MEDIA_CLEANUP_INTERVAL_MS=900000            # 15 minutes
+PUBLIC_MEDIA_CLEANUP_BATCH_SIZE=50
+PUBLIC_MEDIA_CLEANUP_RESERVATION_GRACE_MS=86400000 # 24h on top of the presign TTL
+```
+
+**Default off for a stronger reason than the other workers.** Every other
+default-off worker in this repository is off because enabling it _grants_
+something. This one is off because enabling it _destroys_ something. Off means
+the leak persists; on with a misconfiguration means bytes disappear. The safe
+direction is off.
+
+Safe on every replica, for the same reason the evidence sweep is: selection is
+not a claim, the object delete is idempotent, and the row write is conditional
+on `deletedAt` still being null. Two replicas produce one deletion record and
+one `raced` count. No leader election.
+
+### 7.3 CDN and edge-cache deletion semantics — HONEST STATEMENT
+
+Deleting the origin object does **not** evict a CDN or browser copy, and this
+deployment implements **no cache invalidation**. What that means concretely:
+
+- **Local-disk driver** (`STORAGE_DRIVER=local`) — objects are served by the
+  API from `/v1/media/files/*`. There is no CDN. Deletion is effective
+  immediately; a subsequent GET is a 404.
+- **S3 driver without a CDN** — `publicUrlForKey` returns the bucket URL.
+  Deletion is effective immediately at the origin. Browsers that already
+  fetched the object may hold it for the lifetime of its `Cache-Control`
+  header.
+- **S3 driver behind a CDN** — an edge copy may continue to be served after the
+  origin object is gone, for an **unbounded** period in the general case: it
+  depends on the distribution's TTL, which is not configured in this repository
+  because no production distribution is configured in this repository (§6.4).
+
+**No invalidation call is issued, and none is stubbed.** Adding a
+CloudFront/Fastly invalidation would require a distribution id, an IAM
+permission and a rate budget, none of which exist here; a stub would be worse
+than the gap because it would read as though the problem were handled.
+
+Consequences that must be accepted before enabling the worker in an environment
+with a CDN:
+
+1. A provider who removes their photo may see it served from an edge for some
+   time after the API reports success. The UI does not claim otherwise — it
+   reports the removal, which did happen at the origin.
+2. `deletedAt` means "gone from the origin store". It does not mean "no copy
+   exists anywhere".
+3. A privacy-driven deletion (a takedown, a data-subject request) is therefore
+   **not complete** at the moment `deletedAt` is written when a CDN is in front
+   of the bucket. Closing that requires an invalidation step, which is
+   deliberately out of Phase 4's scope and is recorded as a residual risk in
+   `docs/provider-experience-v2/SPRINT_09B29_VERIFICATION.md` §4.4.
+
+Keys are never reused — every presign mints a fresh uuid — so a stale edge copy
+can never be served in place of a _different_ provider's newer image. The
+failure is a lingering copy of the same object, never a cross-owner mix-up.
+
+### 7.4 What is deliberately NOT reserved
+
+Request media (`purpose` omitted, key prefix `requests/`) is **not** given a
+ledger reservation. It is attached as a bare URL in `ServiceRequest.mediaUrls[]`
+and no code ever claims a `MediaAsset` row for it, so a reservation would age
+past its grace period and the sweep would delete **live** request photos. Its
+orphan lifecycle is separate work and is out of Phase 4's scope. This is
+asserted by a test in `apps/api/test/e2e/media.e2e.spec.ts` so it cannot drift
+silently.
