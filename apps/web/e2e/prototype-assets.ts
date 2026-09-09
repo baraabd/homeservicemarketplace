@@ -75,6 +75,21 @@ function contentTypeFor(file: string): string {
 }
 
 /**
+ * The host of a URL, or `''` if it will not parse.
+ *
+ * Route matching must compare the parsed hostname rather than search the raw
+ * string: a host name appearing in a path or query is not the host, and
+ * treating it as one lets an unexpected origin be served a vendored asset.
+ */
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Serve every external asset from the vendored set, and fail loudly on anything
  * that is not vendored.
  *
@@ -119,7 +134,14 @@ export async function serveVendoredAssets(page: Page): Promise<{ missing: string
         sources.get(url) ??
         // Google Fonts CSS is requested with varying query order; match on the
         // stylesheet kind rather than the exact string.
-        (url.includes('fonts.googleapis.com')
+        //
+        // Compared as a parsed HOSTNAME, not as a substring. `includes()` here
+        // was a real defect, not a lint nicety: `https://evil.test/?x=
+        // fonts.googleapis.com` contains the string, so any intercepted URL
+        // could claim the vendored stylesheet by carrying the host name
+        // anywhere in a path or query. Equality on `new URL().hostname` can
+        // only be satisfied by the host itself.
+        (hostnameOf(url) === 'fonts.googleapis.com'
           ? manifest().find((e) => e.kind === 'stylesheet')
           : undefined);
 

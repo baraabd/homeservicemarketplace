@@ -23,13 +23,74 @@
 // request time in the spec.
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, 'vendor');
 mkdirSync(OUT, { recursive: true });
+
+// ── integrity: what is already pinned ──────────────────────────────────────
+//
+// Every byte below arrives over the network from a third-party CDN, and this
+// script's whole job is to put those bytes on disk. That is only safe while
+// the bytes are the ones already reviewed and pinned.
+//
+// So a re-run is a VERIFICATION, not a refresh: the previous manifest's
+// SHA-256 is the expected value, and a download that does not match it is
+// never written. Without this, a compromised or silently-updated CDN would
+// rewrite the visual baselines and the change would show up as an unexplained
+// pixel diff rather than as the supply-chain event it is.
+//
+// Deliberately opt-IN to accept new bytes, so bumping a pinned version is an
+// explicit act that shows up in review:
+//
+//   REVENDOR_ACCEPT_NEW_HASHES=1 node e2e/assets/vendor-prototype-assets.mjs
+const MANIFEST_PATH = join(OUT, 'manifest.json');
+const ACCEPT_NEW = process.env.REVENDOR_ACCEPT_NEW_HASHES === '1';
+
+/** source URL -> pinned sha256, from the manifest already in the repository. */
+const pinned = new Map();
+if (existsSync(MANIFEST_PATH)) {
+  try {
+    for (const e of JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')).entries ?? []) {
+      if (e?.source && e?.sha256) pinned.set(e.source, e.sha256);
+    }
+  } catch {
+    // A manifest that will not parse pins nothing; the guard below then refuses
+    // every write unless the operator has explicitly opted in.
+  }
+}
+
+/**
+ * Write downloaded bytes only if they match what is already pinned.
+ *
+ * Throws — rather than warning — because a mismatch means the vendored set and
+ * the committed baselines no longer describe the same third-party code, and
+ * continuing would silently replace both.
+ */
+function writeVerified(file, buf, source) {
+  const digest = sha256(buf);
+  const expected = pinned.get(source);
+
+  if (expected && expected !== digest) {
+    throw new Error(
+      `integrity: ${source}\n  pinned   ${expected}\n  received ${digest}\n` +
+        '  Refusing to overwrite. The upstream bytes changed under a pinned ' +
+        'URL. Review the change, then re-run with REVENDOR_ACCEPT_NEW_HASHES=1.',
+    );
+  }
+  if (!expected && !ACCEPT_NEW && pinned.size > 0) {
+    throw new Error(
+      `integrity: ${source} is not in the existing manifest.\n` +
+        '  Re-run with REVENDOR_ACCEPT_NEW_HASHES=1 to pin it for the first time.',
+    );
+  }
+
+  writeFileSync(join(OUT, file), buf);
+  return digest;
+}
 
 /** A modern Chrome UA, so Google Fonts serves woff2 rather than ttf. The
  *  capture browser is Chromium, so this is the format it would really get. */
@@ -76,14 +137,14 @@ const SCRIPTS = [
 console.log('scripts:');
 for (const s of SCRIPTS) {
   const buf = await fetchBuffer(s.url);
-  writeFileSync(join(OUT, s.file), buf);
+  const digest = writeVerified(s.file, buf, s.url);
   record({
     kind: 'script',
     source: s.url,
     file: s.file,
     licence: s.licence,
     bytes: buf.length,
-    sha256: sha256(buf),
+    sha256: digest,
   });
 }
 
@@ -108,14 +169,14 @@ for (const url of fontUrls) {
   // produces identical filenames.
   const file = `font-${sha256(Buffer.from(url)).slice(0, 20)}.woff2`;
   const buf = await fetchBuffer(url);
-  writeFileSync(join(OUT, file), buf);
+  const digest = writeVerified(file, buf, url);
   record({
     kind: 'font',
     source: url,
     file,
     licence: 'SIL Open Font License 1.1',
     bytes: buf.length,
-    sha256: sha256(buf),
+    sha256: digest,
   });
 }
 
@@ -132,14 +193,14 @@ for (const url of fontUrls) {
 // interceptable, so the URLs stay as they are and the manifest maps each one to
 // its local copy.
 
-writeFileSync(join(OUT, 'fonts.css'), css);
+const cssDigest = writeVerified('fonts.css', Buffer.from(css), FONT_CSS_URL);
 record({
   kind: 'stylesheet',
   source: FONT_CSS_URL,
   file: 'fonts.css',
   licence: 'SIL Open Font License 1.1 (font data)',
   bytes: Buffer.byteLength(css),
-  sha256: sha256(Buffer.from(css)),
+  sha256: cssDigest,
 });
 
 writeFileSync(
