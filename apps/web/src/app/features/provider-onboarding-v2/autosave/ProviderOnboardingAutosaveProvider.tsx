@@ -80,7 +80,10 @@ export type StepPatch = Omit<PatchOnboardingStepRequest, 'version'>;
  *  which is why every exit left regardless of what happened. */
 export interface FlushResult {
   ok: boolean;
-  reason?: 'offline' | 'error' | 'conflict' | 'not-loaded';
+  /** `upload-failed` — a tracked binary upload rejected. Distinct from
+   *  `error`, because retrying it is the uploader's job, not the flush's: the
+   *  exit offers an explicit discard instead of a retry it cannot perform. */
+  reason?: 'offline' | 'error' | 'conflict' | 'not-loaded' | 'upload-failed';
   /** HTTP status or `network`, for the message the screen shows. */
   message?: string;
   /** Present on `conflict` — the version the server says it holds. */
@@ -118,6 +121,31 @@ interface CoordinatorValue {
   isBusy: boolean;
   /** Anything unwritten — what `beforeunload` and the exit guards ask. */
   hasPendingWork: boolean;
+  /**
+   * Register long-running work that is NOT part of the debounced queue.
+   *
+   * Sprint 09B.29 Phase 4 — binary uploads stay OUT of the queue and IN the
+   * exit contract, which are separate decisions that were previously made as
+   * one. A multi-second photo upload must not sit behind a keystroke's
+   * debounce, but it is still unwritten work: the avatar aborts on unmount, so
+   * navigating away from it, reloading, closing the tab or signing out all
+   * destroyed an upload the provider was watching.
+   *
+   * Pass the promise; the coordinator counts it as pending until it settles,
+   * so `flushAll()` waits for it and `beforeunload` warns about it. The
+   * promise's REJECTION is not the coordinator's business — the uploader owns
+   * its own error surface — so this never turns an upload failure into a flush
+   * failure.
+   */
+  trackExternalWork: (work: Promise<unknown>) => void;
+  /**
+   * The provider has decided to leave WITHOUT the failed upload.
+   *
+   * Explicit by construction: nothing clears this state except this call, so
+   * repeating the gesture the product just refused — clicking Close again —
+   * cannot become the discard by accident.
+   */
+  discardFailedUploads: () => void;
 }
 
 const CoordinatorContext = createContext<CoordinatorValue | null>(null);
@@ -130,6 +158,27 @@ function versionFrom(qc: QueryClient): number | null {
   const view = qc.getQueryData<ProviderOnboardingDraftView>(providerQueryKeys.onboarding.draft());
   return view?.version ?? null;
 }
+
+// Sprint 09B.29 Phase 4 — WHY THERE IS NO SECOND VERSION SOURCE HERE.
+//
+// The first repair for the hydration race carried a `lastAcknowledgedVersion`
+// ref beside this, and presented `max(cache, acknowledged)` — belt and braces
+// against the shared cache slot regressing.
+//
+// It was removed after mutation testing, which is the only reason we know it
+// was not doing anything. With `useOnboardingDraft`'s `structuralSharing`
+// guard disabled, the ref alone kept the version correct; with the ref
+// disabled and the guard in place, every test in
+// `onboarding-hydration-race.test.tsx` still passed — including one written
+// specifically to catch the `setQueryData` path, because React Query v5 runs
+// `structuralSharing` on `setQueryData` too. No reachable case was left for it.
+//
+// It was not merely redundant, it was a hazard: a version ref living on a
+// coordinator that outlives the task routes would survive a sign-out and
+// present provider A's token for provider B, which is the cross-provider
+// leakage the hydration contract forbids.
+//
+// One source of truth, one guard, and the guard is tested.
 
 export function ProviderOnboardingAutosaveProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
@@ -150,13 +199,26 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
   /** The last terminal outcome, so a `flushAll` that finds nothing to do still
    *  reports the failure that stopped the previous one. */
   const lastResult = useRef<FlushResult>(OK);
+  /** Long-running work outside the queue — binary uploads. See
+   *  `trackExternalWork`. */
+  const externalWork = useRef<Set<Promise<unknown>>>(new Set());
+  /** Uploads that REJECTED and have not yet been answered by an explicit
+   *  discard. Non-zero blocks the exit. */
+  const failedUploads = useRef(0);
 
   const setStatus = useCallback((step: ProviderOnboardingStep, next: AutosaveStatusKind) => {
     setStatuses((prev) => (prev[step] === next ? prev : { ...prev, [step]: next }));
   }, []);
 
   const syncBusy = useCallback(() => {
-    setBusy(pending.current.size > 0 || inFlight.current || timer.current !== null);
+    setBusy(
+      pending.current.size > 0 ||
+        inFlight.current ||
+        timer.current !== null ||
+        // An upload in flight is unwritten work, so it arms `beforeunload` and
+        // the exit blocker exactly as a queued keystroke does.
+        externalWork.current.size > 0,
+    );
   }, []);
 
   /**
@@ -310,6 +372,43 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
    */
   const flushAll = useCallback(async (): Promise<FlushResult> => {
     clearTimer();
+
+    // Sprint 09B.29 Phase 4 — wait for the photo before deciding the draft is
+    // drained.
+    //
+    // `allSettled` rather than `all` because a rejected upload must not throw
+    // out of the drain — but settling is NOT the same as succeeding, and the
+    // first version of this conflated them. It treated a failed upload as done
+    // and returned ok, so the provider walked out of the screen and the photo
+    // was silently gone. Nothing said "Saved", so no false claim was made; it
+    // was worse than that, because nothing said anything at all.
+    //
+    // A failure is therefore RECORDED and reported below as a terminal result,
+    // exactly like a failed text write. The difference is what resolves it:
+    // retrying belongs to the uploader, which owns the file and its own retry
+    // control, so the exit offers an explicit discard instead of a retry it
+    // could not perform.
+    //
+    // Looped because finalize is itself a draft write: settling an upload can
+    // leave the queue non-empty, and the drain below has to see that.
+    while (externalWork.current.size > 0) {
+      const inFlightUploads = [...externalWork.current];
+      // `allSettled` so a rejection does not throw out of the drain. It is not
+      // how a failure is COUNTED — `trackExternalWork` does that at the moment
+      // of rejection, because an upload can fail long before anyone asks to
+      // leave.
+      await Promise.allSettled(inFlightUploads);
+      for (const settledWork of inFlightUploads) externalWork.current.delete(settledWork);
+    }
+    syncBusy();
+
+    // Reported BEFORE the queue drain, so a failed photo is not masked by text
+    // that saved perfectly well. The provider is told the photo failed and is
+    // asked what to do about it.
+    if (failedUploads.current > 0) {
+      return { ok: false, reason: 'upload-failed' };
+    }
+
     for (;;) {
       if (!draining.current) {
         if (pending.current.size === 0 && !inFlight.current) {
@@ -429,6 +528,37 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
     };
   }, []);
 
+  const trackExternalWork = useCallback(
+    (work: Promise<unknown>) => {
+      externalWork.current.add(work);
+      syncBusy();
+
+      const done = () => {
+        externalWork.current.delete(work);
+        syncBusy();
+      };
+      // The failure is recorded HERE, at the moment of rejection — not inside
+      // `flushAll`.
+      //
+      // Recording it in the drain only worked if a flush happened to be
+      // waiting when the upload failed. An upload that failed while the
+      // provider was still typing had already settled and been removed by the
+      // time they pressed Close, so the drain saw an empty set, found nothing
+      // wrong, and let them leave. Which is the whole defect, reintroduced one
+      // layer down.
+      work.then(done, () => {
+        failedUploads.current += 1;
+        done();
+      });
+    },
+    [syncBusy],
+  );
+
+  const discardFailedUploads = useCallback(() => {
+    failedUploads.current = 0;
+    syncBusy();
+  }, [syncBusy]);
+
   const value = useMemo<CoordinatorValue>(
     () => ({
       statusOf: (step) => statuses[step] ?? { kind: 'idle' },
@@ -437,8 +567,10 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
       flushAll,
       isBusy: busy,
       hasPendingWork: busy,
+      trackExternalWork,
+      discardFailedUploads,
     }),
-    [statuses, save, flushAll, busy],
+    [statuses, save, flushAll, busy, trackExternalWork, discardFailedUploads],
   );
 
   return <CoordinatorContext.Provider value={value}>{children}</CoordinatorContext.Provider>;

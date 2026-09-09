@@ -55,6 +55,16 @@ export interface OnboardingExit {
   retry: () => void;
   /** Abandon the exit and stay, keeping the pending edit. */
   dismiss: () => void;
+  /**
+   * Leave WITHOUT the failed upload.
+   *
+   * Sprint 09B.29 Phase 4 — only offered for `upload-failed`, and it is the
+   * only thing that clears that state. Retrying an upload belongs to the
+   * uploader, which owns the file; the exit can only offer to go on without
+   * it, and that has to be a decision the provider actually makes rather than
+   * a second click on the control they already pressed.
+   */
+  discard: () => void;
   /** True while an exit is in flight — bind to `disabled`/`aria-busy`. */
   isLeaving: boolean;
 }
@@ -65,9 +75,15 @@ export function isRetryable(result: FlushResult | undefined): boolean {
   return result?.reason === 'error' || result?.reason === 'offline';
 }
 
+/** A failed binary upload. Retrying is the UPLOADER's control, not the exit's,
+ *  so the exit offers to leave without it instead. */
+export function isUploadFailure(result: FlushResult | undefined): boolean {
+  return result?.reason === 'upload-failed';
+}
+
 export function useOnboardingExit(): OnboardingExit {
   const navigate = useNavigate();
-  const { flushAll, hasPendingWork } = useOnboardingAutosave();
+  const { flushAll, hasPendingWork, discardFailedUploads } = useOnboardingAutosave();
 
   const [state, setState] = useState<ExitState>({ kind: 'idle' });
   /** Where the interrupted exit was headed, so Retry resumes it rather than
@@ -80,6 +96,7 @@ export function useOnboardingExit(): OnboardingExit {
       // Guard on the REF, not on `state`: two taps in the same tick both read
       // the pre-render state and both would pass a state-based check.
       if (leaving.current) return;
+
       leaving.current = true;
       target.current = to;
       setState({ kind: 'leaving' });
@@ -117,6 +134,17 @@ export function useOnboardingExit(): OnboardingExit {
     setState({ kind: 'idle' });
   }, []);
 
+  const discard = useCallback(() => {
+    const to = target.current;
+    // Clears the failure FIRST, so the flush this starts can succeed. Nothing
+    // else clears it: a second press of Close cannot become the discard by
+    // accident, which is what makes leaving without the photo a decision
+    // rather than a side effect of impatience.
+    discardFailedUploads();
+    setState({ kind: 'idle' });
+    if (to) void run(to);
+  }, [discardFailedUploads, run]);
+
   // ── Browser Back / Forward ────────────────────────────────────────────────
   //
   // A history POP runs no click handler, so `exit()` never sees it. The
@@ -153,5 +181,5 @@ export function useOnboardingExit(): OnboardingExit {
     };
   }, [blocker, flushAll]);
 
-  return { state, exit, retry, dismiss, isLeaving: state.kind === 'leaving' };
+  return { state, exit, retry, dismiss, discard, isLeaving: state.kind === 'leaving' };
 }
