@@ -3526,3 +3526,81 @@ repository squash-merges every sprint PR anyway (`develop`'s history is
 | `gitleaks git --staged` (v8.30.1, official image)              | **no leaks found**, 1.82 MB scanned |
 | `git diff --check` (worktree and staged)                       | exit 0                              |
 | no `JWT_ACCESS_SECRET` literal in any file this sprint touches | confirmed by `git grep`             |
+
+## 5.9 Phase 3 — closed
+
+Draft PR **#73**, branch
+`feat/sprint-09b29-provider-onboarding-v2-activation`, one commit onto
+`develop` `563cfe73`. PR #72 is closed and superseded, its branch preserved.
+
+### Remote gate results — all 14 checks, one SHA
+
+| Check                                                 | Result      |
+| ----------------------------------------------------- | ----------- |
+| Verify / Install & lockfile integrity                 | **success** |
+| Verify / Verify Contracts                             | **success** |
+| Verify / Verify Database                              | **success** |
+| Verify / Verify API (lint / typecheck / unit / build) | **success** |
+| Verify / Verify Web (lint / typecheck / unit / build) | **success** |
+| Integration & E2E (real Postgres / Redis)             | **success** |
+| Browser E2E (Playwright / Chromium)                   | **success** |
+| Auth cookie contract (real browser + real API)        | **success** |
+| Docker cold build + production boot                   | **success** |
+| Compose stack smoke                                   | **success** |
+| Dependency, secret, and container scans               | **success** |
+| Analyze JavaScript/TypeScript                         | **success** |
+| CodeQL                                                | **success** |
+| CI gate                                               | **success** |
+
+Two of these are green for the first time in this sprint, and both matter more
+than the colour suggests:
+
+- **Dependency, secret, and container scans.** On every previous run gitleaks
+  failed and aborted the job, which meant `Build the image to scan`,
+  `Generate an SBOM` and `Container image scan (fail on unmitigated
+CRITICAL/HIGH)` were **skipped** — reported as a failed job, but never
+  actually executed. This is the first run in which the container image was
+  built, scanned and inventoried at all.
+- **Browser E2E.** Its first-ever completed run was the one that exposed
+  defect 7; before that it had only ever been cancelled mid-flight.
+
+### Exit criteria
+
+| Criterion                                                      | Status                                                      |
+| -------------------------------------------------------------- | ----------------------------------------------------------- |
+| Remote branch exists                                           | yes — `feat/sprint-09b29-provider-onboarding-v2-activation` |
+| Pull request exists                                            | yes — **#73**, draft                                        |
+| Verification document exists and is current                    | this file                                                   |
+| CI green                                                       | yes, all jobs                                               |
+| CodeQL green                                                   | yes                                                         |
+| ...on the same SHA                                             | yes                                                         |
+| No gate disabled, skipped, baselined or suppressed to get here | **`.gitleaksignore` untouched; 0 CodeQL alerts dismissed**  |
+
+**Phase 3 is complete.**
+
+### What is deliberately NOT claimed
+
+- **The visual-regression gate does not run in CI.** It is opt-in
+  (`E2E_VISUAL_REFERENCE=1`) because its baselines are Windows rasterizations
+  (defect 7). Visual acceptance for this sprint rests on the local captures
+  recorded in §2.13, §2.14 and §3.12 — not on a CI gate. Committing Linux
+  baselines is the follow-up that would close this.
+- **CodeQL alert #13 is open**: medium, non-blocking, `js/http-to-file-access`
+  at the single verified write in the developer-only vendoring tool. Intended
+  behaviour, now gated by pinned SHA-256 verification, and left for a human
+  reviewer to judge rather than dismissed by its own author.
+- **The journey is verified but not deployable.** `EVIDENCE_SCAN_WORKER_ENABLED`
+  defaults false and no production deployment configuration exists in this
+  repository, so nothing anywhere arms the sweep with a real scanner. See
+  §3.13.2 and `docs/deployment.md` §6.4. This is a product-level rollout gap,
+  not a gate failure.
+- **Merge is not authorized.** #73 remains a draft.
+- **Phase 4 has not been started.**
+
+### One honest note on this document's own SHA
+
+The commit that adds this section necessarily changes the SHA the table above
+describes. The full suite re-runs on it, and the claim "CI and CodeQL green on
+the same SHA" is only true once that run is also green — which is the state
+this document is published in. A record of a green run cannot be inside the
+commit it describes without a second run; this is that second run.
