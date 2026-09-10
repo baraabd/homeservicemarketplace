@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { PlatformSettingRepository } from '../../../../infrastructure/persistence/settings/platform-setting.repository';
-import type { PrismaTx } from '../../../../infrastructure/prisma/prisma.service';
+import type { PrismaTx } from '@homeservicemarketplace/database';
 import { AppError } from '../../../../shared/errors/app-error';
 import {
   SUPPORTED_MARKETS_SETTING,
@@ -93,7 +93,7 @@ export class MarketRegistryService {
 
   private misconfigured(reason: string): AppError {
     return new AppError(
-      'INTERNAL',
+      'DEPENDENCY_UNAVAILABLE',
       'Provider onboarding is temporarily unavailable in this region. Please try again later.',
       500,
       { reason },
