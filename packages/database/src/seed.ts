@@ -581,6 +581,9 @@ export async function seedWithTx(tx: Prisma.TransactionClient): Promise<void> {
   // Sprint 9B.2 — a NON-LEGAL development default so a fresh database can open
   // a verification case at all. See the function for why it is dev-only.
   await upsertDevVerificationPolicy(tx);
+  // Sprint 09B.29 Phase 5 — a fresh database needs at least one enabled market
+  // or the work-area task cannot resolve a country. Dev-only; see the function.
+  await upsertDevSupportedMarkets(tx);
   // One-shot backfill for the case-insensitive city filter (Sprint
   // 7.x). New requests carry addressSnapshot.cityKey at write time;
   // legacy snapshots written before the normalisation landed need
@@ -808,4 +811,75 @@ async function upsertDevVerificationPolicy(tx: Prisma.TransactionClient): Promis
       publishedAt: new Date('2026-08-01T00:00:00.000Z'),
     },
   });
+}
+
+/**
+ * Sprint 09B.29 Phase 5 — the development supported-market registry.
+ *
+ * The platform is multi-country from launch, and `MarketRegistryService`
+ * refuses to invent a market: an absent or empty registry is a configuration
+ * error, not a silent fallback. So a fresh database needs at least one enabled
+ * market or provider onboarding cannot resolve a work area at all.
+ *
+ * SY, SE and SA specifically, because the product-owner decision names them and
+ * because this seed's own demo providers already span exactly those three
+ * countries — a registry that did not include them would leave the seeded
+ * providers in markets the platform says it does not serve.
+ *
+ * They are also three genuinely different timezone situations: Sweden observes
+ * DST, Syria abolished it in 2022, and Saudi Arabia has never used it. Seeding
+ * all three is what makes the DST assertions in the timezone policy meaningful
+ * against real data.
+ *
+ * NEVER IN PRODUCTION, on the same reasoning as the development verification
+ * policy above: which markets a real platform serves is a commercial decision
+ * with legal and tax consequences, and it belongs in the audited admin surface.
+ * A seed that quietly enabled three countries in production would be making
+ * that decision on the operator's behalf.
+ *
+ * Idempotent, and non-destructive: if an operator (or an earlier run) has
+ * already written the setting, it is left exactly as it is.
+ */
+async function upsertDevSupportedMarkets(tx: Prisma.TransactionClient): Promise<void> {
+  const KEY = 'platform_supported_markets';
+
+  if (isProductionSeedTarget()) {
+    console.warn(
+      `[seed] SKIPPING the development market registry: NODE_ENV=production. ` +
+        `Enable markets through the audited admin settings surface instead.`,
+    );
+    return;
+  }
+
+  const existing = await tx.platformSetting.findUnique({ where: { key: KEY } });
+  if (existing) return;
+
+  await tx.platformSetting.create({
+    data: {
+      key: KEY,
+      value: [
+        {
+          countryCode: 'SY',
+          enabled: true,
+          displayNameKey: 'market.SY',
+          defaultTimezone: 'Asia/Damascus',
+        },
+        {
+          countryCode: 'SE',
+          enabled: true,
+          displayNameKey: 'market.SE',
+          defaultTimezone: 'Europe/Stockholm',
+        },
+        {
+          countryCode: 'SA',
+          enabled: true,
+          displayNameKey: 'market.SA',
+          defaultTimezone: 'Asia/Riyadh',
+        },
+      ],
+      updatedBy: null,
+    },
+  });
+
+  console.log('[seed] development market registry: SY, SE, SA enabled');
 }
