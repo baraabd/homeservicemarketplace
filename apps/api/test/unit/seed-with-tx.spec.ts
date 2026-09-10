@@ -127,6 +127,17 @@ function makeFakeTx() {
       findFirst: jest.fn(async () => null),
       create: jest.fn(async () => ({ version: '2026.08-dev-default-v1' })),
     },
+    // Sprint 09B.29 Phase 5 — the development supported-market registry. Same
+    // shape as the verification policy above: it reads first and only writes
+    // when nothing is there, so returning null exercises the CREATE path.
+    //
+    // `platformSetting` is a general settings table, so this fake deliberately
+    // does NOT special-case the market key: a future seeder writing a different
+    // setting will exercise the same double rather than needing a new one.
+    platformSetting: {
+      findUnique: jest.fn(async () => null),
+      create: jest.fn(async () => ({ key: 'platform_supported_markets' })),
+    },
     // Sprint 7.x — backfill of addressSnapshot.cityKey on legacy rows
     // is run via a raw SQL UPDATE inside seedWithTx. Fake into a no-op
     // returning the affected-row count Prisma would normally return.

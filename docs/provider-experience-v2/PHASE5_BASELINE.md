@@ -128,7 +128,27 @@ baseline participates, so the comparison is platform-independent by
 construction. Committed PNGs remain only as a drift guard for the reference
 itself.
 
-## 5. HARD STOP — C2's country source does not exist
+## 5. C2's country source — SUPERSEDED by the multi-country decision
+
+> **This section is kept as the entry record, not as a live blocker.**
+>
+> It reported a hard stop: C2 required the provider's country to come from a
+> single canonical operator-market configuration, and the repository contained
+> none. The product owner has since ruled that the marketplace is
+> **multi-country from launch**, which replaces the premise rather than
+> answering the question — there is no single platform country to find, and
+> looking for one was the wrong search.
+>
+> The audit below stands because it is still an accurate account of what the
+> repository held at entry, and because it is the evidence that a single-country
+> assumption had to be abandoned rather than patched. What replaced it is in
+> `PHASE5_VERIFICATION.md` §1.
+>
+> The one finding in it that survives unchanged: `serviceAreaCountryCode` was
+> validated only by `/^[A-Z]{2}$/`, so `ZZ` and `AQ` were both countries as far
+> as the API was concerned. That hole is now closed.
+
+### The original finding
 
 **This blocks state 6 (work area) and, transitively, C3's market-default
 timezone.** Reported rather than worked around, exactly as C2 instructs.
