@@ -1,5 +1,4 @@
 import { AutosaveStatus } from './AutosaveStatus';
-import { mergeAutosaveStatus } from '../autosave-status';
 import { useCallback, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
@@ -13,33 +12,44 @@ import {
 } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { AvatarUploader } from '../avatar/AvatarUploader';
 import { BASICS_COPY, type Lang } from '../copy/basics-copy';
+import { ProviderErrorState, ProviderSkeleton, ProviderTextInput } from '../../provider-ui';
 
-// Sprint 9B.17 — V2 Task 1: account type, basics, and the photo.
+// Sprint 9B.17 — V2 Task 1: the basics, and the photo.
+// Sprint 09B.29 Phase 5 — migrated to Provider UI against the approved
+// prototype screen `basics` ("Basic details", task 1 of 6).
 //
-// SHORT AND DYNAMIC, which is the whole point of the six-task model. The
-// Sprint 8 wizard asked every provider the same nine screens; this asks four
-// things, and one of them only of businesses.
+// THE APPROVED SCREEN IS THREE THINGS, IN THIS ORDER
 //
-// WHAT IS DELIBERATELY NOT HERE
+//   the photo     an upload surface — camera or gallery — FIRST
+//   the name      the name customers see
+//   the phone     with the note that SMS verification is not active yet
+//
+// WHAT WAS REMOVED, AND ON WHOSE AUTHORITY
+//
+// The provider-type chooser (individual/business), its confirmation dialog and
+// the legal-business-name field are gone. Ruling C1 makes `providerType` a
+// SERVER-side default — INDIVIDUAL, written only when absent while creating a
+// new V2 draft — and puts the business path on a later approved surface. The
+// ruling says in terms: do not add provider-type, legal-business-name or
+// duplicate professional-title controls to the approved onboarding screens.
+//
+// That is a behaviour change, not a tidy-up, so it is worth being explicit
+// about what it does NOT do: nothing is deleted server-side. A provider whose
+// profile already says BUSINESS keeps it, keeps their legal name, and keeps
+// every document they have sent. The screen stops asking a question the
+// approved design does not ask, and the server stops needing it answered here.
+//
+// WHAT IS DELIBERATELY STILL NOT HERE
 //
 //   the address     Where a provider works is the WORK_AREA task, and it is a
-//                   city and a radius, not a street. Asking someone for their
-//                   home address on the first screen of a signup — before they
-//                   have any reason to trust the product — is how people stop
-//                   signing up.
-//   an image URL    Replaced by a real upload. Asking someone to host a photo
-//                   somewhere else first is why that field was always empty.
-//   phone proof     A number is collected and format-checked. It is not
-//                   CONFIRMED, because no SMS channel exists to confirm it
-//                   with, and a form that demands proof nothing can issue is a
-//                   dead end.
+//                   city and a radius, not a street.
+//   an image URL    Replaced by a real presigned upload in Phase 4.
+//   phone proof     Collected and format-checked, never claimed as verified,
+//                   because no SMS channel exists to verify it with.
 //
-// TWO STEPS, ONE SCREEN
-//
-// The server still models these as PROVIDER_TYPE and IDENTITY, so the screen
-// drives two autosaves. Each keeps its own version handshake; a field only
-// ever writes to the step that owns it, which is what the server's per-step
-// field guard enforces anyway.
+// BEHAVIOUR IS UNCHANGED BY THE MIGRATION: same step ownership, same version
+// handshake through the shared coordinator, same keystroke-commit contract,
+// same exit tracking for the photo, same stable test ids.
 
 interface BasicsTaskScreenProps {
   view: ProviderOnboardingDraftView;
@@ -47,8 +57,6 @@ interface BasicsTaskScreenProps {
   /** False while the application is locked (submitted and not withdrawn). */
   editable: boolean;
 }
-
-type ProviderType = 'INDIVIDUAL' | 'BUSINESS';
 
 export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps) {
   const copy = BASICS_COPY[lang];
@@ -58,17 +66,12 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
   // this screen is where the two meet: it already holds the coordinator, and
   // AvatarUploader stays a component that does not care where it is mounted.
   const { trackExternalWork } = useOnboardingAutosave();
-  const typeAutosave = useOnboardingStepAutosave('PROVIDER_TYPE');
   const identityAutosave = useOnboardingStepAutosave('IDENTITY');
 
   const data = view.data;
   const [displayName, setDisplayName] = useState(data.displayName ?? '');
-  const [legalName, setLegalName] = useState(data.legalBusinessName ?? '');
   const [phone, setPhone] = useState(data.phoneNumber ?? '');
   const [phoneTouched, setPhoneTouched] = useState(false);
-  const [pendingType, setPendingType] = useState<ProviderType | null>(null);
-
-  const providerType = (data.providerType ?? null) as ProviderType | null;
 
   const seed = useCallback(
     (next: unknown) => {
@@ -86,190 +89,38 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
     return isPlausibleE164(phone) ? null : copy.phoneInvalid;
   }, [copy.phoneInvalid, phone, phoneTouched]);
 
+  // One step owns every field on this screen now that provider type has moved
+  // server-side, so there is one status rather than a merge of two.
+  const status = identityAutosave.status;
+
   /**
-   * Changing provider type is confirmed, not silent.
-   *
-   * Individual and business are verified against different documents. A
-   * provider who switches after uploading evidence needs to know what that
-   * means — and, just as importantly, needs to be told what it does NOT mean:
-   * nothing already sent is deleted. The server keeps evidence and decisions
-   * on the record regardless of type, so the honest message is "the
-   * requirements change", not a warning about losing work.
+   * Never write an empty display name: the column is NOT NULL and the server
+   * refuses it, so sending it would turn a blank field into an error banner
+   * the provider cannot act on.
    */
-  const requestTypeChange = (next: ProviderType) => {
-    if (next === providerType) return;
-    // Only a CHANGE needs confirming. The first choice on an empty form is not
-    // a change, and a dialog there is friction for nothing.
-    if (providerType === null) {
-      typeAutosave.save({ providerType: next });
-      return;
+  const commitDisplayName = (next: string) => {
+    if (next.trim() !== '') identityAutosave.save({ displayName: next });
+  };
+
+  /**
+   * A number the server would refuse is not sent. Clearing IS a real
+   * intention, so an empty value still writes null — the provider is removing
+   * something they already said. A half-typed number is therefore NOT queued,
+   * which is why the phone field can still show "Saved" from an earlier write
+   * while an invalid number is on screen; the inline error speaks for that.
+   */
+  const commitPhone = (next: string) => {
+    setPhoneTouched(true);
+    if (next.trim() === '' || isPlausibleE164(next)) {
+      identityAutosave.save({ phoneNumber: next.trim() === '' ? null : next });
     }
-    setPendingType(next);
   };
-
-  const confirmTypeChange = () => {
-    if (!pendingType) return;
-    typeAutosave.save({ providerType: pendingType });
-    // Clearing the business name is the server's decision, not ours: the
-    // completeness policy simply stops asking for it. Sending null here would
-    // discard something the provider typed, and if they switch back it is gone.
-    setPendingType(null);
-  };
-
-  const status = mergeAutosaveStatus(typeAutosave.status, identityAutosave.status);
 
   return (
-    <div className="flex flex-col gap-6" data-testid="basics-task">
+    <div className="flex flex-col gap-[18px]" data-testid="basics-task">
       <AutosaveStatus status={status} lang={lang} testIdPrefix="basics" />
 
-      {/* ── How do you work? ────────────────────────────────────────────── */}
-      <fieldset className="min-w-0" disabled={!editable}>
-        <legend
-          className="mb-1 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '14px', fontWeight: 700 }}
-        >
-          {copy.typeLegend}
-        </legend>
-        <p
-          className="mb-2 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-        >
-          {copy.typeHint}
-        </p>
-
-        <div className="flex flex-col gap-2">
-          <TypeOption
-            testId="provider-type-INDIVIDUAL"
-            checked={providerType === 'INDIVIDUAL'}
-            label={copy.individual}
-            hint={copy.individualHint}
-            onSelect={() => requestTypeChange('INDIVIDUAL')}
-            disabled={!editable}
-          />
-          <TypeOption
-            testId="provider-type-BUSINESS"
-            checked={providerType === 'BUSINESS'}
-            label={copy.business}
-            hint={copy.businessHint}
-            onSelect={() => requestTypeChange('BUSINESS')}
-            disabled={!editable}
-          />
-        </div>
-      </fieldset>
-
-      {pendingType ? (
-        <div
-          role="alertdialog"
-          aria-labelledby="type-change-title"
-          aria-describedby="type-change-body"
-          className="rounded-2xl border border-amber-200 bg-amber-50 p-3"
-          data-testid="provider-type-change-dialog"
-        >
-          <h3
-            id="type-change-title"
-            className="break-words text-amber-900"
-            style={{ fontSize: '14px', fontWeight: 700 }}
-          >
-            {copy.typeChangeTitle}
-          </h3>
-          <p
-            id="type-change-body"
-            className="mt-1 break-words text-amber-800"
-            style={{ fontSize: '12px' }}
-          >
-            {copy.typeChangeBody}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={confirmTypeChange}
-              data-testid="provider-type-change-confirm"
-              className="rounded-xl bg-blue-600 px-3 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-              style={{ fontSize: '13px', fontWeight: 600, minHeight: '44px' }}
-            >
-              {copy.typeChangeConfirm}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPendingType(null)}
-              data-testid="provider-type-change-cancel"
-              className="rounded-xl border border-slate-200 bg-white px-3 text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-              style={{ fontSize: '13px', fontWeight: 600, minHeight: '44px' }}
-            >
-              {copy.typeChangeCancel}
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── Business name, only for businesses ──────────────────────────── */}
-      {providerType === 'BUSINESS' ? (
-        <Field
-          testId="field-legalBusinessName"
-          label={copy.legalName}
-          hint={copy.legalNameHint}
-          required
-          requiredLabel={copy.required}
-          value={legalName}
-          disabled={!editable}
-          onChange={setLegalName}
-          onCommit={(next) => typeAutosave.save({ legalBusinessName: next })}
-        />
-      ) : null}
-
-      {/* ── Name customers see ──────────────────────────────────────────── */}
-      <Field
-        testId="field-displayName"
-        label={copy.displayName}
-        hint={copy.displayNameHint}
-        required
-        requiredLabel={copy.required}
-        value={displayName}
-        disabled={!editable}
-        onChange={setDisplayName}
-        onCommit={(next) => {
-          // Never write an empty display name: the column is NOT NULL and the
-          // server refuses it, so sending it would turn a blank field into an
-          // error banner the provider cannot act on.
-          if (next.trim() !== '') identityAutosave.save({ displayName: next });
-        }}
-      />
-
-      {/* ── Phone ───────────────────────────────────────────────────────── */}
-      <Field
-        testId="field-phoneNumber"
-        label={copy.phone}
-        hint={copy.phoneHint}
-        required
-        requiredLabel={copy.required}
-        value={phone}
-        disabled={!editable}
-        inputMode="tel"
-        type="tel"
-        error={phoneError}
-        onChange={setPhone}
-        onCommit={(next) => {
-          setPhoneTouched(true);
-          // Only send something the server will accept. A round-trip whose
-          // only outcome is a 400 teaches nothing the inline message has not
-          // already said. A half-typed number is therefore NOT queued — which
-          // is correct, and is why the phone field can still show "Saved" from
-          // an earlier write while an invalid number is on screen. The inline
-          // error is what speaks for that state.
-          if (next.trim() === '' || isPlausibleE164(next)) {
-            identityAutosave.save({ phoneNumber: next.trim() === '' ? null : next });
-          }
-        }}
-      />
-      <p
-        className="-mt-4 break-words text-slate-500 dark:text-slate-400"
-        style={{ fontSize: '12px' }}
-        data-testid="phone-verification-note"
-      >
-        {copy.phoneNotVerified}
-      </p>
-
-      {/* ── Photo ───────────────────────────────────────────────────────── */}
+      {/* ── Photo, first, as the approved screen has it ─────────────────── */}
       <AvatarUploader
         imageUrl={data.profileImageUrl ?? null}
         version={view.version}
@@ -278,149 +129,60 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
         trackWork={trackExternalWork}
         disabled={!editable}
       />
-    </div>
-  );
-}
 
-// ─── Pieces ─────────────────────────────────────────────────────────────────
-
-function TypeOption({
-  testId,
-  checked,
-  label,
-  hint,
-  onSelect,
-  disabled,
-}: {
-  testId: string;
-  checked: boolean;
-  label: string;
-  hint: string;
-  onSelect: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <label
-      className={`flex min-w-0 items-start gap-3 rounded-2xl border p-3 ${
-        checked ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 dark:border-slate-700'
-      }`}
-      style={{ minHeight: '44px' }}
-      data-testid={testId}
-    >
-      <input
-        type="radio"
-        name="providerType"
-        checked={checked}
-        onChange={onSelect}
-        disabled={disabled}
-        className="mt-0.5 h-5 w-5 flex-shrink-0 accent-blue-600"
-      />
-      <span className="min-w-0">
-        <span
-          className="block break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '14px', fontWeight: 600 }}
-        >
-          {label}
-        </span>
-        <span
-          className="block break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-        >
-          {hint}
-        </span>
-      </span>
-    </label>
-  );
-}
-
-function Field({
-  testId,
-  label,
-  hint,
-  value,
-  onChange,
-  onCommit,
-  disabled,
-  required,
-  requiredLabel,
-  error,
-  type = 'text',
-  inputMode,
-}: {
-  testId: string;
-  label: string;
-  hint: string;
-  value: string;
-  onChange: (next: string) => void;
-  /** Called with the CURRENT value on every keystroke and again on blur.
-   *
-   *  Sprint 9B.28 — it takes the value as an argument rather than reading the
-   *  caller's closure, because on a keystroke that closure still holds the
-   *  PREVIOUS render's value; committing it would write the text one character
-   *  behind what is on screen. */
-  onCommit: (next: string) => void;
-  disabled: boolean;
-  required?: boolean;
-  requiredLabel?: string;
-  error?: string | null;
-  type?: string;
-  inputMode?: 'tel' | 'text';
-}) {
-  const id = `basics-${testId}`;
-  return (
-    <div className="min-w-0">
-      <label
-        htmlFor={id}
-        className="mb-1 flex flex-wrap items-baseline gap-2 break-words text-slate-900 dark:text-white"
-        style={{ fontSize: '14px', fontWeight: 600 }}
-      >
-        {label}
-        {required && requiredLabel ? (
-          <span className="text-slate-400" style={{ fontSize: '11px', fontWeight: 500 }}>
-            {requiredLabel}
-          </span>
-        ) : null}
-      </label>
-      <input
-        id={id}
-        data-testid={testId}
-        type={type}
-        inputMode={inputMode}
-        value={value}
-        disabled={disabled}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={`${id}-hint`}
+      {/* ── The name customers see ──────────────────────────────────────── */}
+      <ProviderTextInput
+        label={copy.displayName}
+        hint={copy.displayNameHint}
+        data-testid="field-displayName"
+        value={displayName}
+        disabled={!editable}
+        autoComplete="name"
         onChange={(event) => {
-          onChange(event.target.value);
+          setDisplayName(event.target.value);
           // Sprint 9B.28 — the coordinator hears about the keystroke NOW.
           //
-          // It debounces, so typing a sentence is still one write. What
+          // It debounces, so typing a sentence is still one write. What this
           // changes is that the status goes `dirty` on the first character
           // instead of showing the PREVIOUS write's "Saved" until blur — and
           // that an exit taken without blurring still has the text to flush.
-          onCommit(event.target.value);
+          commitDisplayName(event.target.value);
         }}
         // Still on blur as well: leaving a field commits it rather than waiting
         // out a timer the provider cannot see.
-        onBlur={() => onCommit(value)}
-        className="w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900 disabled:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-        style={{ fontSize: '14px', minHeight: '44px' }}
+        onBlur={() => commitDisplayName(displayName)}
       />
-      <p
-        id={`${id}-hint`}
-        className={`mt-1 break-words ${error ? 'text-rose-600' : 'text-slate-500 dark:text-slate-400'}`}
-        style={{ fontSize: '12px' }}
-      >
-        {error ?? hint}
+
+      {/* ── Phone ───────────────────────────────────────────────────────── */}
+      <ProviderTextInput
+        label={copy.phone}
+        hint={copy.phoneHint}
+        error={phoneError ?? undefined}
+        data-testid="field-phoneNumber"
+        type="tel"
+        inputMode="tel"
+        value={phone}
+        disabled={!editable}
+        autoComplete="tel"
+        onChange={(event) => {
+          setPhone(event.target.value);
+          commitPhone(event.target.value);
+        }}
+        onBlur={() => commitPhone(phone)}
+      />
+
+      {/* The approved screen says plainly that SMS verification is not active
+          and will not block submission. Kept as its own line rather than as
+          the field hint, which is already carrying the format requirement. */}
+      <p className="-mt-2 text-[13px] text-pv-muted" data-testid="phone-verification-note">
+        {copy.phoneNotVerified}
       </p>
     </div>
   );
 }
 
-// ─── Container ──────────────────────────────────────────────────────────────
-
 /**
- * Loads the draft and renders the form.
+ * The route-level wrapper: fetch, guard, then render.
  *
  * A separate component rather than a branch inside the task route, because the
  * draft query must only run for the task that needs it — hooks cannot be
@@ -436,12 +198,7 @@ export function BasicsTask({ lang }: { lang: Lang }) {
   const copy = BASICS_COPY[lang];
 
   if (!draft.isFetched) {
-    return (
-      <div className="flex justify-center py-10" role="status" aria-live="polite">
-        <span className="sr-only">{copy.saving}</span>
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
-      </div>
-    );
+    return <ProviderSkeleton label={copy.saving} />;
   }
 
   // The SHAPE, not merely presence. A 200 carrying something that is not a
@@ -453,15 +210,7 @@ export function BasicsTask({ lang }: { lang: Lang }) {
   const usable = view && typeof view.version === 'number' && view.data !== undefined;
 
   if (!usable) {
-    return (
-      <p
-        className="break-words text-rose-600"
-        style={{ fontSize: '13px' }}
-        data-testid="basics-load-failed"
-      >
-        {copy.saveFailed}
-      </p>
-    );
+    return <ProviderErrorState title={copy.saveFailed} testId="basics-load-failed" />;
   }
 
   // `editable` is the server's word, not a guess: a submitted application is

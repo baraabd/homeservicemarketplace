@@ -242,16 +242,21 @@ export function ProviderErrorState({
   description,
   retryLabel,
   onRetry,
+  testId,
 }: {
   title: string;
   description?: string;
   retryLabel?: string;
   onRetry?: () => void;
+  /** Overrides the default id, for a screen whose failure already had a stable
+   *  one. Migrating presentation must not silently rename a hook a test or a
+   *  support engineer relies on. */
+  testId?: string;
 }) {
   return (
     <div
       role="alert"
-      data-testid="provider-error"
+      data-testid={testId ?? 'provider-error'}
       className="flex flex-col items-start gap-2 rounded-xl border border-pv-danger-border bg-pv-danger-bg p-4"
     >
       <p className="flex items-center gap-2 text-[14px] font-semibold text-pv-danger">
@@ -274,8 +279,14 @@ export function ProviderErrorState({
  * A spinner in place of content tells the reader nothing about what will
  * appear; a skeleton the same size stops the layout jumping when it does.
  */
-export function ProviderSkeleton({ rows = 3 }: { rows?: number }) {
-  return (
+export function ProviderSkeleton({ rows = 3, label }: { rows?: number; label?: string }) {
+  // The bars themselves stay hidden from assistive technology — they carry no
+  // information and announcing three grey rectangles helps nobody. When a
+  // caller supplies a label, the WAITING is announced instead, once, through a
+  // live region wrapping them. A screen that replaced a spoken "loading" with
+  // a silent shimmer would be a regression for exactly the users who cannot
+  // see the shimmer.
+  const bars = (
     <div className="flex flex-col gap-3" data-testid="provider-skeleton" aria-hidden="true">
       {Array.from({ length: rows }, (_, i) => (
         <div
@@ -283,6 +294,15 @@ export function ProviderSkeleton({ rows = 3 }: { rows?: number }) {
           className="h-[72px] animate-pulse rounded-xl bg-pv-surface-sunken motion-reduce:animate-none"
         />
       ))}
+    </div>
+  );
+
+  if (!label) return bars;
+
+  return (
+    <div role="status" aria-live="polite">
+      <span className="sr-only">{label}</span>
+      {bars}
     </div>
   );
 }

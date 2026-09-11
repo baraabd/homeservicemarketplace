@@ -147,83 +147,90 @@ describe('BasicsTaskScreen — phone', () => {
   });
 });
 
-describe('BasicsTaskScreen — individual vs business', () => {
-  it('does not ask an individual for a business name', () => {
+describe('BasicsTaskScreen — the questions ruling C1 removed', () => {
+  // SUPERSEDED CONTRACT, recorded rather than deleted.
+  //
+  // This block previously asserted that the screen ASKED for provider type
+  // (individual/business), confirmed a change through an alert dialog, and
+  // asked a business for its legal name. Every one of those assertions was
+  // correct for the Sprint 9B.17 design.
+  //
+  // Ruling C1 supersedes it: providerType is a SERVER-side default written
+  // only when absent while creating a new V2 draft, and the business path
+  // belongs to a later approved surface. The ruling says in terms that
+  // provider-type, legal-business-name and duplicate professional-title
+  // controls must not appear on the approved onboarding screens.
+  //
+  // The replacement assertions are STRICTER than the ones they replace: the
+  // old block proved the controls behaved correctly when present, this one
+  // proves they cannot appear at all — in either provider type, and in either
+  // language.
+  it('never asks an INDIVIDUAL for a provider type or a business name', () => {
     renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }));
+
     expect(screen.queryByTestId('field-legalBusinessName')).toBeNull();
-  });
-
-  it('asks a business for one', () => {
-    renderScreen(DRAFT({ data: { providerType: 'BUSINESS' } }));
-    expect(screen.getByTestId('field-legalBusinessName')).toBeInTheDocument();
-  });
-
-  it('saves the first choice immediately, with no dialog', async () => {
-    // Choosing on an empty form is not a CHANGE, and a confirmation there is
-    // friction for nothing.
-    renderScreen();
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
-
+    expect(screen.queryByTestId('provider-type-INDIVIDUAL')).toBeNull();
+    expect(screen.queryByTestId('provider-type-BUSINESS')).toBeNull();
     expect(screen.queryByTestId('provider-type-change-dialog')).toBeNull();
-    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-    expect(JSON.parse(mock.history.patch[0].data).providerType).toBe('BUSINESS');
   });
 
-  it('warns before CHANGING an existing type, and does not save until confirmed', async () => {
-    renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }));
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
+  it('never asks a BUSINESS either — the stored value is untouched, not re-asked', () => {
+    // The provider keeps their type and their legal name server-side. What
+    // changes is that this screen stops collecting them, so a business sees
+    // exactly the three approved questions an individual sees.
+    renderScreen(DRAFT({ data: { providerType: 'BUSINESS', legalBusinessName: 'ACME' } }));
 
-    const dialog = await screen.findByTestId('provider-type-change-dialog');
-    expect(dialog).toBeInTheDocument();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(mock.history.patch).toHaveLength(0);
+    expect(screen.queryByTestId('field-legalBusinessName')).toBeNull();
+    expect(screen.queryByTestId('provider-type-BUSINESS')).toBeNull();
+    expect(screen.queryByText(BASICS_COPY.en.typeLegend)).toBeNull();
+    expect(screen.queryByText('ACME')).toBeNull();
   });
 
-  it('promises that nothing already sent is deleted', () => {
-    // The consequence a provider actually needs: requirements change, evidence
-    // and decisions stay on the record.
-    renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }));
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
-    expect(screen.getByTestId('provider-type-change-dialog').textContent).toContain(
-      'Nothing you have already sent us is deleted',
-    );
-  });
+  it('asks only the three approved questions, photo first', () => {
+    // The approved screen "basics" is: upload surface, customer-facing name,
+    // phone. Order is part of the design, so it is asserted rather than left
+    // to the reading order of the file.
+    const { container } = renderScreen();
 
-  it('saves once the change is confirmed', async () => {
-    renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }));
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
-    fireEvent.click(await screen.findByTestId('provider-type-change-confirm'));
+    expect(screen.getByTestId('field-displayName')).toBeInTheDocument();
+    expect(screen.getByTestId('field-phoneNumber')).toBeInTheDocument();
 
-    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-    expect(JSON.parse(mock.history.patch[0].data).providerType).toBe('BUSINESS');
-  });
+    const name = screen.getByTestId('field-displayName');
+    const phone = screen.getByTestId('field-phoneNumber');
+    expect(name.compareDocumentPosition(phone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-  it('cancelling leaves the type alone', async () => {
-    renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }));
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
-    fireEvent.click(await screen.findByTestId('provider-type-change-cancel'));
-
-    expect(screen.queryByTestId('provider-type-change-dialog')).toBeNull();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(mock.history.patch).toHaveLength(0);
+    // The photo comes before both, which is what "photo first" means in DOM
+    // order and therefore in both reading order and tab order.
+    const uploader = container.querySelector('input[type="file"]');
+    if (uploader) {
+      expect(
+        uploader.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
   });
 });
 
 describe('BasicsTaskScreen — saving', () => {
-  it('writes each field to the step that owns it', async () => {
+  it('writes every field to IDENTITY, the one step that owns this screen', async () => {
+    // Was: displayName to IDENTITY and legalBusinessName to PROVIDER_TYPE.
+    // With the business name gone (ruling C1), IDENTITY owns everything here —
+    // so the assertion is now that NOTHING is written to PROVIDER_TYPE, which
+    // is stricter than checking that one write landed on it.
     renderScreen(DRAFT({ data: { providerType: 'BUSINESS' } }));
 
     fireEvent.change(screen.getByTestId('field-displayName'), { target: { value: 'New Name' } });
     fireEvent.blur(screen.getByTestId('field-displayName'));
     await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
 
-    // displayName belongs to IDENTITY; the server refuses it on any other step.
-    expect(mock.history.patch[0].url).toContain('/steps/IDENTITY');
-
-    fireEvent.change(screen.getByTestId('field-legalBusinessName'), { target: { value: 'ACME' } });
-    fireEvent.blur(screen.getByTestId('field-legalBusinessName'));
+    fireEvent.change(screen.getByTestId('field-phoneNumber'), {
+      target: { value: '+963912345678' },
+    });
+    fireEvent.blur(screen.getByTestId('field-phoneNumber'));
     await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(1));
-    expect(mock.history.patch[1].url).toContain('/steps/PROVIDER_TYPE');
+
+    const urls = mock.history.patch.map((r) => r.url ?? '');
+    expect(urls.every((u) => u.includes('/steps/IDENTITY'))).toBe(true);
+    expect(urls.some((u) => u.includes('/steps/PROVIDER_TYPE'))).toBe(false);
   });
 
   it('never sends an empty display name', async () => {
@@ -276,18 +283,23 @@ describe('BasicsTaskScreen — saving', () => {
 
 describe('BasicsTaskScreen — Arabic', () => {
   it('renders Arabic copy, not English', () => {
+    // The type legend it used to assert on no longer exists, so this asserts
+    // on the copy the approved screen actually shows.
     renderScreen(DRAFT({ data: { providerType: 'BUSINESS' } }), 'ar');
 
-    expect(screen.getByText(BASICS_COPY.ar.typeLegend)).toBeInTheDocument();
     expect(screen.getByText(BASICS_COPY.ar.phoneNotVerified)).toBeInTheDocument();
-    expect(screen.queryByText(BASICS_COPY.en.typeLegend)).toBeNull();
+    expect(screen.getByText(BASICS_COPY.ar.displayName)).toBeInTheDocument();
+    expect(screen.queryByText(BASICS_COPY.en.phoneNotVerified)).toBeNull();
+    expect(screen.queryByText(BASICS_COPY.en.displayName)).toBeNull();
   });
 
-  it('warns about a type change in Arabic too', async () => {
+  it('offers no type-change dialog in Arabic either', async () => {
+    // Same superseding ruling, asserted in the second language so a
+    // regression cannot reappear behind a locale branch.
     renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }), 'ar');
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
 
-    const dialog = await screen.findByTestId('provider-type-change-dialog');
-    expect(dialog.textContent).toContain(BASICS_COPY.ar.typeChangeTitle);
+    expect(screen.queryByTestId('provider-type-BUSINESS')).toBeNull();
+    expect(screen.queryByTestId('provider-type-change-dialog')).toBeNull();
+    expect(screen.queryByText(BASICS_COPY.ar.typeChangeTitle)).toBeNull();
   });
 });
