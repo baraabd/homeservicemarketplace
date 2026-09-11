@@ -349,12 +349,11 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
                   data-testid={`transport-${mode}`}
                   data-checked={checked}
                   data-primary={primaryMode === mode}
-                  className={`flex min-w-0 items-center gap-3 rounded-xl border px-3 ${
+                  className={`min-h-11 flex min-w-0 items-center gap-3 rounded-xl border px-3 ${
                     checked
                       ? 'border-pv-accent bg-pv-accent-subtle'
                       : 'border-pv-border bg-pv-surface'
                   }`}
-                  style={{ minHeight: '44px' }}
                 >
                   <input
                     type="checkbox"
