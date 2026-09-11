@@ -41,7 +41,16 @@ import {
 // award a counter.
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const COMPONENTS = join(HERE, 'components');
+
+/**
+ * The tree being judged.
+ *
+ * Overridable so the SAME gate can be aimed at a different checkout — which is
+ * how its sensitivity is proved: point it at the pre-migration commit in an
+ * isolated worktree and it must fail. A gate nobody has seen fail is a gate
+ * nobody should trust.
+ */
+const COMPONENTS = process.env.PHASE5_COMPONENTS_DIR ?? join(HERE, 'components');
 
 /** Raw Tailwind palette families. A migrated tree names tokens, not colours. */
 const PALETTE =

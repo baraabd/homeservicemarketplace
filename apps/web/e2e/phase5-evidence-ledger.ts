@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -116,10 +116,25 @@ export interface RunManifest {
   readonly apiOrigin?: string;
 }
 
+/**
+ * Read a JSON artifact, or nothing.
+ *
+ * READ FIRST, ASK NOTHING. An `existsSync` before the read is a
+ * time-of-check/time-of-use window — CodeQL `js/file-system-race` flagged
+ * exactly that here, at high severity, and it was right: between the check and
+ * the read the file can be replaced, and a verifier that can be raced is not a
+ * verifier. Attempting the read and handling its failure is one syscall path
+ * with no window, and it is simpler.
+ */
 function readJson(file: string): Record<string, unknown> | null {
-  if (!existsSync(file)) return null;
+  let raw: string;
   try {
-    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    raw = readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : null;
@@ -133,19 +148,23 @@ function readJson(file: string): Record<string, unknown> | null {
  *
  * The eight-byte signature plus a non-trivial length. A zero-byte file and a
  * sentence saved as `.png` both existed in the attack tests, and both passed
- * an `existsSync` check — which is all the first ledger did.
+ * the `existsSync` check that was all the first ledger did.
+ *
+ * The length is taken from the bytes actually read rather than from a separate
+ * `statSync`, for the same reason as above: two calls describing one file are
+ * two chances to describe different files.
  */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export function isRealPng(file: string): boolean {
-  if (!existsSync(file)) return false;
+  let bytes: Buffer;
   try {
-    if (statSync(file).size < PNG_SIGNATURE.length + 4) return false;
-    const head = readFileSync(file).subarray(0, PNG_SIGNATURE.length);
-    return head.equals(PNG_SIGNATURE);
+    bytes = readFileSync(file);
   } catch {
     return false;
   }
+  if (bytes.length < PNG_SIGNATURE.length + 4) return false;
+  return bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
 }
 
 export interface CanonicalCellEvidence {
@@ -530,8 +549,13 @@ export function countersFrom(credits: readonly ScreenCredit[]): Counters {
 
 /** Run directories that exist, for reporting which runs produced evidence. */
 export function runIdsUnder(root: string): string[] {
-  if (!existsSync(root)) return [];
-  return readdirSync(root, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name);
+  // Same reason as the readers above: attempt it, handle the failure. An
+  // absent directory and an unreadable one are both "no runs here".
+  try {
+    return readdirSync(root, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
 }
