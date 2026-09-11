@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { verifyCanonicalCell } from './phase5-image-verify';
 import { PHASE5_STATES, type Phase5State } from './phase5-visual-states';
 
 // Sprint 09B.29 Phase 5 — the evidence ledger.
@@ -143,30 +144,6 @@ function readJson(file: string): Record<string, unknown> | null {
   }
 }
 
-/**
- * Is this file genuinely a PNG?
- *
- * The eight-byte signature plus a non-trivial length. A zero-byte file and a
- * sentence saved as `.png` both existed in the attack tests, and both passed
- * the `existsSync` check that was all the first ledger did.
- *
- * The length is taken from the bytes actually read rather than from a separate
- * `statSync`, for the same reason as above: two calls describing one file are
- * two chances to describe different files.
- */
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-
-export function isRealPng(file: string): boolean {
-  let bytes: Buffer;
-  try {
-    bytes = readFileSync(file);
-  } catch {
-    return false;
-  }
-  if (bytes.length < PNG_SIGNATURE.length + 4) return false;
-  return bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
-}
-
 export interface CanonicalCellEvidence {
   readonly stateId: number;
   readonly locale: Locale;
@@ -192,12 +169,14 @@ export function canonicalCellEvidence(
   const dir = cellDir(root, state.slug, locale, CANONICAL_VIEWPORT.width);
   const problems: string[] = [];
 
-  const expected = isRealPng(join(dir, 'expected.png'));
-  const actual = isRealPng(join(dir, 'actual.png'));
-  const diff = isRealPng(join(dir, 'diff.png'));
-  if (!expected) problems.push('expected.png missing or not a PNG');
-  if (!actual) problems.push('actual.png missing or not a PNG');
-  if (!diff) problems.push('diff.png missing or not a PNG');
+  // The images are DECODED and the difference RECOMPUTED by the verifier;
+  // this function only reports what it found. A signature check could not tell
+  // a 390x844 capture from a 10x10 one, nor a real diff from a blank one.
+  const image = verifyCanonicalCell(dir);
+  const expected = !image.problems.some((p) => p.includes('expected.png'));
+  const actual = !image.problems.some((p) => p.includes('actual.png'));
+  const diff = !image.problems.some((p) => p.includes('diff.png'));
+  problems.push(...image.problems);
 
   const metrics = readJson(join(dir, 'metrics.json'));
   let ratio: number | null = null;
