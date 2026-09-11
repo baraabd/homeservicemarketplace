@@ -38,6 +38,10 @@ export interface ServicesCopy {
   experienceLegend: string;
   startYearLabel: string;
   startYearHint: string;
+  /** Accessible names for the stepper buttons. A button whose only visible
+   *  content is a glyph has no accessible name without one. */
+  yearsDecrease: string;
+  yearsIncrease: string;
   startYearInvalid: string;
   yearsDerived: (years: number) => string;
 
@@ -100,8 +104,10 @@ export const SERVICES_COPY: Record<Lang, ServicesCopy> = {
     remove: 'Remove',
 
     experienceLegend: 'Experience',
-    startYearLabel: 'The year you started this trade',
-    startYearHint: 'We work out your years of experience from this, so it stays accurate.',
+    startYearLabel: 'Years of experience',
+    startYearHint: 'Use + and − to avoid typing errors.',
+    yearsDecrease: 'Decrease years of experience',
+    yearsIncrease: 'Increase years of experience',
     startYearInvalid: 'Enter a year between 1950 and this year.',
     yearsDerived: (years) =>
       years === 1 ? '1 year of experience' : `${years} years of experience`,
@@ -165,8 +171,10 @@ export const SERVICES_COPY: Record<Lang, ServicesCopy> = {
     remove: 'إزالة',
 
     experienceLegend: 'الخبرة',
-    startYearLabel: 'سنة بدايتك في هذه المهنة',
-    startYearHint: 'نحسب سنوات خبرتك منها، لتبقى دقيقة دائماً.',
+    startYearLabel: 'سنوات الخبرة',
+    startYearHint: 'استخدم + و− لتجنب أخطاء الكتابة.',
+    yearsDecrease: 'إنقاص سنوات الخبرة',
+    yearsIncrease: 'زيادة سنوات الخبرة',
     startYearInvalid: 'أدخل سنة بين 1950 والسنة الحالية.',
     yearsDerived: (years) => (years === 1 ? 'سنة خبرة واحدة' : `${years} سنوات خبرة`),
 

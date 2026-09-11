@@ -8,12 +8,18 @@ import type {
   ProviderTransportModeCode,
 } from '@homeservicemarketplace/contracts';
 
-import { validateProfessionalTitle } from '../../../../lib/provider/title-format';
-import { useEquipmentCatalog, useServiceCategories } from '../../../../lib/use-service-categories';
+import { useServiceCategories } from '../../../../lib/use-service-categories';
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
 import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { SpecialtyPicker } from '../services/SpecialtyPicker';
 import { SERVICES_COPY, STATE_TONE, type Lang } from '../copy/services-copy';
+import {
+  ProviderCard,
+  ProviderNotice,
+  ProviderSkeleton,
+  ProviderStepper,
+  ProviderErrorState,
+} from '../../provider-ui';
 
 // Sprint 9B.18 — V2 Task 2: services, experience, equipment, transport, title.
 //
@@ -59,11 +65,40 @@ const TRANSPORT_LABELS: Record<Lang, Record<ProviderTransportModeCode, string>> 
   },
 };
 
-const MIN_START_YEAR = 1950;
+/** A working lifetime. The old floor was a start year of 1950, which is the
+ *  same bound expressed from the other end. */
+const MAX_YEARS = 75;
 /** The order states are shown in. Approved first because it is the good news
  *  and the largest group; rejected and inactive last because they are the two
  *  the provider may want to act on and should not be buried mid-list. */
 const STATE_ORDER: ProviderSpecialtyState[] = ['APPROVED', 'PENDING', 'REJECTED', 'INACTIVE'];
+
+// Sprint 09B.29 Phase 5 — migrated to Provider UI against the approved
+// prototype screens `services` (task 2 of 6, part 1) and `experience`
+// (part 2). One route, two sections, exactly as the registry describes them.
+//
+// WHAT THE APPROVED DESIGN CHANGED HERE
+//
+//   years           a -/+ stepper, not a free numeric field. The prototype
+//                   says why in its own help text: it avoids typing errors.
+//                   The STORED fact is unchanged — still `professionSince`, a
+//                   date, so a provider's experience does not silently stop
+//                   ageing. The stepper moves years; the screen converts.
+//   the title       a display-only panel. Ruling C1 makes the generated title
+//                   server-owned and explanatory here; the accept/edit/refuse
+//                   controls are gone, and the panel says it can be changed
+//                   later, on the surface that owns it.
+//   equipment       absent from the approved screen. It is optional data the
+//                   completeness policy never asks for, so removing the
+//                   control dead-ends nothing; stored values are untouched.
+//                   FLAGGED for product-owner confirmation: no ruling names
+//                   equipment, the prototype simply does not show it.
+//   moderation      reads as PLATFORM work. "Your selections complete this
+//                   task now. Approval stays separate and will not block
+//                   submission." — not as an incomplete provider task.
+//
+// Autosave, step ownership, the version handshake and the server's authority
+// over the primary specialty are untouched by the migration.
 
 interface ServicesTaskScreenProps {
   view: ProviderOnboardingDraftView;
@@ -82,19 +117,26 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
   const autosaveStatus = mergeAutosaveStatus(specialtiesAutosave.status, experienceAutosave.status);
 
   const catalogue = useServiceCategories();
-  const equipment = useEquipmentCatalog();
 
   const data = view.data;
+  /**
+   * The generated professional title, shown and explained — never edited here.
+   *
+   * Ruling C1 makes this server-owned: it is derived from the primary service
+   * and persisted into `headline` only while that field is blank. The approved
+   * screen presents it as a panel that says it can be changed later, on the
+   * surface that owns it, so this screen has no accept / edit / refuse
+   * controls and no local draft of it to drift out of date.
+   */
+  // The server sends BOTH languages; the screen shows the one the provider is
+  // reading. It is never re-translated afterwards — C1 persists the language
+  // they actually saw.
+  const suggestedTitle = data.suggestedTitle?.[lang] ?? data.headline ?? null;
+
   // Memoised because `?? []` allocates a fresh array on every render, which
   // would make it a new dependency each time and defeat both memos below.
   const specialties = useMemo(() => data.specialties ?? [], [data.specialties]);
   const chosenIds = useMemo(() => specialties.map((s) => s.categoryId), [specialties]);
-
-  const [startYear, setStartYear] = useState(
-    data.professionSince ? String(new Date(data.professionSince).getUTCFullYear()) : '',
-  );
-  const [titleDraft, setTitleDraft] = useState(data.headline ?? '');
-  const [editingTitle, setEditingTitle] = useState(false);
 
   // ── Specialties ──────────────────────────────────────────────────────────
 
@@ -125,24 +167,30 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
   // ── Experience ───────────────────────────────────────────────────────────
 
   const thisYear = new Date().getUTCFullYear();
-  const yearNumber = Number.parseInt(startYear, 10);
-  const yearValid =
-    startYear === '' ||
-    (Number.isFinite(yearNumber) && yearNumber >= MIN_START_YEAR && yearNumber <= thisYear);
-  const derivedYears = yearValid && startYear !== '' ? thisYear - yearNumber : null;
 
-  const commitStartYear = (next: string = startYear) => {
-    // Validity is recomputed from the value being committed, not read from the
-    // render closure: on a keystroke the closure still describes the previous
-    // character, so a half-typed "20" would be judged by "2"'s verdict.
-    const n = Number(next);
-    const valid = next === '' || (Number.isInteger(n) && n >= MIN_START_YEAR && n <= thisYear);
-    if (!valid) return;
-    // Stored as a DATE, not a bucket. The server derives years from it so the
-    // stored fact does not silently age — which is the whole reason the schema
-    // carries professionSince alongside the count.
+  /**
+   * Years on screen, a DATE in the database.
+   *
+   * The approved control is a stepper over years, and the stored fact stays
+   * `professionSince` — a date — so a provider who entered 14 years today
+   * reads 15 next year instead of being frozen at the number they typed. The
+   * conversion is presentation arithmetic, not policy: the server still owns
+   * what the date means.
+   */
+  const storedYears = (() => {
+    const since = data.professionSince;
+    if (!since) return null;
+    const started = new Date(since).getUTCFullYear();
+    if (!Number.isFinite(started)) return null;
+    return Math.min(MAX_YEARS, Math.max(0, thisYear - started));
+  })();
+
+  const [years, setYears] = useState(storedYears ?? 0);
+
+  const commitYears = (next: number) => {
+    setYears(next);
     experienceAutosave.save({
-      professionSince: next === '' ? null : `${next}-01-01T00:00:00.000Z`,
+      professionSince: `${thisYear - next}-01-01T00:00:00.000Z`,
     });
   };
 
@@ -161,23 +209,6 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
     experienceAutosave.save({ transportModes: next });
   };
 
-  // ── Equipment ────────────────────────────────────────────────────────────
-
-  const equipmentItems = equipment.data ?? [];
-  const selectedEquipment = data.equipmentCodes ?? [];
-  const toggleEquipment = (code: string) => {
-    const next = selectedEquipment.includes(code)
-      ? selectedEquipment.filter((c) => c !== code)
-      : [...selectedEquipment, code];
-    experienceAutosave.save({ equipmentCodes: next });
-  };
-
-  // ── Title ────────────────────────────────────────────────────────────────
-
-  const suggestion = data.suggestedTitle ? data.suggestedTitle[lang] : null;
-  const titleVerdict = titleDraft.trim() === '' ? null : validateProfessionalTitle(titleDraft);
-  const titleError = titleVerdict && !titleVerdict.ok ? copy.titleRefusal[titleVerdict.code] : null;
-
   return (
     <div className="flex flex-col gap-6" data-testid="services-task">
       {/* Sprint 9B.25 — this screen autosaved SILENTLY across BOTH its steps. */}
@@ -187,8 +218,7 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
       <section aria-labelledby="services-picker-heading">
         <h2
           id="services-picker-heading"
-          className="mb-2 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
+          className="mb-2 break-words text-[15px] font-bold text-pv-text"
         >
           {copy.heading}
         </h2>
@@ -202,9 +232,8 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
             onToggle={toggleSpecialty}
           />
         ) : (
-          <div role="status" aria-live="polite" data-testid="catalogue-loading">
-            <span className="sr-only">…</span>
-            <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
+          <div data-testid="catalogue-loading">
+            <ProviderSkeleton rows={3} label={copy.heading} />
           </div>
         )}
       </section>
@@ -218,18 +247,14 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
           <div className="flex flex-col gap-4">
             {grouped.map(({ state, items }) => (
               <div key={state} data-testid={`specialty-state-${state}`}>
-                <h3
-                  className="break-words text-slate-900 dark:text-white"
-                  style={{ fontSize: '13px', fontWeight: 700 }}
-                >
+                <h3 className="break-words text-[13px] font-bold text-pv-text">
                   {copy.stateHeading[state]}
                 </h3>
                 {/* The explanation sits on the GROUP, once — not repeated as a
                     badge inside every chip, which is what made the old screen
                     unreadable and made "pending" read as an error. */}
                 <p
-                  className="mb-2 break-words text-slate-500 dark:text-slate-400"
-                  style={{ fontSize: '12px' }}
+                  className="mb-2 break-words text-[13px] text-pv-muted"
                   data-testid={`specialty-state-explain-${state}`}
                 >
                   {copy.stateExplain[state]}
@@ -241,20 +266,16 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
                       data-testid={`specialty-row-${item.categoryId}`}
                       data-state={item.state}
                       data-tone={STATE_TONE[item.state]}
-                      className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-slate-200 p-2 dark:border-slate-700"
+                      className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-pv-border p-2"
                     >
-                      <span
-                        className="min-w-0 break-words text-slate-900 dark:text-white"
-                        style={{ fontSize: '14px' }}
-                      >
+                      <span className="min-w-0 break-words text-[14px] text-pv-text">
                         {lang === 'ar' ? item.labelAr : item.labelEn}
                       </span>
 
                       {data.primarySpecialtyId === item.categoryId ? (
                         <span
                           data-testid={`primary-badge-${item.categoryId}`}
-                          className="rounded-full bg-blue-100 px-2 text-blue-800"
-                          style={{ fontSize: '11px', fontWeight: 700 }}
+                          className="rounded-full bg-pv-accent-subtle px-2 text-[11px] font-bold text-pv-accent-hover"
                         >
                           {copy.primaryBadge}
                         </span>
@@ -268,8 +289,7 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
                             disabled={!editable}
                             onClick={() => setPrimary(item.categoryId)}
                             data-testid={`make-primary-${item.categoryId}`}
-                            className="ms-auto rounded-lg px-2 text-blue-700 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                            style={{ fontSize: '12px', fontWeight: 600, minHeight: '44px' }}
+                            className="ms-auto min-h-[44px] rounded-lg px-2 text-[13px] font-semibold text-pv-accent underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
                           >
                             {copy.makePrimary}
                           </button>
@@ -284,79 +304,42 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
         </section>
       ) : null}
 
+      {/* ── Review is platform work, not an unfinished provider task ─────── */}
+      <ProviderNotice
+        tone="waiting"
+        title={copy.stateHeading.PENDING}
+        description={copy.stateExplain.PENDING}
+        data-testid="specialty-moderation-notice"
+      />
+
       {/* ── Experience ──────────────────────────────────────────────────── */}
       <section aria-labelledby="services-experience-heading" className="min-w-0">
-        <h2
-          id="services-experience-heading"
-          className="mb-1 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
+        <h2 id="services-experience-heading" className="sr-only">
           {copy.experienceLegend}
         </h2>
-        <label
-          htmlFor="profession-start-year"
-          className="mb-1 block break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '14px', fontWeight: 600 }}
-        >
-          {copy.startYearLabel}
-        </label>
-        <input
-          id="profession-start-year"
-          data-testid="profession-start-year"
-          type="number"
-          inputMode="numeric"
-          min={MIN_START_YEAR}
-          max={thisYear}
-          value={startYear}
+        <ProviderStepper
+          label={copy.startYearLabel}
+          hint={copy.startYearHint}
+          value={years}
+          min={0}
+          max={MAX_YEARS}
+          decreaseLabel={copy.yearsDecrease}
+          increaseLabel={copy.yearsIncrease}
           disabled={!editable}
-          aria-invalid={!yearValid || undefined}
-          aria-describedby="profession-start-year-hint"
-          onChange={(event) => {
-            setStartYear(event.target.value);
-            // Sprint 9B.28 — the coordinator hears the keystroke now, so the
-            // status goes `dirty` immediately instead of showing the previous
-            // write's "Saved" until blur.
-            commitStartYear(event.target.value);
-          }}
-          onBlur={() => commitStartYear(startYear)}
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-          style={{ fontSize: '14px', minHeight: '44px' }}
+          testId="experience-years"
+          onChange={commitYears}
         />
-        <p
-          id="profession-start-year-hint"
-          className={`mt-1 break-words ${yearValid ? 'text-slate-500 dark:text-slate-400' : 'text-rose-600'}`}
-          style={{ fontSize: '12px' }}
-        >
-          {yearValid ? copy.startYearHint : copy.startYearInvalid}
-        </p>
-        {derivedYears !== null ? (
-          <p
-            className="mt-1 break-words text-slate-900 dark:text-white"
-            style={{ fontSize: '13px', fontWeight: 600 }}
-            data-testid="derived-years"
-            role="status"
-            aria-live="polite"
-          >
-            {copy.yearsDerived(derivedYears)}
-          </p>
-        ) : null}
       </section>
 
       {/* ── Transport ───────────────────────────────────────────────────── */}
       <section aria-labelledby="services-transport-heading" className="min-w-0">
         <h2
           id="services-transport-heading"
-          className="mb-1 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
+          className="mb-1 break-words text-[15px] font-bold text-pv-text"
         >
           {copy.transportLegend}
         </h2>
-        <p
-          className="mb-2 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-        >
-          {copy.transportHint}
-        </p>
+        <p className="mb-2 break-words text-[13px] text-pv-muted">{copy.transportHint}</p>
         <ul className="flex flex-col gap-2" data-testid="transport-options">
           {TRANSPORT_MODES.map((mode) => {
             const checked = selectedModes.includes(mode);
@@ -368,8 +351,8 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
                   data-primary={primaryMode === mode}
                   className={`flex min-w-0 items-center gap-3 rounded-xl border px-3 ${
                     checked
-                      ? 'border-blue-500 bg-blue-50/50'
-                      : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
+                      ? 'border-pv-accent bg-pv-accent-subtle'
+                      : 'border-pv-border bg-pv-surface'
                   }`}
                   style={{ minHeight: '44px' }}
                 >
@@ -378,19 +361,13 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
                     checked={checked}
                     disabled={!editable}
                     onChange={() => toggleMode(mode)}
-                    className="h-5 w-5 flex-shrink-0 accent-blue-600"
+                    className="h-5 w-5 flex-shrink-0 accent-pv-accent"
                   />
-                  <span
-                    className="min-w-0 break-words text-slate-900 dark:text-white"
-                    style={{ fontSize: '14px' }}
-                  >
+                  <span className="min-w-0 break-words text-[14px] text-pv-text">
                     {TRANSPORT_LABELS[lang][mode]}
                   </span>
                   {primaryMode === mode ? (
-                    <span
-                      className="ms-auto rounded-full bg-blue-100 px-2 text-blue-800"
-                      style={{ fontSize: '11px', fontWeight: 700 }}
-                    >
+                    <span className="ms-auto rounded-full bg-pv-accent-subtle px-2 text-[11px] font-bold text-pv-accent-hover">
                       {copy.transportPrimary}
                     </span>
                   ) : null}
@@ -401,157 +378,18 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
         </ul>
       </section>
 
-      {/* ── Equipment ───────────────────────────────────────────────────── */}
-      <section aria-labelledby="services-equipment-heading" className="min-w-0">
-        <h2
-          id="services-equipment-heading"
-          className="mb-1 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
-          {copy.equipmentLegend}
-        </h2>
-        <p
-          className="mb-2 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-        >
-          {copy.equipmentHint}
-        </p>
-        {equipmentItems.length === 0 ? (
-          <p
-            className="break-words text-slate-500 dark:text-slate-400"
-            style={{ fontSize: '12px' }}
-            data-testid="equipment-empty"
-          >
-            {copy.equipmentEmpty}
+      {/* ── The suggested title, explained, not edited ──────────────────── */}
+      {suggestedTitle ? (
+        <ProviderCard tone="sunken">
+          <h2 className="text-[15px] font-bold text-pv-text">{copy.titleLegend}</h2>
+          <p className="mt-1 text-[13px] text-pv-muted" data-testid="title-suggestion-text">
+            {copy.titleSuggested(suggestedTitle)}
           </p>
-        ) : (
-          <ul className="flex flex-col gap-2" data-testid="equipment-options">
-            {equipmentItems.map((item) => {
-              const checked = selectedEquipment.includes(item.code);
-              return (
-                <li key={item.id}>
-                  <label
-                    data-testid={`equipment-${item.code}`}
-                    data-checked={checked}
-                    className={`flex min-w-0 items-center gap-3 rounded-xl border px-3 ${
-                      checked
-                        ? 'border-blue-500 bg-blue-50/50'
-                        : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
-                    }`}
-                    style={{ minHeight: '44px' }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={!editable}
-                      onChange={() => toggleEquipment(item.code)}
-                      className="h-5 w-5 flex-shrink-0 accent-blue-600"
-                    />
-                    <span
-                      className="min-w-0 break-words text-slate-900 dark:text-white"
-                      style={{ fontSize: '14px' }}
-                    >
-                      {lang === 'ar' ? item.labelAr : item.labelEn}
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      {/* ── Title ───────────────────────────────────────────────────────── */}
-      <section aria-labelledby="services-title-heading" className="min-w-0">
-        <h2
-          id="services-title-heading"
-          className="mb-1 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
-          {copy.titleLegend}
-        </h2>
-        <p
-          className="mb-2 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-        >
-          {copy.titleHint}
-        </p>
-
-        {suggestion && !editingTitle ? (
-          <div data-testid="title-suggestion" className="flex flex-col gap-2">
-            <p
-              className="break-words text-slate-900 dark:text-white"
-              style={{ fontSize: '14px' }}
-              data-testid="title-suggestion-text"
-            >
-              {copy.titleSuggested(suggestion)}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={!editable}
-                data-testid="title-accept"
-                onClick={() => {
-                  // ACCEPTING fills the box. It does not save and it does not
-                  // publish: the profile task is where a title is written, and
-                  // a suggestion that wrote itself would put words in
-                  // somebody's mouth on the surface customers judge them by.
-                  setTitleDraft(suggestion);
-                  setEditingTitle(true);
-                }}
-                className="rounded-xl bg-blue-600 px-3 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                style={{ fontSize: '13px', fontWeight: 600, minHeight: '44px' }}
-              >
-                {copy.titleUse}
-              </button>
-              <button
-                type="button"
-                disabled={!editable}
-                data-testid="title-edit"
-                onClick={() => setEditingTitle(true)}
-                className="rounded-xl border border-slate-200 bg-white px-3 text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                style={{ fontSize: '13px', fontWeight: 600, minHeight: '44px' }}
-              >
-                {copy.titleEdit}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {editingTitle || !suggestion ? (
-          <div className="mt-2">
-            <input
-              data-testid="title-input"
-              type="text"
-              value={titleDraft}
-              disabled={!editable}
-              aria-invalid={titleError ? true : undefined}
-              aria-describedby="title-help"
-              onChange={(event) => setTitleDraft(event.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-              style={{ fontSize: '14px', minHeight: '44px' }}
-            />
-            <p
-              id="title-help"
-              className={`mt-1 break-words ${titleError ? 'text-rose-600' : 'text-slate-500 dark:text-slate-400'}`}
-              style={{ fontSize: '12px' }}
-              data-testid="title-help"
-            >
-              {titleError ?? copy.titleNotPublished}
-            </p>
-          </div>
-        ) : null}
-
-        {!editingTitle && suggestion ? (
-          <p
-            className="mt-2 break-words text-slate-500 dark:text-slate-400"
-            style={{ fontSize: '12px' }}
-            data-testid="title-not-published"
-          >
+          <p className="mt-2 text-[13px] text-pv-muted" data-testid="title-not-published">
             {copy.titleNotPublished}
           </p>
-        ) : null}
-      </section>
+        </ProviderCard>
+      ) : null}
     </div>
   );
 }
@@ -568,7 +406,7 @@ export function ServicesTask({ lang }: { lang: Lang }) {
     return (
       <div className="flex justify-center py-10" role="status" aria-live="polite">
         <span className="sr-only">{copy.heading}</span>
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
+        <ProviderSkeleton rows={3} label={copy.heading} />
       </div>
     );
   }
@@ -576,15 +414,7 @@ export function ServicesTask({ lang }: { lang: Lang }) {
   const view = draft.data;
   const usable = view && typeof view.version === 'number' && view.data !== undefined;
   if (!usable) {
-    return (
-      <p
-        className="break-words text-rose-600"
-        style={{ fontSize: '13px' }}
-        data-testid="services-load-failed"
-      >
-        {copy.heading}
-      </p>
-    );
+    return <ProviderErrorState title={copy.heading} testId="services-load-failed" />;
   }
 
   return <ServicesTaskScreen view={view} lang={lang} editable={view.editable} />;

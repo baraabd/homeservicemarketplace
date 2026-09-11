@@ -235,9 +235,11 @@ const TASKS = [
     id: 'SERVICES_EXPERIENCE',
     step: 'EXPERIENCE',
     edit: async () => {
-      const year = await screen.findByTestId('profession-start-year');
-      fireEvent.change(year, { target: { value: '2015' } });
-      fireEvent.blur(year);
+      // The approved screen replaced the start-year field with a stepper, which
+      // commits on PRESS: there is no half-typed state to protect, which is
+      // the same reason the timezone picker above commits on change.
+      const increase = await screen.findByTestId('experience-years-increase');
+      fireEvent.click(increase);
     },
   },
 ] as const;

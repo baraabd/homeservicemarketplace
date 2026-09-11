@@ -247,3 +247,113 @@ export function ProviderErrorSummary({
     </ProviderCard>
   );
 }
+
+/**
+ * A numeric stepper: minus, the value, plus.
+ *
+ * The approved experience screen asks for years with `−` and `+` rather than a
+ * free numeric field, and the reason is in its own help text: it avoids typing
+ * errors. A text input invites "14 years", "fourteen", a stray keypress that
+ * turns 14 into 144, and a phone keyboard that opens over the field.
+ *
+ * ACCESSIBILITY DECISIONS WORTH NAMING
+ *
+ *   `<output>`        the value is a live RESULT of the two buttons, so it is
+ *                     announced when it changes without a second live region.
+ *   real buttons      each with its own accessible name, so a screen-reader
+ *                     user hears "decrease"/"increase" rather than "button".
+ *   group labelling   the whole control is one labelled group, so the value is
+ *                     never read as a bare number with no subject.
+ *   bounds on the     a button that cannot do anything is `disabled`, which is
+ *   buttons           both announced and unfocusable — better than a press
+ *                     that silently does nothing.
+ *
+ * Both buttons are 44x44, which is the mandated minimum target and also what
+ * makes them usable one-handed.
+ */
+export function ProviderStepper({
+  label,
+  hint,
+  value,
+  min = 0,
+  max = 99,
+  step = 1,
+  decreaseLabel,
+  increaseLabel,
+  onChange,
+  disabled = false,
+  testId,
+  formatValue,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  decreaseLabel: string;
+  increaseLabel: string;
+  onChange: (next: number) => void;
+  disabled?: boolean;
+  testId?: string;
+  /** Renders the number for display — units, or a locale's digits. */
+  formatValue?: (value: number) => string;
+}) {
+  const base = useId();
+  const labelId = `${base}-label`;
+  const hintId = `${base}-hint`;
+
+  const clamp = (next: number) => Math.min(max, Math.max(min, next));
+  const atMin = value <= min;
+  const atMax = value >= max;
+
+  const BUTTON =
+    'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-pv-border-strong bg-pv-surface text-[20px] font-semibold text-pv-text disabled:text-pv-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-pv-accent';
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span id={labelId} className="text-[13px] font-semibold text-pv-text">
+        {label}
+      </span>
+      <div
+        role="group"
+        aria-labelledby={labelId}
+        aria-describedby={hint ? hintId : undefined}
+        className="flex items-center gap-3"
+        data-testid={testId}
+      >
+        <button
+          type="button"
+          className={BUTTON}
+          aria-label={decreaseLabel}
+          disabled={disabled || atMin}
+          onClick={() => onChange(clamp(value - step))}
+          data-testid={testId ? `${testId}-decrease` : undefined}
+        >
+          −
+        </button>
+        <output
+          className="min-w-[3ch] text-center text-[20px] font-bold tabular-nums text-pv-text"
+          data-testid={testId ? `${testId}-value` : undefined}
+        >
+          {formatValue ? formatValue(value) : value}
+        </output>
+        <button
+          type="button"
+          className={BUTTON}
+          aria-label={increaseLabel}
+          disabled={disabled || atMax}
+          onClick={() => onChange(clamp(value + step))}
+          data-testid={testId ? `${testId}-increase` : undefined}
+        >
+          +
+        </button>
+      </div>
+      {hint ? (
+        <p id={hintId} className="text-[13px] text-pv-muted">
+          {hint}
+        </p>
+      ) : null}
+    </div>
+  );
+}

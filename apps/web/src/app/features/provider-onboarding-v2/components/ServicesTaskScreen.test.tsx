@@ -391,51 +391,65 @@ describe('the primary service', () => {
   });
 });
 
-describe('experience', () => {
-  it('asks for the START YEAR and derives the count from it', async () => {
-    renderScreen();
-    const field = await screen.findByTestId('profession-start-year');
-    fireEvent.change(field, { target: { value: String(new Date().getUTCFullYear() - 7) } });
+describe('experience — the approved stepper', () => {
+  // SUPERSEDED CONTRACT, recorded rather than deleted.
+  //
+  // These tests drove a numeric START YEAR field and asserted its range
+  // refusals (1900, 1949, next year) and its derived count. They were correct
+  // for the Sprint 9B.18 design.
+  //
+  // The approved experience screen replaces that field with a -/+ stepper, and
+  // says why in its own help text: it avoids typing errors. A stepper cannot
+  // express an out-of-range value at all, so the refusal tests have nothing
+  // left to refuse — which is stricter than validating the mistake after the
+  // fact.
+  //
+  // What has NOT changed is the stored fact. It is still professionSince, a
+  // DATE, so a provider's experience does not silently stop ageing. That
+  // assertion is kept verbatim below.
+  it('shows the stored years, derived from the stored date', async () => {
+    const started = new Date().getUTCFullYear() - 7;
+    renderScreen(DRAFT({ data: { professionSince: `${started}-01-01T00:00:00.000Z` } }));
 
-    expect(screen.getByTestId('derived-years')).toHaveTextContent('7 years of experience');
+    expect(await screen.findByTestId('experience-years-value')).toHaveTextContent('7');
   });
 
   it('stores a DATE, not a bucket', async () => {
     // A bucket cannot be compared, filtered or aged. The stored fact stays a
     // fact and the server derives the years.
-    renderScreen();
-    const field = await screen.findByTestId('profession-start-year');
-    fireEvent.change(field, { target: { value: '2015' } });
-    fireEvent.blur(field);
+    const thisYear = new Date().getUTCFullYear();
+    renderScreen(DRAFT({ data: { professionSince: `${thisYear - 10}-01-01T00:00:00.000Z` } }));
+
+    fireEvent.click(await screen.findByTestId('experience-years-increase'));
 
     await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
     const body = JSON.parse(mock.history.patch[0].data);
-    expect(body.professionSince).toBe('2015-01-01T00:00:00.000Z');
+    expect(body.professionSince).toBe(`${thisYear - 11}-01-01T00:00:00.000Z`);
     expect(mock.history.patch[0].url).toContain('/steps/EXPERIENCE');
   });
 
-  it.each(['1900', '1949', String(new Date().getUTCFullYear() + 1)])(
-    'refuses the out-of-range year %s without sending it',
-    async (year) => {
-      renderScreen();
-      const field = await screen.findByTestId('profession-start-year');
-      fireEvent.change(field, { target: { value: year } });
-      fireEvent.blur(field);
+  it('cannot go below zero, and says so by disabling the control', async () => {
+    // The old field needed an inline error for 1900. A stepper at its bound
+    // simply cannot be pressed, which is announced and unfocusable.
+    renderScreen(DRAFT({ data: { professionSince: null } }));
 
-      expect(screen.getByText(SERVICES_COPY.en.startYearInvalid)).toBeInTheDocument();
-      await new Promise((r) => setTimeout(r, 50));
-      expect(mock.history.patch).toHaveLength(0);
-    },
-  );
+    const decrease = await screen.findByTestId('experience-years-decrease');
+    expect(decrease).toBeDisabled();
 
-  it('accepts the boundary years', async () => {
+    fireEvent.click(decrease);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mock.history.patch).toHaveLength(0);
+  });
+
+  it('names both buttons for assistive technology', async () => {
     renderScreen();
-    const field = await screen.findByTestId('profession-start-year');
-    fireEvent.change(field, { target: { value: '1950' } });
-    fireEvent.blur(field);
 
-    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-    expect(JSON.parse(mock.history.patch[0].data).professionSince).toBe('1950-01-01T00:00:00.000Z');
+    expect(
+      await screen.findByRole('button', { name: SERVICES_COPY.en.yearsDecrease }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: SERVICES_COPY.en.yearsIncrease }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -467,80 +481,61 @@ describe('transport', () => {
   });
 });
 
-describe('equipment', () => {
-  it('lists the catalogue and saves by CODE', async () => {
+describe('equipment — absent from the approved screen', () => {
+  // SUPERSEDED CONTRACT. These tests asserted an equipment catalogue that
+  // listed items and saved them by CODE. The approved experience screen has no
+  // equipment section.
+  //
+  // Removing the control dead-ends nothing: equipment is optional data the
+  // onboarding completeness policy never asks for, and stored values are
+  // untouched server-side. FLAGGED for product-owner confirmation — no ruling
+  // names equipment, the prototype simply does not show it.
+  it('renders no equipment section at all', async () => {
     renderScreen();
-    fireEvent.click(within(await screen.findByTestId('equipment-LADDER')).getByRole('checkbox'));
+    await screen.findByTestId('services-task');
 
-    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-    expect(JSON.parse(mock.history.patch[0].data).equipmentCodes).toEqual(['LADDER']);
-  });
-
-  it('says so when the catalogue is empty rather than showing nothing', async () => {
-    mock.onGet('/v1/services/equipment').reply(200, { items: [] });
-    renderScreen();
-    expect(await screen.findByTestId('equipment-empty')).toBeInTheDocument();
+    expect(screen.queryByTestId('equipment-options')).toBeNull();
+    expect(screen.queryByTestId('equipment-empty')).toBeNull();
   });
 });
 
-describe('the professional title', () => {
-  const withSuggestion = () =>
-    DRAFT({
-      data: {
-        specialties: [specialty('plumbing', 'APPROVED')],
-        primarySpecialtyId: 'plumbing',
-        suggestedTitle: { en: 'Plumber', ar: 'سبّاك' },
-      },
-    });
+describe('the suggested title — shown, not edited', () => {
+  // SUPERSEDED CONTRACT. These tests drove an editable title: accepting a
+  // suggestion into a box, and refusing "Best Plumber", "Certified Plumber", a
+  // URL and a phone number inline.
+  //
+  // Ruling C1 makes the generated title server-owned and this screen's
+  // presentation of it explanatory. The accept / edit / refuse controls are
+  // gone, so there is no client-side title validation left to test here; the
+  // server owns the value and the profile surface owns the editing.
+  it("shows the server-generated suggestion for the reader's language", async () => {
+    renderScreen(
+      DRAFT({ data: { suggestedTitle: { en: 'Painting professional', ar: 'فني دهانات' } } }),
+    );
 
-  it('offers the suggestion without applying it', async () => {
-    renderScreen(withSuggestion());
-    expect(await screen.findByTestId('title-suggestion-text')).toHaveTextContent('Plumber');
-    // Nothing typed, nothing saved.
+    const panel = await screen.findByTestId('title-suggestion-text');
+    expect(panel).toHaveTextContent('Painting professional');
+  });
+
+  it('offers no control to accept, edit or refuse it', async () => {
+    renderScreen(
+      DRAFT({ data: { suggestedTitle: { en: 'Painting professional', ar: 'فني دهانات' } } }),
+    );
+    await screen.findByTestId('services-task');
+
     expect(screen.queryByTestId('title-input')).toBeNull();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(mock.history.patch).toHaveLength(0);
+    expect(screen.queryByTestId('title-accept')).toBeNull();
+    expect(screen.queryByTestId('title-edit')).toBeNull();
   });
 
   it('says plainly that nothing is published yet', async () => {
-    // The acceptance criterion, made visible to the person it protects.
-    renderScreen(withSuggestion());
+    renderScreen(
+      DRAFT({ data: { suggestedTitle: { en: 'Painting professional', ar: 'فني دهانات' } } }),
+    );
+
     expect(await screen.findByTestId('title-not-published')).toHaveTextContent(
       SERVICES_COPY.en.titleNotPublished,
     );
-  });
-
-  it('accepting the suggestion fills the box and still does not publish', async () => {
-    renderScreen(withSuggestion());
-    fireEvent.click(await screen.findByTestId('title-accept'));
-
-    expect((screen.getByTestId('title-input') as HTMLInputElement).value).toBe('Plumber');
-    await new Promise((r) => setTimeout(r, 50));
-    expect(mock.history.patch).toHaveLength(0);
-  });
-
-  it('suggests in ARABIC for an Arabic reader', async () => {
-    renderScreen(withSuggestion(), 'ar');
-    expect(await screen.findByTestId('title-suggestion-text')).toHaveTextContent('سبّاك');
-  });
-
-  it('shows no suggestion when there is no primary', async () => {
-    renderScreen();
-    await screen.findByTestId('services-task');
-    expect(screen.queryByTestId('title-suggestion')).toBeNull();
-  });
-
-  it.each([
-    ['Plumber www.example.com', 'CONTAINS_URL'],
-    ['Plumber 0912345678', 'CONTAINS_CONTACT'],
-    ['Certified Plumber', 'UNSUPPORTED_CREDENTIAL'],
-    ['Best Plumber', 'PROHIBITED_CLAIM'],
-  ])('refuses %j inline', async (value, code) => {
-    renderScreen(withSuggestion());
-    fireEvent.click(await screen.findByTestId('title-edit'));
-    fireEvent.change(screen.getByTestId('title-input'), { target: { value } });
-
-    expect(screen.getByTestId('title-help')).toHaveTextContent(SERVICES_COPY.en.titleRefusal[code]);
   });
 });
 
@@ -557,7 +552,7 @@ describe('Arabic', () => {
 describe('a locked application', () => {
   it('disables every control', async () => {
     renderScreen(DRAFT(), 'en', false);
-    expect(await screen.findByTestId('profession-start-year')).toBeDisabled();
+    expect(await screen.findByTestId('experience-years-increase')).toBeDisabled();
     expect(within(screen.getByTestId('transport-CAR')).getByRole('checkbox')).toBeDisabled();
   });
 });

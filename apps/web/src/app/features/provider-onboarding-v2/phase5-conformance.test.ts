@@ -50,7 +50,7 @@ export const TASK_SCREENS = [
  * Provider UI tree is mounted on the live route, which is what stops the gate
  * from being satisfied by a component nobody renders.
  */
-const MIGRATED: readonly string[] = ['BasicsTaskScreen.tsx'];
+const MIGRATED: readonly string[] = ['BasicsTaskScreen.tsx', 'ServicesTaskScreen.tsx'];
 
 /** Raw Tailwind palette families. A migrated tree names tokens, not colours. */
 const PALETTE =

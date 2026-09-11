@@ -281,20 +281,26 @@ test.describe('task 2 — the title is suggested, never published', () => {
     expect(rec.patches.filter((p) => 'headline' in p.body)).toHaveLength(0);
   });
 
-  test('accepting it fills the box without publishing', async ({ page }) => {
+  // SUPERSEDED CONTRACT, recorded rather than deleted.
+  //
+  // These drove an EDITABLE title: accepting a suggestion into a box, and
+  // refusing "Certified Plumber" inline. Ruling C1 makes the generated title
+  // server-owned, and the approved experience screen presents it as a panel
+  // that says it can be changed later on the surface that owns it.
+  //
+  // The replacement is stricter: the old tests proved the editor behaved, this
+  // proves no editor can be reached, so no unverifiable credential can be
+  // typed here at all.
+  test('offers no control to accept or edit it', async ({ page }) => {
     const rec = await openTask(page, { draftOver: withSuggestion });
-    await page.getByTestId('title-accept').click();
 
-    await expect(page.getByTestId('title-input')).toHaveValue('Plumber');
-    expect(rec.patches.filter((p) => 'headline' in p.body)).toHaveLength(0);
-  });
+    await expect(page.getByTestId('title-suggestion-text')).toBeVisible();
+    await expect(page.getByTestId('title-accept')).toHaveCount(0);
+    await expect(page.getByTestId('title-edit')).toHaveCount(0);
+    await expect(page.getByTestId('title-input')).toHaveCount(0);
 
-  test('refuses an unverifiable credential inline', async ({ page }) => {
-    await openTask(page, { draftOver: withSuggestion });
-    await page.getByTestId('title-edit').click();
-    await page.getByTestId('title-input').fill('Certified Plumber');
-
-    await expect(page.getByTestId('title-help')).toContainText('credentials we have verified');
+    // Still writes nothing: showing a suggestion is not publishing it.
+    expect(rec.patches.filter((patch) => 'headline' in patch.body)).toHaveLength(0);
   });
 });
 
