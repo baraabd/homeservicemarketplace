@@ -51,10 +51,66 @@ export interface TimezoneInput {
  * zone since retired) must not be treated as explicit, because storing hours
  * against it would produce times nobody can compute.
  */
+/**
+ * The zones a market declares, or an empty list when it declares none.
+ *
+ * `timezones` when present; otherwise the single-zone shorthand of
+ * `defaultTimezone`; otherwise nothing. An empty result means "the operator
+ * has not described this market's zones", which is a different statement from
+ * "no zone is allowed" and is why callers must handle it explicitly.
+ */
+export function marketTimezones(market: SupportedMarket | null | undefined): readonly string[] {
+  if (!market) return [];
+  if (market.timezones && market.timezones.length > 0) return market.timezones;
+  return isValidTimezone(market.defaultTimezone) ? [market.defaultTimezone] : [];
+}
+
+/** Why a chosen timezone was, or could not be, judged against a market. */
+export type TimezoneCompatibility =
+  /** The zone belongs to this market. */
+  | { readonly kind: 'COMPATIBLE' }
+  /** A real IANA zone, but not one of this market's. */
+  | { readonly kind: 'NOT_IN_MARKET'; readonly allowed: readonly string[] }
+  /** The market declares no zones, so nothing was checked. Reported rather
+   *  than silently treated as a pass: a caller that accepts on this basis is
+   *  accepting an unverified value and should say so in its own comment. */
+  | { readonly kind: 'UNDECLARED' };
+
+/**
+ * Is this zone one the confirmed market permits?
+ *
+ * Sprint 09B.29 Phase 5 (C3). Valid IANA syntax is NOT the test. Every zone in
+ * the database is syntactically valid, so a syntax check accepts Asia/Riyadh
+ * for a provider in Sweden and stores a week nobody can read correctly.
+ */
+export function checkTimezoneAgainstMarket(
+  timezone: string,
+  market: SupportedMarket | null | undefined,
+): TimezoneCompatibility {
+  const allowed = marketTimezones(market);
+  if (allowed.length === 0) return { kind: 'UNDECLARED' };
+  return allowed.includes(timezone) ? { kind: 'COMPATIBLE' } : { kind: 'NOT_IN_MARKET', allowed };
+}
+
 export function decideTimezone(input: TimezoneInput): TimezoneDecision {
-  // 1. An explicit, still-valid provider timezone is never overwritten.
+  // 1. An explicit, still-valid provider timezone is never overwritten —
+  //    unless the market it belonged to is no longer the provider's.
+  //
+  //    Sprint 09B.29 Phase 5 (C3): a provider who moves from Sweden to Syria
+  //    keeps Europe/Stockholm under a rule that only asks "is it a real
+  //    zone?", and every hour they had entered silently means something else.
+  //    A change of country therefore INVALIDATES a stored zone the new market
+  //    does not declare, and the precedence continues below to resolve or ask.
+  //
+  //    A market that declares no zones cannot invalidate anything: there is
+  //    nothing to compare against, and discarding a provider's explicit value
+  //    on the strength of an unfinished registry would be worse than keeping
+  //    it.
   if (isValidTimezone(input.existingTimezone)) {
-    return { kind: 'KEEP', timezone: input.existingTimezone };
+    const compatibility = checkTimezoneAgainstMarket(input.existingTimezone, input.market);
+    if (compatibility.kind !== 'NOT_IN_MARKET') {
+      return { kind: 'KEEP', timezone: input.existingTimezone };
+    }
   }
 
   // 2. Where they actually work beats where their market is centred. A

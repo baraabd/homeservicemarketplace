@@ -51,6 +51,26 @@ export interface SupportedMarket {
    * rather than guess.
    */
   readonly defaultTimezone?: string;
+  /**
+   * Every IANA zone providers in this market may work in.
+   *
+   * Sprint 09B.29 Phase 5 (C3). Optional, and it answers a question
+   * `defaultTimezone` cannot: WHICH zones are legitimate here. A valid IANA
+   * identifier is not the same thing as a zone that belongs to this country,
+   * and without a declared set the server can only check syntax — so a
+   * provider in Sweden could store their week in Asia/Riyadh and every seeker
+   * would read the wrong hours.
+   *
+   * A single-zone market need not repeat itself: `defaultTimezone` alone
+   * implies a set of exactly one. A multi-zone market lists its zones and
+   * declares no default, because a default is indistinguishable from an
+   * answer.
+   *
+   * Absent from BOTH means the operator has not described this market's zones
+   * at all. The server then cannot judge compatibility and says so, rather
+   * than pretending a check happened.
+   */
+  readonly timezones?: readonly string[];
 }
 
 /** Why a stored registry was refused. Codes rather than sentences: these reach
@@ -65,7 +85,8 @@ export type MarketRegistryErrorCode =
   | 'DUPLICATE_COUNTRY_CODE'
   | 'INVALID_ENABLED'
   | 'INVALID_DISPLAY_NAME_KEY'
-  | 'INVALID_TIMEZONE';
+  | 'INVALID_TIMEZONE'
+  | 'INVALID_TIMEZONE_LIST';
 
 export class MarketRegistryError extends Error {
   constructor(
@@ -176,11 +197,36 @@ export function parseSupportedMarkets(raw: unknown): SupportedMarket[] {
       );
     }
 
+    if (e.timezones !== undefined) {
+      if (
+        !Array.isArray(e.timezones) ||
+        e.timezones.length === 0 ||
+        !e.timezones.every((z) => isValidTimezone(z))
+      ) {
+        throw new MarketRegistryError(
+          'INVALID_TIMEZONE_LIST',
+          `market ${e.countryCode} has a timezones value that is not a non-empty array of valid IANA identifiers`,
+        );
+      }
+      // A declared default that the declared list excludes is a contradiction,
+      // and the resulting behaviour would depend on which one a reader
+      // consulted first. Refused rather than reconciled.
+      if (e.defaultTimezone !== undefined && !e.timezones.includes(e.defaultTimezone)) {
+        throw new MarketRegistryError(
+          'INVALID_TIMEZONE_LIST',
+          `market ${e.countryCode} declares defaultTimezone ${JSON.stringify(e.defaultTimezone)}, which its own timezones list does not contain`,
+        );
+      }
+    }
+
     return Object.freeze({
       countryCode: e.countryCode,
       enabled: e.enabled,
       displayNameKey: e.displayNameKey.trim(),
       ...(e.defaultTimezone === undefined ? {} : { defaultTimezone: e.defaultTimezone as string }),
+      ...(e.timezones === undefined
+        ? {}
+        : { timezones: Object.freeze([...(e.timezones as string[])]) }),
     });
   });
 

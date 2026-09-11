@@ -364,6 +364,9 @@ d('Route/capability matrix (real guard, real Postgres, flags ON)', () => {
     const {
       ProviderOnboardingWizardService,
     } = require('../../src/modules/provider/onboarding/provider-onboarding-wizard.service');
+    const {
+      SupportedMarketsService,
+    } = require('../../src/modules/provider/onboarding/market/supported-markets.service');
     // Sprint 9B.17 — the wizard controller also injects the avatar finalize
     // service. Stubbed like every other service here: this file asserts the
     // GUARD matrix, not what any handler does.
@@ -434,6 +437,9 @@ d('Route/capability matrix (real guard, real Postgres, flags ON)', () => {
         { provide: ProviderService, useValue: stub() },
         { provide: ProviderOnboardingService, useValue: stub() },
         { provide: ProviderOnboardingWizardService, useValue: stub() },
+        // Sprint 09B.29 Phase 5 (C2) — stubbed like every other handler here:
+        // this file asserts the GUARD matrix, not what any handler returns.
+        { provide: SupportedMarketsService, useValue: stub() },
         { provide: ProviderAvatarService, useValue: stub() },
         { provide: ProviderVerificationCaseService, useValue: stub() },
         { provide: VerificationCaseWorkflowService, useValue: stub() },

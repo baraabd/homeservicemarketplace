@@ -53,10 +53,10 @@ export interface MarketLocationResult {
  *  way in the UI — offer manual selection — but they are distinguished so the
  *  logs can tell an outage from a provider standing in the sea. */
 export type LocationFailureReason =
-  | 'INVALID_COORDINATES'
-  | 'UNRESOLVED'
-  | 'TIMEOUT'
-  | 'UNAVAILABLE';
+  /** No resolver is configured at all. Distinct from UNAVAILABLE, which means a
+   *  configured resolver could not be reached: one is a deployment choice and
+   *  the other is an outage, and only the second is worth retrying. */
+  'NOT_CONFIGURED' | 'INVALID_COORDINATES' | 'UNRESOLVED' | 'TIMEOUT' | 'UNAVAILABLE';
 
 export class LocationResolutionFailure extends Error {
   constructor(
@@ -76,6 +76,16 @@ export class LocationResolutionFailure extends Error {
  * geocoder must not become a hanging onboarding request.
  */
 export abstract class MarketLocationResolverPort {
+  /**
+   * Can this resolver actually answer?
+   *
+   * Read by the capability read model, and through it by the client, which
+   * shows "Use my location" only when the answer is true. A control that
+   * cannot work is worse than an absent one, and asking the SERVER is the only
+   * way the browser can know — the absence of a geocoder is a deployment fact.
+   */
+  abstract readonly isAvailable: boolean;
+
   abstract resolve(input: MarketLocationInput): Promise<MarketLocationResult>;
 }
 

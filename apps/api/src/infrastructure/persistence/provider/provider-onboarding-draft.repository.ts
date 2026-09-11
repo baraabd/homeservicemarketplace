@@ -80,6 +80,18 @@ export class ProviderOnboardingDraftRepository {
     input: { currentStep: string; policyVersion: string },
     tx?: PrismaTx,
   ): Promise<ProviderOnboardingDraft> {
+    // Sprint 09B.29 Phase 5 (C1) — this deliberately does NOT report whether it
+    // created the row.
+    //
+    // An earlier attempt did, by reading first and comparing. That is a
+    // time-of-check/time-of-use guess: two first requests for one provider —
+    // a tab restore, a double tap — both find nothing and both claim the
+    // creation. The V2 defaults were then gated on that claim.
+    //
+    // The question was removed rather than answered. `ProviderOnboardingDefaults
+    // Service` applies each default as a single conditional statement whose
+    // predicate the DATABASE evaluates at write time, so it is idempotent and
+    // needs to know nothing about who created what.
     return this.db(tx).providerOnboardingDraft.upsert({
       where: { providerProfileId },
       create: {
@@ -112,16 +124,50 @@ export class ProviderOnboardingDraftRepository {
     },
     tx?: PrismaTx,
   ): Promise<number> {
-    const result = await this.db(tx).providerOnboardingDraft.updateMany({
+    const db = this.db(tx);
+
+    const result = await db.providerOnboardingDraft.updateMany({
       where: { providerProfileId, version: expectedVersion },
       data: {
         currentStep: patch.currentStep,
         completedSteps: patch.completedSteps,
-        data: patch.data,
         version: { increment: 1 },
         lastSavedAt: new Date(),
       },
     });
+    if (result.count === 0) return 0;
+
+    // `data` is MERGED, never replaced. Sprint 09B.29 Phase 5 (C2) — and this
+    // was a live defect, not a precaution.
+    //
+    // The caller's `data` is the CLIENT scratch bag, built by spreading the
+    // draft as it looked when the request began. That column also holds
+    // SERVER-OWNED provenance — which headline was generated, which radius was
+    // derived and for which market — written during the very same request by
+    // the defaults service, AFTER the caller took its copy.
+    //
+    // Replacing the column therefore erased every stamp the request had just
+    // written. The visible consequence: a derived radius carried no provenance
+    // at all, so the server could never tell its own suggestion from a
+    // provider's deliberate choice, and a headline the provider had cleared
+    // was refilled on their next keystroke.
+    //
+    // Postgres performs the merge, so no read participates and two writers
+    // touching DIFFERENT keys cannot erase each other. The version CAS above
+    // still decides WHETHER this request may write at all: a concurrent PATCH
+    // has already bumped the version, the updateMany matched nothing, and this
+    // statement is not reached. Merging without that guard would be a silent
+    // overwrite; merging behind it is the same conflict semantics with the
+    // server's own bookkeeping preserved.
+    //
+    // Raw SQL because Prisma's JSON update replaces rather than merges; its
+    // typed API has no `||` equivalent.
+    await db.$executeRaw`
+      UPDATE "ProviderOnboardingDraft"
+      SET "data" = COALESCE("data", '{}'::jsonb) || ${JSON.stringify(patch.data)}::jsonb
+      WHERE "providerProfileId" = ${providerProfileId}
+    `;
+
     return result.count;
   }
 

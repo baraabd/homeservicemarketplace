@@ -1,4 +1,4 @@
-import { FakeMarketLocationResolver } from './fake-market-location-resolver.adapter';
+import { FakeMarketLocationResolver } from '../../../../../test/support/fake-market-location-resolver';
 import { LocationResolutionFailure, areValidCoordinates } from './market-location-resolver.port';
 import { MarketRegistryService } from './market-registry.service';
 import { SUPPORTED_MARKETS_SETTING } from './supported-market';

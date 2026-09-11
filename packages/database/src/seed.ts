@@ -876,10 +876,30 @@ async function upsertDevSupportedMarkets(tx: Prisma.TransactionClient): Promise<
           displayNameKey: 'market.SA',
           defaultTimezone: 'Asia/Riyadh',
         },
+        {
+          // Sprint 09B.29 Phase 5 (C3) — a genuinely MULTI-zone market.
+          //
+          // SY, SE and SA each have exactly one zone, so with only those three
+          // the whole multi-zone half of the timezone policy — ASK rather than
+          // guess, choose among the declared zones, re-stamp a week when the
+          // provider moves between them — had no market it could be true of,
+          // and was reachable only from hand-built fixtures.
+          //
+          // Canada is the real thing rather than an invention: several zones,
+          // no single sensible default. It declares `timezones` and NO
+          // `defaultTimezone`, because a default here would be a guess dressed
+          // up as an answer.
+          //
+          // Development only, on the same reasoning as the three above.
+          countryCode: 'CA',
+          enabled: true,
+          displayNameKey: 'market.CA',
+          timezones: ['America/Toronto', 'America/Vancouver'],
+        },
       ],
       updatedBy: null,
     },
   });
 
-  console.log('[seed] development market registry: SY, SE, SA enabled');
+  console.log('[seed] development market registry: SY, SE, SA, CA enabled');
 }

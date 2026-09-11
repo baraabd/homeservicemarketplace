@@ -6,9 +6,15 @@ import {
   MarketLocationResolverPort,
   type MarketLocationInput,
   type MarketLocationResult,
-} from './market-location-resolver.port';
+} from '../../src/modules/provider/onboarding/market/market-location-resolver.port';
 
 // Sprint 09B.29 Phase 5 — the deterministic resolver every test uses.
+//
+// IT LIVES UNDER test/ ON PURPOSE, and that is the strongest of the three
+// guarantees keeping it out of production. The production build sets
+// `rootDir: ./src`, so a src file importing this does not fail a lint rule —
+// it fails to COMPILE. See market.module.ts and market-module-safety.spec.ts
+// for the other two.
 //
 // docs/provider-experience-v2/PHASE5_BASELINE.md §5
 //
@@ -96,6 +102,10 @@ export class FakeMarketLocationResolver extends MarketLocationResolverPort {
   /** Declared so a persistence path can refuse to trust it, the same way
    *  `EvidenceScanService` refuses to write CLEAN on a test scanner. */
   readonly isRealResolver = false;
+
+  /** A fake can always answer, which is exactly why it must never be the
+   *  production binding. */
+  readonly isAvailable = true;
 
   async resolve(input: MarketLocationInput): Promise<MarketLocationResult> {
     if (!areValidCoordinates(input)) {

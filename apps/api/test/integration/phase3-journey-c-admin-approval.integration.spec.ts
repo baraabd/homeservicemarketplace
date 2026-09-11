@@ -300,6 +300,32 @@ d('Phase 3 Journey C — canonical admin approval (real Postgres)', () => {
     const {
       ProviderOnboardingWizardService,
     } = require('../../src/modules/provider/onboarding/provider-onboarding-wizard.service');
+    // Sprint 09B.29 Phase 5 (C2) — the enabled-market registry. The REAL one:
+    // these suites have a database and the seed writes SY/SE/SA, so the market
+    // boundary is exercised rather than stubbed away.
+    const {
+      MarketRegistryService,
+    } = require('../../src/modules/provider/onboarding/market/market-registry.service');
+    const {
+      SupportedMarketsService,
+    } = require('../../src/modules/provider/onboarding/market/supported-markets.service');
+    // Sprint 09B.29 Phase 5 — the read model reports whether location
+    // suggestion is available, so it needs the port. Bound to the same honest
+    // adapter production uses: no geocoder is configured, and the deterministic
+    // fake must be unreachable from here as well.
+    const {
+      MARKET_LOCATION_RESOLVER_PORT,
+    } = require('../../src/modules/provider/onboarding/market/market-location-resolver.port');
+    const {
+      UnavailableMarketLocationResolver,
+    } = require('../../src/modules/provider/onboarding/market/unavailable-market-location-resolver.adapter');
+    // Sprint 09B.29 Phase 5 (C1) — the wizard now fills the two fields the
+    // approved V2 screens no longer ask about. The REAL service: these suites
+    // have a database, and the defaults are conditional writes whose whole
+    // point is what Postgres does with them.
+    const {
+      ProviderOnboardingDefaultsService,
+    } = require('../../src/modules/provider/onboarding/market/onboarding-defaults.service');
     const {
       ProviderAvatarService,
     } = require('../../src/modules/provider/onboarding/avatar/provider-avatar.service');
@@ -355,6 +381,13 @@ d('Phase 3 Journey C — canonical admin approval (real Postgres)', () => {
         SecurityEventsBus,
         ProviderBidsService,
         ProviderOnboardingWizardService,
+        MarketRegistryService,
+        SupportedMarketsService,
+        {
+          provide: MARKET_LOCATION_RESOLVER_PORT,
+          useClass: UnavailableMarketLocationResolver,
+        },
+        ProviderOnboardingDefaultsService,
         ProviderOnboardingService,
         ProviderService,
         ProviderAvatarService,

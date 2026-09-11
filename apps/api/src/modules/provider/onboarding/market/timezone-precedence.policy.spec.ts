@@ -43,19 +43,59 @@ describe('the three named markets resolve to their zones', () => {
 });
 
 describe('precedence', () => {
-  it('NEVER overwrites an explicit provider timezone', () => {
-    // The provider is in Sweden but works to Damascus hours — unusual, valid,
-    // and entirely theirs to decide. Nothing here may quietly correct it.
+  it('never overwrites an explicit provider timezone the market permits', () => {
+    // The never-overwrite rule, and it is still the first thing the policy
+    // does — it is simply bounded by the market now.
+    const decision = decideTimezone({
+      existingTimezone: 'Europe/Stockholm',
+      originTimezone: 'Europe/Stockholm',
+      market: SE,
+    });
+
+    expect(decision).toEqual({ kind: 'KEEP', timezone: 'Europe/Stockholm' });
+    // KEEP is not persistable: the value is already stored, and rewriting it
+    // is a no-op at best and an overwrite at worst.
+    expect(persistableTimezone(decision)).toBeNull();
+  });
+
+  it('keeps a zone the market cannot judge, rather than discarding it', () => {
+    // A market that declares neither a default nor a zone list has not been
+    // described by its operator. There is nothing to compare against, and
+    // throwing away a provider's explicit value on the strength of an
+    // unfinished registry would be worse than keeping it.
+    const undescribed = { countryCode: 'XK', enabled: true, displayNameKey: 'market.XK' };
+
+    expect(decideTimezone({ existingTimezone: 'Asia/Damascus', market: undescribed })).toEqual({
+      kind: 'KEEP',
+      timezone: 'Asia/Damascus',
+    });
+  });
+
+  it('INVALIDATES a stored zone the confirmed market does not declare', () => {
+    // Sprint 09B.29 Phase 5 (C3) replaced an earlier absolute reading of the
+    // never-overwrite rule, and the case that forced it is a provider who
+    // MOVES.
+    //
+    // The old rule kept any syntactically valid stored zone for ever. So a
+    // provider who set up in Sweden and then changed their market to Syria
+    // kept Europe/Stockholm, and every hour they had already entered silently
+    // came to mean a different time — with no field on screen for them to see
+    // it, let alone correct it.
+    //
+    // "Explicit" therefore means explicit FOR THIS MARKET. A change of country
+    // invalidates a zone the new market does not declare, and the precedence
+    // continues to resolve or to ask.
     const decision = decideTimezone({
       existingTimezone: 'Asia/Damascus',
       originTimezone: 'Europe/Stockholm',
       market: SE,
     });
 
-    expect(decision).toEqual({ kind: 'KEEP', timezone: 'Asia/Damascus' });
-    // KEEP is not persistable: the value is already stored, and rewriting it
-    // is a no-op at best and an overwrite at worst.
-    expect(persistableTimezone(decision)).toBeNull();
+    expect(decision).toEqual({
+      kind: 'RESOLVED',
+      timezone: 'Europe/Stockholm',
+      from: 'ORIGIN',
+    });
   });
 
   it('prefers the confirmed work ORIGIN over the market default', () => {
