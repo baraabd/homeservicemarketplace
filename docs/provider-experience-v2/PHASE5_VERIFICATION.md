@@ -88,9 +88,34 @@ Asserted behaviours worth naming:
 ### 1.3 Reverse geocoding
 
 A port with one method. **No vendor is selected** — the decision requires a stop
-before choosing one, so what ships is the port, the coordinate validation, and a
-deterministic fake which is also the **default binding**. A test that forgot to
-inject a double therefore gets determinism, not a network call.
+before choosing one, so what ships is the port, the coordinate validation, an
+honest production adapter, and a deterministic fake for tests.
+
+**CORRECTION — this section previously claimed the fake was the "default
+binding". It was not, and the claim was wrong in both directions.** An audit
+found the fake bound _nowhere_: the token had no provider at all, so the claim
+described neither the code as it was nor the code as it should be. The record is
+corrected rather than quietly rewritten, because a reader who trusted it would
+have believed a fake was reachable from a production module — the single thing
+this design exists to prevent.
+
+What is bound now:
+
+| Binding                             | Where                       | `isAvailable` | `isRealResolver` |
+| ----------------------------------- | --------------------------- | ------------- | ---------------- |
+| `UnavailableMarketLocationResolver` | `MarketModule` (production) | `false`       | `true`           |
+| `FakeMarketLocationResolver`        | `test/support/` only        | `true`        | `false`          |
+
+The production adapter is honest rather than absent: it throws
+`NOT_CONFIGURED`, and `GET /markets` reports
+`locationSuggestionAvailable: false` so the client offers manual selection only.
+A control that cannot work is worse than no control.
+
+The fake now lives under `apps/api/test/`, outside `tsconfig.build.json`'s
+`rootDir`, so a production import of it **fails to compile** — a stronger
+guarantee than a naming convention. `market-module-safety.spec.ts` adds two
+more: a metadata assertion on the module's binding, and an architectural scan
+proving no `src/` file imports it.
 
 The fake declares `isRealResolver = false`, the same guard `EvidenceScanService`
 applies to a test scanner: an adapter that admits it is not real must not be
@@ -198,6 +223,245 @@ Verified by capturing the command's own exit code — see §4.
 
 ---
 
+## 2A. C1/C2/C3 at the production boundary
+
+The mutation table in §2.2 covers the market **modules**. It says nothing about
+whether the shipped request path calls them, and that gap turned out to hide
+two defects. This section records the work that closed it.
+
+### 2A.1 Two defects the module-level suites could not see
+
+**D-1 — every server-owned provenance stamp was erased on commit.**
+`ProviderOnboardingDraftRepository.advanceIfVersion` replaced `draft.data`
+wholesale with the scratch bag the wizard had copied _before_ the request did
+its work. The defaults service wrote the radius provenance into that same
+column, in that same transaction, moments earlier — and the step write
+overwrote it.
+
+Consequences, both live:
+
+- a DERIVED radius carried no provenance at all, so the server could never tell
+  its own suggestion from a number the provider chose deliberately;
+- the generated-headline stamp vanished too, so a headline the provider had
+  CLEARED would be re-seeded on their next keystroke.
+
+Fixed by merging rather than replacing — Postgres `||`, behind the existing
+version CAS, so a concurrent PATCH still loses the way it always did.
+
+**D-2 — the merge then resurrected stamps a request had just deleted.**
+`ctx.scratch` _was_ the whole `draft.data`, server keys included. Once the write
+merged instead of replacing, a stamp cleared by `recordExplicitRadius` came
+straight back from the pre-request copy. Fixed by giving the column two owners:
+`SERVER_OWNED_DRAFT_KEYS` is excluded when the wizard builds its scratch, so a
+step handler cannot see a stamp, re-assert one, or branch on one.
+
+Neither defect is reachable from `phase5-c1-onboarding-defaults.integration.spec.ts`,
+which calls the defaults service directly. That is precisely why the C2 suite
+exists.
+
+### 2A.2 The production-path suite
+
+`test/integration/phase5-c2-market-and-radius.integration.spec.ts` — supertest
+→ real controller → real `ValidationPipe` → real DTO → real service → real
+Postgres. Only the authentication guards are doubles.
+
+| Group                   | What it pins                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| enabled-market boundary | enabled accepted; never-configured and switched-off both refused; lowercase normalised; ISO refusal distinguishable from market refusal; clearing allowed; **a partial edit carrying no country still refused once the stored market is disabled**; withdrawal effective immediately with no cached window; a refused payload writes nothing                                                                   |
+| radius provenance       | derived and stamped with market + transport + policy fingerprint; **not** re-stamped when nothing changed; re-derived when the country moves; **cleared when the provider picks exactly the suggested number**; an explicit value never moved again; radius and provenance commit together or neither; other bookkeeping in `draft.data` survives a step write                                                 |
+| C3 timezone             | the market's declared zone accepted; a valid IANA zone from another market refused with the allowed zones attached; UNKNOWN distinguished from INCOMPATIBLE; a multi-zone market may choose any zone it declares; ASK rather than guess when it declares several and none is supplied; **a stored zone the new market does not declare is invalidated on a country change**; the stored zone survives a reload |
+| `GET /markets`          | enabled served, disabled absent, uppercase, i18n keys; response keys exactly `markets`/`selectedCountryCode`/`locationSuggestionAvailable`; registry field names absent from the body; a WITHDRAWN selection still reported; suggestion unavailable with no geocoder; static route not captured by the step parameter; refused without an authenticated user                                                   |
+
+### 2A.3 Mutation sensitivity against the SHIPPED files
+
+Six mutations, each editing the production file rather than a reconstruction of
+it, run against both Phase 5 suites on a real database.
+
+Round 1 found **two survivors**, and both were real holes in the tests:
+
+- **M1** survived because the enabled-market check downstream refuses everything
+  the DTO would, so a status-code assertion passed with the old
+  `/^[A-Z]{2}$/` restored. WHICH layer refused is the observable difference, and
+  nothing had asserted it.
+- **M3** survived because recomputing provenance UNCONDITIONALLY also satisfies
+  every "follows the market" assertion — the stamp is simply rewritten on every
+  save. Nothing asserted it stays still when nothing changed.
+
+Both gaps were closed with targeted tests. Round 2:
+
+| Mutation                              | Guarantee removed                                         | Result              |
+| ------------------------------------- | --------------------------------------------------------- | ------------------- |
+| `M1-iso-to-shape-regex`               | a real ISO check in the DTO, not `/^[A-Z]{2}$/`           | KILLED by the suite |
+| `M2-no-enabled-market-check`          | the wizard refuses a country the operator has not enabled | KILLED by the suite |
+| `M3-provenance-update-unconditional`  | a derived radius recomputes only when its identity moved  | KILLED by the suite |
+| `M4-no-explicit-radius-clearing`      | an explicit radius drops the server provenance stamp      | KILLED by the suite |
+| `M5-no-market-in-provenance`          | provenance records the MARKET it was derived for          | KILLED by the suite |
+| `M6-no-timezone-market-compatibility` | a chosen timezone must belong to the confirmed market     | KILLED by typecheck |
+
+**SURVIVORS=0.** Every file restored from a byte copy; no Git command used at
+any point. Residue verified absent by grep for the mutation markers, and the
+backup directory removed.
+
+### 2A.4 Contract changes made deliberately, not to obtain green
+
+Three existing tests asserted behaviour this phase replaces. Each was rewritten
+to assert the NEW contract with the reasoning inline; none was weakened, and
+each still asserts at least as much as before.
+
+| Test                                                         | Old assertion                                          | Why it changed                                                                                                                                                                                                                           |
+| ------------------------------------------------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| availability — "writes nothing when the timezone is missing" | any absent timezone refuses                            | C3 answers from the confirmed market; only a provider with NO market is asked. Now drives that state, and additionally asserts the reason code plus the new resolve-don't-refuse behaviour.                                              |
+| availability — the two zone-change tests                     | change SY's zone to `Europe/Stockholm`                 | a zone change cannot exist in a single-zone market once compatibility is enforced. Moved to the seeded multi-zone `CA`.                                                                                                                  |
+| `timezone-precedence.policy.spec` — "NEVER overwrites"       | a provider in Sweden may keep Damascus hours, for ever | directly contradicts the C3 criterion that a chosen zone be compatible with the confirmed market. Split into three: KEEP when permitted, KEEP when the market declares nothing to judge against, INVALIDATE when the market excludes it. |
+
+### 2A.5 Gate results, this session
+
+Every result captured by `scripts/ci/run-gate.sh`, which records the tested
+command's own exit status. No pipeline whose final process could mask it.
+
+| Gate                                         | Result                               |
+| -------------------------------------------- | ------------------------------------ |
+| `api typecheck`                              | rc=0                                 |
+| `api lint`                                   | rc=0                                 |
+| `migrate:deploy` / `database build` / `seed` | rc=0                                 |
+| `verify:migrations`                          | rc=0                                 |
+| Phase 5 C1 + C2 suites, `--runInBand`        | **2 suites, 58 tests, 0 failed**     |
+| full API suite, DB + Redis armed             | **217 suites, 4132 tests, 0 failed** |
+| mutation sensitivity, real production files  | **6 applied, 6 killed, 0 survivors** |
+
+---
+
+## 2B. Test isolation, and the two defects the stability series found
+
+Two failures were found only by running the gates repeatedly under the parallel
+configuration CI uses. Neither was reproducible in a single run, and both are
+recorded with their first failing artifact rather than the green re-run.
+
+### 2B.1 Writer starvation — a coarse lock on the wrong resource
+
+**First failure:** 3 of 4 consecutive full parallel API runs, each ending
+`Timed out after 120000ms taking the exclusive advisory lock on
+"providerLifecycle"`. Nothing had leaked and every holder was behaving
+correctly, so the message was true and useless.
+
+**Diagnosis.** `pg_try_advisory_lock` does not queue: an EXCLUSIVE acquirer
+succeeds only if it samples an instant with zero shared holders. ~20 suites hold
+`providerLifecycle` SHARED for their whole runs. `provider-journey` held it
+EXCLUSIVE for its whole ~100s run — blocking all of them, so they resumed as one
+dense block and the next exclusive acquirer never found a gap. One run needed
+102s of its 120s budget before a 20th shared holder was added; then it failed
+outright.
+
+**A rejected fix, recorded because it was worse.** Replacing the poll with
+blocking `pg_advisory_lock` + `lock_timeout` made acquisition fair and
+introduced a deadlock: a queued exclusive request on an EARLIER resource turns a
+later shared acquisition into a blocking wait, closing a cycle the canonical
+order was never designed to cover. **Measured: 32 suites and 851 tests failed**,
+1368 of them on shared acquisitions that had never had to wait. Reverted
+byte-for-byte; the reasoning now lives in `db-isolation.ts` so the "obvious"
+fix is not attempted a third time.
+
+**A second rejected fix, also measured, also reverted.** `provider-journey`'s
+exclusivity protected two GLOBAL sweeps — `scanPending()` over `MediaAsset` and
+`runOnce()` over grants. Neither is `ProviderProfile`, a table the suite only
+ever touches through its own namespaced rows, so the lock genuinely named the
+wrong resource. The attempted repair introduced a `mediaAssets` resource and
+moved the exclusivity onto what is actually swept:
+
+| Resource            | provider-journey  | Rationale                                  |
+| ------------------- | ----------------- | ------------------------------------------ |
+| `providerLifecycle` | SHARED (was X)    | it only writes its own namespaced profiles |
+| `workAccessGrants`  | EXCLUSIVE (was S) | it RUNS the global grant expiry sweep      |
+| `mediaAssets` (new) | EXCLUSIVE         | it RUNS the global `scanPending()` sweep   |
+
+The diagnosis held; the remedy did not. **Measured: 0 of 3 full parallel runs
+passed**, with 32 timeouts on `workAccessGrants` and 28 on `outbox`. Upgrading
+the grants lock to EXCLUSIVE created a SECOND exclusive contender beside
+`work-access-enforcement`, so the starvation did not disappear — it moved, and
+the victim changed. Reverted in full; no `mediaAssets` residue remains.
+
+**Why no third attempt was made.** The constraint is structural rather than a
+matter of which resource is named. `pg_try_advisory_lock` does not queue, and
+suites hold their locks for entire 30–150s runs, so on any resource with both
+long shared holds and an exclusive contender someone can starve. Making
+acquisition FAIR is what produced the deadlock in the first rejected fix,
+because suites acquire resources in sequence and hold earlier ones while taking
+later ones. A correct repair means acquiring each suite's whole lock set
+atomically, or shortening the whole-run holds across ~20 suites — an isolation
+redesign well outside a presentation-parity phase.
+
+**Status: UNRESOLVED, and recorded as such.** Writer starvation is a
+pre-existing, intermittent test-isolation defect. It was observed in 3 of 4
+parallel runs during one reproduction session and did not recur in the three
+consecutive canonical runs below. It is not closed, it is not hidden behind a
+retry or a raised timeout, and both attempted fixes are documented above with
+their measured blast radius so neither is tried a third time.
+
+### 2B.2 A 500 on the LOCATION save, under load only
+
+**First failure:** full parallel run 2 of 3, `phase5-c2 › re-derives after the
+provider clears the radius entirely`, expected 200 received **500**:
+
+```
+Invalid `prisma.$executeRaw()` invocation:
+Transaction API error: Transaction not found. Transaction ID is invalid,
+refers to an old closed transaction …
+```
+
+**Diagnosis — this one was self-inflicted.** C1 added a second full
+`buildContext()` inside the step-write transaction, immediately before the
+pre-existing one. `buildContext` loads the profile with categories, the draft
+relations, the user, operator settings and the expansion resolution, so every
+step write paid for all of it **twice** inside one interactive transaction.
+Prisma's interactive transactions default to a 5s timeout; under the parallel
+suite that budget ran out mid-transaction and the raw JSONB merge that runs last
+hit an already-closed transaction. An ordinary provider saving their work area
+would have seen a 500.
+
+**The fix is a reduction, not a longer timeout.** The defaults service now
+returns exactly what it wrote (`AppliedDefaults`), so the post-defaults state is
+the context already in hand plus that patch. One build instead of two; the
+atomicity the mandate requires — radius and provenance committing together or
+not at all — is untouched, because nothing moved out of the transaction.
+
+### 2B.3 Stability series
+
+Run on the restored (known-good) lock topology, with the §2B.2 transaction fix
+in place.
+
+| Phase                                             | Result                                |
+| ------------------------------------------------- | ------------------------------------- |
+| public-media concurrency barrier, x10 consecutive | **10/10 rc=0**                        |
+| `provider-journey` + `phase5-c2` together, x3     | **3/3 rc=0**                          |
+| full parallel API suite, x3 consecutive           | **3/3 rc=0**, 217 suites / 4136 tests |
+
+Each full run took 77s. The same suite took 6,864s during a host memory
+exhaustion episode, which is the difference between a starved process and a
+product signal.
+
+**Two runs were discarded rather than counted, with reasons:**
+
+| Discarded run          | Why it is neither a pass nor a product failure                                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `journey-and-c2` run 1 | 6,864s wall clock; 14 x `Exceeded timeout of 300000 ms`; **zero** advisory-lock timeouts, deadlocks or database errors. The host had ~232 MB of 16 GB free. |
+| parallel series x3     | killed by the OS for low memory mid-run                                                                                                                     |
+
+**Cause of the memory exhaustion, since it was self-inflicted and recurred three
+times.** Each killed harness orphaned its jest worker pool: 11 `jest-worker`
+processes plus 2 parents stayed resident holding ~3.4 GB, so every subsequent
+run inherited an already-exhausted host and was killed in turn. Terminating only
+those processes — matched by PID _and_ verified command line, never by name —
+restored 232 MB to 3,760 MB. The developer's own five node processes (`web
+dev`, Vite, three Prisma Studio) were verified alive before and after every
+cleanup, and only project-scoped `docker compose -p ... down -v` was used for
+containers.
+
+Full gates are now run one at a time on this host, which is the documented
+accommodation for local resource pressure — worker counts, assertions, retries
+and timeouts are unchanged.
+
+---
+
 ## 3. Foundation carried from the first Phase 5 session
 
 | Deliverable                                                             | Evidence                                                                                       |
@@ -242,19 +506,35 @@ is complete. What is proven is exactly §2.3.
 
 ### Implementable, not yet done
 
-6. **C1** — `providerType` default and `suggestedTitle → headline`. The seam is
-   identified (`ProviderOnboardingDraftRepository.ensure`, whose `create` branch
-   is the "new V2 draft" moment); `suggestedTitle` is currently computed in the
-   read model and never persisted. Not started.
-7. **Wiring** the market and timezone policies into
+6. ~~**C1** — `providerType` default and `suggestedTitle → headline`.~~ **DONE.**
+   `ProviderOnboardingDefaultsService`, applied on every draft read and step
+   write; conditional writes with the predicate in the WHERE clause; provenance
+   in the server-owned `draft.data`. See §2A.
+7. ~~**Wiring** the market and timezone policies into
    `ProviderOnboardingWizardService`, and replacing the DTO's `/^[A-Z]{2}$/`
-   with registry validation. The policies are complete and tested; nothing calls
-   them yet.
+   with registry validation.~~ **DONE.** `@IsISO31661Alpha2` at the DTO,
+   `MarketRegistryService.findEnabled` at the service, on the EFFECTIVE country
+   so a partial edit cannot bypass it. `GET /markets` serves the sanitized
+   projection. See §2A.2.
 8. **The market cookie** — issuing, signing, verification, rejection handling.
+   Not started. Must reuse the existing signed-cookie infrastructure rather than
+   introduce an unsigned one.
 9. **The location-suggestion endpoint** — auth, CSRF, rate limit, bounded
-   timeout, deterministic error mapping.
-10. **Radius derivation** from the canonical policy, plus the provenance
-    mechanism C2 requires to distinguish derived from legacy values.
+   timeout, deterministic error mapping. Blocked on blocker 1 (vendor choice);
+   the port, the honest `NOT_CONFIGURED` production adapter and the
+   `locationSuggestionAvailable` flag exist.
+10. ~~**Radius derivation** from the canonical policy, plus the provenance
+    mechanism C2 requires.~~ **DONE**, and the provenance carries enough
+    identity to EXPLAIN the value — market, transport basis, policy fingerprint,
+    value and timestamp — never a comparison against a moving suggestion. See
+    §2A.1 for the two defects found while proving it.
+    10a. **Manual market confirmation UI.** The server side is complete and the read
+    model is served; the provider-facing confirmation flow is not built. Nothing
+    persists a suggested or inferred country today, which is the invariant that
+    matters, but the provider cannot yet confirm one from the UI.
+    10b. **Enabled-market revalidation at SUBMISSION.** The write path refuses a
+    withdrawn market on every step patch; the submit path has not been audited
+    for the same check.
 11. **Provider UI primitives** — market picker, location suggestion, focus-safe
     sheet, upload surface, crop/reorder, stepper, status-axis row, map/radius
     card, reward strip, schedule editor, customer preview, submission timeline.
