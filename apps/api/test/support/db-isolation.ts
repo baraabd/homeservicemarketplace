@@ -35,6 +35,7 @@
  * THE CANONICAL LOCK ORDER, which every suite must follow:
  *
  *     providerLifecycle -> outbox -> workAccessGrants -> serviceRequests
+ *     -> marketRegistry
  *
  * Acquire in that order, release in the reverse. Two suites taking two locks
  * in opposite orders deadlock, and a deadlocked CI job presents as a hang
@@ -91,6 +92,26 @@ const LOCK_KEYS = {
    *  those writers still run beside each other and only the global reader
    *  excludes them. */
   serviceRequests: 907_005,
+  /** The `platform_supported_markets` PlatformSetting row — the operator's
+   *  market registry.
+   *
+   *  Added in Sprint 09B.29 Phase 5 (C2). It is ONE global row that the
+   *  onboarding write path now reads on every LOCATION patch, and the C2 suite
+   *  has to disable a market at runtime to prove that a withdrawal takes
+   *  effect immediately. A fixture namespace cannot express that: there is no
+   *  per-suite copy of the registry to scope to.
+   *
+   *  ON THE END of the order, per the rule above — a new resource never goes
+   *  in the middle.
+   *
+   *  HONEST LIMIT OF WHAT THIS LOCK CURRENTLY BUYS. Only the C2 suite takes
+   *  it, so today it guards against a second registry-mutating suite rather
+   *  than against the readers. What actually keeps the readers safe is that
+   *  C2 mutates ONLY market codes no other suite names, and never touches the
+   *  seeded SY/SE/SA rows every other harness patches LOCATION with. If a
+   *  future suite starts mutating a shared market code, the readers must begin
+   *  taking this lock SHARED — that is a change to them, not to this key. */
+  marketRegistry: 907_006,
 } as const;
 
 export type LockResource = keyof typeof LOCK_KEYS;
@@ -162,6 +183,34 @@ export async function withAdvisoryLock<T>(
  * `pg_advisory_lock*`: a lock leaked by a crashed run then fails HERE, by
  * name, instead of hanging the suite until jest's timeout kills it with a
  * message that says nothing about locking.
+ *
+ * THE POLL IS ALSO WHAT PREVENTS A DEADLOCK, AND THAT IS NOT OBVIOUS.
+ *
+ * Sprint 09B.29 Phase 5 tried replacing it with blocking `pg_advisory_lock`
+ * plus `lock_timeout`, to stop an EXCLUSIVE acquirer starving behind the ~20
+ * suites that hold `providerLifecycle` SHARED. Blocking locks queue, and a
+ * waiting exclusive request blocks NEW shared acquisitions — which fixes the
+ * starvation and introduces something far worse.
+ *
+ * The lock graph makes that fatal. Every suite takes the resources in the
+ * canonical order, so no two suites can deadlock on a PAIR. But a QUEUED
+ * exclusive request on an EARLIER resource turns a later shared acquisition
+ * into a blocking wait, and that closes a cycle the ordering rule was never
+ * designed to cover:
+ *
+ *   marketplace-preview  holds providerLifecycle(S), waits serviceRequests(X)
+ *   provider-journey     waits providerLifecycle(X) — and now blocks new (S)
+ *   any third suite      holds serviceRequests(S), wants providerLifecycle(S)
+ *                        and is blocked behind that queued (X)
+ *
+ * Measured: 32 suites and 851 tests failed, 1368 of them timing out on a
+ * SHARED acquisition that had never had to wait for anything before.
+ *
+ * So the try-lock's refusal to queue is a feature. It can starve a writer; it
+ * cannot convoy the entire run behind one. If the starvation needs addressing,
+ * the answer is to shorten how long the EXCLUSIVE holder needs the lock, or to
+ * reduce the number of whole-run shared holders — not to make acquisition
+ * fair.
  */
 export async function acquireAdvisoryLock(
   resource: LockResource,
