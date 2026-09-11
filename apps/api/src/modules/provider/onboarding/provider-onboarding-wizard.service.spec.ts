@@ -15,6 +15,8 @@ import type { TransactionRunner } from '../../../infrastructure/prisma/transacti
 import type { ProviderServiceAreaExpansionService } from './service-area/expansion/provider-service-area-expansion.service';
 import type { AuditService } from '../../iam/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
+import { MarketRegistryService } from './market/market-registry.service';
+import { ProviderOnboardingDefaultsService } from './market/onboarding-defaults.service';
 import { ProviderOnboardingWizardService } from './provider-onboarding-wizard.service';
 
 // Sprint 8 — the onboarding wizard.
@@ -118,6 +120,12 @@ interface Harness {
   /** Sprint 9B.20 — stubbed to the default-off answer. Exposed so a test can
    *  assert the wizard does not consult it on steps that cannot change it. */
   expansion: { describe: jest.Mock; record: jest.Mock };
+  /** Sprint 09B.29 Phase 5 (C2) — the enabled-market registry. Exposed so a
+   *  test can assert WHEN it is consulted, not merely what it answers: the
+   *  check has to happen at write time rather than being cached onto `ctx`. */
+  markets: { findEnabled: jest.Mock; enabled: jest.Mock; all: jest.Mock };
+  /** Sprint 09B.29 Phase 5 (C1) — the onboarding defaults, a no-op double. */
+  defaults: { apply: jest.Mock; recordExplicitRadius: jest.Mock };
   trx: {
     providerProfile: { update: jest.Mock; updateMany: jest.Mock };
     providerOnboardingSubmission: { create: jest.Mock };
@@ -235,6 +243,73 @@ function build(
     record: jest.fn().mockResolvedValue(undefined),
   };
 
+  /** Sprint 09B.29 Phase 5 (C2) — the enabled markets these specs operate in. */
+  const ENABLED = new Map([
+    [
+      'SY',
+      {
+        countryCode: 'SY',
+        enabled: true,
+        displayNameKey: 'market.SY',
+        defaultTimezone: 'Asia/Damascus',
+      },
+    ],
+    [
+      'SE',
+      {
+        countryCode: 'SE',
+        enabled: true,
+        displayNameKey: 'market.SE',
+        defaultTimezone: 'Europe/Stockholm',
+      },
+    ],
+    [
+      'SA',
+      {
+        countryCode: 'SA',
+        enabled: true,
+        displayNameKey: 'market.SA',
+        defaultTimezone: 'Asia/Riyadh',
+      },
+    ],
+    // Jordan is enabled here because the 9B.20 earned-ceiling test writes it.
+    // That test is about which radius ceiling applies when the country
+    // changes, not about market enablement, and disabling JO would make it
+    // fail for a reason it was never written to check.
+    [
+      'JO',
+      {
+        countryCode: 'JO',
+        enabled: true,
+        displayNameKey: 'market.JO',
+        defaultTimezone: 'Asia/Amman',
+      },
+    ],
+  ]);
+  const markets = {
+    findEnabled: jest.fn(async (code: unknown) =>
+      typeof code === 'string' ? (ENABLED.get(code.trim().toUpperCase()) ?? null) : null,
+    ),
+    enabled: jest.fn(async () => [...ENABLED.values()]),
+    all: jest.fn(async () => [...ENABLED.values()]),
+  };
+
+  /** Sprint 09B.29 Phase 5 (C1) — see the constructor argument below. */
+  const defaults = {
+    // Resolves to {} rather than undefined: since Sprint 09B.29 Phase 5 the
+    // service REPORTS what it wrote, and the caller overlays that report onto
+    // the context it already holds instead of re-reading the profile. A double
+    // returning undefined makes the caller throw on a path the real service
+    // cannot produce.
+    apply: jest.fn().mockResolvedValue({}),
+    // Sprint 09B.29 Phase 5 (C2). The wizard calls this whenever the request
+    // carries an explicit radius, so the double has to answer it — but what it
+    // DOES is proved against real Postgres in
+    // phase5-c2-market-and-radius.integration.spec.ts, because clearing a
+    // provenance stamp is a claim about a JSON merge inside a transaction.
+    recordExplicitRadius: jest.fn().mockResolvedValue(undefined),
+  };
+
   const service = new ProviderOnboardingWizardService(
     providers as unknown as ProviderProfileRepository,
     drafts as unknown as ProviderOnboardingDraftRepository,
@@ -266,9 +341,20 @@ function build(
     // the only behaviour these tests ever see. The feature's own behaviour is
     // covered in expansion-resolver.spec.ts and the integration spec.
     expansion as unknown as ProviderServiceAreaExpansionService,
+    // Sprint 09B.29 Phase 5 (C1) — the V2 defaults. A no-op double: every
+    // assertion in this file is about the wizard's own behaviour, and the
+    // defaults' conditional writes are proved against real Postgres in
+    // phase5-c1-onboarding-defaults.integration.spec.ts, where a race can
+    // actually happen. A double here that pretended to apply them would be
+    // asserting the double.
+    defaults as unknown as ProviderOnboardingDefaultsService,
+    // Sprint 09B.29 Phase 5 (C2) — the enabled-market registry. SY, SE and SA
+    // are enabled and AQ is not, which is what lets these specs exercise both
+    // the accepted and the refused path without a database.
+    markets as unknown as MarketRegistryService,
   );
 
-  return { service, providers, drafts, categories, audit, expansion, trx };
+  return { service, providers, drafts, categories, audit, expansion, trx, markets, defaults };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1576,5 +1662,228 @@ describe('transport — a set with a primary, kept consistent server-side', () =
     const view = await h.service.get('u-1');
     expect(view.data.transportMode).toBe('MOTORCYCLE');
     expect(view.data.transportModes).toEqual(['MOTORCYCLE', 'ON_FOOT']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPRINT 09B.29 PHASE 5 (C2) — THE ENABLED-MARKET BOUNDARY
+//
+// The DTO refuses anything that is not an assigned ISO code. It cannot refuse a
+// REAL country the operator does not serve, because that answer is a row. This
+// is the layer that can, and these are its cases.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('patchStep — LOCATION only accepts markets the operator serves', () => {
+  it('accepts each of the seeded markets', async () => {
+    for (const code of ['SY', 'SE', 'SA']) {
+      const h = build();
+      await expect(
+        h.service.patchStep('u-1', 'LOCATION', { version: 3, serviceAreaCountryCode: code }),
+      ).resolves.toBeDefined();
+    }
+  });
+
+  it('REFUSES a genuine ISO country the operator has not enabled', async () => {
+    // Antarctica passes the DTO — it is a real code. Only the registry knows
+    // it is not a market, which is the whole reason this layer exists.
+    const h = build();
+
+    await expect(
+      h.service.patchStep('u-1', 'LOCATION', { version: 3, serviceAreaCountryCode: 'AQ' }),
+    ).rejects.toMatchObject({
+      status: 400,
+      details: { reason: 'MARKET_NOT_SUPPORTED' },
+    });
+  });
+
+  it('writes NOTHING when the market is refused', async () => {
+    // The check sits above every field assignment, so a refusal must leave no
+    // city, no coordinates, no radius — and above all no version increment,
+    // which would desynchronise the client's optimistic token for a request
+    // that changed nothing.
+    const h = build();
+
+    await h.service
+      .patchStep('u-1', 'LOCATION', {
+        version: 3,
+        serviceAreaCountryCode: 'AQ',
+        serviceAreaCity: 'McMurdo',
+        serviceAreaRadiusKm: 20,
+      })
+      .catch(() => undefined);
+
+    expect(h.trx.providerProfile.update).not.toHaveBeenCalled();
+    expect(h.drafts.advanceIfVersion).not.toHaveBeenCalled();
+  });
+
+  it('asks the registry at WRITE time, not from the loaded context', async () => {
+    // A market disabled between the read and the write must not still be
+    // accepted. Asserting the call happens at all is what stops a future
+    // refactor caching the answer onto `ctx`.
+    const h = build();
+    await h.service.patchStep('u-1', 'LOCATION', { version: 3, serviceAreaCountryCode: 'SE' });
+
+    expect(h.markets.findEnabled).toHaveBeenCalledWith('SE', expect.anything());
+  });
+
+  it('leaves a cleared country alone rather than treating null as a market', async () => {
+    // Clearing is not selecting. Whether a draft may be submitted without a
+    // country is the completeness policy's decision, not this check's.
+    const h = build();
+
+    await expect(
+      h.service.patchStep('u-1', 'LOCATION', { version: 3, serviceAreaCountryCode: null }),
+    ).resolves.toBeDefined();
+    expect(h.markets.findEnabled).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPRINT 09B.29 PHASE 5 (C3) — WORKING HOURS NEVER DEAD-END ON A HIDDEN FIELD
+//
+// The approved V2 screens show no IANA selector — asking a plumber to choose
+// "Asia/Damascus" is a question about database conventions dressed up as a
+// question about their working hours. So a provider who has never had a
+// timezone must still be able to save working hours: it is derived from their
+// confirmed market, and only a genuinely ambiguous market asks.
+//
+// These assert the DECISION (accepted vs refused, and with which reason). What
+// gets written into each interval row is asserted against real Postgres in
+// phase5-c1-onboarding-defaults.integration.spec.ts, where the repository and
+// the rows actually exist.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('patchStep — AVAILABILITY derives the timezone from the market', () => {
+  const week = [{ dayOfWeek: 0, startMinute: 540, endMinute: 1020 }];
+
+  /** A provider with a market and NO stored timezone — the new-provider case
+   *  that used to be impossible to save. */
+  const inMarket = (countryCode: string | null) =>
+    build({
+      profile: { ...makeCompleteProfile(), serviceAreaCountryCode: countryCode },
+      intervals: [],
+    });
+
+  it.each(['SY', 'SE', 'SA'])(
+    'saves working hours in %s with NO timezone supplied',
+    async (country) => {
+      // Before this phase this exact request was refused with "a timezone is
+      // required" — a sentence about a field the provider cannot see.
+      const h = inMarket(country);
+
+      await expect(
+        h.service.patchStep('u-1', 'AVAILABILITY', { version: 3, availability: week }),
+      ).resolves.toBeDefined();
+    },
+  );
+
+  it('asks — with an actionable reason — when there is no market yet', async () => {
+    // Distinguished from the ambiguous case so the screen can say "choose your
+    // work area" rather than showing a raw zone list.
+    const h = inMarket(null);
+
+    await expect(
+      h.service.patchStep('u-1', 'AVAILABILITY', { version: 3, availability: week }),
+    ).rejects.toMatchObject({
+      status: 400,
+      details: { reason: 'TIMEZONE_MARKET_REQUIRED' },
+    });
+  });
+
+  it('keeps working when a timezone IS supplied, so V1 is unaffected', async () => {
+    // The field is gone from the V2 screens, not from the contract.
+    const h = inMarket(null);
+
+    await expect(
+      h.service.patchStep('u-1', 'AVAILABILITY', {
+        version: 3,
+        availability: week,
+        timezone: 'Europe/Stockholm',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('does not consult the market when the provider already has a timezone', async () => {
+    // An existing valid zone wins outright, so no market lookup is needed and
+    // none is made — the never-overwrite rule, observable from the outside.
+    const h = build({
+      profile: { ...makeCompleteProfile(), serviceAreaCountryCode: 'SE' },
+      intervals: [
+        { id: 'iv-1', dayOfWeek: 1, startMinute: 540, endMinute: 1020, timezone: 'Asia/Damascus' },
+      ],
+    });
+
+    await expect(
+      h.service.patchStep('u-1', 'AVAILABILITY', { version: 3, availability: week }),
+    ).resolves.toBeDefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPRINT 09B.29 PHASE 5 — AUDIT ROUND: the wire shape of the C3 refusals, and
+// the partial-mutation hole in the C2 market check.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('C3 refusals serialize as an actionable 400', () => {
+  const week = [{ dayOfWeek: 0, startMinute: 540, endMinute: 1020 }];
+
+  it('TIMEZONE_MARKET_REQUIRED carries code, status, reason and a safe message', async () => {
+    // `AppError(code, message, status?, details?)` takes FOUR arguments and the
+    // call site passes four — the message is a ternary spanning three lines,
+    // which reads like a fifth argument in a formatted diff. Asserted here so
+    // the serialized shape is checked rather than inferred from the source.
+    const h = build({
+      profile: { ...makeCompleteProfile(), serviceAreaCountryCode: null },
+      intervals: [],
+    });
+
+    const err = await h.service
+      .patchStep('u-1', 'AVAILABILITY', { version: 3, availability: week })
+      .then(() => null)
+      .catch(
+        (e: unknown) => e as { code: string; status: number; details: unknown; message: string },
+      );
+
+    expect(err).not.toBeNull();
+    expect(err!.code).toBe('VALIDATION_ERROR');
+    expect(err!.status).toBe(400);
+    expect(err!.details).toEqual({ reason: 'TIMEZONE_MARKET_REQUIRED' });
+    // No IANA identifier, no column name, no internal detail — the provider is
+    // told what to DO.
+    expect(err!.message).toBe('Choose your work area before saving working hours.');
+    expect(err!.message).not.toMatch(/timezone|IANA|Asia\//i);
+  });
+});
+
+describe('C2 — a partial LOCATION write cannot bypass the market check', () => {
+  it('REFUSES a city-only edit when the persisted market has been disabled', async () => {
+    // The hole: the check ran only when the request CARRIED a country. A
+    // provider whose market the operator has since withdrawn from could keep
+    // editing their city, coordinates and radius for ever, because none of
+    // those requests mentions a country.
+    //
+    // The effective market is the requested one OR the persisted one, and it is
+    // the effective market that must be enabled.
+    const h = build({ profile: { ...makeCompleteProfile(), serviceAreaCountryCode: 'AQ' } });
+
+    await expect(
+      h.service.patchStep('u-1', 'LOCATION', { version: 3, serviceAreaCity: 'McMurdo' }),
+    ).rejects.toMatchObject({ status: 400, details: { reason: 'MARKET_NOT_SUPPORTED' } });
+  });
+
+  it('still allows a city-only edit when the persisted market is enabled', async () => {
+    const h = build({ profile: { ...makeCompleteProfile(), serviceAreaCountryCode: 'SY' } });
+
+    await expect(
+      h.service.patchStep('u-1', 'LOCATION', { version: 3, serviceAreaCity: 'Aleppo' }),
+    ).resolves.toBeDefined();
+  });
+
+  it('allows a LOCATION edit when no market has been chosen yet', async () => {
+    // A provider mid-onboarding has no country. That is not an unsupported
+    // market — it is an unanswered question, and the completeness policy owns
+    // whether it blocks submission.
+    const h = build({ profile: { ...makeCompleteProfile(), serviceAreaCountryCode: null } });
+
+    await expect(
+      h.service.patchStep('u-1', 'LOCATION', { version: 3, serviceAreaCity: 'Damascus' }),
+    ).resolves.toBeDefined();
   });
 });

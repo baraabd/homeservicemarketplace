@@ -2,6 +2,28 @@
 
 Checkpoint for resuming after an interruption. Updated as work lands.
 
+> **Current work — Sprint 09B.29 Phase 5.**
+> Branch `feat/provider-onboarding-v2-phase5-exact-visual-parity`, from
+> `develop` @ `e11499b` (Phase 4, PR #74, merged).
+>
+> **Status: PHASE 5 INCOMPLETE.** See `PHASE5_BASELINE.md` for the entry audit
+> and `PHASE5_VERIFICATION.md` for what has been built and the full remaining
+> blocker list.
+>
+> **The single-operator-country assumption is withdrawn.** An earlier Phase 5
+> hard stop looked for one canonical platform country and found none; the
+> product owner has since ruled that the marketplace is **multi-country from
+> launch**. Markets are configured per country in the audited
+> `platform_supported_markets` setting, and there is deliberately **no default
+> or fallback market anywhere in the codebase** — an empty registry is a
+> configuration error, never an invented country. Any older statement in this
+> file or elsewhere implying a single platform country is superseded.
+>
+> Delivered so far: the market registry, the resolution precedence, the
+> reverse-geocoding port with a deterministic fake, the timezone precedence, the
+> typed 18-state registry, and a scoped test-typecheck gate. **No screen has
+> been migrated and no visual gate has been run.**
+
 **Branch:** `feat/provider-experience-v2-ux-redesign`
 **Base:** stacked on PR #68 (`1fb080c`), which is itself `develop` (`006926a`) + Mode B slice 1
 **HEAD at last update:** see `docs/sprint-09b28/` — work continues on

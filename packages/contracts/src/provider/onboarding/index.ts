@@ -23,3 +23,5 @@ export * from './professional-title';
 
 // Sprint 9B.23 — V2 Task 6: the review / submission read-model.
 export * from './response/provider-onboarding-review';
+// Sprint 09B.29 Phase 5 (C2) — the sanitized enabled-market projection.
+export * from './response/provider-supported-markets';

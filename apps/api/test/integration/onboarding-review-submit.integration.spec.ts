@@ -175,6 +175,32 @@ d('Onboarding review and submission (real Postgres)', () => {
     const {
       ProviderOnboardingWizardService,
     } = require('../../src/modules/provider/onboarding/provider-onboarding-wizard.service');
+    // Sprint 09B.29 Phase 5 (C2) — the enabled-market registry. The REAL one:
+    // these suites have a database and the seed writes SY/SE/SA, so the market
+    // boundary is exercised rather than stubbed away.
+    const {
+      MarketRegistryService,
+    } = require('../../src/modules/provider/onboarding/market/market-registry.service');
+    const {
+      SupportedMarketsService,
+    } = require('../../src/modules/provider/onboarding/market/supported-markets.service');
+    // Sprint 09B.29 Phase 5 — the read model reports whether location
+    // suggestion is available, so it needs the port. Bound to the same honest
+    // adapter production uses: no geocoder is configured, and the deterministic
+    // fake must be unreachable from here as well.
+    const {
+      MARKET_LOCATION_RESOLVER_PORT,
+    } = require('../../src/modules/provider/onboarding/market/market-location-resolver.port');
+    const {
+      UnavailableMarketLocationResolver,
+    } = require('../../src/modules/provider/onboarding/market/unavailable-market-location-resolver.adapter');
+    // Sprint 09B.29 Phase 5 (C1) — the wizard now fills the two fields the
+    // approved V2 screens no longer ask about. The REAL service: these suites
+    // have a database, and the defaults are conditional writes whose whole
+    // point is what Postgres does with them.
+    const {
+      ProviderOnboardingDefaultsService,
+    } = require('../../src/modules/provider/onboarding/market/onboarding-defaults.service');
     const {
       ProviderAvatarService,
     } = require('../../src/modules/provider/onboarding/avatar/provider-avatar.service');
@@ -212,6 +238,13 @@ d('Onboarding review and submission (real Postgres)', () => {
       controllers: [ProviderOnboardingWizardController],
       providers: [
         ProviderOnboardingWizardService,
+        MarketRegistryService,
+        SupportedMarketsService,
+        {
+          provide: MARKET_LOCATION_RESOLVER_PORT,
+          useClass: UnavailableMarketLocationResolver,
+        },
+        ProviderOnboardingDefaultsService,
         ProviderAvatarService,
         PublicMediaLedgerService,
         ProviderServiceAreaExpansionService,
@@ -376,6 +409,60 @@ d('Onboarding review and submission (real Postgres)', () => {
   });
 
   // ── versioned, auditable consent ─────────────────────────────────────────
+
+  describe('the market is re-asked at submission', () => {
+    // Sprint 09B.29 Phase 5 (C2). Every step write refuses a country the
+    // operator has not enabled, but that answer is only as fresh as the last
+    // keystroke. An operator can withdraw from a market after a provider has
+    // finished onboarding and before they press Submit — or weeks after, for
+    // an application that sat waiting.
+    //
+    // WITHDRAWAL IS SIMULATED ON THE PROFILE, NOT BY EDITING THE REGISTRY.
+    // The registry is one global row that every other suite reads; rewriting
+    // it here would change what a suite in another worker sees mid-assertion.
+    // Writing a country the registry does not contain reaches the same state
+    // by the same code path — the service asks "is this an enabled market?"
+    // and the answer is no, whether it never was or no longer is.
+    it('refuses a complete application standing in a market we do not serve', async () => {
+      await makeComplete({ serviceAreaCountryCode: 'FR' });
+      await acceptCurrentTerms();
+
+      const draft = await prisma.providerOnboardingDraft.findUnique({
+        where: { providerProfileId: PP },
+      });
+      const res = await postSubmit({ version: draft?.version ?? 1 });
+
+      expect(res.status).toBe(422);
+      expect(res.body?.error?.details?.reason).toBe('MARKET_NOT_SUPPORTED');
+      // Routed to the step that fixes it, using the same machinery the
+      // completeness refusal uses.
+      expect(res.body?.error?.details?.missing).toEqual([
+        { field: 'serviceAreaCountryCode', code: 'MARKET_NOT_SUPPORTED' },
+      ]);
+
+      // And nothing was claimed: no submission row, and the application is
+      // still editable rather than stranded in SUBMITTED.
+      expect(
+        await prisma.providerOnboardingSubmission.count({ where: { providerProfileId: PP } }),
+      ).toBe(0);
+      const after = await prisma.providerProfile.findUnique({ where: { id: PP } });
+      expect(after?.onboardingState).toBe('DRAFT');
+    });
+
+    it('accepts the same application once it names an ENABLED market', async () => {
+      // The control. Without it the refusal above could be caused by anything
+      // else the fixture happens to be missing.
+      await makeComplete({ serviceAreaCountryCode: 'SY' });
+      await acceptCurrentTerms();
+
+      const draft = await prisma.providerOnboardingDraft.findUnique({
+        where: { providerProfileId: PP },
+      });
+      const res = await postSubmit({ version: draft?.version ?? 1 });
+
+      expect(res.status).toBe(200);
+    });
+  });
 
   describe('terms consent is versioned', () => {
     it('serves the ACTIVE version and reports it unaccepted', async () => {

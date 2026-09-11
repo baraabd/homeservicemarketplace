@@ -65,6 +65,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
   const CATEGORY = `${P}cat`;
 
   let lifecycleLock: HeldLock;
+  let mediaLock: HeldLock;
 
   const base = '/v1/me/provider/portfolio';
   const list = () => request(http).get(base);
@@ -155,6 +156,8 @@ d('Provider portfolio (real guard, real Postgres)', () => {
 
   beforeAll(async () => {
     lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // LAST in the canonical order. EXCLUSIVE: this suite RUNS a global media sweep.
+    mediaLock = await acquireAdvisoryLock('mediaAssets', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -297,6 +300,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
     await cleanupFixtures();
     await app?.close();
     await prisma.$disconnect();
+    await mediaLock?.release();
     await lifecycleLock.release();
   });
 

@@ -79,6 +79,7 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
   let storageRoot: string;
   let restrictedRoot: string;
   let lifecycleLock: HeldLock;
+  let mediaLock: HeldLock;
   let grantsLock: HeldLock;
   let outboxLock: HeldLock;
 
@@ -336,6 +337,8 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
     // is the same in every suite. Two suites taking two locks in opposite
     // orders is a deadlock, and a deadlocked CI job looks like a hang.
     grantsLock = await acquireAdvisoryLock('workAccessGrants', 'shared');
+    // LAST in the canonical order. EXCLUSIVE: this suite RUNS a global media sweep.
+    mediaLock = await acquireAdvisoryLock('mediaAssets', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -482,6 +485,7 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
     rmSync(storageRoot, { recursive: true, force: true });
     rmSync(restrictedRoot, { recursive: true, force: true });
     await prisma?.$disconnect();
+    await mediaLock?.release();
     await outboxLock?.release();
     await grantsLock?.release();
     await lifecycleLock?.release();

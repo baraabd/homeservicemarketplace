@@ -1,0 +1,49 @@
+{
+  // Sprint 09B.29 Phase 5 — the test-typecheck gate.
+  //
+  // WHY THIS FILE EXISTS
+  //
+  // Neither `tsconfig.app.json` nor `tsconfig.node.json` includes `e2e/`, and
+  // `tsconfig.app.json` explicitly EXCLUDES `src/**/*.test.ts(x)`. So before
+  // this file, `pnpm --filter web typecheck` typechecked none of the tests and
+  // none of the Playwright suite — roughly nine thousand lines of test code
+  // that Vitest and Playwright both transpile without ever asking the type
+  // checker a question.
+  //
+  // That is not a theoretical gap. The Phase 5 registry is the single source
+  // the reference capture, the application capture, the pixel comparison, the
+  // responsive matrix and the accessibility scan all key off; a shape mistake
+  // in it would surface as a browser run failing twenty minutes later, or worse
+  // as a silently skipped state.
+  //
+  // Scoped deliberately: the Phase 5 registry and specs, and the V2 test
+  // surfaces they touch. Widening this to every historical test at once would
+  // turn one gate into a large unrelated cleanup, which is the reason it was
+  // never added. New Phase 5 work goes in here from the start.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    // Playwright's `expect` and the jest-dom matchers Vitest installs are both
+    // ambient. Naming them here is what makes `toHaveScreenshot` and
+    // `toBeVisible` real symbols rather than `any`.
+    "types": ["node", "@playwright/test", "@testing-library/jest-dom"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "e2e/**/*.ts",
+    "src/app/features/provider-onboarding-v2/phase5-visual-states.test.ts",
+    "src/app/features/provider-ui/**/*.ts",
+    "src/app/features/provider-ui/**/*.tsx"
+  ]
+}

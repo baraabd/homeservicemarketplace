@@ -5,12 +5,12 @@ import {
   IsArray,
   IsDateString,
   IsIn,
+  IsISO31661Alpha2,
   IsInt,
   IsLatitude,
   IsLongitude,
   IsOptional,
   IsString,
-  Matches,
   Max,
   MaxLength,
   Min,
@@ -150,8 +150,15 @@ export class PatchOnboardingStepDto implements PatchOnboardingStepRequest {
     typeof value === 'string' && value.trim().length > 0 ? value.trim().toUpperCase() : null,
   )
   @IsString()
-  @Matches(/^[A-Z]{2}$/, {
-    message: 'serviceAreaCountryCode must be a two-letter ISO country code',
+  // Sprint 09B.29 Phase 5 (C2) — an ACTUAL ISO check, not a shape check.
+  //
+  // This was /^[A-Z]{2}$/, under which 'ZZ', 'XX' and 'QQ' were all countries.
+  // That is the cheap half of the trust boundary and it belongs here, where it
+  // costs no database round trip. The expensive half — is this a market the
+  // operator actually ENABLED — cannot live in a DTO, because the answer is a
+  // row. It is enforced in the wizard service against MarketRegistryService.
+  @IsISO31661Alpha2({
+    message: 'serviceAreaCountryCode must be an ISO 3166-1 alpha-2 country code',
   })
   serviceAreaCountryCode?: string | null;
 

@@ -32,6 +32,13 @@ import {
   type ProviderOnboardingRelations,
 } from '../../../infrastructure/persistence/provider/provider-onboarding-draft.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
+import { MarketRegistryService } from './market/market-registry.service';
+import { checkTimezoneAgainstMarket, decideTimezone } from './market/timezone-precedence.policy';
+import {
+  ProviderOnboardingDefaultsService,
+  SERVER_OWNED_DRAFT_KEYS,
+  type AppliedDefaults,
+} from './market/onboarding-defaults.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { buildHub } from './hub/onboarding-hub-resolver';
 import { buildReview } from './review/onboarding-review-resolver';
@@ -149,6 +156,13 @@ export class ProviderOnboardingWizardService {
     // Sprint 9B.20 — the earned ceiling. Default off; with the switch off it
     // returns the standard bounds without reading a single provider signal.
     private readonly expansion: ProviderServiceAreaExpansionService,
+    // Sprint 09B.29 Phase 5 (C1) — the two fields the approved V2 screens no
+    // longer ask about. Appended rather than inserted, so every existing
+    // positional construction of this service keeps its meaning.
+    private readonly defaults: ProviderOnboardingDefaultsService,
+    // Sprint 09B.29 Phase 5 (C2) — which markets the operator actually serves.
+    // Appended, so every existing positional construction keeps its meaning.
+    private readonly markets: MarketRegistryService,
   ) {}
 
   /**
@@ -165,6 +179,11 @@ export class ProviderOnboardingWizardService {
       currentStep: PROVIDER_ONBOARDING_STEPS[0],
       policyVersion: CURRENT_ONBOARDING_POLICY_VERSION,
     });
+    // Sprint 09B.29 Phase 5 (C1). Applied on EVERY read, not only at creation:
+    // a brand-new provider has no primary service, so there is no title to
+    // suggest yet, and seeding only at creation left the headline blank for
+    // ever. Every step is conditional and idempotent — see the service.
+    await this.applyV2Defaults(ctx);
     return this.view(userId);
   }
 
@@ -210,7 +229,35 @@ export class ProviderOnboardingWizardService {
       // Recompute from the freshly written state rather than from what the
       // client sent. The client's view of "is this step done" is a guess; the
       // server's is the one submission is judged against.
-      const after = await this.buildContext(userId, trx);
+      // Sprint 09B.29 Phase 5 (C1) — AFTER the step write, so the request that
+      // chooses a primary service is the one that seeds the generated headline.
+      // Before it, there would still be no suggestion to store.
+      //
+      // ONE context build, not two, and that is a correctness fix rather than
+      // a micro-optimisation.
+      //
+      // C1 originally built a whole second context here purely to feed the
+      // defaults, immediately before the one below. `buildContext` loads the
+      // profile with its categories, the draft relations, the user, the
+      // operator settings and the expansion resolution — so the step write was
+      // paying for all of that twice inside a single interactive transaction.
+      //
+      // Prisma's interactive transactions have a 5s default timeout. Under the
+      // parallel API suite that budget ran out mid-transaction, and the raw
+      // JSONB merge that runs last failed with "Transaction not found …
+      // refers to an old closed transaction": a 500 on an ordinary LOCATION
+      // save, reproducible only under load. Measured once in three consecutive
+      // full parallel runs.
+      //
+      // The defaults already know what they wrote, so the post-defaults state
+      // is the context we have plus that patch. No second read, and the
+      // transaction stays comfortably inside its budget.
+      const written = await this.buildContext(userId, trx);
+      const applied = await this.applyV2Defaults(written, trx);
+      const after: OnboardingContext =
+        Object.keys(applied).length === 0
+          ? written
+          : { ...written, profile: { ...written.profile, ...applied } };
 
       // Sprint 9B.20 — two steps can change what the expansion resolver
       // answers: LOCATION picks the market whose ladder applies, and
@@ -303,6 +350,40 @@ export class ProviderOnboardingWizardService {
           422,
           { missing: actionable },
         );
+      }
+
+      // THE MARKET IS RE-ASKED HERE, not trusted from when it was chosen.
+      //
+      // Sprint 09B.29 Phase 5 (C2). Every step write refuses a country the
+      // operator has not enabled, but that is a check made at the time of the
+      // edit. An operator can withdraw from a market between a provider's last
+      // keystroke and their submission — a market can even be withdrawn from a
+      // provider who completed onboarding weeks ago and only now presses the
+      // button.
+      //
+      // Accepting that application would put a provider into review for a
+      // country the platform does not serve, and every downstream decision
+      // (verification, work access, pricing) would be made about a market that
+      // is not open. Submission is the authoritative decision, so it re-reads
+      // the registry rather than inheriting an earlier answer.
+      //
+      // 422 and `missing`, matching the completeness refusal directly above:
+      // the payload is well-formed and the RESOURCE is not submittable, and
+      // the wizard already routes `missing` entries to their step.
+      const submissionCountry = ctx.profile.serviceAreaCountryCode ?? null;
+      if (submissionCountry != null) {
+        const stillOpen = await this.markets.findEnabled(submissionCountry, trx);
+        if (!stillOpen) {
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'We no longer operate in the country on your application. Choose one of the available markets.',
+            422,
+            {
+              reason: 'MARKET_NOT_SUPPORTED',
+              missing: [{ field: 'serviceAreaCountryCode', code: 'MARKET_NOT_SUPPORTED' }],
+            },
+          );
+        }
       }
 
       const candidate = this.toCandidate(ctx);
@@ -535,6 +616,55 @@ export class ProviderOnboardingWizardService {
       }
 
       case 'LOCATION': {
+        // Sprint 09B.29 Phase 5 (C2) — THE AUTHORITATIVE MARKET CHECK.
+        //
+        // The DTO already refused anything that is not an assigned ISO code.
+        // This is the other half, and it is a different question: is this a
+        // market the operator currently SERVES? `AQ` passes the DTO and must
+        // not pass here.
+        //
+        // Placed at the very top of the case, before a single field is staged
+        // into `profileData`, so a refusal leaves no partial mutation — no
+        // city, no coordinates, no radius, no version increment, no audit row.
+        // Everything below this line runs only for a market we serve.
+        //
+        // Read at WRITE time rather than from `ctx`, which was loaded earlier
+        // in the request. A market disabled in between must not still be
+        // accepted, and the registry deliberately does not cache for exactly
+        // this reason.
+        //
+        // THE EFFECTIVE MARKET, not merely the requested one.
+        //
+        // An earlier version checked `body.serviceAreaCountryCode` alone, which
+        // left a hole: a provider whose market the operator had since withdrawn
+        // from could keep editing their city, coordinates and radius for ever,
+        // because none of those requests mentions a country. The market a write
+        // lands in is the one it WILL have — the requested value if the request
+        // carries one, otherwise the value already stored.
+        //
+        // `null` is exempt, and only when it is explicitly requested: clearing
+        // the country is not selecting a market, and whether a draft may be
+        // submitted without one is the completeness policy's decision. A
+        // provider who has not chosen yet is answering a question, not standing
+        // in an unsupported market.
+        const clearingCountry =
+          body.serviceAreaCountryCode === null && 'serviceAreaCountryCode' in body;
+        const effectiveCountry = clearingCountry
+          ? null
+          : (body.serviceAreaCountryCode ?? p.serviceAreaCountryCode ?? null);
+
+        if (effectiveCountry != null) {
+          const market = await this.markets.findEnabled(effectiveCountry, trx);
+          if (!market) {
+            throw new AppError(
+              'VALIDATION_ERROR',
+              'We do not operate in that country yet. Choose one of the available markets.',
+              400,
+              { reason: 'MARKET_NOT_SUPPORTED' },
+            );
+          }
+        }
+
         if (body.serviceAreaCity !== undefined) {
           profileData.serviceAreaCity = trimToNull(body.serviceAreaCity);
           // Sprint 6's normalised match key is written by the SAME code path
@@ -590,6 +720,27 @@ export class ProviderOnboardingWizardService {
             }
           }
           profileData.serviceAreaRadiusKm = body.serviceAreaRadiusKm;
+
+          // Sprint 09B.29 Phase 5 (C2) — the provider has spoken, so the
+          // server drops its claim on the number.
+          //
+          // UNCONDITIONAL, and deliberately not compared against the
+          // suggestion. A provider in a car market who chooses exactly the
+          // 15 km we would have suggested owns that 15 km; if the stamp
+          // survived, the next operator retune or country change would move a
+          // number they picked on purpose. Numeric equality cannot distinguish
+          // the two cases, which is the whole reason provenance exists.
+          //
+          // In the SAME transaction as the radius write above, so the value
+          // and the provenance that explains it commit together or neither
+          // commits. It also runs BEFORE applyV2Defaults, which is what stops
+          // that pass seeing its own stale stamp and treating the provider's
+          // equal-valued choice as still ours.
+          //
+          // Clearing to null clears the stamp too: the field goes back to
+          // being unanswered, and the next defaults pass may derive it again
+          // with fresh provenance.
+          await this.defaults.recordExplicitRadius(p.id, body.serviceAreaRadiusKm ?? 0, trx);
         }
         if (body.workshopAddressLine !== undefined) {
           profileData.workshopAddressLine = trimToNull(body.workshopAddressLine);
@@ -716,17 +867,114 @@ export class ProviderOnboardingWizardService {
       }
 
       case 'AVAILABILITY': {
-        const timezone =
+        // Sprint 09B.29 Phase 5 (C3) — the timezone is DECIDED, not demanded.
+        //
+        // This used to be: take it from the body, else from an existing
+        // interval, else refuse with "a timezone is required". The approved V2
+        // screens show no IANA selector — asking a plumber to choose
+        // "Asia/Damascus" is a question about database conventions dressed up
+        // as a question about their working hours — so a provider who had
+        // never had one could not save working hours at all. A hidden field
+        // dead-ending a visible task.
+        //
+        // The precedence now runs: an explicit valid value the provider or the
+        // request supplies, then one derived from their confirmed market, then
+        // ASK. Only the third case refuses, and it refuses with a reason the
+        // UI can act on rather than a sentence about a field nobody can see.
+        // A zone the REQUEST asserts is validated here, before the precedence
+        // policy sees it. Sprint 09B.29 Phase 5 (C3), and this distinction is
+        // load bearing.
+        //
+        // The policy treats an unrecognised `existingTimezone` as absent and
+        // falls through to the market default. That is right for a STORED
+        // value — a legacy row, or a zone the IANA database has since retired,
+        // must not dead-end a provider who cannot even see the field. It is
+        // wrong for a value the client just sent: silently replacing it would
+        // answer a different question from the one asked and store hours
+        // against a zone the caller never chose.
+        //
+        // So the two inputs are separated. What the request says is refused if
+        // it is not a real zone; only what is already stored is allowed to
+        // fall through.
+        const market = await this.markets.findEnabled(p.serviceAreaCountryCode ?? null, trx);
+
+        if (body.timezone !== undefined) {
+          const requested = trimToNull(body.timezone);
+          if (requested !== null && !isValidTimezone(requested)) {
+            throw new AppError('VALIDATION_ERROR', `Unknown timezone: ${requested}.`, 400, {
+              reason: 'TIMEZONE_UNKNOWN',
+            });
+          }
+          if (requested !== null) {
+            // Syntax was the easy half. This is the one that matters: every
+            // zone in the IANA database parses, so a syntax check happily
+            // stores a Swedish provider's week in Asia/Riyadh and every seeker
+            // reads the wrong hours.
+            //
+            // UNDECLARED is accepted rather than refused, and the asymmetry is
+            // deliberate. An operator who has not yet listed a market's zones
+            // has misconfigured the registry; making that failure land on the
+            // provider — who cannot fix it and cannot even see the field —
+            // would turn an operator's unfinished job into a dead end. The
+            // zone is stored unverified, and the registry test refuses to let
+            // an enabled market ship without zones.
+            const verdict = checkTimezoneAgainstMarket(requested, market);
+            if (verdict.kind === 'NOT_IN_MARKET') {
+              throw new AppError(
+                'VALIDATION_ERROR',
+                'That timezone is not one of the zones for your selected country.',
+                400,
+                {
+                  reason: 'TIMEZONE_NOT_IN_MARKET',
+                  // The permitted zones travel with the refusal so the screen
+                  // can offer them. They are operator configuration for a
+                  // market the provider has already chosen, not a disclosure.
+                  allowed: verdict.allowed,
+                },
+              );
+            }
+          }
+        }
+
+        const explicitTimezone =
           body.timezone !== undefined
             ? trimToNull(body.timezone)
             : (ctx.relations.availabilityIntervals[0]?.timezone ?? null);
 
+        const decision = decideTimezone({
+          existingTimezone: explicitTimezone,
+          // The provider's confirmed market, read at write time. Null when they
+          // have not chosen one yet, which the policy answers with NO_MARKET.
+          // The SAME read the compatibility check above used, so the zone the
+          // request was judged against and the zone the policy resolves cannot
+          // come from two different versions of the registry.
+          market,
+        });
+
+        const timezone =
+          decision.kind === 'KEEP'
+            ? decision.timezone
+            : decision.kind === 'RESOLVED'
+              ? decision.timezone
+              : null;
+
         if (body.availability !== undefined) {
           if (body.availability.length > 0 && !timezone) {
+            // AMBIGUOUS_MARKET and NO_MARKET are different questions — "which
+            // part of the country?" and "where do you work?" — and the reason
+            // code is what lets the screen ask the right one instead of
+            // showing a raw zone list.
+            const reason =
+              decision.kind === 'ASK' && decision.reason === 'AMBIGUOUS_MARKET'
+                ? 'TIMEZONE_AMBIGUOUS'
+                : 'TIMEZONE_MARKET_REQUIRED';
             throw new AppError(
               'VALIDATION_ERROR',
-              'A timezone is required before working hours can be saved.',
+              reason === 'TIMEZONE_AMBIGUOUS'
+                ? 'Confirm which part of your country you work in before saving working hours.'
+                : 'Choose your work area before saving working hours.',
               400,
+              { reason },
             );
           }
           if (timezone && !isValidTimezone(timezone)) {
@@ -1268,10 +1516,24 @@ export class ProviderOnboardingWizardService {
       throw new AppError('INTERNAL_ERROR', 'Failed to load the onboarding application.', 500);
     }
 
-    const scratch =
+    // The CLIENT half of draft.data, with the server's own bookkeeping removed.
+    //
+    // Sprint 09B.29 Phase 5 (C2). Step handlers copy this bag, edit it, and
+    // hand it back to be merged, so anything left in it is re-asserted on
+    // every write from a value read before the request did its work. That is
+    // correct for scratch — it IS the client's state — and wrong for
+    // provenance, which the same request may have just deleted on purpose.
+    //
+    // Omitting rather than filtering at the write: a step handler must not be
+    // able to see a stamp either, or the temptation to branch on one puts a
+    // server decision inside client-shaped state.
+    const rawDraftData =
       relations.onboardingDraft?.data && typeof relations.onboardingDraft.data === 'object'
         ? (relations.onboardingDraft.data as Record<string, unknown>)
         : {};
+    const scratch = Object.fromEntries(
+      Object.entries(rawDraftData).filter(([key]) => !SERVER_OWNED_DRAFT_KEYS.includes(key)),
+    );
 
     const context: OnboardingContext = {
       userId,
@@ -1460,6 +1722,91 @@ export class ProviderOnboardingWizardService {
       tx,
     );
     return { ...ctx.radiusPolicy, maxKm: expansion.allowedMaxKm };
+  }
+
+  /**
+   * Sprint 09B.29 Phase 5 (C1) — fill the two fields V2 no longer asks about.
+   *
+   * The approved V2 screens ask for neither a provider type nor a professional
+   * title. That is a deliberate simplification — an individual tradesperson
+   * should not have to answer "are you a business?" before typing their name —
+   * and it leaves two server-owned fields with no client to fill them.
+   *
+   * Called ONLY when the draft was just created. Every branch inside
+   * `onboardingDefaultsForNewDraft` is already guarded by "is this blank", so
+   * calling it on every read would be almost harmless — but "almost" is the
+   * problem: a provider who deliberately CLEARED their headline would have it
+   * refilled on their next page load, and that is an overwrite wearing a
+   * default's clothes.
+   *
+   * The patch is spread into the update, so when a profile is already complete
+   * this writes nothing at all — not "the same values". A full value set would
+   * rewrite both columns and move `updatedAt` on a read.
+   */
+  private async applyV2Defaults(ctx: OnboardingContext, tx?: PrismaTx): Promise<AppliedDefaults> {
+    // Nothing is decided from `ctx.profile` here, and that is the point. The
+    // context was loaded earlier in the request; deciding "is the headline
+    // blank" from it and then writing unconditionally is how a concurrent
+    // explicit value gets overwritten. Every predicate lives in the service's
+    // WHERE clauses, where the database evaluates it at write time.
+    return this.defaults.apply(
+      ctx.profile.id,
+      // The suggestion comes from the SAME helper the read model uses, so what
+      // is stored is what the provider was shown. A second formatting rule
+      // here would drift from it silently.
+      {
+        suggestedTitle: this.suggestedTitleFor(ctx),
+        // Sprint 09B.29 Phase 5 (C2) — the CANONICAL policy's answer, already
+        // resolved onto the context from the operator's settings and the
+        // provider's PRIMARY transport mode. Passed straight through rather
+        // than recomputed, so there is exactly one place that decides how far
+        // a provider travels, and the client has no copy of the table at all.
+        radius: {
+          suggestedKm: ctx.radiusPolicy.suggestedKm,
+          basedOn: ctx.radiusPolicy.basedOn,
+          // The market the suggestion belongs to, and a fingerprint of the
+          // operator configuration behind it. Without these, "same transport,
+          // different country" is indistinguishable from "nothing changed" and
+          // a provider who moves market keeps a radius derived for the one
+          // they left.
+          countryCode: ctx.profile.serviceAreaCountryCode ?? null,
+          policyVersion: this.radiusPolicyFingerprint(ctx.radiusPolicy),
+        },
+      },
+      tx,
+    );
+  }
+
+  /** A fingerprint of the operator radius configuration in force.
+   *
+   *  The bounds and the suggestion together: if an operator retunes any of
+   *  them the string changes, and a DERIVED radius is recomputed on the next
+   *  write. A version column would be better and there is no such column —
+   *  this is the smallest thing that detects the change it must detect. */
+  private radiusPolicyFingerprint(policy: {
+    suggestedKm: number;
+    minKm: number;
+    maxKm: number;
+  }): string {
+    return `${policy.minKm}:${policy.maxKm}:${policy.suggestedKm}`;
+  }
+
+  /** The English suggestion for this provider's primary service, or null.
+   *
+   *  English because it is a stored default rather than a rendered label: the
+   *  read model still computes both languages for display, and a provider who
+   *  wants their own wording overwrites this on the profile screen. Storing a
+   *  language-specific value was the alternative, and it would mean the stored
+   *  headline changed meaning when the reader switched language. */
+  private suggestedTitleFor(ctx: OnboardingContext): string | null {
+    const primary = findPrimaryCategory(ctx);
+    if (!primary) return null;
+    return suggestProfessionalTitle({
+      slug: primary.slug,
+      labelEn: primary.labelEn,
+      labelAr: primary.labelAr,
+      lang: 'en',
+    });
   }
 
   private async numberSetting(key: string, tx?: PrismaTx): Promise<number> {

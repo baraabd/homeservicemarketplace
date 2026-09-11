@@ -64,6 +64,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
   const CATEGORY = `${P}cat`;
 
   let lifecycleLock: HeldLock;
+  let mediaLock: HeldLock;
   let grantsLock: HeldLock;
   let outboxLock: HeldLock;
 
@@ -150,6 +151,8 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     // is the same in every suite. Two suites taking two locks in opposite
     // orders is a deadlock, and a deadlocked CI job looks like a hang.
     grantsLock = await acquireAdvisoryLock('workAccessGrants', 'shared');
+    // LAST in the canonical order. SHARED: this suite creates MediaAsset rows a global sweep would reach.
+    mediaLock = await acquireAdvisoryLock('mediaAssets', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -308,6 +311,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     await prisma.verificationRequirementPolicy.deleteMany({ where: { version: POLICY } });
     await app?.close();
     await prisma.$disconnect();
+    await mediaLock?.release();
     await outboxLock?.release();
     await grantsLock?.release();
     await lifecycleLock.release();

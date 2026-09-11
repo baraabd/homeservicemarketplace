@@ -47,6 +47,7 @@ import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-au
 import { ProviderOnboardingWizardController } from '../../src/modules/provider/onboarding/provider-onboarding-wizard.controller';
 import { ProviderOnboardingWizardService } from '../../src/modules/provider/onboarding/provider-onboarding-wizard.service';
 import { ProviderAvatarService } from '../../src/modules/provider/onboarding/avatar/provider-avatar.service';
+import { SupportedMarketsService } from '../../src/modules/provider/onboarding/market/supported-markets.service';
 import { AppError } from '../../src/shared/errors/app-error';
 
 jest.setTimeout(15_000);
@@ -134,6 +135,15 @@ const capabilityService = { can: async (_u: string, c: string) => HELD.has(c) };
 // the session user id is the only id the service ever sees. What finalize does
 // with an uploaded object is asserted in its own unit spec, against real
 // storage doubles.
+/** Sprint 09B.29 Phase 5 (C2) — see the provider entry below. */
+const supportedMarkets = {
+  list: jest.fn(async () => ({
+    markets: [],
+    selectedCountryCode: null,
+    locationSuggestionAvailable: false,
+  })),
+};
+
 const avatars = {
   finalize: jest.fn(),
   remove: jest.fn(),
@@ -149,6 +159,11 @@ describe('Provider onboarding wizard — HTTP surface', () => {
       providers: [
         { provide: ProviderOnboardingWizardService, useValue: wizard },
         { provide: ProviderAvatarService, useValue: avatars },
+        // Sprint 09B.29 Phase 5 (C2) — the controller now also serves the
+        // sanitized market list. A double here: this file asserts the WIRE
+        // contract of the wizard routes, and the projection itself is proved
+        // in supported-markets.service.spec.ts against its own inputs.
+        { provide: SupportedMarketsService, useValue: supportedMarkets },
         { provide: AppConfigService, useValue: makeConfig() },
         { provide: ProviderCapabilityService, useValue: capabilityService },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
@@ -520,6 +535,11 @@ describe('Provider onboarding wizard — the DTO instance reaches the service co
       providers: [
         { provide: ProviderOnboardingWizardService, useValue: wizard },
         { provide: ProviderAvatarService, useValue: avatars },
+        // Sprint 09B.29 Phase 5 (C2) — the controller now also serves the
+        // sanitized market list. A double here: this file asserts the WIRE
+        // contract of the wizard routes, and the projection itself is proved
+        // in supported-markets.service.spec.ts against its own inputs.
+        { provide: SupportedMarketsService, useValue: supportedMarkets },
         { provide: AppConfigService, useValue: makeConfig() },
         { provide: ProviderCapabilityService, useValue: capabilityService },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },

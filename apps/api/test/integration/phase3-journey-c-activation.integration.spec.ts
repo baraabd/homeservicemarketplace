@@ -181,6 +181,7 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
   const REQUEST = `${P}request`;
 
   let lifecycleLock: HeldLock;
+  let mediaLock: HeldLock;
   let serviceRequestsLock: HeldLock;
   let profileId: string;
   let otherProfileId: string;
@@ -400,6 +401,8 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     // is providerLifecycle -> outbox -> workAccessGrants -> serviceRequests;
     // two suites taking two locks in opposite orders deadlock.
     serviceRequestsLock = await acquireAdvisoryLock('serviceRequests', 'shared');
+    // LAST in the canonical order. EXCLUSIVE: this suite RUNS a global media sweep.
+    mediaLock = await acquireAdvisoryLock('mediaAssets', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -500,6 +503,29 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     );
     const { ProviderOnboardingWizardService } = r(
       '../../src/modules/provider/onboarding/provider-onboarding-wizard.service',
+    );
+    // Sprint 09B.29 Phase 5 (C2) — the enabled-market registry. The REAL one:
+    // these suites have a database and the seed writes SY/SE/SA, so the market
+    // boundary is exercised rather than stubbed away.
+    const { MarketRegistryService } = r(
+      '../../src/modules/provider/onboarding/market/market-registry.service',
+    );
+    const { SupportedMarketsService } = r(
+      '../../src/modules/provider/onboarding/market/supported-markets.service',
+    );
+    // Sprint 09B.29 Phase 5 — bound to the honest production adapter.
+    const { MARKET_LOCATION_RESOLVER_PORT } = r(
+      '../../src/modules/provider/onboarding/market/market-location-resolver.port',
+    );
+    const { UnavailableMarketLocationResolver } = r(
+      '../../src/modules/provider/onboarding/market/unavailable-market-location-resolver.adapter',
+    );
+    // Sprint 09B.29 Phase 5 (C1) — the wizard now fills the two fields the
+    // approved V2 screens no longer ask about. The REAL service: these suites
+    // have a database, and the defaults are conditional writes whose whole
+    // point is what Postgres does with them.
+    const { ProviderOnboardingDefaultsService } = r(
+      '../../src/modules/provider/onboarding/market/onboarding-defaults.service',
     );
     const { ProviderAvatarService } = r(
       '../../src/modules/provider/onboarding/avatar/provider-avatar.service',
@@ -626,6 +652,13 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
         RedisService,
         ProviderBidsService,
         ProviderOnboardingWizardService,
+        MarketRegistryService,
+        SupportedMarketsService,
+        {
+          provide: MARKET_LOCATION_RESOLVER_PORT,
+          useClass: UnavailableMarketLocationResolver,
+        },
+        ProviderOnboardingDefaultsService,
         ProviderOnboardingService,
         ProviderService,
         ProviderAvatarService,
@@ -753,6 +786,7 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     await cleanupFixtures();
     await app?.close();
     await prisma.$disconnect();
+    await mediaLock?.release();
     await serviceRequestsLock.release();
     await lifecycleLock.release();
   });

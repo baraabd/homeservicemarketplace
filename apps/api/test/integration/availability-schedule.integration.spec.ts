@@ -137,6 +137,18 @@ d('Sprint 9B.21 weekly availability (real Postgres)', () => {
     const {
       ProviderOnboardingWizardService,
     } = require('../../src/modules/provider/onboarding/provider-onboarding-wizard.service');
+    // Sprint 09B.29 Phase 5 (C1) — the wizard now fills the two fields the
+    // approved V2 screens no longer ask about. The REAL service: these suites
+    // have a database, and the defaults are conditional writes whose whole
+    // point is what Postgres does with them.
+    const {
+      ProviderOnboardingDefaultsService,
+    } = require('../../src/modules/provider/onboarding/market/onboarding-defaults.service');
+    // Sprint 09B.29 Phase 5 (C2) — the enabled-market registry. The REAL one:
+    // this suite has a database and the seed writes SY/SE/SA.
+    const {
+      MarketRegistryService,
+    } = require('../../src/modules/provider/onboarding/market/market-registry.service');
 
     // The same two-method stand-in the sibling integration specs use.
     const prismaService = { client: prisma, isReady: () => true };
@@ -153,6 +165,11 @@ d('Sprint 9B.21 weekly availability (real Postgres)', () => {
       audit,
       new TransactionRunner(prismaService),
       new ProviderServiceAreaExpansionService(prismaService, settings, audit),
+      // Sprint 09B.29 Phase 5 (C1). The REAL service rather than a double:
+      // this suite has a database, and the defaults are conditional writes
+      // whose entire behaviour is what Postgres does with them.
+      new ProviderOnboardingDefaultsService(prismaService),
+      new MarketRegistryService(settings),
     );
 
     await cleanup();
@@ -308,16 +325,66 @@ d('Sprint 9B.21 weekly availability (real Postgres)', () => {
       expect(await storedWeek()).toEqual(good);
     });
 
-    it('writes nothing at all when the timezone is missing', async () => {
+    it('writes nothing at all when the timezone cannot be DECIDED', async () => {
+      // Sprint 09B.29 Phase 5 (C3) changed WHEN this happens, not whether the
+      // write stays atomic when it does.
+      //
+      // Before C3, an absent timezone always refused — including for a
+      // provider whose market has exactly one zone. The screens show no IANA
+      // selector, so that provider could not save working hours at all: a
+      // hidden field dead-ending a visible task. The precedence now answers
+      // from the confirmed market, and only a provider with NO market left to
+      // derive from is asked.
+      //
+      // So the state this drives is the one that genuinely has no answer.
+      await prisma.providerProfile.update({
+        where: { id: PROFILE_ID },
+        data: { serviceAreaCountryCode: null },
+      });
+
       await expect(
         wizard.patchStep(USER_ID, 'AVAILABILITY', {
           version: await draftVersion(),
           availability: weekOf([1]),
           timezone: null,
         }),
-      ).rejects.toMatchObject({ status: 400 });
+      ).rejects.toMatchObject({
+        status: 400,
+        // The reason is asserted, not just the status: "choose your work area"
+        // and "which part of your country?" are different questions, and a
+        // bare 400 lets the screen ask neither.
+        details: { reason: 'TIMEZONE_MARKET_REQUIRED' },
+      });
 
       expect(await storedWeek()).toEqual([]);
+
+      await prisma.providerProfile.update({
+        where: { id: PROFILE_ID },
+        data: { serviceAreaCountryCode: 'SY' },
+      });
+    });
+
+    it('ANSWERS an absent timezone from the confirmed market instead of refusing', async () => {
+      // The other half of the change above, asserted so the deadlock cannot
+      // quietly come back.
+      const saved = await wizard.patchStep(USER_ID, 'AVAILABILITY', {
+        version: await draftVersion(),
+        availability: weekOf([1]),
+        timezone: null,
+      });
+      expect(saved.state).toBe('DRAFT');
+
+      const week = await storedWeek();
+      expect(week).toHaveLength(1);
+      // Stored against the MARKET's zone, never the browser's.
+      expect(
+        (
+          await prisma.providerAvailabilityInterval.findMany({
+            where: { providerProfileId: PROFILE_ID },
+            select: { timezone: true },
+          })
+        ).map((i: { timezone: string }) => i.timezone),
+      ).toEqual([ZONE]);
     });
 
     it('rolls the delete back too, not just the insert', async () => {
@@ -481,16 +548,46 @@ d('Sprint 9B.21 weekly availability (real Postgres)', () => {
   // ── the timezone re-stamp ────────────────────────────────────────────────
 
   describe('changing the zone', () => {
+    // Sprint 09B.29 Phase 5 (C3) moved these onto a MULTI-zone market, and the
+    // reason is the point rather than a fixture detail.
+    //
+    // A chosen zone must now belong to the confirmed market — a valid IANA
+    // string is not the test, because every string in the database is valid
+    // and Asia/Riyadh is still wrong for a provider in Sweden. That makes
+    // "change the zone" impossible in a single-zone market like SY: there is
+    // exactly one legal answer, so there is nothing to change to.
+    //
+    // The re-stamp behaviour these tests protect is therefore only reachable
+    // where it was always meant to apply — a provider moving between the zones
+    // of a country that has several. CA is seeded declaring two.
+    const MULTI = 'CA';
+    const FROM = 'America/Toronto';
+    const TO = 'America/Vancouver';
+
+    beforeEach(async () => {
+      await prisma.providerProfile.update({
+        where: { id: PROFILE_ID },
+        data: { serviceAreaCountryCode: MULTI },
+      });
+    });
+
+    afterEach(async () => {
+      await prisma.providerProfile.update({
+        where: { id: PROFILE_ID },
+        data: { serviceAreaCountryCode: 'SY' },
+      });
+    });
+
     it('moves the whole week onto the new zone, never half of it', async () => {
       await wizard.patchStep(USER_ID, 'AVAILABILITY', {
         version: await draftVersion(),
         availability: weekOf([1, 2, 3]),
-        timezone: ZONE,
+        timezone: FROM,
       });
 
       await wizard.patchStep(USER_ID, 'AVAILABILITY', {
         version: await draftVersion(),
-        timezone: 'Europe/Stockholm',
+        timezone: TO,
       });
 
       const rows = await prisma.providerAvailabilityInterval.findMany({
@@ -500,7 +597,7 @@ d('Sprint 9B.21 weekly availability (real Postgres)', () => {
       expect({
         zones: [...new Set(rows.map((r: { timezone: string }) => r.timezone))],
         count: rows.length,
-      }).toEqual({ zones: ['Europe/Stockholm'], count: 3 });
+      }).toEqual({ zones: [TO], count: 3 });
     });
 
     it('leaves the hours themselves exactly where they were', async () => {
@@ -510,11 +607,11 @@ d('Sprint 9B.21 weekly availability (real Postgres)', () => {
       await wizard.patchStep(USER_ID, 'AVAILABILITY', {
         version: await draftVersion(),
         availability: before,
-        timezone: ZONE,
+        timezone: FROM,
       });
       await wizard.patchStep(USER_ID, 'AVAILABILITY', {
         version: await draftVersion(),
-        timezone: 'Europe/Stockholm',
+        timezone: TO,
       });
       expect(await storedWeek()).toEqual(before);
     });

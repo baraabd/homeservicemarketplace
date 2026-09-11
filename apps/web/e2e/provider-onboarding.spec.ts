@@ -78,9 +78,44 @@ const STEPS = [
   'REVIEW',
 ] as const;
 
-type Draft = ReturnType<typeof draft>;
+/**
+ * The wizard draft fixture's shape, declared rather than inferred.
+ *
+ * Sprint 09B.29 Phase 5. This used to be `ReturnType<typeof draft>`, which
+ * infers the NARROWEST type from the default literals: `completedSteps: []`
+ * became `never[]`, every `null` field became the type `null`, and
+ * `nextAction` became the one shape the default happened to use. So
+ * `completeDraft`, whose whole job is to override those fields with real
+ * values, could not be typed at all — it only compiled because nothing in this
+ * repository ever typechecked the `e2e` directory.
+ *
+ * The new Phase 5 test-typecheck gate does, and it found this immediately.
+ */
+interface DraftStepView {
+  step: string;
+  complete: boolean;
+  issues: unknown[];
+}
 
-function draft(over: Record<string, unknown> = {}) {
+interface Draft {
+  state: string;
+  currentStep: string;
+  steps: DraftStepView[];
+  completedSteps: string[];
+  percentComplete: number;
+  nextAction: { kind: string; step?: string };
+  complete: boolean;
+  missing: { field: string; code: string }[];
+  awaitingReview: unknown[];
+  version: number;
+  policyVersion: string;
+  lastSavedAt: string | null;
+  editable: boolean;
+  data: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+function draft(over: Record<string, unknown> = {}): Draft {
   return {
     state: 'DRAFT',
     currentStep: 'PROVIDER_TYPE',

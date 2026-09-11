@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page, type BrowserContext } from '@playwright/test';
 
 // Phase 12 — shared fixtures for the real-browser suite.
 //
@@ -291,8 +291,11 @@ export async function htmlLangDir(page: Page): Promise<{ lang: string; dir: stri
  * Arabic without clicking through. Uses the same key the app writes, which is
  * itself part of what the persistence test verifies.
  */
-export async function seedLanguage(page: Page, lang: 'en' | 'ar'): Promise<void> {
-  await page.addInitScript(
+export async function seedLanguage(
+  target: Page | BrowserContext,
+  lang: 'en' | 'ar',
+): Promise<void> {
+  await target.addInitScript(
     ([key, value]) => window.localStorage.setItem(key as string, value as string),
     [LANG_STORAGE_KEY, lang],
   );

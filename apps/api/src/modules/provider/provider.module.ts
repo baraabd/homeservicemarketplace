@@ -31,6 +31,8 @@ import { ProviderCapabilitiesController } from './capability/provider-capabiliti
 import { ProviderCapabilityModule } from './capability/provider-capability.module';
 import { ProviderOnboardingService } from './onboarding/provider-onboarding.service';
 import { ProviderOnboardingWizardController } from './onboarding/provider-onboarding-wizard.controller';
+import { MarketModule } from './onboarding/market/market.module';
+import { ProviderOnboardingDefaultsService } from './onboarding/market/onboarding-defaults.service';
 import { ProviderOnboardingWizardService } from './onboarding/provider-onboarding-wizard.service';
 // Sprint 9B.20 — earned service-area expansion. Default off.
 import { ProviderServiceAreaExpansionService } from './onboarding/service-area/expansion/provider-service-area-expansion.service';
@@ -68,6 +70,12 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
   // keeps ONE owner for the provider authorization gate — a second declaration
   // is how the Sprint 7 boot crash happened.
   imports: [
+    // Sprint 09B.29 Phase 5 — the supported-market registry and the location
+    // resolver port. Imported here so the ONBOARDING application owns the
+    // binding: the port resolves to UnavailableMarketLocationResolver until a
+    // real geocoder is configured, and the deterministic fake lives outside
+    // src/ where a production import cannot reach it.
+    MarketModule,
     AuthenticationModule,
     AuthorizationModule,
     NotificationsModule,
@@ -134,6 +142,9 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     ProviderOnboardingService,
     // Sprint 8 — the wizard: get, per-step patch, submit, withdraw.
     ProviderOnboardingWizardService,
+    // Sprint 09B.29 Phase 5 (C1) — the V2 onboarding defaults. Needs only
+    // Prisma, which PrismaModule already supplies to this module.
+    ProviderOnboardingDefaultsService,
     // Sprint 9B.20 — resolves the earned radius ceiling the wizard serves.
     // Behind provider_service_area_expansion_enabled, which defaults to false:
     // with it off this service short-circuits before reading a single signal.

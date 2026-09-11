@@ -47,6 +47,7 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
 
   let storageRoot: string;
   let lifecycleLock: HeldLock;
+  let mediaLock: HeldLock;
 
   const GRACE_MS = 86_400_000;
   const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
@@ -71,6 +72,8 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
 
   beforeAll(async () => {
     lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // LAST in the canonical order. EXCLUSIVE: this suite RUNS a global media sweep.
+    mediaLock = await acquireAdvisoryLock('mediaAssets', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -121,6 +124,7 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
 
   afterAll(async () => {
     await wipe();
+    await mediaLock?.release();
     await lifecycleLock?.release();
     if (storageRoot) rmSync(storageRoot, { recursive: true, force: true });
   });
@@ -400,14 +404,58 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
     });
 
     it('two concurrent sweeps produce ONE deletion record', async () => {
-      await asset('raced', { retainUntil: minutesAgo(1) });
+      // WHY THE BARRIER, AND WHY THIS IS NOT A WORKAROUND.
+      //
+      // `Promise.all([sweep(), sweep()])` does not make two sweeps contend. It
+      // starts them; the pool and the event loop decide the rest, and one of
+      // the orderings it permits is "A runs to completion, then B issues its
+      // SELECT and finds nothing". B then reports examined:0, raced:0 — which
+      // is correct behaviour and fails `a.raced + b.raced === 1`.
+      //
+      // That is what made this suite flake: 12 serial runs and 2 of 3 parallel
+      // runs passed, and the third lost the coin toss. The assertion was
+      // right; nothing was creating the state it describes.
+      //
+      // So the contention is CONSTRUCTED rather than hoped for. `deleteObject`
+      // is the one point that sits after the candidate SELECT and before the
+      // conditional row write, so holding both sweeps there guarantees exactly
+      // the interleaving the safety property is about: both selected the same
+      // row, neither has claimed it yet.
+      //
+      // Nothing about the production path changes. The service under test is
+      // the real one, both sweeps take the real branch, and the assertions are
+      // unchanged — they are simply now reached deterministically instead of
+      // one run in three.
+      let release!: () => void;
+      const bothArrived = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let arrived = 0;
+      const realDelete = storage.deleteObject.bind(storage);
+      const barrier = jest
+        .spyOn(storage, 'deleteObject')
+        .mockImplementation(async (...args: unknown[]) => {
+          arrived += 1;
+          if (arrived === 2) release();
+          await bothArrived;
+          return realDelete(args[0] as string);
+        });
 
-      const [a, b] = await Promise.all([sweep(), sweep()]);
+      try {
+        await asset('raced', { retainUntil: minutesAgo(1) });
 
-      // Selection is not a claim, and the object delete is idempotent — so the
-      // safety property is that only one CONDITIONAL row write can win.
-      expect(a.deleted + b.deleted).toBe(1);
-      expect(a.raced + b.raced).toBe(1);
+        const [a, b] = await Promise.all([sweep(), sweep()]);
+
+        // Both genuinely saw the row. Without this, the two assertions below
+        // can be satisfied by one sweep doing nothing at all.
+        expect([a.examined, b.examined]).toEqual([1, 1]);
+        // Selection is not a claim, and the object delete is idempotent — so
+        // the safety property is that only one CONDITIONAL row write can win.
+        expect(a.deleted + b.deleted).toBe(1);
+        expect(a.raced + b.raced).toBe(1);
+      } finally {
+        barrier.mockRestore();
+      }
     });
 
     it('sweeps only what it was asked to, across owners', async () => {

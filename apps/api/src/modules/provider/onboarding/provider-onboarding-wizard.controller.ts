@@ -21,6 +21,7 @@ import {
   type ProviderOnboardingStep,
   type ProviderOnboardingReview,
   type ProviderOnboardingHubView,
+  type ProviderSupportedMarketsResponse,
 } from '@homeservicemarketplace/contracts';
 
 import { CurrentUser } from '../../iam/authentication/decorators/current-user.decorator';
@@ -32,6 +33,7 @@ import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import { AppError } from '../../../shared/errors/app-error';
 import { PatchOnboardingStepDto } from './dto/patch-onboarding-step.dto';
 import { SubmitOnboardingDto } from './dto/submit-onboarding.dto';
+import { SupportedMarketsService } from './market/supported-markets.service';
 import { ProviderOnboardingWizardService } from './provider-onboarding-wizard.service';
 import { ProviderAvatarService } from './avatar/provider-avatar.service';
 import { FinalizeAvatarDto, RemoveAvatarDto } from './avatar/dto/finalize-avatar.dto';
@@ -80,6 +82,10 @@ export class ProviderOnboardingWizardController {
   constructor(
     private readonly wizard: ProviderOnboardingWizardService,
     private readonly avatars: ProviderAvatarService,
+    // Sprint 09B.29 Phase 5 (C2) — the sanitized market projection. Appended
+    // rather than inserted, so every existing positional construction of this
+    // controller in a test harness keeps its meaning.
+    private readonly supportedMarkets: SupportedMarketsService,
   ) {}
 
   /** The whole application: data, per-step state, progress, next action.
@@ -165,6 +171,28 @@ export class ProviderOnboardingWizardController {
   @HttpCode(HttpStatus.OK)
   hub(@CurrentUser() user: AuthenticatedUser): Promise<ProviderOnboardingHubView> {
     return this.wizard.hub(user.id);
+  }
+
+  /**
+   * Sprint 09B.29 Phase 5 (C2) — the markets this provider may choose from.
+   *
+   * READ ONLY, so no CsrfGuard, and guarded by the same class-level trio as
+   * every other route here: the people who may edit an application are the
+   * people who may see which markets it can be in.
+   *
+   * A SANITIZED projection, never the operator's registry row — no disabled
+   * markets, no audit fields, no resolver configuration. See
+   * `SupportedMarketsService` for what is deliberately absent and why.
+   *
+   * Served as its own route rather than folded into the draft because the list
+   * is operator state rather than provider state: it changes when an operator
+   * opens a market, not when the provider types, and a draft response that
+   * carried it would be re-fetched on every keystroke.
+   */
+  @Get('markets')
+  @HttpCode(HttpStatus.OK)
+  markets(@CurrentUser() user: AuthenticatedUser): Promise<ProviderSupportedMarketsResponse> {
+    return this.supportedMarkets.list(user.id);
   }
 
   /**
