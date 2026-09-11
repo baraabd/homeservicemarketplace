@@ -67,6 +67,7 @@ d('Restricted evidence read boundary (real Postgres, real bytes)', () => {
 
   let storageRoot: string;
   let lifecycleLock: HeldLock;
+  let mediaLock: HeldLock;
   /** Whether the caller holds verification:evidence:view this request. */
   let reviewerPermission = false;
 
@@ -88,6 +89,8 @@ d('Restricted evidence read boundary (real Postgres, real bytes)', () => {
 
   beforeAll(async () => {
     lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // LAST in the canonical order. SHARED: this suite creates MediaAsset rows a global sweep would reach.
+    mediaLock = await acquireAdvisoryLock('mediaAssets', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -224,6 +227,7 @@ d('Restricted evidence read boundary (real Postgres, real bytes)', () => {
     await app?.close();
     rmSync(storageRoot, { recursive: true, force: true });
     await prisma.$disconnect();
+    await mediaLock?.release();
     await lifecycleLock.release();
   });
 

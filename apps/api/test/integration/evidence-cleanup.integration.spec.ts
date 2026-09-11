@@ -43,6 +43,7 @@ d('Abandoned evidence cleanup (real Postgres, real files)', () => {
 
   let storageRoot: string;
   let lifecycleLock: HeldLock;
+  let mediaLock: HeldLock;
   let GRACE: number;
 
   const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
@@ -92,6 +93,8 @@ d('Abandoned evidence cleanup (real Postgres, real files)', () => {
 
   beforeAll(async () => {
     lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // LAST in the canonical order. SHARED: this suite creates MediaAsset rows a global sweep would reach.
+    mediaLock = await acquireAdvisoryLock('mediaAssets', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -148,6 +151,7 @@ d('Abandoned evidence cleanup (real Postgres, real files)', () => {
     await cleanup();
     rmSync(storageRoot, { recursive: true, force: true });
     await prisma.$disconnect();
+    await mediaLock?.release();
     await lifecycleLock.release();
   });
 

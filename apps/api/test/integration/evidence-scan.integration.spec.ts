@@ -71,6 +71,7 @@ d('Evidence scanning (real Postgres, real bytes)', () => {
 
   let storageRoot: string;
   let lifecycleLock: HeldLock;
+  let mediaLock: HeldLock;
   let outboxLock: HeldLock;
   let EICAR_PDF: Buffer;
 
@@ -173,6 +174,8 @@ d('Evidence scanning (real Postgres, real bytes)', () => {
     // alongside the consumer. Taken after providerLifecycle, in the same order
     // as every other suite, so the two cannot deadlock.
     outboxLock = await acquireAdvisoryLock('outbox', 'shared');
+    // LAST in the canonical order. EXCLUSIVE: this suite RUNS a global media sweep.
+    mediaLock = await acquireAdvisoryLock('mediaAssets', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -311,6 +314,7 @@ d('Evidence scanning (real Postgres, real bytes)', () => {
     await app?.close();
     rmSync(storageRoot, { recursive: true, force: true });
     await prisma.$disconnect();
+    await mediaLock?.release();
     await outboxLock?.release();
     await lifecycleLock.release();
   });

@@ -89,6 +89,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   const CATEGORY = `${P}cat`;
 
   let lifecycleLock: HeldLock;
+  let mediaLock: HeldLock;
   let outboxLock: HeldLock;
   let grantsLock: HeldLock;
 
@@ -195,6 +196,8 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
     // ("scanned: 0" means nothing anywhere is due), which no fixture prefix can
     // make true while another suite holds a due grant.
     grantsLock = await acquireAdvisoryLock('workAccessGrants', 'exclusive');
+    // LAST in the canonical order. SHARED: this suite creates MediaAsset rows a global sweep would reach.
+    mediaLock = await acquireAdvisoryLock('mediaAssets', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -371,6 +374,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
     await prisma.verificationRequirementPolicy.deleteMany({ where: { version: POLICY } });
     await app?.close();
     await prisma.$disconnect();
+    await mediaLock?.release();
     await grantsLock?.release();
     await outboxLock?.release();
     await lifecycleLock.release();

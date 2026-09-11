@@ -35,7 +35,7 @@
  * THE CANONICAL LOCK ORDER, which every suite must follow:
  *
  *     providerLifecycle -> outbox -> workAccessGrants -> serviceRequests
- *     -> marketRegistry
+ *     -> marketRegistry -> mediaAssets
  *
  * Acquire in that order, release in the reverse. Two suites taking two locks
  * in opposite orders deadlock, and a deadlocked CI job presents as a hang
@@ -112,6 +112,20 @@ const LOCK_KEYS = {
    *  future suite starts mutating a shared market code, the readers must begin
    *  taking this lock SHARED — that is a change to them, not to this key. */
   marketRegistry: 907_006,
+  /** `MediaAsset`. `scanPending()` examines every PENDING asset in the
+   *  database and the media sweeps examine every asset past retention — global
+   *  by design, correct in production, and invisible to a fixture namespace.
+   *
+   *  Added in Sprint 09B.29 Phase 5 for a failure that was observed rather than
+   *  predicted: `phase3-journey-c-activation` asserts its sweep reports
+   *  `examined: 1, failed: 0` and got `examined: 2, failed: 1` — it had swept a
+   *  sibling suite's asset. The suite was not broken; nothing excluded the
+   *  others from a sweep that reaches everything.
+   *
+   *  Suites that RUN a global media sweep take it EXCLUSIVE; suites that merely
+   *  create `MediaAsset` rows take it SHARED, so those still run beside each
+   *  other and only a sweep excludes them. */
+  mediaAssets: 907_007,
 } as const;
 
 export type LockResource = keyof typeof LOCK_KEYS;

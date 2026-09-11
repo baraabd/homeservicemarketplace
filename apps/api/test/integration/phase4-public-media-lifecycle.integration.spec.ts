@@ -47,6 +47,7 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
 
   let storageRoot: string;
   let lifecycleLock: HeldLock;
+  let mediaLock: HeldLock;
 
   const GRACE_MS = 86_400_000;
   const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
@@ -71,6 +72,8 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
 
   beforeAll(async () => {
     lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // LAST in the canonical order. EXCLUSIVE: this suite RUNS a global media sweep.
+    mediaLock = await acquireAdvisoryLock('mediaAssets', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -121,6 +124,7 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
 
   afterAll(async () => {
     await wipe();
+    await mediaLock?.release();
     await lifecycleLock?.release();
     if (storageRoot) rmSync(storageRoot, { recursive: true, force: true });
   });

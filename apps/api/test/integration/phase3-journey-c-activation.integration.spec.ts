@@ -181,6 +181,7 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
   const REQUEST = `${P}request`;
 
   let lifecycleLock: HeldLock;
+  let mediaLock: HeldLock;
   let serviceRequestsLock: HeldLock;
   let profileId: string;
   let otherProfileId: string;
@@ -400,6 +401,8 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     // is providerLifecycle -> outbox -> workAccessGrants -> serviceRequests;
     // two suites taking two locks in opposite orders deadlock.
     serviceRequestsLock = await acquireAdvisoryLock('serviceRequests', 'shared');
+    // LAST in the canonical order. EXCLUSIVE: this suite RUNS a global media sweep.
+    mediaLock = await acquireAdvisoryLock('mediaAssets', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -783,6 +786,7 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     await cleanupFixtures();
     await app?.close();
     await prisma.$disconnect();
+    await mediaLock?.release();
     await serviceRequestsLock.release();
     await lifecycleLock.release();
   });
