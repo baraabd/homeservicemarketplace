@@ -26,11 +26,12 @@ describe('Phase 5 ledger', () => {
       `production-route integrated: ${c.productionRouteIntegrated}/${c.total}`,
       `real-API persisted:          ${c.realApiPersisted}/${c.total}`,
       '',
-      ...credits.map(
-        (cr) =>
-          `  ${cr.screen.padEnd(28)} source=${cr.missing.includes('source conformance') ? 'FAIL' : 'ok'}` +
-          `  missing: ${cr.missing.length === 0 ? '(none)' : cr.missing.join(', ')}`,
-      ),
+      ...credits.flatMap((cr) => [
+        `  ${cr.screen}`,
+        `      presentation: ${cr.presentationMigrated ? 'CREDITED' : cr.missing.presentation.join(' | ') || 'incomplete'}`,
+        `      route:        ${cr.productionRouteIntegrated ? 'CREDITED' : cr.missing.route.join(' | ') || 'incomplete'}`,
+        `      persistence:  ${cr.realApiPersisted ? 'CREDITED' : cr.missing.persistence.join(' | ') || 'incomplete'}`,
+      ]),
       '',
     ];
     console.log(lines.join('\n'));

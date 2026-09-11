@@ -4,10 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import {
-  PHASE5_STATES,
-  PROTOTYPE_SCREEN_KEYS,
-} from '../../../../e2e/phase5-visual-states';
+import { PHASE5_STATES, PROTOTYPE_SCREEN_KEYS } from '../../../../e2e/phase5-visual-states';
 import {
   PROVISIONAL_ROOT,
   SCREEN_STATES,
@@ -207,7 +204,7 @@ describe('Phase 5 conformance — counters are derived, never declared', () => {
   it('credits no screen that has not produced its artifacts', () => {
     for (const credit of credits) {
       if (credit.presentationMigrated) {
-        expect(credit.missing, `${credit.screen} credited with gaps`).toEqual([]);
+        expect(credit.missing.presentation, `${credit.screen} credited with gaps`).toEqual([]);
       }
     }
   });
@@ -217,6 +214,12 @@ describe('Phase 5 conformance — counters are derived, never declared', () => {
     // absent for which screen.
     const report = Object.fromEntries(credits.map((c) => [c.screen, c.missing]));
     expect(Object.keys(report)).toEqual([...TASK_SCREENS]);
-    for (const missing of Object.values(report)) expect(Array.isArray(missing)).toBe(true);
+    // Three INDEPENDENT groups: a screen can be missing route evidence while
+    // its presentation is complete, and the report has to say which.
+    for (const missing of Object.values(report)) {
+      expect(Array.isArray(missing.presentation)).toBe(true);
+      expect(Array.isArray(missing.route)).toBe(true);
+      expect(Array.isArray(missing.persistence)).toBe(true);
+    }
   });
 });
