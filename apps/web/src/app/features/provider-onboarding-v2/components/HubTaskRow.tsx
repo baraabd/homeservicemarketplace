@@ -49,13 +49,13 @@ export function HubTaskRow({ task, lang, dir, onOpen }: HubTaskRowProps) {
         {/* break-words, not truncate: a task title is the one string on the
             row the provider must be able to read in full, and Arabic wording
             runs longer than its English counterpart. */}
-        <span className="block min-w-0 break-words text-[15px] font-semibold text-pv-text">
+        <span className="block min-w-0 break-words text-pv-heading font-semibold text-pv-text">
           {copy.title}
         </span>
-        <p className="mt-0.5 break-words text-[13px] text-pv-muted">{copy.description}</p>
+        <p className="mt-0.5 break-words text-pv-label text-pv-muted">{copy.description}</p>
         {explanation ? (
           <p
-            className="mt-1.5 break-words text-[13px] text-pv-blocked"
+            className="mt-1.5 break-words text-pv-label text-pv-blocked"
             data-testid={`task-explanation-${task.id}`}
           >
             {explanation}

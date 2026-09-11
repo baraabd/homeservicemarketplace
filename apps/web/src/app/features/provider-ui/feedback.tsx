@@ -43,7 +43,7 @@ export function ProviderStatusBadge({
   const c = TONE_CLASSES[tone];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[12px] font-semibold ${c.text} ${c.bg} ${c.border} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-pv-help font-semibold ${c.text} ${c.bg} ${c.border} ${className}`}
     >
       <Icon size={13} aria-hidden="true" className="flex-shrink-0" />
       {label}
@@ -84,8 +84,8 @@ export function ProviderNotice({
     >
       <Icon size={18} aria-hidden="true" className={`mt-0.5 flex-shrink-0 ${c.text}`} />
       <div className="min-w-0 flex-1">
-        <p className={`text-[14px] font-semibold ${c.text}`}>{title}</p>
-        {description ? <p className="mt-1 text-[13px] text-pv-text">{description}</p> : null}
+        <p className={`text-pv-body font-semibold ${c.text}`}>{title}</p>
+        {description ? <p className="mt-1 text-pv-label text-pv-text">{description}</p> : null}
         {actionLabel && onAction ? (
           <ProviderButton
             tone="secondary"
@@ -131,9 +131,9 @@ export function ProviderTaskRow({
   const body = (
     <>
       <div className="min-w-0 flex-1 text-start">
-        <p className="text-[15px] font-semibold text-pv-text">{title}</p>
-        {description ? <p className="mt-0.5 text-[13px] text-pv-muted">{description}</p> : null}
-        {explanation ? <p className="mt-1.5 text-[13px] text-pv-blocked">{explanation}</p> : null}
+        <p className="text-pv-heading font-semibold text-pv-text">{title}</p>
+        {description ? <p className="mt-0.5 text-pv-label text-pv-muted">{description}</p> : null}
+        {explanation ? <p className="mt-1.5 text-pv-label text-pv-blocked">{explanation}</p> : null}
       </div>
       <div className="flex flex-shrink-0 items-center gap-2">
         <ProviderStatusBadge tone={tone} label={statusLabel} />
@@ -203,7 +203,7 @@ export function ProviderAutosaveIndicator({
       aria-live="polite"
       data-testid="provider-autosave"
       data-state={state}
-      className={`text-[12px] font-medium ${TONE_CLASSES[tone].text}`}
+      className={`text-pv-help font-medium ${TONE_CLASSES[tone].text}`}
     >
       {labels[state]}
     </p>
@@ -226,8 +226,8 @@ export function ProviderEmptyState({
       className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-pv-border px-6 py-12 text-center"
       data-testid="provider-empty"
     >
-      <p className="text-[15px] font-semibold text-pv-text">{title}</p>
-      {description ? <p className="max-w-sm text-[13px] text-pv-muted">{description}</p> : null}
+      <p className="text-pv-heading font-semibold text-pv-text">{title}</p>
+      {description ? <p className="max-w-sm text-pv-label text-pv-muted">{description}</p> : null}
       {actionLabel && onAction ? (
         <ProviderButton onClick={onAction} className="mt-2">
           {actionLabel}
@@ -259,11 +259,11 @@ export function ProviderErrorState({
       data-testid={testId ?? 'provider-error'}
       className="flex flex-col items-start gap-2 rounded-xl border border-pv-danger-border bg-pv-danger-bg p-4"
     >
-      <p className="flex items-center gap-2 text-[14px] font-semibold text-pv-danger">
+      <p className="flex items-center gap-2 text-pv-body font-semibold text-pv-danger">
         <AlertTriangle size={16} aria-hidden="true" />
         {title}
       </p>
-      {description ? <p className="text-[13px] text-pv-text">{description}</p> : null}
+      {description ? <p className="text-pv-label text-pv-text">{description}</p> : null}
       {retryLabel && onRetry ? (
         <ProviderButton tone="secondary" onClick={onRetry} className="mt-1 !min-h-[40px]">
           {retryLabel}
@@ -336,12 +336,12 @@ export function ProviderStatusTimeline({ entries }: { entries: readonly Timeline
             </div>
             <div className={`min-w-0 flex-1 ${last ? 'pb-0' : 'pb-5'}`}>
               <p
-                className={`text-[14px] ${e.current ? 'font-semibold text-pv-text' : 'font-medium text-pv-text'}`}
+                className={`text-pv-body ${e.current ? 'font-semibold text-pv-text' : 'font-medium text-pv-text'}`}
               >
                 {e.title}
               </p>
-              {e.detail ? <p className="mt-0.5 text-[13px] text-pv-muted">{e.detail}</p> : null}
-              {e.at ? <p className="mt-0.5 text-[12px] text-pv-muted">{e.at}</p> : null}
+              {e.detail ? <p className="mt-0.5 text-pv-label text-pv-muted">{e.detail}</p> : null}
+              {e.at ? <p className="mt-0.5 text-pv-help text-pv-muted">{e.at}</p> : null}
             </div>
           </li>
         );

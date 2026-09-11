@@ -257,7 +257,7 @@ export function ProviderActivationScreen({
             <>
               <h2
                 data-testid="activation-sync-heading"
-                className="break-words text-[24px] text-pv-text"
+                className="break-words text-pv-hero text-pv-text"
                 style={{ fontWeight: 500, lineHeight: 1.4 }}
               >
                 {copy.syncHeading}
@@ -267,7 +267,7 @@ export function ProviderActivationScreen({
                   the reference does. */}
               <p
                 data-testid="activation-sync-lead"
-                className="break-words text-[14px] text-pv-muted"
+                className="break-words text-pv-body text-pv-muted"
                 style={{ lineHeight: 1.8 }}
               >
                 {copy.syncLead}
@@ -397,11 +397,11 @@ export function ProviderActivationScreen({
                 renders at 16. Measured, not assumed. */}
             <Briefcase size={16} />
           </span>
-          <h2 className="break-words text-[24px] font-bold" style={{ lineHeight: 1.35 }}>
+          <h2 className="break-words text-pv-hero font-bold" style={{ lineHeight: 1.35 }}>
             {copy.activateHeading}
           </h2>
           <p
-            className="mt-2 break-words text-[14px]"
+            className="mt-2 break-words text-pv-body"
             style={{ color: 'var(--pv-hero-fg-muted)', lineHeight: 1.75 }}
           >
             {copy.activateLead}
@@ -410,12 +410,12 @@ export function ProviderActivationScreen({
 
         <ProviderCard className="p-4" style={{ borderRadius: 14 }} data-testid="activation-panel">
           <h3
-            className="break-words text-[16px] text-pv-text"
+            className="break-words text-pv-input text-pv-text"
             style={{ marginBottom: 5, fontWeight: 500, lineHeight: 1.25 }}
           >
             {copy.needTitle}
           </h3>
-          <p className="break-words text-[13px] text-pv-muted" style={{ lineHeight: 1.65 }}>
+          <p className="break-words text-pv-label text-pv-muted" style={{ lineHeight: 1.65 }}>
             {copy.needBody}
           </p>
         </ProviderCard>

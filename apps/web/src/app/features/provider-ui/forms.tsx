@@ -48,20 +48,20 @@ export function ProviderField({
     <div className="flex flex-col gap-1.5">
       <label
         htmlFor={id}
-        className="flex items-center gap-1.5 text-[13px] font-semibold text-pv-text"
+        className="flex items-center gap-1.5 text-pv-label font-semibold text-pv-text"
       >
         {label}
         {required === false && requiredLabel ? (
-          <span className="text-[11px] font-medium text-pv-muted">{requiredLabel}</span>
+          <span className="text-pv-caption font-medium text-pv-muted">{requiredLabel}</span>
         ) : null}
       </label>
       {children({ id, describedBy, invalid: Boolean(error) })}
       {error ? (
-        <p id={errorId} className="text-[13px] font-medium text-pv-danger">
+        <p id={errorId} className="text-pv-label font-medium text-pv-danger">
           {error}
         </p>
       ) : hint ? (
-        <p id={hintId} className="text-[13px] text-pv-muted">
+        <p id={hintId} className="text-pv-label text-pv-muted">
           {hint}
         </p>
       ) : null}
@@ -72,7 +72,7 @@ export function ProviderField({
 const CONTROL =
   // 16px on touch: anything smaller makes iOS Safari zoom the viewport on
   // focus, which then leaves the provider scrolled sideways on a form.
-  'w-full rounded-lg border bg-pv-surface px-3 py-2.5 text-[16px] text-pv-text placeholder:text-pv-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-pv-accent disabled:bg-pv-surface-sunken disabled:text-pv-muted md:text-[15px]';
+  'w-full rounded-lg border bg-pv-surface px-3 py-2.5 text-pv-input text-pv-text placeholder:text-pv-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-pv-accent disabled:bg-pv-surface-sunken disabled:text-pv-muted md:text-pv-heading';
 
 export function ProviderTextInput({
   label,
@@ -189,9 +189,9 @@ export function ProviderChoiceCard({
         className="mt-0.5 h-4 w-4 flex-shrink-0 accent-pv-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
       />
       <span className="min-w-0">
-        <span className="block text-[15px] font-semibold text-pv-text">{title}</span>
+        <span className="block text-pv-heading font-semibold text-pv-text">{title}</span>
         {description ? (
-          <span className="mt-0.5 block text-[13px] text-pv-muted">{description}</span>
+          <span className="mt-0.5 block text-pv-label text-pv-muted">{description}</span>
         ) : null}
       </span>
     </label>
@@ -230,14 +230,14 @@ export function ProviderErrorSummary({
       tabIndex={-1}
       data-testid="provider-error-summary"
     >
-      <p className="text-[14px] font-semibold text-pv-danger">{title}</p>
+      <p className="text-pv-body font-semibold text-pv-danger">{title}</p>
       <ul className="mt-2 flex list-disc flex-col gap-1 ps-5">
         {errors.map((e) => (
           <li key={e.id}>
             <button
               type="button"
               onClick={() => onSelect?.(e.id)}
-              className="text-start text-[13px] font-medium text-pv-danger underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
+              className="text-start text-pv-label font-medium text-pv-danger underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
             >
               {e.message}
             </button>
@@ -308,11 +308,11 @@ export function ProviderStepper({
   const atMax = value >= max;
 
   const BUTTON =
-    'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-pv-border-strong bg-pv-surface text-[20px] font-semibold text-pv-text disabled:text-pv-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-pv-accent';
+    'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-pv-border-strong bg-pv-surface text-pv-display font-semibold text-pv-text disabled:text-pv-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-pv-accent';
 
   return (
     <div className="flex flex-col gap-1.5">
-      <span id={labelId} className="text-[13px] font-semibold text-pv-text">
+      <span id={labelId} className="text-pv-label font-semibold text-pv-text">
         {label}
       </span>
       <div
@@ -333,7 +333,7 @@ export function ProviderStepper({
           −
         </button>
         <output
-          className="min-w-[3ch] text-center text-[20px] font-bold tabular-nums text-pv-text"
+          className="min-w-[3ch] text-center text-pv-display font-bold tabular-nums text-pv-text"
           data-testid={testId ? `${testId}-value` : undefined}
         >
           {formatValue ? formatValue(value) : value}
@@ -350,7 +350,7 @@ export function ProviderStepper({
         </button>
       </div>
       {hint ? (
-        <p id={hintId} className="text-[13px] text-pv-muted">
+        <p id={hintId} className="text-pv-label text-pv-muted">
           {hint}
         </p>
       ) : null}

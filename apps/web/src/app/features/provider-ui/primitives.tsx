@@ -63,7 +63,7 @@ export function ProviderButton({
     <button
       type={type}
       // 44px minimum height is the WCAG 2.2 target size, not a style choice.
-      className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-5 text-[15px] font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent disabled:cursor-not-allowed ${
+      className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-5 text-pv-heading font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent disabled:cursor-not-allowed ${
         BUTTON_TONE[tone]
       } ${size === 'block' ? 'w-full' : ''} ${className}`}
       {...rest}
@@ -110,7 +110,7 @@ export function ProviderSection({
 }) {
   return (
     <section aria-label={title} className={`flex flex-col gap-3 ${className}`}>
-      {title ? <h2 className="text-[15px] font-semibold text-pv-muted">{title}</h2> : null}
+      {title ? <h2 className="text-pv-heading font-semibold text-pv-muted">{title}</h2> : null}
       {children}
     </section>
   );
@@ -128,8 +128,8 @@ export function ProviderPageHeader({
   return (
     <header className="flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="text-[22px] font-bold leading-tight text-pv-text">{title}</h1>
-        {subtitle ? <p className="mt-1 text-[14px] text-pv-muted">{subtitle}</p> : null}
+        <h1 className="text-pv-display font-bold leading-tight text-pv-text">{title}</h1>
+        {subtitle ? <p className="mt-1 text-pv-body text-pv-muted">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex flex-shrink-0 items-center gap-2">{actions}</div> : null}
     </header>
@@ -186,7 +186,7 @@ export function ProviderProgress({
   const pct = total > 0 ? Math.round((complete / total) * 100) : 0;
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="text-[13px] font-medium text-pv-muted">{label}</p>
+      <p className="text-pv-label font-medium text-pv-muted">{label}</p>
       <div
         className="h-1.5 w-full overflow-hidden rounded-full bg-pv-surface-sunken"
         role="progressbar"
@@ -215,9 +215,9 @@ export function ProviderMetric({
 }) {
   return (
     <ProviderCard className="p-4">
-      <p className="text-[13px] font-medium text-pv-muted">{label}</p>
-      <p className="mt-1 text-[22px] font-bold text-pv-text">{value}</p>
-      {hint ? <p className="mt-0.5 text-[12px] text-pv-muted">{hint}</p> : null}
+      <p className="text-pv-label font-medium text-pv-muted">{label}</p>
+      <p className="mt-1 text-pv-display font-bold text-pv-text">{value}</p>
+      {hint ? <p className="mt-0.5 text-pv-help text-pv-muted">{hint}</p> : null}
     </ProviderCard>
   );
 }

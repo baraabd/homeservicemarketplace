@@ -127,8 +127,8 @@ export function OnboardingHubScreen() {
             </div>
           ) : (
             <>
-              <h2 className="break-words text-[18px] font-bold text-pv-text">{screen.title}</h2>
-              <p className="max-w-[46ch] break-words text-[14px] text-pv-muted">{screen.body}</p>
+              <h2 className="break-words text-pv-title font-bold text-pv-text">{screen.title}</h2>
+              <p className="max-w-[46ch] break-words text-pv-body text-pv-muted">{screen.body}</p>
               {screen.cta ? (
                 <ProviderButton className="mt-2 min-w-[220px]" onClick={onCta}>
                   {screen.cta}
@@ -186,7 +186,7 @@ export function OnboardingHubScreen() {
                 application is organised. */}
             <h2
               id={`hub-group-${group}`}
-              className="mb-2 break-words text-[15px] font-semibold text-pv-muted"
+              className="mb-2 break-words text-pv-heading font-semibold text-pv-muted"
             >
               {groupLabel(group, lang)}
             </h2>

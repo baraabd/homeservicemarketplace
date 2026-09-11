@@ -218,7 +218,7 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
       <section aria-labelledby="services-picker-heading">
         <h2
           id="services-picker-heading"
-          className="mb-2 break-words text-[15px] font-bold text-pv-text"
+          className="mb-2 break-words text-pv-heading font-bold text-pv-text"
         >
           {copy.heading}
         </h2>
@@ -247,14 +247,14 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
           <div className="flex flex-col gap-4">
             {grouped.map(({ state, items }) => (
               <div key={state} data-testid={`specialty-state-${state}`}>
-                <h3 className="break-words text-[13px] font-bold text-pv-text">
+                <h3 className="break-words text-pv-label font-bold text-pv-text">
                   {copy.stateHeading[state]}
                 </h3>
                 {/* The explanation sits on the GROUP, once — not repeated as a
                     badge inside every chip, which is what made the old screen
                     unreadable and made "pending" read as an error. */}
                 <p
-                  className="mb-2 break-words text-[13px] text-pv-muted"
+                  className="mb-2 break-words text-pv-label text-pv-muted"
                   data-testid={`specialty-state-explain-${state}`}
                 >
                   {copy.stateExplain[state]}
@@ -268,14 +268,14 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
                       data-tone={STATE_TONE[item.state]}
                       className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-pv-border p-2"
                     >
-                      <span className="min-w-0 break-words text-[14px] text-pv-text">
+                      <span className="min-w-0 break-words text-pv-body text-pv-text">
                         {lang === 'ar' ? item.labelAr : item.labelEn}
                       </span>
 
                       {data.primarySpecialtyId === item.categoryId ? (
                         <span
                           data-testid={`primary-badge-${item.categoryId}`}
-                          className="rounded-full bg-pv-accent-subtle px-2 text-[11px] font-bold text-pv-accent-hover"
+                          className="rounded-full bg-pv-accent-subtle px-2 text-pv-caption font-bold text-pv-accent-hover"
                         >
                           {copy.primaryBadge}
                         </span>
@@ -289,7 +289,7 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
                             disabled={!editable}
                             onClick={() => setPrimary(item.categoryId)}
                             data-testid={`make-primary-${item.categoryId}`}
-                            className="ms-auto min-h-[44px] rounded-lg px-2 text-[13px] font-semibold text-pv-accent underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
+                            className="ms-auto min-h-[44px] rounded-lg px-2 text-pv-label font-semibold text-pv-accent underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
                           >
                             {copy.makePrimary}
                           </button>
@@ -335,11 +335,11 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
       <section aria-labelledby="services-transport-heading" className="min-w-0">
         <h2
           id="services-transport-heading"
-          className="mb-1 break-words text-[15px] font-bold text-pv-text"
+          className="mb-1 break-words text-pv-heading font-bold text-pv-text"
         >
           {copy.transportLegend}
         </h2>
-        <p className="mb-2 break-words text-[13px] text-pv-muted">{copy.transportHint}</p>
+        <p className="mb-2 break-words text-pv-label text-pv-muted">{copy.transportHint}</p>
         <ul className="flex flex-col gap-2" data-testid="transport-options">
           {TRANSPORT_MODES.map((mode) => {
             const checked = selectedModes.includes(mode);
@@ -363,11 +363,11 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
                     onChange={() => toggleMode(mode)}
                     className="h-5 w-5 flex-shrink-0 accent-pv-accent"
                   />
-                  <span className="min-w-0 break-words text-[14px] text-pv-text">
+                  <span className="min-w-0 break-words text-pv-body text-pv-text">
                     {TRANSPORT_LABELS[lang][mode]}
                   </span>
                   {primaryMode === mode ? (
-                    <span className="ms-auto rounded-full bg-pv-accent-subtle px-2 text-[11px] font-bold text-pv-accent-hover">
+                    <span className="ms-auto rounded-full bg-pv-accent-subtle px-2 text-pv-caption font-bold text-pv-accent-hover">
                       {copy.transportPrimary}
                     </span>
                   ) : null}
@@ -381,11 +381,11 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
       {/* ── The suggested title, explained, not edited ──────────────────── */}
       {suggestedTitle ? (
         <ProviderCard tone="sunken">
-          <h2 className="text-[15px] font-bold text-pv-text">{copy.titleLegend}</h2>
-          <p className="mt-1 text-[13px] text-pv-muted" data-testid="title-suggestion-text">
+          <h2 className="text-pv-heading font-bold text-pv-text">{copy.titleLegend}</h2>
+          <p className="mt-1 text-pv-label text-pv-muted" data-testid="title-suggestion-text">
             {copy.titleSuggested(suggestedTitle)}
           </p>
-          <p className="mt-2 text-[13px] text-pv-muted" data-testid="title-not-published">
+          <p className="mt-2 text-pv-label text-pv-muted" data-testid="title-not-published">
             {copy.titleNotPublished}
           </p>
         </ProviderCard>

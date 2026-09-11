@@ -174,7 +174,7 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
       {/* The approved screen says plainly that SMS verification is not active
           and will not block submission. Kept as its own line rather than as
           the field hint, which is already carrying the format requirement. */}
-      <p className="-mt-2 text-[13px] text-pv-muted" data-testid="phone-verification-note">
+      <p className="-mt-2 text-pv-label text-pv-muted" data-testid="phone-verification-note">
         {copy.phoneNotVerified}
       </p>
     </div>

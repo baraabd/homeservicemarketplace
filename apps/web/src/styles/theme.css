@@ -263,6 +263,39 @@
   --color-pv-danger: var(--pv-danger);
   --color-pv-danger-bg: var(--pv-danger-bg);
   --color-pv-danger-border: var(--pv-danger-border);
+  /* ── Provider type scale ────────────────────────────────────────────────
+   *
+   * Named by ROLE, not by size. A screen asks for `text-pv-label` because the
+   * thing is a field label; if the approved design later moves labels from
+   * 13px to 14px, one token moves and every label follows.
+   *
+   * These replace the arbitrary `text-[13px]` values the six task screens were
+   * built from. An arbitrary utility reads like a token and answers to
+   * nothing — it is an inline style with extra steps, and the conformance gate
+   * now refuses it.
+   *
+   * The sizes are the approved prototype's own: 13px field labels, 12px help,
+   * 15px section headings, 17px screen titles. `text-pv-input` is 16px because
+   * anything smaller makes iOS Safari zoom the viewport on focus.
+   */
+  --text-pv-caption: 11px;
+  --text-pv-help: 12px;
+  --text-pv-label: 13px;
+  --text-pv-body: 14px;
+  --text-pv-heading: 15px;
+  --text-pv-input: 16px;
+  --text-pv-title: 17px;
+  --text-pv-display: 20px;
+  --text-pv-hero: 24px;
+
+  /* ── Provider radii ─────────────────────────────────────────────────────
+   *
+   * The prototype uses 14px for its upload surface and cards, 10-12px for
+   * controls, and a pill for badges.
+   */
+  --radius-pv-control: 10px;
+  --radius-pv-card: 14px;
+
   /* Activation hero (prototype screen 0). */
   --color-pv-hero-from: var(--pv-hero-from);
   --color-pv-hero-to: var(--pv-hero-to);
