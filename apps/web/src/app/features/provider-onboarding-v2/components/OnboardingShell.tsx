@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, X } from 'lucide-react';
 
 import { useLang } from '../../../i18n/LanguageContext';
 import { SHELL_COPY, type Lang } from '../copy/onboarding-hub-copy';
@@ -60,6 +60,21 @@ export interface OnboardingShellProps {
    *  tap cannot start a second one. */
   closeBusy?: boolean;
   /**
+   * Which leading control the approved screen draws.
+   *
+   * Sprint 09B.29 Phase 5A. The prototype's `hsmTop` takes a `back` flag and
+   * draws one of two things with it: an ARROW on the nine task screens, which
+   * step back through a flow, and an X on the nine lifecycle screens, which
+   * leave it. They are different promises — one returns you to where you came
+   * from, the other abandons the surface — and drawing an X on a task screen
+   * told the provider their answers were about to be discarded.
+   *
+   * The arrow MIRRORS with direction, as the reference does: the prototype
+   * asks for `arrow-right` in Arabic and `arrow-left` in English, because
+   * "back" is toward the start of the line and the line runs the other way.
+   */
+  backAffordance?: 'close' | 'back';
+  /**
    * Application progress, 0–100, drawn as a 4px rule under the header.
    *
    * Sprint 09B.29 — the prototype carries this on every screen. It is a
@@ -92,6 +107,7 @@ export function OnboardingShell({
   subtitle,
   onClose,
   closeBusy = false,
+  backAffordance = 'close',
   progress,
   footer,
   padded = true,
@@ -124,7 +140,19 @@ export function OnboardingShell({
       <div
         dir={dir}
         data-testid="onboarding-v2-shell"
-        className={`flex w-full flex-col sm:max-w-[480px] sm:border-x sm:shadow-xl ${
+        // `leading-[21px]` is the approved screens' base line box, and it is a
+        // LENGTH rather than a ratio.
+        //
+        // The reference's wrapper sets `line-height: calc(14px * 1.5)` on the
+        // body, and almost nothing in the design overrides it — so a 13px
+        // label, a 12px hint and an 11px save line all sit in a 21px box and
+        // do NOT shrink with their font size. Inheriting a ratio instead made
+        // every one of them a few pixels shorter, and the error accumulated
+        // down the column: by the phone field the application was 12px high.
+        //
+        // Components that need their own leading (the hero, the centred
+        // screens, the help text at 1.6) still declare it and are unaffected.
+        className={`flex w-full flex-col leading-[21px] sm:max-w-[480px] sm:border-x sm:shadow-xl ${
           darkMode ? 'bg-slate-900 sm:border-slate-800' : 'bg-white sm:border-slate-200'
         }`}
         style={{ height: '100svh' }}
@@ -162,7 +190,7 @@ export function OnboardingShell({
               type="button"
               onClick={onClose}
               disabled={closeBusy}
-              aria-label={copy.close}
+              aria-label={backAffordance === 'back' ? copy.back : copy.close}
               aria-busy={closeBusy || undefined}
               data-testid="onboarding-v2-close"
               // 44x44 is the minimum comfortable touch target, and it is set
@@ -178,7 +206,19 @@ export function OnboardingShell({
                   resolves to 16px whatever the markup asks for; and
                   `.hsm-icon-action` is `--hsm-muted` (#475569), which is
                   `--pv-text-muted`, not slate-500 (#64748b). */}
-              <X size={16} aria-hidden="true" />
+              {backAffordance === 'back' ? (
+                // Mirrored, not flipped with a transform: the two lucide
+                // glyphs are drawn for their own direction, and a CSS
+                // `scaleX(-1)` on an arrow leaves its stroke terminals and
+                // optical weight reversed as well.
+                dir === 'rtl' ? (
+                  <ArrowRight size={16} aria-hidden="true" />
+                ) : (
+                  <ArrowLeft size={16} aria-hidden="true" />
+                )
+              ) : (
+                <X size={16} aria-hidden="true" />
+              )}
             </button>
 
             {/* min-w-0 is load-bearing: without it this flex child refuses to
@@ -255,8 +295,14 @@ export function OnboardingShell({
               the top and the diff blamed the content position. */}
           <div
             className={
+              // `.hsm-main`: `padding: 20px 16px 112px`. The 112px bottom clears
+              // the reference's ABSOLUTELY positioned sticky bar; ours is a flex
+              // sibling that already takes its own space, so the bottom inset is
+              // ordinary scroll-end breathing room instead. The 20px top is not
+              // — it is the first measurement every element below inherits, and
+              // at 16px the whole screen sat 4px high.
               padded
-                ? 'flex min-h-full w-full flex-col px-4 py-4'
+                ? 'flex min-h-full w-full flex-col px-4 pb-5 pt-5'
                 : 'flex min-h-full w-full flex-col'
             }
           >

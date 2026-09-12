@@ -295,6 +295,10 @@
    */
   --radius-pv-control: 10px;
   --radius-pv-card: 14px;
+  /* The sticky action. `.hsm-primary`, `.hsm-secondary` and
+   * `.hsm-danger-action` all share one radius in the approved screens, and it
+   * is neither the control radius nor the card radius. */
+  --radius-pv-action: 11px;
 
   /* Activation hero (prototype screen 0). */
   --color-pv-hero-from: var(--pv-hero-from);

@@ -45,10 +45,17 @@ export function ProviderField({
     [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined;
 
   return (
-    <div className="flex flex-col gap-1.5">
+    // `.hsm-field`: a 7px column. Not `gap-1.5` (6px) — one pixel per field,
+    // three fields to a screen, and the accumulated error lands on whatever is
+    // at the bottom of the longest form.
+    <div className="flex flex-col gap-[7px]">
       <label
         htmlFor={id}
-        className="flex items-center gap-1.5 text-pv-label font-semibold text-pv-text"
+        // `leading-[21px]` explicitly: the base layer gives every `label` a 1.5
+        // RATIO, which at 13px is 19.5px and silently undoes the 21px line box
+        // the approved screens inherit. A utility beats the base layer; an
+        // inherited value does not.
+        className="flex items-center gap-1.5 text-pv-label font-bold leading-[21px] text-pv-text"
       >
         {label}
         {required === false && requiredLabel ? (
@@ -61,7 +68,9 @@ export function ProviderField({
           {error}
         </p>
       ) : hint ? (
-        <p id={hintId} className="text-pv-label text-pv-muted">
+        // `.hsm-help`: 12px at 1.6, one of the few places the approved design
+        // overrides the 21px base line box.
+        <p id={hintId} className="text-pv-help leading-[1.6] text-pv-muted">
           {hint}
         </p>
       ) : null}
@@ -70,9 +79,19 @@ export function ProviderField({
 }
 
 const CONTROL =
-  // 16px on touch: anything smaller makes iOS Safari zoom the viewport on
-  // focus, which then leaves the provider scrolled sideways on a form.
-  'w-full rounded-lg border bg-pv-surface px-3 py-2.5 text-pv-input text-pv-text placeholder:text-pv-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-pv-accent disabled:bg-pv-surface-sunken disabled:text-pv-muted md:text-pv-heading';
+  // `.hsm-field input`: 48px tall, 12px/13px padding, a 10px radius, 16px text.
+  //
+  // The 16px is not a style choice at either end — anything smaller makes iOS
+  // Safari zoom the viewport on focus, which leaves the provider scrolled
+  // sideways on a form they were halfway through.
+  //
+  // The height is a MINIMUM so a control that wraps still grows, and 48 is the
+  // number the approved screens measure: at 46px every input sat two pixels
+  // short and everything below it drifted.
+  //
+  // No `md:` step down any more. Onboarding is a focused column at every
+  // width, so a desktop viewport is not a reason for a different control size.
+  'w-full min-h-12 rounded-pv-control border bg-pv-surface px-[13px] py-3 text-pv-input leading-[21px] text-pv-text placeholder:text-pv-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-pv-accent disabled:bg-pv-surface-sunken disabled:text-pv-muted';
 
 export function ProviderTextInput({
   label,

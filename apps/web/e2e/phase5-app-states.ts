@@ -1,0 +1,478 @@
+import type { Page, Route } from '@playwright/test';
+
+import type { Locale } from './phase5-evidence-ledger';
+import type { Phase5State, ServerPrecondition } from './phase5-visual-states';
+
+// Sprint 09B.29 Phase 5A — the APPLICATION half of the visual gate.
+//
+// docs/provider-experience-v2/PHASE5_VERIFICATION.md
+//
+// WHAT THIS IS ALLOWED TO BE, AND WHAT IT IS NOT
+//
+// It is a stub layer, and it is honest about that. The evidence it helps
+// produce is filed under `PROVISIONAL_UI` — a namespace the ledger keeps
+// strictly separate from `FINAL_REAL_API`, and which can never be promoted
+// into it. Presentation credit asks "does the approved screen render"; route
+// and persistence credit ask "did a real server answer", and no amount of
+// stubbing here can earn either. That separation is the reason stubbing is
+// acceptable at this layer at all.
+//
+// The preconditions are the registry's own eight lifecycle states, expressed
+// as the responses a server in that state would give. Nothing invents a
+// client-side state machine: every screen still reads its own truth from these
+// responses through the same hooks it uses in production.
+
+const FLAG_KEY = 'hsm.ff.providerOnboardingV2';
+
+const json = (route: Route, body: unknown, status = 200) =>
+  route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+
+// ── Identities ──────────────────────────────────────────────────────────────
+
+const CUSTOMER_ME = {
+  id: 'u-phase5',
+  email: 'phase5@example.com',
+  firstName: 'Ahmad',
+  lastName: 'Fatal',
+  status: 'ACTIVE',
+  emailVerifiedAt: '2026-08-01T00:00:00.000Z',
+  mfaEnabled: false,
+  roles: ['customer'],
+};
+
+const PROVIDER_ME = { ...CUSTOMER_ME, roles: ['customer', 'provider'] };
+
+/** The profile row, at whatever lifecycle status the precondition names. */
+const profileAt = (status: string) => ({
+  profile: {
+    id: 'pp-phase5',
+    displayName: 'Ahmad Fatal',
+    initials: 'AF',
+    avatarUrl: null,
+    bio: null,
+    headline: null,
+    phoneNumber: '0936706600',
+    ratingAvg: 0,
+    reviewCount: 0,
+    completedJobs: 0,
+    verified: status === 'ACTIVE',
+    topPro: false,
+    availability: 'OFFLINE',
+    status,
+    serviceAreaCity: 'Aleppo',
+    serviceAreaCountry: 'Syria',
+    serviceAreaLat: null,
+    serviceAreaLng: null,
+    serviceAreaRadiusKm: 15,
+    serviceCategories: [],
+    pendingCategories: [],
+    submittedForReviewAt: null,
+    reviewedAt: null,
+    rejectionReason: null,
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-01T00:00:00.000Z',
+  },
+});
+
+// ── The hub ─────────────────────────────────────────────────────────────────
+
+/**
+ * The six tasks, with the statuses the approved screen shows.
+ *
+ * The prototype's partial hub (screen 2) has Basic details COMPLETE and the
+ * rest to do; its complete hub (screen 10) has everything done except the two
+ * axes that are genuinely still in review. Those are SERVER facts, so they are
+ * expressed here as server responses rather than as props.
+ */
+const task = (id: string, group: string, status: string, title: string, description: string) => ({
+  id,
+  group,
+  status,
+  title,
+  description,
+});
+
+const HUB_TASKS_PARTIAL = [
+  task('BASICS_IDENTITY', 'BASICS', 'COMPLETE', 'Basic details', 'Name, phone and photo'),
+  task(
+    'SERVICES_EXPERIENCE',
+    'SERVICES',
+    'AVAILABLE',
+    'Services and experience',
+    'Specialty, experience and transport',
+  ),
+  task('WORK_AREA', 'COVERAGE', 'AVAILABLE', 'Work area', 'Starting point and coverage'),
+  task('WORKING_HOURS', 'COVERAGE', 'AVAILABLE', 'Working hours', 'Available days and time ranges'),
+  task('PORTFOLIO', 'PROFILE', 'AVAILABLE', 'Bio and portfolio', 'What customers see'),
+  task(
+    'REVIEW_SUBMISSION',
+    'REVIEW',
+    'BLOCKED',
+    'Review and submission',
+    'Confirm details and terms',
+  ),
+];
+
+const HUB_TASKS_COMPLETE = [
+  task('BASICS_IDENTITY', 'BASICS', 'COMPLETE', 'Basic details', 'Name, phone and photo'),
+  task('SERVICES_EXPERIENCE', 'SERVICES', 'WAITING', 'Services and experience', 'Selections saved'),
+  task('WORK_AREA', 'COVERAGE', 'COMPLETE', 'Work area', 'Aleppo • 15 km'),
+  task('WORKING_HOURS', 'COVERAGE', 'COMPLETE', 'Working hours', 'Sunday–Thursday • 09:00–17:00'),
+  task('PORTFOLIO', 'PROFILE', 'WAITING', 'Bio and portfolio', '3 photos uploaded'),
+  task('REVIEW_SUBMISSION', 'REVIEW', 'AVAILABLE', 'Review and submission', 'Ready to review'),
+];
+
+const hub = (over: Record<string, unknown> = {}) => ({
+  tasks: HUB_TASKS_PARTIAL,
+  progress: { complete: 1, total: 6 },
+  nextAction: { kind: 'COMPLETE_TASK', taskId: 'SERVICES_EXPERIENCE' },
+  status: 'DRAFT',
+  ...over,
+});
+
+// ── The draft ───────────────────────────────────────────────────────────────
+
+/**
+ * The application, populated as the approved screens show it.
+ *
+ * The values are the prototype's own — Ahmad Fatal, 14 years, a car, Aleppo /
+ * Al-Furqan, 15 km, Sunday–Thursday 09:00–17:00 — because the comparison is
+ * against a picture that contains those strings. Using different content would
+ * fail every cell on text the design never claimed to specify.
+ */
+const DRAFT_DATA = {
+  providerType: 'INDIVIDUAL',
+  legalBusinessName: null,
+  displayName: 'Ahmad Fatal',
+  profileImageUrl: null,
+  phoneNumber: '0936706600',
+  phoneVerified: false,
+
+  serviceAreaCity: 'Aleppo, Al-Furqan',
+  serviceAreaCountry: 'Syria',
+  serviceAreaCountryCode: 'SY',
+  serviceAreaLat: null,
+  serviceAreaLng: null,
+  serviceAreaRadiusKm: 15,
+  serviceAreaIds: [],
+  workshopAddressLine: null,
+  workshopLat: null,
+  workshopLng: null,
+
+  primaryGroupIds: [],
+  specialtyLeafIds: ['sp-interior', 'sp-exterior'],
+  pendingSpecialtyIds: ['sp-interior'],
+  specialties: [],
+  primarySpecialtyId: 'sp-interior',
+  maxSpecialties: 5,
+
+  radiusPolicy: { suggestedKm: 15, minKm: 3, maxKm: 25, basedOn: 'CAR' },
+  serviceAreaExpansion: {
+    show: true,
+    allowedMaxKm: 15,
+    baseMaxKm: 15,
+    currentTier: null,
+    nextTier: { key: 'tier-2', maxKm: 25 },
+    progress: [],
+    reasonCodes: [],
+    policyVersion: 'ladder-1',
+  },
+
+  resolvedTimezone: {
+    resolved: 'Asia/Damascus',
+    display: { city: 'Damascus', offset: '+03:00' },
+    needsConfirmation: false,
+  },
+  suggestedTitle: { en: 'Painting professional', ar: 'فني دهانات' },
+
+  yearsOfExperience: 14,
+  professionSince: null,
+  equipmentCodes: ['LADDER', 'SPRAYER'],
+  transportMode: 'CAR',
+  transportModes: ['CAR', 'PUBLIC_TRANSPORT'],
+
+  availability: [
+    { day: 'SUNDAY', startMinute: 540, endMinute: 1020 },
+    { day: 'MONDAY', startMinute: 540, endMinute: 1020 },
+    { day: 'TUESDAY', startMinute: 540, endMinute: 1020 },
+    { day: 'WEDNESDAY', startMinute: 540, endMinute: 1020 },
+    { day: 'THURSDAY', startMinute: 540, endMinute: 1020 },
+  ],
+  timezone: 'Asia/Damascus',
+
+  headline: 'Painting professional',
+  bio: 'Painting professional with 14 years of experience. I arrive on time and keep the work area clean.',
+  additionalInformation: null,
+
+  acceptedConsentVersion: null,
+  consentAcceptedAt: null,
+};
+
+const draft = (over: Record<string, unknown> = {}) => ({
+  state: 'DRAFT',
+  currentStep: 'LOCATION',
+  steps: [],
+  completedSteps: [],
+  percentComplete: 50,
+  nextAction: { kind: 'COMPLETE_STEP', step: 'LOCATION' },
+  complete: false,
+  missing: [],
+  version: 7,
+  policyVersion: 'sprint-09b',
+  lastSavedAt: '2026-09-01T12:42:00.000Z',
+  editable: true,
+  ...over,
+  data: { ...DRAFT_DATA, ...((over.data as Record<string, unknown>) ?? {}) },
+});
+
+// ── Preconditions ───────────────────────────────────────────────────────────
+
+export interface PreconditionFixture {
+  readonly me: Record<string, unknown> | null;
+  /** `null` means the profile endpoint answers 404 — no provider row exists. */
+  readonly profile: Record<string, unknown> | null;
+  readonly hub: Record<string, unknown>;
+  readonly draft: Record<string, unknown>;
+  /** Hold the session probe open, so a transient screen stays on display. */
+  readonly stallSessionRefresh?: boolean;
+  /** Answer every onboarding read with 401, for the expired-session screen. */
+  readonly unauthorized?: boolean;
+}
+
+const COMPLETE_DRAFT = draft({
+  state: 'DRAFT',
+  currentStep: 'REVIEW',
+  percentComplete: 100,
+  complete: true,
+  nextAction: { kind: 'SUBMIT' },
+});
+
+export const PRECONDITIONS: Readonly<Record<ServerPrecondition, PreconditionFixture>> =
+  Object.freeze({
+    'anonymous-customer': {
+      me: CUSTOMER_ME,
+      profile: null,
+      hub: hub(),
+      draft: draft(),
+    },
+    'customer-upgrading': {
+      me: CUSTOMER_ME,
+      profile: null,
+      hub: hub(),
+      draft: draft(),
+      stallSessionRefresh: true,
+    },
+    'draft-partial': {
+      me: PROVIDER_ME,
+      profile: profileAt('DRAFT'),
+      hub: hub(),
+      draft: draft(),
+    },
+    'draft-complete': {
+      me: PROVIDER_ME,
+      profile: profileAt('DRAFT'),
+      hub: hub({
+        tasks: HUB_TASKS_COMPLETE,
+        progress: { complete: 6, total: 6 },
+        nextAction: { kind: 'SUBMIT' },
+      }),
+      draft: COMPLETE_DRAFT,
+    },
+    'draft-submitted': {
+      me: PROVIDER_ME,
+      profile: profileAt('PENDING_REVIEW'),
+      hub: hub({
+        tasks: HUB_TASKS_COMPLETE,
+        progress: { complete: 6, total: 6 },
+        nextAction: { kind: 'WAIT' },
+        status: 'PENDING_REVIEW',
+      }),
+      draft: draft({
+        state: 'SUBMITTED',
+        percentComplete: 100,
+        complete: true,
+        editable: false,
+        nextAction: { kind: 'WAIT' },
+        submittedAt: '2026-09-01T12:43:00.000Z',
+      }),
+    },
+    'draft-returned': {
+      me: PROVIDER_ME,
+      profile: profileAt('REJECTED'),
+      hub: hub({
+        tasks: HUB_TASKS_COMPLETE.map((t) =>
+          t.id === 'PORTFOLIO' ? { ...t, status: 'AVAILABLE' } : t,
+        ),
+        progress: { complete: 5, total: 6 },
+        nextAction: { kind: 'COMPLETE_TASK', taskId: 'PORTFOLIO' },
+        status: 'RETURNED',
+      }),
+      draft: draft({
+        state: 'RETURNED',
+        percentComplete: 92,
+        nextAction: { kind: 'COMPLETE_TASK', taskId: 'PORTFOLIO' },
+      }),
+    },
+    'session-expired': {
+      me: PROVIDER_ME,
+      profile: profileAt('DRAFT'),
+      hub: hub(),
+      draft: draft(),
+      unauthorized: true,
+    },
+    'provider-active': {
+      me: PROVIDER_ME,
+      profile: profileAt('ACTIVE'),
+      hub: hub({
+        tasks: HUB_TASKS_COMPLETE,
+        progress: { complete: 6, total: 6 },
+        nextAction: { kind: 'NONE' },
+        status: 'ACTIVE',
+      }),
+      draft: draft({ state: 'APPROVED', percentComplete: 100, complete: true, editable: false }),
+    },
+  });
+
+/**
+ * The task a state opens, taken from the route the registry declares.
+ *
+ * `/provider/onboarding/WORK_AREA#map` -> `WORK_AREA`. Derived rather than
+ * listed a second time: a hand-written map beside the registry is one more
+ * place for the two to disagree, and this gate exists because exactly that
+ * kind of drift went unnoticed before.
+ */
+function taskIdFromRoute(route: string): string | null {
+  const match = /\/provider\/onboarding\/([A-Z_]+)/.exec(route);
+  return match ? match[1] : null;
+}
+
+/**
+ * Open the task under test, without disturbing the others.
+ *
+ * A task route renders its FORM only while the server calls that task
+ * `AVAILABLE` — `isTaskActionable` is deliberately strict, so a task the hub
+ * reports as complete or blocked cannot be entered by typing its id into the
+ * address bar. That rule is correct and is not being relaxed here; the fixture
+ * simply describes a server for which the task in question is genuinely open,
+ * which is the only state in which the approved screen exists at all.
+ *
+ * The submitted state is the exception: it is reached through the review task
+ * AFTER submission, when nothing is open any more.
+ */
+function hubForState(fixture: PreconditionFixture, state: Phase5State): Record<string, unknown> {
+  const taskId = taskIdFromRoute(state.route);
+  if (!taskId || state.precondition === 'draft-submitted') return fixture.hub;
+
+  const tasks = (fixture.hub.tasks as Array<Record<string, unknown>>).map((t) =>
+    t.id === taskId ? { ...t, status: 'AVAILABLE' } : t,
+  );
+  return { ...fixture.hub, tasks };
+}
+
+// ── Installation ────────────────────────────────────────────────────────────
+
+/**
+ * Put the browser into the state, then hand the app the server it expects.
+ *
+ * The flag and the language are seeded BEFORE boot — both are read once during
+ * start-up, so setting them afterwards would leave the bundle rendering V1 in
+ * English however the test was configured.
+ */
+export async function installPrecondition(
+  page: Page,
+  state: Phase5State,
+  locale: Locale,
+): Promise<void> {
+  const fixture = PRECONDITIONS[state.precondition];
+  const hubBody = hubForState(fixture, state);
+
+  await page.addInitScript(
+    ([flagKey, flagValue, langKey, langValue]) => {
+      window.localStorage.setItem(flagKey as string, flagValue as string);
+      window.localStorage.setItem(langKey as string, langValue as string);
+    },
+    [FLAG_KEY, 'true', 'hsm.lang', locale],
+  );
+
+  await page.route('**/v1/**', async (route) => {
+    const url = route.request().url();
+
+    if (url.includes('/auth/me')) {
+      // The expired screen is reached by the session probe failing, which is
+      // the only thing that distinguishes it from a slow network — the
+      // approved screen says so in terms ("this message appears only for a
+      // 401 response").
+      if (fixture.unauthorized) {
+        return json(route, { success: false, error: { code: 'AUTH_TOKEN_EXPIRED' } }, 401);
+      }
+      if (fixture.stallSessionRefresh) {
+        // Held open, not answered. The synchronization screen is a transient
+        // state; letting the probe resolve would move the app off it before
+        // the capture, which is how screen 1 became unphotographable.
+        return new Promise(() => {});
+      }
+      return fixture.me
+        ? json(route, fixture.me)
+        : json(route, { success: false, error: { code: 'AUTH_INVALID_CREDENTIALS' } }, 401);
+    }
+
+    if (url.includes('/me/provider/onboarding/hub')) {
+      if (fixture.unauthorized) {
+        return json(route, { success: false, error: { code: 'AUTH_TOKEN_EXPIRED' } }, 401);
+      }
+      return json(route, hubBody);
+    }
+
+    if (url.includes('/me/provider/onboarding/draft')) {
+      if (fixture.unauthorized) {
+        return json(route, { success: false, error: { code: 'AUTH_TOKEN_EXPIRED' } }, 401);
+      }
+      return json(route, fixture.draft);
+    }
+
+    if (url.includes('/me/provider/upgrade')) {
+      return json(route, profileAt('DRAFT'));
+    }
+
+    if (url.includes('/me/provider/profile')) {
+      return fixture.profile
+        ? json(route, fixture.profile)
+        : json(route, { success: false, error: { code: 'PROVIDER_PROFILE_NOT_FOUND' } }, 404);
+    }
+
+    if (url.includes('/me/provider/capabilities')) {
+      return json(route, {
+        canBid: state.precondition === 'provider-active',
+        canReceiveWork: state.precondition === 'provider-active',
+      });
+    }
+
+    if (url.includes('/notifications/unread-count')) return json(route, { count: 0 });
+
+    // Anything else this journey touches gets an empty, well-shaped answer
+    // rather than a 404 that would paint an error over the screen under test.
+    return json(route, { items: [], nextCursor: null });
+  });
+}
+
+/**
+ * Drive the app to a state that only exists after an interaction.
+ *
+ * One of the eighteen is not addressable by URL. The synchronization screen is
+ * what the ACTIVATION screen becomes once the upgrade commits, and it lives
+ * for exactly as long as the session rotation takes — there is no route that
+ * renders it, by design, because a provider must not be able to bookmark a
+ * transient recovery state.
+ *
+ * So it is reached the way a provider reaches it: by pressing Activate. The
+ * fixture then holds the session probe open (`stallSessionRefresh`), which
+ * keeps the rotation in flight and the screen on display long enough to
+ * photograph. Nothing about the screen is faked; it is the real component in
+ * its real state, waiting on a real request that has not answered yet.
+ */
+export async function reachState(page: Page, state: Phase5State): Promise<void> {
+  if (state.precondition !== 'customer-upgrading') return;
+
+  await page.waitForSelector('[data-testid="activation-cta"]', { timeout: 20_000 });
+  await page.click('[data-testid="activation-cta"]');
+}

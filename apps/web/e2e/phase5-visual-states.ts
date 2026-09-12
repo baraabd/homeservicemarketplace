@@ -113,7 +113,7 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     referenceKey: 'activate',
     route: '/provider/activate',
     precondition: 'anonymous-customer',
-    readySelector: '[data-testid="provider-activation-screen"]',
+    readySelector: '[data-testid="activation-screen"]',
     primaryAction: 'provider-activate-submit',
     requiredCopy: {
       en: ['Turn your skills into work'],
@@ -131,7 +131,7 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     referenceKey: 'sync',
     route: '/provider/activate',
     precondition: 'customer-upgrading',
-    readySelector: '[data-testid="provider-activation-syncing"]',
+    readySelector: '[data-testid="activation-sync-screen"]',
     primaryAction: null,
     requiredCopy: {
       en: ['No sign-in needed'],

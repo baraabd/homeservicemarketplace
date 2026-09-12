@@ -7,10 +7,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { api } from '../../../../lib/api';
 import { providerQueryKeys } from '../../../../lib/provider/query-keys';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
+import { AutosaveStatus } from './AutosaveStatus';
 import { BasicsTaskScreen } from './BasicsTaskScreen';
 import { BASICS_COPY } from '../copy/basics-copy';
 import { AUTOSAVE_COPY } from '../copy/autosave-copy';
-import { ProviderOnboardingAutosaveProvider } from '../autosave/ProviderOnboardingAutosaveProvider';
+import {
+  useOnboardingStepAutosave,
+  ProviderOnboardingAutosaveProvider,
+} from '../autosave/ProviderOnboardingAutosaveProvider';
 
 // Sprint 9B.17 — V2 Task 1.
 //
@@ -61,6 +65,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** The chrome's save line, mounted exactly as `OnboardingTaskScreen` mounts it. */
+function SaveStatusProbe({ lang }: { lang: 'en' | 'ar' }) {
+  const { status } = useOnboardingStepAutosave('IDENTITY');
+  return <AutosaveStatus status={status} lang={lang} testIdPrefix="basics" />;
+}
+
 function renderScreen(
   view: ReturnType<typeof DRAFT> = DRAFT(),
   lang: 'en' | 'ar' = 'en',
@@ -80,6 +90,13 @@ function renderScreen(
         <LanguageProvider>
           <ProviderOnboardingAutosaveProvider>
             <BasicsTaskScreen view={view as never} lang={lang} editable={editable} />
+            {/* Sprint 09B.29 Phase 5A — the save status moved OUT of the form
+                and into the approved sticky action bar, which this component
+                does not own. It is still driven by the same step of the same
+                coordinator, so the harness renders it the way the task route
+                does; the assertions below are about the coordinator's
+                behaviour, and that is unchanged. */}
+            <SaveStatusProbe lang={lang} />
           </ProviderOnboardingAutosaveProvider>
         </LanguageProvider>
       </QueryClientProvider>
@@ -115,8 +132,12 @@ describe('BasicsTaskScreen — phone', () => {
     renderScreen();
     // Neither falsely passed nor unsatisfiably required: the note says the
     // number will be confirmed later and that continuing does not need it.
-    const note = screen.getByTestId('phone-verification-note');
-    expect(note.textContent).toBe(BASICS_COPY.en.phoneNotVerified);
+    // Sprint 09B.29 Phase 5A — it is the phone field's HINT now rather than a
+    // paragraph beside it, so the assertion is stronger than it was: the
+    // sentence must be present AND wired to the input it qualifies.
+    const note = screen.getByText(BASICS_COPY.en.phoneNotVerified);
+    const phone = screen.getByTestId('field-phoneNumber');
+    expect(phone.getAttribute('aria-describedby')).toContain(note.id);
     expect(screen.queryByRole('button', { name: /verify/i })).toBeNull();
   });
 

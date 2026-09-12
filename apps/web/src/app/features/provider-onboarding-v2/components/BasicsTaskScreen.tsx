@@ -1,4 +1,3 @@
-import { AutosaveStatus } from './AutosaveStatus';
 import { useCallback, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
@@ -90,8 +89,9 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
   }, [copy.phoneInvalid, phone, phoneTouched]);
 
   // One step owns every field on this screen now that provider type has moved
-  // server-side, so there is one status rather than a merge of two.
-  const status = identityAutosave.status;
+  // server-side, so there is one status rather than a merge of two — and since
+  // Phase 5A it is reported by the approved sticky bar rather than by a line
+  // inside the form, so this screen no longer renders it itself.
 
   /**
    * Never write an empty display name: the column is NOT NULL and the server
@@ -118,8 +118,6 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
 
   return (
     <div className="flex flex-col gap-[18px]" data-testid="basics-task">
-      <AutosaveStatus status={status} lang={lang} testIdPrefix="basics" />
-
       {/* ── Photo, first, as the approved screen has it ─────────────────── */}
       <AvatarUploader
         imageUrl={data.profileImageUrl ?? null}
@@ -133,7 +131,6 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
       {/* ── The name customers see ──────────────────────────────────────── */}
       <ProviderTextInput
         label={copy.displayName}
-        hint={copy.displayNameHint}
         data-testid="field-displayName"
         value={displayName}
         disabled={!editable}
@@ -156,7 +153,12 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
       {/* ── Phone ───────────────────────────────────────────────────────── */}
       <ProviderTextInput
         label={copy.phone}
-        hint={copy.phoneHint}
+        // The approved screen carries ONE sentence under the phone field, and
+        // it is the one that stops "we have your number" reading as "your
+        // number is verified". As the hint it is wired to the input through
+        // `aria-describedby`; as the paragraph it used to be, it was prose
+        // sitting nearby that no screen reader ever connected to the field.
+        hint={copy.phoneNotVerified}
         error={phoneError ?? undefined}
         data-testid="field-phoneNumber"
         type="tel"
@@ -170,13 +172,6 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
         }}
         onBlur={() => commitPhone(phone)}
       />
-
-      {/* The approved screen says plainly that SMS verification is not active
-          and will not block submission. Kept as its own line rather than as
-          the field hint, which is already carrying the format requirement. */}
-      <p className="-mt-2 text-pv-label text-pv-muted" data-testid="phone-verification-note">
-        {copy.phoneNotVerified}
-      </p>
     </div>
   );
 }

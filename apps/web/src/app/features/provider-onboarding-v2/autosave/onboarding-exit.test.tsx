@@ -420,12 +420,12 @@ describe('a keystroke reaches the coordinator before the blur does', () => {
     fireEvent.change(field, { target: { value: 'First value' } });
     fireEvent.blur(field);
     await waitFor(() =>
-      expect(screen.getByTestId('basics-save-status')).toHaveAttribute('data-status', 'saved'),
+      expect(screen.getByTestId('task-save-status')).toHaveAttribute('data-status', 'saved'),
     );
 
     // Type again and do NOT blur.
     fireEvent.change(field, { target: { value: 'Second value' } });
-    expect(screen.getByTestId('basics-save-status')).not.toHaveAttribute('data-status', 'saved');
+    expect(screen.getByTestId('task-save-status')).not.toHaveAttribute('data-status', 'saved');
   });
 
   it('commits the character just typed, not the one before it', async () => {

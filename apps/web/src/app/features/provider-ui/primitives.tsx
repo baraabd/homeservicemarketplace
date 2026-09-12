@@ -28,13 +28,35 @@ export function ProviderContainer({
   return <div className={`mx-auto w-full ${max} px-4 md:px-6 ${className}`}>{children}</div>;
 }
 
+// Every tone carries its own border, including the ones whose border matches
+// their fill. The approved screens draw `border: 1px solid` on all three
+// actions, and under `box-sizing: border-box` a button WITHOUT one is 2px
+// taller inside than a button with one — so omitting it on the primary made
+// its label sit a pixel off the secondary beside it.
 const BUTTON_TONE = {
   primary:
-    'bg-pv-accent text-white hover:bg-pv-accent-hover disabled:bg-pv-border-strong disabled:text-pv-muted',
+    'border border-pv-accent bg-pv-accent text-white hover:bg-pv-accent-hover disabled:border-pv-border-strong disabled:bg-pv-border-strong disabled:text-pv-muted',
   secondary:
     'bg-pv-surface text-pv-text border border-pv-border-strong hover:bg-pv-surface-sunken disabled:text-pv-muted',
-  ghost: 'bg-transparent text-pv-accent hover:bg-pv-accent-subtle disabled:text-pv-muted',
-  danger: 'bg-pv-danger text-white hover:opacity-90 disabled:bg-pv-border-strong',
+  ghost:
+    'border border-transparent bg-transparent text-pv-accent hover:bg-pv-accent-subtle disabled:text-pv-muted',
+  danger:
+    'border border-pv-danger bg-pv-danger text-white hover:opacity-90 disabled:border-pv-border-strong disabled:bg-pv-border-strong',
+} as const;
+
+/**
+ * Two geometries, because the product has two kinds of button.
+ *
+ * `workspace` is the 44px control the provider dashboard is built from.
+ * `onboarding` is the approved application flow's action — 48px tall, an 11px
+ * radius, 14px bold — and it is a DIFFERENT shape, not a tweak of the first.
+ * Encoding it here is what stops nine task screens each transcribing
+ * `.hsm-primary` into their own inline style, which is how the baseline ended
+ * up with 153 of them.
+ */
+const BUTTON_SHAPE = {
+  workspace: 'min-h-[44px] rounded-xl px-5 text-pv-heading font-semibold',
+  onboarding: 'min-h-12 rounded-pv-action px-4 text-pv-body font-bold',
 } as const;
 
 export interface ProviderButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -49,11 +71,14 @@ export interface ProviderButtonProps extends ButtonHTMLAttributes<HTMLButtonElem
    * breakpoint by the caller rather than the default everywhere.
    */
   size?: 'auto' | 'block';
+  /** Which of the product's two action geometries this is. */
+  shape?: keyof typeof BUTTON_SHAPE;
 }
 
 export function ProviderButton({
   tone = 'primary',
   size = 'auto',
+  shape = 'workspace',
   className = '',
   type = 'button',
   children,
@@ -62,14 +87,42 @@ export function ProviderButton({
   return (
     <button
       type={type}
-      // 44px minimum height is the WCAG 2.2 target size, not a style choice.
-      className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-5 text-pv-heading font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent disabled:cursor-not-allowed ${
-        BUTTON_TONE[tone]
-      } ${size === 'block' ? 'w-full' : ''} ${className}`}
+      // Both shapes clear the WCAG 2.2 target size; that is a floor the
+      // geometry has to respect, not a style either of them chose.
+      className={`inline-flex items-center justify-center gap-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent disabled:cursor-not-allowed ${
+        BUTTON_SHAPE[shape]
+      } ${BUTTON_TONE[tone]} ${size === 'block' ? 'w-full' : ''} ${className}`}
       {...rest}
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * The approved sticky action row.
+ *
+ * `.hsm-footer-inline` is a `1fr 1.6fr` grid, not two equal halves and not a
+ * flex row: the primary is deliberately the wider of the two so the eye lands
+ * on it first at a glance, and the ratio is what makes "Back to tasks" and
+ * "Save and continue" fit side by side at 320px without either wrapping.
+ *
+ * With no secondary the primary takes the whole width, which is how the
+ * reference draws the screens that have only one way forward.
+ */
+export function ProviderStickyActionRow({
+  primary,
+  secondary,
+}: {
+  primary: ReactNode;
+  secondary?: ReactNode | null;
+}) {
+  if (!secondary) return <>{primary}</>;
+  return (
+    <div className="grid grid-cols-[1fr_1.6fr] gap-2">
+      {secondary}
+      {primary}
+    </div>
   );
 }
 

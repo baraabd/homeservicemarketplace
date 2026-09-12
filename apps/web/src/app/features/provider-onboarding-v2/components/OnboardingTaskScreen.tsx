@@ -1,16 +1,15 @@
-import { useParams } from 'react-router';
+import { useLocation, useNavigate, useParams } from 'react-router';
 
 import { Button } from '../../../components/ds/Button';
+import { ProviderButton, ProviderStickyActionRow } from '../../provider-ui';
+import { AutosaveStatus } from './AutosaveStatus';
+import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
+import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
+import { TASK_CHROME_COPY, TASK_SCREEN_ROUTES, taskScreenKeyFor } from '../copy/task-chrome-copy';
 import { useLang } from '../../../i18n/LanguageContext';
 import { useProviderOnboardingHub } from '../../../hooks/provider/useProviderOnboardingHub';
 import { deriveHubView, isTaskActionable } from '../hub-view-state';
-import {
-  SCREEN_COPY,
-  statusExplanation,
-  statusLabel,
-  taskCopy,
-  type Lang,
-} from '../copy/onboarding-hub-copy';
+import { SCREEN_COPY, statusExplanation, taskCopy, type Lang } from '../copy/onboarding-hub-copy';
 import { OnboardingShell } from './OnboardingShell';
 import { ExitBlockedNotice } from './ExitBlockedNotice';
 import { useOnboardingExit } from '../autosave/useOnboardingExit';
@@ -68,9 +67,54 @@ export function OnboardingTaskScreen() {
   const errorStatus = query.error?.response?.status ?? null;
   const view = deriveHubView({ isFetched: query.isFetched, data: query.data, errorStatus });
 
+  // Sprint 09B.29 Phase 5A — which APPROVED SCREEN is showing.
+  //
+  // Derived from the URL rather than from component state, so a reload returns
+  // to the half the provider was on and the back button steps between the two
+  // halves of a two-screen task. Computed from the route PARAM, not from the
+  // resolved task, because it feeds a hook and hooks cannot wait for a fetch.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const screenKey = taskId ? taskScreenKeyFor(taskId, location.hash) : null;
+  const screenRoute = screenKey ? TASK_SCREEN_ROUTES[screenKey] : null;
+  const chrome = screenKey ? TASK_CHROME_COPY[lang][screenKey] : null;
+
+  // The save line the approved sticky bar carries. `REVIEW` collects nothing
+  // of its own, so it is the harmless default for a screen with no step.
+  const chromeAutosave = useOnboardingStepAutosave(screenRoute?.step ?? 'REVIEW');
+
+  // The server's own `lastSavedAt`, for the bar's resting state. The same
+  // query key every task body already reads, so this shares their cache entry
+  // rather than issuing a second request for the same draft.
+  const draft = useOnboardingDraft();
+
   const local = TASK_COPY_BY_LANG[lang];
   const exitCopy = EXIT_COPY[lang];
   const backToHub = () => exit.exit('/provider/onboarding');
+
+  /**
+   * The one primary action, and what it promises.
+   *
+   * A move WITHIN a task is a plain navigation: the same screen stays mounted,
+   * the coordinator keeps its timers, and nothing needs draining. A move OUT of
+   * one goes through `exit()`, which flushes the draft first and stays put if
+   * the flush fails — the same contract the Back control has always honoured,
+   * and the reason an edit made a second before the tap is not lost.
+   */
+  const goNext = () => {
+    const next = screenRoute?.next;
+    if (!next) return;
+    if (next.startsWith('#')) {
+      navigate({ pathname: location.pathname, hash: next }, { replace: false });
+      return;
+    }
+    exit.exit(next);
+  };
+
+  /** Progress is the SERVER's task counters, never a client guess. */
+  const progress = query.data
+    ? Math.round((query.data.progress.complete / Math.max(1, query.data.progress.total)) * 100)
+    : undefined;
 
   // Until the hub has resolved there is nothing to decide. Rendering the task
   // optimistically would mean showing a surface for a task the server may say
@@ -114,26 +158,90 @@ export function OnboardingTaskScreen() {
   const actionable = isTaskActionable(task.status);
   const explanation = statusExplanation(task.status, lang);
 
+  // ── The approved sticky bar ───────────────────────────────────────────────
+  //
+  // `.hsm-sticky`: a 7px-gap column holding the action row and, beneath it,
+  // the save line. The reference puts the save state HERE rather than in the
+  // form, which is why each task body no longer carries its own copy — the
+  // provider looks in one place for "is my work safe", and it is the place
+  // their thumb already is.
+  const secondaryLabel = chrome?.secondary ?? local.back;
+  const footer = (
+    <div className="grid gap-[7px]">
+      <ProviderStickyActionRow
+        secondary={
+          <ProviderButton
+            tone="secondary"
+            shape="onboarding"
+            size="block"
+            onClick={backToHub}
+            disabled={exit.isLeaving}
+            data-testid="task-back-to-tasks"
+          >
+            {/* The label is the honest one while the flush runs: the button did
+                not fail to respond, it is finishing the provider's last edit. */}
+            {exit.isLeaving ? exitCopy.leaving : secondaryLabel}
+          </ProviderButton>
+        }
+        primary={
+          // Drawn only when the chrome genuinely owns it. On the consent screen
+          // the primary is a SUBMISSION — a server command with its own
+          // preconditions — and a button here that merely looked like one would
+          // be the worst kind of parity: correct in a screenshot, inert in use.
+          screenRoute?.next ? (
+            <ProviderButton
+              tone="primary"
+              shape="onboarding"
+              size="block"
+              onClick={goNext}
+              disabled={exit.isLeaving}
+              data-testid={screenRoute.primaryTestId}
+            >
+              {chrome?.primary}
+            </ProviderButton>
+          ) : null
+        }
+      />
+      <div className="flex items-center justify-center">
+        <AutosaveStatus
+          status={chromeAutosave.status}
+          lang={lang}
+          testIdPrefix="task"
+          lastSavedAt={draft.data?.lastSavedAt ?? null}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <OnboardingShell
-      title={copy.title}
+      title={chrome?.title ?? copy.title}
+      subtitle={chrome?.subtitle}
+      progress={progress}
+      // A task screen steps BACK through a flow; it does not abandon one.
+      backAffordance="back"
       onClose={backToHub}
       closeBusy={exit.isLeaving}
       footer={
-        <Button
-          variant="secondary"
-          tone="provider"
-          fullWidth
-          onClick={backToHub}
-          state={exit.isLeaving ? 'loading' : 'default'}
-        >
-          {/* The label is the honest one while the flush runs: the button did
-              not fail to respond, it is finishing the provider's last edit. */}
-          {exit.isLeaving ? exitCopy.leaving : local.back}
-        </Button>
+        screenRoute?.next ? (
+          footer
+        ) : (
+          <Button
+            variant="secondary"
+            tone="provider"
+            fullWidth
+            onClick={backToHub}
+            state={exit.isLeaving ? 'loading' : 'default'}
+          >
+            {exit.isLeaving ? exitCopy.leaving : local.back}
+          </Button>
+        )
       }
     >
-      <div className="flex flex-col gap-3" data-testid={`task-screen-${task.id}`}>
+      {/* `.hsm-main`: an 18px column. The description line and the status pill
+          that used to sit here are gone — the approved screen carries neither,
+          and both were repeating what the header and the hub row already say. */}
+      <div className="flex flex-col gap-[18px]" data-testid={`task-screen-${task.id}`}>
         {/* First in the column: it explains why a navigation the provider
             just asked for did not happen, so it must not be below the fold of
             a long form. */}
@@ -144,18 +252,6 @@ export function OnboardingTaskScreen() {
           onDismiss={exit.dismiss}
           onDiscard={exit.discard}
         />
-
-        <p className="break-words text-slate-500 dark:text-slate-400" style={{ fontSize: '13px' }}>
-          {copy.description}
-        </p>
-
-        <span
-          className="self-start rounded-full bg-slate-100 px-2 py-0.5 text-slate-600"
-          style={{ fontSize: '11px', fontWeight: 600 }}
-          data-testid="task-screen-status"
-        >
-          {statusLabel(task.status, lang)}
-        </span>
 
         {/* A task reached by URL that the server says is not open gets the
             SAME sentence the row gives, rather than a form. */}
