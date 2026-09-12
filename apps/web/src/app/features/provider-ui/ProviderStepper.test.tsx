@@ -156,16 +156,23 @@ describe('ProviderStepper — operation', () => {
 });
 
 describe('ProviderStepper — geometry and direction', () => {
-  it('gives both buttons a 44px touch target', () => {
+  it('gives both buttons at least a 44px touch target', () => {
     render(<Harness />);
 
-    // h-11/w-11 is Tailwind's 2.75rem = 44px, the mandated minimum. Asserted
-    // on the class because jsdom computes no layout; the rendered size is
-    // checked in the browser matrix.
+    // Sprint 09B.29 Phase 5A — h-12/w-12 (48px), which is what the approved
+    // stepper draws and is comfortably PAST the 44px minimum rather than
+    // exactly on it. Asserted as a floor rather than as one specific class, so
+    // the design may grow the control without this failing, while a shrink
+    // below the mandated target still does. jsdom computes no layout, so the
+    // rendered size is checked in the browser matrix.
+    const SIZES: Record<string, number> = { 'h-11': 44, 'h-12': 48, 'h-14': 56 };
     for (const id of ['years-increase', 'years-decrease']) {
-      const button = screen.getByTestId(id);
-      expect(button.className).toContain('h-11');
-      expect(button.className).toContain('w-11');
+      const cls = screen.getByTestId(id).className;
+      const height = Object.entries(SIZES).find(([token]) => cls.includes(token))?.[1] ?? 0;
+      const width =
+        Object.entries(SIZES).find(([token]) => cls.includes(token.replace('h-', 'w-')))?.[1] ?? 0;
+      expect(height, `${id} height`).toBeGreaterThanOrEqual(44);
+      expect(width, `${id} width`).toBeGreaterThanOrEqual(44);
     }
   });
 

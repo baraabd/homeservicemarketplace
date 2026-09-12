@@ -203,7 +203,9 @@ test.describe('onboarding v2 — the full-screen shell', () => {
       const controls = [
         page.getByTestId('onboarding-v2-close'),
         page.getByTestId('task-row-BASICS_IDENTITY'),
-        page.getByRole('button', { name: 'Continue' }),
+        // The approved hub action names its destination — "Start: <section>"
+        // — so the section of the task the SERVER nominated is in the label.
+        page.getByRole('button', { name: 'Start: Basics' }),
       ];
       for (const control of controls) {
         const box = (await control.boundingBox())!;
@@ -261,7 +263,7 @@ test.describe('onboarding v2 — the hub', () => {
     await openHub(page);
 
     await expect(page.locator('[data-testid^="task-row-"]')).toHaveCount(6);
-    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('0 of 6 complete');
+    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('0 of 6 tasks complete');
   });
 
   test('renders the server count rather than counting the rows', async ({ page }) => {
@@ -269,7 +271,7 @@ test.describe('onboarding v2 — the hub', () => {
     await openHub(page, { hub: { ...HUB, tasks, progress: { complete: 3, total: 6 } } });
 
     // One row reads COMPLETE; the server says three. The server wins.
-    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('3 of 6 complete');
+    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('3 of 6 tasks complete');
   });
 
   test('only the available row is a button; blocked rows explain themselves', async ({ page }) => {
@@ -327,7 +329,7 @@ test.describe('onboarding v2 — keyboard', () => {
 test.describe('onboarding v2 — resume', () => {
   test('the CTA opens the task the server named', async ({ page }) => {
     await openHub(page);
-    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: 'Start: Basics' }).click();
     await expect(page).toHaveURL(/\/provider\/onboarding\/BASICS_IDENTITY$/);
   });
 
@@ -370,7 +372,7 @@ test.describe('onboarding v2 — language parity', () => {
     // Scoped to the row rather than the page: the title text lives in a span
     // INSIDE the row button, so a bare getByText matches both and trips
     // strict mode. What is being asserted is that the row reads in English.
-    await expect(page.getByTestId('task-row-BASICS_IDENTITY')).toContainText('Your details');
+    await expect(page.getByTestId('task-row-BASICS_IDENTITY')).toContainText('Basic details');
     // The server sent Arabic titles; an English reader must not see them.
     await expect(page.getByText('البيانات الأساسية')).toHaveCount(0);
     await expectNoHorizontalPageOverflow(page);

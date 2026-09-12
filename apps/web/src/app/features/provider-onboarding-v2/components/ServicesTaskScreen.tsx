@@ -1,24 +1,22 @@
-import { AutosaveStatus } from './AutosaveStatus';
-import { mergeAutosaveStatus } from '../autosave-status';
+import { Clock, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type {
   ProviderOnboardingDraftView,
-  ProviderSpecialtyState,
-  ProviderSpecialtyView,
   ProviderTransportModeCode,
 } from '@homeservicemarketplace/contracts';
 
 import { useServiceCategories } from '../../../../lib/use-service-categories';
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
 import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
-import { SpecialtyPicker } from '../services/SpecialtyPicker';
-import { SERVICES_COPY, STATE_TONE, type Lang } from '../copy/services-copy';
+import { SERVICES_COPY, type Lang } from '../copy/services-copy';
+import { OnboardingAlert } from './OnboardingAlert';
 import {
   ProviderCard,
-  ProviderNotice,
+  ProviderChoiceToggle,
   ProviderSkeleton,
   ProviderStepper,
   ProviderErrorState,
+  ProviderTextInput,
 } from '../../provider-ui';
 
 // Sprint 9B.18 — V2 Task 2: services, experience, equipment, transport, title.
@@ -37,19 +35,27 @@ import {
 // derive "pending" from an id's absence anywhere, which is how the old screen
 // reported a retired category as a rejection.
 
-const TRANSPORT_MODES: ProviderTransportModeCode[] = [
-  'ON_FOOT',
-  'MOTORCYCLE',
+/**
+ * The four transport modes the approved screen offers, in its order.
+ *
+ * The product supports six; VAN and TRUCK are not on this screen. That is a
+ * DISPLAY decision and it is not allowed to destroy data: `toggleMode` below
+ * preserves any stored mode outside this list, so a provider who recorded a van
+ * on an earlier surface still has it after editing this one. Recorded for
+ * Phase 5B — the approved screen and the supported set disagree, and the
+ * backend is not being changed to settle it here.
+ */
+const APPROVED_TRANSPORT: ProviderTransportModeCode[] = [
   'CAR',
-  'VAN',
-  'TRUCK',
+  'MOTORCYCLE',
+  'ON_FOOT',
   'PUBLIC_TRANSPORT',
 ];
 
 const TRANSPORT_LABELS: Record<Lang, Record<ProviderTransportModeCode, string>> = {
   en: {
     ON_FOOT: 'On foot',
-    MOTORCYCLE: 'Motorcycle',
+    MOTORCYCLE: 'Motorbike',
     CAR: 'Car',
     VAN: 'Van',
     TRUCK: 'Truck',
@@ -68,10 +74,6 @@ const TRANSPORT_LABELS: Record<Lang, Record<ProviderTransportModeCode, string>> 
 /** A working lifetime. The old floor was a start year of 1950, which is the
  *  same bound expressed from the other end. */
 const MAX_YEARS = 75;
-/** The order states are shown in. Approved first because it is the good news
- *  and the largest group; rejected and inactive last because they are the two
- *  the provider may want to act on and should not be buried mid-list. */
-const STATE_ORDER: ProviderSpecialtyState[] = ['APPROVED', 'PENDING', 'REJECTED', 'INACTIVE'];
 
 // Sprint 09B.29 Phase 5 — migrated to Provider UI against the approved
 // prototype screens `services` (task 2 of 6, part 1) and `experience`
@@ -100,21 +102,26 @@ const STATE_ORDER: ProviderSpecialtyState[] = ['APPROVED', 'PENDING', 'REJECTED'
 // Autosave, step ownership, the version handshake and the server's authority
 // over the primary specialty are untouched by the migration.
 
+/** Which of the task's two approved screens is showing. */
+export type ServicesPart = 'services' | 'experience';
+
 interface ServicesTaskScreenProps {
   view: ProviderOnboardingDraftView;
   lang: Lang;
   editable: boolean;
+  part: ServicesPart;
 }
 
-export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenProps) {
+export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskScreenProps) {
   const copy = SERVICES_COPY[lang];
 
   const specialtiesAutosave = useOnboardingStepAutosave('SPECIALTIES');
   const experienceAutosave = useOnboardingStepAutosave('EXPERIENCE');
-  // Sprint 9B.25 — two autosaves, one status line, and until now no line at
-  // all. The merge puts the most consequential state forward, so "Saved" from
-  // one step cannot mask a conflict on the other.
-  const autosaveStatus = mergeAutosaveStatus(specialtiesAutosave.status, experienceAutosave.status);
+  // Sprint 09B.29 Phase 5A — the status line moved into the approved sticky
+  // bar, which reports the STEP the screen on display writes: SPECIALTIES on
+  // screen 4, EXPERIENCE on screen 5. That is more precise than the merge it
+  // replaces, which could show a conflict from the half the provider was not
+  // looking at.
 
   const catalogue = useServiceCategories();
 
@@ -140,29 +147,79 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
 
   // ── Specialties ──────────────────────────────────────────────────────────
 
+  /**
+   * The OPERATOR-configured ceiling, still enforced.
+   *
+   * The approved screen shows no counter — the old "0 of 5 chosen" line is not
+   * in the design — but the limit itself is a server setting and dropping it
+   * with the counter would let the screen offer a selection the save is about
+   * to refuse. Removal is always allowed, including at the limit, because the
+   * way out of a full list must never be closed.
+   */
+  const atLimit = chosenIds.length >= data.maxSpecialties;
+
   const toggleSpecialty = (categoryId: string) => {
-    const next = chosenIds.includes(categoryId)
-      ? chosenIds.filter((id) => id !== categoryId)
-      : [...chosenIds, categoryId];
+    const chosen = chosenIds.includes(categoryId);
+    if (!chosen && atLimit) return;
+    const next = chosen ? chosenIds.filter((id) => id !== categoryId) : [...chosenIds, categoryId];
     specialtiesAutosave.save({ specialtyLeafIds: next });
   };
 
-  const setPrimary = (categoryId: string) => {
-    specialtiesAutosave.save({ primarySpecialtyId: categoryId });
+  /** The search box on the approved screen, filtering the flat leaf list. */
+  const [query, setQuery] = useState('');
+
+  /**
+   * The selectable leaves, filtered by the search box.
+   *
+   * `isLeaf` is READ from the catalogue, never inferred from "has no
+   * children": a parent whose last child was retired must not silently become
+   * selectable. Same rule the server enforces, and the reason the approved
+   * flat list is safe to draw from the catalogue directly.
+   */
+  const visibleLeaves = useMemo(() => {
+    const all = (catalogue.data ?? [])
+      .filter((c) => c.isLeaf)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((c) => ({ id: c.id, labelEn: c.labelEn, labelAr: c.labelAr }));
+
+    // A specialty the provider HOLDS but the catalogue no longer lists —
+    // retired, or withdrawn while they were mid-application — is appended from
+    // the draft rather than dropped. The contract serves its labels with the
+    // state for exactly this reason: without it a retired specialty either
+    // renders as a bare id or, worse, silently disappears from a screen the
+    // provider is being asked to confirm.
+    const known = new Set(all.map((c) => c.id));
+    const orphans = specialties
+      .filter((sp) => !known.has(sp.categoryId))
+      .map((sp) => ({ id: sp.categoryId, labelEn: sp.labelEn, labelAr: sp.labelAr }));
+
+    const q = query.trim().toLowerCase();
+    const rows = [...all, ...orphans];
+    if (q === '') return rows;
+    return rows.filter(
+      (c) => c.labelEn.toLowerCase().includes(q) || c.labelAr.toLowerCase().includes(q),
+    );
+  }, [catalogue.data, query, specialties]);
+
+  /**
+   * The trailing note on a choice row.
+   *
+   * "Primary" for the nominated service, as the reference has it — and the
+   * MODERATION STATE for anything an admin has not approved. The approved
+   * screen has no per-state section list, so this row-level note is where a
+   * refused or retired specialty still says so. Silence there would be the one
+   * outcome a provider cannot act on.
+   */
+  const metaFor = (categoryId: string): string | undefined => {
+    if (categoryId === data.primarySpecialtyId) return copy.primaryBadge;
+    const state = specialties.find((s) => s.categoryId === categoryId)?.state;
+    if (!state || state === 'APPROVED' || state === 'PENDING') return undefined;
+    return copy.stateHeading[state];
   };
 
-  const grouped = useMemo(() => {
-    const byState = new Map<ProviderSpecialtyState, ProviderSpecialtyView[]>();
-    for (const s of specialties) {
-      const list = byState.get(s.state) ?? [];
-      list.push(s);
-      byState.set(s.state, list);
-    }
-    return STATE_ORDER.filter((state) => (byState.get(state)?.length ?? 0) > 0).map((state) => ({
-      state,
-      items: byState.get(state) ?? [],
-    }));
-  }, [specialties]);
+  // The per-state grouping that fed the four labelled sections is gone with
+  // them. The state a specialty is in now travels on its own row (`metaFor`),
+  // so nothing it carried was lost — only the bucketing it needed.
 
   // ── Experience ───────────────────────────────────────────────────────────
 
@@ -199,193 +256,191 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
   const selectedModes = data.transportModes ?? [];
   const primaryMode = data.transportMode ?? null;
 
+  /**
+   * The range the primary mode currently grants, or nothing.
+   *
+   * `allowedMaxKm` is the ceiling IN FORCE, not `radiusPolicy.maxKm` which is
+   * the one an expansion could unlock — the work-area reward card explains the
+   * difference, and promising the higher number here would contradict it.
+   *
+   * Both are optional on a partial draft, and an absent radius means the note
+   * is simply not drawn. Reading through them unguarded threw on any response
+   * that had not resolved a policy yet, which took the whole screen down.
+   */
+  const rangeKm = data.serviceAreaExpansion?.allowedMaxKm ?? data.radiusPolicy?.suggestedKm ?? null;
+  const primaryRange = rangeKm === null ? undefined : copy.transportRange(rangeKm);
+
   const toggleMode = (mode: ProviderTransportModeCode) => {
     const next = selectedModes.includes(mode)
       ? selectedModes.filter((m) => m !== mode)
       : [...selectedModes, mode];
+    // A mode the approved screen does not show is still the provider's answer.
+    // Toggling Car must not silently drop a stored VAN, so anything outside
+    // the four on screen is carried through untouched.
+    const preserved = selectedModes.filter((m) => !APPROVED_TRANSPORT.includes(m));
+    const merged = [...new Set([...next, ...preserved])];
     // The primary is NOT sent. The server keeps it consistent with the set —
     // re-pointing it when the set no longer contains it — so the client never
     // has to decide, and two clients cannot decide differently.
-    experienceAutosave.save({ transportModes: next });
+    experienceAutosave.save({ transportModes: merged });
   };
 
-  return (
-    <div className="flex flex-col gap-6" data-testid="services-task">
-      {/* Sprint 9B.25 — this screen autosaved SILENTLY across BOTH its steps. */}
-      <AutosaveStatus status={autosaveStatus} lang={lang} testIdPrefix="services" />
-
-      {/* ── What do you do? ─────────────────────────────────────────────── */}
-      <section aria-labelledby="services-picker-heading">
-        <h2
-          id="services-picker-heading"
-          className="mb-2 break-words text-pv-heading font-bold text-pv-text"
-        >
-          {copy.heading}
-        </h2>
-        {catalogue.data ? (
-          <SpecialtyPicker
-            categories={catalogue.data}
-            chosen={chosenIds}
-            maxSpecialties={data.maxSpecialties ?? 5}
-            lang={lang}
-            disabled={!editable}
-            onToggle={toggleSpecialty}
-          />
-        ) : (
-          <div data-testid="catalogue-loading">
-            <ProviderSkeleton rows={3} label={copy.heading} />
-          </div>
-        )}
-      </section>
-
-      {/* ── What happened to each? ──────────────────────────────────────── */}
-      {grouped.length > 0 ? (
-        <section aria-labelledby="services-state-heading" data-testid="specialty-states">
-          <h2 id="services-state-heading" className="sr-only">
-            {copy.stateHeading.APPROVED}
+  // ── Screen 4: the services picker ────────────────────────────────────────
+  if (part === 'services') {
+    return (
+      <div className="flex flex-col gap-[18px]" data-testid="services-task">
+        {/* `.hsm-kicker` + `.hsm-heading`, as one block with no gap between
+            them: the reference puts the eyebrow and the question in a bare
+            `<div>`, so only the column gap separates the pair from what
+            follows. */}
+        <div>
+          <p className="break-words text-pv-label font-bold leading-[21px] text-pv-accent-hover">
+            {copy.kicker}
+          </p>
+          <h2 className="break-words text-pv-hero font-bold leading-[1.35] text-pv-text">
+            {copy.question}
           </h2>
-          <div className="flex flex-col gap-4">
-            {grouped.map(({ state, items }) => (
-              <div key={state} data-testid={`specialty-state-${state}`}>
-                <h3 className="break-words text-pv-label font-bold text-pv-text">
-                  {copy.stateHeading[state]}
-                </h3>
-                {/* The explanation sits on the GROUP, once — not repeated as a
-                    badge inside every chip, which is what made the old screen
-                    unreadable and made "pending" read as an error. */}
-                <p
-                  className="mb-2 break-words text-pv-label text-pv-muted"
-                  data-testid={`specialty-state-explain-${state}`}
-                >
-                  {copy.stateExplain[state]}
-                </p>
-                <ul className="flex flex-col gap-2">
-                  {items.map((item) => (
-                    <li
-                      key={item.categoryId}
-                      data-testid={`specialty-row-${item.categoryId}`}
-                      data-state={item.state}
-                      data-tone={STATE_TONE[item.state]}
-                      className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-pv-border p-2"
-                    >
-                      <span className="min-w-0 break-words text-pv-body text-pv-text">
-                        {lang === 'ar' ? item.labelAr : item.labelEn}
-                      </span>
+        </div>
 
-                      {data.primarySpecialtyId === item.categoryId ? (
-                        <span
-                          data-testid={`primary-badge-${item.categoryId}`}
-                          className="rounded-full bg-pv-accent-subtle px-2 text-pv-caption font-bold text-pv-accent-hover"
-                        >
-                          {copy.primaryBadge}
-                        </span>
-                      ) : (
-                        // Only a specialty the provider still holds can become
-                        // the main one. Offering it for a rejected or retired
-                        // row would suggest a trade they cannot work in.
-                        (item.state === 'APPROVED' || item.state === 'PENDING') && (
-                          <button
-                            type="button"
-                            disabled={!editable}
-                            onClick={() => setPrimary(item.categoryId)}
-                            data-testid={`make-primary-${item.categoryId}`}
-                            className="ms-auto min-h-[44px] rounded-lg px-2 text-pv-label font-semibold text-pv-accent underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
-                          >
-                            {copy.makePrimary}
-                          </button>
-                        )
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+        {/* The search field, with the glyph INSIDE the control.
+            `.hsm-search` positions it 13px from the leading edge, 14px down,
+            and pads the input's leading side to 42px so the text never runs
+            under it. In RTL both flip, which `inset-inline-start` and
+            `ps-` do for free. */}
+        <div className="relative">
+          <ProviderTextInput
+            label={copy.searchLabel}
+            type="search"
+            className="ps-[42px]"
+            placeholder={copy.searchPlaceholder}
+            value={query}
+            disabled={!editable}
+            onChange={(event) => setQuery(event.target.value)}
+            data-testid="specialty-search"
+          />
+          <Search
+            size={16}
+            strokeWidth={1.8}
+            aria-hidden="true"
+            className="pointer-events-none absolute top-[42px] text-pv-muted"
+            style={{ insetInlineStart: 13 }}
+          />
+        </div>
+
+        {catalogue.isLoading ? (
+          <div data-testid="catalogue-loading">
+            <ProviderSkeleton rows={3} label={copy.question} />
+          </div>
+        ) : (
+          // `.hsm-choice-list`: an 8px column of multi-select rows.
+          <div className="grid gap-2" data-testid="specialty-choices">
+            {/* A search that matches nothing is a dead end without this, and
+                the approved reference never draws the state — it shows a
+                catalogue that always matches — so saying so cannot affect
+                parity and its absence would only ever be felt by someone
+                already stuck. */}
+            {visibleLeaves.length === 0 ? (
+              <p
+                className="break-words text-pv-help leading-[1.6] text-pv-muted"
+                data-testid="specialty-no-results"
+              >
+                {copy.noResults} {copy.noResultsHint}
+              </p>
+            ) : null}
+            {visibleLeaves.map((leaf) => (
+              <ProviderChoiceToggle
+                key={leaf.id}
+                testId={`specialty-choice-${leaf.id}`}
+                checked={chosenIds.includes(leaf.id)}
+                onToggle={() => toggleSpecialty(leaf.id)}
+                // At the ceiling the unchosen rows are genuinely unavailable,
+                // and say so, rather than accepting a press that the save
+                // would refuse. The chosen ones stay live so the provider can
+                // always make room.
+                disabled={!editable || (atLimit && !chosenIds.includes(leaf.id))}
+                label={lang === 'ar' ? leaf.labelAr : leaf.labelEn}
+                meta={metaFor(leaf.id)}
+              />
             ))}
           </div>
-        </section>
-      ) : null}
+        )}
 
-      {/* ── Review is platform work, not an unfinished provider task ─────── */}
-      <ProviderNotice
-        tone="waiting"
-        title={copy.stateHeading.PENDING}
-        description={copy.stateExplain.PENDING}
-        data-testid="specialty-moderation-notice"
+        {/* The one thing the approved screen says about moderation, and it is
+            the sentence that stops a PENDING specialty reading as a mistake.
+            It replaces the per-state section list: the state a specialty is in
+            now travels on its own row as `meta`, so nothing is hidden. */}
+        <OnboardingAlert
+          tone="waiting"
+          icon={Clock}
+          title={copy.moderationTitle}
+          body={copy.moderationBody}
+          density="compact"
+          data-testid="specialty-moderation-notice"
+        />
+      </div>
+    );
+  }
+
+  // ── Screen 5: experience and transport ───────────────────────────────────
+  return (
+    <div className="flex flex-col gap-[18px]" data-testid="experience-section">
+      <ProviderStepper
+        label={copy.yearsLabel}
+        hint={copy.startYearHint}
+        value={years}
+        min={0}
+        max={MAX_YEARS}
+        decreaseLabel={copy.yearsDecrease}
+        increaseLabel={copy.yearsIncrease}
+        onChange={commitYears}
+        disabled={!editable}
+        testId="experience-years"
       />
 
-      {/* ── Experience ──────────────────────────────────────────────────── */}
-      <section aria-labelledby="services-experience-heading" className="min-w-0">
-        <h2 id="services-experience-heading" className="sr-only">
-          {copy.experienceLegend}
-        </h2>
-        <ProviderStepper
-          label={copy.startYearLabel}
-          hint={copy.startYearHint}
-          value={years}
-          min={0}
-          max={MAX_YEARS}
-          decreaseLabel={copy.yearsDecrease}
-          increaseLabel={copy.yearsIncrease}
-          disabled={!editable}
-          testId="experience-years"
-          onChange={commitYears}
-        />
-      </section>
+      {/* A real fieldset/legend, because this is a group of checkboxes and the
+          platform announces it as one. The 7px sits on the legend rather than
+          on a flex gap: a `<legend>` is not laid out as an ordinary flex item,
+          so a gap here would be applied inconsistently across engines. */}
+      <fieldset className="flex flex-col" data-testid="transport-options">
+        <legend className="mb-[7px] break-words text-pv-label font-bold leading-[21px] text-pv-text">
+          {copy.transportQuestion}
+        </legend>
+        <div className="grid gap-2">
+          {APPROVED_TRANSPORT.map((mode) => (
+            <ProviderChoiceToggle
+              key={mode}
+              testId={`transport-${mode}`}
+              checked={selectedModes.includes(mode)}
+              onToggle={() => toggleMode(mode)}
+              disabled={!editable}
+              label={TRANSPORT_LABELS[lang][mode]}
+              // The radius this transport CURRENTLY grants, not the ceiling it
+              // could reach. `allowedMaxKm` is the limit in force — the reward
+              // card on the work-area screen explains the difference between
+              // that and `radiusPolicy.maxKm`, and showing the ceiling here
+              // would promise a range the provider does not yet have.
+              meta={mode === primaryMode ? primaryRange : undefined}
+            />
+          ))}
+        </div>
+      </fieldset>
 
-      {/* ── Transport ───────────────────────────────────────────────────── */}
-      <section aria-labelledby="services-transport-heading" className="min-w-0">
-        <h2
-          id="services-transport-heading"
-          className="mb-1 break-words text-pv-heading font-bold text-pv-text"
-        >
-          {copy.transportLegend}
-        </h2>
-        <p className="mb-2 break-words text-pv-label text-pv-muted">{copy.transportHint}</p>
-        <ul className="flex flex-col gap-2" data-testid="transport-options">
-          {TRANSPORT_MODES.map((mode) => {
-            const checked = selectedModes.includes(mode);
-            return (
-              <li key={mode}>
-                <label
-                  data-testid={`transport-${mode}`}
-                  data-checked={checked}
-                  data-primary={primaryMode === mode}
-                  className={`min-h-11 flex min-w-0 items-center gap-3 rounded-xl border px-3 ${
-                    checked
-                      ? 'border-pv-accent bg-pv-accent-subtle'
-                      : 'border-pv-border bg-pv-surface'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={!editable}
-                    onChange={() => toggleMode(mode)}
-                    className="h-5 w-5 flex-shrink-0 accent-pv-accent"
-                  />
-                  <span className="min-w-0 break-words text-pv-body text-pv-text">
-                    {TRANSPORT_LABELS[lang][mode]}
-                  </span>
-                  {primaryMode === mode ? (
-                    <span className="ms-auto rounded-full bg-pv-accent-subtle px-2 text-pv-caption font-bold text-pv-accent-hover">
-                      {copy.transportPrimary}
-                    </span>
-                  ) : null}
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-
-      {/* ── The suggested title, explained, not edited ──────────────────── */}
       {suggestedTitle ? (
-        <ProviderCard tone="sunken">
-          <h2 className="text-pv-heading font-bold text-pv-text">{copy.titleLegend}</h2>
-          <p className="mt-1 text-pv-label text-pv-muted" data-testid="title-suggestion-text">
-            {copy.titleSuggested(suggestedTitle)}
-          </p>
-          <p className="mt-2 text-pv-label text-pv-muted" data-testid="title-not-published">
-            {copy.titleNotPublished}
+        // `.hsm-panel`: the generated title, explained. Never editable here —
+        // ruling C1 makes it server-owned.
+        <ProviderCard className="p-4" style={{ borderRadius: 14 }} data-testid="suggested-title">
+          <h3
+            className="break-words text-pv-input text-pv-text"
+            style={{ marginBottom: 5, fontWeight: 500, lineHeight: 1.25 }}
+          >
+            {copy.suggestedTitlePanel}
+          </h3>
+          <p
+            className="break-words text-pv-label text-pv-muted"
+            style={{ lineHeight: 1.65 }}
+            data-testid="title-suggestion-text"
+          >
+            {copy.suggestedTitleBody(suggestedTitle)}
           </p>
         </ProviderCard>
       ) : null}
@@ -397,7 +452,7 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
 
 /** Loads the draft and renders Task 2. Mirrors BasicsTask — see it for why the
  *  shape is validated rather than merely checked for presence. */
-export function ServicesTask({ lang }: { lang: Lang }) {
+export function ServicesTask({ lang, part }: { lang: Lang; part: ServicesPart }) {
   const draft = useOnboardingDraft();
   const copy = SERVICES_COPY[lang];
 
@@ -416,5 +471,5 @@ export function ServicesTask({ lang }: { lang: Lang }) {
     return <ProviderErrorState title={copy.heading} testId="services-load-failed" />;
   }
 
-  return <ServicesTaskScreen view={view} lang={lang} editable={view.editable} />;
+  return <ServicesTaskScreen view={view} lang={lang} editable={view.editable} part={part} />;
 }

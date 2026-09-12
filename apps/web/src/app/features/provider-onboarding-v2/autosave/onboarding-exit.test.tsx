@@ -147,7 +147,7 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
-function renderTask(taskId: string, lang: 'en' | 'ar' = 'en') {
+function renderTask(taskId: string, lang: 'en' | 'ar' = 'en', hash = '') {
   window.localStorage.setItem('hsm.lang', lang);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(providerQueryKeys.onboarding.draft(), DRAFT());
@@ -167,7 +167,7 @@ function renderTask(taskId: string, lang: 'en' | 'ar' = 'en') {
       },
       { path: '*', element: <LocationProbe /> },
     ],
-    { initialEntries: [`/provider/onboarding/${taskId}`] },
+    { initialEntries: [`/provider/onboarding/${taskId}${hash}`] },
   );
   render(
     <QueryClientProvider client={client}>
@@ -234,6 +234,10 @@ const TASKS = [
   {
     id: 'SERVICES_EXPERIENCE',
     step: 'EXPERIENCE',
+    // Sprint 09B.29 Phase 5A — this task is TWO approved screens, and the
+    // EXPERIENCE step belongs to the second. The exit contract is unchanged;
+    // the test simply has to open the half that owns the edit it is making.
+    hash: '#experience',
     edit: async () => {
       // The approved screen replaced the start-year field with a stepper, which
       // commits on PRESS: there is no half-typed state to protect, which is
@@ -247,7 +251,7 @@ const TASKS = [
 describe('leaving a task never loses the edit that was still resting', () => {
   for (const t of TASKS) {
     it(`${t.id}: header Close flushes ${t.step} BEFORE navigating`, async () => {
-      renderTask(t.id);
+      renderTask(t.id, 'en', 'hash' in t ? t.hash : '');
       await screen.findByTestId(`task-screen-${t.id}`);
       await t.edit();
 
@@ -261,7 +265,7 @@ describe('leaving a task never loses the edit that was still resting', () => {
     });
 
     it(`${t.id}: "Back to tasks" flushes ${t.step} BEFORE navigating`, async () => {
-      renderTask(t.id);
+      renderTask(t.id, 'en', 'hash' in t ? t.hash : '');
       await screen.findByTestId(`task-screen-${t.id}`);
       await t.edit();
 

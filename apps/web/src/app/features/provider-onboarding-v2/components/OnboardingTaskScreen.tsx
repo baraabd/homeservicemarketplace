@@ -272,7 +272,7 @@ export function OnboardingTaskScreen() {
         {actionable && task.id === 'BASICS_IDENTITY' ? (
           <BasicsTask lang={lang} />
         ) : actionable && task.id === 'SERVICES_EXPERIENCE' ? (
-          <ServicesTask lang={lang} />
+          <ServicesTask lang={lang} part={screenKey === 'experience' ? 'experience' : 'services'} />
         ) : actionable && task.id === 'WORK_AREA' ? (
           <ServiceAreaTask lang={lang} />
         ) : actionable && task.id === 'WORKING_HOURS' ? (

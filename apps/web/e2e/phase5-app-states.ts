@@ -159,10 +159,30 @@ const DRAFT_DATA = {
   workshopLat: null,
   workshopLng: null,
 
-  primaryGroupIds: [],
+  primaryGroupIds: ['grp-painting'],
   specialtyLeafIds: ['sp-interior', 'sp-exterior'],
   pendingSpecialtyIds: ['sp-interior'],
-  specialties: [],
+  // The two the approved services screen shows selected, with the states the
+  // approved screen's own alert describes: one still in moderation, one
+  // already approved. Both are provider-chosen either way.
+  specialties: [
+    {
+      categoryId: 'sp-interior',
+      state: 'PENDING',
+      labelEn: 'Interior painting',
+      labelAr: 'دهانات داخلية',
+      parentId: 'grp-painting',
+      decidedAt: null,
+    },
+    {
+      categoryId: 'sp-exterior',
+      state: 'APPROVED',
+      labelEn: 'Exterior painting',
+      labelAr: 'دهانات خارجية',
+      parentId: 'grp-painting',
+      decidedAt: null,
+    },
+  ],
   primarySpecialtyId: 'sp-interior',
   maxSpecialties: 5,
 
@@ -186,7 +206,9 @@ const DRAFT_DATA = {
   suggestedTitle: { en: 'Painting professional', ar: 'فني دهانات' },
 
   yearsOfExperience: 14,
-  professionSince: null,
+  // The stored fact is a DATE, and the screen derives the years from it, so
+  // the reference's "14" has to be expressed as the year that yields it.
+  professionSince: `${new Date().getUTCFullYear() - 14}-01-01T00:00:00.000Z`,
   equipmentCodes: ['LADDER', 'SPRAYER'],
   transportMode: 'CAR',
   transportModes: ['CAR', 'PUBLIC_TRANSPORT'],
@@ -224,6 +246,41 @@ const draft = (over: Record<string, unknown> = {}) => ({
   ...over,
   data: { ...DRAFT_DATA, ...((over.data as Record<string, unknown>) ?? {}) },
 });
+
+/**
+ * The approved services list.
+ *
+ * One organisational group and four selectable leaves, in the reference's own
+ * order. `isLeaf` is a server fact the picker READS rather than derives, so the
+ * group is explicitly not a leaf.
+ */
+const SERVICE_CATALOGUE = [
+  {
+    id: 'grp-painting',
+    slug: 'painting',
+    labelEn: 'Painting',
+    labelAr: 'الدهانات',
+    icon: 'paintbrush',
+    sortOrder: 1,
+    parentId: null,
+    isLeaf: false,
+  },
+  ...[
+    ['sp-interior', 'interior-painting', 'Interior painting', 'دهانات داخلية'],
+    ['sp-exterior', 'exterior-painting', 'Exterior painting', 'دهانات خارجية'],
+    ['sp-wall-repair', 'wall-repair', 'Wall repair', 'ترميم الجدران'],
+    ['sp-post-paint', 'post-paint-cleaning', 'Post-paint cleaning', 'تنظيف بعد الدهان'],
+  ].map(([id, slug, labelEn, labelAr], i) => ({
+    id,
+    slug,
+    labelEn,
+    labelAr,
+    icon: 'paintbrush',
+    sortOrder: i + 2,
+    parentId: 'grp-painting',
+    isLeaf: true,
+  })),
+];
 
 // ── Preconditions ───────────────────────────────────────────────────────────
 
@@ -463,6 +520,18 @@ export async function installPrecondition(
     }
 
     if (url.includes('/notifications/unread-count')) return json(route, { count: 0 });
+
+    // The PUBLIC service catalogue. The approved services screen lists four
+    // painting leaves under one group, and those are the strings the reference
+    // image contains — a screen measured against a picture has to be offered
+    // the same catalogue the picture was drawn from.
+    //
+    // Equipment is checked FIRST because it lives under the same prefix, and a
+    // catalogue answer there would hand the equipment hook a list of services.
+    if (url.includes('/v1/services/equipment')) return json(route, { items: [] });
+    if (/\/v1\/services(\?|$)/.test(url)) {
+      return json(route, { items: SERVICE_CATALOGUE });
+    }
 
     // Anything else this journey touches gets an empty, well-shaped answer
     // rather than a 404 that would paint an error over the screen under test.

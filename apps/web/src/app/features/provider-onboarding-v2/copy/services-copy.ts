@@ -11,6 +11,20 @@ export type Lang = 'en' | 'ar';
 
 export interface ServicesCopy {
   heading: string;
+  /** The approved screen 4 eyebrow and question. */
+  kicker: string;
+  question: string;
+  /** The approved screen 4 moderation alert. */
+  moderationTitle: string;
+  moderationBody: string;
+  /** The approved screen 5 question and stepper label. */
+  yearsLabel: string;
+  transportQuestion: string;
+  /** The radius a transport mode implies, shown on the primary one. */
+  transportRange: (km: number) => string;
+  /** The approved screen 5 suggested-title panel. */
+  suggestedTitlePanel: string;
+  suggestedTitleBody: (value: string) => string;
 
   // Picker
   searchLabel: string;
@@ -69,9 +83,20 @@ export interface ServicesCopy {
 export const SERVICES_COPY: Record<Lang, ServicesCopy> = {
   en: {
     heading: 'Services and experience',
+    kicker: 'Choose what you genuinely offer',
+    question: 'Which services do you provide?',
+    moderationTitle: 'Specialties are reviewed later',
+    moderationBody:
+      'Your selections complete this task now. Approval stays separate and will not block submission.',
+    yearsLabel: 'Years of experience',
+    transportQuestion: 'How do you reach customers?',
+    transportRange: (km) => `${km} km range`,
+    suggestedTitlePanel: 'Suggested title',
+    suggestedTitleBody: (value) =>
+      `${value} • Generated from your primary service and editable later.`,
 
     searchLabel: 'Search services',
-    searchPlaceholder: 'Try “leak”, “wiring”, “paint”…',
+    searchPlaceholder: 'Example: Painting',
     noResults: 'Nothing matches that',
     noResultsHint: 'Try a shorter word, or browse the groups below.',
     chooseGroup: 'Browse by group',
@@ -81,7 +106,7 @@ export const SERVICES_COPY: Record<Lang, ServicesCopy> = {
 
     primaryLegend: 'Your main service',
     primaryHint: 'The one you want to be known for. We use it to suggest your job title.',
-    primaryBadge: 'Main',
+    primaryBadge: 'Primary',
     makePrimary: 'Make this my main service',
     primaryRequired: 'Choose which of these is your main service.',
 
@@ -140,9 +165,18 @@ export const SERVICES_COPY: Record<Lang, ServicesCopy> = {
   },
   ar: {
     heading: 'الخدمات والخبرة',
+    kicker: 'اختر ما تتقنه فعلاً',
+    question: 'ما الخدمات التي تقدمها؟',
+    moderationTitle: 'تُراجع التخصصات لاحقاً',
+    moderationBody: 'اختياراتك تكمل مهمتك الآن. ستبقى حالة الموافقة منفصلة ولن تمنع إرسال طلبك.',
+    yearsLabel: 'سنوات الخبرة',
+    transportQuestion: 'كيف تصل إلى موقع العميل؟',
+    transportRange: (km) => `النطاق ${km} كم`,
+    suggestedTitlePanel: 'المسمى المقترح',
+    suggestedTitleBody: (value) => `${value} • تم توليده من خدمتك الأساسية ويمكن تعديله لاحقاً.`,
 
     searchLabel: 'ابحث عن خدمة',
-    searchPlaceholder: 'جرّب «تسريب»، «تمديدات»، «دهان»…',
+    searchPlaceholder: 'مثال: دهانات',
     noResults: 'لا توجد نتائج مطابقة',
     noResultsHint: 'جرّب كلمة أقصر، أو تصفّح المجموعات بالأسفل.',
     chooseGroup: 'تصفّح حسب المجموعة',
