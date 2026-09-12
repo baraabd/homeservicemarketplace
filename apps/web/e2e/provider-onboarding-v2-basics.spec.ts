@@ -186,7 +186,23 @@ test.describe('task 1 — what it must not ask', () => {
 
   test('does not demand phone verification, and offers no way to fake it', async ({ page }) => {
     await openTask(page);
-    await expect(page.getByTestId('phone-verification-note')).toBeVisible();
+
+    // Sprint 09B.29 Phase 5A — the sentence is the phone field's HINT now
+    // rather than a paragraph beside it, which is where the approved screen
+    // puts it. The assertion is STRONGER than the test id it replaces: the
+    // sentence must be on screen AND programmatically attached to the input it
+    // qualifies, so a screen-reader user hears it on reaching the field
+    // instead of it being prose that merely sits nearby.
+    const note = page.getByText(/SMS verification is not active yet/);
+    await expect(note).toBeVisible();
+
+    const noteId = await note.getAttribute('id');
+    expect(noteId, 'the hint needs an id to be referenced by').toBeTruthy();
+    await expect(page.getByTestId('field-phoneNumber')).toHaveAttribute(
+      'aria-describedby',
+      new RegExp(noteId!),
+    );
+
     await expect(page.getByRole('button', { name: /verify/i })).toHaveCount(0);
   });
 });
@@ -303,12 +319,15 @@ test.describe('task 1 — geometry and keyboard', () => {
 
       // field-legalBusinessName is gone with ruling C1; the approved screen
       // asks three things and every one of them is still measured here.
-      for (const testId of [
-        'field-displayName',
-        'field-phoneNumber',
-        'avatar-take-photo',
-        'avatar-choose-file',
-      ]) {
+      // Sprint 09B.29 Phase 5A — the photo is ONE control now, not two.
+      //
+      // The approved screen draws a single upload surface captioned "take a
+      // photo or choose from gallery", and it opens an image input with no
+      // `capture` attribute — which is what makes both halves of that sentence
+      // true on a phone, because iOS and Android each offer camera AND library
+      // from such a control. The separate Take/Replace buttons belong to the
+      // case where a photo already exists, and are measured there.
+      for (const testId of ['field-displayName', 'field-phoneNumber', 'avatar-empty-prompt']) {
         const box = (await page.getByTestId(testId).boundingBox())!;
         expect(box.height, `${testId} is too short`).toBeGreaterThanOrEqual(44);
       }

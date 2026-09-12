@@ -352,6 +352,18 @@ export function ProviderActivationScreen({
       title={copy.activateTitle}
       progress={0}
       onClose={backToProfile}
+      // The hero is FULL BLEED, so this screen supplies its own gutter.
+      //
+      // It used to take the shell's and cancel it with `-mx-4 -mt-4`, which
+      // worked only while the shell's inset happened to be 16px. When the
+      // measured inset became the approved 20px, the negative margin cancelled
+      // 16 of it and left a 4px band of page background above the gradient —
+      // and everything below inherited the shift.
+      //
+      // The prototype's structure is the fix rather than a bigger negative
+      // margin: `.hsm-hero` sits OUTSIDE `.hsm-main`, and `.hsm-main` carries
+      // the `20px 16px` inset for the content that follows it.
+      padded={false}
       // The primary action belongs in the STICKY bar, not in the content flow.
       //
       // The prototype pins it to the bottom of the surface (`.hsm-sticky`), and
@@ -375,11 +387,11 @@ export function ProviderActivationScreen({
         </ProviderButton>
       }
     >
-      <div className="flex flex-col gap-5" data-testid="activation-screen">
-        {/* The hero. `-mx-4 -mt-4` cancels the shell's own gutter so the
-            gradient runs edge to edge exactly as the prototype draws it. */}
+      <div className="flex flex-col" data-testid="activation-screen">
+        {/* `.hsm-hero`: edge to edge, and first. No negative margins — the
+            shell is no longer supplying a gutter for this screen to undo. */}
         <div
-          className="-mx-4 -mt-4 px-5 py-6"
+          className="px-5 py-6"
           style={{
             background: 'linear-gradient(135deg, var(--pv-hero-from), var(--pv-hero-to))',
             color: 'var(--pv-hero-fg)',
@@ -408,41 +420,46 @@ export function ProviderActivationScreen({
           </p>
         </div>
 
-        <ProviderCard className="p-4" style={{ borderRadius: 14 }} data-testid="activation-panel">
-          <h3
-            className="break-words text-pv-input text-pv-text"
-            style={{ marginBottom: 5, fontWeight: 500, lineHeight: 1.25 }}
-          >
-            {copy.needTitle}
-          </h3>
-          <p className="break-words text-pv-label text-pv-muted" style={{ lineHeight: 1.65 }}>
-            {copy.needBody}
-          </p>
-        </ProviderCard>
+        {/* `.hsm-main`: the 20px/16px inset the content below the hero sits in,
+            and the 18px column rhythm the approved screens share. */}
+        <div className="flex flex-col gap-[18px] px-4 pb-5 pt-5">
+          <ProviderCard className="p-4" style={{ borderRadius: 14 }} data-testid="activation-panel">
+            <h3
+              className="break-words text-pv-input text-pv-text"
+              style={{ marginBottom: 5, fontWeight: 500, lineHeight: 1.25 }}
+            >
+              {copy.needTitle}
+            </h3>
+            <p className="break-words text-pv-label text-pv-muted" style={{ lineHeight: 1.65 }}>
+              {copy.needBody}
+            </p>
+          </ProviderCard>
 
-        {/* The upgrade request itself failing is a different fact from the
+          {/* The upgrade request itself failing is a different fact from the
             rotation failing, and gets its own message. Nothing was changed on
             the account, so the only action is to try again. */}
-        {upgrade.isError && (
-          <div
-            ref={recoveryRef}
-            tabIndex={-1}
-            role="alert"
-            className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
-            data-testid="activation-upgrade-error"
-          >
-            <ProviderNotice
-              tone="danger"
-              title={copy.upgradeFailedTitle}
-              description={copy.upgradeFailedBody}
-            />
-          </div>
-        )}
+          {upgrade.isError && (
+            <div
+              ref={recoveryRef}
+              tabIndex={-1}
+              role="alert"
+              className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
+              data-testid="activation-upgrade-error"
+            >
+              <ProviderNotice
+                tone="danger"
+                title={copy.upgradeFailedTitle}
+                description={copy.upgradeFailedBody}
+              />
+            </div>
+          )}
 
-        {/* Announced while the upgrade request is open, for the same reason the
-            sync screen has one. */}
-        <div role="status" aria-live="polite" className="sr-only">
-          {upgrade.isPending ? copy.activatePending : ''}
+          {/* Announced while the upgrade request is open, for the same reason
+              the sync screen has one. `sr-only` is absolutely positioned, so it
+              is not a flex item and earns no column gap. */}
+          <div role="status" aria-live="polite" className="sr-only">
+            {upgrade.isPending ? copy.activatePending : ''}
+          </div>
         </div>
       </div>
     </OnboardingShell>

@@ -386,6 +386,18 @@ export async function installPrecondition(
   const fixture = PRECONDITIONS[state.precondition];
   const hubBody = hubForState(fixture, state);
 
+  /**
+   * Has the upgrade been requested yet?
+   *
+   * The synchronization screen is the window between the upgrade committing and
+   * the rotated session being verified, so the thing that must hang is the
+   * session probe that follows the upgrade — not the one the app makes while
+   * BOOTING. Stalling both meant the app never got an identity, never rendered
+   * the activation screen, and never reached the button that starts the flow:
+   * the state was unphotographable for the same reason it was unreachable.
+   */
+  let upgradeRequested = false;
+
   await page.addInitScript(
     ([flagKey, flagValue, langKey, langValue]) => {
       window.localStorage.setItem(flagKey as string, flagValue as string);
@@ -405,10 +417,12 @@ export async function installPrecondition(
       if (fixture.unauthorized) {
         return json(route, { success: false, error: { code: 'AUTH_TOKEN_EXPIRED' } }, 401);
       }
-      if (fixture.stallSessionRefresh) {
-        // Held open, not answered. The synchronization screen is a transient
-        // state; letting the probe resolve would move the app off it before
-        // the capture, which is how screen 1 became unphotographable.
+      if (fixture.stallSessionRefresh && upgradeRequested) {
+        // Held open, not answered — and only AFTER the upgrade. The
+        // synchronization screen is a transient state; letting this probe
+        // resolve would move the app off it before the capture, and stalling
+        // it from the start would stop the app ever booting far enough to
+        // press Activate.
         return new Promise(() => {});
       }
       return fixture.me
@@ -431,6 +445,7 @@ export async function installPrecondition(
     }
 
     if (url.includes('/me/provider/upgrade')) {
+      upgradeRequested = true;
       return json(route, profileAt('DRAFT'));
     }
 

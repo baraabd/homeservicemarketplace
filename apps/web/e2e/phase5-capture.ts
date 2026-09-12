@@ -98,6 +98,31 @@ async function pinReferenceGeometry(frame: Frame): Promise<void> {
         `min-height:${height}px!important;height:${height}px!important;overflow:hidden}`,
         `#hsm-provider-journey .hsm-phone-inner{min-height:${height}px!important;`,
         `height:${height}px!important;overflow:hidden}`,
+        // STOP THE FLEX CHILDREN SHRINKING.
+        //
+        // This is the correction that mattered most, and it was a defect in
+        // this function rather than in any screen.
+        //
+        // `.hsm-phone-inner` is a flex column, and pinning it to a fixed 844px
+        // turns every child into a shrink candidate: `.hsm-main` is
+        // `flex: 1 1 0%` but its own content is taller than the box, so the
+        // container overflows and flexbox takes the deficit out of everything
+        // with a non-zero `flex-shrink` — including the 4px progress rule,
+        // which collapsed to nothing.
+        //
+        // The reference therefore drew NO progress bar on any screen whose
+        // content ran past the fold, and pulled everything below it up by 4px.
+        // Short screens (activation, basics) were unaffected, which is exactly
+        // why it survived two passing states before being noticed.
+        //
+        // In its natural state the prototype uses `min-height: 764px` and
+        // simply grows, so nothing shrinks and the bar is always 4px. Fixing
+        // the height without fixing the shrink produced a target the product
+        // could not match and should not have tried to.
+        `#hsm-provider-journey .hsm-topbar{flex:0 0 auto!important}`,
+        `#hsm-provider-journey .hsm-progress{flex:0 0 ${4}px!important}`,
+        `#hsm-provider-journey .hsm-main,#hsm-provider-journey .hsm-center{`,
+        `flex:1 1 auto!important;min-height:0!important;overflow:hidden!important}`,
         // The safe-area strip lives inside the bezel and outside the captured
         // surface; hiding it stops it eating 16px of the pinned height.
         `#hsm-provider-journey .hsm-safe-top{display:none!important}`,

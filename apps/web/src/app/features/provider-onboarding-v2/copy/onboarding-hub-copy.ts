@@ -36,54 +36,54 @@ interface TaskCopy {
 const TASK_COPY: Record<Lang, Record<string, TaskCopy>> = {
   en: {
     BASICS_IDENTITY: {
-      title: 'Your details',
-      description: 'Name, phone number, and profile photo',
+      title: 'Basic details',
+      description: 'Name, phone and photo',
     },
     SERVICES_EXPERIENCE: {
       title: 'Services and experience',
-      description: 'Your specialties, years of experience, and how you travel',
+      description: 'Specialty, experience and transport',
     },
     WORK_AREA: {
       title: 'Work area',
-      description: 'Your city and where you are based',
+      description: 'Starting point and coverage',
     },
     WORKING_HOURS: {
       title: 'Working hours',
-      description: 'The days and times you can take jobs',
+      description: 'Available days and time ranges',
     },
     PORTFOLIO: {
-      title: 'Portfolio',
-      description: 'A short intro and photos of your previous work',
+      title: 'Bio and portfolio',
+      description: 'What customers see',
     },
     REVIEW_SUBMISSION: {
-      title: 'Review and submit',
-      description: 'Confirm your details and accept the terms',
+      title: 'Review and submission',
+      description: 'Confirm details and terms',
     },
   },
   ar: {
     BASICS_IDENTITY: {
       title: 'البيانات الأساسية',
-      description: 'الاسم، رقم الهاتف، والصورة الشخصية',
+      description: 'الاسم والهاتف والصورة',
     },
     SERVICES_EXPERIENCE: {
       title: 'الخدمات والخبرة',
-      description: 'التخصص، سنوات الخبرة، ووسيلة النقل',
+      description: 'التخصص، الخبرة، وسيلة النقل',
     },
     WORK_AREA: {
       title: 'نطاق العمل',
-      description: 'المدينة ونقطة التمركز الخاصة بك',
+      description: 'نقطة الانطلاق والتغطية',
     },
     WORKING_HOURS: {
       title: 'ساعات العمل',
-      description: 'أيام وأوقات توفرك لاستقبال الطلبات',
+      description: 'الأيام والفترات المتاحة',
     },
     PORTFOLIO: {
-      title: 'معرض الأعمال',
-      description: 'نبذة تعريفية وصور من أعمالك السابقة',
+      title: 'النبذة ومعرض الأعمال',
+      description: 'ما يراه العملاء',
     },
     REVIEW_SUBMISSION: {
       title: 'المراجعة والإرسال',
-      description: 'تأكيد البيانات والموافقة على الشروط',
+      description: 'تأكيد البيانات والشروط',
     },
   },
 };
@@ -101,16 +101,18 @@ const GROUP_LABELS: Record<Lang, Record<ProviderOnboardingHubGroup, string>> = {
   en: {
     BASICS: 'Basics',
     SERVICES: 'Your services',
-    COVERAGE: 'Where and when you work',
-    PROFILE: 'Your profile',
-    REVIEW: 'Review',
+    COVERAGE: 'Where and when',
+    // The approved hub puts Review under the SAME heading as the profile
+    // tasks, so both codes resolve to one section title. See SECTION_OF.
+    PROFILE: 'Public profile',
+    REVIEW: 'Public profile',
   },
   ar: {
     BASICS: 'الأساسيات',
     SERVICES: 'خدماتك',
-    COVERAGE: 'أين ومتى تعمل',
-    PROFILE: 'ملفك الشخصي',
-    REVIEW: 'المراجعة',
+    COVERAGE: 'مكان ووقت العمل',
+    PROFILE: 'ملفك العام',
+    REVIEW: 'ملفك العام',
   },
 };
 
@@ -118,10 +120,64 @@ export function groupLabel(group: ProviderOnboardingHubGroup, lang: Lang): strin
   return GROUP_LABELS[lang][group] ?? group;
 }
 
+/**
+ * Which SECTION of the approved hub a server group belongs to.
+ *
+ * Sprint 09B.29 Phase 5A. The server sends five group codes; the approved hub
+ * draws four sections, because Review and submission sits under the same
+ * "Public profile" heading as the bio and portfolio rather than alone under a
+ * heading of its own. A section with one row and a title that repeats the row
+ * is noise.
+ *
+ * This is a DISPLAY decision and nothing more: the group each task belongs to
+ * is still the server's, the order is still the server's, and no task is
+ * reordered, hidden or re-statused by it.
+ */
+const SECTION_OF: Record<ProviderOnboardingHubGroup, ProviderOnboardingHubGroup> = {
+  BASICS: 'BASICS',
+  SERVICES: 'SERVICES',
+  COVERAGE: 'COVERAGE',
+  PROFILE: 'PROFILE',
+  REVIEW: 'PROFILE',
+};
+
+export function sectionOf(group: ProviderOnboardingHubGroup): ProviderOnboardingHubGroup {
+  return SECTION_OF[group] ?? group;
+}
+
+/** The hub's opening line. Absent from the complete hub, which leads with a
+ *  success banner instead. */
+export const HUB_LEAD: Record<Lang, string> = {
+  en: 'Continue with the next task or open any available task. Every successful change is saved.',
+  ar: 'ابدأ بالمهمة التالية أو افتح أي مهمة متاحة. يحفظ النظام كل تغيير ناجح.',
+};
+
+/** The banner the approved hub shows once every task the provider owns is done. */
+export const HUB_COMPLETE_NOTICE: Record<Lang, { title: string; body: string }> = {
+  en: {
+    title: 'You completed your part',
+    body: 'Some services and photos are under review, but you can submit now.',
+  },
+  ar: {
+    title: 'أكملت كل ما عليك',
+    body: 'بعض الخدمات والصور قيد المراجعة، لكن يمكنك إرسال الطلب الآن.',
+  },
+};
+
 /** The short badge on a row. */
 const STATUS_LABELS: Record<Lang, Record<string, string>> = {
-  en: { COMPLETE: 'Done', AVAILABLE: 'To do', WAITING: 'With us', BLOCKED: 'Locked' },
-  ar: { COMPLETE: 'مكتمل', AVAILABLE: 'مطلوب', WAITING: 'قيد المراجعة', BLOCKED: 'مقفل' },
+  en: {
+    COMPLETE: 'Complete',
+    AVAILABLE: 'Required',
+    WAITING: 'In review',
+    BLOCKED: 'Required',
+  },
+  ar: {
+    COMPLETE: 'مكتمل',
+    AVAILABLE: 'مطلوب',
+    WAITING: 'قيد المراجعة',
+    BLOCKED: 'مطلوب',
+  },
 };
 
 export function statusLabel(status: string, lang: Lang): string {
@@ -153,7 +209,9 @@ export function statusExplanation(status: string, lang: Lang): string | null {
 /** "3 of 6 complete". A count, never a percentage — and never computed here:
  *  both numbers come from the server. */
 export function progressLabel(complete: number, total: number, lang: Lang): string {
-  return lang === 'ar' ? `اكتمل ${complete} من ${total}` : `${complete} of ${total} complete`;
+  return lang === 'ar'
+    ? `${complete} من ${total} مهام مكتملة`
+    : `${complete} of ${total} tasks complete`;
 }
 
 export interface ScreenCopy {
@@ -207,7 +265,7 @@ export const SCREEN_COPY: Record<Lang, Record<HubViewState, ScreenCopy>> = {
       body: 'Your application has been approved, so there is nothing left to fill in.',
       cta: 'Back to profile',
     },
-    HUB: { title: 'Finish your application', body: '', cta: null },
+    HUB: { title: 'Complete your application', body: '', cta: null },
   },
   ar: {
     LOADING: { title: 'جارٍ التحميل…', body: '', cta: null },
@@ -250,11 +308,30 @@ export const SCREEN_COPY: Record<Lang, Record<HubViewState, ScreenCopy>> = {
   },
 };
 
-/** The primary button at the foot of the hub, by next-action kind. */
-export function nextActionLabel(kind: string, lang: Lang): string | null {
+/**
+ * The primary button at the foot of the hub, by next-action kind.
+ *
+ * Sprint 09B.29 Phase 5A — "Continue" became "Start: <section>".
+ *
+ * The approved hub names WHERE the button goes ("Start: Your services"), which
+ * is the difference between a control the provider presses to find out and one
+ * they press because they already know. The section comes from the group of
+ * the task the SERVER nominated, so the label cannot disagree with the
+ * destination.
+ *
+ * `section` is omitted for SUBMIT, which needs no destination in its label:
+ * the approved complete hub reads "Review application".
+ */
+export function nextActionLabel(kind: string, lang: Lang, section?: string): string | null {
   const labels: Record<Lang, Record<string, string>> = {
-    en: { COMPLETE_TASK: 'Continue', SUBMIT: 'Submit application' },
-    ar: { COMPLETE_TASK: 'متابعة', SUBMIT: 'إرسال الطلب' },
+    en: {
+      COMPLETE_TASK: section ? `Start: ${section}` : 'Continue',
+      SUBMIT: 'Review application',
+    },
+    ar: {
+      COMPLETE_TASK: section ? `ابدأ: ${section}` : 'متابعة',
+      SUBMIT: 'مراجعة الطلب',
+    },
   };
   // AWAIT_REVIEW and NONE deliberately have no entry: there is nothing for the
   // provider to press, and a button that cannot help is worse than none.

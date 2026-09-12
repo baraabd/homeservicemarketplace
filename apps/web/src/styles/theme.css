@@ -299,6 +299,8 @@
    * `.hsm-danger-action` all share one radius in the approved screens, and it
    * is neither the control radius nor the card radius. */
   --radius-pv-action: 11px;
+  /* The hub task row. `.hsm-task` is 13px — between the control and the card. */
+  --radius-pv-row: 13px;
 
   /* Activation hero (prototype screen 0). */
   --color-pv-hero-from: var(--pv-hero-from);

@@ -100,7 +100,7 @@ describe('status labels and explanations', () => {
 
 describe('progress label', () => {
   it('is a COUNT, and includes both numbers the server sent', () => {
-    expect(progressLabel(3, 6, 'en')).toBe('3 of 6 complete');
+    expect(progressLabel(3, 6, 'en')).toBe('3 of 6 tasks complete');
     expect(progressLabel(3, 6, 'ar')).toContain('3');
     expect(progressLabel(3, 6, 'ar')).toContain('6');
   });
@@ -111,8 +111,8 @@ describe('progress label', () => {
   });
 
   it('renders the zero and the finished cases without special-casing', () => {
-    expect(progressLabel(0, 6, 'en')).toBe('0 of 6 complete');
-    expect(progressLabel(6, 6, 'en')).toBe('6 of 6 complete');
+    expect(progressLabel(0, 6, 'en')).toBe('0 of 6 tasks complete');
+    expect(progressLabel(6, 6, 'en')).toBe('6 of 6 tasks complete');
   });
 });
 

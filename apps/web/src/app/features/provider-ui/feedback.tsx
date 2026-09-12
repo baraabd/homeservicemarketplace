@@ -24,21 +24,56 @@ const TONE_ICON: Record<ProviderTone, typeof Check> = {
 };
 
 /**
- * A status badge: hue, icon AND word, always all three.
+ * The approved `.hsm-badge` fills, which are not the workspace badge's.
  *
- * The baseline carried status in a small pill whose colour did most of the
- * work. A provider who cannot distinguish the greens from the ambers had to
- * infer their application's state from position in a list.
+ * Two differences, both measured against the reference: the pill carries no
+ * border, and `todo` sits on the SUNKEN surface (#f1f5f9) rather than on
+ * `--pv-todo-bg` (#f8fafc), which is the page background and would make the
+ * commonest badge on the hub invisible against it.
+ */
+const PILL_CLASSES: Readonly<Record<ProviderTone, string>> = Object.freeze({
+  done: 'text-pv-done bg-pv-done-bg',
+  todo: 'text-pv-todo bg-pv-surface-sunken',
+  blocked: 'text-pv-blocked bg-pv-blocked-bg',
+  waiting: 'text-pv-waiting bg-pv-waiting-bg',
+  danger: 'text-pv-danger bg-pv-danger-bg',
+  accent: 'text-pv-accent bg-pv-accent-subtle',
+});
+
+/**
+ * A status badge.
+ *
+ * `workspace` carries hue, icon AND word, always all three: the baseline
+ * carried status in a small pill whose colour did most of the work, and a
+ * provider who cannot distinguish the greens from the ambers had to infer
+ * their application's state from position in a list.
+ *
+ * `pill` is the approved onboarding shape — an 11px bold word on a tinted pill
+ * with no icon and no border. The word is still there, which is what the
+ * colour-independence rule actually requires; what it drops is a 13px glyph
+ * that, at this size and beside a word that already says it, was decoration.
  */
 export function ProviderStatusBadge({
   tone,
   label,
+  shape = 'workspace',
   className = '',
 }: {
   tone: ProviderTone;
   label: string;
+  shape?: 'workspace' | 'pill';
   className?: string;
 }) {
+  if (shape === 'pill') {
+    return (
+      <span
+        className={`inline-flex min-h-[28px] items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-pv-caption font-bold ${PILL_CLASSES[tone]} ${className}`}
+      >
+        {label}
+      </span>
+    );
+  }
+
   const Icon = TONE_ICON[tone];
   const c = TONE_CLASSES[tone];
   return (
