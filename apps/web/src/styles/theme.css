@@ -79,6 +79,19 @@
   --pv-danger-bg: #fef2f2;
   --pv-danger-border: #fecaca;
 
+  /* The approved work-area map band. A stylised surface, never a real map:
+   * a pin on the provider's base would show them the one thing the field's
+   * own hint promises nobody else can see. */
+  --pv-map: linear-gradient(
+    25deg,
+    #e2e8f0 0 18%,
+    #f8fafc 18% 35%,
+    #dbeafe 35% 37%,
+    #f1f5f9 37% 63%,
+    #e2e8f0 63% 66%,
+    #f8fafc 66%
+  );
+
   --pv-focus: #2563eb;
   --pv-shadow-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.08);
   --pv-shadow-2: 0 -2px 12px rgb(15 23 42 / 0.08);
@@ -191,6 +204,17 @@
   --lang-toggle-active: #fbbf24;
   --lang-toggle-inactive: #cbd5e1;
 
+  /* Dark: the same bands, remapped. */
+  --pv-map: linear-gradient(
+    25deg,
+    #334155 0 18%,
+    #0f172a 18% 35%,
+    #1e3a5f 35% 37%,
+    #1e293b 37% 63%,
+    #334155 63% 66%,
+    #0f172a 66%
+  );
+
   --pv-focus: #60a5fa;
   --pv-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
   --pv-shadow-2: 0 -2px 12px rgb(0 0 0 / 0.5);
@@ -287,6 +311,17 @@
   --text-pv-title: 17px;
   --text-pv-display: 20px;
   --text-pv-hero: 24px;
+  /* The approved day toggle.
+   *
+   * `.hsm-day` styles a `<button>` and deliberately sets no font at all, so it
+   * renders at the user agent default — 13.3333px with a `normal` line box.
+   * Our preflight gives buttons `font: inherit` instead, which would make it
+   * 14px on a 21px box and sit the label 2px low in a 44px square.
+   *
+   * Named rather than written inline because the conformance gate refuses an
+   * arbitrary `text-[13.3333px]` in a task screen, and rightly: a number that
+   * answers to nothing is an inline style with extra steps. */
+  --text-pv-day: 13.3333px;
 
   /* ── Provider radii ─────────────────────────────────────────────────────
    *
@@ -313,6 +348,15 @@
   /* Language toggle (shared chrome, not provider-scoped). */
   --color-lang-toggle-active: var(--lang-toggle-active);
   --color-lang-toggle-inactive: var(--lang-toggle-inactive);
+}
+
+@layer components {
+  /* A gradient cannot be expressed as a Tailwind colour token, so the one
+   * surface that needs it gets a single named class rather than an inline
+   * style repeated per screen. */
+  .pv-map-surface {
+    background: var(--pv-map);
+  }
 }
 
 @layer base {

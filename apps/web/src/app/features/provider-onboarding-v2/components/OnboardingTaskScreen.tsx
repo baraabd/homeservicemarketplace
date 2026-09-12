@@ -111,10 +111,15 @@ export function OnboardingTaskScreen() {
     exit.exit(next);
   };
 
-  /** Progress is the SERVER's task counters, never a client guess. */
-  const progress = query.data
-    ? Math.round((query.data.progress.complete / Math.max(1, query.data.progress.total)) * 100)
-    : undefined;
+  /**
+   * The 4px rule: the approved screen's position in the journey.
+   *
+   * Not the hub's `complete / total`. Three of the nine values fall between
+   * task boundaries because they mark the halfway point of a two-screen task,
+   * so no count of completed tasks can produce them — see task-chrome-copy.ts
+   * for why this stopped being server-derived and what still is.
+   */
+  const progress = screenRoute?.progress;
 
   // Until the hub has resolved there is nothing to decide. Rendering the task
   // optimistically would mean showing a surface for a task the server may say

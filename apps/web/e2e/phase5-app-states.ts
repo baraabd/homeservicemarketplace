@@ -193,7 +193,12 @@ const DRAFT_DATA = {
     baseMaxKm: 15,
     currentTier: null,
     nextTier: { key: 'tier-2', maxKm: 25 },
-    progress: [],
+    // The criterion the approved reward sentence names. Its target is
+    // PUBLISHED; the anti-abuse thresholds withhold theirs on purpose, which
+    // is why the sentence is composed from this one and not from all of them.
+    progress: [
+      { key: 'RATING_SAMPLE', met: false, progress: 0, current: 0, target: 3, published: true },
+    ],
     reasonCodes: [],
     policyVersion: 'ladder-1',
   },
@@ -213,13 +218,16 @@ const DRAFT_DATA = {
   transportMode: 'CAR',
   transportModes: ['CAR', 'PUBLIC_TRANSPORT'],
 
-  availability: [
-    { day: 'SUNDAY', startMinute: 540, endMinute: 1020 },
-    { day: 'MONDAY', startMinute: 540, endMinute: 1020 },
-    { day: 'TUESDAY', startMinute: 540, endMinute: 1020 },
-    { day: 'WEDNESDAY', startMinute: 540, endMinute: 1020 },
-    { day: 'THURSDAY', startMinute: 540, endMinute: 1020 },
-  ],
+  // Sunday-Thursday, 09:00-17:00 — the week the approved screens show.
+  // `dayOfWeek` is the contract's field and 0 is Sunday, matching
+  // `Date#getDay()`; a named day here would simply never match.
+  availability: [0, 1, 2, 3, 4].map((dayOfWeek) => ({
+    id: `av-${dayOfWeek}`,
+    dayOfWeek,
+    startMinute: 540,
+    endMinute: 1020,
+    timezone: 'Asia/Damascus',
+  })),
   timezone: 'Asia/Damascus',
 
   headline: 'Painting professional',

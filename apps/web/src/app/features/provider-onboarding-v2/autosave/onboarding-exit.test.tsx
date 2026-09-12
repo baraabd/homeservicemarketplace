@@ -205,11 +205,12 @@ const TASKS = [
     id: 'WORK_AREA',
     step: 'LOCATION',
     edit: async () => {
-      const radius = await screen.findByTestId('radius-slider');
-      fireEvent.change(radius, { target: { value: '12' } });
-      // The slider commits on release, not on every intermediate value — a
-      // save per pixel dragged would be a save per pixel dragged.
-      fireEvent.blur(radius);
+      // SUPERSEDED: the radius slider. The approved screen STATES the radius
+      // and explains that it follows the transport answer, so the one field
+      // left to protect is the city — and it is the one with half-typed state,
+      // which is exactly what the exit contract exists for.
+      const city = await screen.findByTestId('service-area-city');
+      fireEvent.change(city, { target: { value: 'Aleppo, Al-Furqan' } });
     },
   },
   {
@@ -225,10 +226,11 @@ const TASKS = [
     id: 'WORKING_HOURS',
     step: 'AVAILABILITY',
     edit: async () => {
-      // The timezone select commits on change: a picker has no half-typed
-      // state to protect, so there is nothing to hold back.
-      const tz = await screen.findByTestId('timezone-select');
-      fireEvent.change(tz, { target: { value: 'Asia/Damascus' } });
+      // SUPERSEDED: the timezone picker, which the approved screen does not
+      // draw. Applying a window to the selected days is the write this screen
+      // makes now, and it commits through the same coordinator.
+      fireEvent.click(await screen.findByTestId('day-toggle-1'));
+      fireEvent.click(screen.getByTestId('apply-to-selected'));
     },
   },
   {

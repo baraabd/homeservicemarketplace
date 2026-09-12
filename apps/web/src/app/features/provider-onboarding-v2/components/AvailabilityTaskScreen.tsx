@@ -1,27 +1,24 @@
-import { AutosaveStatus } from './AutosaveStatus';
 import { useCallback, useMemo, useState } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
 
-import { DAY_LABELS } from '../../../components/provider/onboarding/wizard-copy';
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
 import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
-import { AVAILABILITY_COPY, type Lang } from '../copy/availability-copy';
+import { AVAILABILITY_COPY, DAY_NAMES, type Lang } from '../copy/availability-copy';
 import {
-  DAY_PRESETS,
+  ProviderButton,
+  ProviderErrorState,
+  ProviderSkeleton,
+  ProviderTextInput,
+} from '../../provider-ui';
+import {
+  EMPTY_WEEK,
   MAX_INTERVALS_PER_WEEK,
-  addWindow,
   applyToDays,
   clearDay,
-  countWindows,
-  endOptions,
+  isDayAvailable,
   formatMinute,
-  removeWindow,
-  replaceWindow,
-  startOptions,
   toIntervals,
   toWeek,
-  weekTotals,
   type RejectionCode,
   type Week,
 } from '../availability/weekly-schedule';
@@ -37,22 +34,27 @@ import {
 // dropdowns and ten time fields, and every one of them is a chance to pick the
 // wrong day. Here it is: tap five days, choose two times, press apply.
 //
-// THREE THINGS THIS SCREEN IS BUILT AROUND
+// Sprint 09B.29 Phase 5A — rebuilt as the approved screen: day toggles, one
+// From/To pair, Apply, and a checkbox that turns Apply into a clear.
 //
-// 1. INVALID STATES ARE UNREACHABLE, not merely rejected. The end control
-//    offers only times after the chosen start, so an inverted or overnight
-//    range cannot be selected. Bulk apply REPLACES a day, so it cannot produce
-//    a duplicate. See weekly-schedule.ts.
+// WHAT THIS SCREEN IS BUILT AROUND
+//
+// 1. THE TOGGLES ARE THE SCHEDULE. Applying makes the week exactly the days
+//    that are on, so switching Wednesday off and applying genuinely stops
+//    Wednesday work rather than leaving a window nobody can see.
 //
 // 2. THE WHOLE WEEK IS THE UNIT OF SAVE. Every edit sends the complete set of
 //    intervals, and the server replaces them inside one transaction. A partial
 //    bulk update therefore cannot exist: there is no request that carries
 //    three of five days.
 //
-// 3. NO TEXT INPUTS. Every control is a button or a native <select>, so no
-//    soft keyboard is ever raised over the schedule — which is most of the
-//    "sticky actions and the keyboard must not cover the last row" problem
-//    solved by construction rather than by measuring viewports.
+// 3. AN INVALID RANGE IS REFUSED AND SAID OUT LOUD. The native time inputs can
+//    express 18:00-09:00; `applyToDays` rejects it and the screen prints why,
+//    rather than saving something the server would refuse.
+//
+// RECORDED FOR PHASE 5B: the presets, the per-day editor and the timezone
+// picker are not on the approved screen. See `applySelected` and the unit
+// suite, which assert each absence so re-adding one is deliberate.
 
 interface AvailabilityTaskScreenProps {
   view: ProviderOnboardingDraftView;
@@ -60,12 +62,10 @@ interface AvailabilityTaskScreenProps {
   editable: boolean;
 }
 
-/** Which day row is expanded for per-day editing, if any. */
-type Expanded = number | null;
-
 export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTaskScreenProps) {
   const copy = AVAILABILITY_COPY[lang];
-  const days = DAY_LABELS[lang];
+  // Full day names, for the accessible name on each 2-letter toggle.
+  const days = DAY_NAMES[lang];
   const autosave = useOnboardingStepAutosave('AVAILABILITY');
 
   const data = view.data;
@@ -85,20 +85,39 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
   // here re-renders before anything is shown, and it keeps the linter's
   // set-state-in-effect rule satisfied for the right reason rather than by
   // suppression.
+  /**
+   * The days the provider WORKS, which is what the approved toggles show.
+   *
+   * They open reflecting the stored schedule rather than empty: the reference
+   * draws Sunday to Thursday filled because that is the week the provider has,
+   * and a row of blank toggles over a saved schedule would read as "you have
+   * told us nothing" to someone who has.
+   */
+  const serverDays = useMemo(
+    () => [0, 1, 2, 3, 4, 5, 6].filter((day) => isDayAvailable(serverWeek, day)),
+    [serverWeek],
+  );
+
+  const [selectedDays, setSelectedDays] = useState<number[]>(() =>
+    [0, 1, 2, 3, 4, 5, 6].filter((day) => isDayAvailable(serverWeek, day)),
+  );
+
   const [lastServerWeek, setLastServerWeek] = useState<Week>(serverWeek);
   if (serverWeek !== lastServerWeek) {
     setLastServerWeek(serverWeek);
     setWeek(serverWeek);
+    setSelectedDays(serverDays);
   }
 
-  const [timezone, setTimezone] = useState<string>(data.timezone ?? resolved.resolved ?? '');
-  const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  // Read, never chosen: the approved screen has no timezone control, so the
+  // stored zone is carried with every write and nothing here can change it.
+  // See `applySelected` for the recorded Phase 5B gap.
+  const timezone = data.timezone ?? resolved.resolved ?? '';
   const [bulkStart, setBulkStart] = useState(540);
   const [bulkEnd, setBulkEnd] = useState(1020);
   const [rejected, setRejected] = useState<RejectionCode | null>(null);
-  const [expanded, setExpanded] = useState<Expanded>(null);
-
-  const totals = weekTotals(week);
+  /** Whether "Apply" clears the chosen days instead of setting them. */
+  const [markUnavailable, setMarkUnavailable] = useState(false);
 
   /** One save path. Every mutation goes through here with the COMPLETE week,
    *  so there is no request that carries a partial schedule. */
@@ -130,548 +149,184 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
       current.includes(day) ? current.filter((d) => d !== day) : [...current, day].sort(),
     );
 
-  const timezoneMissing = resolved.needsConfirmation && timezone.trim() === '';
-
-  return (
-    <div className="flex min-w-0 flex-col gap-5" data-testid="availability-task">
-      <p className="break-words text-slate-500 dark:text-slate-400" style={{ fontSize: '13px' }}>
-        {copy.intro}
-      </p>
-
-      {/* What the server actually knows. A schedule that looks saved and is
-          not is worse than one that says it failed. */}
-      <AutosaveStatus status={autosave.status} lang={lang} testIdPrefix="availability" />
-
-      {/* ── Time zone ─────────────────────────────────────────────────────
-          Resolved from the country in Task 3 and merely STATED. The raw IANA
-          identifier appears only where the country spans several zones and
-          somebody genuinely has to choose — the one case Sprint 9B.19 left to
-          this step. */}
-      <TimezoneSection
-        copy={copy}
-        resolved={resolved}
-        timezone={timezone}
-        editable={editable}
-        onChange={(next) => {
-          setTimezone(next);
-          if (!editable) return;
-          // Sent on its own: the server re-stamps the existing week onto the
-          // new zone, rather than leaving half a schedule on the old one.
-          autosave.save({ timezone: next || null, availability: toIntervals(week) });
-        }}
-      />
-
-      {/* ── Bulk editor ───────────────────────────────────────────────────
-          The thing the sprint exists for. */}
-      <section aria-labelledby="bulk-heading" className="min-w-0">
-        <h2
-          id="bulk-heading"
-          className="break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
-          {copy.bulkLegend}
-        </h2>
-        <p
-          className="mt-1 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-        >
-          {copy.bulkHint}
-        </p>
-
-        <fieldset className="mt-3 min-w-0 border-0 p-0">
-          <legend className="sr-only">{copy.daysLegend}</legend>
-          <div className="flex min-w-0 flex-wrap gap-2" data-testid="day-toggles">
-            {days.map((name, day) => {
-              const on = selectedDays.includes(day);
-              return (
-                <button
-                  key={day}
-                  type="button"
-                  disabled={!editable}
-                  aria-pressed={on}
-                  data-testid={`day-toggle-${day}`}
-                  onClick={() => toggleDay(day)}
-                  className={
-                    on
-                      ? 'rounded-full border border-blue-600 bg-blue-600 px-3 text-white'
-                      : 'rounded-full border border-slate-300 bg-white px-3 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
-                  }
-                  style={{ minHeight: '44px', minWidth: '44px', fontSize: '13px' }}
-                >
-                  {/* The full name is the accessible name; the visible label is
-                      short so seven of them fit at 320px without wrapping into
-                      a second stack. */}
-                  <span aria-hidden="true">{shortDay(name)}</span>
-                  <span className="sr-only">{name}</span>
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
-
-        {/* Presets SELECT days. They apply nothing — see availability-copy.ts. */}
-        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-          <span className="text-slate-500 dark:text-slate-400" style={{ fontSize: '12px' }}>
-            {copy.presetLegend}
-          </span>
-          <PresetButton
-            testId="preset-sun-thu"
-            label={copy.presetSunThu}
-            disabled={!editable}
-            onClick={() => setSelectedDays([...DAY_PRESETS.SUN_THU])}
-          />
-          <PresetButton
-            testId="preset-mon-fri"
-            label={copy.presetMonFri}
-            disabled={!editable}
-            onClick={() => setSelectedDays([...DAY_PRESETS.MON_FRI])}
-          />
-          {selectedDays.length > 0 ? (
-            <PresetButton
-              testId="preset-clear"
-              label={copy.presetClear}
-              disabled={!editable}
-              onClick={() => setSelectedDays([])}
-            />
-          ) : null}
-        </div>
-
-        <div className="mt-3 flex min-w-0 flex-wrap gap-3">
-          <TimeSelect
-            id="bulk-start"
-            label={copy.fromLabel}
-            value={bulkStart}
-            options={startOptions(bulkStart)}
-            disabled={!editable}
-            onChange={(minute) => {
-              setBulkStart(minute);
-              // Keep the pair coherent the moment the start moves, so the end
-              // control never displays a value it no longer offers.
-              if (bulkEnd <= minute) setBulkEnd(endOptions(minute)[0] ?? minute + 15);
-            }}
-          />
-          <TimeSelect
-            id="bulk-end"
-            label={copy.toLabel}
-            value={bulkEnd}
-            options={endOptions(bulkStart, bulkEnd)}
-            disabled={!editable}
-            onChange={setBulkEnd}
-          />
-        </div>
-
-        <button
-          type="button"
-          data-testid="apply-to-selected"
-          disabled={!editable || selectedDays.length === 0 || timezoneMissing}
-          onClick={() =>
-            applyChange(
-              applyToDays(week, selectedDays, { startMinute: bulkStart, endMinute: bulkEnd }),
-            )
-          }
-          className="mt-3 w-full rounded-xl bg-blue-600 px-4 font-semibold text-white disabled:opacity-50"
-          style={{ minHeight: '44px', fontSize: '15px' }}
-        >
-          {copy.applyToSelected(selectedDays.length)}
-        </button>
-        {selectedDays.length === 0 ? (
-          <p
-            className="mt-1 break-words text-slate-500 dark:text-slate-400"
-            style={{ fontSize: '12px' }}
-            data-testid="apply-disabled-hint"
-          >
-            {copy.applyDisabledHint}
-          </p>
-        ) : null}
-        {timezoneMissing ? (
-          <p
-            className="mt-1 break-words text-rose-600"
-            style={{ fontSize: '12px' }}
-            data-testid="timezone-required"
-          >
-            {copy.timezoneRequired}
-          </p>
-        ) : null}
-        {rejected ? (
-          <p
-            className="mt-2 break-words text-rose-600"
-            style={{ fontSize: '12px' }}
-            role="alert"
-            data-testid="availability-rejected"
-          >
-            {rejectionMessage(rejected, copy)}
-          </p>
-        ) : null}
-      </section>
-
-      {/* ── The week ──────────────────────────────────────────────────────
-          Seven compact rows, not seven cards. Every day is present whether or
-          not it has hours: a day that simply vanishes when cleared gives the
-          provider nowhere to tap to bring it back. */}
-      <section aria-labelledby="week-heading" className="min-w-0">
-        <h2
-          id="week-heading"
-          className="break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
-          {copy.summaryLegend}
-        </h2>
-        <p
-          className="mt-1 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-          data-testid="week-totals"
-          role="status"
-          aria-live="polite"
-        >
-          {totals.dayCount === 0
-            ? copy.summaryEmpty
-            : copy.summaryTotals(totals.dayCount, formatHours(totals.totalMinutes))}
-        </p>
-
-        <ul className="mt-2 flex min-w-0 flex-col" data-testid="week-summary">
-          {days.map((name, day) => (
-            <DayRow
-              key={day}
-              day={day}
-              name={name}
-              windows={week[day] ?? []}
-              copy={copy}
-              editable={editable}
-              expanded={expanded === day}
-              onToggleExpanded={() => setExpanded((c) => (c === day ? null : day))}
-              onClear={() => applyChange(clearDay(week, day))}
-              onSetHours={() =>
-                applyChange(
-                  applyToDays(week, [day], { startMinute: bulkStart, endMinute: bulkEnd }),
-                )
-              }
-              onReplace={(index, w) => applyChange(replaceWindow(week, day, index, w))}
-              onRemove={(index) => applyChange(removeWindow(week, day, index))}
-              onAdd={() =>
-                applyChange(addWindow(week, day, { startMinute: bulkStart, endMinute: bulkEnd }))
-              }
-              atCeiling={countWindows(week) >= MAX_INTERVALS_PER_WEEK}
-            />
-          ))}
-        </ul>
-      </section>
-
-      {/* Breathing room under the last row. The shell's footer is a flex
-          sibling rather than an overlay, and this screen raises no keyboard,
-          but a row flush against the bottom edge is still hard to tap on a
-          phone with a home indicator. */}
-      <div
-        aria-hidden="true"
-        data-testid="availability-bottom-spacer"
-        style={{ height: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}
-      />
-    </div>
-  );
-}
-
-// ─── Pieces ─────────────────────────────────────────────────────────────────
-
-/** The same status vocabulary Task 1 uses, for the same reason: a conflict is
- *  a different fact from a failure, and telling the provider "Saved" while the
- *  server holds something else is a lie by omission. */
-
-function PresetButton({
-  label,
-  testId,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  testId: string;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      disabled={disabled}
-      onClick={onClick}
-      className="rounded-full border border-slate-300 bg-white px-3 text-slate-700 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-      style={{ minHeight: '44px', fontSize: '13px' }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function TimeSelect({
-  id,
-  label,
-  value,
-  options,
-  disabled,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: number;
-  options: number[];
-  disabled: boolean;
-  onChange: (minute: number) => void;
-}) {
-  return (
-    <label className="flex min-w-0 flex-1 flex-col gap-1" htmlFor={id}>
-      <span className="text-slate-700 dark:text-slate-200" style={{ fontSize: '13px' }}>
-        {label}
-      </span>
-      {/* A native <select> rather than <input type="time">.
-          The column stores an EXCLUSIVE end, so a window running to midnight
-          is 24:00 — a value a clock input cannot express at all. A select can,
-          it opens the platform's own picker on a phone, it raises no keyboard,
-          and it renders identically under RTL. */}
-      <select
-        id={id}
-        data-testid={id}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-        style={{ minHeight: '44px', fontSize: '15px' }}
-      >
-        {options.map((minute) => (
-          <option key={minute} value={minute}>
-            {formatMinute(minute)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function TimezoneSection({
-  copy,
-  resolved,
-  timezone,
-  editable,
-  onChange,
-}: {
-  copy: AvailabilityCopyShape;
-  resolved: ProviderOnboardingDraftView['data']['resolvedTimezone'];
-  timezone: string;
-  editable: boolean;
-  onChange: (next: string) => void;
-}) {
-  const zones = useMemo(() => supportedTimezones(), []);
-
-  if (!resolved.needsConfirmation && resolved.display) {
-    return (
-      <p
-        className="break-words text-slate-500 dark:text-slate-400"
-        style={{ fontSize: '12px' }}
-        data-testid="timezone-resolved"
-      >
-        {copy.timezoneResolved(resolved.display.city, resolved.display.offset)}
-      </p>
+  /**
+   * Apply the window — or the absence of one — to every selected day.
+   *
+   * RECORDED FOR PHASE 5B: the approved screen has no timezone control, and
+   * `resolvedTimezone.needsConfirmation` is the one case where the server
+   * cannot work the zone out on its own (a country spanning several). The
+   * stored `timezone` is preserved and sent with every write, exactly as
+   * before; what is missing is the surface to CONFIRM one when the server asks
+   * for it. Nothing here guesses a zone.
+   */
+  const applySelected = () => {
+    if (selectedDays.length === 0) return;
+    if (markUnavailable) {
+      // Clear each chosen day. The From/To pair above is untouched, which is
+      // what makes turning a day back on one tap.
+      let next = week;
+      for (const day of selectedDays) next = clearDay(next, day).week;
+      setRejected(null);
+      commit(next);
+      return;
+    }
+    // THE TOGGLES ARE THE SCHEDULE.
+    //
+    // Applying makes the week exactly the selected days, so a day switched off
+    // and applied is a day the provider no longer works — building on the
+    // existing week instead would let them turn Wednesday off, press Apply,
+    // and still be matched on a Wednesday.
+    //
+    // RECORDED FOR PHASE 5B: this also replaces any SECOND window on a
+    // selected day, because the approved screen expresses one window across
+    // the days it is applied to. The contract still stores several per day;
+    // there is simply no surface here to create or keep a second one.
+    applyChange(
+      applyToDays(EMPTY_WEEK, selectedDays, { startMinute: bulkStart, endMinute: bulkEnd }),
     );
-  }
+  };
+
+  /** "09:00" -> 540. Falls back to the current value for a cleared field. */
+  const minutesOf = (value: string, fallback: number): number => {
+    const match = /^(\d{2}):(\d{2})$/.exec(value);
+    if (!match) return fallback;
+    return Number(match[1]) * 60 + Number(match[2]);
+  };
 
   return (
-    <div className="min-w-0">
-      <label
-        className="flex min-w-0 flex-col gap-1"
-        htmlFor="availability-timezone"
-        data-testid="timezone-choose"
-      >
-        <span className="text-slate-700 dark:text-slate-200" style={{ fontSize: '13px' }}>
-          {copy.timezoneChooseLabel}
-        </span>
-        <select
-          id="availability-timezone"
-          data-testid="timezone-select"
-          value={timezone}
-          disabled={!editable}
-          onChange={(event) => onChange(event.target.value)}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-          style={{ minHeight: '44px', fontSize: '15px' }}
-        >
-          <option value="">{copy.timezonePlaceholder}</option>
-          {zones.map((zone) => (
-            <option key={zone} value={zone}>
-              {zone}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p
-        className="mt-1 break-words text-slate-500 dark:text-slate-400"
-        style={{ fontSize: '12px' }}
-      >
-        {copy.timezoneChooseHint}
-      </p>
-    </div>
-  );
-}
-
-function DayRow({
-  day,
-  name,
-  windows,
-  copy,
-  editable,
-  expanded,
-  atCeiling,
-  onToggleExpanded,
-  onClear,
-  onSetHours,
-  onReplace,
-  onRemove,
-  onAdd,
-}: {
-  day: number;
-  name: string;
-  windows: readonly { startMinute: number; endMinute: number }[];
-  copy: AvailabilityCopyShape;
-  editable: boolean;
-  expanded: boolean;
-  atCeiling: boolean;
-  onToggleExpanded: () => void;
-  onClear: () => void;
-  onSetHours: () => void;
-  onReplace: (index: number, w: { startMinute: number; endMinute: number }) => void;
-  onRemove: (index: number) => void;
-  onAdd: () => void;
-}) {
-  const available = windows.length > 0;
-
-  return (
-    <li
-      className="min-w-0 border-b border-slate-100 py-2 last:border-b-0 dark:border-slate-700"
-      data-testid={`day-row-${day}`}
-      data-available={available ? 'true' : 'false'}
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        <span
-          className="w-20 flex-shrink-0 truncate text-slate-900 dark:text-white"
-          style={{ fontSize: '13px', fontWeight: 600 }}
-        >
-          {name}
-        </span>
-
-        <span
-          className={
-            available
-              ? 'min-w-0 flex-1 break-words text-slate-700 dark:text-slate-200'
-              : 'min-w-0 flex-1 break-words text-slate-400'
-          }
-          style={{ fontSize: '13px' }}
-          data-testid={`day-summary-${day}`}
-        >
-          {available
-            ? windows
-                .map((w) =>
-                  copy.windowRange(formatMinute(w.startMinute), formatMinute(w.endMinute)),
-                )
-                .join(', ')
-            : copy.unavailable}
-        </span>
-
-        {available ? (
-          <>
-            <button
-              type="button"
-              disabled={!editable}
-              onClick={onToggleExpanded}
-              data-testid={`day-edit-${day}`}
-              aria-expanded={expanded}
-              aria-label={expanded ? copy.doneEditing : copy.editDay(name)}
-              className="flex-shrink-0 rounded-lg px-2 text-blue-700 disabled:opacity-50 dark:text-blue-300"
-              style={{ minHeight: '44px', minWidth: '44px', fontSize: '13px' }}
-            >
-              {expanded ? copy.doneEditing : copy.editDay(name).split(' ')[0]}
-            </button>
-            <button
-              type="button"
-              disabled={!editable}
-              onClick={onClear}
-              data-testid={`day-clear-${day}`}
-              aria-label={copy.markUnavailable(name)}
-              className="flex-shrink-0 rounded-lg px-2 text-slate-500 disabled:opacity-50"
-              style={{ minHeight: '44px', minWidth: '44px' }}
-            >
-              <X size={16} aria-hidden="true" />
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            disabled={!editable}
-            onClick={onSetHours}
-            data-testid={`day-set-${day}`}
-            aria-label={copy.setHours(name)}
-            className="flex-shrink-0 rounded-lg px-2 text-blue-700 disabled:opacity-50 dark:text-blue-300"
-            style={{ minHeight: '44px', minWidth: '44px', fontSize: '13px' }}
-          >
-            <Plus size={16} aria-hidden="true" />
-          </button>
-        )}
+    <div className="flex flex-col gap-[18px]" data-testid="availability-task">
+      <div>
+        <p className="break-words text-pv-label font-bold leading-[21px] text-pv-accent-hover">
+          {copy.kicker}
+        </p>
+        <h2 className="break-words text-pv-hero font-bold leading-[1.35] text-pv-text">
+          {copy.question}
+        </h2>
       </div>
 
-      {/* Per-day editing, inline and only when asked for. This is what makes
-          "bulk apply, then fix Wednesday" a two-tap operation rather than a
-          reason to abandon the bulk editor. */}
-      {expanded && available ? (
-        <div className="mt-2 flex min-w-0 flex-col gap-2" data-testid={`day-editor-${day}`}>
-          {windows.map((w, index) => (
-            <div key={`${w.startMinute}-${w.endMinute}`} className="flex min-w-0 items-end gap-2">
-              <TimeSelect
-                id={`day-${day}-start-${index}`}
-                label={copy.fromLabel}
-                value={w.startMinute}
-                options={startOptions(w.startMinute)}
-                disabled={!editable}
-                onChange={(minute) =>
-                  onReplace(index, {
-                    startMinute: minute,
-                    endMinute:
-                      w.endMinute > minute ? w.endMinute : (endOptions(minute)[0] ?? minute + 15),
-                  })
-                }
-              />
-              <TimeSelect
-                id={`day-${day}-end-${index}`}
-                label={copy.toLabel}
-                value={w.endMinute}
-                options={endOptions(w.startMinute, w.endMinute)}
-                disabled={!editable}
-                onChange={(minute) =>
-                  onReplace(index, { startMinute: w.startMinute, endMinute: minute })
-                }
-              />
-              <button
-                type="button"
-                disabled={!editable}
-                onClick={() => onRemove(index)}
-                data-testid={`day-${day}-remove-${index}`}
-                aria-label={copy.removeWindow(
-                  name,
-                  copy.windowRange(formatMinute(w.startMinute), formatMinute(w.endMinute)),
-                )}
-                className="flex-shrink-0 rounded-lg px-2 text-slate-500 disabled:opacity-50"
-                style={{ minHeight: '44px', minWidth: '44px' }}
-              >
-                <Trash2 size={16} aria-hidden="true" />
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            disabled={!editable || atCeiling}
-            onClick={onAdd}
-            data-testid={`day-add-${day}`}
-            className="self-start rounded-lg border border-slate-300 px-3 text-slate-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200"
-            style={{ minHeight: '44px', fontSize: '13px' }}
-          >
-            {copy.addWindow}
-          </button>
-        </div>
+      {/* ── The days ────────────────────────────────────────────────────────
+          `.hsm-days`: a 7px-gap wrap of 44x44 toggles. A real `group` with a
+          name, and `aria-pressed` per day, so a screen-reader user hears which
+          days are on without having to infer it from a colour. */}
+      <div
+        role="group"
+        aria-label={copy.daysLegend}
+        className="flex flex-wrap gap-[7px]"
+        data-testid="day-toggles"
+      >
+        {copy.dayAbbrev.map((abbrev, day) => {
+          const on = selectedDays.includes(day);
+          return (
+            <button
+              key={day}
+              type="button"
+              aria-pressed={on}
+              aria-label={days[day]}
+              disabled={!editable}
+              onClick={() => toggleDay(day)}
+              data-testid={`day-toggle-${day}`}
+              // No horizontal padding beyond the 44px floor: `.hsm-day` sets only a
+              // minimum width, so a two-letter label sits in a 44px square rather
+              // than a 50px one. Seven of those is 42px of drift across the row.
+              // `.hsm-day` declares neither a weight nor a line-height, so it takes
+              // the wrapper body (400) and the 21px line box. The base layer would
+              // otherwise give this `button` a 1.5 ratio and a 500 weight.
+              className={`min-h-[44px] min-w-[44px] rounded-pv-control border px-1.5 py-px text-pv-day font-normal leading-normal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent disabled:opacity-60 ${
+                on
+                  ? 'border-pv-accent bg-pv-accent text-white'
+                  : 'border-pv-border-strong bg-pv-surface text-pv-text'
+              }`}
+            >
+              {abbrev}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── The window ──────────────────────────────────────────────────────
+          `.hsm-time-row`: two equal columns. Native `time` inputs, so the
+          platform's own picker and keyboard entry apply and no custom listbox
+          has to re-implement either. */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <ProviderTextInput
+          label={copy.fromLabel}
+          type="time"
+          value={formatMinute(bulkStart)}
+          disabled={!editable}
+          data-testid="bulk-start"
+          onChange={(event) => setBulkStart(minutesOf(event.target.value, bulkStart))}
+        />
+        <ProviderTextInput
+          label={copy.toLabel}
+          type="time"
+          value={formatMinute(bulkEnd)}
+          disabled={!editable}
+          data-testid="bulk-end"
+          onChange={(event) => setBulkEnd(minutesOf(event.target.value, bulkEnd))}
+        />
+      </div>
+
+      <ProviderButton
+        tone="secondary"
+        shape="onboarding"
+        size="block"
+        disabled={!editable || selectedDays.length === 0}
+        onClick={applySelected}
+        data-testid="apply-to-selected"
+      >
+        {copy.applyToSelectedDays}
+      </ProviderButton>
+
+      {/* ── "Unavailable on selected days" ──────────────────────────────────
+          `.hsm-consent`. What the label promises is exactly what this does:
+          applying with it checked CLEARS the chosen days, and the From/To pair
+          above is left alone — so turning a day back on is one tap rather than
+          re-entering the window.
+
+          RECORDED FOR PHASE 5B: the contract has no per-day "enabled" flag
+          (`ProviderAvailabilityInterval` is a day plus two minutes and nothing
+          else), so "disabled" is expressed as "no windows for that day". A
+          provider who had two windows on a Tuesday and disables it does lose
+          the second one. Carrying them across would need a server-side flag,
+          and the backend is not being changed here. */}
+      <label
+        // `font-normal` on the row: the base layer gives every `label` a 500
+        // weight and everything inside inherits it, so the help line rendered
+        // heavier and darker than the reference. Only the `strong` is 500,
+        // which is what the approved design declares.
+        className="flex items-start gap-2.5 rounded-pv-choice border border-pv-border bg-pv-surface p-3.5 text-pv-label font-normal leading-[1.6]"
+        data-testid="mark-unavailable"
+      >
+        <input
+          type="checkbox"
+          // The approved rule overrides only `margin-top` on this input, so the
+          // user agent's own 4px/3px side margins survive in the reference.
+          // Our preflight zeroes them, which pulled the label 7px toward the
+          // checkbox and re-wrapped the sentence beside it.
+          className="ms-1 me-[3px] mt-0.5 h-5 w-5 flex-shrink-0 accent-pv-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
+          checked={markUnavailable}
+          disabled={!editable}
+          onChange={(event) => setMarkUnavailable(event.target.checked)}
+        />
+        <span className="min-w-0">
+          <strong className="font-medium text-pv-text">{copy.unavailableLabel}</strong>
+          <br />
+          <span className="text-pv-help text-pv-muted">{copy.unavailableHint}</span>
+        </span>
+      </label>
+
+      {/* A refusal from the pure model is reported, never swallowed. */}
+      {rejected ? (
+        <p
+          className="break-words text-pv-label text-pv-danger"
+          role="status"
+          aria-live="polite"
+          data-testid="availability-rejected"
+        >
+          {rejectionMessage(rejected, copy)}
+        </p>
       ) : null}
-    </li>
+    </div>
   );
 }
 
@@ -692,41 +347,6 @@ function rejectionMessage(code: RejectionCode, copy: AvailabilityCopyShape): str
   }
 }
 
-/** Whole hours where the week divides evenly, one decimal otherwise. "40" reads
- *  better than "40.0", and "37.5" has to stay exact. */
-function formatHours(totalMinutes: number): string {
-  const hours = totalMinutes / 60;
-  return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
-}
-
-/** First three letters is wrong for Arabic, where the names are short already
- *  and truncating produces nonsense. The full name is always the accessible
- *  name either way. */
-function shortDay(name: string): string {
-  return /^[\x20-\x7E]+$/.test(name) ? name.slice(0, 3) : name;
-}
-
-/**
- * The zone list for the disambiguation case.
- *
- * `Intl.supportedValuesOf` is the runtime's own IANA database, so there is no
- * second list to go stale. Guarded because it is newer than the baseline this
- * app supports; the fallback is the value already stored plus nothing, which
- * still lets a provider keep what they have rather than losing it to an empty
- * dropdown.
- */
-function supportedTimezones(): string[] {
-  try {
-    const withValues = Intl as unknown as { supportedValuesOf?: (key: string) => string[] };
-    if (typeof withValues.supportedValuesOf === 'function') {
-      return withValues.supportedValuesOf('timeZone');
-    }
-  } catch {
-    // Falls through.
-  }
-  return [];
-}
-
 // ─── Container ──────────────────────────────────────────────────────────────
 
 /** Loads the draft and renders Task 4. Mirrors the other V2 task containers. */
@@ -735,12 +355,7 @@ export function AvailabilityTask({ lang }: { lang: Lang }) {
   const copy = AVAILABILITY_COPY[lang];
 
   if (!draft.isFetched) {
-    return (
-      <div className="flex justify-center py-10" role="status" aria-live="polite">
-        <span className="sr-only">{copy.heading}</span>
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
-      </div>
-    );
+    return <ProviderSkeleton label={copy.heading} />;
   }
 
   const view = draft.data;
@@ -756,15 +371,7 @@ export function AvailabilityTask({ lang }: { lang: Lang }) {
     view.data.resolvedTimezone !== undefined;
 
   if (!usable) {
-    return (
-      <p
-        className="break-words text-rose-600"
-        style={{ fontSize: '13px' }}
-        data-testid="availability-load-failed"
-      >
-        {copy.heading}
-      </p>
-    );
+    return <ProviderErrorState title={copy.heading} testId="availability-load-failed" />;
   }
 
   return <AvailabilityTaskScreen view={view} lang={lang} editable={view.editable} />;

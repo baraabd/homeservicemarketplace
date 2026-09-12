@@ -29,16 +29,24 @@ export type Lang = 'en' | 'ar';
 // provider was on, the back button steps between them, and the visual gate can
 // address either half directly instead of having to click its way there.
 //
-// PROGRESS IS NOT HERE
+// PROGRESS IS A POSITION IN THE FLOW, NOT A COUNT OF TASKS
 //
-// The prototype prints a percentage per screen (17, 28, 34, 50, 67, 76, 82,
-// 100). Those are positions in a fixed nine-screen flow. This application
-// takes the number from the SERVER's task counters, which is the existing
-// documented policy for every non-activation screen — see `OnboardingShell`.
-// The two agree exactly where they can (1 of 6 is 17%) and differ by at most
-// 11% mid-task, which is a few hundred pixels of a 4px rule and is recorded as
-// a measured deviation rather than hidden by hard-coding the design's numbers
-// into the client.
+// The 4px rule under the header carries the approved screen's own percentage
+// (17, 28, 34, 50, 67, 76, 82, 100). Those are positions in a fixed
+// nine-screen journey, and three of them — 28, 76, 82 — fall BETWEEN task
+// boundaries because they mark the halfway point of a two-screen task. No
+// count of completed tasks can produce them.
+//
+// This was server-derived at first, from the hub's `complete / total`. The two
+// agree exactly where they can (task 1 of 6 is 17%) and diverge by up to 33%
+// mid-flow, which on the work-area screen was 516 differing pixels — a third
+// of that cell's entire budget spent on a bar that was answering a different
+// question from the one the design asks it.
+//
+// The COUNT is still the server's and is still shown: it is the hub's subtitle
+// ("1 of 6 tasks complete") and the hub's own rule. Nothing here re-derives
+// task completion, readiness or eligibility — this is a step indicator for a
+// journey whose shape the approved design owns.
 
 /** The approved task screens, in the prototype's own order. */
 export const TASK_SCREEN_KEYS = [
@@ -67,6 +75,8 @@ export interface TaskScreenChrome {
 interface TaskScreenRoute {
   /** The server task this screen belongs to. */
   readonly taskId: string;
+  /** The approved screen's position in the nine-screen journey, 0-100. */
+  readonly progress: number;
   /**
    * The draft STEP whose save status this screen reports.
    *
@@ -100,6 +110,7 @@ interface TaskScreenRoute {
 export const TASK_SCREEN_ROUTES: Readonly<Record<TaskScreenKey, TaskScreenRoute>> = Object.freeze({
   basics: {
     taskId: 'BASICS_IDENTITY',
+    progress: 17,
     step: 'IDENTITY',
     hash: null,
     next: '/provider/onboarding/SERVICES_EXPERIENCE',
@@ -107,6 +118,7 @@ export const TASK_SCREEN_ROUTES: Readonly<Record<TaskScreenKey, TaskScreenRoute>
   },
   services: {
     taskId: 'SERVICES_EXPERIENCE',
+    progress: 28,
     step: 'SPECIALTIES',
     hash: null,
     next: '#experience',
@@ -114,6 +126,7 @@ export const TASK_SCREEN_ROUTES: Readonly<Record<TaskScreenKey, TaskScreenRoute>
   },
   experience: {
     taskId: 'SERVICES_EXPERIENCE',
+    progress: 34,
     step: 'EXPERIENCE',
     hash: 'experience',
     next: '/provider/onboarding/WORK_AREA',
@@ -121,6 +134,7 @@ export const TASK_SCREEN_ROUTES: Readonly<Record<TaskScreenKey, TaskScreenRoute>
   },
   area: {
     taskId: 'WORK_AREA',
+    progress: 50,
     step: 'LOCATION',
     hash: null,
     next: '/provider/onboarding/WORKING_HOURS',
@@ -128,6 +142,7 @@ export const TASK_SCREEN_ROUTES: Readonly<Record<TaskScreenKey, TaskScreenRoute>
   },
   hours: {
     taskId: 'WORKING_HOURS',
+    progress: 67,
     step: 'AVAILABILITY',
     hash: null,
     next: '/provider/onboarding/PORTFOLIO',
@@ -135,6 +150,7 @@ export const TASK_SCREEN_ROUTES: Readonly<Record<TaskScreenKey, TaskScreenRoute>
   },
   profile: {
     taskId: 'PORTFOLIO',
+    progress: 76,
     step: 'PROFILE',
     hash: null,
     next: '#portfolio',
@@ -142,6 +158,7 @@ export const TASK_SCREEN_ROUTES: Readonly<Record<TaskScreenKey, TaskScreenRoute>
   },
   portfolio: {
     taskId: 'PORTFOLIO',
+    progress: 82,
     step: 'PROFILE',
     hash: 'portfolio',
     // The approved screen's action is "Save and return to tasks": the portfolio
@@ -152,6 +169,7 @@ export const TASK_SCREEN_ROUTES: Readonly<Record<TaskScreenKey, TaskScreenRoute>
   },
   review: {
     taskId: 'REVIEW_SUBMISSION',
+    progress: 100,
     step: 'REVIEW',
     hash: null,
     next: '#terms',
@@ -159,6 +177,7 @@ export const TASK_SCREEN_ROUTES: Readonly<Record<TaskScreenKey, TaskScreenRoute>
   },
   terms: {
     taskId: 'REVIEW_SUBMISSION',
+    progress: 100,
     step: 'CONSENT',
     hash: 'terms',
     // Submission is a server command, not a navigation. The review screen owns

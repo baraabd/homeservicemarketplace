@@ -15,6 +15,18 @@ export type Lang = 'en' | 'ar';
 
 export interface AvailabilityCopy {
   heading: string;
+
+  // ── Sprint 09B.29 Phase 5A — the approved working-hours screen ─────────
+  kicker: string;
+  question: string;
+  /** Day initials, in the approved screen's own abbreviations. Moved here from
+   *  the legacy wizard copy, which the V2 tree must not import. */
+  dayAbbrev: readonly string[];
+  /** The approved button carries no count. */
+  applyToSelectedDays: string;
+  /** The approved consent row. */
+  unavailableLabel: string;
+  unavailableHint: string;
   intro: string;
 
   // Time zone
@@ -70,6 +82,12 @@ export interface AvailabilityCopy {
 
 export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
   en: {
+    kicker: 'Select several days at once',
+    question: 'When can you take requests?',
+    dayAbbrev: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
+    applyToSelectedDays: 'Apply to selected days',
+    unavailableLabel: 'Unavailable on selected days',
+    unavailableHint: 'Disables days without deleting saved time ranges.',
     heading: 'Working hours',
     intro: 'Tell us when you can take jobs. You can change this any time.',
 
@@ -123,6 +141,12 @@ export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
     offline: 'Offline — your changes are waiting.',
   },
   ar: {
+    kicker: 'حدد عدة أيام معاً',
+    question: 'متى تستقبل الطلبات؟',
+    dayAbbrev: ['ح', 'ن', 'ث', 'ر', 'خ', 'ج', 'س'],
+    applyToSelectedDays: 'تطبيق على الأيام المحددة',
+    unavailableLabel: 'غير متاح في أيام محددة',
+    unavailableHint: 'يعطّل الأيام من دون حذف الفترات المحفوظة.',
     heading: 'ساعات العمل',
     intro: 'أخبرنا متى يمكنك قبول الأعمال. يمكنك تغيير ذلك في أي وقت.',
 
@@ -174,4 +198,14 @@ export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
     saveConflict: 'تغيّرت ساعاتك في مكان آخر. أعد التحميل لعرض الجدول الحالي.',
     offline: 'غير متصل — تغييراتك في الانتظار.',
   },
+};
+
+/**
+ * Full day names, for the accessible name on the approved screen's two-letter
+ * toggles. Moved into V2 copy because the tree must not import the legacy
+ * wizard copy — the conformance gate refuses that import by name.
+ */
+export const DAY_NAMES: Record<Lang, readonly string[]> = {
+  en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+  ar: ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'],
 };
