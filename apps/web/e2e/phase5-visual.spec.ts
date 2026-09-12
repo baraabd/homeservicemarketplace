@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -13,6 +11,7 @@ import {
 } from './phase5-evidence-ledger';
 import { PHASE5_STATES, type Phase5State } from './phase5-visual-states';
 import { assertFontsReady, freezeMotion } from './prototype-assets';
+import { phase5RunId } from './phase5-run-id';
 
 // Sprint 09B.29 Phase 5A — the eighteen approved states, measured.
 //
@@ -39,8 +38,14 @@ import { assertFontsReady, freezeMotion } from './prototype-assets';
 //
 // Run:  E2E_PHASE5=1 E2E_PREBUILT=1 pnpm exec playwright test phase5-visual --project=chromium-desktop
 
-/** One id for the whole run. The ledger refuses a screen whose cells mix runs. */
-const RUN_ID = process.env.PHASE5_RUN_ID ?? `phase5-${randomUUID()}`;
+/**
+ * One id for the whole run, assigned in global setup.
+ *
+ * NOT generated here: this module is evaluated once per WORKER, and Playwright
+ * recycles workers, so a local constant produced several ids in one run and the
+ * ledger correctly refused the mixed evidence. See phase5-run-id.ts.
+ */
+const RUN_ID = phase5RunId();
 
 /**
  * Settle the application before the shutter opens.

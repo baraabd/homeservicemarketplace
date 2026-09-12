@@ -81,6 +81,9 @@ export const VIEWPORTS = {
 
 export default defineConfig({
   testDir: './e2e',
+  // Stamps one Phase 5 run id in the parent process, before any worker is
+  // forked. Harmless for every other run.
+  globalSetup: './e2e/phase5-run-id.ts',
   // The two real-API suites are excluded from the default run. They need a
   // booted API, Postgres, Redis and a mail catcher, none of which the
   // stub-everything browser job has — and a spec that silently skips is worse
