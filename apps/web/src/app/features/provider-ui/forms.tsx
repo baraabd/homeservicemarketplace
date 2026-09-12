@@ -165,7 +165,12 @@ export function ProviderTextArea({
           id={id}
           aria-describedby={describedBy}
           aria-invalid={invalid || undefined}
-          className={`${CONTROL} min-h-[120px] resize-y ${invalid ? 'border-pv-danger' : 'border-pv-border-strong'} ${className}`}
+          className={
+            // `.hsm-field textarea`: 104px and no resize handle. The handle itself is
+            // drawn in the corner of the control, so it is not only a behaviour
+            // difference — it is 100-odd pixels of one.
+            `${CONTROL} min-h-[104px] resize-none ${invalid ? 'border-pv-danger' : 'border-pv-border-strong'} ${className}`
+          }
           {...rest}
         />
       )}

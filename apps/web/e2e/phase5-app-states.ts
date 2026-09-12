@@ -148,7 +148,7 @@ const DRAFT_DATA = {
   phoneNumber: '0936706600',
   phoneVerified: false,
 
-  serviceAreaCity: 'Aleppo, Al-Furqan',
+  serviceAreaCity: 'Aleppo, Al-Furqan', // replaced per locale — see localised()
   serviceAreaCountry: 'Syria',
   serviceAreaCountryCode: 'SY',
   serviceAreaLat: null,
@@ -237,6 +237,29 @@ const DRAFT_DATA = {
   acceptedConsentVersion: null,
   consentAcceptedAt: null,
 };
+
+/**
+ * The free text the PROVIDER wrote, in the language they wrote it in.
+ *
+ * The approved reference is captured twice, and its Arabic screens show an
+ * Arabic provider: an Arabic bio, an Arabic city. That is not a translation of
+ * the English capture — the draft carries ONE bio, because a provider writes
+ * one — it is a different provider's data, which is what the reference depicts.
+ *
+ * Supplying English prose to the Arabic cell compared the right screen against
+ * the wrong content: it happened to stay under the ratio on the shorter
+ * screens, which is a false pass waiting to become a real one.
+ */
+const LOCALISED = {
+  en: {
+    serviceAreaCity: 'Aleppo, Al-Furqan',
+    bio: 'Painting professional with 14 years of experience. I arrive on time and keep the work area clean.',
+  },
+  ar: {
+    serviceAreaCity: 'حلب، الفرقان',
+    bio: 'فني دهانات بخبرة 14 عاماً. ألتزم بالمواعيد وأحافظ على نظافة المكان أثناء العمل.',
+  },
+} as const;
 
 const draft = (over: Record<string, unknown> = {}) => ({
   state: 'DRAFT',
@@ -450,6 +473,10 @@ export async function installPrecondition(
 ): Promise<void> {
   const fixture = PRECONDITIONS[state.precondition];
   const hubBody = hubForState(fixture, state);
+  const draftBody = {
+    ...fixture.draft,
+    data: { ...(fixture.draft.data as Record<string, unknown>), ...LOCALISED[locale] },
+  };
 
   /**
    * Has the upgrade been requested yet?
@@ -506,7 +533,7 @@ export async function installPrecondition(
       if (fixture.unauthorized) {
         return json(route, { success: false, error: { code: 'AUTH_TOKEN_EXPIRED' } }, 401);
       }
-      return json(route, fixture.draft);
+      return json(route, draftBody);
     }
 
     if (url.includes('/me/provider/upgrade')) {
@@ -528,6 +555,27 @@ export async function installPrecondition(
     }
 
     if (url.includes('/notifications/unread-count')) return json(route, { count: 0 });
+
+    // Three photos, uploaded and still in moderation — which is exactly the
+    // state the approved portfolio screen depicts, and the reason its tiles
+    // show a placeholder rather than the photographs: review "controls when
+    // photos become visible".
+    if (url.includes('/me/provider/portfolio')) {
+      return json(route, {
+        items: [0, 1, 2].map((position) => ({
+          id: `pf-${position}`,
+          media: { url: null, width: null, height: null },
+          title: null,
+          description: null,
+          serviceCategoryId: null,
+          position,
+          moderationState: 'PENDING',
+          moderationReason: null,
+          createdAt: '2026-09-01T12:40:00.000Z',
+        })),
+        remainingSlots: 7,
+      });
+    }
 
     // The PUBLIC service catalogue. The approved services screen lists four
     // painting leaves under one group, and those are the strings the reference

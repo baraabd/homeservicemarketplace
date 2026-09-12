@@ -61,9 +61,17 @@ interface HubTaskRowProps {
   task: ProviderOnboardingHubTask;
   lang: Lang;
   onOpen: (taskId: string) => void;
+  /**
+   * What a FINISHED row reports instead of its guidance.
+   *
+   * Null on the partial hub, and null for any task whose data has not
+   * arrived — a half-built summary would be worse than the sentence it
+   * replaces. See hub-task-summary.ts.
+   */
+  summary?: string | null;
 }
 
-export function HubTaskRow({ task, lang, onOpen }: HubTaskRowProps) {
+export function HubTaskRow({ task, lang, onOpen, summary = null }: HubTaskRowProps) {
   const copy = taskCopy(task, lang);
   const actionable = isTaskActionable(task.status);
   const explanation = statusExplanation(task.status, lang);
@@ -128,7 +136,7 @@ export function HubTaskRow({ task, lang, onOpen }: HubTaskRowProps) {
             shapes were rendering the same sentence at two different weights,
             and the open one was heavier than the reference. */}
         <span className="mt-0.5 block break-words text-pv-caption font-normal leading-4 text-pv-muted">
-          {copy.description}
+          {summary ?? copy.description}
         </span>
         {explanation ? (
           <span className="sr-only" data-testid={`task-explanation-${task.id}`}>

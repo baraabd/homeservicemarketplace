@@ -217,9 +217,11 @@ const TASKS = [
     id: 'PORTFOLIO',
     step: 'PROFILE',
     edit: async () => {
-      const title = await screen.findByTestId('title-input');
-      fireEvent.change(title, { target: { value: 'Master electrician' } });
-      fireEvent.blur(title);
+      // SUPERSEDED: the title input. It is server-owned under ruling C1 and the
+      // approved profile screen shows it rather than editing it, so the bio is
+      // the field with half-typed state to protect here.
+      const bio = await screen.findByTestId('bio-input');
+      fireEvent.change(bio, { target: { value: 'A long enough bio to be worth protecting.' } });
     },
   },
   {

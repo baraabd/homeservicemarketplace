@@ -170,23 +170,29 @@ export function OnboardingTaskScreen() {
   // form, which is why each task body no longer carries its own copy — the
   // provider looks in one place for "is my work safe", and it is the place
   // their thumb already is.
-  const secondaryLabel = chrome?.secondary ?? local.back;
+  // `null` is a real answer, not a missing one: the approved portfolio screen
+  // draws ONE full-width action, because saving and returning to the hub is
+  // the same move and a second button beside it would offer the same
+  // destination twice.
+  const secondaryLabel = chrome ? chrome.secondary : local.back;
   const footer = (
     <div className="grid gap-[7px]">
       <ProviderStickyActionRow
         secondary={
-          <ProviderButton
-            tone="secondary"
-            shape="onboarding"
-            size="block"
-            onClick={backToHub}
-            disabled={exit.isLeaving}
-            data-testid="task-back-to-tasks"
-          >
-            {/* The label is the honest one while the flush runs: the button did
+          secondaryLabel === null ? null : (
+            <ProviderButton
+              tone="secondary"
+              shape="onboarding"
+              size="block"
+              onClick={backToHub}
+              disabled={exit.isLeaving}
+              data-testid="task-back-to-tasks"
+            >
+              {/* The label is the honest one while the flush runs: the button did
                 not fail to respond, it is finishing the provider's last edit. */}
-            {exit.isLeaving ? exitCopy.leaving : secondaryLabel}
-          </ProviderButton>
+              {exit.isLeaving ? exitCopy.leaving : secondaryLabel}
+            </ProviderButton>
+          )
         }
         primary={
           // Drawn only when the chrome genuinely owns it. On the consent screen
@@ -283,7 +289,10 @@ export function OnboardingTaskScreen() {
         ) : actionable && task.id === 'WORKING_HOURS' ? (
           <AvailabilityTask lang={lang} />
         ) : actionable && task.id === 'PORTFOLIO' ? (
-          <PublicProfileTask lang={lang} />
+          <PublicProfileTask
+            lang={lang}
+            part={screenKey === 'portfolio' ? 'portfolio' : 'profile'}
+          />
         ) : actionable && task.id === 'REVIEW_SUBMISSION' ? (
           <ReviewTask lang={lang} />
         ) : actionable ? (

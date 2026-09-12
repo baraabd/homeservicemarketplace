@@ -12,6 +12,9 @@ import { ProviderButton, ProviderNotice, ProviderSkeleton } from '../../provider
 import { useLang } from '../../../i18n/LanguageContext';
 import { useProviderOnboardingHub } from '../../../hooks/provider/useProviderOnboardingHub';
 import { deriveHubView, nextActionTaskId } from '../hub-view-state';
+import { hubTaskSummary } from '../hub-task-summary';
+import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
+import { useProviderPortfolio } from '../../../hooks/provider/useProviderPortfolio';
 import {
   HUB_COMPLETE_NOTICE,
   HUB_LEAD,
@@ -83,6 +86,12 @@ export function OnboardingHubScreen() {
     void query.refetch();
   }, [query]);
   const recovery = useStaleRoleRecovery(view.state === 'FORBIDDEN', refetchHub);
+
+  // The two resources a FINISHED row reports from. Both are existing hooks on
+  // existing endpoints, and both are shared query keys — the task screens read
+  // the same draft, so this adds no second notion of "current".
+  const draft = useOnboardingDraft();
+  const gallery = useProviderPortfolio();
 
   const data = query.data;
   const screen = SCREEN_COPY[lang][view.state];
@@ -284,7 +293,26 @@ export function OnboardingHubScreen() {
                 {groupLabel(section, lang)}
               </h2>
               {sectionTasks.map((task) => (
-                <HubTaskRow key={task.id} task={task} lang={lang} onOpen={openTask} />
+                <HubTaskRow
+                  key={task.id}
+                  task={task}
+                  lang={lang}
+                  onOpen={openTask}
+                  // Only the COMPLETE hub replaces guidance with the answer.
+                  // While there is work left, a row still has to say what the
+                  // task will ask for.
+                  summary={
+                    allDone
+                      ? hubTaskSummary(
+                          task.id,
+                          task.status,
+                          draft.data,
+                          gallery.data?.items?.length ?? null,
+                          lang,
+                        )
+                      : null
+                  }
+                />
               ))}
             </section>
           ))}

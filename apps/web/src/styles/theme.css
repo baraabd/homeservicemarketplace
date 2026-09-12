@@ -92,6 +92,14 @@
     #f8fafc 66%
   );
 
+  /* A portfolio tile whose photo is not visible yet. The approved screen
+   * draws a soft gradient with a trade glyph, which is what a photo still in
+   * moderation looks like: uploaded, acknowledged, not yet published. */
+  --pv-photo: linear-gradient(145deg, #dbeafe, #c4b5fd);
+  --pv-photo-fg: #1e3a8a;
+  --pv-photo-label: rgb(255 255 255 / 0.9);
+  --pv-photo-label-fg: #334155;
+
   --pv-focus: #2563eb;
   --pv-shadow-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.08);
   --pv-shadow-2: 0 -2px 12px rgb(15 23 42 / 0.08);
@@ -215,6 +223,11 @@
     #0f172a 66%
   );
 
+  --pv-photo: linear-gradient(145deg, #1e3a5f, #3b2f63);
+  --pv-photo-fg: #dbeafe;
+  --pv-photo-label: rgb(15 23 42 / 0.9);
+  --pv-photo-label-fg: #cbd5e1;
+
   --pv-focus: #60a5fa;
   --pv-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
   --pv-shadow-2: 0 -2px 12px rgb(0 0 0 / 0.5);
@@ -322,6 +335,8 @@
    * arbitrary `text-[13.3333px]` in a task screen, and rightly: a number that
    * answers to nothing is an inline style with extra steps. */
   --text-pv-day: 13.3333px;
+  /* The cover-photo caption on a portfolio tile. */
+  --text-pv-photo-caption: 9px;
 
   /* ── Provider radii ─────────────────────────────────────────────────────
    *
@@ -344,6 +359,8 @@
   --color-pv-hero-to: var(--pv-hero-to);
   --color-pv-hero-fg: var(--pv-hero-fg);
   --color-pv-hero-fg-muted: var(--pv-hero-fg-muted);
+  --color-pv-photo-label: var(--pv-photo-label);
+  --color-pv-photo-label-fg: var(--pv-photo-label-fg);
 
   /* Language toggle (shared chrome, not provider-scoped). */
   --color-lang-toggle-active: var(--lang-toggle-active);
@@ -356,6 +373,11 @@
    * style repeated per screen. */
   .pv-map-surface {
     background: var(--pv-map);
+  }
+
+  .pv-photo-surface {
+    background: var(--pv-photo);
+    color: var(--pv-photo-fg);
   }
 }
 

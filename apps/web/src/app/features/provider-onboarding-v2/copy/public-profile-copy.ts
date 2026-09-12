@@ -28,6 +28,27 @@ export interface PublicProfileCopy {
   // Bio
   bioLegend: string;
   bioHint: string;
+
+  // ── Sprint 09B.29 Phase 5A — the approved public-profile screens ───────
+  /** The bio field, as the approved screen labels it. */
+  bioApprovedLabel: string;
+  bioApprovedHint: string;
+  /** The panel that shows what a customer will read. */
+  previewTitle: string;
+  /** "Aleppo • 15 km radius • 14 years experience" — composed from the draft. */
+  previewLine: (city: string, km: number, years: number) => string;
+  /** The approved portfolio screen. */
+  uploadPrompt: string;
+  uploadHint: string;
+  coverPhoto: string;
+  photosCheckingTitle: string;
+  photosCheckingBody: string;
+  /** The publication-rights gate, which appears once a file is waiting. */
+  cancel: string;
+  agreeAndUpload: string;
+  addPhoto: string;
+  choosePhotoFile: string;
+  uploadFailed: string;
   bioLabel: string;
   bioPlaceholder: string;
   bioExamplesLabel: string;
@@ -63,6 +84,22 @@ export interface PublicProfileCopy {
 
 export const PUBLIC_PROFILE_COPY: Record<Lang, PublicProfileCopy> = {
   en: {
+    bioApprovedLabel: 'Tell customers about your experience',
+    bioApprovedHint: 'Use clear language and avoid phone numbers or private addresses.',
+    previewTitle: 'Customer preview',
+    previewLine: (city, km, years) => `${city} • ${km} km radius • ${years} years experience`,
+    uploadPrompt: 'Take a photo or choose from gallery',
+    uploadHint: 'Crop and reorder before saving.',
+    coverPhoto: 'Cover photo',
+    photosCheckingTitle: 'Photos are being checked',
+    photosCheckingBody:
+      'Photos uploaded successfully. Review does not block application completion, but controls when photos become visible.',
+    cancel: 'Cancel',
+    agreeAndUpload: 'Agree and upload',
+    addPhoto: 'Add photo',
+    choosePhotoFile: 'Choose a photo file',
+    uploadFailed: 'We could not upload that photo. Please try again.',
+
     heading: 'Your public profile',
     intro: 'This is what customers will see. Your contact details are never shown.',
 
@@ -124,6 +161,22 @@ export const PUBLIC_PROFILE_COPY: Record<Lang, PublicProfileCopy> = {
     offline: 'Offline — your changes are waiting.',
   },
   ar: {
+    bioApprovedLabel: 'عرّف العملاء بخبرتك',
+    bioApprovedHint: 'اكتب بلغة واضحة وتجنب أرقام الهاتف والعناوين الخاصة.',
+    previewTitle: 'معاينة ما يراه العميل',
+    previewLine: (city, km, years) => `${city} • نطاق ${km} كم • خبرة ${years} عاماً`,
+    uploadPrompt: 'التقط صورة أو اختر من المعرض',
+    uploadHint: 'يمكنك القص وإعادة الترتيب قبل الحفظ.',
+    coverPhoto: 'الصورة الرئيسية',
+    photosCheckingTitle: 'الصور قيد الفحص',
+    photosCheckingBody:
+      'تم رفع الصور بنجاح. الفحص لا يمنع إكمال طلبك، لكنه يحدد متى تظهر الصور للعملاء.',
+    cancel: 'إلغاء',
+    agreeAndUpload: 'أوافق وارفع',
+    addPhoto: 'إضافة صورة',
+    choosePhotoFile: 'اختر ملف صورة',
+    uploadFailed: 'تعذّر رفع هذه الصورة. يرجى المحاولة مرة أخرى.',
+
     heading: 'ملفك العام',
     intro: 'هذا ما سيراه العملاء. لا تُعرض بيانات التواصل الخاصة بك أبداً.',
 
