@@ -113,7 +113,11 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
-function renderAt(taskId: string) {
+// Sprint 09B.29 Phase 5A — the review task is THREE approved screens, and
+// the submit lives on the second of them (`#terms`). The invariant under test
+// is unchanged and so is the protection: reaching either half is a router
+// navigation through `useOnboardingExit`, which flushes first.
+function renderAt(taskId: string, hash = '') {
   window.localStorage.setItem('hsm.lang', 'en');
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(providerQueryKeys.onboarding.draft(), DRAFT(3));
@@ -133,7 +137,7 @@ function renderAt(taskId: string) {
       },
       { path: '*', element: <LocationProbe /> },
     ],
-    { initialEntries: [`/provider/onboarding/${taskId}`] },
+    { initialEntries: [`/provider/onboarding/${taskId}${hash}`] },
   );
   render(
     <QueryClientProvider client={client}>
@@ -176,7 +180,7 @@ describe('Phase 4 — submission cannot overtake an outstanding autosave', () =>
     });
     expect(mock.history.patch).toHaveLength(0);
 
-    router.navigate('/provider/onboarding/REVIEW_SUBMISSION');
+    router.navigate('/provider/onboarding/REVIEW_SUBMISSION#terms');
 
     // The write is issued...
     await waitFor(() => expect(mock.history.patch).toHaveLength(1));
@@ -204,7 +208,7 @@ describe('Phase 4 — submission cannot overtake an outstanding autosave', () =>
     fireEvent.change(screen.getByTestId('field-displayName'), {
       target: { value: 'Patricia' },
     });
-    router.navigate('/provider/onboarding/REVIEW_SUBMISSION');
+    router.navigate('/provider/onboarding/REVIEW_SUBMISSION#terms');
 
     await waitFor(() => expect(mock.history.patch).toHaveLength(1));
     await waitFor(() => expect(screen.getByTestId('review-submit')).toBeEnabled());
@@ -225,7 +229,7 @@ describe('Phase 4 — submission cannot overtake an outstanding autosave', () =>
   });
 
   it('submitting twice files one application, not two', async () => {
-    renderAt('REVIEW_SUBMISSION');
+    renderAt('REVIEW_SUBMISSION', '#terms');
     await waitFor(() => expect(screen.getByTestId('review-submit')).toBeEnabled());
 
     const button = screen.getByTestId('review-submit');

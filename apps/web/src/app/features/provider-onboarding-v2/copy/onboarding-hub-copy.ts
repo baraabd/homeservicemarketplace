@@ -88,6 +88,21 @@ const TASK_COPY: Record<Lang, Record<string, TaskCopy>> = {
   },
 };
 
+/**
+ * Task titles alone, by id, for the surfaces that name a task without holding
+ * one.
+ *
+ * The review screen's summary rows are titled by TASK — "Work area", "Working
+ * hours" — but they are composed from the DRAFT, so there is no hub task object
+ * to pass to `taskCopy`. Deriving them from the same table is what keeps the row
+ * on the review screen and the row on the hub calling the same thing by the same
+ * name.
+ */
+export const TASK_TITLES: Record<Lang, Record<string, string>> = {
+  en: Object.fromEntries(Object.entries(TASK_COPY.en).map(([id, c]) => [id, c.title])),
+  ar: Object.fromEntries(Object.entries(TASK_COPY.ar).map(([id, c]) => [id, c.title])),
+};
+
 /** Client prose for a task, falling back to whatever the server sent. */
 export function taskCopy(task: ProviderOnboardingHubTask, lang: Lang): TaskCopy {
   const known = TASK_COPY[lang][task.id];

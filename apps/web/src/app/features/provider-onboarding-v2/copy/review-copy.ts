@@ -53,6 +53,53 @@ export interface ReviewCopy {
   blocker: Record<string, string>;
   blockerFallback: string;
 
+  // ── Sprint 09B.29 Phase 5A — the three approved screens ───────────────────
+  //
+  // The group headings, the blocker sentences and the step labels above are all
+  // still live: they are what a BLOCKED application renders, which the approved
+  // reference — a ready one — does not depict. What follows is the depicted
+  // wording, and it replaces the old screen's own intro, terms block and
+  // submitted banner.
+
+  /** Screen 11: the sentence under the header. */
+  approvedLead: string;
+  /** The accessible name of a summary row's pencil. The row title is appended. */
+  editRow: string;
+  /** The badge on a row whose decision is with the platform. */
+  rowInReview: string;
+
+  /** Screen 12: the alert above the consent. */
+  readyTitle: string;
+  readyBody: string;
+  /** The consent sentence itself. */
+  consentLabel: string;
+  /** Which document it is — the SERVER's version, never a client constant. */
+  consentVersion: (version: string) => string;
+  afterSubmitTitle: string;
+  afterSubmitBody: string;
+
+  /** Screen 13: the confirmation. */
+  sentHeading: string;
+  sentLead: string;
+  /** The three timeline steps, in order. */
+  stepSubmitted: string;
+  stepUnderReview: string;
+  stepUnderReviewNow: string;
+  stepActivation: string;
+  /**
+   * What the last step means, for a screen reader.
+   *
+   * ADR 0005 keeps application completion and work access on separate axes, and
+   * the approved screen says so VISUALLY — the activation step is drawn as a
+   * hollow dot the timeline has not reached. That is legible to somebody looking
+   * at it and invisible to somebody listening, so the promise the old banner
+   * carried in prose is kept here as this step's description. It adds no pixels
+   * and loses no meaning.
+   */
+  stepActivationDetail: string;
+  /** "Today • 12:43" — around the submission time the SERVER recorded. */
+  submittedAt: (time: string) => string;
+
   loadFailed: string;
   retry: string;
   conflict: string;
@@ -144,6 +191,30 @@ const EN: ReviewCopy = {
   },
   blockerFallback: 'Something here still needs attention.',
 
+  approvedLead:
+    'Check your information. Specialty and photo moderation are separate and do not block submission.',
+  editRow: 'Edit',
+  rowInReview: 'In review',
+
+  readyTitle: 'Your application is ready',
+  readyBody: 'Nothing is missing. The platform will review services and photos after submission.',
+  consentLabel: 'I have read and accept the provider terms',
+  consentVersion: (version) => `Version ${version}`,
+  afterSubmitTitle: 'After submission',
+  afterSubmitBody:
+    'You cannot edit during review unless you withdraw it. We will notify you when the status changes.',
+
+  sentHeading: 'Your application is on its way',
+  sentLead:
+    'Expect a response within 24 business hours. You will receive an in-app notification when the review changes.',
+  stepSubmitted: 'Submitted',
+  stepUnderReview: 'Under review',
+  stepUnderReviewNow: 'Current step',
+  stepActivation: 'Account activation',
+  stepActivationDetail:
+    'Not reached yet. Submitting does not give you access to work — we will tell you when your account is activated.',
+  submittedAt: (time) => `Today • ${time}`,
+
   loadFailed: 'We could not load your application. Please try again.',
   retry: 'Try again',
   conflict:
@@ -219,6 +290,28 @@ const AR: ReviewCopy = {
     'yearsOfExperience:OUT_OF_RANGE': 'راجع عدد السنوات الذي أدخلته.',
   },
   blockerFallback: 'ما زال هناك ما يحتاج انتباهك.',
+
+  approvedLead: 'تأكد من المعلومات. حالة مراجعة التخصصات والصور مستقلة ولا تمنع الإرسال.',
+  editRow: 'تعديل',
+  rowInReview: 'قيد المراجعة',
+
+  readyTitle: 'طلبك جاهز',
+  readyBody: 'لا توجد بيانات ناقصة. ستراجع المنصة الخدمات والصور بعد الإرسال.',
+  consentLabel: 'قرأت شروط مقدمي الخدمة وأوافق عليها',
+  consentVersion: (version) => `الإصدار ${version}`,
+  afterSubmitTitle: 'بعد الإرسال',
+  afterSubmitBody:
+    'لن تتمكن من تعديل الطلب أثناء المراجعة إلا بسحبه. سنرسل إشعاراً عند تغير الحالة.',
+
+  sentHeading: 'وصل طلبك بنجاح',
+  sentLead: 'نتوقع الرد خلال 24 ساعة عمل. ستصلك نتيجة المراجعة عبر إشعار داخل التطبيق.',
+  stepSubmitted: 'تم الإرسال',
+  stepUnderReview: 'قيد المراجعة',
+  stepUnderReviewNow: 'الخطوة الحالية',
+  stepActivation: 'تفعيل الحساب',
+  stepActivationDetail:
+    'لم نصل إليها بعد. الإرسال لا يمنحك ذلك الوصول إلى العمل — سنخبرك عند تفعيل حسابك.',
+  submittedAt: (time) => `اليوم • ${time}`,
 
   loadFailed: 'تعذّر تحميل طلبك. حاول مرة أخرى.',
   retry: 'حاول مرة أخرى',

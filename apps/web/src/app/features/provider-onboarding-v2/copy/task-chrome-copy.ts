@@ -1,4 +1,7 @@
-import type { ProviderOnboardingStep } from '@homeservicemarketplace/contracts';
+import type {
+  ProviderOnboardingLifecycleState,
+  ProviderOnboardingStep,
+} from '@homeservicemarketplace/contracts';
 
 export type Lang = 'en' | 'ar';
 
@@ -59,13 +62,21 @@ export const TASK_SCREEN_KEYS = [
   'portfolio',
   'review',
   'terms',
+  // LAST on purpose. `taskScreenKeyFor` scans this list in order and both this
+  // screen and `review` answer to `REVIEW_SUBMISSION` with no fragment, so the
+  // one a URL can reach has to be found first. This one is selected by the
+  // application's LIFECYCLE, never by an address — a provider must not be able
+  // to type their way back to a confirmation they have not earned, nor away
+  // from one they have.
+  'submitted',
 ] as const;
 
 export type TaskScreenKey = (typeof TASK_SCREEN_KEYS)[number];
 
 export interface TaskScreenChrome {
   readonly title: string;
-  readonly subtitle: string;
+  /** `null` on the one approved screen the reference draws without one. */
+  readonly subtitle: string | null;
   /** The one dominant action. Every approved screen has exactly one. */
   readonly primary: string;
   /** The quiet way out. `null` on the screens the reference draws without one. */
@@ -98,6 +109,25 @@ interface TaskScreenRoute {
   readonly next: string | null;
   /** Which Provider UI test id the primary action carries, per the registry. */
   readonly primaryTestId: string;
+  /**
+   * Where the quiet action goes, when it is not the hub.
+   *
+   * The reference's secondary is `data-go="back"` everywhere, which on eight of
+   * the nine screens means the hub — and on the consent screen means the
+   * REVIEW half it was reached from. Sending a provider who tapped "Back" out
+   * of the task entirely, one tap before submitting, would lose them the
+   * screen they were checking against.
+   */
+  readonly backTo?: string;
+  /**
+   * Does the approved screen carry the save line under its actions?
+   *
+   * The reference's `hsmSticky` always draws it, but two screens do not use
+   * that helper: the confirmation writes its sticky out longhand with a single
+   * button and no save state, because a submitted application has nothing left
+   * to save and a "Changes saved" line under it would be false.
+   */
+  readonly autosaveLine?: boolean;
 }
 
 /**
@@ -180,10 +210,25 @@ export const TASK_SCREEN_ROUTES: Readonly<Record<TaskScreenKey, TaskScreenRoute>
     progress: 100,
     step: 'CONSENT',
     hash: 'terms',
-    // Submission is a server command, not a navigation. The review screen owns
-    // it; this records that the chrome's primary is that command.
+    // Submission is a server COMMAND, not a navigation, and it has
+    // preconditions the chrome cannot see — the server's `canSubmit`, the
+    // consent version, a readiness refetch that runs first. So this screen's
+    // primary is published UP by the body that owns those, and `next: null`
+    // records that there is no destination for the chrome to navigate to.
     next: null,
     primaryTestId: 'review-submit',
+    backTo: '/provider/onboarding/REVIEW_SUBMISSION',
+  },
+  submitted: {
+    taskId: 'REVIEW_SUBMISSION',
+    progress: 100,
+    step: 'REVIEW',
+    hash: null,
+    // Out of onboarding altogether: the application is in, and the status
+    // centre is where its four axes are answered from now on.
+    next: '/provider/status',
+    primaryTestId: 'submitted-view-status',
+    autosaveLine: false,
   },
 });
 
@@ -243,6 +288,14 @@ export const TASK_CHROME_COPY: Record<Lang, Record<TaskScreenKey, TaskScreenChro
       primary: 'Submit for review',
       secondary: 'Back',
     },
+    submitted: {
+      title: 'Application submitted',
+      // The reference passes an empty subtitle here and draws none. Nothing
+      // short enough to fit would add to a heading that already says it.
+      subtitle: null,
+      primary: 'View application status',
+      secondary: null,
+    },
   },
   ar: {
     basics: {
@@ -299,17 +352,52 @@ export const TASK_CHROME_COPY: Record<Lang, Record<TaskScreenKey, TaskScreenChro
       primary: 'إرسال للمراجعة',
       secondary: 'رجوع',
     },
+    submitted: {
+      title: 'تم إرسال الطلب',
+      subtitle: null,
+      primary: 'عرض حالة الطلب',
+      secondary: null,
+    },
   },
 };
 
 /**
- * Which approved screen a task id and fragment name.
+ * Lifecycle states in which the review task has nothing left to collect.
+ *
+ * Read from the draft the chrome already loads, not decided here: these are the
+ * server's own states and the only thing this list does is say which of them
+ * mean "handed in". A provider in any of them cannot edit, cannot consent again
+ * and cannot submit twice, so the consent screen is not a screen they have —
+ * and the confirmation is the screen they do.
+ */
+const HANDED_IN: ReadonlySet<string> = new Set([
+  'SUBMITTED',
+  'DOCUMENTS_REQUIRED',
+  'ACCEPTED',
+] satisfies ProviderOnboardingLifecycleState[]);
+
+/**
+ * Which approved screen a task id, fragment and lifecycle name.
  *
  * Returns `null` for a task this phase has no approved screen for, so the
  * caller keeps its existing behaviour rather than inventing chrome for a
  * surface the design does not describe.
+ *
+ * `lifecycle` is consulted FIRST and only for the review task, because that is
+ * the one place where the screen is not a function of the URL: `#terms` on a
+ * submitted application is not a consent form the provider may revisit, it is
+ * a confirmation. Resolving it in one place keeps the chrome and the body from
+ * ever disagreeing about which of the three they are drawing.
  */
-export function taskScreenKeyFor(taskId: string, hash: string): TaskScreenKey | null {
+export function taskScreenKeyFor(
+  taskId: string,
+  hash: string,
+  lifecycle?: string | null,
+): TaskScreenKey | null {
+  if (taskId === 'REVIEW_SUBMISSION' && lifecycle && HANDED_IN.has(lifecycle)) {
+    return 'submitted';
+  }
+
   const fragment = hash.replace(/^#/, '');
   for (const key of TASK_SCREEN_KEYS) {
     const route = TASK_SCREEN_ROUTES[key];

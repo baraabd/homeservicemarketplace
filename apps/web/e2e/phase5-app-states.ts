@@ -66,7 +66,10 @@ const profileAt = (status: string) => ({
     serviceAreaRadiusKm: 15,
     serviceCategories: [],
     pendingCategories: [],
-    submittedForReviewAt: null,
+    // The SERVER's record of when it was handed in. Only the submitted
+    // lifecycle has one, and the confirmation screen omits the line rather
+    // than inventing a time when it does not.
+    submittedForReviewAt: status === 'PENDING_REVIEW' ? SUBMITTED_AT : null,
     reviewedAt: null,
     rejectionReason: null,
     createdAt: '2026-08-01T00:00:00.000Z',
@@ -313,6 +316,75 @@ const SERVICE_CATALOGUE = [
   })),
 ];
 
+/**
+ * The instant whose wall clock, in the PROVIDER's own zone, is today at 12:43.
+ *
+ * The approved confirmation screen reads "Today • 12:43", and the product
+ * formats `submittedForReviewAt` in the provider's timezone rather than the
+ * browser's — so a fixed UTC literal would render three hours out in Aleppo and
+ * "Today" would be a lie on any day but the one the literal names.
+ *
+ * Computed rather than hard-coded for exactly that reason: the fixture has to
+ * describe a server whose stored timestamp produces the sentence the reference
+ * depicts, on whichever day the gate happens to run.
+ */
+function todayAt(zone: string, hhmm: string): string {
+  const ymd = new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+
+  // Read the naive instant back in the zone, and correct by the difference.
+  // One pass is exact except across a DST transition, which 12:43 is not.
+  const naive = new Date(`${ymd}T${hhmm}:00.000Z`);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(naive);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
+  const shown = Date.parse(
+    `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}Z`,
+  );
+  return new Date(naive.getTime() - (shown - naive.getTime())).toISOString();
+}
+
+const SUBMITTED_AT = todayAt('Asia/Damascus', '12:43');
+
+/**
+ * The review read-model, which is a PROJECTION of server policy and is treated
+ * as one here: readiness, the blocker and the terms version all come from the
+ * fixture, and the screens under test render them without re-deriving anything.
+ *
+ * `groups` is empty because the approved reference depicts a READY application.
+ * The group rendering is still live — it is what a blocked one shows — and the
+ * unit suite is where that is exercised, because there is no reference image of
+ * it to measure against.
+ */
+const review = (over: Record<string, unknown> = {}) => ({
+  groups: [],
+  canSubmit: true,
+  blockedReason: null,
+  terms: {
+    version: 'sprint-09b',
+    locale: 'en',
+    accepted: true,
+    acceptedVersion: 'sprint-09b',
+    acceptedAt: SUBMITTED_AT,
+  },
+  draftVersion: 7,
+  lifecycleState: 'DRAFT',
+  canWithdraw: false,
+  ...over,
+});
+
 // ── Preconditions ───────────────────────────────────────────────────────────
 
 export interface PreconditionFixture {
@@ -321,6 +393,8 @@ export interface PreconditionFixture {
   readonly profile: Record<string, unknown> | null;
   readonly hub: Record<string, unknown>;
   readonly draft: Record<string, unknown>;
+  /** The review read-model. Only the three review screens read it. */
+  readonly review: Record<string, unknown>;
   /** Hold the session probe open, so a transient screen stays on display. */
   readonly stallSessionRefresh?: boolean;
   /** Answer every onboarding read with 401, for the expired-session screen. */
@@ -338,12 +412,14 @@ const COMPLETE_DRAFT = draft({
 export const PRECONDITIONS: Readonly<Record<ServerPrecondition, PreconditionFixture>> =
   Object.freeze({
     'anonymous-customer': {
+      review: review(),
       me: CUSTOMER_ME,
       profile: null,
       hub: hub(),
       draft: draft(),
     },
     'customer-upgrading': {
+      review: review(),
       me: CUSTOMER_ME,
       profile: null,
       hub: hub(),
@@ -351,12 +427,14 @@ export const PRECONDITIONS: Readonly<Record<ServerPrecondition, PreconditionFixt
       stallSessionRefresh: true,
     },
     'draft-partial': {
+      review: review({ canSubmit: false, blockedReason: null }),
       me: PROVIDER_ME,
       profile: profileAt('DRAFT'),
       hub: hub(),
       draft: draft(),
     },
     'draft-complete': {
+      review: review(),
       me: PROVIDER_ME,
       profile: profileAt('DRAFT'),
       hub: hub({
@@ -367,6 +445,11 @@ export const PRECONDITIONS: Readonly<Record<ServerPrecondition, PreconditionFixt
       draft: COMPLETE_DRAFT,
     },
     'draft-submitted': {
+      review: review({
+        canSubmit: false,
+        lifecycleState: 'SUBMITTED',
+        canWithdraw: true,
+      }),
       me: PROVIDER_ME,
       profile: profileAt('PENDING_REVIEW'),
       hub: hub({
@@ -385,6 +468,7 @@ export const PRECONDITIONS: Readonly<Record<ServerPrecondition, PreconditionFixt
       }),
     },
     'draft-returned': {
+      review: review({ canSubmit: false, lifecycleState: 'RETURNED' }),
       me: PROVIDER_ME,
       profile: profileAt('REJECTED'),
       hub: hub({
@@ -402,6 +486,7 @@ export const PRECONDITIONS: Readonly<Record<ServerPrecondition, PreconditionFixt
       }),
     },
     'session-expired': {
+      review: review(),
       me: PROVIDER_ME,
       profile: profileAt('DRAFT'),
       hub: hub(),
@@ -409,6 +494,7 @@ export const PRECONDITIONS: Readonly<Record<ServerPrecondition, PreconditionFixt
       unauthorized: true,
     },
     'provider-active': {
+      review: review({ canSubmit: false, lifecycleState: 'ACCEPTED' }),
       me: PROVIDER_ME,
       profile: profileAt('ACTIVE'),
       hub: hub({
@@ -527,6 +613,17 @@ export async function installPrecondition(
         return json(route, { success: false, error: { code: 'AUTH_TOKEN_EXPIRED' } }, 401);
       }
       return json(route, hubBody);
+    }
+
+    // BEFORE the draft, because `/onboarding/review` shares its prefix and a
+    // draft answer there would hand the review screen an object with no
+    // `terms` — which crashes it rather than showing a wrong number, and was
+    // therefore the cheapest ordering bug in the file to leave in place.
+    if (url.includes('/me/provider/onboarding/review')) {
+      if (fixture.unauthorized) {
+        return json(route, { success: false, error: { code: 'AUTH_TOKEN_EXPIRED' } }, 401);
+      }
+      return json(route, fixture.review);
     }
 
     if (url.includes('/me/provider/onboarding/draft')) {

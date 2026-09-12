@@ -50,6 +50,10 @@ export interface HubSummaryCopy {
   photos: (count: number) => string;
   /** Nothing left to do but read it back. */
   readyToReview: string;
+  /** '14 years' on the review row. */
+  years: (n: number) => string;
+  /** Transport names, as the review row prints them. */
+  transport: Record<string, string>;
 }
 
 export const HUB_SUMMARY_COPY: Record<Lang, HubSummaryCopy> = {
@@ -61,6 +65,15 @@ export const HUB_SUMMARY_COPY: Record<Lang, HubSummaryCopy> = {
     dayList: (days) => days.join(', '),
     photos: (count) => `${count} photo${count === 1 ? '' : 's'} uploaded`,
     readyToReview: 'Ready to review',
+    years: (n) => `${n} year${n === 1 ? '' : 's'}`,
+    transport: {
+      ON_FOOT: 'On foot',
+      MOTORCYCLE: 'Motorbike',
+      CAR: 'Car',
+      VAN: 'Van',
+      TRUCK: 'Truck',
+      PUBLIC_TRANSPORT: 'Public transport',
+    },
   },
   ar: {
     selectionsSaved: 'اختياراتك محفوظة',
@@ -70,6 +83,15 @@ export const HUB_SUMMARY_COPY: Record<Lang, HubSummaryCopy> = {
     dayList: (days) => days.join('، '),
     photos: (count) => `${count} صور مرفوعة`,
     readyToReview: 'جاهز للمراجعة',
+    years: (n) => `${n} عاماً`,
+    transport: {
+      ON_FOOT: 'سيراً على الأقدام',
+      MOTORCYCLE: 'دراجة نارية',
+      CAR: 'سيارة',
+      VAN: 'فان',
+      TRUCK: 'شاحنة',
+      PUBLIC_TRANSPORT: 'مواصلات عامة',
+    },
   },
 };
 
@@ -169,4 +191,81 @@ export function hubTaskSummary(
     default:
       return null;
   }
+}
+
+// ─── The final review ───────────────────────────────────────────────────────
+
+export interface ReviewRow {
+  /** The task this row summarises, and where its edit control goes. */
+  taskId: string;
+  title: string;
+  value: string;
+  /**
+   * True when the row is waiting on somebody else.
+   *
+   * Those rows carry a badge instead of an edit control, because there is
+   * nothing for the provider to change: an admin has the specialty, and
+   * offering a pencil beside it invites them to redo work that is already
+   * done and is not what is holding the application up.
+   */
+  waiting: boolean;
+}
+
+/**
+ * The four rows the approved review screen reads back.
+ *
+ * Composed from the DRAFT, like the complete hub's summaries and for the same
+ * reason — the review response carries readiness, not prose, and these have to
+ * be bilingual. A row whose data has not arrived is omitted rather than
+ * printed half-built: the provider is being asked to confirm this, and a blank
+ * or partial line is the one thing that must not appear on a confirmation.
+ */
+export function reviewRows(
+  draft: ProviderOnboardingDraftView | undefined,
+  titles: Record<string, string>,
+  lang: Lang,
+  separator = ' • ',
+): ReviewRow[] {
+  const data = draft?.data;
+  if (!data) return [];
+
+  const copy = HUB_SUMMARY_COPY[lang];
+  const rows: ReviewRow[] = [];
+  const push = (taskId: string, parts: (string | null | undefined)[], waiting = false) => {
+    const value = parts.filter((part): part is string => Boolean(part)).join(separator);
+    if (value !== '' && titles[taskId]) {
+      rows.push({ taskId, title: titles[taskId]!, value, waiting });
+    }
+  };
+
+  push('BASICS_IDENTITY', [data.displayName, data.phoneNumber]);
+
+  const primary = data.specialties?.find((s) => s.categoryId === data.primarySpecialtyId);
+  const specialtyLabel = primary ? (lang === 'ar' ? primary.labelAr : primary.labelEn) : null;
+  const years = typeof data.yearsOfExperience === 'number' ? data.yearsOfExperience : null;
+  push(
+    'SERVICES_EXPERIENCE',
+    [
+      specialtyLabel,
+      years === null ? null : copy.years(years),
+      data.transportMode ? (copy.transport[data.transportMode] ?? null) : null,
+    ],
+    // Anyone's decision but the provider's.
+    (data.specialties ?? []).some((s) => s.state === 'PENDING'),
+  );
+
+  // `copy.area` rather than a joined pair: it already carries the separator AND
+  // the localised unit, and "15 km" beside an Arabic city name was the exact
+  // false pass the work-area cell taught us to distrust.
+  const km = data.serviceAreaRadiusKm ?? data.radiusPolicy?.suggestedKm ?? null;
+  push('WORK_AREA', [
+    data.serviceAreaCity && km !== null
+      ? copy.area(data.serviceAreaCity, km)
+      : (data.serviceAreaCity ?? null),
+  ]);
+
+  const hours = hubTaskSummary('WORKING_HOURS', 'COMPLETE', draft, null, lang);
+  push('WORKING_HOURS', [hours]);
+
+  return rows;
 }

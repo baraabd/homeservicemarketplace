@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 
 import { Button } from '../../../components/ds/Button';
@@ -18,8 +19,8 @@ import { BasicsTask } from './BasicsTaskScreen';
 import { ServicesTask } from './ServicesTaskScreen';
 import { ServiceAreaTask } from './ServiceAreaTaskScreen';
 import { AvailabilityTask } from './AvailabilityTaskScreen';
-import { PublicProfileTask } from './PublicProfileTaskScreen';
-import { ReviewTask } from './ReviewTaskScreen';
+import { PublicProfileTask, type PublicProfilePart } from './PublicProfileTaskScreen';
+import { ReviewTask, type ReviewPart, type TaskPrimaryCommand } from './ReviewTaskScreen';
 
 // Sprint 9B.16 — the per-task route.
 //
@@ -75,7 +76,20 @@ export function OnboardingTaskScreen() {
   // resolved task, because it feeds a hook and hooks cannot wait for a fetch.
   const location = useLocation();
   const navigate = useNavigate();
-  const screenKey = taskId ? taskScreenKeyFor(taskId, location.hash) : null;
+
+  // The server's own `lastSavedAt`, for the bar's resting state, and its
+  // lifecycle, for which of the review task's three screens is showing. The
+  // same query key every task body already reads, so this shares their cache
+  // entry rather than issuing a second request for the same draft.
+  const draft = useOnboardingDraft();
+
+  // One resolution of "which approved screen", from the URL and — for the
+  // review task alone — the application's own state. Doing it here rather than
+  // inside the body is what stops the header saying "Consent and submit" over a
+  // confirmation, or offering a Submit on an application already in.
+  const screenKey = taskId
+    ? taskScreenKeyFor(taskId, location.hash, draft.data?.state ?? null)
+    : null;
   const screenRoute = screenKey ? TASK_SCREEN_ROUTES[screenKey] : null;
   const chrome = screenKey ? TASK_CHROME_COPY[lang][screenKey] : null;
 
@@ -83,14 +97,40 @@ export function OnboardingTaskScreen() {
   // of its own, so it is the harmless default for a screen with no step.
   const chromeAutosave = useOnboardingStepAutosave(screenRoute?.step ?? 'REVIEW');
 
-  // The server's own `lastSavedAt`, for the bar's resting state. The same
-  // query key every task body already reads, so this shares their cache entry
-  // rather than issuing a second request for the same draft.
-  const draft = useOnboardingDraft();
+  /**
+   * A primary action the body owns, published up to the approved position.
+   *
+   * Only the consent screen uses it, and only because submission is a server
+   * command rather than a navigation — see `TASK_SCREEN_ROUTES.terms`. Held in
+   * state rather than context because exactly one screen has one and a context
+   * would be machinery for a single caller.
+   */
+  const [bodyCommand, setBodyCommand] = useState<TaskPrimaryCommand | null>(null);
 
   const local = TASK_COPY_BY_LANG[lang];
   const exitCopy = EXIT_COPY[lang];
   const backToHub = () => exit.exit('/provider/onboarding');
+
+  /**
+   * Where the quiet action goes.
+   *
+   * The hub on eight of the nine screens, and the review half on the consent
+   * screen — a move WITHIN the task, so a plain navigation rather than an exit:
+   * nothing is unmounted, the coordinator keeps its timers, and there is no
+   * draft to drain because consent is a command, not a field.
+   */
+  const goBack = () => {
+    const within = screenRoute?.backTo;
+    if (within && within === location.pathname) {
+      navigate({ pathname: location.pathname, hash: '' }, { replace: false });
+      return;
+    }
+    if (within) {
+      exit.exit(within);
+      return;
+    }
+    backToHub();
+  };
 
   /**
    * The one primary action, and what it promises.
@@ -175,6 +215,24 @@ export function OnboardingTaskScreen() {
   // the same move and a second button beside it would offer the same
   // destination twice.
   const secondaryLabel = chrome ? chrome.secondary : local.back;
+
+  /**
+   * The one primary, from whichever of the two places owns it.
+   *
+   * A navigation when the approved screen's action is one, and otherwise the
+   * command the body published. Never both, and never a third possibility: a
+   * screen whose route declares no destination and whose body offers no command
+   * draws no primary at all, which is honest.
+   */
+  const primary = screenRoute?.next
+    ? {
+        label: chrome?.primary ?? '',
+        testId: screenRoute.primaryTestId,
+        disabled: exit.isLeaving,
+        run: goNext,
+      }
+    : bodyCommand;
+
   const footer = (
     <div className="grid gap-[7px]">
       <ProviderStickyActionRow
@@ -184,7 +242,7 @@ export function OnboardingTaskScreen() {
               tone="secondary"
               shape="onboarding"
               size="block"
-              onClick={backToHub}
+              onClick={goBack}
               disabled={exit.isLeaving}
               data-testid="task-back-to-tasks"
             >
@@ -195,32 +253,33 @@ export function OnboardingTaskScreen() {
           )
         }
         primary={
-          // Drawn only when the chrome genuinely owns it. On the consent screen
-          // the primary is a SUBMISSION — a server command with its own
-          // preconditions — and a button here that merely looked like one would
-          // be the worst kind of parity: correct in a screenshot, inert in use.
-          screenRoute?.next ? (
+          primary ? (
             <ProviderButton
               tone="primary"
               shape="onboarding"
               size="block"
-              onClick={goNext}
-              disabled={exit.isLeaving}
-              data-testid={screenRoute.primaryTestId}
+              onClick={primary.run}
+              disabled={primary.disabled}
+              data-testid={primary.testId}
             >
-              {chrome?.primary}
+              {primary.label ?? chrome?.primary}
             </ProviderButton>
           ) : null
         }
       />
-      <div className="flex items-center justify-center">
-        <AutosaveStatus
-          status={chromeAutosave.status}
-          lang={lang}
-          testIdPrefix="task"
-          lastSavedAt={draft.data?.lastSavedAt ?? null}
-        />
-      </div>
+      {/* Omitted where the approved screen omits it: a submitted application has
+          nothing left to save, and "Changes saved • 12:42" under a confirmation
+          would be a sentence about work that is no longer happening. */}
+      {chrome && screenRoute?.autosaveLine !== false ? (
+        <div className="flex items-center justify-center">
+          <AutosaveStatus
+            status={chromeAutosave.status}
+            lang={lang}
+            testIdPrefix="task"
+            lastSavedAt={draft.data?.lastSavedAt ?? null}
+          />
+        </div>
+      ) : null}
     </div>
   );
 
@@ -229,12 +288,17 @@ export function OnboardingTaskScreen() {
       title={chrome?.title ?? copy.title}
       subtitle={chrome?.subtitle}
       progress={progress}
-      // A task screen steps BACK through a flow; it does not abandon one.
-      backAffordance="back"
+      // A task screen steps BACK through a flow; it does not abandon one. The
+      // confirmation is the exception and the reference draws it that way: there
+      // is no step behind it to return to, so it gets the X.
+      backAffordance={screenKey === 'submitted' ? 'close' : 'back'}
       onClose={backToHub}
       closeBusy={exit.isLeaving}
+      // The centred confirmation needs the whole box and supplies its own
+      // gutter; every other screen takes the shell's 16px inset.
+      padded={screenKey !== 'submitted'}
       footer={
-        screenRoute?.next ? (
+        chrome ? (
           footer
         ) : (
           <Button
@@ -252,7 +316,11 @@ export function OnboardingTaskScreen() {
       {/* `.hsm-main`: an 18px column. The description line and the status pill
           that used to sit here are gone — the approved screen carries neither,
           and both were repeating what the header and the hub row already say. */}
-      <div className="flex flex-col gap-[18px]" data-testid={`task-screen-${task.id}`}>
+      {/* `.hsm-main`: an 18px column. `flex-1` so a screen that centres itself
+          vertically has a box with a resolved height to centre in; for a column
+          of fields it changes nothing, because they stack from the top either
+          way. */}
+      <div className="flex flex-1 flex-col gap-[18px]" data-testid={`task-screen-${task.id}`}>
         {/* First in the column: it explains why a navigation the provider
             just asked for did not happen, so it must not be below the fold of
             a long form. */}
@@ -266,7 +334,7 @@ export function OnboardingTaskScreen() {
 
         {/* A task reached by URL that the server says is not open gets the
             SAME sentence the row gives, rather than a form. */}
-        {!actionable && explanation ? (
+        {!actionable && explanation && screenKey !== 'submitted' ? (
           <p
             className="break-words text-slate-500 dark:text-slate-400"
             style={{ fontSize: '13px' }}
@@ -291,10 +359,27 @@ export function OnboardingTaskScreen() {
         ) : actionable && task.id === 'PORTFOLIO' ? (
           <PublicProfileTask
             lang={lang}
-            part={screenKey === 'portfolio' ? 'portfolio' : 'profile'}
+            part={(screenKey === 'portfolio' ? 'portfolio' : 'profile') satisfies PublicProfilePart}
           />
-        ) : actionable && task.id === 'REVIEW_SUBMISSION' ? (
-          <ReviewTask lang={lang} />
+        ) : /* The one task whose screen is not gated on the hub calling it open.
+              A SUBMITTED application has no open task by definition — the hub
+              reports the review as complete or waiting — and refusing to draw
+              the confirmation on that basis would tell a provider who just
+              submitted that the step is unavailable. The screen shown is decided
+              by the application's own lifecycle, and none of its three offers an
+              action the server has not authorised. */
+        (actionable || screenKey === 'submitted') && task.id === 'REVIEW_SUBMISSION' ? (
+          <ReviewTask
+            lang={lang}
+            part={
+              (screenKey === 'submitted'
+                ? 'submitted'
+                : screenKey === 'terms'
+                  ? 'terms'
+                  : 'review') satisfies ReviewPart
+            }
+            onPrimaryCommand={setBodyCommand}
+          />
         ) : actionable ? (
           <p
             className="break-words text-slate-500 dark:text-slate-400"

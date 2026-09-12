@@ -102,6 +102,8 @@ export function ProviderNotice({
   actionLabel,
   onAction,
   className = '',
+  'data-testid': testId,
+  actionTestId,
 }: {
   tone?: ProviderTone;
   title: string;
@@ -109,6 +111,10 @@ export function ProviderNotice({
   actionLabel?: string;
   onAction?: () => void;
   className?: string;
+  'data-testid'?: string;
+  /** Addressed separately from the notice, because a test that can find the
+   *  sentence but not the way out of it proves only half of the point. */
+  actionTestId?: string;
 }) {
   const Icon = TONE_ICON[tone];
   const c = TONE_CLASSES[tone];
@@ -116,6 +122,7 @@ export function ProviderNotice({
     <div
       className={`flex items-start gap-3 rounded-xl border p-3.5 ${c.bg} ${c.border} ${className}`}
       role={tone === 'danger' ? 'alert' : 'status'}
+      data-testid={testId}
     >
       <Icon size={18} aria-hidden="true" className={`mt-0.5 flex-shrink-0 ${c.text}`} />
       <div className="min-w-0 flex-1">
@@ -126,6 +133,7 @@ export function ProviderNotice({
             tone="secondary"
             onClick={onAction}
             className="mt-2.5 !min-h-[40px] px-3.5"
+            data-testid={actionTestId}
           >
             {actionLabel}
           </ProviderButton>
