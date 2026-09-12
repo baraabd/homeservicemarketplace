@@ -237,6 +237,144 @@ export interface ScreenCopy {
   cta: string | null;
 }
 
+// Sprint 09B.29 Phase 5A — approved screens 15 and 16.
+//
+// docs/provider-experience-v2/reference/provider-onboarding-prototype.html
+//
+// Two lifecycle screens that are NOT the hub with a banner on it.
+//
+// A returned application drew the task list with a notice above it, on the
+// reasoning that hiding what there is to fix makes the notice unactionable.
+// The approved design answers the same worry better: it names the one task and
+// puts a button on it, so the provider does not have to find their own problem
+// in a list of six rows, five of which are already done.
+//
+// An expired session drew a heading, a sentence and a button in the middle of
+// an otherwise empty hub. The approved screen adds the thing a provider in that
+// moment actually wants to know — that nothing they saved is lost — and says it
+// where they are already looking.
+
+export interface LifecycleScreenCopy {
+  /** 15. The header, over a saved application. */
+  returnedTitle: string;
+  returnedSubtitle: string;
+  /**
+   * What to say when the server sent no reason.
+   *
+   * RECORDED FOR PHASE 5B: `profile.rejectionReason` is one free-text string
+   * in whichever language an operator typed it, so a provider reading the app
+   * in Arabic can be handed an English sentence. A reason CODE plus an
+   * operator note, the way the review blockers already work, is the fix.
+   */
+  returnedFallbackReason: string;
+  /** The promise beside it: nothing accepted has to be entered again. */
+  returnedReassurance: string;
+  returnedDoTitle: string;
+  /**
+   * What to do, per TASK.
+   *
+   * Not one generic sentence, and not the operator's note either. "Upload a
+   * well-lit photo showing the finished work, then resubmit" is true of every
+   * portfolio return and of no other kind, which makes it exactly what client
+   * copy is for — the same reason the hub keys its task prose off the task id
+   * rather than rendering the server's single-language string.
+   *
+   * The operator's actual note is the ALERT above it. This is the standing
+   * answer to "what shape of change is being asked for", and the two are
+   * separate because one changes per return and the other does not.
+   */
+  returnedDoBody: Record<string, string>;
+  returnedDoBodyFallback: string;
+  /**
+   * The task, as the button names it.
+   *
+   * Kept beside the guidance rather than taken from the hub's row title,
+   * because the approved returned screen names the SCREEN it opens ("Portfolio")
+   * where the hub row names the whole task ("Bio and portfolio"). Both are
+   * right where they are.
+   */
+  returnedTaskLabel: Record<string, string>;
+  /** "Complete now: Portfolio" — the task named, not "Complete now". */
+  returnedCompleteNow: (task: string) => string;
+
+  /** 16. A genuine 401, and only a 401. */
+  expiredTitle: string;
+  expiredHeading: string;
+  expiredLead: string;
+  expiredSafeTitle: string;
+  expiredSafeBody: string;
+  expiredCta: string;
+}
+
+export const LIFECYCLE_COPY: Record<Lang, LifecycleScreenCopy> = {
+  en: {
+    returnedTitle: 'Action required',
+    returnedSubtitle: 'Your application is saved',
+    returnedFallbackReason: 'Something needs your attention',
+    returnedReassurance:
+      'The rest of your application is accepted and does not need to be entered again.',
+    returnedDoTitle: 'What you need to do',
+    returnedDoBody: {
+      BASICS_IDENTITY: 'Check the details we asked about, then resubmit.',
+      SERVICES_EXPERIENCE: 'Update your services or your experience, then resubmit.',
+      WORK_AREA: 'Update where you work and how far you travel, then resubmit.',
+      WORKING_HOURS: 'Update the days and hours you work, then resubmit.',
+      PORTFOLIO: 'Upload a well-lit photo showing the finished work, then resubmit.',
+      REVIEW_SUBMISSION: 'Read your application through once more, then resubmit.',
+    },
+    returnedDoBodyFallback: 'Open the task below, make the change, then resubmit.',
+    returnedTaskLabel: {
+      BASICS_IDENTITY: 'Basic details',
+      SERVICES_EXPERIENCE: 'Services and experience',
+      WORK_AREA: 'Work area',
+      WORKING_HOURS: 'Working hours',
+      PORTFOLIO: 'Portfolio',
+      REVIEW_SUBMISSION: 'Review and submission',
+    },
+    returnedCompleteNow: (task) => `Complete now: ${task}`,
+
+    expiredTitle: 'Sign in required',
+    expiredHeading: 'Your session has expired',
+    expiredLead:
+      'This message appears only for a 401 response. Sign in again and we will return you to the last saved task.',
+    expiredSafeTitle: 'Your data is safe',
+    expiredSafeBody: 'Successfully saved tasks will not be lost.',
+    expiredCta: 'Go to sign in',
+  },
+  ar: {
+    returnedTitle: 'إجراء مطلوب',
+    returnedSubtitle: 'طلبك محفوظ',
+    returnedFallbackReason: 'هناك ما يحتاج انتباهك',
+    returnedReassurance: 'بقية الطلب مقبول ولن تحتاج إلى إعادة إدخال بياناتك.',
+    returnedDoTitle: 'المطلوب منك',
+    returnedDoBody: {
+      BASICS_IDENTITY: 'راجع البيانات المطلوبة، ثم أعد الإرسال.',
+      SERVICES_EXPERIENCE: 'حدّث خدماتك أو خبرتك، ثم أعد الإرسال.',
+      WORK_AREA: 'حدّث مكان عملك والمسافة التي تقطعها، ثم أعد الإرسال.',
+      WORKING_HOURS: 'حدّث أيام وساعات عملك، ثم أعد الإرسال.',
+      PORTFOLIO: 'ارفع صورة مضاءة جيداً تُظهر النتيجة النهائية للعمل، ثم أعد الإرسال.',
+      REVIEW_SUBMISSION: 'اقرأ طلبك مرة أخرى، ثم أعد الإرسال.',
+    },
+    returnedDoBodyFallback: 'افتح المهمة أدناه، أجرِ التعديل، ثم أعد الإرسال.',
+    returnedTaskLabel: {
+      BASICS_IDENTITY: 'البيانات الأساسية',
+      SERVICES_EXPERIENCE: 'الخدمات والخبرة',
+      WORK_AREA: 'نطاق العمل',
+      WORKING_HOURS: 'ساعات العمل',
+      PORTFOLIO: 'معرض الأعمال',
+      REVIEW_SUBMISSION: 'المراجعة والإرسال',
+    },
+    returnedCompleteNow: (task) => `إكمال الآن: ${task}`,
+
+    expiredTitle: 'تسجيل الدخول مطلوب',
+    expiredHeading: 'انتهت جلستك',
+    expiredLead: 'هذا التنبيه يظهر فقط عند 401. سجّل الدخول مجدداً ثم سنعيدك إلى آخر مهمة محفوظة.',
+    expiredSafeTitle: 'بياناتك محفوظة',
+    expiredSafeBody: 'لن تفقد المهام التي حفظها الخادم بنجاح.',
+    expiredCta: 'الذهاب لتسجيل الدخول',
+  },
+};
+
 export const SCREEN_COPY: Record<Lang, Record<HubViewState, ScreenCopy>> = {
   en: {
     LOADING: { title: 'Loading…', body: '', cta: null },

@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router';
-import { CircleCheck } from 'lucide-react';
+import { CircleCheck, Lock, LogIn, TriangleAlert } from 'lucide-react';
 import type {
   ProviderOnboardingHubGroup,
   ProviderOnboardingHubTask,
@@ -8,17 +8,20 @@ import type {
 
 import { useStaleRoleRecovery } from '../session/useStaleRoleRecovery';
 
-import { ProviderButton, ProviderNotice, ProviderSkeleton } from '../../provider-ui';
+import { ProviderButton, ProviderCard, ProviderSkeleton } from '../../provider-ui';
 import { useLang } from '../../../i18n/LanguageContext';
 import { useProviderOnboardingHub } from '../../../hooks/provider/useProviderOnboardingHub';
-import { deriveHubView, nextActionTaskId } from '../hub-view-state';
+import { deriveHubView, nextActionTaskId, splitReturnReason } from '../hub-view-state';
 import { hubTaskSummary } from '../hub-task-summary';
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
 import { useProviderPortfolio } from '../../../hooks/provider/useProviderPortfolio';
+import { useProviderProfile } from '../../../hooks/provider/useProviderProfile';
 import {
   HUB_COMPLETE_NOTICE,
   HUB_LEAD,
+  LIFECYCLE_COPY,
   SCREEN_COPY,
+  taskCopy,
   groupLabel,
   nextActionLabel,
   progressLabel,
@@ -93,8 +96,13 @@ export function OnboardingHubScreen() {
   const draft = useOnboardingDraft();
   const gallery = useProviderPortfolio();
 
+  // The operator's note on a returned application. A shared query key — the
+  // provider shell already holds this — so it costs no second request.
+  const profileQuery = useProviderProfile();
+
   const data = query.data;
   const screen = SCREEN_COPY[lang][view.state];
+  const lifecycle = LIFECYCLE_COPY[lang];
   const backToProfile = () => navigate('/provider');
   const openTask = (taskId: string) => navigate(`/provider/onboarding/${taskId}`);
 
@@ -113,6 +121,74 @@ export function OnboardingHubScreen() {
     view.showsTasks && data && data.progress.total > 0
       ? Math.round((data.progress.complete / data.progress.total) * 100)
       : undefined;
+
+  // ── Screen 16: a genuine 401 ──────────────────────────────────────────────
+  //
+  // The approved screen, and it is deliberately NOT the one a 403 gets. A stale
+  // role claim is a permission the server is still catching up on; telling that
+  // provider their session ended would misdescribe the fault and hand them a
+  // remedy that cannot fix it. `deriveHubView` keeps the two apart and this
+  // branch is scoped to the one that really is a sign-in problem.
+  if (view.state === 'UNAUTHORIZED') {
+    return (
+      <OnboardingShell
+        title={lifecycle.expiredTitle}
+        // 0%, drawn rather than omitted: the reference keeps the rule on this
+        // screen, and an empty one is the honest picture of an application
+        // nobody can currently read.
+        progress={0}
+        onClose={backToProfile}
+        padded={false}
+        footer={
+          <ProviderButton
+            tone="primary"
+            shape="onboarding"
+            size="block"
+            onClick={() => navigate('/login', { state: { returnTo: '/provider/onboarding' } })}
+            data-testid="session-expired-sign-in"
+          >
+            {lifecycle.expiredCta}
+          </ProviderButton>
+        }
+      >
+        <div
+          className="grid flex-1 text-center"
+          style={{ alignContent: 'center', gap: 16, padding: '28px 20px 31px' }}
+          data-testid="session-expired"
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            className="flex items-center justify-center bg-pv-accent-subtle text-pv-accent-hover"
+            style={{ width: '72px', height: '72px', borderRadius: 24, margin: 'auto' }}
+            aria-hidden="true"
+          >
+            <LogIn size={16} strokeWidth={1.8} />
+          </span>
+          <h2
+            className="break-words text-pv-hero text-pv-text"
+            style={{ fontWeight: 500, lineHeight: 1.4 }}
+          >
+            {lifecycle.expiredHeading}
+          </h2>
+          <p className="break-words text-pv-body text-pv-muted" style={{ lineHeight: 1.8 }}>
+            {lifecycle.expiredLead}
+          </p>
+          {/* The sentence a provider in this moment actually wants. An expired
+              session is frightening in proportion to how much unsaved work they
+              imagine they had; saying what survived is the whole job of this
+              block. */}
+          <OnboardingAlert
+            tone="danger"
+            icon={Lock}
+            title={lifecycle.expiredSafeTitle}
+            body={lifecycle.expiredSafeBody}
+            data-testid="session-expired-safe"
+          />
+        </div>
+      </OnboardingShell>
+    );
+  }
 
   // ── States with nothing to work on ────────────────────────────────────────
   if (!view.showsTasks) {
@@ -222,6 +298,81 @@ export function OnboardingHubScreen() {
       </ProviderButton>
     ) : null;
 
+  // ── Screen 15: sent back ──────────────────────────────────────────────────
+  //
+  // NOT the hub with a notice on top of it, which is what this used to be. The
+  // old reasoning — that hiding the task list makes the notice unactionable —
+  // is answered better by naming the ONE task and putting a button on it: a
+  // provider should not have to find their own problem among five rows that are
+  // already done.
+  if (view.state === 'ACTION_REQUIRED') {
+    const flaggedTask = target ? tasks.find((t) => t.id === target) : undefined;
+    const reason = splitReturnReason(profileQuery.data?.profile.rejectionReason);
+
+    return (
+      <OnboardingShell
+        title={lifecycle.returnedTitle}
+        subtitle={lifecycle.returnedSubtitle}
+        // The DRAFT's own percentage, not the task count. A returned
+        // application is 92% done in the server's terms and five of six in the
+        // hub's, and the bar is answering the first question.
+        progress={draft.data?.percentComplete ?? progress}
+        onClose={backToProfile}
+        footer={footer}
+      >
+        <div className="flex flex-col gap-[18px]" data-testid="onboarding-returned">
+          {/* The server's own reason, verbatim, above a promise that is ours.
+              The two are separated on purpose: one is a fact about this
+              application and the other is a fact about how returns work. */}
+          <OnboardingAlert
+            tone="warning"
+            icon={TriangleAlert}
+            title={reason?.headline ?? lifecycle.returnedFallbackReason}
+            // The operator's own explanation, then the promise that is ours.
+            // Two facts of different kinds, in the order a provider needs them:
+            // what is wrong, then how much of their work survived it.
+            body={
+              reason?.detail
+                ? `${reason.detail} ${lifecycle.returnedReassurance}`
+                : lifecycle.returnedReassurance
+            }
+            density="compact"
+            data-testid="returned-reason"
+          />
+
+          <ProviderCard className="p-4" style={{ borderRadius: 14 }} data-testid="returned-todo">
+            <h2
+              className="break-words text-pv-input text-pv-text"
+              style={{ marginBottom: 5, fontWeight: 500, lineHeight: 1.25 }}
+            >
+              {lifecycle.returnedDoTitle}
+            </h2>
+            <p className="break-words text-pv-label leading-[1.65] text-pv-muted">
+              {(flaggedTask && lifecycle.returnedDoBody[flaggedTask.id]) ??
+                lifecycle.returnedDoBodyFallback}
+            </p>
+          </ProviderCard>
+
+          {/* Named, not "Complete now". The provider is being sent somewhere
+              specific and the button should say where. */}
+          {flaggedTask ? (
+            <ProviderButton
+              tone="secondary"
+              shape="onboarding"
+              size="block"
+              onClick={() => openTask(flaggedTask.id)}
+              data-testid="returned-complete-now"
+            >
+              {lifecycle.returnedCompleteNow(
+                lifecycle.returnedTaskLabel[flaggedTask.id] ?? taskCopy(flaggedTask, lang).title,
+              )}
+            </ProviderButton>
+          ) : null}
+        </div>
+      </OnboardingShell>
+    );
+  }
+
   return (
     <OnboardingShell
       title={title}
@@ -232,16 +383,6 @@ export function OnboardingHubScreen() {
     >
       {/* `.hsm-main-tight`: a 12px column, which is what the two hubs use. */}
       <div className="flex flex-col gap-3">
-        {view.state === 'ACTION_REQUIRED' ? (
-          <div data-testid="hub-state-ACTION_REQUIRED">
-            <ProviderNotice
-              tone="blocked"
-              title={SCREEN_COPY[lang].ACTION_REQUIRED.title}
-              description={SCREEN_COPY[lang].ACTION_REQUIRED.body}
-            />
-          </div>
-        ) : null}
-
         {/* One of two openings, never both: an instruction while there is work
             to do, a success banner once there is not. */}
         {allDone ? (

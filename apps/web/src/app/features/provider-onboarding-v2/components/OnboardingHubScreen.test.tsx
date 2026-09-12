@@ -409,10 +409,15 @@ describe('OnboardingHubScreen — states', () => {
     await screen.findByTestId('hub-task-list');
   });
 
-  it('shows the unauthorized state on 401', async () => {
+  // Sprint 09B.29 Phase 5A — the approved expired-session screen. Same state,
+  // same precedence, its own surface: what it adds is the sentence a provider
+  // in that moment actually wants, which is that nothing they saved is lost.
+  it('shows the approved session-expired screen on 401', async () => {
     mock.onGet(HUB_URL).reply(401);
     renderHub();
-    await screen.findByTestId('hub-state-UNAUTHORIZED');
+    await screen.findByTestId('session-expired');
+    expect(screen.getByTestId('session-expired-safe')).toBeInTheDocument();
+    expect(screen.getByTestId('session-expired-sign-in')).toBeInTheDocument();
   });
 
   // Sprint 9B.29 — 403 gets its OWN screen. This case used to be folded into
@@ -465,13 +470,30 @@ describe('OnboardingHubScreen — states', () => {
     expect(screen.queryByText(/approved/i)).toBeNull();
   });
 
-  it('shows ACTION_REQUIRED as a banner ABOVE the tasks, not instead of them', async () => {
-    mock.onGet(HUB_URL).reply(200, hub({ status: 'ACTION_REQUIRED' }));
+  // Sprint 09B.29 Phase 5A — the approved action-required screen, which is NOT
+  // the hub with a banner on it.
+  //
+  // The old assertion said the banner was only useful beside the task list.
+  // That worry is answered better than it was: the approved screen names the
+  // ONE task the server flagged and puts a button on it, so the provider is not
+  // asked to find their own problem among five rows that are already done. The
+  // assertion moved with the design and is now stronger — it checks the button
+  // reaches the right task rather than that a list exists.
+  it('names the one flagged task instead of re-listing the finished ones', async () => {
+    mock.onGet(HUB_URL).reply(
+      200,
+      hub({
+        status: 'ACTION_REQUIRED',
+        nextAction: { kind: 'COMPLETE_TASK', taskId: 'WORK_AREA' },
+      }),
+    );
     renderHub();
 
-    await screen.findByTestId('hub-state-ACTION_REQUIRED');
-    // The banner is only useful if the provider can act on it.
-    expect(screen.getByTestId('hub-task-list')).toBeInTheDocument();
+    await screen.findByTestId('onboarding-returned');
+    expect(screen.getByTestId('returned-complete-now')).toHaveTextContent('Work area');
+    expect(screen.getByTestId('returned-todo')).toBeInTheDocument();
+    // The checklist is gone; the way to the flagged task is not.
+    expect(screen.queryByTestId('hub-task-list')).toBeNull();
   });
 
   it('tells an already-active provider there is nothing to fill in', async () => {

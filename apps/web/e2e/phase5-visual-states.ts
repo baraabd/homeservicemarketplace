@@ -224,8 +224,8 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="work-area-task"]',
     primaryAction: 'task-save-and-continue',
     requiredCopy: {
-      en: ['Your starting range'],
-      ar: ['نطاقك المبدئي'],
+      en: ['City or neighborhood', 'After 3 excellent ratings, it expands to 25 km.'],
+      ar: ['المدينة أو الحي', 'بعد 3 تقييمات ممتازة يتوسع إلى 25 كم.'],
     },
     axes: [],
     nav: 'hidden',
@@ -260,8 +260,8 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="public-profile-task"]',
     primaryAction: 'task-save-and-continue',
     requiredCopy: {
-      en: ['What customers see'],
-      ar: ['ما يراه العملاء'],
+      en: ['Tell customers about your experience', 'Customer preview'],
+      ar: ['عرّف العملاء بخبرتك', 'معاينة ما يراه العميل'],
     },
     axes: [],
     nav: 'hidden',
@@ -278,8 +278,8 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="portfolio-section"]',
     primaryAction: 'portfolio-add-photo',
     requiredCopy: {
-      en: ['Cover'],
-      ar: ['الغلاف'],
+      en: ['Cover photo', 'Photos are being checked'],
+      ar: ['الصورة الرئيسية', 'الصور قيد الفحص'],
     },
     axes: ['verification'],
     nav: 'hidden',
@@ -332,8 +332,8 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="terms-section"]',
     primaryAction: 'review-submit',
     requiredCopy: {
-      en: ['I agree'],
-      ar: ['أوافق'],
+      en: ['I have read and accept the provider terms'],
+      ar: ['قرأت شروط مقدمي الخدمة وأوافق عليها'],
     },
     axes: [],
     nav: 'hidden',
@@ -368,8 +368,8 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="provider-status-axes"]',
     primaryAction: null,
     requiredCopy: {
-      en: ['Work access'],
-      ar: ['الوصول إلى العمل'],
+      en: ['Work access', 'Not active'],
+      ar: ['إمكانية استقبال العمل', 'غير مفعّل'],
     },
     axes: ['onboarding', 'standing', 'verification', 'workAccess'],
     nav: 'hidden',
@@ -404,8 +404,8 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="session-expired"]',
     primaryAction: 'session-expired-sign-in',
     requiredCopy: {
-      en: ['Session expired'],
-      ar: ['انتهت الجلسة'],
+      en: ['Your session has expired', 'Your data is safe'],
+      ar: ['انتهت جلستك', 'بياناتك محفوظة'],
     },
     axes: [],
     nav: 'hidden',
@@ -422,10 +422,14 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="provider-workspace-unlocked"]',
     primaryAction: 'workspace-enter',
     requiredCopy: {
-      en: ['Your account is active'],
-      ar: ['تم تفعيل حسابك'],
+      en: ['You are ready to receive requests', 'Work access'],
+      ar: ['أصبحت جاهزاً لاستقبال الطلبات', 'إمكانية استقبال العمل'],
     },
     axes: ['onboarding', 'standing', 'verification', 'workAccess'],
+    // Workspace navigation becomes AVAILABLE here — the approved screen says
+    // so in its own lead — and this is the one state in the journey where that
+    // is true. The confirmation itself draws none: it is a full-bleed handoff,
+    // and the nav appears on the screen its primary action opens.
     nav: 'visible',
     scroll: 'top',
   },

@@ -153,3 +153,41 @@ export function nextActionTaskId(
   const target = nextAction.taskId;
   return tasks.some((t) => t.id === target) ? target : null;
 }
+
+// ─── The operator's note on a returned application ──────────────────────────
+
+/**
+ * Split `profile.rejectionReason` into a headline and the rest of it.
+ *
+ * The approved action-required screen draws the note as a HEADING and a
+ * paragraph, and the server sends one free-text field. So the display
+ * convention is the one every mail client already uses: the first sentence is
+ * the headline, and what follows it is the detail.
+ *
+ * It is a presentation rule and nothing more. No word is added, removed or
+ * rephrased, a note with no sentence break becomes a headline with no detail,
+ * and an empty field yields nothing at all rather than a heading with a blank
+ * paragraph under it.
+ *
+ * RECORDED FOR PHASE 5B: the field should be `{ headline, detail }` — or a
+ * reason CODE plus an operator note, the way the review blockers already work,
+ * which would also fix the second half of the problem. A single free-text
+ * column is stored in whichever language an operator typed it, so an Arabic
+ * reader can be handed an English sentence and this function cannot help that.
+ */
+export function splitReturnReason(reason: string | null | undefined): {
+  headline: string;
+  detail: string | null;
+} | null {
+  const text = reason?.trim();
+  if (!text) return null;
+
+  // The first sentence-ending punctuation followed by a space — Latin and
+  // Arabic full stops both, because the note arrives in whichever the operator
+  // types.
+  const match = /^(.*?[.!?۔؟])\s+(.*)$/s.exec(text);
+  if (!match) return { headline: text, detail: null };
+
+  const detail = match[2]!.trim();
+  return { headline: match[1]!.trim(), detail: detail === '' ? null : detail };
+}

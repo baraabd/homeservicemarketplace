@@ -11,6 +11,7 @@ import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { ProviderStatusState } from './ProviderStatusState';
 import { ProviderOnboardingWizard } from './onboarding/ProviderOnboardingWizard';
 import { ProviderActivationScreen } from '../../features/provider-onboarding-v2/components/ProviderActivationScreen';
+import { ProviderStatusCentreScreen } from '../../features/provider-onboarding-v2/components/ProviderStatusCentreScreen';
 import {
   ProviderNotificationsBellButton,
   ProviderNotificationsDrawer,
@@ -353,10 +354,25 @@ export function ProviderApp() {
       {/* Deliberately outside WorkspaceChrome. A provider who cannot take work
           should not be handed a nav bar of screens that will only bounce them
           back here — the status surface is the whole screen, as it was. */}
+      {/* Sprint 09B.29 Phase 5A — prototype screens 14 and 17.
+          The V2 status centre answers the four ADR-0005 axes separately, and it
+          answers them for an ACTIVE provider too: reaching this address after
+          approval is the activation HANDOFF, not a wrong turn to be redirected
+          away from silently. V1 keeps its single-card surface and its redirect
+          untouched, so the flag rolls back cleanly. */}
       <Route
         path="status"
         element={
-          isActive || !profile ? (
+          !profile ? (
+            <Navigate to={home} replace />
+          ) : // Scoped to the two lifecycles the approved screens describe: an
+          // application that has been HANDED IN, and one that has been
+          // approved. A DRAFT or RETURNED provider still has work in front of
+          // them and belongs on their application, not on a status board that
+          // would tell them we are reviewing something they have not sent.
+          onboardingV2 && (profile.status === 'PENDING_REVIEW' || isActive) ? (
+            <ProviderStatusCentreScreen />
+          ) : isActive ? (
             <Navigate to={home} replace />
           ) : (
             <ProviderStatusState

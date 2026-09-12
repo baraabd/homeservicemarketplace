@@ -100,6 +100,38 @@ test.describe('Phase 5A — approved states, EN and AR at 390x844', () => {
         const actual = await page.screenshot();
         writeArtifact(dir, 'actual.png', actual);
 
+        // ── The words, in the locale under test ───────────────────────────
+        //
+        // A pixel ratio cannot tell a correct sentence from a plausible one:
+        // two strings of the same length in the same font differ by a few
+        // hundred pixels, which is well inside the budget. The registry names
+        // what each state MUST say, and this is where that stops being a
+        // comment.
+        //
+        // `innerText` rather than `textContent`, so it reads what is rendered —
+        // including a deliberately screen-reader-only sentence, which the
+        // approved confirmation uses to keep an ADR-0005 promise the design
+        // makes with a shape rather than with words.
+        const rendered = await page.locator('body').innerText();
+        const missingCopy = state.requiredCopy[locale].filter(
+          (phrase) => !rendered.includes(phrase),
+        );
+        writeArtifact(
+          dir,
+          'copy.json',
+          `${JSON.stringify(
+            {
+              runId: RUN_ID,
+              stateId: state.id,
+              locale,
+              required: state.requiredCopy[locale],
+              missing: missingCopy,
+            },
+            null,
+            2,
+          )}\n`,
+        );
+
         // ── The measurement ───────────────────────────────────────────────
         const outcome = diffImages(expected, actual);
         writeArtifact(dir, 'diff.png', outcome.diff);
@@ -153,6 +185,7 @@ test.describe('Phase 5A — approved states, EN and AR at 390x844', () => {
         // The assertions are LAST, so every artifact exists whatever the
         // verdict. A failing cell that produced no diff image is a cell
         // nobody can debug.
+        expect(missingCopy, `required copy missing in ${locale}`).toEqual([]);
         expect(outcome.comparable, `geometry: ${outcome.note ?? 'comparable'}`).toBe(true);
         expect(
           axe.violations.map((v) => `${v.id} (${v.nodes.length})`),

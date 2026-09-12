@@ -65,15 +65,23 @@ const profileAt = (status: string) => ({
     serviceAreaLng: null,
     serviceAreaRadiusKm: 15,
     serviceCategories: [],
-    pendingCategories: [],
+    // The moderator's queue, which is its OWN axis. The approved status centre
+    // shows "Specialty review: In review" beside a completed application, and
+    // that row is this field rather than anything about the application.
+    pendingCategories: status === 'PENDING_REVIEW' ? ['sp-interior'] : [],
     // The SERVER's record of when it was handed in. Only the submitted
     // lifecycle has one, and the confirmation screen omits the line rather
     // than inventing a time when it does not.
     submittedForReviewAt: status === 'PENDING_REVIEW' ? SUBMITTED_AT : null,
     reviewedAt: null,
-    rejectionReason: null,
+    // The operator's note on a returned application, which the approved
+    // action-required screen carries verbatim as its heading.
+    rejectionReason: null as string | null,
     createdAt: '2026-08-01T00:00:00.000Z',
-    updatedAt: '2026-08-01T00:00:00.000Z',
+    // The status centre's header prints "Updated today at 12:43", from this.
+    // Computed for the same reason `SUBMITTED_AT` is: a fixed literal would
+    // make "today" false on every day but one.
+    updatedAt: status === 'PENDING_REVIEW' ? todayAt('UTC', '12:43') : '2026-08-01T00:00:00.000Z',
   },
 });
 
@@ -253,6 +261,20 @@ const DRAFT_DATA = {
  * the wrong content: it happened to stay under the ratio on the shorter
  * screens, which is a false pass waiting to become a real one.
  */
+/**
+ * The note an operator left on a returned application, per language.
+ *
+ * On the profile rather than the draft, because that is where the server keeps
+ * it — and localised here for the same reason the city and the bio are: the
+ * approved Arabic screen contains Arabic words, and comparing an English
+ * sentence against it would pass or fail for reasons that have nothing to do
+ * with the layout under test.
+ */
+const RETURN_REASON = {
+  en: 'Replace the first work photo. The photo is unclear.',
+  ar: 'استبدل صورة العمل الأولى. الصورة غير واضحة.',
+} as const;
+
 const LOCALISED = {
   en: {
     serviceAreaCity: 'Aleppo, Al-Furqan',
@@ -477,7 +499,11 @@ export const PRECONDITIONS: Readonly<Record<ServerPrecondition, PreconditionFixt
         ),
         progress: { complete: 5, total: 6 },
         nextAction: { kind: 'COMPLETE_TASK', taskId: 'PORTFOLIO' },
-        status: 'RETURNED',
+        // The contract's own word. 'RETURNED' is the DRAFT lifecycle's name for
+        // this; the hub calls the same fact ACTION_REQUIRED, and a value outside
+        // the enum fell through `deriveHubView` to the ordinary hub — which
+        // drew a task list with no explanation of why it had come back.
+        status: 'ACTION_REQUIRED',
       }),
       draft: draft({
         state: 'RETURNED',
@@ -543,6 +569,23 @@ function hubForState(fixture: PreconditionFixture, state: Phase5State): Record<s
   return { ...fixture.hub, tasks };
 }
 
+/**
+ * The profile, carrying the operator's note when there is one to carry.
+ *
+ * Only a REJECTED profile has one: every other lifecycle sends `null`, and the
+ * action-required screen falls back to its own heading rather than drawing an
+ * empty alert.
+ */
+function returnedProfile(
+  fixture: PreconditionFixture,
+  locale: Locale,
+): Record<string, unknown> | null {
+  if (!fixture.profile) return null;
+  const profile = (fixture.profile as { profile: Record<string, unknown> }).profile;
+  if (profile.status !== 'REJECTED') return fixture.profile;
+  return { profile: { ...profile, rejectionReason: RETURN_REASON[locale] } };
+}
+
 // ── Installation ────────────────────────────────────────────────────────────
 
 /**
@@ -559,6 +602,7 @@ export async function installPrecondition(
 ): Promise<void> {
   const fixture = PRECONDITIONS[state.precondition];
   const hubBody = hubForState(fixture, state);
+  const profileBody = returnedProfile(fixture, locale);
   const draftBody = {
     ...fixture.draft,
     data: { ...(fixture.draft.data as Record<string, unknown>), ...LOCALISED[locale] },
@@ -580,6 +624,16 @@ export async function installPrecondition(
     ([flagKey, flagValue, langKey, langValue]) => {
       window.localStorage.setItem(flagKey as string, flagValue as string);
       window.localStorage.setItem(langKey as string, langValue as string);
+      // A CSRF cookie, because its ABSENCE is a different failure.
+      //
+      // The 401 interceptor short-circuits to a global sign-out when there is
+      // no CSRF token — correctly, because a refresh could not succeed. The
+      // approved expired screen is the OTHER 401: a session that refreshes
+      // cleanly and is still refused the resource, which is what leaves the
+      // provider on the onboarding route with a 401 to explain. Without this
+      // cookie the app routes to /login and the screen is unreachable rather
+      // than unbuilt.
+      document.cookie = 'hsm_csrf=phase5';
     },
     [FLAG_KEY, 'true', 'hsm.lang', locale],
   );
@@ -588,13 +642,12 @@ export async function installPrecondition(
     const url = route.request().url();
 
     if (url.includes('/auth/me')) {
-      // The expired screen is reached by the session probe failing, which is
-      // the only thing that distinguishes it from a slow network — the
-      // approved screen says so in terms ("this message appears only for a
-      // 401 response").
-      if (fixture.unauthorized) {
-        return json(route, { success: false, error: { code: 'AUTH_TOKEN_EXPIRED' } }, 401);
-      }
+      // NOT 401 here, even for the expired state, and the distinction is the
+      // screen itself. The approved surface is the ONBOARDING hub answering a
+      // 401 — a session that was usable when the app booted and has expired by
+      // the time the application is read. Failing the identity probe too would
+      // take the provider to /login before the hub ever rendered, which is a
+      // different (and correct) behaviour for a different moment.
       if (fixture.stallSessionRefresh && upgradeRequested) {
         // Held open, not answered — and only AFTER the upgrade. The
         // synchronization screen is a transient state; letting this probe
@@ -639,15 +692,37 @@ export async function installPrecondition(
     }
 
     if (url.includes('/me/provider/profile')) {
-      return fixture.profile
-        ? json(route, fixture.profile)
+      return profileBody
+        ? json(route, profileBody)
         : json(route, { success: false, error: { code: 'PROVIDER_PROFILE_NOT_FOUND' } }, 404);
     }
 
+    // The capability contract's own shape, not a two-boolean approximation.
+    // The status centre reads `allowed`, and an object with the wrong keys
+    // would have it report "no work access" for every provider — which looks
+    // exactly like a correct answer on three of the four screens that ask.
     if (url.includes('/me/provider/capabilities')) {
+      const active = state.precondition === 'provider-active';
+      const allowed = active
+        ? [
+            'VIEW_OWN_PROFILE',
+            'EDIT_OWN_PROFILE',
+            'VIEW_MARKETPLACE',
+            'SUBMIT_BID',
+            'MANAGE_BOOKINGS',
+            'VIEW_EARNINGS',
+            'MANAGE_VERIFICATION',
+          ]
+        : ['VIEW_OWN_PROFILE', 'EDIT_OWN_PROFILE', 'COMPLETE_ONBOARDING', 'SUBMIT_FOR_REVIEW'];
       return json(route, {
-        canBid: state.precondition === 'provider-active',
-        canReceiveWork: state.precondition === 'provider-active',
+        capabilities: allowed.map((capability) => ({
+          capability,
+          allowed: true,
+          reason: null,
+        })),
+        allowed,
+        nextActions: [],
+        primaryReason: active ? null : 'ONBOARDING_INCOMPLETE',
       });
     }
 
