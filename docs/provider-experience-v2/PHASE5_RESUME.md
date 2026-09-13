@@ -63,7 +63,19 @@ passed+skipped+failed equals the `--list` total for that project.
 - [ ] P2 remaining gaps: G-04 scheduling (destructive — highest priority),
       G-05 transport, G-06 primary specialty, G-07 bio limit, G-09/G-10 prose,
       G-11 verification axis, G-12 timestamp zone, G-13 covered by G-01.
-- [ ] P3 Six real-API journeys with database reads.
+- [~] P3 Six real-API journeys. MUCH closer than the 0/6 counter suggests:
+  `provider-onboarding-v2-persistence.spec.ts` already drives all six task
+  screens against a real API, proving each edit survives re-entry, a hard
+  reload, an independent API client and a fresh sign-in, with
+  `assertCleanTraffic` proving nothing was intercepted. The counters read 0
+  because **no spec ever wrote the markers the ledger reads** — an absence
+  of files, not of tests.
+  DONE: `phase5-markers.ts` (route + persistence markers, stamped with
+  runId/gitSha/bundleHash) and `phase5-db-read.ts` (independent Postgres
+  read; queries executed against the real schema, not just typechecked).
+  NEXT: call them from the six persistence tests, add a `phase5-real-api`
+  CI job using the proven `browser-auth-e2e` service-container recipe, and
+  make it a `ci-gate` dependency.
 - [ ] P4 PR body, migration matrix, verification doc.
 
 ## CI, by revision
