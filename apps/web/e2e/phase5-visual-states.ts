@@ -65,6 +65,21 @@ export type ServerPrecondition =
  *  keeps that true. */
 export type NavVisibility = 'hidden' | 'visible';
 
+/**
+ * The panel's row ids, spelled as the component's own `data-testid` suffixes.
+ *
+ * A closed union rather than `string`, so a registry entry naming a row that
+ * does not exist fails to compile instead of silently asserting nothing.
+ * `standing` and `specialty` are separate members because they are different
+ * questions and the two states that draw the panel each draw only one of them.
+ */
+export type Phase5AxisRow =
+  | 'completion'
+  | 'standing'
+  | 'specialty'
+  | 'verification'
+  | 'work-access';
+
 export interface Phase5State {
   /** 0..17, unique, exhaustive. */
   readonly id: number;
@@ -86,8 +101,34 @@ export interface Phase5State {
   readonly primaryAction: string | null;
   /** Copy that must be present, in both languages, keyed by locale. */
   readonly requiredCopy: { readonly en: readonly string[]; readonly ar: readonly string[] };
-  /** Which of the four axes this state is expected to state explicitly. */
-  readonly axes: readonly ('onboarding' | 'standing' | 'verification' | 'workAccess')[];
+  /**
+   * The lifecycle panel's rows, when the state draws one.
+   *
+   * Replaces an `axes` field that listed axis NAMES and was read by nothing.
+   * Two things went unnoticed for as long as it existed: it claimed state 14
+   * shows account standing when that screen shows specialty review, and — the
+   * reason this field now exists — nothing anywhere checked what the four rows
+   * actually SAY.
+   *
+   * That matters more here than on any other state. ADR 0005 keeps the four
+   * axes independent precisely so a provider can tell which one they are
+   * waiting on, and a wrong word in one row is a provider waiting for a queue
+   * they are not in. It is also invisible to every other gate in this suite:
+   * a badge reading "Unavailable" instead of "In review" moves a few hundred
+   * pixels, which is two orders of magnitude inside the 0.5% budget.
+   *
+   * Keyed by the row's `data-testid` suffix. `tone` is asserted alongside the
+   * word because the badge carries the status in both, and an answer with the
+   * right text and the wrong colour is still wrong.
+   *
+   * Values come from the frozen prototype's `waiting` and `active` screens,
+   * not from what the application currently renders.
+   */
+  readonly axisAnswers?: Readonly<
+    Partial<
+      Record<Phase5AxisRow, { readonly en: string; readonly ar: string; readonly tone: string }>
+    >
+  >;
   /** Workspace navigation expectation. */
   readonly nav: NavVisibility;
   /** Where the surface must be scrolled before capture. */
@@ -123,7 +164,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Turn your skills into work'],
       ar: ['حوّل خبرتك إلى فرص عمل'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -141,7 +181,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['No sign-in needed'],
       ar: ['لا تسجّل الدخول من جديد'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -159,7 +198,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['of 6 tasks complete'],
       ar: ['من 6 مهام مكتملة'],
     },
-    axes: ['onboarding'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -177,7 +215,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Customer-facing name'],
       ar: ['الاسم الذي يراه العملاء'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -195,7 +232,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Specialties are reviewed later'],
       ar: ['تُراجع التخصصات لاحقاً'],
     },
-    axes: ['verification'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -213,7 +249,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Suggested title'],
       ar: ['المسمى المقترح'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'bottom',
   },
@@ -231,7 +266,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['City or neighborhood', 'After 3 excellent ratings, it expands to 25 km.'],
       ar: ['المدينة أو الحي', 'بعد 3 تقييمات ممتازة يتوسع إلى 25 كم.'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -249,7 +283,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Apply to selected days'],
       ar: ['تطبيق على الأيام المحددة'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -267,7 +300,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Tell customers about your experience', 'Customer preview'],
       ar: ['عرّف العملاء بخبرتك', 'معاينة ما يراه العميل'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -285,7 +317,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Cover photo', 'Photos are being checked'],
       ar: ['الصورة الرئيسية', 'الصور قيد الفحص'],
     },
-    axes: ['verification'],
     nav: 'hidden',
     scroll: 'bottom',
   },
@@ -303,7 +334,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['6 of 6 tasks complete'],
       ar: ['6 من 6 مهام مكتملة'],
     },
-    axes: ['onboarding', 'verification'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -321,7 +351,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Review your application'],
       ar: ['راجع طلبك'],
     },
-    axes: ['onboarding', 'verification'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -339,7 +368,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['I have read and accept the provider terms'],
       ar: ['قرأت شروط مقدمي الخدمة وأوافق عليها'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'bottom',
   },
@@ -357,7 +385,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['does not give you access'],
       ar: ['لا يمنحك ذلك الوصول'],
     },
-    axes: ['onboarding'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -375,7 +402,12 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Work access', 'Not active'],
       ar: ['إمكانية استقبال العمل', 'غير مفعّل'],
     },
-    axes: ['onboarding', 'standing', 'verification', 'workAccess'],
+    axisAnswers: {
+      completion: { en: 'Complete', ar: 'مكتمل', tone: 'done' },
+      specialty: { en: 'In review', ar: 'قيد المراجعة', tone: 'waiting' },
+      verification: { en: 'In review', ar: 'قيد المراجعة', tone: 'waiting' },
+      'work-access': { en: 'Not active', ar: 'غير مفعّل', tone: 'todo' },
+    },
     nav: 'hidden',
     scroll: 'top',
   },
@@ -393,7 +425,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Action required'],
       ar: ['إجراء مطلوب'],
     },
-    axes: ['onboarding'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -411,7 +442,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Your session has expired', 'Your data is safe'],
       ar: ['انتهت جلستك', 'بياناتك محفوظة'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -429,7 +459,12 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['You are ready to receive requests', 'Work access'],
       ar: ['أصبحت جاهزاً لاستقبال الطلبات', 'إمكانية استقبال العمل'],
     },
-    axes: ['onboarding', 'standing', 'verification', 'workAccess'],
+    axisAnswers: {
+      completion: { en: 'Complete', ar: 'مكتمل', tone: 'done' },
+      standing: { en: 'Good', ar: 'سليم', tone: 'done' },
+      verification: { en: 'Verified', ar: 'موثّق', tone: 'done' },
+      'work-access': { en: 'Active', ar: 'مفعّل', tone: 'done' },
+    },
     // Workspace navigation becomes AVAILABLE here — the approved screen says
     // so in its own lead — and this is the one state in the journey where that
     // is true. The confirmation itself draws none: it is a full-bleed handoff,

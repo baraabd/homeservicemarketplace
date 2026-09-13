@@ -203,6 +203,30 @@ export function OnboardingTaskScreen() {
   const actionable = isTaskActionable(task.status);
   const explanation = statusExplanation(task.status, lang);
 
+  /**
+   * Whether this screen draws its task body at all.
+   *
+   * Sprint 09B.29 Phase 5B, gap G-14. `actionable` alone left a COMPLETE task
+   * rendering NOTHING: no form, because the server no longer calls the task
+   * available, and no explanation either, because "complete" has none to give
+   * — `STATUS_EXPLANATIONS` covers only WAITING and BLOCKED. What the provider
+   * got was a header, a progress bar, a "Save and continue" and an empty
+   * screen between them.
+   *
+   * That is not an exotic path. Finishing task 1 completes it, so a provider
+   * who types their name and phone and then presses reload is looking at the
+   * blank version of the screen they were just using. Any deep link to a
+   * finished task does the same.
+   *
+   * A completed task is still the provider's to revise until the application
+   * is handed in, so the honest screen is the one showing the answers it is
+   * offering to save. Whether those fields ACCEPT input is a different
+   * question and still the server's: each body reads the draft's own
+   * `editable`, which is false once the application is in, and renders
+   * read-only then. This only decides whether the body is drawn.
+   */
+  const showsBody = actionable || task.status === 'COMPLETE';
+
   // ── The approved sticky bar ───────────────────────────────────────────────
   //
   // `.hsm-sticky`: a 7px-gap column holding the action row and, beneath it,
@@ -348,15 +372,15 @@ export function OnboardingTaskScreen() {
             rather than rendering an input that saves nowhere. Gated on
             `actionable` like everything else: a task the SERVER calls blocked
             does not get a form just because the client has one. */}
-        {actionable && task.id === 'BASICS_IDENTITY' ? (
+        {showsBody && task.id === 'BASICS_IDENTITY' ? (
           <BasicsTask lang={lang} />
-        ) : actionable && task.id === 'SERVICES_EXPERIENCE' ? (
+        ) : showsBody && task.id === 'SERVICES_EXPERIENCE' ? (
           <ServicesTask lang={lang} part={screenKey === 'experience' ? 'experience' : 'services'} />
-        ) : actionable && task.id === 'WORK_AREA' ? (
+        ) : showsBody && task.id === 'WORK_AREA' ? (
           <ServiceAreaTask lang={lang} />
-        ) : actionable && task.id === 'WORKING_HOURS' ? (
+        ) : showsBody && task.id === 'WORKING_HOURS' ? (
           <AvailabilityTask lang={lang} />
-        ) : actionable && task.id === 'PORTFOLIO' ? (
+        ) : showsBody && task.id === 'PORTFOLIO' ? (
           <PublicProfileTask
             lang={lang}
             part={(screenKey === 'portfolio' ? 'portfolio' : 'profile') satisfies PublicProfilePart}
@@ -368,7 +392,7 @@ export function OnboardingTaskScreen() {
               submitted that the step is unavailable. The screen shown is decided
               by the application's own lifecycle, and none of its three offers an
               action the server has not authorised. */
-        (actionable || screenKey === 'submitted') && task.id === 'REVIEW_SUBMISSION' ? (
+        (showsBody || screenKey === 'submitted') && task.id === 'REVIEW_SUBMISSION' ? (
           <ReviewTask
             lang={lang}
             part={

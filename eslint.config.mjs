@@ -30,6 +30,17 @@ export default tseslint.config(
       '**/dist-phase3-e2e/**',
       '**/dist-phase3-v2/**',
       '**/dist-phase3-v1/**',
+      // Sprint 09B.29 Phase 5B — Playwright's own output, for the third time
+      // the same reason. These are gitignored but were never ignored HERE, and
+      // the two lists are read by different tools: run any browser suite and
+      // then lint, and eslint parses the trace viewer's minified CodeMirror
+      // bundle — 3,664 errors, none of them in this repository's code.
+      //
+      // CI never saw it because lint runs before any browser job, so the only
+      // person this ever hit was whoever ran the suite locally and then tried
+      // to lint. That is a worse place to leave a trap than CI.
+      '**/playwright-report/**',
+      '**/test-results/**',
       // Third-party assets vendored byte-for-byte so the visual gate is
       // deterministic (lucide, floating-ui, the font stylesheet). They are
       // pinned upstream builds recorded with SHA-256 in `manifest.json`;

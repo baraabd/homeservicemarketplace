@@ -40,6 +40,13 @@ who wants 10 km cannot ask for it here.
 expansion ladder implies it is earned rather than chosen, in which case the
 approved screen is right and nothing is missing.
 
+**Test consequence, recorded in 5B** the real-API persistence test for this
+screen used to drag a `radius-slider`, so it failed permanently once the
+approved screen shipped. It now proves the CITY instead — the one answer the
+approved screen does let a provider give. Retargeting rather than deleting
+matters: the screen still has durable state, and a test asserting a control the
+design removed proves nothing while looking like coverage.
+
 ### G-03 — device location is not offered
 
 **Where** state 6. The reference shows a static map band with no "use my
@@ -73,6 +80,12 @@ shows no way to move it.
 and no minimum hint. The server still enforces a minimum, so a provider can write
 a short bio, leave, and meet the rule for the first time as a blocker on the
 review screen.
+
+**Test consequence, recorded in 5B** the persistence test for this screen used to
+type into a `title-input`. The approved profile screen has no such field — the
+professional title is server-generated under ruling C1, and two other specs
+already assert its absence — so the test now proves the BIO, which is what a
+provider actually composes here.
 
 ### G-08 — equipment is not collected
 
@@ -114,15 +127,29 @@ already work — which fixes both halves at once.
 
 ## Server facts the screens project rather than read
 
-### G-11 — the verification axis is inferred
+### G-11 — the verification axis is inferred — **CLOSED in Phase 5B**
 
 **Where** states 14 and 17, the status centre.
 **What shipped** `profile.verified`, plus whether the application has been handed
 in, projected onto Verified / In review / Not started.
 **The gap** `GET /me/provider/verification/case` carries a real state machine
-(outstanding requirements, unusable documents, scanning) and this row reads none
-of it. `deriveVerificationView` already exists and does.
-**Closing it** wiring, not policy.
+(outstanding requirements, unusable documents, scanning) and this row read none
+of it. Two cases were wrong in the same direction: a provider whose documents
+were sent back saw "In review", and so did one whose case was refused. Both are
+somebody waiting for a queue they are not in.
+
+**Closed by** `ProviderStatusCentreScreen` now reading the case and mapping its
+state, with ACTION_REQUIRED, REJECTED and EXPIRED as their own answers, and an
+explicit "Unavailable" when the request fails rather than a guess of
+"Not started" — which would invite a provider to redo work already done.
+
+**What proves it** 22 unit tests over the mapping, plus a per-row assertion in
+the visual gate. The second one mattered more than expected: the first version
+asserted the phrase "In review" anywhere on state 14, and that passes when the
+verification row has fallen back to "Unavailable", because the SPECIALTY row
+says "In review" too. Stubbing the case endpoint to return `null` proved the
+page-wide check green and the row-scoped one red. The gate now reads
+`[data-testid="axis-<row>"]` and checks the word and the tone.
 
 ### G-12 — the status centre timestamps in the browser's zone
 
@@ -138,6 +165,36 @@ who is travelling.
 **Where** state 7. `resolvedTimezone.needsConfirmation` is true for a country
 that spans several zones, and the approved screen has nowhere to confirm one.
 Existing values are preserved.
+
+### G-14 — a finished task was a blank screen — **CLOSED in Phase 5B**
+
+**Where** every task screen, reached after the task completes.
+
+**What shipped** the body was drawn only for a task the server calls
+`AVAILABLE`. `COMPLETE` is not available, and `statusExplanation` answers only
+`WAITING` and `BLOCKED` — so a completed task rendered no form AND no reason.
+The provider got a header, a progress bar and a "Save and continue" with
+nothing between them.
+
+**How it was found** not by inspection. The Phase 5B real-API run failed looking
+for `bio-input` and `field-displayName` after a reload, and the saved page
+snapshot showed an empty `<main>`. Asked of the live server directly, PATCHing
+a display name and a phone moves BASICS_IDENTITY to `COMPLETE` — so the path is
+ordinary: finish task 1, press reload.
+
+The hub row for a finished task is a non-interactive `<div>`, so this could not
+be reached by clicking, which is presumably why it went unseen. It is reachable
+by reloading the screen you just completed, and by any deep link to it.
+
+**Closed by** `OnboardingTaskScreen` drawing the body for `COMPLETE` as well.
+A completed task is still the provider's to revise until the application is
+handed in; whether the fields ACCEPT input remains the server's answer, through
+the draft's own `editable`, which is false after submission and renders every
+body read-only.
+
+**What proves it** two unit tests — one for the COMPLETE case, one asserting the
+general rule that no task status may leave the screen with neither a body nor an
+explanation. Reverting the one-line change turns both red.
 
 ---
 

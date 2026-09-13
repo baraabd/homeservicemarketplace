@@ -132,6 +132,61 @@ test.describe('Phase 5A — approved states, EN and AR at 390x844', () => {
           )}\n`,
         );
 
+        // ── The four lifecycle answers, row by row ────────────────────────
+        //
+        // Scoped to each row's own testid, never a body-wide text search. The
+        // difference is not pedantry: state 14 shows "In review" on BOTH the
+        // specialty row and the verification row, so a page-wide search for
+        // that phrase still passes when the verification row has fallen back to
+        // "Unavailable". Proven, not assumed — stubbing the case endpoint to
+        // return null left a body search green and this check red.
+        //
+        // The tone travels with the word because the badge encodes status twice
+        // over, which is a WCAG requirement rather than decoration: "Action
+        // needed" in the waiting colour tells a provider to keep waiting.
+        const axisAnswers: Record<string, { status: string; tone: string | null }> = {};
+        const axisProblems: string[] = [];
+        for (const [rowId, want] of Object.entries(state.axisAnswers ?? {})) {
+          const row = page.locator(`[data-testid="axis-${rowId}"]`);
+          if ((await row.count()) !== 1) {
+            axisProblems.push(
+              `axis-${rowId}: expected exactly one row, found ${await row.count()}`,
+            );
+            continue;
+          }
+          // The `dd` is the badge; the `dt` is the label. Reading the whole row
+          // would let the label satisfy an assertion about the answer.
+          const status = (await row.locator('dd').innerText()).trim();
+          const tone = await row.getAttribute('data-tone');
+          axisAnswers[rowId] = { status, tone };
+          const wantStatus = locale === 'ar' ? want.ar : want.en;
+          if (status !== wantStatus) {
+            axisProblems.push(
+              `axis-${rowId}: said "${status}", approved screen says "${wantStatus}"`,
+            );
+          }
+          if (tone !== want.tone) {
+            axisProblems.push(`axis-${rowId}: tone "${tone}", approved screen says "${want.tone}"`);
+          }
+        }
+        writeArtifact(
+          dir,
+          'axes.json',
+          `${JSON.stringify(
+            {
+              runId: RUN_ID,
+              stateId: state.id,
+              locale,
+              expected: state.axisAnswers ?? null,
+              rendered: axisAnswers,
+              problems: axisProblems,
+            },
+            null,
+            2,
+          )}
+`,
+        );
+
         // ── The measurement ───────────────────────────────────────────────
         const outcome = diffImages(expected, actual);
         writeArtifact(dir, 'diff.png', outcome.diff);
@@ -186,6 +241,7 @@ test.describe('Phase 5A — approved states, EN and AR at 390x844', () => {
         // verdict. A failing cell that produced no diff image is a cell
         // nobody can debug.
         expect(missingCopy, `required copy missing in ${locale}`).toEqual([]);
+        expect(axisProblems, 'lifecycle axis answers').toEqual([]);
         expect(outcome.comparable, `geometry: ${outcome.note ?? 'comparable'}`).toBe(true);
         expect(
           axe.violations.map((v) => `${v.id} (${v.nodes.length})`),

@@ -728,6 +728,32 @@ export async function installPrecondition(
 
     if (url.includes('/notifications/unread-count')) return json(route, { count: 0 });
 
+    // The verification case, which is what the status centre's verification
+    // axis reads (G-11). It used to be inferred from `profile.verified`, and
+    // the approved screens depict the two states that inference could not
+    // distinguish from anything else: "In review" while the application is with
+    // us, "Verified" once the provider is active.
+    //
+    // Stubbed per precondition rather than globally, because those are two
+    // different server answers and a single one would make one of the two
+    // approved screens unreachable.
+    if (url.includes('/me/provider/verification/case')) {
+      // Named `caseState` because `state` is the Phase5State parameter this
+      // handler closes over — shadowing it made the ternary refer to itself.
+      const caseState =
+        state.precondition === 'provider-active'
+          ? 'VERIFIED'
+          : state.precondition === 'draft-submitted'
+            ? 'IN_REVIEW'
+            : null;
+      return json(route, {
+        case:
+          caseState === null
+            ? null
+            : { id: 'vc-phase5', state: caseState, documents: [], requirements: [] },
+      });
+    }
+
     // The operator's market registry (C2), as the SETTLED case.
     //
     // Every approved state depicts a provider whose market is known and still

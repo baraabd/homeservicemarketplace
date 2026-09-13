@@ -47,6 +47,20 @@ export interface StatusCentreCopy {
   valueNotActive: string;
   valueActive: string;
   valueNotStarted: string;
+  /** The case was sent back — the provider has something to do. */
+  valueActionRequired: string;
+  /** Refused. Distinct from "not started", which invites an upload. */
+  valueRejected: string;
+  /** Lapsed and needs renewing. */
+  valueExpired: string;
+  /**
+   * The server could not be asked.
+   *
+   * Shown instead of a guess. An axis that reports "Not started" because a
+   * request failed is worse than one that admits it does not know: the first
+   * invites a provider to redo work that may already be done.
+   */
+  valueUnknown: string;
 }
 
 const EN: StatusCentreCopy = {
@@ -77,6 +91,10 @@ const EN: StatusCentreCopy = {
   valueNotActive: 'Not active',
   valueActive: 'Active',
   valueNotStarted: 'Not started',
+  valueActionRequired: 'Action needed',
+  valueRejected: 'Not accepted',
+  valueExpired: 'Expired',
+  valueUnknown: 'Unavailable',
 };
 
 const AR: StatusCentreCopy = {
@@ -105,6 +123,10 @@ const AR: StatusCentreCopy = {
   valueNotActive: 'غير مفعّل',
   valueActive: 'مفعّل',
   valueNotStarted: 'لم تبدأ',
+  valueActionRequired: 'مطلوب إجراء',
+  valueRejected: 'غير مقبول',
+  valueExpired: 'منتهية',
+  valueUnknown: 'غير متاح',
 };
 
 export const STATUS_CENTRE_COPY: Record<Lang, StatusCentreCopy> = { en: EN, ar: AR };

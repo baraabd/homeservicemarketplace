@@ -188,10 +188,12 @@ test.describe('provider onboarding v2 — real browser, real API', () => {
     //    and the hub must move. A fixture cannot follow a write it never saw,
     //    so this fails on any stubbed transport regardless of how faithful the
     //    fixture's shape is.
-    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('0 of 6 complete');
+    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('0 of 6 tasks complete');
     await completeDraft(account, { skip: ['PROFILE'] });
     await page.reload();
-    await expect(page.getByTestId('onboarding-v2-progress')).not.toHaveText('0 of 6 complete');
+    await expect(page.getByTestId('onboarding-v2-progress')).not.toHaveText(
+      '0 of 6 tasks complete',
+    );
     await expect(page.getByTestId('task-row-PORTFOLIO')).toHaveAttribute(
       'data-status',
       'AVAILABLE',
@@ -263,7 +265,12 @@ test.describe('provider onboarding v2 — real browser, real API', () => {
     );
     expect(hub.body.nextAction.kind).toBe('COMPLETE_TASK');
 
-    await page.getByRole('button', { name: 'Continue' }).click();
+    // By testid, not by label. The approved hub names the task in its CTA —
+    // "Start: Basics and identity" rather than a bare "Continue" — so matching
+    // the old label waits three minutes for a button that is right there.
+    // `hub-primary-action` is the stable handle, and this test is about WHICH
+    // TASK the CTA opens, which the assertion below still checks exactly.
+    await page.getByTestId('hub-primary-action').click();
     await expect(page.getByTestId(`task-screen-${hub.body.nextAction.taskId}`)).toBeVisible();
   });
 
@@ -397,6 +404,12 @@ test.describe('provider onboarding v2 — real browser, real API', () => {
     await page.getByTestId('task-row-REVIEW_SUBMISSION').click();
     await expect(page.getByTestId('review-screen')).toBeVisible();
 
+    // Phase 5A split this task into the approved summary screen and then the
+    // consent screen. Submit belongs to the second, so the summary's primary
+    // comes first — `review-submit` is simply not on the summary.
+    await page.getByTestId('review-continue-to-consent').click();
+    await expect(page.getByTestId('terms-section')).toBeVisible();
+
     // Everything is collected, so consent is the only thing left — and the
     // server says so, not the client.
     await expect(page.getByTestId('review-submit')).toBeDisabled();
@@ -428,13 +441,17 @@ test.describe('provider onboarding v2 — real browser, real API', () => {
     await openHub(page, context, account);
 
     // Everything collected: five of six, and review is the one left.
-    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('5 of 6 complete');
+    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('5 of 6 tasks complete');
     await expect(page.getByTestId('task-row-REVIEW_SUBMISSION')).toHaveAttribute(
       'data-status',
       'AVAILABLE',
     );
 
     await page.getByTestId('task-row-REVIEW_SUBMISSION').click();
+    // Through the summary to consent, where Submit lives. Terms were accepted
+    // through the API by `acceptTerms` above, so the button is enabled on
+    // arrival rather than needing a click here.
+    await page.getByTestId('review-continue-to-consent').click();
     await expect(page.getByTestId('review-submit')).toBeEnabled({ timeout: 30_000 });
     await page.getByTestId('review-submit').click();
 

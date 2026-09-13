@@ -2,13 +2,17 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { BadgeCheck, Clock } from 'lucide-react';
 
-import { getProviderCapabilities } from '../../../../lib/provider/provider-verification-api';
+import {
+  getProviderCapabilities,
+  getVerificationCase,
+} from '../../../../lib/provider/provider-verification-api';
 import { useProviderProfile } from '../../../hooks/provider/useProviderProfile';
 import { useProviderOnboardingHub } from '../../../hooks/provider/useProviderOnboardingHub';
 import { useWithdrawOnboarding } from '../../../hooks/provider/useProviderOnboarding';
 import { useOnboardingReview } from '../../../hooks/provider/useProviderOnboardingReview';
 import { useLang } from '../../../i18n/LanguageContext';
 import { ProviderButton, ProviderSkeleton } from '../../provider-ui';
+import type { ProviderTone } from '../../provider-ui/status';
 import { STATUS_CENTRE_COPY, type Lang } from '../copy/status-centre-copy';
 import { OnboardingAlert } from './OnboardingAlert';
 import { OnboardingAxisPanel, type OnboardingAxisRow } from './OnboardingAxisPanel';
@@ -53,6 +57,7 @@ import { OnboardingShell } from './OnboardingShell';
 type Screen = 'waiting' | 'active';
 
 const CAPS_KEY = ['provider', 'verification', 'capabilities'] as const;
+const CASE_KEY = ['provider', 'verification', 'case'] as const;
 
 export function ProviderStatusCentreScreen() {
   const { lang: rawLang } = useLang();
@@ -65,6 +70,16 @@ export function ProviderStatusCentreScreen() {
   // The same key the verification screen uses, so the two share one answer
   // rather than asking the capability service the same question twice.
   const capsQuery = useQuery({ queryKey: CAPS_KEY, queryFn: getProviderCapabilities });
+  // G-11 — the verification axis, READ rather than guessed.
+  //
+  // It used to be projected from `profile.verified` plus whether the
+  // application had been handed in, which produces a plausible answer and a
+  // wrong one: a provider whose documents were sent back saw "In review", and a
+  // provider whose case was refused saw the same. Both of those are somebody
+  // waiting for nothing.
+  //
+  // Same key the verification screen uses, so the two share one answer.
+  const caseQuery = useQuery({ queryKey: CASE_KEY, queryFn: getVerificationCase, retry: 1 });
 
   // The withdraw command and the server's verdict on whether it would succeed.
   //
@@ -89,7 +104,8 @@ export function ProviderStatusCentreScreen() {
   const hasWorkAccess = allowed.includes('SUBMIT_BID');
   const screen: Screen = hasWorkAccess ? 'active' : 'waiting';
 
-  const settled = profileQuery.isFetched && hubQuery.isFetched && capsQuery.isFetched;
+  const settled =
+    profileQuery.isFetched && hubQuery.isFetched && capsQuery.isFetched && caseQuery.isFetched;
 
   // ── The axes ──────────────────────────────────────────────────────────────
 
@@ -100,7 +116,44 @@ export function ProviderStatusCentreScreen() {
       hub.status === 'ACTIVE');
 
   const specialtiesPending = (profile?.pendingCategories?.length ?? 0) > 0;
-  const verified = profile?.verified === true;
+
+  /**
+   * The verification axis, from the case's own state machine.
+   *
+   * `profile.verified` is still consulted, but only as the confirmation that a
+   * VERIFIED case really did grant the badge — it is never the source of the
+   * word shown, because it cannot distinguish "not started" from "refused".
+   */
+  const verificationAxis = ((): { status: string; tone: ProviderTone } => {
+    if (caseQuery.isError) return { status: copy.valueUnknown, tone: 'todo' };
+    if (!caseQuery.isFetched) return { status: copy.valueUnknown, tone: 'todo' };
+
+    const state = caseQuery.data?.case?.state ?? null;
+    switch (state) {
+      case 'VERIFIED':
+        return { status: copy.valueVerified, tone: 'done' };
+      case 'SUBMITTED':
+      case 'IN_REVIEW':
+        return { status: copy.valueInReview, tone: 'waiting' };
+      case 'ACTION_REQUIRED':
+        // Blocked, not waiting. The provider has something to do and the row
+        // has to say so — this is the case the old inference read as "In
+        // review", leaving somebody waiting for a queue they were not in.
+        return { status: copy.valueActionRequired, tone: 'blocked' };
+      case 'REJECTED':
+        return { status: copy.valueRejected, tone: 'danger' };
+      case 'EXPIRED':
+        return { status: copy.valueExpired, tone: 'blocked' };
+      case 'DRAFT':
+      case null:
+        return { status: copy.valueNotStarted, tone: 'todo' };
+      default:
+        // A state this bundle has never heard of. Saying "unavailable" is the
+        // honest rendering; picking the nearest known word would be a guess
+        // about a decision somebody else made.
+        return { status: copy.valueUnknown, tone: 'todo' };
+    }
+  })();
   // Standing is only a question once the application is no longer one. A
   // suspended or terminated provider does not reach this screen with work
   // access, so "Good" is the honest answer beside an active account.
@@ -129,12 +182,8 @@ export function ProviderStatusCentreScreen() {
     {
       id: 'verification',
       label: copy.axisVerification,
-      status: verified
-        ? copy.valueVerified
-        : applicationComplete
-          ? copy.valueInReview
-          : copy.valueNotStarted,
-      tone: verified ? 'done' : applicationComplete ? 'waiting' : 'todo',
+      status: verificationAxis.status,
+      tone: verificationAxis.tone,
     },
     {
       id: 'work-access',

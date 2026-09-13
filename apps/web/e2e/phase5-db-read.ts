@@ -16,13 +16,30 @@ import { Client } from 'pg';
 // correctly and a database read wrongly. "Durable" is a claim about the
 // database, so the evidence has to come from the database.
 //
-// AND IT CATCHES THE TEST'S OWN MISTAKES
+// AND IT CATCHES THE TEST'S OWN MISTAKES — TWICE, SO FAR
 //
-// The first version of this file selected `displayName` as a COLUMN of
-// `ProviderOnboardingDraft`. It is not one — the draft keeps every answer in a
-// single `data` JSON column — and the query would have failed against the real
-// schema after looking entirely reasonable. A read that has to satisfy Postgres
-// cannot be written from memory, which is part of why it is worth having.
+// First this file selected `displayName` as a COLUMN of
+// `ProviderOnboardingDraft`. It is not one, so the query failed outright.
+//
+// The correction was worse, because it passed. It concluded that the draft
+// keeps every answer in its `data` JSON and read them all from there, and CI
+// duly reported `displayName: undefined` for a name that was on screen, in the
+// API response, and in the database. The wizard writes two different things:
+//
+//   ProviderOnboardingDraft.data   the SCRATCH only — `primaryGroupIds` and
+//                                  friends, values with nowhere else to live
+//                                  (`data: scratch` in the wizard service)
+//   ProviderProfile.<column>       every real answer: displayName, headline,
+//                                  bio, yearsOfExperience, serviceAreaRadiusKm,
+//                                  acceptedConsentVersion, …
+//
+// The API's `data` field in a wizard RESPONSE is a projection built by
+// `toData()` from the profile, which is what made the wrong model look right:
+// the response and the draft column share a name and hold different things.
+//
+// So "durable" for an onboarding answer means a ProviderProfile column, and
+// that is what `readProfileValues` reads. Twice now the schema has refused a
+// query written from memory; both times it was the test that was wrong.
 //
 // STRICTLY READ-ONLY, AND THAT IS A DESIGN CONSTRAINT
 //
@@ -82,11 +99,90 @@ export async function databaseSystemId(): Promise<string> {
 }
 
 /**
- * One provider's stored draft, straight from the row.
+ * Columns of `ProviderProfile` a Phase 5 marker is allowed to read.
  *
- * The draft is a single `data` JSON column plus its optimistic-concurrency
- * `version`, which is why this returns both: the value a test asserts on and
- * the revision the server had reached when it stored it.
+ * An allow-list rather than free interpolation: a column name cannot be
+ * parameterised in SQL, so the only safe way to build `SELECT "x"` from a
+ * caller's string is to refuse any string that is not on this list. It also
+ * fails loudly when a spec asks for a field that moved, instead of quietly
+ * returning `undefined` and letting a marker record that nothing persisted —
+ * which is precisely the failure this module just had.
+ */
+const READABLE_PROFILE_COLUMNS = new Set([
+  'displayName',
+  'legalBusinessName',
+  'providerType',
+  'phoneNumber',
+  'headline',
+  'bio',
+  'yearsOfExperience',
+  'professionSince',
+  'transportMode',
+  'serviceAreaCity',
+  'serviceAreaCityKey',
+  'serviceAreaCountryCode',
+  'serviceAreaRadiusKm',
+  'serviceAreaLat',
+  'serviceAreaLng',
+  'primaryServiceCategoryId',
+  'acceptedConsentVersion',
+  'consentAcceptedAt',
+  'onboardingState',
+  'status',
+  'submittedForReviewAt',
+]);
+
+/**
+ * Named answers, from the columns that actually hold them.
+ *
+ * Returns exactly the requested keys so a marker's `databaseValues` can be
+ * compared field for field against what the provider left on screen; comparing
+ * whole rows would fail on every unrelated column the server also keeps.
+ *
+ * `null` is normalised to `undefined` because that is what the screens mean by
+ * "not set" and what an assertion against `before` is written in terms of; a
+ * column that has never been written and one explicitly cleared are the same
+ * fact to a provider looking at an empty field.
+ */
+export async function readProfileValues(
+  providerProfileId: string,
+  keys: readonly string[],
+): Promise<Record<string, unknown>> {
+  const unknown = keys.filter((k) => !READABLE_PROFILE_COLUMNS.has(k));
+  if (unknown.length > 0) {
+    throw new Error(
+      `phase5-db-read: not readable ProviderProfile columns: ${unknown.join(', ')}. ` +
+        'Add them to READABLE_PROFILE_COLUMNS only after confirming against the ' +
+        'live schema that the wizard stores the answer there.',
+    );
+  }
+  if (keys.length === 0) return {};
+  return withClient(async (client) => {
+    const selection = keys.map((k) => `p."${k}"`).join(', ');
+    const { rows } = await client.query<Record<string, unknown>>(
+      `SELECT ${selection} FROM "ProviderProfile" p WHERE p."id" = $1 LIMIT 1`,
+      [providerProfileId],
+    );
+    const row = rows[0];
+    if (row === undefined) {
+      throw new Error(
+        `phase5-db-read: no ProviderProfile row for ${providerProfileId}. The ` +
+          'harness creates the provider through the public endpoints, so an absent ' +
+          'row means the journey under test never got that far.',
+      );
+    }
+    const picked: Record<string, unknown> = {};
+    for (const key of keys) picked[key] = row[key] ?? undefined;
+    return picked;
+  });
+}
+
+/**
+ * One provider's stored draft SCRATCH, straight from the row.
+ *
+ * Only the values that have nowhere better to live are in here. Anything a
+ * provider typed into a field is a `ProviderProfile` column — use
+ * `readProfileValues` for those.
  */
 export async function readDraftRow(
   providerProfileId: string,
@@ -104,14 +200,13 @@ export async function readDraftRow(
 }
 
 /**
- * Pick named answers out of the stored draft.
+ * Pick named keys out of the draft's scratch JSON.
  *
- * Returns exactly the requested keys — including ones the draft does not hold,
- * as `undefined` — so a marker's `databaseValues` can be compared field for
- * field against what the provider left on screen. Comparing whole objects would
- * fail on every unrelated field the server also stores.
+ * For scratch only. An onboarding ANSWER is not in here and asking for one
+ * returns `undefined`, which is why the profile reader exists and why this is
+ * no longer the default choice for a persistence assertion.
  */
-export async function readDraftValues(
+export async function readDraftScratch(
   providerProfileId: string,
   keys: readonly string[],
 ): Promise<Record<string, unknown>> {

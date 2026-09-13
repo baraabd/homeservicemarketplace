@@ -25,6 +25,7 @@ import { STATUS_CENTRE_COPY } from '../copy/status-centre-copy';
 const PROFILE_URL = /\/v1\/me\/provider\/profile$/;
 const HUB_URL = /\/v1\/me\/provider\/onboarding\/hub$/;
 const CAPS_URL = /\/v1\/me\/provider\/capabilities$/;
+const CASE_URL = /\/v1\/me\/provider\/verification\/case$/;
 const REVIEW_URL = /\/v1\/me\/provider\/onboarding\/review/;
 const WITHDRAW_URL = /\/v1\/me\/provider\/onboarding\/withdraw$/;
 
@@ -86,6 +87,10 @@ function renderScreen(
     profile?: ReturnType<typeof PROFILE>;
     hub?: ReturnType<typeof HUB>;
     caps?: string[];
+    /** The verification case's own state, or null when never started. */
+    caseState?: string | null;
+    /** Make the case read fail, to prove the axis admits it does not know. */
+    caseFails?: boolean;
     /** The server's verdict on whether the withdraw command would succeed. */
     canWithdraw?: boolean;
     lang?: 'en' | 'ar';
@@ -95,6 +100,16 @@ function renderScreen(
   mock.onGet(PROFILE_URL).reply(200, options.profile ?? PROFILE());
   mock.onGet(HUB_URL).reply(200, options.hub ?? HUB());
   mock.onGet(CAPS_URL).reply(200, CAPS(options.caps ?? WAITING_CAPS));
+  if (options.caseFails) {
+    mock.onGet(CASE_URL).reply(500);
+  } else {
+    mock.onGet(CASE_URL).reply(200, {
+      case:
+        options.caseState === undefined || options.caseState === null
+          ? null
+          : { id: 'vc-1', state: options.caseState, documents: [], requirements: [] },
+    });
+  }
   mock.onGet(REVIEW_URL).reply(200, {
     groups: [],
     canSubmit: false,
@@ -162,17 +177,48 @@ describe('the four axes are answered separately', () => {
     expect(await axisValue('specialty')).toContain(EN.valueComplete);
   });
 
-  it('does not call verification "in review" before there is an application to review', async () => {
-    renderScreen({
-      hub: HUB({ status: 'DRAFT', progress: { complete: 2, total: 6 } }),
-    });
+  // Sprint 09B.29 Phase 5B — G-11. The axis used to be projected from
+  // `profile.verified` plus whether the application had been handed in, which
+  // gives a plausible answer and a wrong one: a provider whose documents were
+  // SENT BACK read "In review", and so did one whose case was REFUSED. Both of
+  // them were waiting for nothing. It reads the case's own state now.
+  it('reads the case state rather than inferring one from the application', async () => {
+    renderScreen({ caseState: 'IN_REVIEW' });
+    expect(await axisValue('verification')).toContain(EN.valueInReview);
+  });
 
+  it('says ACTION NEEDED when the case was sent back, not "in review"', async () => {
+    renderScreen({ caseState: 'ACTION_REQUIRED' });
+
+    // The failure the old inference produced: somebody with work to do, told
+    // to wait.
+    expect(await axisValue('verification')).toContain(EN.valueActionRequired);
+    const row = await screen.findByTestId('axis-verification');
+    expect(row).toHaveAttribute('data-tone', 'blocked');
+  });
+
+  it('distinguishes a refusal from never having started', async () => {
+    renderScreen({ caseState: 'REJECTED' });
+    expect(await axisValue('verification')).toContain(EN.valueRejected);
+  });
+
+  it('says not started when there is genuinely no case', async () => {
+    renderScreen({ caseState: null });
     expect(await axisValue('verification')).toContain(EN.valueNotStarted);
   });
 
-  it('says an unverified provider with a submitted application is with us', async () => {
-    renderScreen();
-    expect(await axisValue('verification')).toContain(EN.valueInReview);
+  it('admits it does not know rather than guessing when the read fails', async () => {
+    // An axis that reports "Not started" because a request failed invites a
+    // provider to redo work that may already be done.
+    renderScreen({ caseFails: true });
+    expect(await axisValue('verification')).toContain(EN.valueUnknown);
+  });
+
+  it('says unavailable for a state this bundle has never heard of', async () => {
+    // Picking the nearest known word would be a guess about somebody else's
+    // decision.
+    renderScreen({ caseState: 'SOME_FUTURE_STATE' });
+    expect(await axisValue('verification')).toContain(EN.valueUnknown);
   });
 
   it('carries the word as well as the colour on every row', async () => {
@@ -249,6 +295,7 @@ describe('the activation handoff', () => {
       profile: PROFILE({ status: 'ACTIVE', verified: true }),
       hub: HUB({ status: 'ACTIVE' }),
       caps: ACTIVE_CAPS,
+      caseState: 'VERIFIED',
     });
 
     const handoff = await screen.findByTestId('provider-workspace-unlocked');
@@ -261,6 +308,7 @@ describe('the activation handoff', () => {
       profile: PROFILE({ status: 'ACTIVE', verified: true }),
       hub: HUB({ status: 'ACTIVE' }),
       caps: ACTIVE_CAPS,
+      caseState: 'VERIFIED',
     });
 
     await screen.findByTestId('provider-workspace-unlocked');
@@ -273,6 +321,7 @@ describe('the activation handoff', () => {
       profile: PROFILE({ status: 'ACTIVE', verified: true }),
       hub: HUB({ status: 'ACTIVE' }),
       caps: ACTIVE_CAPS,
+      caseState: 'VERIFIED',
     });
 
     await screen.findByTestId('provider-workspace-unlocked');
@@ -285,6 +334,7 @@ describe('the activation handoff', () => {
       profile: PROFILE({ status: 'ACTIVE', verified: true }),
       hub: HUB({ status: 'ACTIVE' }),
       caps: ACTIVE_CAPS,
+      caseState: 'VERIFIED',
     });
 
     const handoff = await screen.findByTestId('provider-workspace-unlocked');
@@ -309,6 +359,7 @@ describe('Arabic', () => {
       profile: PROFILE({ status: 'ACTIVE', verified: true }),
       hub: HUB({ status: 'ACTIVE' }),
       caps: ACTIVE_CAPS,
+      caseState: 'VERIFIED',
     });
 
     expect(await screen.findByTestId('provider-workspace-unlocked')).toHaveTextContent(

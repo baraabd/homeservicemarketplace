@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
 import { writePersistenceMarker, writeRouteMarker } from './phase5-markers';
-import { databaseSystemId, readAvailability, readDraftValues } from './phase5-db-read';
+import { databaseSystemId, readAvailability, readProfileValues } from './phase5-db-read';
 import type { TaskScreenFile } from './phase5-evidence-ledger';
 
 import { seedLanguage } from './fixtures';
@@ -287,7 +287,7 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     await recordDurable('BasicsTaskScreen.tsx', account, '/provider/onboarding/BASICS_IDENTITY', {
       before: { displayName: undefined },
       after: { displayName: NAME },
-      readDatabase: () => readDraftValues(account.profileId, ['displayName']),
+      readDatabase: () => readProfileValues(account.profileId, ['displayName']),
     });
 
     assertCleanTraffic(seen);
@@ -295,39 +295,51 @@ test.describe('provider onboarding v2 — the edit survives', () => {
 
   // ── Task 3 — Work area ───────────────────────────────────────────────────
 
-  test('WORK_AREA: a radius dragged and abandoned survives a reload and a fresh sign-in', async ({
+  test('WORK_AREA: a city typed and abandoned survives a reload and a fresh sign-in', async ({
     page,
     context,
     browser,
   }) => {
+    // Sprint 09B.29 Phase 5A retargeted this test, and the reason is a product
+    // decision rather than a test repair.
+    //
+    // It used to drag `radius-slider`. The approved work-area screen has no
+    // slider: the radius is DERIVED from the transport the provider chose on
+    // the experience screen, stated here as a server fact, and explained
+    // ("15 km because you selected a car"). Gap G-02 records that the radius
+    // stopped being adjustable on this screen and why.
+    //
+    // So the editable answer on this screen is the CITY, and that is what a
+    // persistence test for it has to be about. Asserting a control the
+    // approved design removed would fail forever while proving nothing.
+    const CITY = `Aleppo ${Date.now()}`;
     const account = await readyProvider(['LOCATION']);
     const seen = watchTraffic(page);
     await prepare(page, context, account);
 
     await page.goto('/provider/onboarding/WORK_AREA');
-    const radius = page.getByTestId('radius-slider');
-    await expect(radius).toBeVisible();
-    await radius.fill('37');
-    await radius.blur();
+    const city = page.getByTestId('service-area-city');
+    await expect(city).toBeVisible();
+    await city.fill(CITY);
 
     await page.getByRole('button', { name: /back to tasks/i }).click();
     await expect(page.getByTestId('hub-task-list')).toBeVisible();
 
     await page.goto('/provider/onboarding/WORK_AREA');
-    await expect(page.getByTestId('radius-slider')).toHaveValue('37');
+    await expect(page.getByTestId('service-area-city')).toHaveValue(CITY);
     await page.reload();
-    await expect(page.getByTestId('radius-slider')).toHaveValue('37');
+    await expect(page.getByTestId('service-area-city')).toHaveValue(CITY);
 
-    expect((await draftFromApi(account)).serviceAreaRadiusKm).toBe(37);
+    expect((await draftFromApi(account)).serviceAreaCity).toBe(CITY);
 
     await proveSurvivesFreshSignIn(browser, account, 'WORK_AREA', async (freshPage) => {
-      await expect(freshPage.getByTestId('radius-slider')).toHaveValue('37');
+      await expect(freshPage.getByTestId('service-area-city')).toHaveValue(CITY);
     });
 
     await recordDurable('ServiceAreaTaskScreen.tsx', account, '/provider/onboarding/WORK_AREA', {
-      before: { serviceAreaRadiusKm: undefined },
-      after: { serviceAreaRadiusKm: 37 },
-      readDatabase: () => readDraftValues(account.profileId, ['serviceAreaRadiusKm']),
+      before: { serviceAreaCity: undefined },
+      after: { serviceAreaCity: CITY },
+      readDatabase: () => readProfileValues(account.profileId, ['serviceAreaCity']),
     });
 
     assertCleanTraffic(seen);
@@ -335,40 +347,44 @@ test.describe('provider onboarding v2 — the edit survives', () => {
 
   // ── Task 5 — Public profile ──────────────────────────────────────────────
 
-  test('PORTFOLIO: a headline typed and abandoned survives a reload and a fresh sign-in', async ({
+  test('PORTFOLIO: a bio typed and abandoned survives a reload and a fresh sign-in', async ({
     page,
     context,
     browser,
   }) => {
+    // Retargeted for the same reason as WORK_AREA, from `title-input` to the
+    // bio. The approved profile screen shows the professional title as what a
+    // customer will read and offers nothing to edit it — the title is
+    // server-generated under ruling C1 — so the field a provider composes here
+    // is the bio, and that is the one whose loss they would feel.
+    const BIO = `I have wired houses for nine years. ${Date.now()}`;
     const account = await readyProvider(['PROFILE']);
     const seen = watchTraffic(page);
     await prepare(page, context, account);
 
-    const TITLE = 'Master electrician';
-
     await page.goto('/provider/onboarding/PORTFOLIO');
-    const title = page.getByTestId('title-input');
-    await expect(title).toBeVisible();
-    await title.fill(TITLE);
+    const bio = page.getByTestId('bio-input');
+    await expect(bio).toBeVisible();
+    await bio.fill(BIO);
 
     await page.getByTestId('onboarding-v2-close').click();
     await expect(page.getByTestId('hub-task-list')).toBeVisible();
 
     await page.goto('/provider/onboarding/PORTFOLIO');
-    await expect(page.getByTestId('title-input')).toHaveValue(TITLE);
+    await expect(page.getByTestId('bio-input')).toHaveValue(BIO);
     await page.reload();
-    await expect(page.getByTestId('title-input')).toHaveValue(TITLE);
+    await expect(page.getByTestId('bio-input')).toHaveValue(BIO);
 
-    expect((await draftFromApi(account)).headline).toBe(TITLE);
+    expect((await draftFromApi(account)).bio).toBe(BIO);
 
     await proveSurvivesFreshSignIn(browser, account, 'PORTFOLIO', async (freshPage) => {
-      await expect(freshPage.getByTestId('title-input')).toHaveValue(TITLE);
+      await expect(freshPage.getByTestId('bio-input')).toHaveValue(BIO);
     });
 
     await recordDurable('PublicProfileTaskScreen.tsx', account, '/provider/onboarding/PORTFOLIO', {
-      before: { headline: undefined },
-      after: { headline: TITLE },
-      readDatabase: () => readDraftValues(account.profileId, ['headline']),
+      before: { bio: undefined },
+      after: { bio: BIO },
+      readDatabase: () => readProfileValues(account.profileId, ['bio']),
     });
 
     assertCleanTraffic(seen);
@@ -389,30 +405,62 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     const seen = watchTraffic(page);
     await prepare(page, context, account);
 
+    // Two screens share this task: specialties, then experience and transport.
+    // The bare URL opens the FIRST — `screenKey` falls back to 'services' — and
+    // the stepper is on the second, addressed by `#experience`. Both are
+    // touched here on purpose, because the 409 storm this test exists to catch
+    // came from two autosave instances on one draft version, and that only
+    // happens when both halves of the task have been used.
     await page.goto('/provider/onboarding/SERVICES_EXPERIENCE');
     await expect(page.getByTestId('services-task')).toBeVisible();
 
-    // Touch controls belonging to BOTH steps, back to back, with no pause.
-    const years = page.getByTestId('years-of-experience');
-    if (await years.count()) {
-      await years.fill('9');
-      await years.blur();
+    await page.goto('/provider/onboarding/SERVICES_EXPERIENCE#experience');
+    await expect(page.getByTestId('experience-section')).toBeVisible();
+
+    // ── The control, and why this test used to prove nothing ──────────────
+    //
+    // It looked for `years-of-experience` and wrapped every use in
+    // `if (await years.count())`. No such testid exists — the approved screen
+    // uses a STEPPER, `experience-years` — so the count was always 0, every
+    // interaction was skipped, and the test passed while touching nothing.
+    //
+    // Then Phase 5B added a marker recording `yearsOfExperience: 9`
+    // unconditionally, and the contradiction finally surfaced as a failure:
+    // the database said `undefined` because nobody had typed anything.
+    //
+    // A guarded interaction beside an unguarded assertion is the shape to
+    // distrust. If the control is required, assert it is there; if it is
+    // genuinely optional, the evidence has to be conditional too. It is
+    // required here, so there is no guard at all any more.
+    const YEARS = 9;
+    const stepper = page.getByTestId('experience-years');
+    await expect(stepper).toBeVisible();
+    await expect(page.getByTestId('experience-years-value')).toHaveText('0');
+
+    // A stepper is pressed, not filled. Nine presses back to back is also a
+    // harder version of what this test is FOR: nine autosaves racing one
+    // draft version, which is exactly the 409 storm it was written to catch.
+    for (let i = 0; i < YEARS; i += 1) {
+      await page.getByTestId('experience-years-increase').click();
     }
+    await expect(page.getByTestId('experience-years-value')).toHaveText(String(YEARS));
 
     // ...then leave in the same breath.
     await page.getByTestId('onboarding-v2-close').click();
     await expect(page.getByTestId('hub-task-list')).toBeVisible();
 
-    await page.goto('/provider/onboarding/SERVICES_EXPERIENCE');
+    await page.goto('/provider/onboarding/SERVICES_EXPERIENCE#experience');
+    await expect(page.getByTestId('experience-years-value')).toHaveText(String(YEARS));
     await page.reload();
+    await expect(page.getByTestId('experience-years-value')).toHaveText(String(YEARS));
 
     const data = await draftFromApi(account);
-    if (await years.count()) expect(data.yearsOfExperience).toBe(9);
+    expect(data.yearsOfExperience).toBe(YEARS);
 
     await proveSurvivesFreshSignIn(browser, account, 'SERVICES_EXPERIENCE', async (freshPage) => {
       await expect(freshPage.getByTestId('services-task')).toBeVisible();
-      const freshYears = freshPage.getByTestId('years-of-experience');
-      if (await freshYears.count()) await expect(freshYears).toHaveValue('9');
+      await freshPage.goto('/provider/onboarding/SERVICES_EXPERIENCE#experience');
+      await expect(freshPage.getByTestId('experience-years-value')).toHaveText(String(YEARS));
     });
 
     // The real assertion for this screen: nothing was refused. A 409 here is
@@ -428,8 +476,8 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       '/provider/onboarding/SERVICES_EXPERIENCE',
       {
         before: { yearsOfExperience: undefined },
-        after: { yearsOfExperience: 9 },
-        readDatabase: () => readDraftValues(account.profileId, ['yearsOfExperience']),
+        after: { yearsOfExperience: YEARS },
+        readDatabase: () => readProfileValues(account.profileId, ['yearsOfExperience']),
       },
     );
 
@@ -455,9 +503,22 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     await page.goto('/provider/onboarding/WORKING_HOURS');
     await expect(page.getByTestId('availability-task')).toBeVisible();
 
-    await page.getByTestId('preset-sun-thu').click();
-    await page.getByTestId('bulk-start').selectOption('540');
-    await page.getByTestId('bulk-end').selectOption('1020');
+    // Sunday through Thursday, one toggle at a time. The approved screen has
+    // no "Sun-Thu" preset — the prototype draws seven day buttons and an
+    // "Apply to selected days" action, and nothing else — so selecting the
+    // working week IS five clicks. A fresh provider has no stored week, so
+    // every toggle starts off and each click turns one on.
+    for (const day of [0, 1, 2, 3, 4]) {
+      await page.getByTestId(`day-toggle-${day}`).click();
+      await expect(page.getByTestId(`day-toggle-${day}`)).toHaveAttribute('aria-pressed', 'true');
+    }
+    // Typed, not selected. The approved screen uses native `<input type="time">`
+    // for From/To — deliberately, so the platform's own picker and keyboard
+    // entry both work without a custom listbox — and `selectOption` on one
+    // fails with "Element is not a <select> element". 09:00 and 17:00 are the
+    // same 540 and 1020 minutes the server stores.
+    await page.getByTestId('bulk-start').fill('09:00');
+    await page.getByTestId('bulk-end').fill('17:00');
     await page.getByTestId('apply-to-selected').click();
 
     // LEAVE NOW, exactly as everywhere else in this file: no wait for a status
@@ -510,7 +571,30 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     //    is the failure a lost write would produce here.
     await proveSurvivesFreshSignIn(browser, account, 'WORKING_HOURS', async (freshPage) => {
       await expect(freshPage.getByTestId('task-screen-WORKING_HOURS')).toBeVisible();
-      await expect(freshPage.getByTestId('availability-task')).toHaveCount(0);
+
+      // This assertion USED to be `availability-task` count 0 — the form is
+      // gone, because the task is complete. That was the old behaviour and gap
+      // G-14 was that it happened by drawing NOTHING: no form and no reason,
+      // because a COMPLETE task has no explanation copy. A completed task now
+      // shows its own answers, so the form is present.
+      //
+      // Which makes this the stronger assertion anyway, and the one the test
+      // always wanted: not "the form is absent" but "the stored week came
+      // back". A lost write would show Sunday through Thursday unpressed here,
+      // and the old absence check could not have seen that.
+      await expect(freshPage.getByTestId('availability-task')).toBeVisible();
+      for (const day of [0, 1, 2, 3, 4]) {
+        await expect(
+          freshPage.getByTestId(`day-toggle-${day}`),
+          `day ${day} should have come back selected`,
+        ).toHaveAttribute('aria-pressed', 'true');
+      }
+      for (const day of [5, 6]) {
+        await expect(
+          freshPage.getByTestId(`day-toggle-${day}`),
+          `day ${day} was never part of the week`,
+        ).toHaveAttribute('aria-pressed', 'false');
+      }
     });
 
     // The only screen whose durable state is ROWS rather than a draft field,
@@ -551,7 +635,15 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     await page.goto('/provider/onboarding/REVIEW_SUBMISSION');
     await expect(page.getByTestId('review-screen')).toBeVisible();
 
-    // Consent is accepted ON this screen, and it is what unlocks Submit.
+    // Phase 5A split this task into the two approved screens: the summary of
+    // what is about to be sent, and then consent. Submit lives on the SECOND
+    // one, so the summary's own primary has to be taken first — reaching for
+    // `review-submit` on the summary looks for a control that is one screen
+    // away, which is how this test failed rather than a defect in the screens.
+    await page.getByTestId('review-continue-to-consent').click();
+    await expect(page.getByTestId('terms-section')).toBeVisible();
+
+    // Consent is accepted on the consent screen, and it is what unlocks Submit.
     await expect(page.getByTestId('review-submit')).toBeDisabled();
     await page.getByTestId('terms-accept').click();
     await expect(page.getByTestId('terms-accepted')).toBeVisible();
@@ -560,7 +652,9 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     // have persisted, or a provider who steps away loses it silently.
     await page.getByTestId('onboarding-v2-close').click();
     await expect(page.getByTestId('hub-task-list')).toBeVisible();
-    await page.goto('/provider/onboarding/REVIEW_SUBMISSION');
+    // `#terms` addresses the consent screen directly — the acceptance is what
+    // is being checked, and it is recorded on that screen.
+    await page.goto('/provider/onboarding/REVIEW_SUBMISSION#terms');
     await expect(page.getByTestId('terms-accepted')).toBeVisible();
     await page.reload();
     await expect(page.getByTestId('terms-accepted')).toBeVisible();
@@ -603,10 +697,10 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       before: { acceptedConsentVersion: undefined },
       after: {
         acceptedConsentVersion: (
-          await readDraftValues(account.profileId, ['acceptedConsentVersion'])
+          await readProfileValues(account.profileId, ['acceptedConsentVersion'])
         )['acceptedConsentVersion'],
       },
-      readDatabase: () => readDraftValues(account.profileId, ['acceptedConsentVersion']),
+      readDatabase: () => readProfileValues(account.profileId, ['acceptedConsentVersion']),
     });
 
     assertCleanTraffic(seen);
@@ -651,7 +745,10 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     await expect(page.getByTestId('hub-task-list')).toBeVisible();
 
     await page.goto('/provider/onboarding/PORTFOLIO');
-    await page.getByTestId('title-input').fill('Master electrician');
+    // The bio alone: the approved profile screen has no title input, and
+    // `provider-onboarding-v2-public-profile.spec.ts` asserts its absence. The
+    // bio is what a provider writes here, and it is enough to make the hub
+    // stale, which is all this test is about.
     await page.getByTestId('bio-input').fill('I have wired houses for nine years.');
     await page.getByTestId('onboarding-v2-close').click();
     await expect(page.getByTestId('hub-task-list')).toBeVisible();
