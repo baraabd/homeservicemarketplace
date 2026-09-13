@@ -2,20 +2,22 @@
 
 **Branch:** `feat/provider-onboarding-v2-phase5-exact-visual-parity`
 **Merged prerequisite:** PR #75 (C1–C3 backend) → `develop` @ `ba8613b`
-**Successor PR:** #76 (draft, UI INCOMPLETE)
+**Successor PR:** #76 — Phase 5A UI migration COMPLETE at `e2dfe18`
 
 Counters are **computed** by `apps/web/e2e/phase5-evidence-ledger.ts` from
 artifacts on disk. Nothing in this document grants credit; it records what the
 ledger reports and what remains.
 
 ```
-presentation migrated:       0/6
+presentation migrated:       6/6
 production-route integrated: 0/6
 real-API persisted:          0/6
 ```
 
-Two screens are **code-migrated candidates**: their source rules pass and no
-other evidence exists yet.
+All six task controllers now hold presentation credit: source rules pass, the
+canonical 390x844 comparison is inside 0.005 in both languages, and axe is clean
+on both. Route and persistence credit belong to Phase 5B and cannot be earned by
+a suite that stubs the API — see `PHASE5A_INTEGRATION_GAPS.md`.
 
 ---
 
@@ -25,20 +27,51 @@ Baseline measured before editing, and re-measured after each slice. "Arbitrary"
 counts Tailwind values such as `text-[13px]` that read like utilities and answer
 to nothing.
 
-| Screen                          | Lines   | `style={{` | `fontSize` | Palette | Arbitrary | Provider UI | State       |
-| ------------------------------- | ------- | ---------- | ---------- | ------- | --------- | ----------- | ----------- |
-| **Basics** (was)                | 471     | 15         | 14         | 36      | —         | 0           | —           |
-| **Basics** (now)                | **220** | **0**      | **0**      | **0**   | **0**     | yes         | candidate   |
-| **Services + Experience** (was) | 591     | 30         | 28         | 70      | —         | 0           | —           |
-| **Services + Experience** (now) | **421** | **0**      | **0**      | **0**   | **0**     | yes         | candidate   |
-| Work area                       | 470     | 28         | 26         | 60      | 0         | 0           | not started |
-| Working hours                   | 771     | 27         | 24         | 61      | 0         | 0           | not started |
-| Public profile + portfolio      | 542     | 31         | 30         | 66      | 0         | 0           | not started |
-| Review + terms                  | 526     | 22         | 20         | 69      | 0         | 0           | not started |
+| Screen                          | Lines   | `style={{` | `fontSize` | Palette | Arbitrary | Provider UI | State    |
+| ------------------------------- | ------- | ---------- | ---------- | ------- | --------- | ----------- | -------- |
+| **Basics** (was)                | 471     | 15         | 14         | 36      | —         | 0           | —        |
+| **Basics** (now)                | **215** | **0**      | **0**      | **0**   | **0**     | yes         | CREDITED |
+| **Services + Experience** (was) | 591     | 30         | 28         | 70      | —         | 0           | —        |
+| **Services + Experience** (now) | **475** | **4**      | **0**      | **0**   | **0**     | yes         | CREDITED |
+| **Work area** (was)             | 470     | 28         | 26         | 60      | 0         | 0           | —        |
+| **Work area** (now)             | **208** | **0**      | **0**      | **0**   | **0**     | yes         | CREDITED |
+| **Working hours** (was)         | 771     | 27         | 24         | 61      | 0         | 0           | —        |
+| **Working hours** (now)         | **378** | **0**      | **0**      | **0**   | **0**     | yes         | CREDITED |
+| **Profile + portfolio** (was)   | 542     | 31         | 30         | 66      | 0         | 0           | —        |
+| **Profile + portfolio** (now)   | **373** | **3**      | **0**      | **0**   | **0**     | yes         | CREDITED |
+| **Review + terms** (was)        | 526     | 22         | 20         | 69      | 0         | 0           | —        |
+| **Review + terms** (now)        | **744** | **8**      | **0**      | **0**   | **0**     | yes         | CREDITED |
 
-Starting totals across the six: **3,371 lines, 153 inline style blocks, 142
-`fontSize`, 366 raw palette utilities, 0 Provider UI imports** — which confirms
-the figures the mandate quoted.
+The remaining `style={{` blocks are geometry no token can express — a 72px icon
+tile, a centring box whose padding is derived from the sticky bar's own height, a
+data-driven progress width. Every one is a length the approved design fixes
+rather than a colour, a size or a radius; the conformance gate refuses those
+four categories and passes these.
+
+Review grew rather than shrank, and deliberately: one screen became three, and
+what replaced the nine repeated summary cards is four rows that read the
+provider's own answers back plus a confirmation timeline that did not exist.
+
+## 1A. The eighteen states, measured
+
+Run `phase5-5f50446f`, one id across all 36 canonical cells, 36 responsive
+cells and the reference spec. Budget is 0.005.
+
+| #   | State          | EN      | AR      | #   | State           | EN      | AR      |
+| --- | -------------- | ------- | ------- | --- | --------------- | ------- | ------- |
+| 0   | activation     | 0.00009 | 0.00010 | 9   | portfolio       | 0.00124 | 0.00108 |
+| 1   | sync           | 0.00002 | 0.00006 | 10  | hub-complete    | 0.00017 | 0.00069 |
+| 2   | hub-partial    | 0.00017 | 0.00017 | 11  | review          | 0.00120 | 0.00104 |
+| 3   | basics         | 0.00120 | 0.00104 | 12  | terms           | 0.00207 | 0.00190 |
+| 4   | services       | 0.00196 | 0.00220 | 13  | submitted       | 0.00156 | 0.00155 |
+| 5   | experience     | 0.00153 | 0.00120 | 14  | status-centre   | 0.00332 | 0.00207 |
+| 6   | work-area      | 0.00202 | 0.00260 | 15  | returned        | 0.00222 | 0.00143 |
+| 7   | working-hours  | 0.00203 | 0.00175 | 16  | session-expired | 0.00004 | 0.00004 |
+| 8   | public-profile | 0.00117 | 0.00293 | 17  | active-handoff  | 0.00000 | 0.00001 |
+
+Worst cell 0.00332, 66% of budget. Axe violations across all 36 cells: **0**.
+Required-copy phrases missing: **0**. Responsive contract failures across 216
+width checks: **0**.
 
 ---
 
@@ -93,7 +126,17 @@ presentation tests and are not production-route credit.
 
 ## 5. Next
 
-Workstreams 5.2 and 5.3 — the deterministic capture harness and the
-activation/Hub surfaces — then the remaining four task screens. No counter can
-move until the harness exists, because until then no screen can produce the
-artifacts the ledger reads.
+Phase 5A is complete: all eighteen approved states render through the real V2
+components, at or under budget in both languages, with zero axe violations and
+zero responsive-contract failures.
+
+Phase 5B has two jobs, in this order.
+
+1. **Earn the other two counters.** A real-HTTP, flag-ON run that stamps its own
+   `interceptionFree` marker, and a persistence marker recording hydration, hub
+   navigation, hard reload, fresh sign-in and a database assertion. The ledger
+   already refuses anything less; what is missing is the run, not the gate.
+
+2. **Close the integration gaps**, all thirteen recorded in
+   `PHASE5A_INTEGRATION_GAPS.md` — starting with the work-area country (G-01),
+   which is the only one that can stop a provider submitting at all.
