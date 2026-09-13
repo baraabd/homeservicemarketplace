@@ -132,6 +132,20 @@ passed+skipped+failed equals the `--list` total for that project.
   09:00–13:00 on Thursday still cannot say so, because the approved screen
   has one From/To pair. That is a design question, not a defect: adding a
   second pair changes the approved screen.
+- [x] P2 G-18 (NEW) — the portfolio promised "Crop and reorder before saving."
+      in its own approved hint and provided neither, while
+      `POST /portfolio/reorder` had existed the whole time. Reorder now works
+      from the keyboard on the tiles themselves, so state 9 gains no pixels
+      (0.00124 EN / 0.00108 AR, unchanged) and gains a keyboard path. Six
+      component tests plus a real-API journey that uploads three photos through
+      the real presign/PUT/register path, reorders in the browser, and checks the
+      `position` column in Postgres after a reload and a fresh sign-in. CROP
+      remains open and needs a design decision.
+- [x] P2 G-19 (NEW) — the third rate limiter. Fixing OTP moved the 429 to the
+      coarse 100/minute backstop. The suite stopped re-reading the draft before
+      every write (the version is threaded now, which also removes a
+      read-then-write race), and `GLOBAL_THROTTLE_LIMIT` joined its two siblings
+      with the same production boot ceiling.
 - [ ] P2 gaps that need a product-owner decision rather than more engineering,
       because closing any of them changes an approved screen or a contract:
       G-02 radius adjustability (the expansion ladder implies the radius is

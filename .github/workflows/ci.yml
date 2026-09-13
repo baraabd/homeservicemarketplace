@@ -377,6 +377,13 @@ jobs:
       # Production refuses to boot above 20 (env.validation.ts), so this value is
       # reachable only in a disposable environment like this one.
       AUTH_OTP_VERIFY_THROTTLE_LIMIT: '400'
+      # The coarse 100/minute backstop every route sits behind. Twenty-three
+      # real browser journeys from one runner address is not abuse, but at this
+      # layer it is indistinguishable from it — and it was the SECOND 429 this
+      # job hit, on GET /onboarding/draft, once the OTP limiter was fixed. The
+      # route-level guards in front of it are untouched by this value, and
+      # production refuses to boot above 100.
+      GLOBAL_THROTTLE_LIMIT: '5000'
       # The browser is served from 4173 and talks to the API on 4010, so the
       # API has to allow that origin or every request arrives anonymous.
       CORS_ORIGINS: http://127.0.0.1:4173,http://localhost:4173

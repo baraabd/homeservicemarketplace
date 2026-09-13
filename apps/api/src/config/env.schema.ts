@@ -264,6 +264,18 @@ const baseEnvSchema = z.object({
   AUTH_OTP_VERIFY_THROTTLE_LIMIT: z.coerce.number().int().positive().default(20),
   AUTH_OTP_VERIFY_THROTTLE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
 
+  // The coarse per-IP backstop every route sits behind. PRODUCTION DEFAULT IS
+  // 100 REQUESTS PER ROLLING MINUTE and production refuses to boot with a
+  // higher value or a shorter window (see env.validation.ts).
+  //
+  // Third member of the same family, added for the same reason as the second:
+  // a browser suite driving twenty-three real journeys from ONE address is not
+  // abuse, but it is indistinguishable from abuse at this layer. The sensitive
+  // routes keep their own tighter limits regardless of this value — raising it
+  // widens the backstop, never the guards in front of it.
+  GLOBAL_THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
+  GLOBAL_THROTTLE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
+
   // Number of trusted reverse-proxy hops in front of the API. Express's
   // `trust proxy` is set to exactly this number, so the client IP is taken
   // from the Nth-from-the-right X-Forwarded-For entry and a caller-supplied

@@ -19,6 +19,7 @@ import { PersistenceModule } from './infrastructure/persistence/persistence.modu
 import { AppThrottlerGuard } from './infrastructure/throttle/app-throttler.guard';
 import { RateLimitModule } from './infrastructure/throttle/rate-limit.module';
 import { RateLimitStore } from './infrastructure/throttle/rate-limit.store';
+import { AppConfigService } from './config/app-config.service';
 import { SecurityEventsModule } from './shared/security-events/security-events.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { AdminModule } from './modules/admin/admin.module';
@@ -88,9 +89,19 @@ import { ServicesModule } from './modules/services/services.module';
     // RegistrationThrottleService).
     ThrottlerModule.forRootAsync({
       imports: [RateLimitModule],
-      inject: [RateLimitStore],
-      useFactory: (storage: RateLimitStore) => ({
-        throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
+      inject: [RateLimitStore, AppConfigService],
+      // Configured, not written here, so a disposable test environment can widen
+      // the backstop without editing this file — and so production cannot,
+      // because env.validation.ts refuses to boot a hardened environment above
+      // the ceiling. The route-level guards in front of it are unaffected.
+      useFactory: (storage: RateLimitStore, config: AppConfigService) => ({
+        throttlers: [
+          {
+            name: 'default',
+            ttl: config.get('GLOBAL_THROTTLE_TTL_SECONDS') * 1000,
+            limit: config.get('GLOBAL_THROTTLE_LIMIT'),
+          },
+        ],
         storage,
       }),
     }),

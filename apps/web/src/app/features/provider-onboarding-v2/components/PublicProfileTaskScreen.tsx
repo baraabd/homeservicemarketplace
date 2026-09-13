@@ -10,6 +10,7 @@ import {
 import {
   useCreatePortfolioItem,
   useProviderPortfolio,
+  useReorderPortfolio,
   portfolioErrorCode,
 } from '../../../hooks/provider/useProviderPortfolio';
 import {
@@ -78,6 +79,9 @@ interface PublicProfileTaskScreenProps {
 /** Which of the task's two approved screens is showing. */
 export type PublicProfilePart = 'profile' | 'portfolio';
 
+/** Ties every tile's `aria-describedby` to the one instruction sentence. */
+const REORDER_HINT_ID = 'portfolio-reorder-hint';
+
 export function PublicProfileTaskScreen({
   view,
   lang,
@@ -133,6 +137,40 @@ export function PublicProfileTaskScreen({
   const ack = currentPublicationAck(lang === 'ar' ? 'ar' : 'en');
 
   const items = gallery.data?.items ?? [];
+
+  /**
+   * Reordering the gallery — the second half of a promise this screen makes in
+   * words and did not keep.
+   *
+   * The approved screen's own hint reads "Crop and reorder before saving."
+   * (`يمكنك القص وإعادة الترتيب قبل الحفظ.`) and the grid labels the first tile
+   * "Cover photo", so order is meaningful and the provider was told they could
+   * change it. Until now nothing on the screen could. The endpoint has existed
+   * the whole time — `POST /v1/me/provider/portfolio/reorder`, already wrapped
+   * by `useReorderPortfolio` — so this was a missing affordance, not a missing
+   * capability.
+   *
+   * WHY KEYS AND NOT A VISIBLE HANDLE. The approved reference draws no drag
+   * handle, no arrows and no "reorder" button, and adding any of them would put
+   * pixels on state 9 that the frozen prototype does not have. The tile itself
+   * becomes the control instead: focusable, with arrow keys moving the photo it
+   * holds. Nothing is added at rest, so the canonical cell is unchanged, and the
+   * screen becomes fully operable by keyboard — which a drag handle alone would
+   * not have been.
+   *
+   * The server's answer IS the new gallery, so there is no optimistic local
+   * ordering to reconcile: the cache is replaced by what the server stored.
+   */
+  const reorder = useReorderPortfolio();
+
+  const moveItem = (from: number, to: number): void => {
+    if (!editable) return;
+    if (to < 0 || to >= items.length || from === to) return;
+    const ids = items.map((i) => i.id);
+    const [moved] = ids.splice(from, 1);
+    ids.splice(to, 0, moved);
+    reorder.mutate(ids);
+  };
 
   const runUpload = useCallback(
     async (file: File) => {
@@ -251,6 +289,13 @@ export function PublicProfileTaskScreen({
       {/* `.hsm-photos`: three columns, 8px gutters, square tiles. */}
       {items.length > 0 ? (
         <ul className="grid grid-cols-3 gap-2" data-testid="portfolio-grid">
+          {/* Announced, not drawn. The instruction has to reach a screen-reader
+              user — arrow-key reordering is useless if it is a secret — and it
+              must not reach the canonical screenshot, which the reference does
+              not draw it on. */}
+          <li className="sr-only" id={REORDER_HINT_ID} aria-hidden="false">
+            {copy.reorderHint}
+          </li>
           {items.map((item, index) => (
             <li
               key={item.id}
@@ -264,15 +309,52 @@ export function PublicProfileTaskScreen({
                   below makes in words: review "controls when photos become
                   visible". Rendering the image anyway would contradict it on
                   the one screen that states it. */}
-              {item.moderationState === 'APPROVED' && item.media?.url ? (
-                <img
-                  src={item.media.url}
-                  alt={item.title ?? ''}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <Paintbrush size={16} strokeWidth={1.8} aria-hidden="true" />
-              )}
+              {/* The photo, and the thing that moves it.
+                  `h-full w-full` with no background, border or radius of its
+                  own, and NO TEXT inside: the base layer gives a `button` a 500
+                  weight and a 1.5 line-height, and the cover caption below is
+                  deliberately left outside so it cannot inherit either. The
+                  focus ring is the only thing this adds, and only when focused,
+                  so state 9 at rest is byte-for-byte what it was. */}
+              <button
+                type="button"
+                data-testid={`portfolio-reorder-${item.id}`}
+                disabled={!editable}
+                aria-label={copy.photoPosition(index + 1, items.length)}
+                aria-describedby={REORDER_HINT_ID}
+                onKeyDown={(event) => {
+                  // Logical previous/next, resolved against the document
+                  // direction, because in Arabic the first tile is on the right
+                  // and "left arrow moves it earlier" would be backwards.
+                  const rtl = lang === 'ar';
+                  const earlier = rtl ? 'ArrowRight' : 'ArrowLeft';
+                  const later = rtl ? 'ArrowLeft' : 'ArrowRight';
+                  if (event.key === earlier) {
+                    event.preventDefault();
+                    moveItem(index, index - 1);
+                  } else if (event.key === later) {
+                    event.preventDefault();
+                    moveItem(index, index + 1);
+                  } else if (event.key === 'Home') {
+                    event.preventDefault();
+                    moveItem(index, 0);
+                  } else if (event.key === 'End') {
+                    event.preventDefault();
+                    moveItem(index, items.length - 1);
+                  }
+                }}
+                className="grid h-full w-full place-items-center focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-pv-accent disabled:cursor-default"
+              >
+                {item.moderationState === 'APPROVED' && item.media?.url ? (
+                  <img
+                    src={item.media.url}
+                    alt={item.title ?? ''}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <Paintbrush size={16} strokeWidth={1.8} aria-hidden="true" />
+                )}
+              </button>
 
               {index === 0 ? (
                 <span

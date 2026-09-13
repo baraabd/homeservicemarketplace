@@ -10,6 +10,9 @@ export const PRODUCTION_MAX_REGISTER_THROTTLE_LIMIT = 5;
 /** The OTP-verification ceiling a hardened environment will boot with. */
 const PRODUCTION_MAX_OTP_VERIFY_THROTTLE_LIMIT = 20;
 
+/** The coarse per-IP ceiling a hardened environment will boot with. */
+const PRODUCTION_MAX_GLOBAL_THROTTLE_LIMIT = 100;
+
 // Environments where a widened registration budget / non-shared throttle store
 // is acceptable. Anything else (production, staging) is held to the hard cap.
 const RELAXABLE_ENVS = new Set(['development', 'test']);
@@ -85,6 +88,20 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     issues.push(
       `  - AUTH_OTP_VERIFY_THROTTLE_TTL_SECONDS: must be >= 60 when NODE_ENV=${env.NODE_ENV} ` +
         `(got ${env.AUTH_OTP_VERIFY_THROTTLE_TTL_SECONDS})`,
+    );
+  }
+
+  if (hardened && env.GLOBAL_THROTTLE_LIMIT > PRODUCTION_MAX_GLOBAL_THROTTLE_LIMIT) {
+    issues.push(
+      `  - GLOBAL_THROTTLE_LIMIT: must be <= ${PRODUCTION_MAX_GLOBAL_THROTTLE_LIMIT} when NODE_ENV=${env.NODE_ENV} ` +
+        `(got ${env.GLOBAL_THROTTLE_LIMIT})`,
+    );
+  }
+
+  if (hardened && env.GLOBAL_THROTTLE_TTL_SECONDS < 60) {
+    issues.push(
+      `  - GLOBAL_THROTTLE_TTL_SECONDS: must be >= 60 when NODE_ENV=${env.NODE_ENV} ` +
+        `(got ${env.GLOBAL_THROTTLE_TTL_SECONDS})`,
     );
   }
 

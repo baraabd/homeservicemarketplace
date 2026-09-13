@@ -321,6 +321,43 @@ describe('validateEnv', () => {
     // freely and then this 20-per-minute limiter refused to let it verify them.
     // Eight of that job's twelve failures were the same 429, and the rest were
     // downstream of it.
+    // The coarse per-IP backstop, third member of the same family.
+    describe('global throttle hardening', () => {
+      it('defaults to 100 requests per rolling minute', () => {
+        const env = validateEnv({ ...baseEnv });
+        expect(env.GLOBAL_THROTTLE_LIMIT).toBe(100);
+        expect(env.GLOBAL_THROTTLE_TTL_SECONDS).toBe(60);
+      });
+
+      it.each(['101', '1000', '50000'])(
+        'REFUSES to boot production with GLOBAL_THROTTLE_LIMIT=%s',
+        (limit) => {
+          expect(() => validateEnv({ ...prodEnv, GLOBAL_THROTTLE_LIMIT: limit })).toThrow(
+            /GLOBAL_THROTTLE_LIMIT/,
+          );
+        },
+      );
+
+      it('REFUSES a production window shorter than a minute', () => {
+        expect(() => validateEnv({ ...prodEnv, GLOBAL_THROTTLE_TTL_SECONDS: '1' })).toThrow(
+          /GLOBAL_THROTTLE_TTL_SECONDS/,
+        );
+      });
+
+      it('accepts a TIGHTER limit in production', () => {
+        expect(validateEnv({ ...prodEnv, GLOBAL_THROTTLE_LIMIT: '50' }).GLOBAL_THROTTLE_LIMIT).toBe(
+          50,
+        );
+      });
+
+      it('allows a widened limit in development and test', () => {
+        for (const nodeEnv of ['development', 'test']) {
+          const env = validateEnv({ ...baseEnv, NODE_ENV: nodeEnv, GLOBAL_THROTTLE_LIMIT: '5000' });
+          expect(env.GLOBAL_THROTTLE_LIMIT).toBe(5000);
+        }
+      });
+    });
+
     describe('OTP verification throttle hardening', () => {
       it('defaults to 20 attempts per rolling minute', () => {
         const env = validateEnv({ ...baseEnv });

@@ -218,6 +218,32 @@ export async function readDraftScratch(
 }
 
 /**
+ * The portfolio item ids, in the order the rows say they are in.
+ *
+ * Its own function for the same reason availability has one: the durable fact
+ * is a SEQUENCE, and `position` is the column that carries it. A reorder that
+ * satisfies the endpoint while leaving `position` untouched would answer an API
+ * read correctly — the projection could sort by anything — and answer this one
+ * wrongly.
+ *
+ * Soft-deleted rows are excluded, because a provider who removed a photo does
+ * not consider it part of their order.
+ */
+export async function readPortfolioOrder(providerProfileId: string): Promise<string[]> {
+  return withClient(async (client) => {
+    const { rows } = await client.query<{ id: string }>(
+      `SELECT p."id"
+         FROM "ProviderPortfolioItem" p
+        WHERE p."providerProfileId" = $1
+          AND p."deletedAt" IS NULL
+        ORDER BY p."position", p."createdAt"`,
+      [providerProfileId],
+    );
+    return rows.map((r) => r.id);
+  });
+}
+
+/**
  * The weekly availability a provider actually has stored.
  *
  * Its own function because availability is ROWS rather than a field, and the

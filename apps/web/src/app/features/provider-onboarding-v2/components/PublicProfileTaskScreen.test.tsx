@@ -236,6 +236,128 @@ describe('the portfolio', () => {
     mock.onGet(PORTFOLIO).reply(200, { items, remainingSlots: 7, maxItems: 10 });
   }
 
+  // ── Reordering: the promise this screen makes in words ────────────────────
+  //
+  // The approved hint reads "Crop and reorder before saving." and the grid
+  // labels the first tile "Cover photo", so order is meaningful and the
+  // provider was told they could change it. Nothing on the screen could, while
+  // `POST /v1/me/provider/portfolio/reorder` had existed the whole time.
+  //
+  // The reference draws no handle, no arrows and no button, so the tile itself
+  // is the control and the keys are the affordance. That is also why these
+  // tests press keys rather than clicking something: there is nothing to click,
+  // deliberately, and a keyboard path is the one an assistive technology user
+  // actually has.
+  const THREE = [
+    { id: 'p1', moderationState: 'APPROVED', media: { url: 'https://cdn/1.jpg' }, title: 'one' },
+    { id: 'p2', moderationState: 'APPROVED', media: { url: 'https://cdn/2.jpg' }, title: 'two' },
+    { id: 'p3', moderationState: 'APPROVED', media: { url: 'https://cdn/3.jpg' }, title: 'three' },
+  ];
+
+  /** The order the server was asked to store, or null if it was never asked. */
+  function reorderRequest(): string[] | null {
+    const call = mock.history.post?.find((c) => c.url?.includes('/portfolio/reorder'));
+    if (!call) return null;
+    return (JSON.parse(String(call.data)) as { itemIds: string[] }).itemIds;
+  }
+
+  it('moves a photo later, and sends the whole new order', async () => {
+    withGallery(THREE);
+    mock.onPost(/\/v1\/me\/provider\/portfolio\/reorder/).reply(200, {
+      items: [THREE[1], THREE[0], THREE[2]],
+      remainingSlots: 7,
+      maxItems: 10,
+    });
+    renderScreen(DRAFT(), 'en', true, 'portfolio');
+
+    const first = await screen.findByTestId('portfolio-reorder-p1');
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowRight' });
+
+    // The whole order, not a delta: the endpoint's contract is the new list, and
+    // sending a pair would let the server guess at the rest.
+    await waitFor(() => expect(reorderRequest()).toEqual(['p2', 'p1', 'p3']));
+  });
+
+  it('makes a photo the cover with Home', async () => {
+    withGallery(THREE);
+    mock.onPost(/\/v1\/me\/provider\/portfolio\/reorder/).reply(200, {
+      items: [THREE[2], THREE[0], THREE[1]],
+      remainingSlots: 7,
+      maxItems: 10,
+    });
+    renderScreen(DRAFT(), 'en', true, 'portfolio');
+
+    const third = await screen.findByTestId('portfolio-reorder-p3');
+    third.focus();
+    fireEvent.keyDown(third, { key: 'Home' });
+
+    await waitFor(() => expect(reorderRequest()).toEqual(['p3', 'p1', 'p2']));
+  });
+
+  it('refuses to move the first photo earlier or the last one later', async () => {
+    withGallery(THREE);
+    mock.onPost(/\/v1\/me\/provider\/portfolio\/reorder/).reply(200, {
+      items: THREE,
+      remainingSlots: 7,
+      maxItems: 10,
+    });
+    renderScreen(DRAFT(), 'en', true, 'portfolio');
+
+    const first = await screen.findByTestId('portfolio-reorder-p1');
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowLeft' });
+
+    const last = screen.getByTestId('portfolio-reorder-p3');
+    last.focus();
+    fireEvent.keyDown(last, { key: 'ArrowRight' });
+
+    // No request at all, rather than a no-op request the server has to absorb.
+    await waitFor(() => expect(screen.getByTestId('portfolio-grid')).toBeInTheDocument());
+    expect(reorderRequest()).toBeNull();
+  });
+
+  it('reverses the arrows in Arabic, because the first tile is on the right', async () => {
+    withGallery(THREE);
+    mock.onPost(/\/v1\/me\/provider\/portfolio\/reorder/).reply(200, {
+      items: [THREE[1], THREE[0], THREE[2]],
+      remainingSlots: 7,
+      maxItems: 10,
+    });
+    renderScreen(DRAFT(), 'ar', true, 'portfolio');
+
+    const first = await screen.findByTestId('portfolio-reorder-p1');
+    first.focus();
+    // LEFT in an RTL document moves a photo LATER. Mapping the key to a screen
+    // direction rather than a logical one would move it the wrong way for every
+    // Arabic provider, and the pixel gate cannot see a wrong direction.
+    fireEvent.keyDown(first, { key: 'ArrowLeft' });
+
+    await waitFor(() => expect(reorderRequest()).toEqual(['p2', 'p1', 'p3']));
+  });
+
+  it('does not offer reordering once the application is locked', async () => {
+    withGallery(THREE);
+    renderScreen(DRAFT({ editable: false }), 'en', false, 'portfolio');
+
+    const first = await screen.findByTestId('portfolio-reorder-p1');
+    expect(first).toBeDisabled();
+    fireEvent.keyDown(first, { key: 'ArrowRight' });
+    expect(reorderRequest()).toBeNull();
+  });
+
+  it('names each tile by its position, and explains the keys to a screen reader', async () => {
+    withGallery(THREE);
+    renderScreen(DRAFT(), 'en', true, 'portfolio');
+
+    const second = await screen.findByTestId('portfolio-reorder-p2');
+    expect(second).toHaveAccessibleName(EN.photoPosition(2, 3));
+    // The instruction must REACH assistive technology — arrow-key reordering
+    // that nobody is told about is not an affordance — while being drawn
+    // nowhere, because the reference does not draw it.
+    expect(second).toHaveAccessibleDescription(EN.reorderHint);
+  });
+
   it('draws the approved upload surface and the moderation notice', async () => {
     renderScreen(DRAFT(), 'en', true, 'portfolio');
 

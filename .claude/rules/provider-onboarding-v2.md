@@ -112,6 +112,29 @@ a passing gate has already lied here.
 - **A fixture must describe a real server.** If a screen formats in the
   provider's stored zone, the fixture's timestamp has to be stated in that zone;
   stating it in UTC passed only because the runner happened to be there too.
+- **Declaring `lang` and `dir` is not the same as declaring them CORRECTLY.**
+  Asserting only their presence let a screen serve Arabic as `lang="en" dir="ltr"`.
+  Every assistive technology picks its voice from one and every logical CSS
+  property resolves from the other, and behaviour now branches on direction — the
+  portfolio arrows reverse in Arabic — so a wrong value is a wrong interaction.
+- **A limiter that legitimate test setup can exhaust needs a test-scoped
+  override on the day it is added.** Three of them have been found this way now,
+  each by a suite from a single IP that looked exactly like abuse: registration
+  (Sprint 1), OTP verification and the coarse per-IP backstop (Phase 5B). The
+  production default stays the default and `env.validation.ts` refuses to boot a
+  hardened environment above the ceiling.
+- **Before widening a limit, stop making the requests.** The draft was re-read
+  before every write to learn a version the previous response already returned —
+  a hundred and forty needless reads, and a read-then-write race besides.
+  Threading the version fixed both, and only then was the override warranted.
+- **A failure that lands on a different test each run is usually one cause with
+  a clock in it.** Three runs, three tests, one memoised admin session against a
+  600-second token TTL.
+- **A promise in the copy is a promise.** The portfolio hint said "Crop and
+  reorder before saving." and neither existed. If the approved design draws no
+  control for something it promises in words, the control still has to exist —
+  and it can often be built without adding pixels: the tile itself became the
+  reorder control, so state 9 is unchanged and the screen gained a keyboard path.
 - **Verify a new assertion by breaking the thing it watches.** Every check added
   in this phase was confirmed by a mutation that turned it red, and two were
   rewritten because the mutation stayed green.

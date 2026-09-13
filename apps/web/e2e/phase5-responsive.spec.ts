@@ -55,9 +55,14 @@ interface WidthFinding {
  * preference, and each returns a SENTENCE rather than a boolean so a failure
  * names the rule it broke instead of printing `false`.
  */
-async function measure(page: Page, state: Phase5State, width: number): Promise<string[]> {
+async function measure(
+  page: Page,
+  state: Phase5State,
+  width: number,
+  locale: 'en' | 'ar',
+): Promise<string[]> {
   return page.evaluate(
-    ({ width: w, breakpoint, columnMax, readySelector, primaryAction }) => {
+    ({ width: w, breakpoint, columnMax, readySelector, primaryAction, locale: loc }) => {
       const problems: string[] = [];
 
       // ── No horizontal overflow, anywhere ──────────────────────────────
@@ -157,9 +162,32 @@ async function measure(page: Page, state: Phase5State, width: number): Promise<s
         }
       }
 
-      // ── Direction and language are declared, not assumed ──────────────
-      if (!document.documentElement.lang) problems.push('the document declares no language');
-      if (!document.documentElement.dir) problems.push('the document declares no direction');
+      // ── Direction and language are declared, AND correct ──────────────
+      //
+      // Presence was all this checked, which is most of the way to nothing: a
+      // screen serving Arabic with `lang="en" dir="ltr"` satisfied both lines.
+      // Every assistive technology picks its voice from `lang`, every logical
+      // CSS property resolves from `dir`, and Phase 5B added behaviour that
+      // BRANCHES on direction — the portfolio's arrow keys reverse in Arabic —
+      // so a wrong value is now a wrong interaction as well as a wrong voice.
+      const expectedLang = loc;
+      const expectedDir = loc === 'ar' ? 'rtl' : 'ltr';
+      const declaredLang = document.documentElement.lang;
+      const declaredDir = document.documentElement.dir;
+
+      if (!declaredLang) {
+        problems.push('the document declares no language');
+      } else if (declaredLang.split('-')[0] !== expectedLang) {
+        // A region suffix is fine — `ar-SY` is still Arabic — the primary
+        // subtag is what has to agree.
+        problems.push(`the document declares lang="${declaredLang}", expected "${expectedLang}"`);
+      }
+
+      if (!declaredDir) {
+        problems.push('the document declares no direction');
+      } else if (declaredDir !== expectedDir) {
+        problems.push(`the document declares dir="${declaredDir}", expected "${expectedDir}"`);
+      }
 
       return problems;
     },
@@ -169,6 +197,7 @@ async function measure(page: Page, state: Phase5State, width: number): Promise<s
       columnMax: COLUMN_MAX,
       readySelector: state.readySelector,
       primaryAction: state.primaryAction,
+      locale,
     },
   );
 }
@@ -201,7 +230,7 @@ test.describe('Phase 5A — the eighteen states at every required width', () => 
           );
           findings.push({
             width: viewport.width,
-            problems: await measure(page, state, viewport.width),
+            problems: await measure(page, state, viewport.width, locale),
           });
         }
 

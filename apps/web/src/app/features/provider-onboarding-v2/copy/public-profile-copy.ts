@@ -41,6 +41,16 @@ export interface PublicProfileCopy {
   uploadPrompt: string;
   uploadHint: string;
   coverPhoto: string;
+  /**
+   * The accessible name of a photo tile: which position it holds, of how many.
+   *
+   * A tile is the control that moves the photo, so its name has to say WHICH
+   * photo — "Photo 2 of 5" — or a screen-reader user pressing an arrow key has
+   * no idea what moved.
+   */
+  photoPosition: (position: number, total: number) => string;
+  /** How to reorder, announced to assistive technology and drawn nowhere. */
+  reorderHint: string;
   photosCheckingTitle: string;
   photosCheckingBody: string;
   /** The publication-rights gate, which appears once a file is waiting. */
@@ -91,6 +101,9 @@ export const PUBLIC_PROFILE_COPY: Record<Lang, PublicProfileCopy> = {
     uploadPrompt: 'Take a photo or choose from gallery',
     uploadHint: 'Crop and reorder before saving.',
     coverPhoto: 'Cover photo',
+    photoPosition: (position, total) => `Photo ${position} of ${total}`,
+    reorderHint:
+      'Use the left and right arrow keys to change the order. Home makes a photo the cover.',
     photosCheckingTitle: 'Photos are being checked',
     photosCheckingBody:
       'Photos uploaded successfully. Review does not block application completion, but controls when photos become visible.',
@@ -168,6 +181,9 @@ export const PUBLIC_PROFILE_COPY: Record<Lang, PublicProfileCopy> = {
     uploadPrompt: 'التقط صورة أو اختر من المعرض',
     uploadHint: 'يمكنك القص وإعادة الترتيب قبل الحفظ.',
     coverPhoto: 'الصورة الرئيسية',
+    photoPosition: (position, total) => `الصورة ${position} من ${total}`,
+    reorderHint:
+      'استخدم مفتاحي الأسهم يميناً ويساراً لتغيير الترتيب. ومفتاح Home يجعل الصورة رئيسية.',
     photosCheckingTitle: 'الصور قيد الفحص',
     photosCheckingBody:
       'تم رفع الصور بنجاح. الفحص لا يمنع إكمال طلبك، لكنه يحدد متى تظهر الصور للعملاء.',

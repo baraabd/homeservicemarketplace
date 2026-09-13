@@ -1,13 +1,20 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
 import { writePersistenceMarker, writeRouteMarker } from './phase5-markers';
-import { databaseSystemId, readAvailability, readProfileValues } from './phase5-db-read';
+import {
+  databaseSystemId,
+  readAvailability,
+  readPortfolioOrder,
+  readProfileValues,
+} from './phase5-db-read';
 import type { TaskScreenFile } from './phase5-evidence-ledger';
 
 import { seedLanguage } from './fixtures';
 import {
+  addPortfolioPhoto,
   api,
   approveCategoriesFor,
+  portfolioOrder,
   completeDraft,
   loginViaUi,
   REAL_API,
@@ -464,6 +471,94 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       observedAfterFreshSignIn: freshly,
       readDatabase: () => readProfileValues(account.profileId, ['bio']),
     });
+
+    assertCleanTraffic(seen);
+  });
+
+  test('PORTFOLIO: a photo reordered in the browser stays reordered', async ({
+    page,
+    context,
+    browser,
+  }) => {
+    // Sprint 09B.29 Phase 5B. The approved portfolio screen's own hint says
+    // "Crop and reorder before saving." and labels the first tile "Cover
+    // photo", so the order is meaningful and the provider was told they could
+    // change it — and until this sprint nothing on the screen could, while
+    // `POST /v1/me/provider/portfolio/reorder` had existed the whole time.
+    //
+    // The reference draws no drag handle and no arrows, so the tile IS the
+    // control and the keys are the affordance. That is why this test presses a
+    // key: it is the path a provider actually has, and the only one an
+    // assistive technology user has at all.
+    const account = await readyProvider(['PROFILE']);
+    const seen = watchTraffic(page);
+    await prepare(page, context, account);
+
+    // Fixture setup uploads the photos through the real presign/PUT/register
+    // path, because the thing under test is the ORDER and a test must not
+    // perform the edit it is proving. Three, so "moved later" is distinguishable
+    // from "moved to the end".
+    const first = await addPortfolioPhoto(account.jar, 'one');
+    const second = await addPortfolioPhoto(account.jar, 'two');
+    const third = await addPortfolioPhoto(account.jar, 'three');
+    expect(
+      await portfolioOrder(account.jar),
+      'the photos should start in the order they were added',
+    ).toEqual([first, second, third]);
+
+    // '#portfolio', because the bare task URL opens the FIRST of this task's two
+    // approved screens — the bio — and the grid is on the second.
+    await page.goto('/provider/onboarding/PORTFOLIO#portfolio');
+    await expect(page.getByTestId('portfolio-grid')).toBeVisible();
+
+    // Move the cover photo one place later, from the keyboard.
+    const cover = page.getByTestId(`portfolio-reorder-${first}`);
+    await expect(cover).toBeVisible();
+    await cover.focus();
+    await page.keyboard.press('ArrowRight');
+
+    const moved = [second, first, third];
+    await expect
+      .poll(() => portfolioOrder(account.jar), {
+        timeout: 30_000,
+        message: 'the server should have stored the new order',
+      })
+      .toEqual(moved);
+
+    // The screen agrees: the cover label belongs to whatever is first now, and
+    // the tile order in the DOM follows the server rather than the click.
+    const domOrder = async (target: Page): Promise<string[]> =>
+      target
+        .getByTestId('portfolio-grid')
+        .locator('[data-testid^="portfolio-item-"]')
+        .evaluateAll((nodes) =>
+          nodes.map((n) => (n.getAttribute('data-testid') ?? '').replace('portfolio-item-', '')),
+        );
+    await expect.poll(() => domOrder(page), { timeout: 30_000 }).toEqual(moved);
+
+    // A hard reload, then a completely fresh authenticated session.
+    await page.reload();
+    await expect(page.getByTestId('portfolio-grid')).toBeVisible();
+    expect(await domOrder(page), 'the order must survive a reload').toEqual(moved);
+
+    const fresh = await proveSurvivesFreshSignIn(
+      browser,
+      account,
+      'PORTFOLIO',
+      async (freshPage) => {
+        await freshPage.goto('/provider/onboarding/PORTFOLIO#portfolio');
+        await expect(freshPage.getByTestId('portfolio-grid')).toBeVisible();
+        return domOrder(freshPage);
+      },
+    );
+    expect(fresh, 'the order must survive a fresh sign-in').toEqual(moved);
+
+    // And the rows themselves, read straight from Postgres rather than through
+    // any endpoint that might be projecting from a cache.
+    expect(
+      await readPortfolioOrder(account.profileId),
+      'the row order in Postgres must match what the browser shows',
+    ).toEqual(moved);
 
     assertCleanTraffic(seen);
   });

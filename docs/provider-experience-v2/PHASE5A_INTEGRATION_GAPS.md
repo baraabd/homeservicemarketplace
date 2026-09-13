@@ -279,6 +279,87 @@ Route and persistence credit need a real-HTTP, flag-ON run that stamps its own
 navigation, hard reload, fresh sign-in and a database assertion. That is Phase
 5B's first job.
 
+### The portfolio promised reordering and provided none — G-18 — **CLOSED in Phase 5B**
+
+**Where** state 9, the portfolio.
+
+**The defect** the approved screen's own hint reads **"Crop and reorder before
+saving."** (`يمكنك القص وإعادة الترتيب قبل الحفظ.`), and the grid labels its
+first tile "Cover photo" — so order is meaningful and the provider has been told
+in writing that they can change it. Nothing on the screen could. Meanwhile
+`POST /v1/me/provider/portfolio/reorder` had existed the whole time, and the web
+client already wrapped it in `useReorderPortfolio`. A missing affordance, not a
+missing capability, and a promise the UI broke.
+
+**Why keys rather than a handle.** The reference draws no drag handle, no arrows
+and no reorder button. Adding any of them puts pixels on state 9 that the frozen
+prototype does not have, and the budget must not be widened to accommodate a
+control the design did not draw. So the TILE became the control: focusable, with
+arrow keys moving the photo it holds, Home making it the cover. Nothing is added
+at rest — state 9 measures 0.00124 EN / 0.00108 AR, unchanged — and the screen
+gained a keyboard path a drag handle would not have given it.
+
+Deliberately no visible text inside the tile button: this codebase's base layer
+gives a `button` a 500 weight and a 1.5 line-height, so the "Cover photo"
+caption stays outside it. The instruction that makes the keys discoverable is
+`sr-only` and wired through `aria-describedby`, because an arrow-key affordance
+nobody is told about is not an affordance — and because the reference does not
+draw that sentence either.
+
+**RTL is a correctness question, not a styling one.** In Arabic the first tile is
+on the right, so LEFT moves a photo later. The mapping is resolved against the
+document direction, and a test asserts it — the pixel gate cannot see a photo
+moving the wrong way, and every Arabic provider would have hit it.
+
+**What proves it**
+
+- six component tests: move later, Home-to-cover, refusal at both ends, the RTL
+  reversal, the locked application, and the accessible name and description.
+  Reversing the direction mapping turns the Arabic one red.
+- one real-API journey: three photos uploaded through the real
+  presign → PUT → register path (fixture setup, so the test does not perform the
+  edit it is proving), reordered **from the keyboard in the browser**, then
+  checked against the server's order, the DOM order, a hard reload, a fresh
+  authenticated session, and the `position` column read straight from Postgres.
+  Stopping the mutation from reaching the server turns it red.
+
+**Still open on this screen:** crop. The hint promises it and the approved screen
+draws no cropper; `image-processing.ts` can rotate, centre-crop and downscale,
+but an interactive cropper is a new surface and needs a product decision about
+what it looks like. Recorded rather than improvised.
+
+### The third throttle — G-19
+
+Fixing the OTP limiter (G-16) moved the failure rather than removing it: the job
+then hit `429` on `GET /me/provider/onboarding/draft`, the coarse per-IP
+backstop of 100 requests per rolling minute that every route sits behind.
+
+Two changes, in that order, because only one of them is a configuration change:
+
+1. **The suite stopped asking.** `patchStep` re-read the draft before every
+   write to learn its version — a GET per PATCH, roughly a hundred and forty of
+   them across the suite, each to discover a number the previous response had
+   already returned. The version is now THREADED: each write returns the version
+   it reached and the next one uses it. That is also the correct
+   optimistic-concurrency discipline; read-then-write is a race by construction,
+   however short the gap.
+2. **The backstop became configurable**, like its two siblings:
+   `GLOBAL_THROTTLE_LIMIT` / `GLOBAL_THROTTLE_TTL_SECONDS`, defaulting to the
+   production values, read through `AppConfigService` in the module that already
+   had DI, with `env.validation.ts` refusing to boot a hardened environment
+   above 100 or below a minute. Raising it widens only the backstop; the
+   route-level guards in front of it are untouched.
+
+Verified against a running server: the throttled routes report
+`X-RateLimit-Limit: 5000` with the override and `100` without it.
+
+**The pattern worth naming:** three limiters, three sprints apart, each
+discovered the same way — a legitimate suite from one IP looking exactly like
+abuse. Registration got its override in Sprint 1. OTP verification and the global
+backstop got theirs here. When a new route gets a tighter limit than the
+backstop, it needs the same treatment on the same day, or the next long suite
+finds it.
+
 ### The real-API job's twelve failures were three causes, and mostly one — G-16
 
 The `phase5-real-api` job on `ec9b956` reported **12 failed, 11 passed**. Read as
