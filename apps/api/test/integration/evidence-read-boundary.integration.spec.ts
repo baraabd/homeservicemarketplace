@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import request from 'supertest';
 
-import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
 
 // Sprint 9B.3 — the restricted READ route, exercised over HTTP against real
 // Postgres and real bytes on disk.
@@ -66,8 +66,7 @@ d('Restricted evidence read boundary (real Postgres, real bytes)', () => {
   const KEY = `verification/${CASE_ID}/${ASSET}.pdf`;
 
   let storageRoot: string;
-  let lifecycleLock: HeldLock;
-  let mediaLock: HeldLock;
+  let locks: HeldLock | undefined;
   /** Whether the caller holds verification:evidence:view this request. */
   let reviewerPermission = false;
 
@@ -88,9 +87,21 @@ d('Restricted evidence read boundary (real Postgres, real bytes)', () => {
   }
 
   beforeAll(async () => {
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // Sprint 09B.29 Phase 5B — taken as ONE SET, atomically.
+    //
+    // Acquiring these one after another is hold-and-wait: the second
+    // acquisition can queue for up to the whole budget while the first is
+    // already held, so every suite waiting on the first is blocked by a
+    // suite that is doing no work. That is what took CI down — see
+    // `acquireAdvisoryLocks` in test/support/db-isolation.ts.
+    //
+    // The set is sorted into the canonical order by the helper, so the
+    // order written here cannot be wrong.
+    locks = await acquireAdvisoryLocks([
+      { resource: 'providerLifecycle' as const, mode: 'shared' as const },
+      { resource: 'mediaAssets' as const, mode: 'shared' as const },
+    ]);
     // LAST in the canonical order. SHARED: this suite creates MediaAsset rows a global sweep would reach.
-    mediaLock = await acquireAdvisoryLock('mediaAssets', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -227,8 +238,7 @@ d('Restricted evidence read boundary (real Postgres, real bytes)', () => {
     await app?.close();
     rmSync(storageRoot, { recursive: true, force: true });
     await prisma.$disconnect();
-    await mediaLock?.release();
-    await lifecycleLock.release();
+    await locks?.release();
   });
 
   // ── PENDING is unreadable ───────────────────────────────────────────────

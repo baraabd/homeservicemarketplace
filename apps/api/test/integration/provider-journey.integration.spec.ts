@@ -14,7 +14,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { fixtureEmailDomain, acquireAdvisoryLock, type HeldLock } from '../support/db-isolation';
+import { fixtureEmailDomain, acquireAdvisoryLocks, type HeldLock } from '../support/db-isolation';
 
 // Sprint 9B.13 — the whole provider journey, through the REAL application.
 //
@@ -78,11 +78,7 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
 
   let storageRoot: string;
   let restrictedRoot: string;
-  let lifecycleLock: HeldLock;
-  let mediaLock: HeldLock;
-  let grantsLock: HeldLock;
-  let outboxLock: HeldLock;
-
+  let locks: HeldLock | undefined;
   const savedEnv: Record<string, string | undefined> = {};
 
   /** The env the real app boots on here. Quoted verbatim in the report, so
@@ -324,8 +320,43 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
     // mutates SHARED rows table-wide takes the lock EXCLUSIVE. Ordered
     // lifecycle-then-outbox, the same order every other suite uses, so no two
     // suites can deadlock on the pair.
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'exclusive');
-    outboxLock = await acquireAdvisoryLock('outbox', 'exclusive');
+    // Sprint 09B.29 Phase 5B — taken as ONE SET, atomically.
+    //
+    // Acquiring these one after another is hold-and-wait: the second
+    // acquisition can queue for up to the whole budget while the first is
+    // already held, so every suite waiting on the first is blocked by a
+    // suite that is doing no work. That is what took CI down — see
+    // `acquireAdvisoryLocks` in test/support/db-isolation.ts.
+    //
+    // The set is sorted into the canonical order by the helper, so the
+    // order written here cannot be wrong.
+    locks = await acquireAdvisoryLocks([
+      // SHARED, not exclusive — corrected in Phase 5B after measuring.
+      //
+      // This lock was taken EXCLUSIVE before `workAccessGrants` (9B.21) and
+      // `mediaAssets` (Phase 5) existed, when it was the only thing standing
+      // between this journey and the two GLOBAL sweeps it drives. Those sweeps
+      // now have their own locks, held exclusively below, and they are what the
+      // original flakes were actually about — the failures named
+      // `outbox.integration` and `work-access-enforcement`, not anything
+      // lifecycle-wide.
+      //
+      // Nothing here reads or writes ProviderProfile table-wide: every access is
+      // scoped to this suite's own userIds or a findUnique. EXCLUSIVE therefore
+      // bought nothing and cost a great deal — it excluded the ~24 suites that
+      // hold this SHARED for their whole run, and the resulting starvation is
+      // what timed out in CI. Measured at --maxWorkers=4: worst acquisition
+      // 74.3s of a 120s budget as exclusive.
+      //
+      // SHARED still excludes `provider-lifecycle-backfill`, which is the one
+      // suite that genuinely rewrites the lifecycle axes table-wide and takes
+      // this EXCLUSIVE. That mutual exclusion is the invariant; owning the
+      // table was never part of it.
+      { resource: 'providerLifecycle' as const, mode: 'shared' as const },
+      { resource: 'outbox' as const, mode: 'exclusive' as const },
+      { resource: 'workAccessGrants' as const, mode: 'shared' as const },
+      { resource: 'mediaAssets' as const, mode: 'exclusive' as const },
+    ]);
     // Sprint 9B.21 — SHARED on the grant table, and acquired LAST.
     //
     // work-access-enforcement drives the expiry sweep, which scans every
@@ -336,9 +367,7 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
     // Last, because the order providerLifecycle -> outbox -> workAccessGrants
     // is the same in every suite. Two suites taking two locks in opposite
     // orders is a deadlock, and a deadlocked CI job looks like a hang.
-    grantsLock = await acquireAdvisoryLock('workAccessGrants', 'shared');
     // LAST in the canonical order. EXCLUSIVE: this suite RUNS a global media sweep.
-    mediaLock = await acquireAdvisoryLock('mediaAssets', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -485,10 +514,7 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
     rmSync(storageRoot, { recursive: true, force: true });
     rmSync(restrictedRoot, { recursive: true, force: true });
     await prisma?.$disconnect();
-    await mediaLock?.release();
-    await outboxLock?.release();
-    await grantsLock?.release();
-    await lifecycleLock?.release();
+    await locks?.release();
     for (const [k, v] of Object.entries(savedEnv)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;

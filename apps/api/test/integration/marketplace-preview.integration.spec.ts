@@ -10,7 +10,7 @@ import { APP_FILTER, Reflector } from '@nestjs/core';
 import { CanActivate, ExecutionContext, INestApplication, VersioningType } from '@nestjs/common';
 import request from 'supertest';
 
-import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
 
 // Sprint 9B.9 — the redacted preview at the HTTP boundary, with both
 // enforcement flags ON.
@@ -62,11 +62,7 @@ d('Redacted marketplace preview (real guard, real Postgres, flags ON)', () => {
   const PP = `${P}pp`;
   const PP2 = `${P}pp2`;
   const CATEGORY = `${P}cat`;
-
-  let lifecycleLock: HeldLock;
-  let grantsLock: HeldLock;
-  let requestsLock: HeldLock;
-
+  let locks: HeldLock | undefined;
   // The seeker's true location, to six decimals. Nothing this precise may
   // appear anywhere on the wire.
   const TRUE_LAT = 36.202105;
@@ -113,7 +109,21 @@ d('Redacted marketplace preview (real guard, real Postgres, flags ON)', () => {
   }
 
   beforeAll(async () => {
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // Sprint 09B.29 Phase 5B — taken as ONE SET, atomically.
+    //
+    // Acquiring these one after another is hold-and-wait: the second
+    // acquisition can queue for up to the whole budget while the first is
+    // already held, so every suite waiting on the first is blocked by a
+    // suite that is doing no work. That is what took CI down — see
+    // `acquireAdvisoryLocks` in test/support/db-isolation.ts.
+    //
+    // The set is sorted into the canonical order by the helper, so the
+    // order written here cannot be wrong.
+    locks = await acquireAdvisoryLocks([
+      { resource: 'providerLifecycle' as const, mode: 'shared' as const },
+      { resource: 'workAccessGrants' as const, mode: 'shared' as const },
+      { resource: 'serviceRequests' as const, mode: 'exclusive' as const },
+    ]);
     // Sprint 9B.21 — SHARED on the grant table, and acquired LAST.
     //
     // work-access-enforcement drives the expiry sweep, which scans every
@@ -124,7 +134,6 @@ d('Redacted marketplace preview (real guard, real Postgres, flags ON)', () => {
     // Last, because the order providerLifecycle -> outbox -> workAccessGrants
     // is the same in every suite. Two suites taking two locks in opposite
     // orders is a deadlock, and a deadlocked CI job looks like a hang.
-    grantsLock = await acquireAdvisoryLock('workAccessGrants', 'shared');
 
     // EXCLUSIVE on ServiceRequest, and the reason is this suite alone.
     //
@@ -149,7 +158,6 @@ d('Redacted marketplace preview (real guard, real Postgres, flags ON)', () => {
     //
     // LAST in the canonical order (see test/support/db-isolation.ts), released
     // FIRST.
-    requestsLock = await acquireAdvisoryLock('serviceRequests', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -338,9 +346,7 @@ d('Redacted marketplace preview (real guard, real Postgres, flags ON)', () => {
     await cleanupFixtures();
     await app?.close();
     await prisma.$disconnect();
-    await requestsLock?.release();
-    await grantsLock?.release();
-    await lifecycleLock.release();
+    await locks?.release();
   });
 
   // ── the response boundary ───────────────────────────────────────────────

@@ -20,7 +20,7 @@
 // sibling integration specs.
 export {};
 
-import { acquireAdvisoryLock, type HeldLock } from '../support/db-isolation';
+import { acquireAdvisoryLocks, type HeldLock } from '../support/db-isolation';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -144,18 +144,28 @@ d('Service-area matching and fan-out (real Postgres)', () => {
     });
     return rows.map((r: { id: string }) => r.id).sort();
   }
-
-  let lifecycleLock: HeldLock;
-  let outboxLock: HeldLock;
-  let requestsLock: HeldLock;
-
+  let locks: HeldLock | undefined;
   beforeAll(async () => {
     // SHARED, not exclusive: this suite writes ProviderProfile rows (600 of
     // them, with NULL lifecycle axes) and so must not overlap the lifecycle
     // backfill, which rewrites that table wholesale and asserts on table-wide
     // totals. Shared locks are mutually compatible, so every other suite that
     // merely writes providers still runs concurrently with this one.
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // Sprint 09B.29 Phase 5B — taken as ONE SET, atomically.
+    //
+    // Acquiring these one after another is hold-and-wait: the second
+    // acquisition can queue for up to the whole budget while the first is
+    // already held, so every suite waiting on the first is blocked by a
+    // suite that is doing no work. That is what took CI down — see
+    // `acquireAdvisoryLocks` in test/support/db-isolation.ts.
+    //
+    // The set is sorted into the canonical order by the helper, so the
+    // order written here cannot be wrong.
+    locks = await acquireAdvisoryLocks([
+      { resource: 'providerLifecycle' as const, mode: 'shared' as const },
+      { resource: 'outbox' as const, mode: 'shared' as const },
+      { resource: 'serviceRequests' as const, mode: 'shared' as const },
+    ]);
 
     // SHARED on the outbox, because this suite is a PRODUCER.
     //
@@ -169,7 +179,6 @@ d('Service-area matching and fan-out (real Postgres)', () => {
     // That suite takes the same lock EXCLUSIVE, so shared here is exactly the
     // mutual exclusion required: producers may run together, never alongside
     // the consumer.
-    outboxLock = await acquireAdvisoryLock('outbox', 'shared');
 
     // SHARED on ServiceRequest. This suite CREATES open requests, and the
     // marketplace-preview suite reads the open-request set globally and counts
@@ -179,7 +188,6 @@ d('Service-area matching and fan-out (real Postgres)', () => {
     //
     // LAST in the canonical order (test/support/db-isolation.ts), released FIRST,
     // and never before this suite has deleted the requests it owns.
-    requestsLock = await acquireAdvisoryLock('serviceRequests', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -238,9 +246,7 @@ d('Service-area matching and fan-out (real Postgres)', () => {
       where: { OR: [{ id: seekerUserId }, { id: { startsWith: PROVIDER_USER_PREFIX } }] },
     });
     await prisma.$disconnect();
-    await requestsLock?.release();
-    await outboxLock?.release();
-    await lifecycleLock.release();
+    await locks?.release();
   });
 
   // ── geographic boundaries ────────────────────────────────────────────────

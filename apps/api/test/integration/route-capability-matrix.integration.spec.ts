@@ -10,7 +10,7 @@ import { APP_FILTER, Reflector } from '@nestjs/core';
 import { CanActivate, ExecutionContext, INestApplication, VersioningType } from '@nestjs/common';
 import request from 'supertest';
 
-import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
 
 // Sprint 9B.8 — every protected provider route family, in every provider
 // state, with both enforcement flags ON.
@@ -71,10 +71,7 @@ d('Route/capability matrix (real guard, real Postgres, flags ON)', () => {
   const USER = `${P}user`;
   const PP = `${P}pp`;
   const CATEGORY = `${P}cat`;
-
-  let lifecycleLock: HeldLock;
-  let grantsLock: HeldLock;
-
+  let locks: HeldLock | undefined;
   const FLAGS_ON: Record<string, unknown> = {
     WORK_ACCESS_ENFORCED: true,
     VERIFICATION_ENFORCED: true,
@@ -275,7 +272,20 @@ d('Route/capability matrix (real guard, real Postgres, flags ON)', () => {
   }
 
   beforeAll(async () => {
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // Sprint 09B.29 Phase 5B — taken as ONE SET, atomically.
+    //
+    // Acquiring these one after another is hold-and-wait: the second
+    // acquisition can queue for up to the whole budget while the first is
+    // already held, so every suite waiting on the first is blocked by a
+    // suite that is doing no work. That is what took CI down — see
+    // `acquireAdvisoryLocks` in test/support/db-isolation.ts.
+    //
+    // The set is sorted into the canonical order by the helper, so the
+    // order written here cannot be wrong.
+    locks = await acquireAdvisoryLocks([
+      { resource: 'providerLifecycle' as const, mode: 'shared' as const },
+      { resource: 'workAccessGrants' as const, mode: 'shared' as const },
+    ]);
     // Sprint 9B.21 — SHARED on the grant table, and acquired LAST.
     //
     // work-access-enforcement drives the expiry sweep, which scans every
@@ -286,7 +296,6 @@ d('Route/capability matrix (real guard, real Postgres, flags ON)', () => {
     // Last, because the order providerLifecycle -> outbox -> workAccessGrants
     // is the same in every suite. Two suites taking two locks in opposite
     // orders is a deadlock, and a deadlocked CI job looks like a hang.
-    grantsLock = await acquireAdvisoryLock('workAccessGrants', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -504,8 +513,7 @@ d('Route/capability matrix (real guard, real Postgres, flags ON)', () => {
     await cleanupFixtures();
     await app?.close();
     await prisma.$disconnect();
-    await grantsLock?.release();
-    await lifecycleLock.release();
+    await locks?.release();
   });
 
   // ── the table ───────────────────────────────────────────────────────────

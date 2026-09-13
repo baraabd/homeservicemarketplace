@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import request from 'supertest';
 
-import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
 
 // Sprint 09B.29 Phase 5 (C2) — the enabled-market boundary and radius
 // provenance, THROUGH THE REAL HTTP PATH, against real Postgres.
@@ -102,10 +102,7 @@ d('Phase 5 C2 - enabled markets and radius provenance (real HTTP, real Postgres)
   const P = fixturePrefix('p5c2');
   const USER = `${P}user`;
   const PP = `${P}pp`;
-
-  let lifecycleLock: HeldLock;
-  let registryLock: HeldLock;
-
+  let locks: HeldLock | undefined;
   /** The registry exactly as the seed left it, restored in afterAll. */
   let seededRegistry: unknown;
 
@@ -228,8 +225,20 @@ d('Phase 5 C2 - enabled markets and radius provenance (real HTTP, real Postgres)
     // SHARED on the lifecycle table, EXCLUSIVE on the registry, in the
     // canonical order. See test/support/db-isolation.ts for why the registry
     // needs a lock a fixture namespace cannot replace.
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
-    registryLock = await acquireAdvisoryLock('marketRegistry', 'exclusive');
+    // Sprint 09B.29 Phase 5B — taken as ONE SET, atomically.
+    //
+    // Acquiring these one after another is hold-and-wait: the second
+    // acquisition can queue for up to the whole budget while the first is
+    // already held, so every suite waiting on the first is blocked by a
+    // suite that is doing no work. That is what took CI down — see
+    // `acquireAdvisoryLocks` in test/support/db-isolation.ts.
+    //
+    // The set is sorted into the canonical order by the helper, so the
+    // order written here cannot be wrong.
+    locks = await acquireAdvisoryLocks([
+      { resource: 'providerLifecycle' as const, mode: 'shared' as const },
+      { resource: 'marketRegistry' as const, mode: 'exclusive' as const },
+    ]);
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -419,8 +428,7 @@ d('Phase 5 C2 - enabled markets and radius provenance (real HTTP, real Postgres)
       });
     }
     await app?.close();
-    await registryLock?.release();
-    await lifecycleLock?.release();
+    await locks?.release();
     currentUser = null;
   });
 
