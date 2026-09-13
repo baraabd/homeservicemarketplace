@@ -35,6 +35,10 @@ import { Client } from 'pg';
 /**
  * Open a read-only connection to the database under test.
  *
+ * Keyed by `providerProfileId` throughout, because that is what the real-API
+ * harness carries on its `Account` — and it is the column the rows are already
+ * indexed by, so no join is needed to reach either of them.
+ *
  * `DATABASE_URL` is the same value the API was started with, so this is the
  * database the browser's writes actually reached — not a copy, and not a
  * second environment that happens to have the same schema.
@@ -85,16 +89,15 @@ export async function databaseSystemId(): Promise<string> {
  * the revision the server had reached when it stored it.
  */
 export async function readDraftRow(
-  userId: string,
+  providerProfileId: string,
 ): Promise<{ data: Record<string, unknown>; version: number } | null> {
   return withClient(async (client) => {
     const { rows } = await client.query<{ data: Record<string, unknown>; version: number }>(
       `SELECT d."data", d."version"
          FROM "ProviderOnboardingDraft" d
-         JOIN "ProviderProfile" p ON p."id" = d."providerProfileId"
-        WHERE p."userId" = $1
+        WHERE d."providerProfileId" = $1
         LIMIT 1`,
-      [userId],
+      [providerProfileId],
     );
     return rows[0] ?? null;
   });
@@ -109,10 +112,10 @@ export async function readDraftRow(
  * fail on every unrelated field the server also stores.
  */
 export async function readDraftValues(
-  userId: string,
+  providerProfileId: string,
   keys: readonly string[],
 ): Promise<Record<string, unknown>> {
-  const row = await readDraftRow(userId);
+  const row = await readDraftRow(providerProfileId);
   const data = row?.data ?? {};
   const picked: Record<string, unknown> = {};
   for (const key of keys) picked[key] = data[key];
@@ -128,7 +131,7 @@ export async function readDraftValues(
  * JSON field cannot see. Which is the G-04 failure mode, one layer down.
  */
 export async function readAvailability(
-  userId: string,
+  providerProfileId: string,
 ): Promise<Array<{ dayOfWeek: number; startMinute: number; endMinute: number }>> {
   return withClient(async (client) => {
     const { rows } = await client.query<{
@@ -138,10 +141,9 @@ export async function readAvailability(
     }>(
       `SELECT a."dayOfWeek", a."startMinute", a."endMinute"
          FROM "ProviderAvailabilityInterval" a
-         JOIN "ProviderProfile" p ON p."id" = a."providerProfileId"
-        WHERE p."userId" = $1
+        WHERE a."providerProfileId" = $1
         ORDER BY a."dayOfWeek", a."startMinute"`,
-      [userId],
+      [providerProfileId],
     );
     return rows;
   });

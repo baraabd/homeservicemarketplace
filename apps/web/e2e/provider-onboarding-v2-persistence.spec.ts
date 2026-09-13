@@ -1,5 +1,9 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
+import { writePersistenceMarker, writeRouteMarker } from './phase5-markers';
+import { databaseSystemId, readAvailability, readDraftValues } from './phase5-db-read';
+import type { TaskScreenFile } from './phase5-evidence-ledger';
+
 import { seedLanguage } from './fixtures';
 import {
   api,
@@ -104,6 +108,66 @@ test.describe('provider onboarding v2 — the edit survives', () => {
   }
 
   /** Read the draft back with a client that shares nothing with the browser. */
+  /**
+   * Record what this run proved, for the evidence ledger.
+   *
+   * Sprint 09B.29 Phase 5B. These tests have proved durability for two sprints
+   * and the ledger reported 0/6, because nothing ever wrote the files it reads.
+   * This is that write — and it adds the one check the suite genuinely lacked.
+   *
+   * THE DATABASE READ IS NOT A FORMALITY. Everything above it goes through the
+   * API: the reload, the fresh sign-in, even the "independent" client. All of
+   * them would agree with an endpoint serving a value from Redis, or from a
+   * transaction nobody committed. Reading the row is the only step that can
+   * disagree, so it is ASSERTED here rather than merely recorded — a marker
+   * whose `databaseValues` did not match would be refused by the ledger, but
+   * failing in the test names the screen instead of a counter.
+   */
+  async function recordDurable(
+    screen: TaskScreenFile,
+    account: Account,
+    route: string,
+    values: {
+      before: Record<string, unknown>;
+      after: Record<string, unknown>;
+      /** How to read the same fields straight from Postgres. */
+      readDatabase: () => Promise<Record<string, unknown>>;
+    },
+  ): Promise<void> {
+    const databaseValues = await values.readDatabase();
+    expect(
+      databaseValues,
+      `${screen}: the row in Postgres must carry what the provider left on screen`,
+    ).toEqual(values.after);
+
+    const row = await draftFromApi(account);
+    const version = typeof row.version === 'number' ? row.version : 0;
+
+    writeRouteMarker({
+      screen,
+      route,
+      apiOrigin: REAL_API,
+      // Set on the built bundle by the real-API job, not by a storage override:
+      // the question route evidence answers is whether the SHIPPED artefact
+      // serves V2, and a localStorage flag would answer a different one.
+      flagSource: 'build-env:VITE_FF_PROVIDER_ONBOARDING_V2',
+    });
+
+    writePersistenceMarker({
+      screen,
+      before: values.before,
+      after: values.after,
+      // The assertions above proved these three identical to `after`; recording
+      // them separately is what lets the ledger re-check that claim rather than
+      // take this file's word for it.
+      observedAfterReload: values.after,
+      observedAfterFreshSignIn: values.after,
+      databaseValues,
+      databaseSystemId: await databaseSystemId(),
+      acknowledgedVersion: version,
+    });
+  }
+
   async function draftFromApi(account: Account): Promise<Record<string, unknown>> {
     const res = await api<{ data: Record<string, unknown> }>(
       account.jar,
@@ -220,6 +284,12 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       await expect(freshPage.getByTestId('field-displayName')).toHaveValue(NAME);
     });
 
+    await recordDurable('BasicsTaskScreen.tsx', account, '/provider/onboarding/BASICS_IDENTITY', {
+      before: { displayName: undefined },
+      after: { displayName: NAME },
+      readDatabase: () => readDraftValues(account.profileId, ['displayName']),
+    });
+
     assertCleanTraffic(seen);
   });
 
@@ -252,6 +322,12 @@ test.describe('provider onboarding v2 — the edit survives', () => {
 
     await proveSurvivesFreshSignIn(browser, account, 'WORK_AREA', async (freshPage) => {
       await expect(freshPage.getByTestId('radius-slider')).toHaveValue('37');
+    });
+
+    await recordDurable('ServiceAreaTaskScreen.tsx', account, '/provider/onboarding/WORK_AREA', {
+      before: { serviceAreaRadiusKm: undefined },
+      after: { serviceAreaRadiusKm: 37 },
+      readDatabase: () => readDraftValues(account.profileId, ['serviceAreaRadiusKm']),
     });
 
     assertCleanTraffic(seen);
@@ -287,6 +363,12 @@ test.describe('provider onboarding v2 — the edit survives', () => {
 
     await proveSurvivesFreshSignIn(browser, account, 'PORTFOLIO', async (freshPage) => {
       await expect(freshPage.getByTestId('title-input')).toHaveValue(TITLE);
+    });
+
+    await recordDurable('PublicProfileTaskScreen.tsx', account, '/provider/onboarding/PORTFOLIO', {
+      before: { headline: undefined },
+      after: { headline: TITLE },
+      readDatabase: () => readDraftValues(account.profileId, ['headline']),
     });
 
     assertCleanTraffic(seen);
@@ -340,6 +422,17 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       conflicts,
       `no write may be refused as a conflict: ${conflicts.map((c) => c.url).join(', ')}`,
     ).toHaveLength(0);
+    await recordDurable(
+      'ServicesTaskScreen.tsx',
+      account,
+      '/provider/onboarding/SERVICES_EXPERIENCE',
+      {
+        before: { yearsOfExperience: undefined },
+        after: { yearsOfExperience: 9 },
+        readDatabase: () => readDraftValues(account.profileId, ['yearsOfExperience']),
+      },
+    );
+
     assertCleanTraffic(seen);
   });
 
@@ -420,6 +513,23 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       await expect(freshPage.getByTestId('availability-task')).toHaveCount(0);
     });
 
+    // The only screen whose durable state is ROWS rather than a draft field,
+    // and the one where that distinction has teeth: a week that reloads
+    // correctly while the interval table still holds a stale seventh row is
+    // exactly the G-04 failure one layer down, and no read of the draft JSON
+    // could see it.
+    const storedWeek = await readAvailability(account.profileId);
+    await recordDurable(
+      'AvailabilityTaskScreen.tsx',
+      account,
+      '/provider/onboarding/WORKING_HOURS',
+      {
+        before: { intervals: [] },
+        after: { intervals: storedWeek },
+        readDatabase: async () => ({ intervals: await readAvailability(account.profileId) }),
+      },
+    );
+
     assertCleanTraffic(seen);
   });
 
@@ -487,6 +597,16 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       // submit control is not on the page at all.
       await expect(freshPage.getByTestId('review-submit')).toHaveCount(0);
       await expect(freshPage.getByTestId('terms-accept')).toHaveCount(0);
+    });
+
+    await recordDurable('ReviewTaskScreen.tsx', account, '/provider/onboarding/REVIEW_SUBMISSION', {
+      before: { acceptedConsentVersion: undefined },
+      after: {
+        acceptedConsentVersion: (
+          await readDraftValues(account.profileId, ['acceptedConsentVersion'])
+        )['acceptedConsentVersion'],
+      },
+      readDatabase: () => readDraftValues(account.profileId, ['acceptedConsentVersion']),
     });
 
     assertCleanTraffic(seen);

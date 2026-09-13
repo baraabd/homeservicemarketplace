@@ -308,6 +308,146 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  # ── the six task journeys, against a real server ──────────────────────────
+  # Sprint 09B.29 Phase 5B. The persistence suite has driven all six task
+  # screens against a real API for two sprints and the Phase 5 ledger reported
+  # route 0/6 and persistence 0/6 the whole time — because no spec ever wrote
+  # the markers it reads. This job is where that evidence is produced.
+  #
+  # It is deliberately a SEPARATE job from browser-e2e: that one stubs every
+  # /v1/** call and can never earn route credit, and mixing the two in one job
+  # would put a stubbed run and an un-stubbed one in the same artifact tree.
+  phase5-real-api:
+    name: Phase 5 real-route and persistence evidence
+    runs-on: ubuntu-latest
+    needs: verify
+    # Each test registers a real account, waits on a real SMTP delivery and
+    # drives a full browser journey. Generous per test, bounded per job.
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: homeservicemarketplace
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      mailpit:
+        image: axllent/mailpit:latest
+        ports: ['1025:1025', '8025:8025']
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/homeservicemarketplace
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      JWT_ACCESS_SECRET: ci_only_dummy_secret_at_least_32_chars_long
+      JWT_ISSUER: hsm-api
+      JWT_AUDIENCE: hsm-clients
+      SMTP_HOST: localhost
+      SMTP_PORT: '1025'
+      COOKIE_SECURE: 'false'
+      COOKIE_SAMESITE: lax
+      # Every test registers a fresh account; Sprint 1's 5/IP/hour limiter
+      # would throttle the suite out halfway and the failure would look like an
+      # auth bug. Raised for this job only.
+      AUTH_REGISTER_THROTTLE_LIMIT: '200'
+      # The browser is served from 4173 and talks to the API on 4010, so the
+      # API has to allow that origin or every request arrives anonymous.
+      CORS_ORIGINS: http://127.0.0.1:4173,http://localhost:4173
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Generate prisma client
+        run: pnpm --filter @homeservicemarketplace/database generate
+      - name: Apply migrations
+        run: pnpm --filter @homeservicemarketplace/database migrate:deploy
+      - name: Build database package
+        run: pnpm --filter @homeservicemarketplace/database build
+      - name: Seed baseline roles / permissions
+        run: pnpm --filter @homeservicemarketplace/database seed
+      - name: Build the API
+        run: pnpm --filter @homeservicemarketplace/api build
+      - name: Build the web app with V2 ON at BUILD time
+        # The flag is baked into the bundle rather than set through a storage
+        # override, and the route marker says so. Route evidence answers "does
+        # the SHIPPED artefact serve V2" — a localStorage override answers a
+        # different question, and the ledger would be recording the wrong one.
+        env:
+          VITE_API_URL: http://127.0.0.1:4010
+          VITE_PROVIDER_ONBOARDING_V2: 'true'
+        run: pnpm --filter @homeservicemarketplace/web build
+      - name: Install Chromium
+        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Start the API
+        run: |
+          node apps/api/dist/main.js > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4010/health/live >/dev/null; then
+              echo "API is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API did not become healthy"; cat /tmp/api.log; exit 1
+        env:
+          NODE_ENV: development
+          PORT: '4010'
+      - name: Serve the built SPA
+        # Started here rather than by playwright's webServer, which the config
+        # omits entirely for a real-API run. `--host 127.0.0.1` is load-bearing:
+        # without it vite binds `localhost`, which on this runner resolves to
+        # [::1] only, and every poll of 127.0.0.1 is refused by a server that is
+        # running perfectly well on another interface.
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec vite preview \
+            --host 127.0.0.1 --port 4173 --strictPort > /tmp/preview.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4173/ >/dev/null; then
+              echo "SPA is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::vite preview did not come up"; cat /tmp/preview.log; exit 1
+      - name: Drive the six task journeys and record the evidence
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/provider-onboarding-v2-real-api.spec.ts \
+            e2e/provider-onboarding-v2-persistence.spec.ts \
+            --project=chromium-desktop --workers=1
+      - name: Re-derive the counters from the markers just written
+        # The suite writes evidence; this reads it back and re-checks every
+        # claim in it — including that the recorded values agree with the
+        # database read. A green Playwright run whose markers do not survive
+        # independent verification is not evidence.
+        run: pnpm --filter @homeservicemarketplace/web exec vitest run phase5-
+      - name: Upload the real-API evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase5-real-api-evidence
+          path: |
+            apps/web/test-results/phase5-visual/FINAL_REAL_API/
+            /tmp/api.log
+            /tmp/preview.log
+          retention-days: 14
+          if-no-files-found: warn
+
   # ── cookies / CSRF / refresh / logout, in a REAL browser ──────────────────
   # These behaviours are defined by rules only a browser implements: HttpOnly
   # hides a cookie from document.cookie, SameSite withholds it cross-site, and
@@ -691,6 +831,8 @@ jobs:
       # The approved design is an acceptance criterion, so the check that
       # measures it blocks merges like any other.
       - phase5-visual
+      # Real-route and durable-persistence evidence for the six task screens.
+      - phase5-real-api
       # The cookie/CSRF/refresh/logout contract is a merge blocker like any
       # other. A security check that is allowed to fail is not a check.
       - browser-auth-e2e
