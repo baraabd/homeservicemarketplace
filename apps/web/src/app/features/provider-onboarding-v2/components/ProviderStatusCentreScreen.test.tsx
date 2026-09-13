@@ -28,6 +28,7 @@ const CAPS_URL = /\/v1\/me\/provider\/capabilities$/;
 const CASE_URL = /\/v1\/me\/provider\/verification\/case$/;
 const REVIEW_URL = /\/v1\/me\/provider\/onboarding\/review/;
 const WITHDRAW_URL = /\/v1\/me\/provider\/onboarding\/withdraw$/;
+const DRAFT_URL = /\/v1\/me\/provider\/onboarding\/draft$/;
 
 const EN = STATUS_CENTRE_COPY.en;
 const AR = STATUS_CENTRE_COPY.ar;
@@ -94,6 +95,10 @@ function renderScreen(
     /** The server's verdict on whether the withdraw command would succeed. */
     canWithdraw?: boolean;
     lang?: 'en' | 'ar';
+    /** The provider's stored zone, for G-12. `null` serves a draft without one. */
+    timezone?: string | null;
+    /** Make the draft read fail, to prove the header still renders. */
+    draftFails?: boolean;
   } = {},
 ) {
   mock.reset();
@@ -126,6 +131,20 @@ function renderScreen(
     canWithdraw: options.canWithdraw ?? true,
   });
   mock.onPost(WITHDRAW_URL).reply(200, { state: 'DRAFT', version: 8 });
+  // G-12 — the draft carries the provider's own zone, which is what the header
+  // timestamps in. Served by default so the common case is the tested one.
+  if (options.draftFails) {
+    mock.onGet(DRAFT_URL).reply(500);
+  } else {
+    mock.onGet(DRAFT_URL).reply(200, {
+      version: 7,
+      editable: false,
+      data: {
+        timezone: options.timezone === undefined ? 'Asia/Damascus' : options.timezone,
+        resolvedTimezone: { resolved: null, display: null, needsConfirmation: false },
+      },
+    });
+  }
 
   window.localStorage.setItem('hsm.lang', options.lang ?? 'en');
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -267,8 +286,58 @@ describe('the waiting screen', () => {
     await waitFor(() => expect(screen.getByTestId('status-withdraw')).toBeDisabled());
   });
 
+  it('timestamps in the PROVIDER zone, not the reader device zone', async () => {
+    // Gap G-12. The submission confirmation formats in the provider's stored
+    // zone; this header used to format in the reader's. For a provider who is
+    // travelling the two screens then timestamped the same application an hour
+    // apart, with nothing to say which was meant.
+    //
+    // 09:05 UTC is 12:05 in Asia/Damascus (UTC+3), and the assertion is written
+    // as that zone's own rendering rather than a hard-coded "12:05" so it holds
+    // wherever the test runner sits — including a runner already in that zone,
+    // where a device-zone bug would be invisible.
+    renderScreen({
+      profile: PROFILE({ updatedAt: '2026-09-01T09:05:00.000Z' }),
+      timezone: 'Asia/Damascus',
+    });
+
+    await screen.findByTestId('provider-status-centre');
+
+    const inProviderZone = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Damascus',
+    }).format(new Date('2026-09-01T09:05:00.000Z'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('onboarding-v2-progress')).toHaveTextContent(inProviderZone),
+    );
+  });
+
+  it('still shows the header when the zone cannot be read', async () => {
+    // The draft is deliberately outside the readiness gate: a provider waiting
+    // on a review must not lose their status screen because one extra request
+    // failed. They get the device's zone, which is what everyone got before.
+    renderScreen({ profile: PROFILE({ updatedAt: '2026-09-01T09:05:00.000Z' }), draftFails: true });
+
+    await screen.findByTestId('provider-status-centre');
+    const onDevice = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date('2026-09-01T09:05:00.000Z'));
+    await waitFor(() =>
+      expect(screen.getByTestId('onboarding-v2-progress')).toHaveTextContent(onDevice),
+    );
+  });
+
   it('timestamps itself from the SERVER, not from a client clock', async () => {
-    renderScreen({ profile: PROFILE({ updatedAt: '2026-09-01T09:05:00.000Z' }) });
+    // `timezone: null` on purpose: this test is about WHICH INSTANT was
+    // formatted, so it keeps the device zone and leaves the provider zone to
+    // the G-12 test above. Without it the two assertions would contradict each
+    // other on any runner that is not at UTC+3.
+    renderScreen({ profile: PROFILE({ updatedAt: '2026-09-01T09:05:00.000Z' }), timezone: null });
 
     await screen.findByTestId('provider-status-centre');
 

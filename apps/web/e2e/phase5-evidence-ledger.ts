@@ -506,6 +506,26 @@ export function creditFor(
   screen: TaskScreenFile,
   sourceConformant: boolean,
   manifest: RunManifest = {},
+  /**
+   * Where the REAL-API markers live, when that is not `root`.
+   *
+   * Sprint 09B.29 Phase 5B. Presentation evidence and real-API evidence are
+   * filed under two namespaces on purpose — `PROVISIONAL_UI` for the stubbed
+   * visual run, `FINAL_REAL_API` for the un-stubbed one — and this function
+   * used to take a single root and look for all three kinds of evidence under
+   * it. So route and persistence were read from `PROVISIONAL_UI/route`, which
+   * the visual run never writes and the real-API run never writes to.
+   *
+   * The counters were therefore pinned at 0/6 by arithmetic, not by absence:
+   * six route markers and six persistence markers could sit on disk, correct
+   * and complete, and the ledger would still report nothing. That is worse
+   * than a missing file, because the fix looks like more testing when it is
+   * actually one argument.
+   *
+   * Defaults to `root` so a test that builds all three under one temporary
+   * directory still exercises the mechanism.
+   */
+  realApiRoot: string = root,
 ): ScreenCredit {
   const presentation: string[] = [];
   const route: string[] = [];
@@ -541,10 +561,10 @@ export function creditFor(
     presentation.push('evidence belongs to a different run than the manifest');
   }
 
-  const routeEv = routeEvidence(root, screen, manifest);
+  const routeEv = routeEvidence(realApiRoot, screen, manifest);
   if (!routeEv.verified) route.push(...routeEv.problems);
 
-  const persistEv = persistenceEvidence(root, screen, manifest);
+  const persistEv = persistenceEvidence(realApiRoot, screen, manifest);
   if (!persistEv.verified) persistence.push(...persistEv.problems);
 
   const presentationMigrated = presentation.length === 0;

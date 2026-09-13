@@ -398,9 +398,17 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     precondition: 'draft-submitted',
     readySelector: '[data-testid="provider-status-axes"]',
     primaryAction: null,
+    // '12:43' is asserted because nothing else here can see it. The fixture
+    // pins the profile update to 12:43 in the PROVIDER's zone (G-12), and the
+    // header prints it — but two changed digits cost far under 0.5% of the
+    // pixels, so the ratio passes whatever zone the clock was formatted in.
+    // Proven: moving the fixture to America/Los_Angeles left the cell green.
+    // Arabic renders the same instant in Arabic-Indic digits, which is also
+    // worth pinning: a header that fell back to ASCII digits in Arabic would
+    // otherwise be invisible too.
     requiredCopy: {
-      en: ['Work access', 'Not active'],
-      ar: ['إمكانية استقبال العمل', 'غير مفعّل'],
+      en: ['Work access', 'Not active', '12:43'],
+      ar: ['إمكانية استقبال العمل', 'غير مفعّل', '١٢:٤٣'],
     },
     axisAnswers: {
       completion: { en: 'Complete', ar: 'مكتمل', tone: 'done' },

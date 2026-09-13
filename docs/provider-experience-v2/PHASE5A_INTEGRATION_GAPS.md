@@ -18,16 +18,35 @@ platform have not met yet.
 
 ## Data the approved screens no longer collect
 
-### G-01 — `serviceAreaCountry` has no control
+### G-01 — `serviceAreaCountry` has no control — **CLOSED in Phase 5B**
 
 **Where** state 6, work area.
-**What shipped** one city field, the map band and the reward sentence — the
-approved screen exactly.
-**The gap** `serviceAreaCountry` is REQUIRED by the completeness policy, and the
-approved screen has nowhere to enter it. Existing values are preserved on every
-write; a provider who has never had one cannot acquire one from this screen.
-**Closing it** the multi-country work (D5-01) already defines six market
-substates for exactly this. They are a Phase 5B surface, not a Phase 5A one.
+**What shipped in 5A** one city field, the map band and the reward sentence —
+the approved screen exactly.
+**The gap** `serviceAreaCountry` is REQUIRED by the completeness policy and the
+approved screen had nowhere to enter it. This was the most serious of the
+fourteen: existing values were preserved on every write, so it was invisible to
+anyone whose market was already recorded, but a provider who never had one could
+finish all six tasks and be refused at submission with no screen able to fix it.
+Onboarding was, for them, unfinishable through the UI alone. Every test missed
+it because the harness sets the country through the API.
+
+**Closed by** `useSupportedMarkets` and `MarketPicker`, asked **only when the
+server's answer makes it necessary**: no market recorded, the operator has
+withdrawn from theirs, or the country does not pin a timezone. In the settled
+case it renders nothing at all, which is why the canonical cell for state 6 is
+byte-for-byte unchanged and the approved design is untouched.
+
+The choice is written through the same autosave coordinator as every other field
+on the screen, so it is drained by the exit contract like any other unsaved
+work, and the server validates both the ISO code and the market's enablement on
+the write — this is a projection of the operator's list, not a second gate.
+
+### G-13 was the same surface, and is closed with it
+
+The timezone confirmation `resolvedTimezone.needsConfirmation` asks for is the
+`CONFIRM_TIMEZONE` branch of the same prompt, writing `timezone` instead of
+`serviceAreaCountryCode`. See G-13 below.
 
 ### G-02 — radius is no longer provider-adjustable
 
@@ -151,20 +170,50 @@ says "In review" too. Stubbing the case endpoint to return `null` proved the
 page-wide check green and the row-scoped one red. The gate now reads
 `[data-testid="axis-<row>"]` and checks the word and the tone.
 
-### G-12 — the status centre timestamps in the browser's zone
+### G-12 — the status centre timestamps in the browser's zone — **CLOSED in Phase 5B**
 
 **Where** state 14's header, "Updated today at 12:43".
-**What shipped** `profile.updatedAt`, formatted in the reader's own zone.
+**What shipped in 5A** `profile.updatedAt`, formatted in the reader's own zone.
 **The gap** the submission confirmation (state 13) formats in the PROVIDER's
-stored zone, taken from the draft. The status centre does not load the draft and
-the profile carries no timezone, so the two surfaces can disagree for a provider
-who is travelling.
+stored zone, taken from the draft. The status centre did not load the draft, so
+the two surfaces timestamped the same application an hour apart for a provider
+who was travelling, with nothing to say which was meant.
 
-### G-13 — the timezone confirmation has no surface
+**Closed by** the status centre reading the draft for its zone —
+`data.timezone`, then `resolvedTimezone.resolved`, then the device as before.
+The draft is deliberately NOT part of the readiness gate: `isFetched` is true
+after a failure as well as a success, so a draft that cannot be read costs the
+provider nothing worse than the zone their own device reports, rather than
+costing them the status screen. An IANA id the platform rejects falls back the
+same way instead of throwing.
+
+**What proves it, and what did not** two unit tests: one that the header renders
+in the provider's zone, one that it still renders when the draft fails.
+Reverting the change turns the first red.
+
+The visual gate could not see this at all, and that is the more useful finding.
+The fixture pinned the profile update to 12:43 in **UTC** while telling the same
+server the provider was in Asia/Damascus — so the cell only ever matched because
+the runner happened to be at UTC too. Moving the fixture to
+America/Los_Angeles left state 14 **green**: two changed digits are a few
+hundred pixels out of 329,160, which is two orders of magnitude inside the 0.5%
+budget.
+
+So the fixture now states 12:43 in the provider's zone, and `12:43` — with
+`١٢:٤٣` for Arabic, which also pins the numeral system — is asserted as
+required copy. With that in place the Los Angeles mutation fails in both
+languages. A budget that cannot see a wrong hour is not a check on the hour, and
+the same blind spot is what hid G-11 behind a page-wide phrase search.
+
+### G-13 — the timezone confirmation has no surface — **CLOSED in Phase 5B**
 
 **Where** state 7. `resolvedTimezone.needsConfirmation` is true for a country
-that spans several zones, and the approved screen has nowhere to confirm one.
-Existing values are preserved.
+that spans several zones, and the approved screen had nowhere to confirm one.
+
+**Closed by** the `CONFIRM_TIMEZONE` branch of the market prompt described
+under G-01 — the same surface, the same autosave path, and the same rule that it
+appears only when the server says it is needed. A country that pins one zone
+draws nothing.
 
 ### G-14 — a finished task was a blank screen — **CLOSED in Phase 5B**
 
@@ -202,10 +251,20 @@ explanation. Reverting the one-line change turns both red.
 
 The Phase 5 ledger reports three counters, computed from artifacts on disk:
 
+As Phase 5A left them:
+
 ```
 presentation migrated:       6/6
 production-route integrated: 0/6
 real-API persisted:          0/6
+```
+
+As Phase 5B leaves them:
+
+```
+presentation migrated:       6/6
+production-route integrated: 6/6
+real-API persisted:          6/6
 ```
 
 The second and third are **not** failures of this phase. Every Phase 5A artifact
@@ -219,3 +278,115 @@ Route and persistence credit need a real-HTTP, flag-ON run that stamps its own
 `interceptionFree` marker, and a persistence marker recording hydration, hub
 navigation, hard reload, fresh sign-in and a database assertion. That is Phase
 5B's first job.
+
+### The real-API job's twelve failures were three causes, and mostly one — G-16
+
+The `phase5-real-api` job on `ec9b956` reported **12 failed, 11 passed**. Read as
+twelve problems it looks like the integration is broadly broken. Read from the
+annotations it is three, and the largest by far is a single number.
+
+**C — eight identical 429s.** `Error: OTP verification should succeed |
+Expected: 200 | Received: 429` at `real-api.ts:191`. `POST /v1/auth/verify-otp`
+carried `@Throttle({ limit: 20, ttl: 60s })`, IP-scoped, and the job registers
+a fresh account per test from one address.
+
+The registration limiter already had an override for exactly this reason —
+`AUTH_REGISTER_THROTTLE_LIMIT: '200'`, documented as "NOT a production knob" —
+and the OTP limiter had none. That inconsistency is the whole defect: the job
+could **create** accounts freely and then could not **confirm** them. Closed by
+giving the OTP budget the same treatment as its sibling:
+`AUTH_OTP_VERIFY_THROTTLE_LIMIT` / `..._TTL_SECONDS`, defaulting to the
+production values (20 per rolling minute), read per request from the validated
+environment, with `env.validation.ts` refusing to boot a hardened environment
+above the ceiling or below the window. Nine unit tests cover the ceiling, the
+staging refusal, the tighter-than-default case and the short-window refusal.
+
+Proven against a running server rather than by reading the diff: with the
+override set the route answers `X-RateLimit-Limit: 400`, and without it `20`.
+
+**B — one PATCH refused for a malformed version**, which was C wearing a
+disguise:
+
+```
+PATCH PROVIDER_TYPE should be accepted:
+  "version must not be less than 0; version must be an integer number"
+```
+
+That reads like a contract bug in the wizard. It is not. `currentVersion()` did
+`return draft.body.version` **with no status check**, so when the unverified
+session made the draft GET fail, `version` was `undefined`, and the next call
+reported the server's validator complaining about a value the harness had
+invented. Closed by asserting the draft read succeeded and that the version is a
+non-negative integer, at the read — so a broken fixture names its own cause
+instead of describing the symptom one call later.
+
+**A — `expected 9, received null`.** The genuine third cause, and the only one
+about product behaviour: the approved experience screen is a stepper that stores
+`professionSince` (a date, so experience does not silently stop ageing) and
+derives the displayed years. `yearsOfExperience` legitimately stays null. The
+test asserted the wrong column. It now drives the stepper unconditionally and
+asserts the stored date's year — and the fix that mattered was reading each
+representation on its own terms: `professionSince` is
+`timestamp without time zone`, so node-postgres materialises it as LOCAL
+midnight and `getUTCFullYear()` reported the previous year on this UTC+3 host,
+while the same fact from the API arrives as an ISO string with a `Z` where UTC
+is correct.
+
+**The lesson:** twelve failures, three causes, one of them responsible for nine.
+A count of red tests is not a count of defects, and the cheapest thing to do
+with a long failure list is to read it for repeats before reading it for
+variety.
+
+### A failure that moves between runs is usually one cause — G-17
+
+Three local runs of the same suite failed on three different tests:
+
+```
+run 1  'a task edited in the browser is persisted'   (timed out)
+run 2  'a direct task deep link opens that task'     (timed out)
+run 3  'review blockers agree with the hub'          401 from the admin queue
+```
+
+The 401 named it. `JWT_ACCESS_TTL_SECONDS` defaults to **600**, and the
+harness memoised one admin session for the lifetime of the worker with nothing
+to renew it, so every admin call after minute ten failed — landing on whichever
+test happened to run next. `adminJar()` now renews through the real refresh
+endpoint once the session is older than half the TTL, and signs in again only if
+the refresh token has gone too. Proactive rather than a retry on 401: nothing in
+this suite should learn that a 401 is something to retry past.
+
+Two of those three runs were additionally slowed by an API typecheck running
+concurrently on a memory-constrained host — the API answered a registration in
+**11.7 s** — which is a measurement error of mine, not evidence about the
+product. Both runs were discarded rather than interpreted.
+
+### What 0/6 actually meant — G-15
+
+Phase 5B produced those markers, and the counters **stayed at 0/6**. The reason
+was not evidence. It was one argument.
+
+`creditFor(root, screen, …)` took a **single** root and read all three kinds of
+evidence under it, and the report passed `PROVISIONAL_ROOT`. So route and
+persistence were looked for in `PROVISIONAL_UI/route` and
+`PROVISIONAL_UI/persistence` — directories the visual gate never writes,
+because it is the stubbed run, and that the real-API job never writes to,
+because it correctly files under `FINAL_REAL_API`. Six correct route markers and
+six correct persistence markers could sit on disk and the ledger would report
+nothing.
+
+This was the more dangerous of the two failure modes available here. A missing
+marker reads as "the work has not been done" and invites more testing. A counter
+pinned by arithmetic reads exactly the same way, and no amount of further
+testing moves it. The honest 0/6 of Phase 5A and this silent 0/6 were
+indistinguishable from the outside — which is why it survived being _explained_
+in this very document.
+
+`creditFor` now takes the real-API root separately, defaulting to `root` so the
+ledger's own unit tests still exercise the mechanism under one temporary
+directory, and the report and the conformance test pass `FINAL_REAL_API_ROOT`
+explicitly. The counters moved the moment the argument was added, with no new
+evidence produced.
+
+**The lesson worth keeping:** a counter derived from artifacts is only as
+trustworthy as its path arithmetic, and a counter that reads zero should be made
+to read non-zero once, deliberately, before it is believed.

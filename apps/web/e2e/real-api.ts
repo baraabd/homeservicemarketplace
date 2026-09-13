@@ -204,7 +204,36 @@ export async function registerProvider(): Promise<Account> {
  *  overwrite by another name, so the server refuses one. */
 async function currentVersion(jar: Jar): Promise<number> {
   const draft = await api<{ version: number }>(jar, '/v1/me/provider/onboarding/draft');
-  return draft.body.version;
+
+  // ── Fail where the failure IS, not one call later ────────────────────────
+  //
+  // This read used to return `draft.body.version` with no check at all, and
+  // that turned every upstream problem into the same confusing lie. In CI the
+  // OTP limiter returned 429, so the session was never established, so this
+  // GET answered with an error envelope, so `version` was `undefined`, so the
+  // NEXT call — a PATCH — was refused with:
+  //
+  //   "version must not be less than 0; version must be an integer number"
+  //
+  // which reads like a contract bug in the wizard and is nothing of the kind.
+  // Two of the three failure classes in that job were this one sentence.
+  //
+  // So the status is asserted here, and the version is asserted to be the shape
+  // the server's own DTO requires. A fixture that cannot read the draft must say
+  // so; it must not hand a malformed version to the next request and let the
+  // server's validator describe the symptom.
+  expect(
+    draft.status,
+    `the draft must be readable before a step is written: ${JSON.stringify(draft.body)}`,
+  ).toBe(200);
+
+  const version = draft.body.version;
+  expect(
+    Number.isInteger(version) && (version as number) >= 0,
+    `the draft should carry a non-negative integer version, got ${JSON.stringify(version)}`,
+  ).toBe(true);
+
+  return version;
 }
 
 async function patchStep(jar: Jar, step: string, body: Record<string, unknown>): Promise<void> {
@@ -325,6 +354,34 @@ function adminForThisWorker(): { email: string; password: string } {
  *  call keeps the mailbox quiet and the queue reads cheap. */
 let adminSession: Promise<Jar> | null = null;
 
+/** When that session was last known good. */
+let adminSessionAt = 0;
+
+/**
+ * How long an admin session is reused before it is refreshed.
+ *
+ * Sprint 09B.29 Phase 5B. `JWT_ACCESS_TTL_SECONDS` defaults to **600** — ten
+ * minutes — and this session was memoised for the lifetime of the worker with
+ * nothing to renew it. Any suite that ran longer than ten minutes therefore
+ * started returning 401 from every admin call, and because the expiry is a
+ * WALL-CLOCK event rather than a property of any one test, the failure landed on
+ * whichever test happened to run next:
+ *
+ *   run 1  'a task edited in the browser is persisted'   (timed out)
+ *   run 2  'a direct task deep link opens that task'     (timed out)
+ *   run 3  'review blockers agree with the hub'          401 from the queue
+ *
+ * Three runs, three different tests, one cause. That is the signature of shared
+ * state with a clock in it, and it is worth recognising: a failure that moves
+ * between runs is rarely three bugs.
+ *
+ * Half the TTL, so the margin is as large as the reuse window. Refreshing
+ * PROACTIVELY rather than retrying on a 401 is deliberate — it keeps every
+ * caller unchanged, and this file must not teach the suite that a 401 is
+ * something to retry past.
+ */
+const ADMIN_SESSION_MAX_AGE_MS = 5 * 60_000;
+
 async function signInAsAdmin(): Promise<Jar> {
   const who = adminForThisWorker();
   const admin = newJar();
@@ -352,7 +409,26 @@ export async function adminJar(): Promise<Jar> {
     // One retry, for the backstop case above only. Not a blanket retry: a
     // failure for any other reason fails again immediately and is reported.
     adminSession = signInAsAdmin().catch(() => signInAsAdmin());
+    adminSessionAt = Date.now();
+    return adminSession;
   }
+
+  if (Date.now() - adminSessionAt < ADMIN_SESSION_MAX_AGE_MS) return adminSession;
+
+  // Old enough that the access token may have lapsed. Renew it the way the
+  // product does — through the refresh endpoint, using the refresh cookie the
+  // jar already scopes to `/v1/auth/refresh` — so this exercises the real
+  // mechanism rather than working around it. If the refresh token has gone too,
+  // sign in again; that is a new session, not a retry of a failed request.
+  const jar = await adminSession;
+  const refreshed = await api(jar, '/v1/auth/refresh', { method: 'POST' });
+  if (refreshed.status === 200) {
+    adminSessionAt = Date.now();
+    return jar;
+  }
+
+  adminSession = signInAsAdmin();
+  adminSessionAt = Date.now();
   return adminSession;
 }
 

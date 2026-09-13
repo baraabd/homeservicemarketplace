@@ -8,7 +8,51 @@ work.
 
 **Branch** `feat/provider-onboarding-v2-phase5-exact-visual-parity`
 **Base** `develop` @ `ba8613b` (unchanged)
-**Last pushed** `f35d0c8`
+**Last pushed** `ec9b956` — Phase 5B defect fixes (G-11, G-14, testid guard, DB reads)
+
+### Disposable infrastructure this task owns
+
+Nothing here belongs to the developer. Their own Postgres, Redis, Mailpit, API
+and vite are untouched; every port below is deliberately non-default.
+
+| Service     | Container / process       | Port          |
+| ----------- | ------------------------- | ------------- |
+| Postgres    | `hsm-p5-pg`               | 55432         |
+| Redis       | `hsm-p5-redis`            | 56379         |
+| Mailpit     | `hsm-p5-mail`             | 51025 / 58025 |
+| API         | `scratchpad/start-api.sh` | 4011          |
+| SPA (V2 ON) | `vite preview`            | 4174          |
+
+`DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55432/homeservicemarketplace`
+
+### Known local-environment limitation — NOT a product defect
+
+`test/integration/outbox.integration.spec.ts` is intermittently red **on this
+host only**. Five consecutive runs of that file alone: 2 green, 3 red, with
+**four different** tests failing across them — "spreads a backlog across
+concurrent workers", "claims no more than the requested batch size", "reclaims an
+event orphaned by a worker that died mid-flight", "four workers drain a backlog".
+
+A different test each time is the signature of a clock, not a logic bug, and the
+suite's own comment says it was calibrated against a container running **~67 ms
+behind** the host. Measured now:
+
+```
+skew_ms=254  287  340     (before restarting the container)
+skew_ms=939  902          (after — the drift is in the Docker Desktop VM,
+                           not the container, so a restart does not fix it)
+```
+
+Every assertion in that file compares a host-computed deadline against a
+database-computed `now()`, so ~900 ms of skew moves claim and reclaim windows
+past their thresholds.
+
+The suite cannot reach any of this sprint's changes: it imports only
+`outbox.repository`, `outbox.worker` and `support/db-isolation`, and contains
+zero references to `validateEnv`, `AppModule`, authentication or throttling.
+**CI is the authority for this suite** — Linux, service containers sharing the
+runner clock — and it passed on `ec9b956`. Do NOT widen its tolerances to make
+this host green; that would trade a real ordering guarantee for a clock problem.
 
 ### CI on `f35d0c8`, read from the public checks API
 
@@ -60,23 +104,72 @@ passed+skipped+failed equals the `--list` total for that project.
       into CI after it turned out nothing typechecked `e2e/`.
 - [x] P2 G-01 — market selection. Server side already existed (C2); the web
       never called it. Substate only, so state 6 is pixel-identical.
-- [ ] P2 remaining gaps: G-04 scheduling (destructive — highest priority),
-      G-05 transport, G-06 primary specialty, G-07 bio limit, G-09/G-10 prose,
-      G-11 verification axis, G-12 timestamp zone, G-13 covered by G-01.
-- [~] P3 Six real-API journeys. MUCH closer than the 0/6 counter suggests:
-  `provider-onboarding-v2-persistence.spec.ts` already drives all six task
-  screens against a real API, proving each edit survives re-entry, a hard
-  reload, an independent API client and a fresh sign-in, with
-  `assertCleanTraffic` proving nothing was intercepted. The counters read 0
-  because **no spec ever wrote the markers the ledger reads** — an absence
-  of files, not of tests.
-  DONE: `phase5-markers.ts` (route + persistence markers, stamped with
-  runId/gitSha/bundleHash) and `phase5-db-read.ts` (independent Postgres
-  read; queries executed against the real schema, not just typechecked).
-  NEXT: call them from the six persistence tests, add a `phase5-real-api`
-  CI job using the proven `browser-auth-e2e` service-container recipe, and
-  make it a `ci-gate` dependency.
-- [ ] P4 PR body, migration matrix, verification doc.
+- [x] P2 G-11 — the verification axis now READS the verification case instead of
+      projecting it from `profile.verified`. ACTION_REQUIRED, REJECTED and
+      EXPIRED are their own answers; a failed read says "Unavailable" rather
+      than guessing "Not started" and inviting redone work. 22 unit tests, plus
+      a per-row assertion in the visual gate — the page-wide phrase search it
+      replaced passed while the row read "Unavailable", because the specialty
+      row says "In review" too.
+- [x] P2 G-12 — the status centre timestamps in the PROVIDER's stored zone, from
+      the draft, so it cannot disagree with the submission confirmation. The
+      diff ratio could not see this: moving the fixture to
+      America/Los_Angeles left state 14 green, so `12:43` / `١٢:٤٣` is now
+      asserted as required copy and the mutation fails in both languages.
+- [x] P2 G-13 — the timezone confirmation is the `CONFIRM_TIMEZONE` branch of
+      the same market prompt that closed G-01.
+- [x] P2 G-14 (NEW, found by the real-API run) — a COMPLETE task drew no body
+      and no explanation, so finishing task 1 and pressing reload showed a
+      header, a progress bar and a "Save and continue" over an empty screen.
+      Confirmed against the live server: a name and a phone move
+      BASICS_IDENTITY to COMPLETE.
+- [x] P2 G-15 (NEW) — the counters were pinned at 0/6 by path arithmetic, not by
+      missing evidence. See below.
+- [~] P2 G-04 — the DESTRUCTIVE half is closed: `discardedByApply` names every
+  day an Apply would overwrite and why (`SECOND_WINDOW` /
+  `DIFFERENT_HOURS`), and the screen asks before discarding it. What remains
+  is expressiveness — a provider working 09:00–17:00 on four days and
+  09:00–13:00 on Thursday still cannot say so, because the approved screen
+  has one From/To pair. That is a design question, not a defect: adding a
+  second pair changes the approved screen.
+- [ ] P2 gaps that need a product-owner decision rather than more engineering,
+      because closing any of them changes an approved screen or a contract:
+      G-02 radius adjustability (the expansion ladder implies the radius is
+      earned rather than chosen, in which case the approved screen is already
+      right), G-03 device location, G-04 non-uniform hours (above), G-05 VAN and
+      TRUCK, G-06 primary-specialty change control, G-07 surfacing the bio
+      minimum at the input, G-08 equipment, and G-09/G-10 — client-composed
+      summaries and the single-language rejection reason, which need a contract
+      change rather than a screen change.
+      In every one of these the existing stored value is PRESERVED, so no
+      provider loses data; what they cannot do is change it on that screen.
+- [x] P3 Six real-API journeys — **6/6 route, 6/6 persistence**, computed by the
+      ledger from artifacts on disk.
+
+  The earlier note here said the counters read 0 because no spec wrote the
+  markers — "an absence of files, not of tests". That was half right, and the
+  wrong half was the expensive one. Once the markers WERE written the counters
+  still read 0/6, because `creditFor` took a single root and the report passed
+  the PROVISIONAL one, so route and persistence were looked for under
+  `PROVISIONAL_UI/route` — which the stubbed visual gate never writes and the
+  real-API job never writes to. The counters moved when one argument was added,
+  with no new evidence produced (G-15).
+
+  Getting the journeys themselves green took eight repairs, and none of them was
+  a test that had been failing honestly. They were locators the Phase 5A
+  migration renamed or removed: `radius-slider`, `title-input`,
+  `preset-sun-thu`, `years-of-experience`, `bulk-start` as a `<select>`,
+  `review-submit` on the summary instead of the consent screen, and "N of 6
+  complete" against the approved "N of 6 tasks complete". The worst never failed
+  at all: `years-of-experience` never existed and its spec guarded every use in
+  `if (await years.count())`, so it passed for a sprint while touching nothing.
+  `e2e/testid-inventory.ts` is the static guard for that whole class now — every
+  `getByTestId` in a spec must name something a component can emit, and
+  reintroducing all four stale ids turns it red.
+
+- [x] P4 migration matrix and gap ledger updated with the final counters and
+      with G-14 and G-15. PR body drafted at `scratchpad/pr-76-body.md`; it
+      cannot be posted from here without write access to the repository.
 
 ## CI, by revision
 

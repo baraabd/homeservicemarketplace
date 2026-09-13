@@ -55,6 +55,7 @@ import {
 import type { AuthenticatedUser } from '../types/authenticated-user';
 import type { ClientKind } from '@homeservicemarketplace/database';
 import { randomBytes } from 'node:crypto';
+import { validatedEnv } from '../../../../config/env.validation';
 
 const MOBILE_REFRESH_HEADER = 'x-refresh-token';
 const CLIENT_KIND_HEADER = 'x-client-kind';
@@ -148,7 +149,18 @@ export class AuthenticationController {
 
   // --- Verify OTP + issue session ---------------------------------------
   @Public()
-  @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
+  // The budget is 20 per rolling minute in production and is configured rather
+  // than written here, so a disposable test environment can widen it without
+  // anyone editing this file — and so production cannot, because
+  // `env.validation.ts` refuses to boot a hardened environment above the
+  // ceiling. Resolved per request: the decorator is evaluated at import time,
+  // before ConfigModule has read anything.
+  @Throttle({
+    default: {
+      limit: () => validatedEnv().AUTH_OTP_VERIFY_THROTTLE_LIMIT,
+      ttl: () => validatedEnv().AUTH_OTP_VERIFY_THROTTLE_TTL_SECONDS * 1000,
+    },
+  })
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
   async verifyOtp(

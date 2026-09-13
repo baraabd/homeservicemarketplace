@@ -1,6 +1,7 @@
 import { describe, it } from 'vitest';
 
 import {
+  FINAL_REAL_API_ROOT,
   PROVISIONAL_ROOT,
   TASK_SCREENS,
   countersFrom,
@@ -17,7 +18,14 @@ import { isSourceConformant } from './phase5-conformance.test';
 
 describe('Phase 5 ledger', () => {
   it('reports the official counters and the gaps behind them', () => {
-    const credits = TASK_SCREENS.map((s) => creditFor(PROVISIONAL_ROOT, s, isSourceConformant(s)));
+    // Two roots, because there are two runs. The visual gate writes cells
+    // under PROVISIONAL_UI with every /v1/** call stubbed; the real-API job
+    // writes route and persistence markers under FINAL_REAL_API with nothing
+    // stubbed at all. Reading both from one root is what held route and
+    // persistence at 0/6 after the markers started being written.
+    const credits = TASK_SCREENS.map((s) =>
+      creditFor(PROVISIONAL_ROOT, s, isSourceConformant(s), {}, FINAL_REAL_API_ROOT),
+    );
     const c = countersFrom(credits);
 
     const lines = [

@@ -550,6 +550,43 @@ describe('counter logic is per-screen and monotonic', () => {
     expect(credit.productionRouteIntegrated).toBe(false);
   });
 
+  it('finds real-API markers in their OWN namespace, not the visual one', () => {
+    // Gap G-15, pinned. Presentation evidence is filed under PROVISIONAL_UI by
+    // the stubbed visual gate; route and persistence markers are filed under
+    // FINAL_REAL_API by the un-stubbed real-API job. `creditFor` used to take
+    // ONE root and look for all three there, so the report — which passes the
+    // provisional root — searched `PROVISIONAL_UI/route` and found nothing,
+    // forever, no matter how much real evidence existed.
+    //
+    // The counters read 0/6 for exactly as long as that argument was missing,
+    // and a counter pinned by path arithmetic is indistinguishable from an
+    // honest zero. This test is the difference: markers exist ONLY under the
+    // separate root, so it fails if the two are ever conflated again.
+    const realApiRoot = join(root, '..', 'FINAL_REAL_API_FIXTURE');
+    mkdirSync(join(realApiRoot, 'route'), { recursive: true });
+    writeFileSync(
+      join(realApiRoot, 'route', 'BasicsTaskScreen.json'),
+      JSON.stringify({ marker: 'present' }),
+    );
+
+    // Deliberately NOT asserting credit: the marker is a stub and the ledger is
+    // right to refuse it. What is asserted is that the ledger LOOKED — a
+    // refusal naming the marker's contents proves the file was read, and
+    // "route marker missing" proves it was not.
+    const credit = creditFor(root, SCREEN, true, {}, realApiRoot);
+    expect(credit.missing.route).not.toContain('route marker missing');
+    expect(credit.missing.route.length).toBeGreaterThan(0);
+  });
+
+  it('still reports a missing marker as missing under the separate root', () => {
+    // The other direction, so the test above cannot pass by the ledger having
+    // stopped checking.
+    const emptyRoot = join(root, '..', 'FINAL_REAL_API_EMPTY');
+    mkdirSync(emptyRoot, { recursive: true });
+    const credit = creditFor(root, SCREEN, true, {}, emptyRoot);
+    expect(credit.missing.route).toContain('route marker missing');
+  });
+
   it('reports what is missing in three independent groups', () => {
     const credit = creditFor(root, SCREEN, false, { runId: 'r' });
     expect(Array.isArray(credit.missing.presentation)).toBe(true);

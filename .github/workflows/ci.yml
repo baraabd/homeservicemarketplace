@@ -320,7 +320,14 @@ jobs:
   phase5-real-api:
     name: Phase 5 real-route and persistence evidence
     runs-on: ubuntu-latest
-    needs: verify
+    # Also on phase5-visual, so this job can hold BOTH halves of the evidence.
+    # The counters are only meaningful together: route credit requires
+    # presentation credit, and presentation credit lives in PROVISIONAL_UI,
+    # which this job does not produce. Before this dependency existed, the
+    # visual job could print 6/6, 0/6, 0/6 and this one 0/6, 0/6, 0/6, and
+    # neither number was the project's — the real 6/6/6 existed only on a
+    # developer's machine, where both artifact sets happened to be present.
+    needs: [verify, phase5-visual]
     # Each test registers a real account, waits on a real SMTP delivery and
     # drives a full browser journey. Generous per test, bounded per job.
     timeout-minutes: 30
@@ -359,6 +366,17 @@ jobs:
       # would throttle the suite out halfway and the failure would look like an
       # auth bug. Raised for this job only.
       AUTH_REGISTER_THROTTLE_LIMIT: '200'
+      # And every one of those accounts must then VERIFY, against a 20/minute
+      # limiter that had no override until Sprint 09B.29 Phase 5B. The pair
+      # being inconsistent is what broke this job: accounts could be created
+      # freely and then not confirmed. Eight of that run's twelve failures were
+      # the same 429 and the rest were downstream of it — including a PATCH
+      # rejected for a malformed `version`, which was simply the unauthenticated
+      # draft read one call earlier.
+      #
+      # Production refuses to boot above 20 (env.validation.ts), so this value is
+      # reachable only in a disposable environment like this one.
+      AUTH_OTP_VERIFY_THROTTLE_LIMIT: '400'
       # The browser is served from 4173 and talks to the API on 4010, so the
       # API has to allow that origin or every request arrives anonymous.
       CORS_ORIGINS: http://127.0.0.1:4173,http://localhost:4173
@@ -430,12 +448,41 @@ jobs:
             e2e/provider-onboarding-v2-real-api.spec.ts \
             e2e/provider-onboarding-v2-persistence.spec.ts \
             --project=chromium-desktop --workers=1
-      - name: Re-derive the counters from the markers just written
+      - name: Bring in the visual evidence, so the counters can be complete
+        # Into the same tree this job wrote its own markers to. The ledger keeps
+        # the two namespaces separate by path — PROVISIONAL_UI for the stubbed
+        # visual run, FINAL_REAL_API for this one — so they can share a parent
+        # directory without either being able to satisfy the other's checks.
+        uses: actions/download-artifact@v6
+        with:
+          name: phase5-visual-evidence
+          path: apps/web/test-results/phase5-visual/
+      - name: Re-derive the counters from BOTH halves of the evidence
         # The suite writes evidence; this reads it back and re-checks every
         # claim in it — including that the recorded values agree with the
         # database read. A green Playwright run whose markers do not survive
         # independent verification is not evidence.
         run: pnpm --filter @homeservicemarketplace/web exec vitest run phase5-
+      - name: Assert the counters are what the branch claims
+        # The report PRINTS; this FAILS. A counter nobody asserts is a number in
+        # a log, and this project has already had one pinned at 0/6 for a whole
+        # phase by an argument rather than by absent evidence.
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec vitest run \
+            phase5-ledger-report --reporter=verbose 2>&1 | tee /tmp/counters.log
+          # The exit status above belongs to tee; the assertion is the grep.
+          for line in \
+            "presentation migrated:       6/6" \
+            "production-route integrated: 6/6" \
+            "real-API persisted:          6/6"
+          do
+            if ! grep -qF "$line" /tmp/counters.log; then
+              echo "::error::expected counter line not found: $line"
+              grep -E "migrated:|integrated:|persisted:" /tmp/counters.log || true
+              exit 1
+            fi
+          done
+          echo "all three counters are 6/6"
       - name: Upload the real-API evidence
         if: always()
         uses: actions/upload-artifact@v6

@@ -70,4 +70,50 @@ If a reference is missing or sources conflict, stop and report the issue. Never 
 - Do not commit or push until unit, API, real-browser E2E, accessibility, visual regression, production build, and required CI gates pass.
 - Never force-push.
 
+## What the evidence can and cannot see
+
+Learned in Sprint 09B.29 Phase 5B, each from a check that was green while the
+thing it named was wrong. These are not optional refinements; each one is a way
+a passing gate has already lied here.
+
+- **A pixel budget cannot see a word or an hour.** 0.005 of 390x844 is 1,645
+  pixels; a changed badge label or a clock reading 02:43 instead of 12:43 costs
+  a few hundred. Anything whose CORRECTNESS matters — a lifecycle answer, a
+  timestamp, a status word — must be asserted as text, scoped to its own
+  element. A body-wide phrase search is not that: state 14 shows "In review" on
+  two rows, so searching the page passed while the verification row read
+  "Unavailable".
+- **Assert the tone with the word.** A badge carries status twice over because
+  WCAG requires it. "Action needed" in the waiting colour is still wrong.
+- **A spec may not name a testid no component can render.** `e2e/testid-inventory.ts`
+  enforces it. The failure mode is not a red run — it is
+  `if (await x.count())` around a locator that never matched, which passes
+  while touching nothing. Absence assertions (`toHaveCount(0)`) are exempt and
+  are how a deliberately removed control is kept removed.
+- **Evidence namespaces are not interchangeable.** Presentation evidence is
+  filed under `PROVISIONAL_UI` by the stubbed visual gate; route and persistence
+  markers under `FINAL_REAL_API` by the un-stubbed real-API job. Never read one
+  from the other: doing so pinned the counters at 0/6 while twelve correct
+  markers sat on disk, and a counter pinned by path arithmetic is
+  indistinguishable from an honest zero.
+- **A counter that reads zero must be made to read non-zero once, deliberately,
+  before it is believed.**
+- **Durable onboarding answers are `ProviderProfile` columns.**
+  `ProviderOnboardingDraft.data` holds only scratch — the wizard writes
+  `data: scratch`. The `data` field of a wizard RESPONSE is a projection built
+  by `toData()`, which is why reading answers from the draft column looks right
+  and returns `undefined`. Two different columns have now refused a query
+  written from memory; both times the test was wrong, not the schema.
+- **Read each representation on its own terms.** `professionSince` is
+  `timestamp without time zone`, so node-postgres materialises it as LOCAL
+  midnight and `getUTCFullYear()` reports the previous year on any host east of
+  UTC. The same fact arrives from the API as an ISO string with a `Z`, where UTC
+  is exactly right.
+- **A fixture must describe a real server.** If a screen formats in the
+  provider's stored zone, the fixture's timestamp has to be stated in that zone;
+  stating it in UTC passed only because the runner happened to be there too.
+- **Verify a new assertion by breaking the thing it watches.** Every check added
+  in this phase was confirmed by a mutation that turned it red, and two were
+  rewritten because the mutation stayed green.
+
 When reporting completion, include exact commands, pass/fail/skip counts, screenshot diff evidence, branch, commit SHA, PR, and remote CI results. If a required check was not run, report the work as unverified rather than complete.

@@ -81,7 +81,16 @@ const profileAt = (status: string) => ({
     // The status centre's header prints "Updated today at 12:43", from this.
     // Computed for the same reason `SUBMITTED_AT` is: a fixed literal would
     // make "today" false on every day but one.
-    updatedAt: status === 'PENDING_REVIEW' ? todayAt('UTC', '12:43') : '2026-08-01T00:00:00.000Z',
+    //
+    // In the PROVIDER's zone, not UTC — gap G-12. The header used to format in
+    // whatever zone the browser was in, so this fixture said UTC and the cell
+    // only matched because the runner happened to be there too. The screen now
+    // formats in the provider's stored zone, which this fixture sets to
+    // Asia/Damascus, so 12:43 has to be 12:43 THERE. Stating it in UTC would
+    // have drawn 15:43 over a reference that says 12:43 — and, worse, would
+    // have kept passing on a UTC runner while failing for a reviewer in Europe.
+    updatedAt:
+      status === 'PENDING_REVIEW' ? todayAt('Asia/Damascus', '12:43') : '2026-08-01T00:00:00.000Z',
   },
 });
 

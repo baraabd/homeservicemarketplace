@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { PHASE5_STATES, PROTOTYPE_SCREEN_KEYS } from '../../../../e2e/phase5-visual-states';
 import {
+  FINAL_REAL_API_ROOT,
   PROVISIONAL_ROOT,
   SCREEN_STATES,
   TASK_SCREENS,
@@ -197,7 +198,7 @@ describe('Phase 5 conformance — the registry cannot drift', () => {
 
 describe('Phase 5 conformance — counters are derived, never declared', () => {
   const credits = TASK_SCREENS.map((screen) =>
-    creditFor(PROVISIONAL_ROOT, screen, isSourceConformant(screen)),
+    creditFor(PROVISIONAL_ROOT, screen, isSourceConformant(screen), {}, FINAL_REAL_API_ROOT),
   );
   const counters = countersFrom(credits);
 

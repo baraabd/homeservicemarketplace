@@ -8,6 +8,7 @@ import {
 } from '../../../../lib/provider/provider-verification-api';
 import { useProviderProfile } from '../../../hooks/provider/useProviderProfile';
 import { useProviderOnboardingHub } from '../../../hooks/provider/useProviderOnboardingHub';
+import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
 import { useWithdrawOnboarding } from '../../../hooks/provider/useProviderOnboarding';
 import { useOnboardingReview } from '../../../hooks/provider/useProviderOnboardingReview';
 import { useLang } from '../../../i18n/LanguageContext';
@@ -88,6 +89,23 @@ export function ProviderStatusCentreScreen() {
   // "the status is PENDING_REVIEW, so surely they can withdraw" — is how a
   // client offers a button the server answers with a 409.
   const review = useOnboardingReview(lang);
+
+  /**
+   * G-12 — the zone this screen's clock is in.
+   *
+   * The header prints "Updated today at 12:43" and used to format it in the
+   * READER's zone. The submission confirmation (state 13) formats in the
+   * PROVIDER's stored zone, taken from the draft, so the two surfaces
+   * disagreed for anyone travelling: the same application, timestamped an hour
+   * apart on two screens, with nothing to say which was meant.
+   *
+   * The draft is where that zone lives, so this screen reads it too. It is
+   * deliberately NOT part of the readiness gate below — `isFetched` is true
+   * after a failure as well as a success, so a draft that cannot be read costs
+   * the reader nothing worse than the zone their own device reports, which is
+   * what they used to get every time.
+   */
+  const draftQuery = useOnboardingDraft();
   const withdraw = useWithdrawOnboarding();
 
   const profile = profileQuery.data?.profile;
@@ -271,7 +289,13 @@ export function ProviderStatusCentreScreen() {
   // `updatedAt` is the server's, formatted here. The reference prints a time in
   // the header, and a client clock would drift from the fact it claims to
   // timestamp.
-  const updated = profile?.updatedAt ? formatTime(profile.updatedAt, lang) : null;
+  // The provider's stored zone, then the one their country resolves to, then
+  // nothing — in which case `Intl` uses the reader's own, as before.
+  const providerZone =
+    draftQuery.data?.data?.timezone ??
+    draftQuery.data?.data?.resolvedTimezone?.resolved ??
+    undefined;
+  const updated = profile?.updatedAt ? formatTime(profile.updatedAt, lang, providerZone) : null;
 
   return (
     <OnboardingShell
@@ -339,14 +363,32 @@ export function ProviderStatusCentreScreen() {
   );
 }
 
-/** 24-hour, in the reader's locale. The header prints a clock time and nothing
- *  else, so the format is the one a person checks against their own. */
-function formatTime(iso: string, lang: Lang): string | null {
+/**
+ * 24-hour, in the reader's locale and the PROVIDER's zone.
+ *
+ * The header prints a clock time and nothing else, so the format is the one a
+ * person checks against their own. The zone is the provider's rather than the
+ * device's — G-12 — so this screen and the submission confirmation cannot
+ * timestamp the same application an hour apart. An absent zone falls back to
+ * the device, which is what every reader got before.
+ */
+function formatTime(iso: string, lang: Lang, timeZone?: string): string | null {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return null;
-  return new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(at);
+  try {
+    return new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone,
+    }).format(at);
+  } catch {
+    // A zone the platform does not know throws rather than degrading. A wrong
+    // hour is worse than the device's, so fall back rather than propagate.
+    return new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(at);
+  }
 }

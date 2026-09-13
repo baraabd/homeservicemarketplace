@@ -2,7 +2,8 @@
 
 **Branch:** `feat/provider-onboarding-v2-phase5-exact-visual-parity`
 **Merged prerequisite:** PR #75 (C1–C3 backend) → `develop` @ `ba8613b`
-**Successor PR:** #76 — Phase 5A UI migration COMPLETE at `e2dfe18`
+**Successor PR:** #76 — Phase 5A UI migration COMPLETE at `e2dfe18`;
+Phase 5B integration complete at `ec9b956` and after
 
 Counters are **computed** by `apps/web/e2e/phase5-evidence-ledger.ts` from
 artifacts on disk. Nothing in this document grants credit; it records what the
@@ -10,14 +11,33 @@ ledger reports and what remains.
 
 ```
 presentation migrated:       6/6
-production-route integrated: 0/6
-real-API persisted:          0/6
+production-route integrated: 6/6
+real-API persisted:          6/6
 ```
 
-All six task controllers now hold presentation credit: source rules pass, the
-canonical 390x844 comparison is inside 0.005 in both languages, and axe is clean
-on both. Route and persistence credit belong to Phase 5B and cannot be earned by
-a suite that stubs the API — see `PHASE5A_INTEGRATION_GAPS.md`.
+All six task controllers hold all three credits.
+
+**Presentation** — source rules pass, the canonical 390x844 comparison is inside
+0.005 in both languages, and axe is clean on both, with no narrowed rule set.
+
+**Route and persistence** — earned by the `phase5-real-api` job: a flag-ON build
+driven against a real API, a real Postgres and a real SMTP, with no `page.route`
+anywhere, which the ledger verifies by reading the spec as well as the marker.
+Each persistence marker carries the values before and after, what a reload
+returned, what a fresh sign-in returned, the revision the server acknowledged,
+and the row read independently out of PostgreSQL with the cluster's own system
+identifier beside it.
+
+Two things had to be fixed before these numbers meant anything, and both are
+recorded in `PHASE5A_INTEGRATION_GAPS.md`:
+
+- the markers were being written to `FINAL_REAL_API` while the ledger looked
+  for them under `PROVISIONAL_UI`, so the counters were pinned at 0/6 by path
+  arithmetic rather than by absent evidence (G-15);
+- the database reads that back those markers were reading onboarding answers out
+  of the draft's scratch JSON, where they do not live — they are
+  `ProviderProfile` columns — so CI reported `displayName: undefined` for a name
+  that was on screen, in the API response, and in the row.
 
 ---
 

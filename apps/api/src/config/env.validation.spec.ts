@@ -313,6 +313,70 @@ describe('validateEnv', () => {
       );
     });
 
+    // Sprint 09B.29 Phase 5B — the OTP-verification budget, held to exactly the
+    // same discipline as the registration budget above.
+    //
+    // It had no override at all, which was not a neutral omission: the
+    // registration budget's override let the real-API job create accounts
+    // freely and then this 20-per-minute limiter refused to let it verify them.
+    // Eight of that job's twelve failures were the same 429, and the rest were
+    // downstream of it.
+    describe('OTP verification throttle hardening', () => {
+      it('defaults to 20 attempts per rolling minute', () => {
+        const env = validateEnv({ ...baseEnv });
+        expect(env.AUTH_OTP_VERIFY_THROTTLE_LIMIT).toBe(20);
+        expect(env.AUTH_OTP_VERIFY_THROTTLE_TTL_SECONDS).toBe(60);
+      });
+
+      it('accepts the maximum allowed limit in production', () => {
+        const env = validateEnv({ ...prodEnv, AUTH_OTP_VERIFY_THROTTLE_LIMIT: '20' });
+        expect(env.AUTH_OTP_VERIFY_THROTTLE_LIMIT).toBe(20);
+      });
+
+      it('accepts a TIGHTER limit in production', () => {
+        const env = validateEnv({ ...prodEnv, AUTH_OTP_VERIFY_THROTTLE_LIMIT: '5' });
+        expect(env.AUTH_OTP_VERIFY_THROTTLE_LIMIT).toBe(5);
+      });
+
+      it.each(['21', '100', '400'])(
+        'REFUSES to boot production with AUTH_OTP_VERIFY_THROTTLE_LIMIT=%s',
+        (limit) => {
+          expect(() => validateEnv({ ...prodEnv, AUTH_OTP_VERIFY_THROTTLE_LIMIT: limit })).toThrow(
+            /AUTH_OTP_VERIFY_THROTTLE_LIMIT/,
+          );
+        },
+      );
+
+      it('REFUSES to boot staging with a widened limit', () => {
+        expect(() =>
+          validateEnv({
+            ...baseEnv,
+            NODE_ENV: 'staging',
+            AUTH_OTP_VERIFY_THROTTLE_LIMIT: '400',
+          }),
+        ).toThrow(/AUTH_OTP_VERIFY_THROTTLE_LIMIT/);
+      });
+
+      it('allows a widened limit in development and test so suites are not throttled', () => {
+        for (const nodeEnv of ['development', 'test']) {
+          const env = validateEnv({
+            ...baseEnv,
+            NODE_ENV: nodeEnv,
+            AUTH_OTP_VERIFY_THROTTLE_LIMIT: '400',
+          });
+          expect(env.AUTH_OTP_VERIFY_THROTTLE_LIMIT).toBe(400);
+        }
+      });
+
+      it('REFUSES a production window shorter than a minute', () => {
+        // A one-second window is a limit of 20 per second, which is no limit at
+        // all — the same shape of hole the registration window guards against.
+        expect(() =>
+          validateEnv({ ...prodEnv, AUTH_OTP_VERIFY_THROTTLE_TTL_SECONDS: '1' }),
+        ).toThrow(/AUTH_OTP_VERIFY_THROTTLE_TTL_SECONDS/);
+      });
+    });
+
     it('REFUSES production with a per-instance (non-shared) throttle store', () => {
       expect(() => validateEnv({ ...prodEnv, THROTTLE_REDIS_REQUIRED: 'false' })).toThrow(
         /THROTTLE_REDIS_REQUIRED/,

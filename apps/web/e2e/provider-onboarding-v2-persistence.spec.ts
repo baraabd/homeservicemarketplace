@@ -454,8 +454,20 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     await page.reload();
     await expect(page.getByTestId('experience-years-value')).toHaveText(String(YEARS));
 
+    // ── What is actually stored is a DATE, not a count ────────────────────
+    //
+    // The approved control is a stepper over years and the stored fact stays
+    // `professionSince`, so a provider who says nine years today reads ten next
+    // year instead of being frozen at the number they pressed.
+    // `yearsOfExperience` stays null, and asserting it was this test looking at
+    // the wrong column: the screen showed 9 through a reload — so the write had
+    // plainly landed — while the assertion read null and called it data loss.
+    const startYear = new Date().getUTCFullYear() - YEARS;
     const data = await draftFromApi(account);
-    expect(data.yearsOfExperience).toBe(YEARS);
+    expect(
+      new Date(String(data.professionSince)).getUTCFullYear(),
+      'the API should serve a start year nine years back',
+    ).toBe(startYear);
 
     await proveSurvivesFreshSignIn(browser, account, 'SERVICES_EXPERIENCE', async (freshPage) => {
       await expect(freshPage.getByTestId('services-task')).toBeVisible();
@@ -470,14 +482,37 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       conflicts,
       `no write may be refused as a conflict: ${conflicts.map((c) => c.url).join(', ')}`,
     ).toHaveLength(0);
+    // Read once and asserted on its own terms, because the column is a date and
+    // the marker's equality check cannot express "nine years back" — so the
+    // year is checked HERE, where a wrong one names this screen, and the marker
+    // then carries the value the ledger re-reads.
+    //
+    // `getFullYear`, NOT `getUTCFullYear`, and the difference is a real bug this
+    // assertion already caught once. `professionSince` is
+    // `timestamp without time zone`, so node-postgres materialises 2017-01-01
+    // 00:00 as LOCAL midnight. On this host (UTC+3) that instant is
+    // 2016-12-31T21:00Z, and reading its UTC year reported 2016 for a row that
+    // says 2017 — a test failure manufactured entirely by the reader's zone.
+    //
+    // The API value above is a different kind of value and is read differently:
+    // it arrives as an ISO string with an explicit `Z`, so UTC is exactly right
+    // there. Two representations of one fact, each read on its own terms.
+    const stored = await readProfileValues(account.profileId, ['professionSince']);
+    const storedDate = stored.professionSince;
+    expect(storedDate, 'the row should carry a start date at all').toBeInstanceOf(Date);
+    expect(
+      (storedDate as Date).getFullYear(),
+      'the row in Postgres should carry a start year nine years back',
+    ).toBe(startYear);
+
     await recordDurable(
       'ServicesTaskScreen.tsx',
       account,
       '/provider/onboarding/SERVICES_EXPERIENCE',
       {
-        before: { yearsOfExperience: undefined },
-        after: { yearsOfExperience: YEARS },
-        readDatabase: () => readProfileValues(account.profileId, ['yearsOfExperience']),
+        before: { professionSince: undefined },
+        after: stored,
+        readDatabase: () => readProfileValues(account.profileId, ['professionSince']),
       },
     );
 
