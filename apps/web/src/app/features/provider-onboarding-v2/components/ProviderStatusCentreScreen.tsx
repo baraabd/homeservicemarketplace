@@ -8,8 +8,10 @@ import {
 } from '../../../../lib/provider/provider-verification-api';
 import { useProviderProfile } from '../../../hooks/provider/useProviderProfile';
 import { useProviderOnboardingHub } from '../../../hooks/provider/useProviderOnboardingHub';
-import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
-import { useWithdrawOnboarding } from '../../../hooks/provider/useProviderOnboarding';
+import {
+  useOnboardingDraft,
+  useWithdrawOnboarding,
+} from '../../../hooks/provider/useProviderOnboarding';
 import { useOnboardingReview } from '../../../hooks/provider/useProviderOnboardingReview';
 import { useLang } from '../../../i18n/LanguageContext';
 import { ProviderButton, ProviderSkeleton } from '../../provider-ui';
@@ -43,16 +45,20 @@ import { OnboardingShell } from './OnboardingShell';
 //   completion    the onboarding hub's own counters and status
 //   specialty     the profile's pending categories — the moderator's queue
 //   standing      the profile status, once there is no application to discuss
-//   verification  the profile's verified flag
+//   verification  the verification CASE's own state machine
 //   work access   the CAPABILITY service, never `status === 'ACTIVE'`. Deriving
 //                 work access from a lifecycle enum is precisely the mistake
 //                 ADR 0006 was written to end.
 //
-// RECORDED FOR PHASE 5B: verification is projected from `profile.verified` plus
-// whether the application has been handed in, because the status centre has no
-// verification-case read of its own. `GET /me/provider/verification/case`
-// carries a real state machine and this row should read it, which is a wiring
-// change rather than a policy one.
+// CLOSED IN PHASE 5B (G-11): verification used to be projected from
+// `profile.verified` plus whether the application had been handed in. That
+// produces a plausible answer and a wrong one — a provider whose documents were
+// sent back and a provider whose case was refused both read "In review" — so the
+// row now reads `GET /me/provider/verification/case` and renders its state.
+//
+// CLOSED IN PHASE 5B (G-12): the header's clock formats in the PROVIDER's stored
+// zone, from the draft, so this screen and the submission confirmation cannot
+// timestamp the same application an hour apart.
 
 /** The two approved screens this surface is, chosen by work access. */
 type Screen = 'waiting' | 'active';

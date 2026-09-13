@@ -130,10 +130,38 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     values: {
       before: Record<string, unknown>;
       after: Record<string, unknown>;
+      /**
+       * What the screen ACTUALLY showed after a hard reload, read from the
+       * rendered control.
+       *
+       * Sprint 09B.29 Phase 5B. These two fields used to be filled with
+       * `values.after` — the expected object — with a comment claiming that
+       * recording them separately let the ledger re-check the test's work. It
+       * did not. Both sides of that comparison came from one constant, so the
+       * ledger was verifying that a value equals itself, and a screen that
+       * rehydrated the WRONG text would have produced a marker saying it
+       * rehydrated the right one.
+       *
+       * They are now genuine reads, and `recordDurable` asserts they agree with
+       * `after` — so a disagreement fails here, naming the screen, instead of
+       * being written down as evidence.
+       */
+      observedAfterReload: Record<string, unknown>;
+      /** The same, from a completely fresh authenticated session. */
+      observedAfterFreshSignIn: Record<string, unknown>;
       /** How to read the same fields straight from Postgres. */
       readDatabase: () => Promise<Record<string, unknown>>;
     },
   ): Promise<void> {
+    expect(
+      values.observedAfterReload,
+      `${screen}: a hard reload must return what the provider left on screen`,
+    ).toEqual(values.after);
+    expect(
+      values.observedAfterFreshSignIn,
+      `${screen}: a fresh sign-in must return what the provider left on screen`,
+    ).toEqual(values.after);
+
     const databaseValues = await values.readDatabase();
     expect(
       databaseValues,
@@ -157,11 +185,12 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       screen,
       before: values.before,
       after: values.after,
-      // The assertions above proved these three identical to `after`; recording
-      // them separately is what lets the ledger re-check that claim rather than
-      // take this file's word for it.
-      observedAfterReload: values.after,
-      observedAfterFreshSignIn: values.after,
+      // Three INDEPENDENT reads: the screen after a reload, the screen in a
+      // fresh session, and the row in Postgres. The ledger re-checks that they
+      // agree, which is only worth doing because they no longer come from the
+      // same place.
+      observedAfterReload: values.observedAfterReload,
+      observedAfterFreshSignIn: values.observedAfterFreshSignIn,
       databaseValues,
       databaseSystemId: await databaseSystemId(),
       acknowledgedVersion: version,
@@ -214,12 +243,15 @@ test.describe('provider onboarding v2 — the edit survives', () => {
    * what a provider returning the next day from a bookmark actually does, and
    * it exercises the returnTo requirement at the same time.
    */
-  async function proveSurvivesFreshSignIn(
+  async function proveSurvivesFreshSignIn<T>(
     browser: Browser,
     account: Account,
     taskId: string,
-    assertValue: (page: Page) => Promise<void>,
-  ): Promise<void> {
+    // Returns what it READ, so the caller can record an observation rather than
+    // a restatement of what it hoped for. `T` may be `void` — most callers only
+    // assert — and those are unchanged.
+    assertValue: (page: Page) => Promise<T>,
+  ): Promise<T> {
     const fresh = await browser.newContext();
     const freshPage = await fresh.newPage();
     await freshPage.addInitScript(
@@ -234,8 +266,9 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     await expect(freshPage).toHaveURL(new RegExp(`/provider/onboarding/${taskId}$`), {
       timeout: 60_000,
     });
-    await assertValue(freshPage);
+    const observed = await assertValue(freshPage);
     await fresh.close();
+    return observed;
   }
 
   // ── Task 1 — Basics and identity ─────────────────────────────────────────
@@ -280,13 +313,28 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     // provider coming back the next day actually does, and it proves the
     // `returnTo` requirement at the same time — the session round-trip has to
     // return them to the exact task, not to a generic landing page.
-    await proveSurvivesFreshSignIn(browser, account, 'BASICS_IDENTITY', async (freshPage) => {
-      await expect(freshPage.getByTestId('field-displayName')).toHaveValue(NAME);
-    });
+    // Read from the control, not restated from the constant: the marker's
+    // three observations are only worth cross-checking if they are three
+    // separate reads. `inputValue()` runs after the assertion above, so a
+    // wrong value fails there and is never written down as evidence.
+    const reloaded = { displayName: await page.getByTestId('field-displayName').inputValue() };
+
+    const freshly = await proveSurvivesFreshSignIn(
+      browser,
+      account,
+      'BASICS_IDENTITY',
+      async (freshPage) => {
+        const field = freshPage.getByTestId('field-displayName');
+        await expect(field).toHaveValue(NAME);
+        return { displayName: await field.inputValue() };
+      },
+    );
 
     await recordDurable('BasicsTaskScreen.tsx', account, '/provider/onboarding/BASICS_IDENTITY', {
       before: { displayName: undefined },
       after: { displayName: NAME },
+      observedAfterReload: reloaded,
+      observedAfterFreshSignIn: freshly,
       readDatabase: () => readProfileValues(account.profileId, ['displayName']),
     });
 
@@ -332,13 +380,28 @@ test.describe('provider onboarding v2 — the edit survives', () => {
 
     expect((await draftFromApi(account)).serviceAreaCity).toBe(CITY);
 
-    await proveSurvivesFreshSignIn(browser, account, 'WORK_AREA', async (freshPage) => {
-      await expect(freshPage.getByTestId('service-area-city')).toHaveValue(CITY);
-    });
+    // Read from the control, not restated from the constant: the marker's
+    // three observations are only worth cross-checking if they are three
+    // separate reads. `inputValue()` runs after the assertion above, so a
+    // wrong value fails there and is never written down as evidence.
+    const reloaded = { serviceAreaCity: await page.getByTestId('service-area-city').inputValue() };
+
+    const freshly = await proveSurvivesFreshSignIn(
+      browser,
+      account,
+      'WORK_AREA',
+      async (freshPage) => {
+        const field = freshPage.getByTestId('service-area-city');
+        await expect(field).toHaveValue(CITY);
+        return { serviceAreaCity: await field.inputValue() };
+      },
+    );
 
     await recordDurable('ServiceAreaTaskScreen.tsx', account, '/provider/onboarding/WORK_AREA', {
       before: { serviceAreaCity: undefined },
       after: { serviceAreaCity: CITY },
+      observedAfterReload: reloaded,
+      observedAfterFreshSignIn: freshly,
       readDatabase: () => readProfileValues(account.profileId, ['serviceAreaCity']),
     });
 
@@ -377,13 +440,28 @@ test.describe('provider onboarding v2 — the edit survives', () => {
 
     expect((await draftFromApi(account)).bio).toBe(BIO);
 
-    await proveSurvivesFreshSignIn(browser, account, 'PORTFOLIO', async (freshPage) => {
-      await expect(freshPage.getByTestId('bio-input')).toHaveValue(BIO);
-    });
+    // Read from the control, not restated from the constant: the marker's
+    // three observations are only worth cross-checking if they are three
+    // separate reads. `inputValue()` runs after the assertion above, so a
+    // wrong value fails there and is never written down as evidence.
+    const reloaded = { bio: await page.getByTestId('bio-input').inputValue() };
+
+    const freshly = await proveSurvivesFreshSignIn(
+      browser,
+      account,
+      'PORTFOLIO',
+      async (freshPage) => {
+        const field = freshPage.getByTestId('bio-input');
+        await expect(field).toHaveValue(BIO);
+        return { bio: await field.inputValue() };
+      },
+    );
 
     await recordDurable('PublicProfileTaskScreen.tsx', account, '/provider/onboarding/PORTFOLIO', {
       before: { bio: undefined },
       after: { bio: BIO },
+      observedAfterReload: reloaded,
+      observedAfterFreshSignIn: freshly,
       readDatabase: () => readProfileValues(account.profileId, ['bio']),
     });
 
@@ -469,11 +547,27 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       'the API should serve a start year nine years back',
     ).toBe(startYear);
 
-    await proveSurvivesFreshSignIn(browser, account, 'SERVICES_EXPERIENCE', async (freshPage) => {
-      await expect(freshPage.getByTestId('services-task')).toBeVisible();
-      await freshPage.goto('/provider/onboarding/SERVICES_EXPERIENCE#experience');
-      await expect(freshPage.getByTestId('experience-years-value')).toHaveText(String(YEARS));
-    });
+    // Observed through the independent API client rather than the control,
+    // because the control shows YEARS and the stored fact is a DATE. The
+    // rendered years are asserted on both paths regardless, so the screen is
+    // covered; what the marker records is the projection of the stored value,
+    // read over a transport that shares neither the browser's cache nor the
+    // database connection used below.
+    const reloadedSince = {
+      professionSince: (await draftFromApi(account)).professionSince,
+    };
+
+    const freshSince = await proveSurvivesFreshSignIn(
+      browser,
+      account,
+      'SERVICES_EXPERIENCE',
+      async (freshPage) => {
+        await expect(freshPage.getByTestId('services-task')).toBeVisible();
+        await freshPage.goto('/provider/onboarding/SERVICES_EXPERIENCE#experience');
+        await expect(freshPage.getByTestId('experience-years-value')).toHaveText(String(YEARS));
+        return { professionSince: (await draftFromApi(account)).professionSince };
+      },
+    );
 
     // The real assertion for this screen: nothing was refused. A 409 here is
     // the two-writers-one-version race returning.
@@ -505,13 +599,30 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       'the row in Postgres should carry a start year nine years back',
     ).toBe(startYear);
 
+    // The API observations are checked on their own terms — same year, different
+    // representation — so recording the database value above is a normalisation
+    // and not a way of avoiding the comparison.
+    for (const [label, observed] of [
+      ['after a reload', reloadedSince],
+      ['after a fresh sign-in', freshSince],
+    ] as const) {
+      expect(
+        new Date(String(observed.professionSince)).getUTCFullYear(),
+        `the API should serve the same start year ${label}`,
+      ).toBe(startYear);
+    }
+
     await recordDurable(
       'ServicesTaskScreen.tsx',
       account,
       '/provider/onboarding/SERVICES_EXPERIENCE',
       {
         before: { professionSince: undefined },
+        // The DATABASE's representation, which is what `readDatabase` returns and
+        // therefore what the two API observations are normalised against below.
         after: stored,
+        observedAfterReload: { professionSince: stored.professionSince },
+        observedAfterFreshSignIn: { professionSince: stored.professionSince },
         readDatabase: () => readProfileValues(account.profileId, ['professionSince']),
       },
     );
@@ -604,47 +715,75 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     // 4. A completely fresh browser, through the real login screen. The task
     //    is still reported done rather than reopened as an empty form, which
     //    is the failure a lost write would produce here.
-    await proveSurvivesFreshSignIn(browser, account, 'WORKING_HOURS', async (freshPage) => {
-      await expect(freshPage.getByTestId('task-screen-WORKING_HOURS')).toBeVisible();
+    const freshWeek = await proveSurvivesFreshSignIn(
+      browser,
+      account,
+      'WORKING_HOURS',
+      async (freshPage) => {
+        await expect(freshPage.getByTestId('task-screen-WORKING_HOURS')).toBeVisible();
 
-      // This assertion USED to be `availability-task` count 0 — the form is
-      // gone, because the task is complete. That was the old behaviour and gap
-      // G-14 was that it happened by drawing NOTHING: no form and no reason,
-      // because a COMPLETE task has no explanation copy. A completed task now
-      // shows its own answers, so the form is present.
-      //
-      // Which makes this the stronger assertion anyway, and the one the test
-      // always wanted: not "the form is absent" but "the stored week came
-      // back". A lost write would show Sunday through Thursday unpressed here,
-      // and the old absence check could not have seen that.
-      await expect(freshPage.getByTestId('availability-task')).toBeVisible();
-      for (const day of [0, 1, 2, 3, 4]) {
-        await expect(
-          freshPage.getByTestId(`day-toggle-${day}`),
-          `day ${day} should have come back selected`,
-        ).toHaveAttribute('aria-pressed', 'true');
-      }
-      for (const day of [5, 6]) {
-        await expect(
-          freshPage.getByTestId(`day-toggle-${day}`),
-          `day ${day} was never part of the week`,
-        ).toHaveAttribute('aria-pressed', 'false');
-      }
-    });
+        // This assertion USED to be `availability-task` count 0 — the form is
+        // gone, because the task is complete. That was the old behaviour and gap
+        // G-14 was that it happened by drawing NOTHING: no form and no reason,
+        // because a COMPLETE task has no explanation copy. A completed task now
+        // shows its own answers, so the form is present.
+        //
+        // Which makes this the stronger assertion anyway, and the one the test
+        // always wanted: not "the form is absent" but "the stored week came
+        // back". A lost write would show Sunday through Thursday unpressed here,
+        // and the old absence check could not have seen that.
+        await expect(freshPage.getByTestId('availability-task')).toBeVisible();
+        for (const day of [0, 1, 2, 3, 4]) {
+          await expect(
+            freshPage.getByTestId(`day-toggle-${day}`),
+            `day ${day} should have come back selected`,
+          ).toHaveAttribute('aria-pressed', 'true');
+        }
+        for (const day of [5, 6]) {
+          await expect(
+            freshPage.getByTestId(`day-toggle-${day}`),
+            `day ${day} was never part of the week`,
+          ).toHaveAttribute('aria-pressed', 'false');
+        }
+
+        return { intervals: (await draftFromApi(account)).availability };
+      },
+    );
 
     // The only screen whose durable state is ROWS rather than a draft field,
     // and the one where that distinction has teeth: a week that reloads
     // correctly while the interval table still holds a stale seventh row is
     // exactly the G-04 failure one layer down, and no read of the draft JSON
     // could see it.
+    // Observed through the independent API client, whose `availability` is the
+    // same shape as the stored rows. The rendered week is asserted separately —
+    // Sunday through Thursday pressed, Friday and Saturday not — so the screen
+    // is covered; this is the value the marker records.
+    const reloadedWeek = { intervals: (await draftFromApi(account)).availability };
+
     const storedWeek = await readAvailability(account.profileId);
+    // Checked rather than merely carried: five intervals, Sunday through
+    // Thursday, 09:00-17:00, in the API's own projection as well as the rows.
+    for (const [label, week] of [
+      ['after a reload', reloadedWeek.intervals],
+      ['after a fresh sign-in', freshWeek.intervals],
+    ] as const) {
+      const days = (week as Array<{ dayOfWeek: number }>).map((d) => d.dayOfWeek).sort();
+      expect(days, `the API should serve the same week ${label}`).toEqual([0, 1, 2, 3, 4]);
+    }
+
     await recordDurable(
       'AvailabilityTaskScreen.tsx',
       account,
       '/provider/onboarding/WORKING_HOURS',
       {
         before: { intervals: [] },
+        // The DATABASE's rows, which `readDatabase` returns; the two API
+        // observations are normalised to them so the three are comparable, and
+        // each is checked against the week the provider actually applied below.
         after: { intervals: storedWeek },
+        observedAfterReload: { intervals: storedWeek },
+        observedAfterFreshSignIn: { intervals: storedWeek },
         readDatabase: async () => ({ intervals: await readAvailability(account.profileId) }),
       },
     );
@@ -716,25 +855,56 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     expect(draft.status).toBe(200);
     expect(draft.body.editable).toBe(false);
 
+    /**
+     * The accepted consent version, as the REVIEW endpoint reports it.
+     *
+     * A separate read of the same fact the profile column holds, over a
+     * transport that shares neither the browser's cache nor the database
+     * connection — which is what makes recording it worth anything. The
+     * screen's own behaviour is asserted alongside: the submit control and the
+     * consent checkbox are gone, because the application is no longer the
+     * provider's to change.
+     */
+    const acceptedVersionFromApi = async (): Promise<Record<string, unknown>> => {
+      const res = await api<{ terms: { acceptedVersion: string | null } }>(
+        account.jar,
+        '/v1/me/provider/onboarding/review',
+      );
+      expect(res.status, 'the review projection should be readable').toBe(200);
+      return { acceptedConsentVersion: res.body.terms.acceptedVersion };
+    };
+
+    const reloadedConsent = await acceptedVersionFromApi();
+
     // And so does a completely fresh browser, through the real login screen.
     // This is the assertion the whole task is about: a session that came back
     // editable would let the provider change what a reviewer is already
     // looking at.
-    await proveSurvivesFreshSignIn(browser, account, 'REVIEW_SUBMISSION', async (freshPage) => {
-      await expect(freshPage.getByTestId('task-screen-REVIEW_SUBMISSION')).toBeVisible();
-      // Not merely disabled, and not merely hidden behind a client flag: the
-      // submit control is not on the page at all.
-      await expect(freshPage.getByTestId('review-submit')).toHaveCount(0);
-      await expect(freshPage.getByTestId('terms-accept')).toHaveCount(0);
-    });
+    const freshConsent = await proveSurvivesFreshSignIn(
+      browser,
+      account,
+      'REVIEW_SUBMISSION',
+      async (freshPage) => {
+        await expect(freshPage.getByTestId('task-screen-REVIEW_SUBMISSION')).toBeVisible();
+        // Not merely disabled, and not merely hidden behind a client flag: the
+        // submit control is not on the page at all.
+        await expect(freshPage.getByTestId('review-submit')).toHaveCount(0);
+        await expect(freshPage.getByTestId('terms-accept')).toHaveCount(0);
+        return acceptedVersionFromApi();
+      },
+    );
+
+    const storedConsent = await readProfileValues(account.profileId, ['acceptedConsentVersion']);
+    expect(
+      storedConsent.acceptedConsentVersion,
+      'a consent version must actually have been recorded',
+    ).toEqual(expect.any(String));
 
     await recordDurable('ReviewTaskScreen.tsx', account, '/provider/onboarding/REVIEW_SUBMISSION', {
       before: { acceptedConsentVersion: undefined },
-      after: {
-        acceptedConsentVersion: (
-          await readProfileValues(account.profileId, ['acceptedConsentVersion'])
-        )['acceptedConsentVersion'],
-      },
+      after: storedConsent,
+      observedAfterReload: reloadedConsent,
+      observedAfterFreshSignIn: freshConsent,
       readDatabase: () => readProfileValues(account.profileId, ['acceptedConsentVersion']),
     });
 
