@@ -28,7 +28,14 @@ returned, what a fresh sign-in returned, the revision the server acknowledged,
 and the row read independently out of PostgreSQL with the cluster's own system
 identifier beside it.
 
-Two things had to be fixed before these numbers meant anything, and both are
+The suite is **24 journeys**, all passing. Phase 5B added the twenty-fourth: a
+portfolio photo reordered from the keyboard in the browser, checked against the
+server order, the DOM order, a hard reload, a fresh authenticated session and the
+`position` column read straight from Postgres. Its three photos are uploaded
+through the real presign/PUT/register path as fixture setup, because a test must
+not perform the edit it is proving.
+
+Three things had to be fixed before these numbers meant anything, and each is
 recorded in `PHASE5A_INTEGRATION_GAPS.md`:
 
 - the markers were being written to `FINAL_REAL_API` while the ledger looked
@@ -38,6 +45,10 @@ recorded in `PHASE5A_INTEGRATION_GAPS.md`:
   of the draft's scratch JSON, where they do not live — they are
   `ProviderProfile` columns — so CI reported `displayName: undefined` for a name
   that was on screen, in the API response, and in the row.
+- the markers' `observedAfterReload` and `observedAfterFreshSignIn` were filled by
+  assigning the expected `after` object, so the ledger was checking that a value
+  equals itself. They are independent reads now, and a wrong one fails in the test
+  that owns the screen.
 
 ---
 

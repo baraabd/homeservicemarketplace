@@ -486,10 +486,17 @@ gate result in §2.3 is now taken from the command's own `$?`.
 
 ---
 
-## 5. PHASE 5 INCOMPLETE — remaining blockers
+## 5. Remaining blockers — ENGINEERING COMPLETE, EXTERNAL ACCEPTANCE PENDING
 
-Nothing about the redesign, rollout, privacy approval or production enablement
-is complete. What is proven is exactly §2.3.
+Rewritten at the end of Phase 5B. The list below was written when items 12
+through 21 were all outstanding; keeping it in that form would misdescribe the
+branch, so each is now marked with what is actually true and §5.1 records the
+counters and gates that replaced them.
+
+What remains is **five items that require a person other than an agent**, and a
+set of gaps each of which would change an approved screen or a contract and
+therefore needs a product-owner decision rather than more engineering. No
+engineering item is both authorized and unfinished.
 
 ### Requires someone other than me
 
@@ -528,25 +535,99 @@ is complete. What is proven is exactly §2.3.
     identity to EXPLAIN the value — market, transport basis, policy fingerprint,
     value and timestamp — never a comparison against a moving suggestion. See
     §2A.1 for the two defects found while proving it.
-    10a. **Manual market confirmation UI.** The server side is complete and the read
-    model is served; the provider-facing confirmation flow is not built. Nothing
-    persists a suggested or inferred country today, which is the invariant that
-    matters, but the provider cannot yet confirm one from the UI.
+    10a. ~~**Manual market confirmation UI.**~~ **DONE** (G-01/G-13). `MarketPicker`
+    and `useSupportedMarkets` ask only when the server's answer makes it
+    necessary — no market recorded, the operator has withdrawn from theirs, or
+    the country does not pin a timezone — so the settled case renders nothing and
+    state 6 is unchanged. This was the most serious gap in the set: the field is
+    required for submission, so a provider who never had one could finish all six
+    tasks and be refused with no screen able to fix it.
     10b. **Enabled-market revalidation at SUBMISSION.** The write path refuses a
     withdrawn market on every step patch; the submit path has not been audited
     for the same check.
-11. **Provider UI primitives** — market picker, location suggestion, focus-safe
-    sheet, upload surface, crop/reorder, stepper, status-axis row, map/radius
-    card, reward strip, schedule editor, customer preview, submission timeline.
-12. **Migration of all six task screens** off inline styles and raw palette
-    classes (0 of 6 done).
-13. **The architecture/conformance test.**
-14. **States 2–17** implemented to parity (0–1 already have evidence).
-15. **The six state-6 market substates.**
-16. **The 36-cell canonical parity suite** at 0.005, prototype-vs-application.
-17. **The 216-record responsive matrix** and contact-sheet review.
-18. **Axe / keyboard / focus / RTL / zoom / reduced-motion gates.**
-19. **Required Linux-stable CI job.**
-20. **Sensitivity proof of the visual gate.**
-21. **Real-API EN/AR journeys** across two enabled countries.
-22. **Controlled default-on rollout commit.**
+11. **Provider UI primitives** — DONE except two. The market picker, upload
+    surface, stepper, status-axis row, map/radius card, reward strip, schedule
+    editor, customer preview and submission timeline are all built and measured.
+    **Reorder** is done (G-18): the approved hint promised it, the endpoint
+    existed, and the tiles became the control so state 9 gained no pixels.
+    **Crop** and **location suggestion** are not — crop needs a design decision
+    about a surface the reference does not draw, and location suggestion is
+    blocked on blocker 1.
+12. ~~**Migration of all six task screens** off inline styles and raw palette
+    classes.~~ **DONE — 6 of 6**, source conformance passing for each.
+13. ~~**The architecture/conformance test.**~~ **DONE.**
+14. ~~**States 2–17** implemented to parity.~~ **DONE — all 18**, EN and AR.
+15. **The six state-6 market substates** — the SETTLED, CHOOSE, WITHDRAWN,
+    CONFIRM_TIMEZONE and UNAVAILABLE prompts are implemented and unit-tested
+    (G-01/G-13), and the settled case leaves state 6 byte-for-byte unchanged.
+    Their real-user proof across two enabled countries is item 21.
+16. ~~**The 36-cell canonical parity suite** at 0.005.~~ **DONE**, every cell
+    inside budget with the ratio RECOMPUTED from decoded pixels rather than
+    trusted from the runner.
+17. ~~**The 216-record responsive matrix.**~~ **DONE**, and extended in 5B:
+    `lang` and `dir` are now checked for their VALUES per locale, not merely
+    their presence. Contact sheets are uploaded on every run, passing or failing.
+18. **Axe / keyboard / focus / RTL / zoom / reduced-motion gates** — axe is
+    DONE on all 36 cells with no narrowed rule set (wcag2a, 2aa, 21a, 21aa,
+    22aa). RTL is covered structurally and by direction-dependent behaviour
+    tests. Keyboard operation is proved for the controls added in 5B
+    (portfolio reorder) but there is no whole-flow keyboard traversal gate, and
+    **200% zoom/reflow and reduced-motion have no automated gate** — stated
+    plainly rather than implied by the axe pass.
+19. ~~**Required Linux-stable CI job.**~~ **DONE** — two, both `ci-gate` dependencies.
+20. ~~**Sensitivity proof of the visual gate.**~~ **DONE**, and it found real
+    blind spots: a page-wide phrase search that passed while a status row read
+    "Unavailable", and a clock the ratio could not see at all.
+21. **Real-API journeys** — 24 passed / 24 collected against a real API, real
+    Postgres and real SMTP, with route and persistence credit at 6/6 and 6/6.
+    EN and AR are both exercised. **Two enabled COUNTRIES are not**: every
+    journey runs in the one seeded market, so the market substates are proved by
+    unit tests and not yet by a second-country journey.
+22. **Controlled default-on rollout commit** — deliberately NOT made. The flag
+    is default-off, the activation and rollback procedures are documented, and
+    turning it on is a decision for the product owner rather than this branch.
+
+### 5.1 What is proven on the delivered revision
+
+Counters computed by `apps/web/e2e/phase5-evidence-ledger.ts` from artifacts on
+disk, not asserted by hand:
+
+```
+presentation migrated:       6/6
+production-route integrated: 6/6
+real-API persisted:          6/6
+```
+
+| Gate                                             | Result                                     |
+| ------------------------------------------------ | ------------------------------------------ |
+| real-API journeys (real Postgres / Redis / SMTP) | 24 passed / 24 collected                   |
+| Phase 5 visual + responsive + reference          | 108 passed / 108 expected                  |
+| ledger recompute, from decoded pixels            | 100 passed                                 |
+| web unit                                         | 1687 passed / 122 files                    |
+| web lint                                         | 0 errors, 35 warnings (baseline unchanged) |
+| api tests                                        | 4150 passed                                |
+| typecheck web, `typecheck:e2e`, api; api lint    | clean                                      |
+
+Every gate ran through `scripts/ci/run-gate.sh`, which captures the command's own
+exit status before anything is piped. Every assertion added in Phase 5B was
+confirmed by a mutation that turned it red, and two were rewritten because the
+mutation stayed green.
+
+### 5.2 The one suite that is red, and why it is not this branch
+
+`test/integration/outbox.integration.spec.ts` fails intermittently on the
+development host. Five runs of that file alone: 2 green, 3 red, with **four
+different** tests failing — the signature of a clock rather than a logic bug.
+
+The suite documents being calibrated against a container ~67 ms behind the host.
+Measured on this machine: **254–340 ms ahead**, and **902–939 ms ahead** after
+restarting the container, because the drift is in the Docker Desktop VM rather
+than in the container. Every assertion in that file compares a host-computed
+deadline against a database-computed `now()`.
+
+It imports only `outbox.repository`, `outbox.worker` and
+`support/db-isolation`, and contains no reference to `validateEnv`,
+`AppModule`, authentication or throttling — so nothing in Phase 5B can reach it.
+CI, on Linux with service containers sharing the runner clock, passes it. Its
+tolerances are deliberately unchanged: widening them would trade a real ordering
+guarantee for a local clock problem.
