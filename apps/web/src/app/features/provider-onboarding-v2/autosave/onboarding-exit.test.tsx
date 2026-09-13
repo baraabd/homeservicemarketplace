@@ -147,7 +147,7 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
-function renderTask(taskId: string, lang: 'en' | 'ar' = 'en') {
+function renderTask(taskId: string, lang: 'en' | 'ar' = 'en', hash = '') {
   window.localStorage.setItem('hsm.lang', lang);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(providerQueryKeys.onboarding.draft(), DRAFT());
@@ -167,7 +167,7 @@ function renderTask(taskId: string, lang: 'en' | 'ar' = 'en') {
       },
       { path: '*', element: <LocationProbe /> },
     ],
-    { initialEntries: [`/provider/onboarding/${taskId}`] },
+    { initialEntries: [`/provider/onboarding/${taskId}${hash}`] },
   );
   render(
     <QueryClientProvider client={client}>
@@ -205,39 +205,49 @@ const TASKS = [
     id: 'WORK_AREA',
     step: 'LOCATION',
     edit: async () => {
-      const radius = await screen.findByTestId('radius-slider');
-      fireEvent.change(radius, { target: { value: '12' } });
-      // The slider commits on release, not on every intermediate value — a
-      // save per pixel dragged would be a save per pixel dragged.
-      fireEvent.blur(radius);
+      // SUPERSEDED: the radius slider. The approved screen STATES the radius
+      // and explains that it follows the transport answer, so the one field
+      // left to protect is the city — and it is the one with half-typed state,
+      // which is exactly what the exit contract exists for.
+      const city = await screen.findByTestId('service-area-city');
+      fireEvent.change(city, { target: { value: 'Aleppo, Al-Furqan' } });
     },
   },
   {
     id: 'PORTFOLIO',
     step: 'PROFILE',
     edit: async () => {
-      const title = await screen.findByTestId('title-input');
-      fireEvent.change(title, { target: { value: 'Master electrician' } });
-      fireEvent.blur(title);
+      // SUPERSEDED: the title input. It is server-owned under ruling C1 and the
+      // approved profile screen shows it rather than editing it, so the bio is
+      // the field with half-typed state to protect here.
+      const bio = await screen.findByTestId('bio-input');
+      fireEvent.change(bio, { target: { value: 'A long enough bio to be worth protecting.' } });
     },
   },
   {
     id: 'WORKING_HOURS',
     step: 'AVAILABILITY',
     edit: async () => {
-      // The timezone select commits on change: a picker has no half-typed
-      // state to protect, so there is nothing to hold back.
-      const tz = await screen.findByTestId('timezone-select');
-      fireEvent.change(tz, { target: { value: 'Asia/Damascus' } });
+      // SUPERSEDED: the timezone picker, which the approved screen does not
+      // draw. Applying a window to the selected days is the write this screen
+      // makes now, and it commits through the same coordinator.
+      fireEvent.click(await screen.findByTestId('day-toggle-1'));
+      fireEvent.click(screen.getByTestId('apply-to-selected'));
     },
   },
   {
     id: 'SERVICES_EXPERIENCE',
     step: 'EXPERIENCE',
+    // Sprint 09B.29 Phase 5A — this task is TWO approved screens, and the
+    // EXPERIENCE step belongs to the second. The exit contract is unchanged;
+    // the test simply has to open the half that owns the edit it is making.
+    hash: '#experience',
     edit: async () => {
-      const year = await screen.findByTestId('profession-start-year');
-      fireEvent.change(year, { target: { value: '2015' } });
-      fireEvent.blur(year);
+      // The approved screen replaced the start-year field with a stepper, which
+      // commits on PRESS: there is no half-typed state to protect, which is
+      // the same reason the timezone picker above commits on change.
+      const increase = await screen.findByTestId('experience-years-increase');
+      fireEvent.click(increase);
     },
   },
 ] as const;
@@ -245,7 +255,7 @@ const TASKS = [
 describe('leaving a task never loses the edit that was still resting', () => {
   for (const t of TASKS) {
     it(`${t.id}: header Close flushes ${t.step} BEFORE navigating`, async () => {
-      renderTask(t.id);
+      renderTask(t.id, 'en', 'hash' in t ? t.hash : '');
       await screen.findByTestId(`task-screen-${t.id}`);
       await t.edit();
 
@@ -259,7 +269,7 @@ describe('leaving a task never loses the edit that was still resting', () => {
     });
 
     it(`${t.id}: "Back to tasks" flushes ${t.step} BEFORE navigating`, async () => {
-      renderTask(t.id);
+      renderTask(t.id, 'en', 'hash' in t ? t.hash : '');
       await screen.findByTestId(`task-screen-${t.id}`);
       await t.edit();
 
@@ -418,12 +428,12 @@ describe('a keystroke reaches the coordinator before the blur does', () => {
     fireEvent.change(field, { target: { value: 'First value' } });
     fireEvent.blur(field);
     await waitFor(() =>
-      expect(screen.getByTestId('basics-save-status')).toHaveAttribute('data-status', 'saved'),
+      expect(screen.getByTestId('task-save-status')).toHaveAttribute('data-status', 'saved'),
     );
 
     // Type again and do NOT blur.
     fireEvent.change(field, { target: { value: 'Second value' } });
-    expect(screen.getByTestId('basics-save-status')).not.toHaveAttribute('data-status', 'saved');
+    expect(screen.getByTestId('task-save-status')).not.toHaveAttribute('data-status', 'saved');
   });
 
   it('commits the character just typed, not the one before it', async () => {

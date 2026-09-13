@@ -10,7 +10,11 @@ import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { AvailabilityTaskScreen } from './AvailabilityTaskScreen';
 import { AVAILABILITY_COPY } from '../copy/availability-copy';
 import { AUTOSAVE_COPY } from '../copy/autosave-copy';
-import { ProviderOnboardingAutosaveProvider } from '../autosave/ProviderOnboardingAutosaveProvider';
+import {
+  ProviderOnboardingAutosaveProvider,
+  useOnboardingStepAutosave,
+} from '../autosave/ProviderOnboardingAutosaveProvider';
+import { AutosaveStatus } from './AutosaveStatus';
 
 // Sprint 9B.21 — V2 Task 4.
 //
@@ -78,6 +82,7 @@ function renderScreen(view = DRAFT(), lang: 'en' | 'ar' = 'en', editable = true)
         <LanguageProvider>
           <ProviderOnboardingAutosaveProvider>
             <AvailabilityTaskScreen view={view as never} lang={lang} editable={editable} />
+            <SaveStatusProbe lang={lang} />
           </ProviderOnboardingAutosaveProvider>
         </LanguageProvider>
       </QueryClientProvider>
@@ -92,370 +97,229 @@ async function lastPatch(): Promise<Record<string, unknown>> {
   return JSON.parse(raw) as Record<string, unknown>;
 }
 
-function selectTime(testId: string, minute: number) {
-  fireEvent.change(screen.getByTestId(testId), { target: { value: String(minute) } });
-}
+/** A stored week, in the contract's own shape. 0 = Sunday. */
+const week = (days: readonly number[], startMinute = 540, endMinute = 1020) =>
+  days.map((dayOfWeek) => ({
+    id: `av-${dayOfWeek}`,
+    dayOfWeek,
+    startMinute,
+    endMinute,
+    timezone: 'Asia/Damascus',
+  }));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE ACCEPTANCE CRITERION
+//
+// Sprint 09B.29 Phase 5A — the approved screen is five controls: the day
+// toggles, a From/To pair, Apply, and one checkbox that turns Apply into a
+// clear. The presets, the per-day editor, the week summary and the timezone
+// picker are not on it.
+//
+// RECORDED FOR PHASE 5B, because each was a real affordance:
+//
+//   presets            "Sunday–Thursday" as one tap. The day toggles do the
+//                      same job in five taps and the approved screen has no
+//                      row for them.
+//   per-day editing    a second window on one day, or different hours on a
+//                      Wednesday. The contract still stores several windows
+//                      per day and nothing deletes them — but this screen can
+//                      only set ONE window across the selected days, so a
+//                      provider cannot create or edit a second one here.
+//   the timezone       `resolvedTimezone.needsConfirmation` is the case the
+//                      server cannot settle alone. The stored zone is
+//                      preserved and sent with every write; what is gone is
+//                      the surface to CONFIRM one when asked.
+//
+// What has NOT changed is the payload contract: one request, the whole week,
+// the timezone with it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('a whole working week in one bulk action', () => {
-  it('sets Sunday–Thursday 09:00–17:00 with one preset and one apply', async () => {
+  it('sets Sunday–Thursday 09:00–17:00 by tapping days and applying once', async () => {
     renderScreen();
 
-    fireEvent.click(screen.getByTestId('preset-sun-thu'));
+    for (const day of [0, 1, 2, 3, 4]) fireEvent.click(screen.getByTestId(`day-toggle-${day}`));
     fireEvent.click(screen.getByTestId('apply-to-selected'));
 
     const body = await lastPatch();
-    expect(body.availability).toEqual([
-      { dayOfWeek: 0, startMinute: 540, endMinute: 1020 },
-      { dayOfWeek: 1, startMinute: 540, endMinute: 1020 },
-      { dayOfWeek: 2, startMinute: 540, endMinute: 1020 },
-      { dayOfWeek: 3, startMinute: 540, endMinute: 1020 },
-      { dayOfWeek: 4, startMinute: 540, endMinute: 1020 },
-    ]);
-  });
-
-  it('does Monday–Friday too', async () => {
-    renderScreen();
-    fireEvent.click(screen.getByTestId('preset-mon-fri'));
-    fireEvent.click(screen.getByTestId('apply-to-selected'));
-
-    const body = await lastPatch();
-    expect((body.availability as { dayOfWeek: number }[]).map((i) => i.dayOfWeek)).toEqual([
-      1, 2, 3, 4, 5,
-    ]);
-  });
-
-  it('needs no repeated card stack: seven rows, whatever the schedule', () => {
-    renderScreen(DRAFT({ data: { availability: weekOf([0, 1, 2, 3, 4]) } }));
-    expect(screen.getByTestId('week-summary').querySelectorAll('li')).toHaveLength(7);
+    const sent = body.availability as Array<{ dayOfWeek: number; startMinute: number }>;
+    expect(sent.map((i) => i.dayOfWeek).sort()).toEqual([0, 1, 2, 3, 4]);
+    expect(sent.every((i) => i.startMinute === 540 && i.endMinute === 1020)).toBe(true);
   });
 
   it('sends ONE request carrying the whole week, never one per day', async () => {
-    // A partial bulk update cannot exist if there is no request that carries
-    // part of the week.
     renderScreen();
-    fireEvent.click(screen.getByTestId('preset-sun-thu'));
+
+    for (const day of [0, 1, 2, 3, 4]) fireEvent.click(screen.getByTestId(`day-toggle-${day}`));
     fireEvent.click(screen.getByTestId('apply-to-selected'));
 
-    await waitFor(() => expect(mock.history.patch.length).toBe(1));
-    const body = JSON.parse(mock.history.patch[0]!.data as string) as Record<string, unknown>;
-    expect((body.availability as unknown[]).length).toBe(5);
+    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
+    // A partial schedule must not be expressible. Five requests would each be
+    // one, and a failure between them would leave a week nobody chose.
+    expect(mock.history.patch).toHaveLength(1);
+    expect((await lastPatch()).availability).toHaveLength(5);
   });
 
   it('carries the timezone with the hours, which the server requires', async () => {
     renderScreen();
-    fireEvent.click(screen.getByTestId('preset-sun-thu'));
+
+    fireEvent.click(screen.getByTestId('day-toggle-0'));
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+
+    expect((await lastPatch()).timezone).toBe('Asia/Damascus');
+  });
+
+  it('opens showing the week the provider already has', async () => {
+    // The toggles ARE the schedule, not a transient selection. A row of blank
+    // toggles over a saved Sunday–Thursday would read as "you have told us
+    // nothing" to somebody who has.
+    renderScreen(DRAFT({ data: { availability: week([0, 1, 2, 3, 4]) } }));
+
+    for (const day of [0, 1, 2, 3, 4]) {
+      expect(screen.getByTestId(`day-toggle-${day}`)).toHaveAttribute('aria-pressed', 'true');
+    }
+    for (const day of [5, 6]) {
+      expect(screen.getByTestId(`day-toggle-${day}`)).toHaveAttribute('aria-pressed', 'false');
+    }
+  });
+});
+
+describe('applying is deliberate, never automatic', () => {
+  it('applies nothing on mount', async () => {
+    renderScreen(DRAFT({ data: { availability: week([0, 1, 2, 3, 4]) } }));
+    // Seeding the toggles from the stored week must not write it back.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mock.history.patch).toHaveLength(0);
+  });
+
+  it('selects days and applies NOTHING until asked', async () => {
+    renderScreen();
+
+    for (const day of [0, 1, 2]) fireEvent.click(screen.getByTestId(`day-toggle-${day}`));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mock.history.patch).toHaveLength(0);
+  });
+
+  it('cannot apply with no days selected', async () => {
+    renderScreen();
+    expect(screen.getByTestId('apply-to-selected')).toBeDisabled();
+  });
+});
+
+describe('marking days unavailable', () => {
+  it('clears the selected days and keeps the rest of the week', async () => {
+    renderScreen(DRAFT({ data: { availability: week([0, 1, 2, 3, 4]) } }));
+
+    // Turn Tuesday off, leave the other four on, and apply as a clear.
+    fireEvent.click(screen.getByTestId('day-toggle-0'));
+    fireEvent.click(screen.getByTestId('day-toggle-1'));
+    fireEvent.click(screen.getByTestId('day-toggle-3'));
+    fireEvent.click(screen.getByTestId('day-toggle-4'));
+    fireEvent.click(screen.getByTestId('mark-unavailable').querySelector('input')!);
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+
+    const sent = (await lastPatch()).availability as Array<{ dayOfWeek: number }>;
+    expect(sent.map((i) => i.dayOfWeek)).toEqual([0, 1, 3, 4]);
+  });
+
+  it('leaves the From/To pair alone, so a day is one tap from coming back', async () => {
+    // This is precisely what the approved label promises: "Disables days
+    // without deleting saved time ranges."
+    renderScreen(DRAFT({ data: { availability: week([2]) } }));
+
+    fireEvent.click(screen.getByTestId('mark-unavailable').querySelector('input')!);
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+    await lastPatch();
+
+    expect(screen.getByTestId('bulk-start')).toHaveValue('09:00');
+    expect(screen.getByTestId('bulk-end')).toHaveValue('17:00');
+  });
+});
+
+describe('states the API cannot persist are unreachable', () => {
+  it('refuses an inverted range and says so', async () => {
+    renderScreen();
+
+    fireEvent.click(screen.getByTestId('day-toggle-0'));
+    fireEvent.change(screen.getByTestId('bulk-start'), { target: { value: '18:00' } });
+    fireEvent.change(screen.getByTestId('bulk-end'), { target: { value: '09:00' } });
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+
+    expect(await screen.findByTestId('availability-rejected')).toHaveTextContent(
+      EN.rejectedInvalidRange,
+    );
+    expect(mock.history.patch).toHaveLength(0);
+  });
+
+  it('uses a native time input, so no custom listbox has to re-implement one', () => {
+    renderScreen();
+    expect(screen.getByTestId('bulk-start')).toHaveAttribute('type', 'time');
+    expect(screen.getByTestId('bulk-end')).toHaveAttribute('type', 'time');
+  });
+});
+
+describe('the time zone', () => {
+  it('sends the stored zone unchanged, with no surface to pick one', async () => {
+    // RECORDED PHASE 5B GAP. The approved screen draws no timezone control,
+    // so the zone is carried, never chosen. Asserting the absence keeps
+    // re-adding one a deliberate change.
+    renderScreen(DRAFT({ data: { timezone: 'Asia/Damascus' } }));
+
+    expect(screen.queryByTestId('timezone-select')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('day-toggle-0'));
     fireEvent.click(screen.getByTestId('apply-to-selected'));
     expect((await lastPatch()).timezone).toBe('Asia/Damascus');
   });
 });
 
-describe('the preset is an offer, not a default', () => {
-  it('selects days and applies NOTHING until asked', async () => {
-    renderScreen();
-    fireEvent.click(screen.getByTestId('preset-sun-thu'));
-
-    expect(screen.getByTestId('day-toggle-1')).toHaveAttribute('aria-pressed', 'true');
-    // Nothing saved, and the week is still empty.
-    expect(mock.history.patch).toHaveLength(0);
-    expect(screen.getByTestId('day-summary-1')).toHaveTextContent(EN.unavailable);
-  });
-
-  it('applies nothing on mount', () => {
-    renderScreen();
-    expect(mock.history.patch).toHaveLength(0);
-    expect(screen.getByTestId('week-totals')).toHaveTextContent(EN.summaryEmpty);
-  });
-
-  it('cannot apply with no days selected', () => {
-    renderScreen();
-    expect(screen.getByTestId('apply-to-selected')).toBeDisabled();
-    expect(screen.getByTestId('apply-disabled-hint')).toBeInTheDocument();
-  });
-});
-
-describe('per-day availability', () => {
-  it('marks a day unavailable and saves the rest of the week', async () => {
-    renderScreen(DRAFT({ data: { availability: weekOf([1, 2, 3]) } }));
-
-    fireEvent.click(screen.getByTestId('day-clear-2'));
-
-    const body = await lastPatch();
-    expect((body.availability as { dayOfWeek: number }[]).map((i) => i.dayOfWeek)).toEqual([1, 3]);
-    expect(screen.getByTestId('day-row-2')).toHaveAttribute('data-available', 'false');
-  });
-
-  it('keeps an unavailable day visible so it can be brought back', () => {
-    renderScreen();
-    // A day that vanishes when cleared leaves nowhere to tap.
-    expect(screen.getByTestId('day-row-5')).toBeInTheDocument();
-    expect(screen.getByTestId('day-set-5')).toBeInTheDocument();
-  });
-
-  it('brings a day back with the hours currently in the bulk controls', async () => {
-    renderScreen();
-    selectTime('bulk-start', 600);
-    selectTime('bulk-end', 780);
-    fireEvent.click(screen.getByTestId('day-set-6'));
-
-    const body = await lastPatch();
-    expect(body.availability).toEqual([{ dayOfWeek: 6, startMinute: 600, endMinute: 780 }]);
-  });
-});
-
-describe('editing one day after a bulk apply', () => {
-  it('changes only that day', async () => {
-    renderScreen(DRAFT({ data: { availability: weekOf([1, 2, 3]) } }));
-
-    fireEvent.click(screen.getByTestId('day-edit-2'));
-    selectTime('day-2-start-0', 600);
-
-    const body = await lastPatch();
-    expect(body.availability).toEqual([
-      { dayOfWeek: 1, startMinute: 540, endMinute: 1020 },
-      { dayOfWeek: 2, startMinute: 600, endMinute: 1020 },
-      { dayOfWeek: 3, startMinute: 540, endMinute: 1020 },
-    ]);
-  });
-
-  it('adds a second period to one day, since the API supports several', async () => {
-    renderScreen(DRAFT({ data: { availability: [interval(1, 540, 720)] } }));
-
-    fireEvent.click(screen.getByTestId('day-edit-1'));
-    selectTime('bulk-start', 780);
-    selectTime('bulk-end', 1020);
-    fireEvent.click(screen.getByTestId('day-add-1'));
-
-    const body = await lastPatch();
-    expect(body.availability).toEqual([
-      { dayOfWeek: 1, startMinute: 540, endMinute: 720 },
-      { dayOfWeek: 1, startMinute: 780, endMinute: 1020 },
-    ]);
-  });
-
-  it('removes one period and leaves the other', async () => {
-    renderScreen(
-      DRAFT({ data: { availability: [interval(1, 540, 720), interval(1, 780, 1020)] } }),
-    );
-
-    fireEvent.click(screen.getByTestId('day-edit-1'));
-    fireEvent.click(screen.getByTestId('day-1-remove-0'));
-
-    const body = await lastPatch();
-    expect(body.availability).toEqual([{ dayOfWeek: 1, startMinute: 780, endMinute: 1020 }]);
-  });
-
-  it('survives a later bulk apply that does not include it', async () => {
-    // "Bulk apply, then fix Wednesday" is worthless if the next bulk apply
-    // silently clobbers Wednesday.
-    renderScreen(DRAFT({ data: { availability: [interval(3, 600, 780)] } }));
-
-    fireEvent.click(screen.getByTestId('day-toggle-1'));
-    fireEvent.click(screen.getByTestId('apply-to-selected'));
-
-    const body = await lastPatch();
-    expect(body.availability).toEqual([
-      { dayOfWeek: 1, startMinute: 540, endMinute: 1020 },
-      { dayOfWeek: 3, startMinute: 600, endMinute: 780 },
-    ]);
-  });
-});
-
-describe('states the API cannot persist are unreachable', () => {
-  it('offers no end time at or before the start', () => {
-    renderScreen();
-    selectTime('bulk-start', 600);
-
-    const options = [...screen.getByTestId('bulk-end').querySelectorAll('option')].map((o) =>
-      Number(o.value),
-    );
-    expect(options.every((m) => m > 600)).toBe(true);
-  });
-
-  it('moves the end along when the start passes it, rather than inverting', () => {
-    renderScreen();
-    selectTime('bulk-start', 1200); // past the default 17:00 end
-    const end = screen.getByTestId('bulk-end') as HTMLSelectElement;
-    expect(Number(end.value)).toBeGreaterThan(1200);
-  });
-
-  it('offers midnight as an end, which a clock input cannot express', () => {
-    renderScreen();
-    selectTime('bulk-start', 1080);
-    const options = [...screen.getByTestId('bulk-end').querySelectorAll('option')].map((o) =>
-      Number(o.value),
-    );
-    expect(options).toContain(1440);
-  });
-
-  it('refuses an overlapping second period and says how to fix it', async () => {
-    renderScreen(DRAFT({ data: { availability: [interval(1, 540, 1020)] } }));
-
-    fireEvent.click(screen.getByTestId('day-edit-1'));
-    selectTime('bulk-start', 600);
-    selectTime('bulk-end', 1200);
-    fireEvent.click(screen.getByTestId('day-add-1'));
-
-    expect(screen.getByTestId('availability-rejected')).toHaveTextContent(EN.rejectedOverlap);
-    // And nothing was sent — the refusal is not a save.
-    expect(mock.history.patch).toHaveLength(0);
-  });
-
-  it('refuses an exact duplicate', async () => {
-    renderScreen(DRAFT({ data: { availability: [interval(1, 540, 1020)] } }));
-    fireEvent.click(screen.getByTestId('day-edit-1'));
-    fireEvent.click(screen.getByTestId('day-add-1'));
-
-    expect(screen.getByTestId('availability-rejected')).toHaveTextContent(EN.rejectedDuplicate);
-  });
-
-  it('uses no text input, so no keyboard can cover the last row', () => {
-    const { container } = renderScreen(DRAFT({ data: { availability: weekOf([0, 1, 2, 3, 4]) } }));
-    expect(container.querySelectorAll('input[type="text"], input[type="time"]')).toHaveLength(0);
-  });
-
-  it('leaves room under the last day row', () => {
-    renderScreen();
-    expect(screen.getByTestId('availability-bottom-spacer')).toBeInTheDocument();
-  });
-});
-
-describe('the time zone', () => {
-  it('states a resolved zone as a city and an offset, never an identifier', () => {
-    renderScreen();
-    const line = screen.getByTestId('timezone-resolved');
-    expect(line).toHaveTextContent('Damascus time (UTC+3)');
-    expect(line.textContent).not.toContain('Asia/');
-    expect(screen.queryByTestId('timezone-select')).not.toBeInTheDocument();
-  });
-
-  it('asks only where the country genuinely spans several zones', () => {
-    renderScreen(
-      DRAFT({
-        data: {
-          timezone: null,
-          resolvedTimezone: { resolved: null, display: null, needsConfirmation: true },
-        },
-      }),
-    );
-    expect(screen.getByTestId('timezone-select')).toBeInTheDocument();
-    expect(screen.queryByTestId('timezone-resolved')).not.toBeInTheDocument();
-  });
-
-  it('will not save hours until an ambiguous zone is chosen', () => {
-    renderScreen(
-      DRAFT({
-        data: {
-          timezone: null,
-          resolvedTimezone: { resolved: null, display: null, needsConfirmation: true },
-        },
-      }),
-    );
-    fireEvent.click(screen.getByTestId('preset-sun-thu'));
-    expect(screen.getByTestId('apply-to-selected')).toBeDisabled();
-    expect(screen.getByTestId('timezone-required')).toBeInTheDocument();
-  });
-
-  it('re-stamps the existing week when the zone changes', async () => {
-    // Leaving old hours on the old zone silently splits one schedule across
-    // two, which nothing downstream expects.
-    renderScreen(
-      DRAFT({
-        data: {
-          availability: weekOf([1]),
-          timezone: null,
-          resolvedTimezone: { resolved: null, display: null, needsConfirmation: true },
-        },
-      }),
-    );
-
-    fireEvent.change(screen.getByTestId('timezone-select'), {
-      target: { value: 'Europe/Stockholm' },
-    });
-
-    const body = await lastPatch();
-    expect({ timezone: body.timezone, count: (body.availability as unknown[]).length }).toEqual({
-      timezone: 'Europe/Stockholm',
-      count: 1,
-    });
-  });
-});
-
-describe('the summary', () => {
-  it('is the schedule the server holds, after a reload', () => {
-    // The acceptance criterion: persisted schedule equals the visible summary.
-    renderScreen(DRAFT({ data: { availability: weekOf([0, 1, 2, 3, 4]) } }));
-
-    for (const day of [0, 1, 2, 3, 4]) {
-      expect(screen.getByTestId(`day-summary-${day}`)).toHaveTextContent('09:00–17:00');
-    }
-    for (const day of [5, 6]) {
-      expect(screen.getByTestId(`day-summary-${day}`)).toHaveTextContent(EN.unavailable);
-    }
-  });
-
-  it('counts days worked and hours, not windows', () => {
-    renderScreen(
-      DRAFT({ data: { availability: [interval(1, 540, 720), interval(1, 780, 1020)] } }),
-    );
-    // One day, three hours plus four = seven.
-    expect(screen.getByTestId('week-totals')).toHaveTextContent('1 day · 7 hours');
-  });
-
-  it('shows a half hour exactly rather than rounding it away', () => {
-    renderScreen(DRAFT({ data: { availability: [interval(1, 540, 570)] } }));
-    expect(screen.getByTestId('week-totals')).toHaveTextContent('0.5 hours');
-  });
-
-  it('renders windows in order however the API returned them', () => {
-    renderScreen(
-      DRAFT({ data: { availability: [interval(1, 780, 1020), interval(1, 540, 720)] } }),
-    );
-    expect(screen.getByTestId('day-summary-1')).toHaveTextContent('09:00–12:00, 13:00–17:00');
-  });
-
-  it('preserves an off-grid legacy value rather than snapping it', () => {
-    // A row saved through the V1 wizard's free time input.
-    renderScreen(DRAFT({ data: { availability: [interval(1, 545, 1020)] } }));
-    expect(screen.getByTestId('day-summary-1')).toHaveTextContent('09:05–17:00');
-  });
-});
-
 describe('a locked application', () => {
-  it('disables every control rather than hiding the schedule', () => {
-    renderScreen(DRAFT({ data: { availability: weekOf([1]) } }), 'en', false);
-    expect(screen.getByTestId('day-toggle-1')).toBeDisabled();
+  it('disables every control', () => {
+    renderScreen(DRAFT(), 'en', false);
+
+    expect(screen.getByTestId('day-toggle-0')).toBeDisabled();
+    expect(screen.getByTestId('bulk-start')).toBeDisabled();
     expect(screen.getByTestId('apply-to-selected')).toBeDisabled();
-    expect(screen.getByTestId('day-clear-1')).toBeDisabled();
-    expect(screen.getByTestId('day-summary-1')).toHaveTextContent('09:00–17:00');
+    expect(screen.getByTestId('mark-unavailable').querySelector('input')).toBeDisabled();
   });
 });
 
 describe('Arabic', () => {
-  it('renders the schedule and the presets in Arabic', () => {
-    renderScreen(DRAFT({ data: { availability: weekOf([0]) } }), 'ar');
-    expect(screen.getByTestId('preset-sun-thu')).toHaveTextContent(
-      AVAILABILITY_COPY.ar.presetSunThu,
-    );
-    expect(screen.getByTestId('day-summary-6')).toHaveTextContent(AVAILABILITY_COPY.ar.unavailable);
+  it('renders the approved Arabic copy', () => {
+    renderScreen(DRAFT(), 'ar');
+
+    expect(screen.getByText(AVAILABILITY_COPY.ar.question)).toBeInTheDocument();
+    expect(screen.getByText(AVAILABILITY_COPY.ar.unavailableLabel)).toBeInTheDocument();
+    expect(screen.queryByText(EN.question)).toBeNull();
   });
 
-  it('keeps the times in Latin digits so they match the stored values', () => {
-    // The column is minutes; a localised numeral in the summary would not
-    // match what the provider sees anywhere else in the app.
-    renderScreen(DRAFT({ data: { availability: weekOf([0]) } }), 'ar');
-    expect(screen.getByTestId('day-summary-0')).toHaveTextContent('09:00–17:00');
+  it('names each two-letter toggle in full, for a screen reader', () => {
+    renderScreen(DRAFT(), 'ar');
+    // "ح" alone is not a day name. The accessible name carries the whole word
+    // in the reader's own language.
+    expect(screen.getByTestId('day-toggle-0')).toHaveAttribute('aria-label', 'الأحد');
   });
 });
+
+// Sprint 09B.29 Phase 5A — the status line moved into the approved sticky bar,
+// which this component does not own. It is still driven by the same step of the
+// same coordinator, so the harness mounts it the way the task route does; every
+// assertion below is about the COORDINATOR's behaviour, and that is unchanged.
+function SaveStatusProbe({ lang }: { lang: 'en' | 'ar' }) {
+  const { status } = useOnboardingStepAutosave('AVAILABILITY');
+  return <AutosaveStatus status={status} lang={lang} testIdPrefix="availability" />;
+}
+
+/** Tap days and apply — the write this screen makes. */
+function applyDays(days: readonly number[]) {
+  for (const day of days) fireEvent.click(screen.getByTestId(`day-toggle-${day}`));
+  fireEvent.click(screen.getByTestId('apply-to-selected'));
+}
 
 describe('saving, and saying so truthfully', () => {
   it('reports a save while it is in flight, then reports it saved', async () => {
     renderScreen();
-    fireEvent.click(screen.getByTestId('preset-sun-thu'));
-    fireEvent.click(screen.getByTestId('apply-to-selected'));
+    applyDays([0, 1, 2, 3, 4]);
 
     await waitFor(() =>
       expect(screen.getByTestId('availability-save-status')).toHaveAttribute(
@@ -466,17 +330,12 @@ describe('saving, and saying so truthfully', () => {
   });
 
   it('surfaces a CONCURRENCY conflict as a conflict, not as a generic error', async () => {
-    // Two tabs, or a phone and a laptop. The provider has to be told the
-    // server holds something else, not that the network hiccuped.
-    mock.onPatch(PATCH).reply(409, {
-      code: 'CONFLICT',
-      message: 'stale',
-      details: { currentVersion: 9 },
-    });
-
+    // Another tab won. Telling the provider to "try again" would invite them
+    // to overwrite a week they have not seen.
+    mock.reset();
+    mock.onPatch(PATCH).reply(409, { error: { details: { expectedVersion: 9 } } });
     renderScreen();
-    fireEvent.click(screen.getByTestId('preset-mon-fri'));
-    fireEvent.click(screen.getByTestId('apply-to-selected'));
+    applyDays([1, 2, 3, 4, 5]);
 
     await waitFor(() =>
       expect(screen.getByTestId('availability-save-status')).toHaveAttribute(
@@ -490,10 +349,10 @@ describe('saving, and saying so truthfully', () => {
   });
 
   it('offers a retry when the save simply failed', async () => {
+    mock.reset();
     mock.onPatch(PATCH).reply(500);
     renderScreen();
-    fireEvent.click(screen.getByTestId('preset-mon-fri'));
-    fireEvent.click(screen.getByTestId('apply-to-selected'));
+    applyDays([1, 2, 3, 4, 5]);
 
     await waitFor(() =>
       expect(screen.getByTestId('availability-save-status')).toHaveAttribute(
@@ -505,13 +364,15 @@ describe('saving, and saying so truthfully', () => {
   });
 
   it('re-renders from the SERVER copy when the draft changes underneath it', () => {
-    // The conflict resolution path: the query refetches, the view changes,
-    // and the editor must show what the server holds rather than merging it
-    // into whatever was on screen.
+    // The conflict resolution path: the query refetches, the view changes, and
+    // the editor must show what the server holds rather than merging it into
+    // whatever was on screen. The toggles are the schedule now, so they are
+    // what has to change.
     const { rerender } = renderScreen(DRAFT({ data: { availability: weekOf([1]) } }));
-    expect(screen.getByTestId('day-summary-1')).toHaveTextContent('09:00–17:00');
+    expect(screen.getByTestId('day-toggle-1')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('day-toggle-4')).toHaveAttribute('aria-pressed', 'false');
 
-    const server = DRAFT({ version: 9, data: { availability: [interval(1, 600, 780)] } });
+    const server = DRAFT({ version: 9, data: { availability: [interval(4, 600, 780)] } });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(providerQueryKeys.onboarding.draft(), server);
     rerender(
@@ -520,19 +381,21 @@ describe('saving, and saying so truthfully', () => {
           <LanguageProvider>
             <ProviderOnboardingAutosaveProvider>
               <AvailabilityTaskScreen view={server as never} lang="en" editable />
+              <SaveStatusProbe lang="en" />
             </ProviderOnboardingAutosaveProvider>
           </LanguageProvider>
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    expect(screen.getByTestId('day-summary-1')).toHaveTextContent('10:00–13:00');
+    expect(screen.getByTestId('day-toggle-4')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('day-toggle-1')).toHaveAttribute('aria-pressed', 'false');
   });
 });
 
 describe('an edit made while a save is still in flight', () => {
   it('is not dropped', async () => {
-    // The shape a provider hits constantly: bulk apply, then immediately fix
-    // one day while the first request is still on the wire.
+    // The shape a provider hits constantly: apply a week, then immediately
+    // change it again while the first request is still on the wire.
     let release: (() => void) | null = null;
     mock.onPatch(PATCH).reply(
       () =>
@@ -543,11 +406,14 @@ describe('an edit made while a save is still in flight', () => {
 
     renderScreen(DRAFT({ data: { availability: weekOf([1, 2, 3]) } }));
 
-    fireEvent.click(screen.getByTestId('day-clear-3'));
+    // Drop Wednesday.
+    fireEvent.click(screen.getByTestId('day-toggle-3'));
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
     await waitFor(() => expect(mock.history.patch.length).toBe(1));
 
-    // Second edit, while the first is unresolved.
-    fireEvent.click(screen.getByTestId('day-clear-2'));
+    // Second edit, while the first is unresolved: drop Tuesday too.
+    fireEvent.click(screen.getByTestId('day-toggle-2'));
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
     release?.();
 
     await waitFor(() => expect(mock.history.patch.length).toBe(2), { timeout: 3000 });

@@ -55,6 +55,22 @@ const REAL_API_RUN = Boolean(process.env.E2E_REAL_API);
 // Run it where its baselines are valid:  E2E_VISUAL_REFERENCE=1 pnpm exec playwright test
 const VISUAL_REFERENCE_RUN = Boolean(process.env.E2E_VISUAL_REFERENCE);
 
+// Sprint 09B.29 Phase 5A — the eighteen-state visual migration gate.
+//
+// Opt-in for the SAME reason as VISUAL_REFERENCE_RUN above, plus one more: it
+// writes evidence into `test-results/phase5-visual/`, which the ledger then
+// reads to decide what each task screen is credited with. A gate that wrote
+// its own evidence on every unrelated CI run would keep resurrecting stale
+// artifacts from a build nobody was measuring.
+//
+// It is also single-project by construction — the canonical comparison is only
+// geometrically valid at 390x844 — so running it in the three-viewport matrix
+// would produce two-thirds duplicate work and three writers racing for one
+// artifact path.
+//
+// Run:  E2E_PHASE5=1 E2E_PREBUILT=1 pnpm exec playwright test phase5- --project=chromium-desktop
+const PHASE5_RUN = Boolean(process.env.E2E_PHASE5);
+
 // The three viewports the acceptance criteria name. Declared once so a
 // scenario cannot silently run at only one size.
 export const VIEWPORTS = {
@@ -65,6 +81,9 @@ export const VIEWPORTS = {
 
 export default defineConfig({
   testDir: './e2e',
+  // Stamps one Phase 5 run id in the parent process, before any worker is
+  // forked. Harmless for every other run.
+  globalSetup: './e2e/phase5-run-id.ts',
   // The two real-API suites are excluded from the default run. They need a
   // booted API, Postgres, Redis and a mail catcher, none of which the
   // stub-everything browser job has — and a spec that silently skips is worse
@@ -76,6 +95,14 @@ export default defineConfig({
   testIgnore: [
     // Platform-specific baselines; see VISUAL_REFERENCE_RUN above.
     ...(VISUAL_REFERENCE_RUN ? [] : ['**/prototype-reference.spec.ts']),
+    // Evidence-writing visual gate; see PHASE5_RUN above.
+    ...(PHASE5_RUN
+      ? []
+      : [
+          '**/phase5-reference.spec.ts',
+          '**/phase5-visual.spec.ts',
+          '**/phase5-responsive.spec.ts',
+        ]),
     ...(REAL_API_RUN
       ? []
       : [
@@ -138,6 +165,16 @@ export default defineConfig({
   // opt-in (see VISUAL_REFERENCE_RUN). Committing per-platform baselines would
   // restore it as a CI gate and is the recorded follow-up.
   snapshotPathTemplate: '{testDir}/__screenshots__/{arg}{ext}',
+  // Playwright's own per-test artifacts (traces, videos, failure shots) get
+  // their own subdirectory.
+  //
+  // The default is `test-results/` itself, which Playwright CLEANS at the start
+  // of a run — and `test-results/phase5-visual/` is where the Phase 5 evidence
+  // ledger reads its artifacts from. That path is fixed by the ledger and is
+  // not ours to move, so the runner's scratch space moves instead. Without
+  // this, a run that happened to be filtered could delete the evidence of the
+  // states it was not running.
+  outputDir: 'test-results/playwright',
   // Deterministic: no test may depend on another's leftovers, and a flake
   // must fail rather than be retried into a pass locally.
   fullyParallel: true,

@@ -1,19 +1,23 @@
-import { AutosaveStatus } from './AutosaveStatus';
-import { mergeAutosaveStatus } from '../autosave-status';
+import { Clock, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type {
   ProviderOnboardingDraftView,
-  ProviderSpecialtyState,
-  ProviderSpecialtyView,
   ProviderTransportModeCode,
 } from '@homeservicemarketplace/contracts';
 
-import { validateProfessionalTitle } from '../../../../lib/provider/title-format';
-import { useEquipmentCatalog, useServiceCategories } from '../../../../lib/use-service-categories';
+import { useServiceCategories } from '../../../../lib/use-service-categories';
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
 import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
-import { SpecialtyPicker } from '../services/SpecialtyPicker';
-import { SERVICES_COPY, STATE_TONE, type Lang } from '../copy/services-copy';
+import { SERVICES_COPY, type Lang } from '../copy/services-copy';
+import { OnboardingAlert } from './OnboardingAlert';
+import {
+  ProviderCard,
+  ProviderChoiceToggle,
+  ProviderSkeleton,
+  ProviderStepper,
+  ProviderErrorState,
+  ProviderTextInput,
+} from '../../provider-ui';
 
 // Sprint 9B.18 — V2 Task 2: services, experience, equipment, transport, title.
 //
@@ -31,19 +35,27 @@ import { SERVICES_COPY, STATE_TONE, type Lang } from '../copy/services-copy';
 // derive "pending" from an id's absence anywhere, which is how the old screen
 // reported a retired category as a rejection.
 
-const TRANSPORT_MODES: ProviderTransportModeCode[] = [
-  'ON_FOOT',
-  'MOTORCYCLE',
+/**
+ * The four transport modes the approved screen offers, in its order.
+ *
+ * The product supports six; VAN and TRUCK are not on this screen. That is a
+ * DISPLAY decision and it is not allowed to destroy data: `toggleMode` below
+ * preserves any stored mode outside this list, so a provider who recorded a van
+ * on an earlier surface still has it after editing this one. Recorded for
+ * Phase 5B — the approved screen and the supported set disagree, and the
+ * backend is not being changed to settle it here.
+ */
+const APPROVED_TRANSPORT: ProviderTransportModeCode[] = [
   'CAR',
-  'VAN',
-  'TRUCK',
+  'MOTORCYCLE',
+  'ON_FOOT',
   'PUBLIC_TRANSPORT',
 ];
 
 const TRANSPORT_LABELS: Record<Lang, Record<ProviderTransportModeCode, string>> = {
   en: {
     ON_FOOT: 'On foot',
-    MOTORCYCLE: 'Motorcycle',
+    MOTORCYCLE: 'Motorbike',
     CAR: 'Car',
     VAN: 'Van',
     TRUCK: 'Truck',
@@ -59,90 +71,183 @@ const TRANSPORT_LABELS: Record<Lang, Record<ProviderTransportModeCode, string>> 
   },
 };
 
-const MIN_START_YEAR = 1950;
-/** The order states are shown in. Approved first because it is the good news
- *  and the largest group; rejected and inactive last because they are the two
- *  the provider may want to act on and should not be buried mid-list. */
-const STATE_ORDER: ProviderSpecialtyState[] = ['APPROVED', 'PENDING', 'REJECTED', 'INACTIVE'];
+/** A working lifetime. The old floor was a start year of 1950, which is the
+ *  same bound expressed from the other end. */
+const MAX_YEARS = 75;
+
+// Sprint 09B.29 Phase 5 — migrated to Provider UI against the approved
+// prototype screens `services` (task 2 of 6, part 1) and `experience`
+// (part 2). One route, two sections, exactly as the registry describes them.
+//
+// WHAT THE APPROVED DESIGN CHANGED HERE
+//
+//   years           a -/+ stepper, not a free numeric field. The prototype
+//                   says why in its own help text: it avoids typing errors.
+//                   The STORED fact is unchanged — still `professionSince`, a
+//                   date, so a provider's experience does not silently stop
+//                   ageing. The stepper moves years; the screen converts.
+//   the title       a display-only panel. Ruling C1 makes the generated title
+//                   server-owned and explanatory here; the accept/edit/refuse
+//                   controls are gone, and the panel says it can be changed
+//                   later, on the surface that owns it.
+//   equipment       absent from the approved screen. It is optional data the
+//                   completeness policy never asks for, so removing the
+//                   control dead-ends nothing; stored values are untouched.
+//                   FLAGGED for product-owner confirmation: no ruling names
+//                   equipment, the prototype simply does not show it.
+//   moderation      reads as PLATFORM work. "Your selections complete this
+//                   task now. Approval stays separate and will not block
+//                   submission." — not as an incomplete provider task.
+//
+// Autosave, step ownership, the version handshake and the server's authority
+// over the primary specialty are untouched by the migration.
+
+/** Which of the task's two approved screens is showing. */
+export type ServicesPart = 'services' | 'experience';
 
 interface ServicesTaskScreenProps {
   view: ProviderOnboardingDraftView;
   lang: Lang;
   editable: boolean;
+  part: ServicesPart;
 }
 
-export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenProps) {
+export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskScreenProps) {
   const copy = SERVICES_COPY[lang];
 
   const specialtiesAutosave = useOnboardingStepAutosave('SPECIALTIES');
   const experienceAutosave = useOnboardingStepAutosave('EXPERIENCE');
-  // Sprint 9B.25 — two autosaves, one status line, and until now no line at
-  // all. The merge puts the most consequential state forward, so "Saved" from
-  // one step cannot mask a conflict on the other.
-  const autosaveStatus = mergeAutosaveStatus(specialtiesAutosave.status, experienceAutosave.status);
+  // Sprint 09B.29 Phase 5A — the status line moved into the approved sticky
+  // bar, which reports the STEP the screen on display writes: SPECIALTIES on
+  // screen 4, EXPERIENCE on screen 5. That is more precise than the merge it
+  // replaces, which could show a conflict from the half the provider was not
+  // looking at.
 
   const catalogue = useServiceCategories();
-  const equipment = useEquipmentCatalog();
 
   const data = view.data;
+  /**
+   * The generated professional title, shown and explained — never edited here.
+   *
+   * Ruling C1 makes this server-owned: it is derived from the primary service
+   * and persisted into `headline` only while that field is blank. The approved
+   * screen presents it as a panel that says it can be changed later, on the
+   * surface that owns it, so this screen has no accept / edit / refuse
+   * controls and no local draft of it to drift out of date.
+   */
+  // The server sends BOTH languages; the screen shows the one the provider is
+  // reading. It is never re-translated afterwards — C1 persists the language
+  // they actually saw.
+  const suggestedTitle = data.suggestedTitle?.[lang] ?? data.headline ?? null;
+
   // Memoised because `?? []` allocates a fresh array on every render, which
   // would make it a new dependency each time and defeat both memos below.
   const specialties = useMemo(() => data.specialties ?? [], [data.specialties]);
   const chosenIds = useMemo(() => specialties.map((s) => s.categoryId), [specialties]);
 
-  const [startYear, setStartYear] = useState(
-    data.professionSince ? String(new Date(data.professionSince).getUTCFullYear()) : '',
-  );
-  const [titleDraft, setTitleDraft] = useState(data.headline ?? '');
-  const [editingTitle, setEditingTitle] = useState(false);
-
   // ── Specialties ──────────────────────────────────────────────────────────
 
+  /**
+   * The OPERATOR-configured ceiling, still enforced.
+   *
+   * The approved screen shows no counter — the old "0 of 5 chosen" line is not
+   * in the design — but the limit itself is a server setting and dropping it
+   * with the counter would let the screen offer a selection the save is about
+   * to refuse. Removal is always allowed, including at the limit, because the
+   * way out of a full list must never be closed.
+   */
+  const atLimit = chosenIds.length >= data.maxSpecialties;
+
   const toggleSpecialty = (categoryId: string) => {
-    const next = chosenIds.includes(categoryId)
-      ? chosenIds.filter((id) => id !== categoryId)
-      : [...chosenIds, categoryId];
+    const chosen = chosenIds.includes(categoryId);
+    if (!chosen && atLimit) return;
+    const next = chosen ? chosenIds.filter((id) => id !== categoryId) : [...chosenIds, categoryId];
     specialtiesAutosave.save({ specialtyLeafIds: next });
   };
 
-  const setPrimary = (categoryId: string) => {
-    specialtiesAutosave.save({ primarySpecialtyId: categoryId });
+  /** The search box on the approved screen, filtering the flat leaf list. */
+  const [query, setQuery] = useState('');
+
+  /**
+   * The selectable leaves, filtered by the search box.
+   *
+   * `isLeaf` is READ from the catalogue, never inferred from "has no
+   * children": a parent whose last child was retired must not silently become
+   * selectable. Same rule the server enforces, and the reason the approved
+   * flat list is safe to draw from the catalogue directly.
+   */
+  const visibleLeaves = useMemo(() => {
+    const all = (catalogue.data ?? [])
+      .filter((c) => c.isLeaf)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((c) => ({ id: c.id, labelEn: c.labelEn, labelAr: c.labelAr }));
+
+    // A specialty the provider HOLDS but the catalogue no longer lists —
+    // retired, or withdrawn while they were mid-application — is appended from
+    // the draft rather than dropped. The contract serves its labels with the
+    // state for exactly this reason: without it a retired specialty either
+    // renders as a bare id or, worse, silently disappears from a screen the
+    // provider is being asked to confirm.
+    const known = new Set(all.map((c) => c.id));
+    const orphans = specialties
+      .filter((sp) => !known.has(sp.categoryId))
+      .map((sp) => ({ id: sp.categoryId, labelEn: sp.labelEn, labelAr: sp.labelAr }));
+
+    const q = query.trim().toLowerCase();
+    const rows = [...all, ...orphans];
+    if (q === '') return rows;
+    return rows.filter(
+      (c) => c.labelEn.toLowerCase().includes(q) || c.labelAr.toLowerCase().includes(q),
+    );
+  }, [catalogue.data, query, specialties]);
+
+  /**
+   * The trailing note on a choice row.
+   *
+   * "Primary" for the nominated service, as the reference has it — and the
+   * MODERATION STATE for anything an admin has not approved. The approved
+   * screen has no per-state section list, so this row-level note is where a
+   * refused or retired specialty still says so. Silence there would be the one
+   * outcome a provider cannot act on.
+   */
+  const metaFor = (categoryId: string): string | undefined => {
+    if (categoryId === data.primarySpecialtyId) return copy.primaryBadge;
+    const state = specialties.find((s) => s.categoryId === categoryId)?.state;
+    if (!state || state === 'APPROVED' || state === 'PENDING') return undefined;
+    return copy.stateHeading[state];
   };
 
-  const grouped = useMemo(() => {
-    const byState = new Map<ProviderSpecialtyState, ProviderSpecialtyView[]>();
-    for (const s of specialties) {
-      const list = byState.get(s.state) ?? [];
-      list.push(s);
-      byState.set(s.state, list);
-    }
-    return STATE_ORDER.filter((state) => (byState.get(state)?.length ?? 0) > 0).map((state) => ({
-      state,
-      items: byState.get(state) ?? [],
-    }));
-  }, [specialties]);
+  // The per-state grouping that fed the four labelled sections is gone with
+  // them. The state a specialty is in now travels on its own row (`metaFor`),
+  // so nothing it carried was lost — only the bucketing it needed.
 
   // ── Experience ───────────────────────────────────────────────────────────
 
   const thisYear = new Date().getUTCFullYear();
-  const yearNumber = Number.parseInt(startYear, 10);
-  const yearValid =
-    startYear === '' ||
-    (Number.isFinite(yearNumber) && yearNumber >= MIN_START_YEAR && yearNumber <= thisYear);
-  const derivedYears = yearValid && startYear !== '' ? thisYear - yearNumber : null;
 
-  const commitStartYear = (next: string = startYear) => {
-    // Validity is recomputed from the value being committed, not read from the
-    // render closure: on a keystroke the closure still describes the previous
-    // character, so a half-typed "20" would be judged by "2"'s verdict.
-    const n = Number(next);
-    const valid = next === '' || (Number.isInteger(n) && n >= MIN_START_YEAR && n <= thisYear);
-    if (!valid) return;
-    // Stored as a DATE, not a bucket. The server derives years from it so the
-    // stored fact does not silently age — which is the whole reason the schema
-    // carries professionSince alongside the count.
+  /**
+   * Years on screen, a DATE in the database.
+   *
+   * The approved control is a stepper over years, and the stored fact stays
+   * `professionSince` — a date — so a provider who entered 14 years today
+   * reads 15 next year instead of being frozen at the number they typed. The
+   * conversion is presentation arithmetic, not policy: the server still owns
+   * what the date means.
+   */
+  const storedYears = (() => {
+    const since = data.professionSince;
+    if (!since) return null;
+    const started = new Date(since).getUTCFullYear();
+    if (!Number.isFinite(started)) return null;
+    return Math.min(MAX_YEARS, Math.max(0, thisYear - started));
+  })();
+
+  const [years, setYears] = useState(storedYears ?? 0);
+
+  const commitYears = (next: number) => {
+    setYears(next);
     experienceAutosave.save({
-      professionSince: next === '' ? null : `${next}-01-01T00:00:00.000Z`,
+      professionSince: `${thisYear - next}-01-01T00:00:00.000Z`,
     });
   };
 
@@ -151,407 +256,194 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
   const selectedModes = data.transportModes ?? [];
   const primaryMode = data.transportMode ?? null;
 
+  /**
+   * The range the primary mode currently grants, or nothing.
+   *
+   * `allowedMaxKm` is the ceiling IN FORCE, not `radiusPolicy.maxKm` which is
+   * the one an expansion could unlock — the work-area reward card explains the
+   * difference, and promising the higher number here would contradict it.
+   *
+   * Both are optional on a partial draft, and an absent radius means the note
+   * is simply not drawn. Reading through them unguarded threw on any response
+   * that had not resolved a policy yet, which took the whole screen down.
+   */
+  const rangeKm = data.serviceAreaExpansion?.allowedMaxKm ?? data.radiusPolicy?.suggestedKm ?? null;
+  const primaryRange = rangeKm === null ? undefined : copy.transportRange(rangeKm);
+
   const toggleMode = (mode: ProviderTransportModeCode) => {
     const next = selectedModes.includes(mode)
       ? selectedModes.filter((m) => m !== mode)
       : [...selectedModes, mode];
+    // A mode the approved screen does not show is still the provider's answer.
+    // Toggling Car must not silently drop a stored VAN, so anything outside
+    // the four on screen is carried through untouched.
+    const preserved = selectedModes.filter((m) => !APPROVED_TRANSPORT.includes(m));
+    const merged = [...new Set([...next, ...preserved])];
     // The primary is NOT sent. The server keeps it consistent with the set —
     // re-pointing it when the set no longer contains it — so the client never
     // has to decide, and two clients cannot decide differently.
-    experienceAutosave.save({ transportModes: next });
+    experienceAutosave.save({ transportModes: merged });
   };
 
-  // ── Equipment ────────────────────────────────────────────────────────────
-
-  const equipmentItems = equipment.data ?? [];
-  const selectedEquipment = data.equipmentCodes ?? [];
-  const toggleEquipment = (code: string) => {
-    const next = selectedEquipment.includes(code)
-      ? selectedEquipment.filter((c) => c !== code)
-      : [...selectedEquipment, code];
-    experienceAutosave.save({ equipmentCodes: next });
-  };
-
-  // ── Title ────────────────────────────────────────────────────────────────
-
-  const suggestion = data.suggestedTitle ? data.suggestedTitle[lang] : null;
-  const titleVerdict = titleDraft.trim() === '' ? null : validateProfessionalTitle(titleDraft);
-  const titleError = titleVerdict && !titleVerdict.ok ? copy.titleRefusal[titleVerdict.code] : null;
-
-  return (
-    <div className="flex flex-col gap-6" data-testid="services-task">
-      {/* Sprint 9B.25 — this screen autosaved SILENTLY across BOTH its steps. */}
-      <AutosaveStatus status={autosaveStatus} lang={lang} testIdPrefix="services" />
-
-      {/* ── What do you do? ─────────────────────────────────────────────── */}
-      <section aria-labelledby="services-picker-heading">
-        <h2
-          id="services-picker-heading"
-          className="mb-2 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
-          {copy.heading}
-        </h2>
-        {catalogue.data ? (
-          <SpecialtyPicker
-            categories={catalogue.data}
-            chosen={chosenIds}
-            maxSpecialties={data.maxSpecialties ?? 5}
-            lang={lang}
-            disabled={!editable}
-            onToggle={toggleSpecialty}
-          />
-        ) : (
-          <div role="status" aria-live="polite" data-testid="catalogue-loading">
-            <span className="sr-only">…</span>
-            <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
-          </div>
-        )}
-      </section>
-
-      {/* ── What happened to each? ──────────────────────────────────────── */}
-      {grouped.length > 0 ? (
-        <section aria-labelledby="services-state-heading" data-testid="specialty-states">
-          <h2 id="services-state-heading" className="sr-only">
-            {copy.stateHeading.APPROVED}
+  // ── Screen 4: the services picker ────────────────────────────────────────
+  if (part === 'services') {
+    return (
+      <div className="flex flex-col gap-[18px]" data-testid="services-task">
+        {/* `.hsm-kicker` + `.hsm-heading`, as one block with no gap between
+            them: the reference puts the eyebrow and the question in a bare
+            `<div>`, so only the column gap separates the pair from what
+            follows. */}
+        <div>
+          <p className="break-words text-pv-label font-bold leading-pv-base text-pv-accent-hover">
+            {copy.kicker}
+          </p>
+          <h2 className="break-words text-pv-hero font-bold leading-pv-heading text-pv-text">
+            {copy.question}
           </h2>
-          <div className="flex flex-col gap-4">
-            {grouped.map(({ state, items }) => (
-              <div key={state} data-testid={`specialty-state-${state}`}>
-                <h3
-                  className="break-words text-slate-900 dark:text-white"
-                  style={{ fontSize: '13px', fontWeight: 700 }}
-                >
-                  {copy.stateHeading[state]}
-                </h3>
-                {/* The explanation sits on the GROUP, once — not repeated as a
-                    badge inside every chip, which is what made the old screen
-                    unreadable and made "pending" read as an error. */}
-                <p
-                  className="mb-2 break-words text-slate-500 dark:text-slate-400"
-                  style={{ fontSize: '12px' }}
-                  data-testid={`specialty-state-explain-${state}`}
-                >
-                  {copy.stateExplain[state]}
-                </p>
-                <ul className="flex flex-col gap-2">
-                  {items.map((item) => (
-                    <li
-                      key={item.categoryId}
-                      data-testid={`specialty-row-${item.categoryId}`}
-                      data-state={item.state}
-                      data-tone={STATE_TONE[item.state]}
-                      className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-slate-200 p-2 dark:border-slate-700"
-                    >
-                      <span
-                        className="min-w-0 break-words text-slate-900 dark:text-white"
-                        style={{ fontSize: '14px' }}
-                      >
-                        {lang === 'ar' ? item.labelAr : item.labelEn}
-                      </span>
+        </div>
 
-                      {data.primarySpecialtyId === item.categoryId ? (
-                        <span
-                          data-testid={`primary-badge-${item.categoryId}`}
-                          className="rounded-full bg-blue-100 px-2 text-blue-800"
-                          style={{ fontSize: '11px', fontWeight: 700 }}
-                        >
-                          {copy.primaryBadge}
-                        </span>
-                      ) : (
-                        // Only a specialty the provider still holds can become
-                        // the main one. Offering it for a rejected or retired
-                        // row would suggest a trade they cannot work in.
-                        (item.state === 'APPROVED' || item.state === 'PENDING') && (
-                          <button
-                            type="button"
-                            disabled={!editable}
-                            onClick={() => setPrimary(item.categoryId)}
-                            data-testid={`make-primary-${item.categoryId}`}
-                            className="ms-auto rounded-lg px-2 text-blue-700 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                            style={{ fontSize: '12px', fontWeight: 600, minHeight: '44px' }}
-                          >
-                            {copy.makePrimary}
-                          </button>
-                        )
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+        {/* The search field, with the glyph INSIDE the control.
+            `.hsm-search` positions it 13px from the leading edge, 14px down,
+            and pads the input's leading side to 42px so the text never runs
+            under it. In RTL both flip, which `inset-inline-start` and
+            `ps-` do for free. */}
+        <div className="relative">
+          <ProviderTextInput
+            label={copy.searchLabel}
+            type="search"
+            className="ps-[42px]"
+            placeholder={copy.searchPlaceholder}
+            value={query}
+            disabled={!editable}
+            onChange={(event) => setQuery(event.target.value)}
+            data-testid="specialty-search"
+          />
+          <Search
+            size={16}
+            strokeWidth={1.8}
+            aria-hidden="true"
+            className="pointer-events-none absolute top-[42px] text-pv-muted"
+            style={{ insetInlineStart: 13 }}
+          />
+        </div>
+
+        {catalogue.isLoading ? (
+          <div data-testid="catalogue-loading">
+            <ProviderSkeleton rows={3} label={copy.question} />
+          </div>
+        ) : (
+          // `.hsm-choice-list`: an 8px column of multi-select rows.
+          <div className="grid gap-2" data-testid="specialty-choices">
+            {/* A search that matches nothing is a dead end without this, and
+                the approved reference never draws the state — it shows a
+                catalogue that always matches — so saying so cannot affect
+                parity and its absence would only ever be felt by someone
+                already stuck. */}
+            {visibleLeaves.length === 0 ? (
+              <p
+                className="break-words text-pv-help leading-pv-help text-pv-muted"
+                data-testid="specialty-no-results"
+              >
+                {copy.noResults} {copy.noResultsHint}
+              </p>
+            ) : null}
+            {visibleLeaves.map((leaf) => (
+              <ProviderChoiceToggle
+                key={leaf.id}
+                testId={`specialty-choice-${leaf.id}`}
+                checked={chosenIds.includes(leaf.id)}
+                onToggle={() => toggleSpecialty(leaf.id)}
+                // At the ceiling the unchosen rows are genuinely unavailable,
+                // and say so, rather than accepting a press that the save
+                // would refuse. The chosen ones stay live so the provider can
+                // always make room.
+                disabled={!editable || (atLimit && !chosenIds.includes(leaf.id))}
+                label={lang === 'ar' ? leaf.labelAr : leaf.labelEn}
+                meta={metaFor(leaf.id)}
+              />
             ))}
           </div>
-        </section>
-      ) : null}
-
-      {/* ── Experience ──────────────────────────────────────────────────── */}
-      <section aria-labelledby="services-experience-heading" className="min-w-0">
-        <h2
-          id="services-experience-heading"
-          className="mb-1 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
-          {copy.experienceLegend}
-        </h2>
-        <label
-          htmlFor="profession-start-year"
-          className="mb-1 block break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '14px', fontWeight: 600 }}
-        >
-          {copy.startYearLabel}
-        </label>
-        <input
-          id="profession-start-year"
-          data-testid="profession-start-year"
-          type="number"
-          inputMode="numeric"
-          min={MIN_START_YEAR}
-          max={thisYear}
-          value={startYear}
-          disabled={!editable}
-          aria-invalid={!yearValid || undefined}
-          aria-describedby="profession-start-year-hint"
-          onChange={(event) => {
-            setStartYear(event.target.value);
-            // Sprint 9B.28 — the coordinator hears the keystroke now, so the
-            // status goes `dirty` immediately instead of showing the previous
-            // write's "Saved" until blur.
-            commitStartYear(event.target.value);
-          }}
-          onBlur={() => commitStartYear(startYear)}
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-          style={{ fontSize: '14px', minHeight: '44px' }}
-        />
-        <p
-          id="profession-start-year-hint"
-          className={`mt-1 break-words ${yearValid ? 'text-slate-500 dark:text-slate-400' : 'text-rose-600'}`}
-          style={{ fontSize: '12px' }}
-        >
-          {yearValid ? copy.startYearHint : copy.startYearInvalid}
-        </p>
-        {derivedYears !== null ? (
-          <p
-            className="mt-1 break-words text-slate-900 dark:text-white"
-            style={{ fontSize: '13px', fontWeight: 600 }}
-            data-testid="derived-years"
-            role="status"
-            aria-live="polite"
-          >
-            {copy.yearsDerived(derivedYears)}
-          </p>
-        ) : null}
-      </section>
-
-      {/* ── Transport ───────────────────────────────────────────────────── */}
-      <section aria-labelledby="services-transport-heading" className="min-w-0">
-        <h2
-          id="services-transport-heading"
-          className="mb-1 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
-          {copy.transportLegend}
-        </h2>
-        <p
-          className="mb-2 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-        >
-          {copy.transportHint}
-        </p>
-        <ul className="flex flex-col gap-2" data-testid="transport-options">
-          {TRANSPORT_MODES.map((mode) => {
-            const checked = selectedModes.includes(mode);
-            return (
-              <li key={mode}>
-                <label
-                  data-testid={`transport-${mode}`}
-                  data-checked={checked}
-                  data-primary={primaryMode === mode}
-                  className={`flex min-w-0 items-center gap-3 rounded-xl border px-3 ${
-                    checked
-                      ? 'border-blue-500 bg-blue-50/50'
-                      : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
-                  }`}
-                  style={{ minHeight: '44px' }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={!editable}
-                    onChange={() => toggleMode(mode)}
-                    className="h-5 w-5 flex-shrink-0 accent-blue-600"
-                  />
-                  <span
-                    className="min-w-0 break-words text-slate-900 dark:text-white"
-                    style={{ fontSize: '14px' }}
-                  >
-                    {TRANSPORT_LABELS[lang][mode]}
-                  </span>
-                  {primaryMode === mode ? (
-                    <span
-                      className="ms-auto rounded-full bg-blue-100 px-2 text-blue-800"
-                      style={{ fontSize: '11px', fontWeight: 700 }}
-                    >
-                      {copy.transportPrimary}
-                    </span>
-                  ) : null}
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-
-      {/* ── Equipment ───────────────────────────────────────────────────── */}
-      <section aria-labelledby="services-equipment-heading" className="min-w-0">
-        <h2
-          id="services-equipment-heading"
-          className="mb-1 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
-          {copy.equipmentLegend}
-        </h2>
-        <p
-          className="mb-2 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-        >
-          {copy.equipmentHint}
-        </p>
-        {equipmentItems.length === 0 ? (
-          <p
-            className="break-words text-slate-500 dark:text-slate-400"
-            style={{ fontSize: '12px' }}
-            data-testid="equipment-empty"
-          >
-            {copy.equipmentEmpty}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2" data-testid="equipment-options">
-            {equipmentItems.map((item) => {
-              const checked = selectedEquipment.includes(item.code);
-              return (
-                <li key={item.id}>
-                  <label
-                    data-testid={`equipment-${item.code}`}
-                    data-checked={checked}
-                    className={`flex min-w-0 items-center gap-3 rounded-xl border px-3 ${
-                      checked
-                        ? 'border-blue-500 bg-blue-50/50'
-                        : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
-                    }`}
-                    style={{ minHeight: '44px' }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={!editable}
-                      onChange={() => toggleEquipment(item.code)}
-                      className="h-5 w-5 flex-shrink-0 accent-blue-600"
-                    />
-                    <span
-                      className="min-w-0 break-words text-slate-900 dark:text-white"
-                      style={{ fontSize: '14px' }}
-                    >
-                      {lang === 'ar' ? item.labelAr : item.labelEn}
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
         )}
-      </section>
 
-      {/* ── Title ───────────────────────────────────────────────────────── */}
-      <section aria-labelledby="services-title-heading" className="min-w-0">
-        <h2
-          id="services-title-heading"
-          className="mb-1 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
-          {copy.titleLegend}
-        </h2>
-        <p
-          className="mb-2 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-        >
-          {copy.titleHint}
-        </p>
+        {/* The one thing the approved screen says about moderation, and it is
+            the sentence that stops a PENDING specialty reading as a mistake.
+            It replaces the per-state section list: the state a specialty is in
+            now travels on its own row as `meta`, so nothing is hidden. */}
+        <OnboardingAlert
+          tone="waiting"
+          icon={Clock}
+          title={copy.moderationTitle}
+          body={copy.moderationBody}
+          density="compact"
+          data-testid="specialty-moderation-notice"
+        />
+      </div>
+    );
+  }
 
-        {suggestion && !editingTitle ? (
-          <div data-testid="title-suggestion" className="flex flex-col gap-2">
-            <p
-              className="break-words text-slate-900 dark:text-white"
-              style={{ fontSize: '14px' }}
-              data-testid="title-suggestion-text"
-            >
-              {copy.titleSuggested(suggestion)}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={!editable}
-                data-testid="title-accept"
-                onClick={() => {
-                  // ACCEPTING fills the box. It does not save and it does not
-                  // publish: the profile task is where a title is written, and
-                  // a suggestion that wrote itself would put words in
-                  // somebody's mouth on the surface customers judge them by.
-                  setTitleDraft(suggestion);
-                  setEditingTitle(true);
-                }}
-                className="rounded-xl bg-blue-600 px-3 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                style={{ fontSize: '13px', fontWeight: 600, minHeight: '44px' }}
-              >
-                {copy.titleUse}
-              </button>
-              <button
-                type="button"
-                disabled={!editable}
-                data-testid="title-edit"
-                onClick={() => setEditingTitle(true)}
-                className="rounded-xl border border-slate-200 bg-white px-3 text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                style={{ fontSize: '13px', fontWeight: 600, minHeight: '44px' }}
-              >
-                {copy.titleEdit}
-              </button>
-            </div>
-          </div>
-        ) : null}
+  // ── Screen 5: experience and transport ───────────────────────────────────
+  return (
+    <div className="flex flex-col gap-[18px]" data-testid="experience-section">
+      <ProviderStepper
+        label={copy.yearsLabel}
+        hint={copy.startYearHint}
+        value={years}
+        min={0}
+        max={MAX_YEARS}
+        decreaseLabel={copy.yearsDecrease}
+        increaseLabel={copy.yearsIncrease}
+        onChange={commitYears}
+        disabled={!editable}
+        testId="experience-years"
+      />
 
-        {editingTitle || !suggestion ? (
-          <div className="mt-2">
-            <input
-              data-testid="title-input"
-              type="text"
-              value={titleDraft}
+      {/* A real fieldset/legend, because this is a group of checkboxes and the
+          platform announces it as one. The 7px sits on the legend rather than
+          on a flex gap: a `<legend>` is not laid out as an ordinary flex item,
+          so a gap here would be applied inconsistently across engines. */}
+      <fieldset className="flex flex-col" data-testid="transport-options">
+        <legend className="mb-[7px] break-words text-pv-label font-bold leading-pv-base text-pv-text">
+          {copy.transportQuestion}
+        </legend>
+        <div className="grid gap-2">
+          {APPROVED_TRANSPORT.map((mode) => (
+            <ProviderChoiceToggle
+              key={mode}
+              testId={`transport-${mode}`}
+              checked={selectedModes.includes(mode)}
+              onToggle={() => toggleMode(mode)}
               disabled={!editable}
-              aria-invalid={titleError ? true : undefined}
-              aria-describedby="title-help"
-              onChange={(event) => setTitleDraft(event.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-              style={{ fontSize: '14px', minHeight: '44px' }}
+              label={TRANSPORT_LABELS[lang][mode]}
+              // The radius this transport CURRENTLY grants, not the ceiling it
+              // could reach. `allowedMaxKm` is the limit in force — the reward
+              // card on the work-area screen explains the difference between
+              // that and `radiusPolicy.maxKm`, and showing the ceiling here
+              // would promise a range the provider does not yet have.
+              meta={mode === primaryMode ? primaryRange : undefined}
             />
-            <p
-              id="title-help"
-              className={`mt-1 break-words ${titleError ? 'text-rose-600' : 'text-slate-500 dark:text-slate-400'}`}
-              style={{ fontSize: '12px' }}
-              data-testid="title-help"
-            >
-              {titleError ?? copy.titleNotPublished}
-            </p>
-          </div>
-        ) : null}
+          ))}
+        </div>
+      </fieldset>
 
-        {!editingTitle && suggestion ? (
-          <p
-            className="mt-2 break-words text-slate-500 dark:text-slate-400"
-            style={{ fontSize: '12px' }}
-            data-testid="title-not-published"
+      {suggestedTitle ? (
+        // `.hsm-panel`: the generated title, explained. Never editable here —
+        // ruling C1 makes it server-owned.
+        <ProviderCard className="p-4" style={{ borderRadius: 14 }} data-testid="suggested-title">
+          <h3
+            className="break-words text-pv-input text-pv-text"
+            style={{ marginBottom: 5, fontWeight: 500, lineHeight: 1.25 }}
           >
-            {copy.titleNotPublished}
+            {copy.suggestedTitlePanel}
+          </h3>
+          <p
+            className="break-words text-pv-label text-pv-muted"
+            style={{ lineHeight: 1.65 }}
+            data-testid="title-suggestion-text"
+          >
+            {copy.suggestedTitleBody(suggestedTitle)}
           </p>
-        ) : null}
-      </section>
+        </ProviderCard>
+      ) : null}
     </div>
   );
 }
@@ -560,7 +452,7 @@ export function ServicesTaskScreen({ view, lang, editable }: ServicesTaskScreenP
 
 /** Loads the draft and renders Task 2. Mirrors BasicsTask — see it for why the
  *  shape is validated rather than merely checked for presence. */
-export function ServicesTask({ lang }: { lang: Lang }) {
+export function ServicesTask({ lang, part }: { lang: Lang; part: ServicesPart }) {
   const draft = useOnboardingDraft();
   const copy = SERVICES_COPY[lang];
 
@@ -568,7 +460,7 @@ export function ServicesTask({ lang }: { lang: Lang }) {
     return (
       <div className="flex justify-center py-10" role="status" aria-live="polite">
         <span className="sr-only">{copy.heading}</span>
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
+        <ProviderSkeleton rows={3} label={copy.heading} />
       </div>
     );
   }
@@ -576,16 +468,8 @@ export function ServicesTask({ lang }: { lang: Lang }) {
   const view = draft.data;
   const usable = view && typeof view.version === 'number' && view.data !== undefined;
   if (!usable) {
-    return (
-      <p
-        className="break-words text-rose-600"
-        style={{ fontSize: '13px' }}
-        data-testid="services-load-failed"
-      >
-        {copy.heading}
-      </p>
-    );
+    return <ProviderErrorState title={copy.heading} testId="services-load-failed" />;
   }
 
-  return <ServicesTaskScreen view={view} lang={lang} editable={view.editable} />;
+  return <ServicesTaskScreen view={view} lang={lang} editable={view.editable} part={part} />;
 }

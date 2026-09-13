@@ -1,13 +1,11 @@
-import { AutosaveStatus } from './AutosaveStatus';
-import { useCallback, useMemo, useState } from 'react';
-import { MapPin, ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { MapPin, Star } from 'lucide-react';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
 
-import { COUNTRY_DIAL_CODES } from '../../../../lib/country-dial-codes';
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
 import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { SERVICE_AREA_COPY, type Lang } from '../copy/service-area-copy';
-import { ServiceAreaRewardCard } from './ServiceAreaRewardCard';
+import { ProviderErrorState, ProviderSkeleton, ProviderTextInput } from '../../provider-ui';
 
 // Sprint 9B.19 — V2 Task 3: where you work.
 //
@@ -39,397 +37,150 @@ interface ServiceAreaTaskScreenProps {
   editable: boolean;
 }
 
-type LocationState =
-  | { kind: 'idle' }
-  | { kind: 'locating' }
-  | { kind: 'denied' }
-  | { kind: 'unavailable' };
-
+// SUPERSEDED. The device-location button, the country picker, the radius
+// slider and the area preview are not on the approved screen; see the
+// component note above for what happened to the data behind each.
 export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskScreenProps) {
   const copy = SERVICE_AREA_COPY[lang];
   const autosave = useOnboardingStepAutosave('LOCATION');
 
   const data = view.data;
   const policy = data.radiusPolicy;
+  const expansion = data.serviceAreaExpansion;
 
   const [city, setCity] = useState(data.serviceAreaCity ?? '');
-  const [countryCode, setCountryCode] = useState(data.serviceAreaCountryCode ?? '');
-  const [radiusKm, setRadiusKm] = useState<number>(data.serviceAreaRadiusKm ?? policy.suggestedKm);
-  const [locationState, setLocationState] = useState<LocationState>({ kind: 'idle' });
 
-  const hasCoords = data.serviceAreaLat !== null && data.serviceAreaLng !== null;
+  /**
+   * The radius in force, and where it comes from now.
+   *
+   * The approved screen has no slider. It STATES the radius and explains it:
+   * "Your current radius is 15 km because you selected a car." That makes the
+   * number a consequence of the transport answer rather than a separate
+   * decision, which is what the reward sentence beside it already assumed.
+   *
+   * Read from the draft, falling back to the server's own suggestion — never
+   * to a client constant. "Walking is 3 km" is a market judgement an operator
+   * tunes per city, and a number invented here would be one the save refuses.
+   */
+  const radiusKm = data.serviceAreaRadiusKm ?? policy?.suggestedKm ?? 0;
 
-  const countries = useMemo(
-    () => [...COUNTRY_DIAL_CODES].sort((a, b) => a.name.localeCompare(b.name)),
-    [],
-  );
+  /**
+   * Write the server's suggestion once, when nothing is stored.
+   *
+   * Without a slider there is otherwise no way for `serviceAreaRadiusKm` to
+   * ever become non-null, and the completeness policy requires it — so the
+   * task would show a radius, look finished, and never complete. This commits
+   * the number the SERVER suggested, not one the client chose, and only while
+   * the draft is editable and genuinely has none.
+   *
+   * RECORDED FOR PHASE 5B: the radius stops being provider-adjustable here.
+   * The approved design says it follows transport, and nothing on the approved
+   * screens offers a different one.
+   */
+  useEffect(() => {
+    if (!editable) return;
+    if (data.serviceAreaRadiusKm !== null && data.serviceAreaRadiusKm !== undefined) return;
+    const suggested = policy?.suggestedKm;
+    if (typeof suggested !== 'number' || suggested <= 0) return;
+    autosave.save({ serviceAreaRadiusKm: suggested });
+    // `autosave` is stable for the step; re-running on every render would
+    // queue the same write repeatedly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editable, data.serviceAreaRadiusKm, policy?.suggestedKm]);
 
-  // ── Device location: optional, explicit, and never required ──────────────
+  /**
+   * The reward sentence, composed from what the SERVER granted and why.
+   *
+   * Every part is a server fact: the radius in force, the transport it was
+   * derived from, the criterion that unlocks the next tier and that tier's
+   * ceiling. When the server withholds any of them the sentence simply gets
+   * shorter — it never guesses, and with `show: false` there is no card at all.
+   */
+  const rewardSentence = (() => {
+    if (!expansion?.show) return null;
+    const transport = policy?.basedOn ? copy.transportNames[policy.basedOn] : null;
+    if (!transport || radiusKm <= 0) return null;
 
-  const requestDeviceLocation = useCallback(() => {
-    // The FUNCTION, not the key. `'geolocation' in navigator` is true whenever
-    // the property exists — including when it is undefined, which is what a
-    // locked-down or embedded browser leaves behind. Checking the key there
-    // and calling straight through crashes the screen at the exact moment the
-    // fallback was supposed to take over.
-    if (typeof navigator.geolocation?.getCurrentPosition !== 'function') {
-      setLocationState({ kind: 'unavailable' });
-      return;
-    }
-    setLocationState({ kind: 'locating' });
+    const because = copy.rewardBecause(radiusKm, transport);
+    const next = expansion.nextTier;
+    // The rating criterion is the one the approved sentence names. Its target
+    // is published; the anti-abuse thresholds deliberately withhold theirs, so
+    // a null target means there is no second half to say.
+    const ratings = expansion.progress?.find((c) => c.key === 'RATING_SAMPLE')?.target ?? null;
+    if (!next || ratings === null) return because;
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocationState({ kind: 'idle' });
-        // Sent to OUR server only, and never published: the public surface
-        // gets a coarse area, which is what the privacy note promises.
-        autosave.save({
-          serviceAreaLat: position.coords.latitude,
-          serviceAreaLng: position.coords.longitude,
-        });
-      },
-      (error) => {
-        // A refusal is an ordinary outcome, not an error state to recover
-        // from. The manual fields below are already on screen and already
-        // sufficient; the message says so rather than offering a retry that
-        // would re-prompt someone who just said no.
-        setLocationState({
-          kind: error.code === error.PERMISSION_DENIED ? 'denied' : 'unavailable',
-        });
-      },
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
-    );
-  }, [autosave]);
-
-  const clearDeviceLocation = () => {
-    autosave.save({ serviceAreaLat: null, serviceAreaLng: null });
-  };
-
-  // ── Radius ───────────────────────────────────────────────────────────────
-
-  const commitRadius = (km: number) => {
-    // Bounded by the SERVER's numbers. The input's own min/max come from the
-    // same policy, so the control cannot offer a value the save will refuse.
-    const bounded = Math.min(Math.max(km, policy.minKm), policy.maxKm);
-    setRadiusKm(bounded);
-    autosave.save({ serviceAreaRadiusKm: bounded });
-  };
-
-  const basisLabel = policy.basedOn ? copy.transportNames[policy.basedOn] : null;
-  const tz = data.resolvedTimezone;
+    return `${because}${copy.rewardThen(ratings, next.maxKm)}`;
+  })();
 
   return (
-    <div className="flex flex-col gap-6" data-testid="service-area-task">
-      <p className="break-words text-slate-500 dark:text-slate-400" style={{ fontSize: '13px' }}>
-        {copy.intro}
-      </p>
+    <div className="flex flex-col gap-[18px]" data-testid="work-area-task">
+      {/* ── The one field the approved screen asks for ──────────────────────
+          Its hint is the privacy promise, moved from a card of its own into
+          the place the question is actually asked. That is where it does its
+          work: a provider decides how honestly to answer while reading the
+          field, not while reading a panel above it. */}
+      <ProviderTextInput
+        label={copy.areaLabel}
+        hint={copy.areaHint}
+        data-testid="service-area-city"
+        value={city}
+        disabled={!editable}
+        autoComplete="address-level2"
+        onChange={(event) => {
+          setCity(event.target.value);
+          // Sprint 9B.28 — commit on the keystroke as well as the blur, so
+          // the status cannot claim "Saved" over a city that has not been
+          // sent. Empty is still never written: the field is required and
+          // the server refuses it.
+          const next = event.target.value;
+          if (next.trim() !== '') autosave.save({ serviceAreaCity: next.trim() });
+        }}
+        onBlur={() => {
+          if (city.trim() !== '') autosave.save({ serviceAreaCity: city.trim() });
+        }}
+      />
 
-      {/* ── Privacy, stated beside the question rather than in a policy ──── */}
+      {/* ── The area, as a described circle ─────────────────────────────────
+          `.hsm-map`: a 190px band with a ring in the middle carrying the
+          radius. It is deliberately NOT a real map with a pin on the
+          provider's base — that would show them exactly the thing the hint
+          above promises nobody else can see, and would teach them the pin is
+          what gets published. `role="img"` with a name that states the radius
+          is the whole of what it means, so a screen-reader user gets the fact
+          rather than a decorative band. */}
       <div
-        className="flex min-w-0 items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3"
-        data-testid="location-privacy-note"
+        role="img"
+        aria-label={copy.mapAlt(radiusKm)}
+        data-testid="service-area-map"
+        className="pv-map-surface relative h-[190px] overflow-hidden rounded-pv-card"
       >
-        <ShieldCheck
-          size={18}
-          className="mt-0.5 flex-shrink-0 text-emerald-700"
+        <span
           aria-hidden="true"
-        />
-        <div className="min-w-0">
-          <h3
-            className="break-words text-emerald-900"
-            style={{ fontSize: '14px', fontWeight: 700 }}
-          >
-            {copy.privacyTitle}
-          </h3>
-          <p className="mt-0.5 break-words text-emerald-800" style={{ fontSize: '12px' }}>
-            {copy.privacyBody}
-          </p>
-          <p className="mt-1 break-words text-emerald-800" style={{ fontSize: '12px' }}>
-            {copy.privacyPublic}
-          </p>
-        </div>
+          className="absolute left-1/2 top-1/2 grid h-[122px] w-[122px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-pv-accent bg-pv-accent/12 text-pv-accent-hover"
+        >
+          <MapPin size={16} strokeWidth={1.8} aria-hidden="true" />
+          <strong className="text-pv-body font-medium" data-testid="service-area-radius">
+            {copy.radiusValue(radiusKm)}
+          </strong>
+        </span>
       </div>
 
-      {/* ── Operating base ───────────────────────────────────────────────── */}
-      <section aria-labelledby="base-heading" className="min-w-0">
-        <h2
-          id="base-heading"
-          className="break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
+      {/* ── Why the radius is what it is ────────────────────────────────────
+          `.hsm-reward`. Rendered only when the SERVER says it may be, and
+          composed entirely from what the server granted — the radius in
+          force, the transport it came from, and the next tier with the
+          criterion that unlocks it. The client computes no eligibility of its
+          own; a formula in React would be a second copy of a ladder nobody
+          could audit and every provider could read. */}
+      {rewardSentence ? (
+        <div
+          className="grid grid-cols-[32px_1fr] gap-2.5 rounded-pv-choice bg-pv-blocked-bg p-3.5 text-pv-blocked"
+          data-testid="expansion-reward-card"
         >
-          {copy.baseLegend}
-        </h2>
-
-        {/* Sprint 9B.25 — this screen autosaved SILENTLY. A conflict or a
-            failed write produced no visible change at all, so a provider went
-            on believing their service area was saved when it was not. */}
-        <AutosaveStatus status={autosave.status} lang={lang} testIdPrefix="service-area" />
-        <p
-          className="mb-2 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-        >
-          {copy.baseHint}
-        </p>
-
-        <label
-          htmlFor="service-area-city"
-          className="mb-1 block break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '14px', fontWeight: 600 }}
-        >
-          {copy.cityLabel}
-        </label>
-        <input
-          id="service-area-city"
-          data-testid="service-area-city"
-          type="text"
-          value={city}
-          disabled={!editable}
-          placeholder={copy.cityPlaceholder}
-          onChange={(event) => {
-            setCity(event.target.value);
-            // Sprint 9B.28 — commit on the keystroke as well as the blur, so
-            // the status cannot claim "Saved" over a city that has not been
-            // sent. Empty is still never written: the field is required and
-            // the server refuses it.
-            const next = event.target.value;
-            if (next.trim() !== '') autosave.save({ serviceAreaCity: next.trim() });
-          }}
-          onBlur={() => {
-            if (city.trim() !== '') autosave.save({ serviceAreaCity: city.trim() });
-          }}
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-          style={{ fontSize: '14px', minHeight: '44px' }}
-        />
-
-        <label
-          htmlFor="service-area-country"
-          className="mb-1 mt-3 block break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '14px', fontWeight: 600 }}
-        >
-          {copy.countryLabel}
-        </label>
-        <select
-          id="service-area-country"
-          data-testid="service-area-country"
-          value={countryCode}
-          disabled={!editable}
-          onChange={(event) => {
-            const next = event.target.value;
-            setCountryCode(next);
-            const chosen = countries.find((c) => c.iso2 === next);
-            // BOTH halves: the display name the provider chose, and the code
-            // the server resolves a timezone and a market policy by.
-            autosave.save({
-              serviceAreaCountryCode: next === '' ? null : next,
-              serviceAreaCountry: chosen ? chosen.name : null,
-            });
-          }}
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-          style={{ fontSize: '14px', minHeight: '44px' }}
-        >
-          <option value="">{copy.countryPlaceholder}</option>
-          {countries.map((c) => (
-            <option key={c.iso2} value={c.iso2}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-
-        {/* Timezone: a city and an offset, never an IANA identifier. */}
-        {tz.display ? (
-          <p
-            className="mt-2 break-words text-slate-500 dark:text-slate-400"
-            style={{ fontSize: '12px' }}
-            data-testid="timezone-note"
-          >
-            {copy.timezoneResolved(tz.display.city, tz.display.offset)}
-          </p>
-        ) : tz.needsConfirmation ? (
-          <p
-            className="mt-2 break-words text-slate-500 dark:text-slate-400"
-            style={{ fontSize: '12px' }}
-            data-testid="timezone-needs-confirmation"
-          >
-            {copy.timezoneNeedsConfirmation}
-          </p>
-        ) : null}
-      </section>
-
-      {/* ── Optional device location ─────────────────────────────────────── */}
-      <section aria-labelledby="device-location-heading" className="min-w-0">
-        <h2 id="device-location-heading" className="sr-only">
-          {copy.useMyLocation}
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={!editable || locationState.kind === 'locating'}
-            onClick={requestDeviceLocation}
-            data-testid="use-my-location"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-slate-700 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-            style={{ fontSize: '13px', fontWeight: 600, minHeight: '44px' }}
-          >
-            <MapPin size={16} aria-hidden="true" />
-            {locationState.kind === 'locating' ? copy.locating : copy.useMyLocation}
-          </button>
-
-          {hasCoords ? (
-            <button
-              type="button"
-              disabled={!editable}
-              onClick={clearDeviceLocation}
-              data-testid="clear-location"
-              className="rounded-xl px-2 text-blue-700 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-              style={{ fontSize: '12px', fontWeight: 600, minHeight: '44px' }}
-            >
-              {copy.clearLocation}
-            </button>
-          ) : null}
+          <Star size={16} strokeWidth={1.8} aria-hidden="true" />
+          <p className="break-words text-pv-label leading-pv-panel">{rewardSentence}</p>
         </div>
-
-        <p
-          className="mt-1 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-          data-testid="location-help"
-        >
-          {copy.locationHelp}
-        </p>
-
-        {/* A refusal is reported as a fact, with the way forward, and never as
-            an error the provider has to clear before continuing. */}
-        {locationState.kind === 'denied' || locationState.kind === 'unavailable' ? (
-          <p
-            className="mt-1 break-words text-slate-700 dark:text-slate-300"
-            style={{ fontSize: '12px' }}
-            data-testid="location-permission-fallback"
-            role="status"
-            aria-live="polite"
-          >
-            {locationState.kind === 'denied' ? copy.permissionDenied : copy.permissionUnavailable}
-          </p>
-        ) : null}
-      </section>
-
-      {/* ── Radius ───────────────────────────────────────────────────────── */}
-      <section aria-labelledby="radius-heading" className="min-w-0">
-        <h2
-          id="radius-heading"
-          className="break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
-          {copy.radiusLegend}
-        </h2>
-
-        <p
-          className="mt-1 break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '16px', fontWeight: 700 }}
-          data-testid="radius-value"
-          role="status"
-          aria-live="polite"
-        >
-          {copy.radiusValue(radiusKm)}
-        </p>
-
-        <input
-          type="range"
-          data-testid="radius-slider"
-          min={policy.minKm}
-          max={policy.maxKm}
-          step={1}
-          value={radiusKm}
-          disabled={!editable}
-          aria-label={copy.radiusLegend}
-          aria-valuemin={policy.minKm}
-          aria-valuemax={policy.maxKm}
-          aria-valuenow={radiusKm}
-          onChange={(event) => setRadiusKm(Number(event.target.value))}
-          onMouseUp={() => commitRadius(radiusKm)}
-          onTouchEnd={() => commitRadius(radiusKm)}
-          onBlur={() => commitRadius(radiusKm)}
-          className="mt-2 w-full accent-blue-600"
-          style={{ minHeight: '44px' }}
-        />
-
-        <p
-          className="break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-          data-testid="radius-bounds"
-        >
-          {copy.radiusBounds(policy.minKm, policy.maxKm)}
-        </p>
-        <p
-          className="mt-1 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-          data-testid="radius-basis"
-        >
-          {basisLabel ? copy.radiusBasedOn(basisLabel) : copy.radiusNoBasis}
-        </p>
-        <p
-          className="mt-1 break-words text-slate-500 dark:text-slate-400"
-          style={{ fontSize: '12px' }}
-          data-testid="radius-reduce-hint"
-        >
-          {copy.radiusReduceHint}
-        </p>
-      </section>
-
-      {/* ── Earned expansion ─────────────────────────────────────────────
-          Sprint 9B.20. Rendered only when the SERVER says it may be, and
-          placed directly under the slider it explains: the card's whole
-          subject is why the ceiling on that control is what it is. Absent by
-          default — the feature ships off. */}
-      <ServiceAreaRewardCard expansion={data.serviceAreaExpansion} copy={copy} />
-
-      {/* ── What customers see ───────────────────────────────────────────── */}
-      <section aria-labelledby="area-preview-heading" className="min-w-0">
-        <h2
-          id="area-preview-heading"
-          className="break-words text-slate-900 dark:text-white"
-          style={{ fontSize: '15px', fontWeight: 700 }}
-        >
-          {copy.previewTitle}
-        </h2>
-        {/* A described AREA, not a pin.
-            A map with a marker on the provider's base would show them exactly
-            the thing the privacy note promises nobody else can see, and would
-            teach them the pin is what gets published. The honest preview is
-            the circle's size and the city — which is all a customer gets. */}
-        {city.trim() !== '' ? (
-          <div
-            className="mt-1 flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 p-3 dark:border-slate-700"
-            data-testid="area-preview"
-          >
-            <div
-              className="flex-shrink-0 rounded-full border-2 border-dashed border-blue-400 bg-blue-50"
-              style={{ width: '56px', height: '56px' }}
-              aria-hidden="true"
-            />
-            <div className="min-w-0">
-              <p
-                className="break-words text-slate-900 dark:text-white"
-                style={{ fontSize: '14px', fontWeight: 600 }}
-              >
-                {city.trim()}
-              </p>
-              <p
-                className="break-words text-slate-500 dark:text-slate-400"
-                style={{ fontSize: '12px' }}
-                data-testid="area-preview-approx"
-              >
-                {copy.previewApprox(radiusKm * 2)}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <p
-            className="mt-1 break-words text-slate-500 dark:text-slate-400"
-            style={{ fontSize: '12px' }}
-            data-testid="area-preview-empty"
-          >
-            {copy.previewNoLocation}
-          </p>
-        )}
-      </section>
+      ) : null}
     </div>
   );
 }
@@ -442,12 +193,7 @@ export function ServiceAreaTask({ lang }: { lang: Lang }) {
   const copy = SERVICE_AREA_COPY[lang];
 
   if (!draft.isFetched) {
-    return (
-      <div className="flex justify-center py-10" role="status" aria-live="polite">
-        <span className="sr-only">{copy.heading}</span>
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
-      </div>
-    );
+    return <ProviderSkeleton label={copy.heading} />;
   }
 
   const view = draft.data;
@@ -455,15 +201,7 @@ export function ServiceAreaTask({ lang }: { lang: Lang }) {
     view && typeof view.version === 'number' && view.data !== undefined && view.data.radiusPolicy;
 
   if (!usable) {
-    return (
-      <p
-        className="break-words text-rose-600"
-        style={{ fontSize: '13px' }}
-        data-testid="service-area-load-failed"
-      >
-        {copy.heading}
-      </p>
-    );
+    return <ProviderErrorState title={copy.heading} testId="service-area-load-failed" />;
   }
 
   return <ServiceAreaTaskScreen view={view} lang={lang} editable={view.editable} />;

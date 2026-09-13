@@ -80,10 +80,28 @@ export interface ServiceAreaCopy {
   criterionNames: Record<string, string>;
 
   transportNames: Record<string, string>;
+
+  // ── Sprint 09B.29 Phase 5A — the approved work-area screen ─────────────
+  /** The single field the approved screen asks for. */
+  areaLabel: string;
+  areaHint: string;
+  /** The map is decorative to sighted users and a described AREA to everyone
+   *  else, so it carries its radius in its own accessible name. */
+  mapAlt: (km: number) => string;
+  /** The reward sentence, composed from what the SERVER granted and why. */
+  rewardBecause: (km: number, transport: string) => string;
+  rewardThen: (ratings: number, km: number) => string;
 }
 
 export const SERVICE_AREA_COPY: Record<Lang, ServiceAreaCopy> = {
   en: {
+    areaLabel: 'City or neighborhood',
+    areaHint: 'This is your starting point, not a published home address.',
+    mapAlt: (km) => `Map showing a ${km} kilometre work radius`,
+    rewardBecause: (km, transport) =>
+      `Your current radius is ${km} km because you selected a ${transport}.`,
+    rewardThen: (ratings, km) => ` After ${ratings} excellent ratings, it expands to ${km} km.`,
+
     heading: 'Where you work',
     intro: 'Tell us where you are based and how far you are willing to travel.',
 
@@ -164,6 +182,12 @@ export const SERVICE_AREA_COPY: Record<Lang, ServiceAreaCopy> = {
     },
   },
   ar: {
+    areaLabel: 'المدينة أو الحي',
+    areaHint: 'هذه نقطة الانطلاق وليست عنوان سكن منشوراً.',
+    mapAlt: (km) => `خريطة نطاق عمل ${km} كيلومتراً`,
+    rewardBecause: (km, transport) => `نطاقك الحالي ${km} كم بسبب اختيار ${transport}.`,
+    rewardThen: (ratings, km) => ` بعد ${ratings} تقييمات ممتازة يتوسع إلى ${km} كم.`,
+
     heading: 'أين تعمل',
     intro: 'أخبرنا أين مقرّك وإلى أي مدى أنت مستعد للتنقّل.',
 

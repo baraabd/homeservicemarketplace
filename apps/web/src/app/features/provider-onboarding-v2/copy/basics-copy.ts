@@ -23,12 +23,17 @@ export interface BasicsCopy {
   legalName: string;
   legalNameHint: string;
   displayName: string;
-  displayNameHint: string;
   phone: string;
-  phoneHint: string;
   phoneInvalid: string;
-  /** The sentence that keeps "we have your number" from reading as "your
-   *  number is verified". */
+  /**
+   * The sentence that keeps "we have your number" from reading as "your
+   * number is verified".
+   *
+   * Sprint 09B.29 Phase 5A — it is now the phone field's HINT rather than a
+   * paragraph under it, which is where the approved screen puts it and which
+   * also associates it with the input through `aria-describedby` instead of
+   * leaving it as adjacent prose a screen reader never connects to the field.
+   */
   phoneNotVerified: string;
   required: string;
   saving: string;
@@ -55,13 +60,10 @@ export const BASICS_COPY: Record<Lang, BasicsCopy> = {
     typeChangeCancel: 'Keep it as it is',
     legalName: 'Registered business name',
     legalNameHint: 'Exactly as it appears on your registration.',
-    displayName: 'Name customers see',
-    displayNameHint: 'This is the name shown on your profile and your bids.',
+    displayName: 'Customer-facing name',
     phone: 'Phone number',
-    phoneHint: 'Include your country code, for example +963912345678.',
     phoneInvalid: 'Enter a phone number in international format, starting with +.',
-    phoneNotVerified:
-      'We will confirm this number later. You do not need to confirm it to continue.',
+    phoneNotVerified: 'SMS verification is not active yet and will not block submission.',
     required: 'Required',
     saving: 'Saving…',
     saved: 'Saved',
@@ -86,11 +88,9 @@ export const BASICS_COPY: Record<Lang, BasicsCopy> = {
     legalName: 'الاسم التجاري المسجّل',
     legalNameHint: 'كما يظهر تماماً في السجل التجاري.',
     displayName: 'الاسم الذي يراه العملاء',
-    displayNameHint: 'هذا هو الاسم الظاهر في ملفك وفي عروضك.',
     phone: 'رقم الهاتف',
-    phoneHint: 'أضف رمز الدولة، مثال ‎+963912345678.',
     phoneInvalid: 'أدخل رقم هاتف بصيغة دولية تبدأ بعلامة +.',
-    phoneNotVerified: 'سنؤكد هذا الرقم لاحقاً. لست بحاجة إلى تأكيده للمتابعة.',
+    phoneNotVerified: 'التوثيق عبر الرسائل غير مفعّل حالياً ولن يمنع الإرسال.',
     required: 'مطلوب',
     saving: 'جارٍ الحفظ…',
     saved: 'تم الحفظ',
@@ -104,6 +104,9 @@ export const BASICS_COPY: Record<Lang, BasicsCopy> = {
 export interface AvatarCopy {
   title: string;
   hint: string;
+  /** The approved upload surface's single line. The prototype draws one
+   *  dashed box with this sentence, not a titled card with two buttons. */
+  emptyPrompt: string;
   previewAlt: string;
   takePhoto: string;
   choose: string;
@@ -123,6 +126,7 @@ export const AVATAR_COPY: Record<Lang, AvatarCopy> = {
   en: {
     title: 'Profile photo',
     hint: 'A clear photo of your face. Customers see this on every job.',
+    emptyPrompt: 'Take a photo or choose from gallery',
     previewAlt: 'Your profile photo',
     takePhoto: 'Take photo',
     choose: 'Choose photo',
@@ -150,6 +154,7 @@ export const AVATAR_COPY: Record<Lang, AvatarCopy> = {
   ar: {
     title: 'الصورة الشخصية',
     hint: 'صورة واضحة لوجهك. يراها العملاء في كل طلب.',
+    emptyPrompt: 'التقط صورة أو اختر من المعرض',
     previewAlt: 'صورتك الشخصية',
     takePhoto: 'التقاط صورة',
     choose: 'اختيار صورة',

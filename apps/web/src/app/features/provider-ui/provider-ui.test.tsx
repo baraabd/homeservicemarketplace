@@ -181,7 +181,7 @@ describe('ProviderTextInput', () => {
 
   it('uses a 16px control on touch so iOS does not zoom the form', () => {
     render(<ProviderTextInput label="City" />);
-    expect(screen.getByLabelText('City').className).toContain('text-[16px]');
+    expect(screen.getByLabelText('City').className).toContain('text-pv-input');
   });
 });
 

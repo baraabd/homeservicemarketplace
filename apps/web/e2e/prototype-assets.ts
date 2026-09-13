@@ -248,6 +248,30 @@ export async function neutraliseHarnessFontWeight(
     style.textContent = [
       // The wrapper's body weight — scaffolding, see above.
       '#hsm-provider-journey, #hsm-provider-journey p, #hsm-provider-journey span, #hsm-provider-journey small { font-weight: 400 }',
+      // …and then GIVE BACK the weights the design declares for itself.
+      //
+      // Sprint 09B.29 Phase 5A. The reset above claims to leave the design's
+      // own weights alone because they are "declared on the components
+      // themselves". That was not true, and CSS specificity is why: the reset
+      // is `#id p` / `#id span` — one id plus one type, (1,0,1) — while
+      // `.hsm-badge` is a bare class, (0,1,0). The id wins, so four
+      // deliberately-700 rules were being rendered at 400 in the reference:
+      //
+      //   .hsm-badge        every status pill on both hubs and the status centre
+      //   .hsm-group-title  every section heading on the partial hub
+      //   .hsm-upload p     the photo and portfolio upload captions
+      //   .hsm-kicker       the eyebrow line on services and working hours
+      //
+      // The other 700 rules (`.hsm-topbar h1`, `.hsm-heading`,
+      // `.hsm-field label`, `.hsm-stepper output`, the three action buttons)
+      // sit on element types the reset does not name and were genuinely
+      // untouched.
+      //
+      // These are re-asserted at the SAME specificity tier and declared later,
+      // so they win — which restores the frozen HTML's intent rather than
+      // overriding it. Without this the gate demands the product render a
+      // 400-weight badge that the source of truth says is 700.
+      '#hsm-provider-journey .hsm-badge, #hsm-provider-journey .hsm-group-title, #hsm-provider-journey .hsm-upload p, #hsm-provider-journey .hsm-kicker { font-weight: 700 }',
       // The device bezel's 28px radius clips the product surface's bottom
       // corners through `overflow: hidden`. The bezel is already excluded from
       // the capture (we screenshot the content, not the phone); this stops the

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { expectNoHorizontalPageOverflow, seedLanguage, stubApi } from './fixtures';
+import { expectNoHorizontalPageOverflow, htmlLangDir, seedLanguage, stubApi } from './fixtures';
 
 // Sprint 9B.21 — V2 Task 4 in a real browser.
 //
@@ -126,165 +126,106 @@ async function openTask(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Sprint 09B.29 Phase 5A — the approved working-hours screen in a real
+// browser. It is five controls: seven day toggles, a From/To pair, Apply, and
+// a checkbox that turns Apply into a clear.
+//
+// The presets, the per-day editor, the week summary and the timezone picker
+// are not on it; each absence is recorded in the component and in the unit
+// suite. What this layer still exists for is the two things a DOM shim cannot
+// see: geometry at 320px, and real bidi layout.
+
+/** A stored week, in the contract's own shape. 0 = Sunday. */
+const weekOf = (days: readonly number[], startMinute = 540, endMinute = 1020) =>
+  days.map((dayOfWeek) => ({
+    id: `iv-${dayOfWeek}`,
+    dayOfWeek,
+    startMinute,
+    endMinute,
+    timezone: 'Asia/Damascus',
+  }));
+
 test.describe('Task 4 — a working week in one action', () => {
-  test('sets Sunday–Thursday with a preset, hours, and one apply', async ({ page }) => {
-    const recorded = await openTask(page);
+  test('sets Sunday–Thursday by tapping days and applying once', async ({ page }) => {
+    const rec = await openTask(page);
 
-    await page.getByTestId('preset-sun-thu').click();
-    await page.getByTestId('bulk-start').selectOption('540');
-    await page.getByTestId('bulk-end').selectOption('1020');
+    for (const day of [0, 1, 2, 3, 4]) await page.getByTestId(`day-toggle-${day}`).click();
     await page.getByTestId('apply-to-selected').click();
 
-    // The summary is the schedule, immediately.
-    for (const day of [0, 1, 2, 3, 4]) {
-      await expect(page.getByTestId(`day-summary-${day}`)).toHaveText('09:00–17:00');
-    }
-    await expect(page.getByTestId('day-summary-5')).toHaveText('Unavailable');
-
-    await expect
-      .poll(() => recorded.patches.length, { message: 'one PATCH for the whole week' })
-      .toBe(1);
-    expect((recorded.patches[0]!.availability as unknown[]).length).toBe(5);
+    await expect.poll(() => rec.patches.length).toBeGreaterThan(0);
+    const sent = rec.patches[0].availability as Array<{ dayOfWeek: number; startMinute: number }>;
+    expect(sent.map((i) => i.dayOfWeek).sort()).toEqual([0, 1, 2, 3, 4]);
+    expect(sent.every((i) => i.startMinute === 540 && i.endMinute === 1020)).toBe(true);
+    // One request, the whole week. A partial schedule must not be expressible.
+    expect(rec.patches).toHaveLength(1);
   });
 
-  test('needs no repeated card stack — seven rows, whatever the schedule', async ({ page }) => {
-    await openTask(page);
-    await page.getByTestId('preset-sun-thu').click();
-    await page.getByTestId('apply-to-selected').click();
-    await expect(page.getByTestId('week-summary').locator('li')).toHaveCount(7);
-  });
+  test('tapping days saves nothing on its own', async ({ page }) => {
+    const rec = await openTask(page);
 
-  test('the preset selects days and saves nothing on its own', async ({ page }) => {
-    const recorded = await openTask(page);
-    await page.getByTestId('preset-mon-fri').click();
-
-    await expect(page.getByTestId('day-toggle-1')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('day-summary-1')).toHaveText('Unavailable');
-    expect(recorded.patches).toHaveLength(0);
+    for (const day of [0, 1, 2]) await page.getByTestId(`day-toggle-${day}`).click();
+    await page.waitForTimeout(300);
+    expect(rec.patches).toHaveLength(0);
   });
 });
 
 test.describe('Task 4 — the schedule survives a reload', () => {
-  test('renders what the server holds', async ({ page }) => {
-    await openTask(page, {
-      draftOver: {
-        data: {
-          availability: [
-            { id: 'a', dayOfWeek: 1, startMinute: 540, endMinute: 720, timezone: 'Asia/Damascus' },
-            { id: 'b', dayOfWeek: 1, startMinute: 780, endMinute: 1020, timezone: 'Asia/Damascus' },
-            { id: 'c', dayOfWeek: 4, startMinute: 600, endMinute: 900, timezone: 'Asia/Damascus' },
-          ],
-        },
-      },
-    });
+  test('opens showing the week the server holds', async ({ page }) => {
+    await openTask(page, { draftOver: { data: { availability: weekOf([0, 1, 2, 3, 4]) } } });
 
-    await expect(page.getByTestId('day-summary-1')).toHaveText('09:00–12:00, 13:00–17:00');
-    await expect(page.getByTestId('day-summary-4')).toHaveText('10:00–15:00');
-    await expect(page.getByTestId('week-totals')).toContainText('2 days');
+    // The toggles ARE the schedule, so this is what "the saved week is on
+    // screen" looks like now.
+    for (const day of [0, 1, 2, 3, 4]) {
+      await expect(page.getByTestId(`day-toggle-${day}`)).toHaveAttribute('aria-pressed', 'true');
+    }
+    for (const day of [5, 6]) {
+      await expect(page.getByTestId(`day-toggle-${day}`)).toHaveAttribute('aria-pressed', 'false');
+    }
+
+    await page.reload();
+    await expect(page.getByTestId('day-toggle-0')).toHaveAttribute('aria-pressed', 'true');
   });
 });
 
-test.describe('Task 4 — per-day control', () => {
-  test('marks a day unavailable and brings it back', async ({ page }) => {
-    await openTask(page, {
-      draftOver: {
-        data: {
-          availability: [
-            { id: 'a', dayOfWeek: 2, startMinute: 540, endMinute: 1020, timezone: 'Asia/Damascus' },
-          ],
-        },
-      },
+test.describe('Task 4 — turning days off', () => {
+  test('clears the selected days and keeps the rest of the week', async ({ page }) => {
+    const rec = await openTask(page, {
+      draftOver: { data: { availability: weekOf([0, 1, 2, 3, 4]) } },
     });
 
-    await page.getByTestId('day-clear-2').click();
-    await expect(page.getByTestId('day-row-2')).toHaveAttribute('data-available', 'false');
-
-    await page.getByTestId('day-set-2').click();
-    await expect(page.getByTestId('day-row-2')).toHaveAttribute('data-available', 'true');
-  });
-
-  test('edits one day after a bulk apply without disturbing the others', async ({ page }) => {
-    const recorded = await openTask(page);
-
-    await page.getByTestId('preset-mon-fri').click();
+    // Leave only Tuesday selected, then apply as a clear.
+    for (const day of [0, 1, 3, 4]) await page.getByTestId(`day-toggle-${day}`).click();
+    await page.getByTestId('mark-unavailable').locator('input').check();
     await page.getByTestId('apply-to-selected').click();
-    await expect(page.getByTestId('day-summary-3')).toHaveText('09:00–17:00');
 
-    await page.getByTestId('day-edit-3').click();
-    await page.getByTestId('day-3-start-0').selectOption('600');
+    await expect.poll(() => rec.patches.length).toBeGreaterThan(0);
+    const sent = rec.patches[0].availability as Array<{ dayOfWeek: number }>;
+    expect(sent.map((i) => i.dayOfWeek).sort()).toEqual([0, 1, 3, 4]);
+  });
 
-    await expect(page.getByTestId('day-summary-3')).toHaveText('10:00–17:00');
-    await expect(page.getByTestId('day-summary-2')).toHaveText('09:00–17:00');
+  test('leaves the From/To pair alone, so a day is one tap from coming back', async ({ page }) => {
+    // Exactly what the approved label promises.
+    await openTask(page, { draftOver: { data: { availability: weekOf([2]) } } });
 
-    // The COUNT is not the property. The autosave debounce legitimately
-    // coalesces a bulk apply and an immediate per-day fix into one request —
-    // which is better than two, and asserting on two would be asserting on the
-    // debounce rather than on the schedule. What must be true is that the last
-    // thing sent is the whole corrected week.
-    await expect
-      .poll(() => recorded.patches[recorded.patches.length - 1]?.availability)
-      .toEqual([
-        { dayOfWeek: 1, startMinute: 540, endMinute: 1020 },
-        { dayOfWeek: 2, startMinute: 540, endMinute: 1020 },
-        { dayOfWeek: 3, startMinute: 600, endMinute: 1020 },
-        { dayOfWeek: 4, startMinute: 540, endMinute: 1020 },
-        { dayOfWeek: 5, startMinute: 540, endMinute: 1020 },
-      ]);
+    await page.getByTestId('mark-unavailable').locator('input').check();
+    await page.getByTestId('apply-to-selected').click();
+
+    await expect(page.getByTestId('bulk-start')).toHaveValue('09:00');
+    await expect(page.getByTestId('bulk-end')).toHaveValue('17:00');
   });
 });
 
-test.describe('Task 4 — invalid schedules cannot be built', () => {
-  test('the end control offers nothing at or before the start', async ({ page }) => {
-    await openTask(page);
-    await page.getByTestId('bulk-start').selectOption('720');
+test.describe('Task 4 — invalid schedules cannot be saved', () => {
+  test('refuses an inverted range and says why', async ({ page }) => {
+    const rec = await openTask(page);
 
-    const values = await page
-      .getByTestId('bulk-end')
-      .locator('option')
-      .evaluateAll((nodes) => nodes.map((n) => Number((n as HTMLOptionElement).value)));
-    expect(values.every((v) => v > 720)).toBe(true);
-  });
-
-  test('refuses an overlapping second period rather than saving it', async ({ page }) => {
-    await openTask(page, {
-      draftOver: {
-        data: {
-          availability: [
-            { id: 'a', dayOfWeek: 1, startMinute: 540, endMinute: 1020, timezone: 'Asia/Damascus' },
-          ],
-        },
-      },
-    });
-
-    await page.getByTestId('day-edit-1').click();
-    await page.getByTestId('bulk-start').selectOption('600');
-    await page.getByTestId('bulk-end').selectOption('1200');
-    await page.getByTestId('day-add-1').click();
+    await page.getByTestId('day-toggle-0').click();
+    await page.getByTestId('bulk-start').fill('18:00');
+    await page.getByTestId('bulk-end').fill('09:00');
+    await page.getByTestId('apply-to-selected').click();
 
     await expect(page.getByTestId('availability-rejected')).toBeVisible();
-    await expect(page.getByTestId('day-summary-1')).toHaveText('09:00–17:00');
-  });
-});
-
-test.describe('Task 4 — the time zone', () => {
-  test('says a city and an offset, never an identifier', async ({ page }) => {
-    await openTask(page);
-    const line = page.getByTestId('timezone-resolved');
-    await expect(line).toContainText('Damascus time (UTC+3)');
-    await expect(line).not.toContainText('Asia/');
-  });
-
-  test('asks only where the country spans several zones', async ({ page }) => {
-    await openTask(page, {
-      draftOver: {
-        data: {
-          timezone: null,
-          resolvedTimezone: { resolved: null, display: null, needsConfirmation: true },
-        },
-      },
-    });
-    await expect(page.getByTestId('timezone-select')).toBeVisible();
-    await expect(page.getByTestId('apply-to-selected')).toBeDisabled();
+    expect(rec.patches).toHaveLength(0);
   });
 });
 
@@ -292,124 +233,67 @@ test.describe('Task 4 — a save that loses a race', () => {
   test('is reported as a conflict, not as a generic failure', async ({ page }) => {
     await openTask(page, { patchStatus: 409 });
 
-    await page.getByTestId('preset-sun-thu').click();
+    await page.getByTestId('day-toggle-0').click();
     await page.getByTestId('apply-to-selected').click();
 
-    await expect(page.getByTestId('availability-save-status')).toHaveAttribute(
-      'data-status',
-      'conflict',
+    // Telling the provider to "try again" would invite them to overwrite a
+    // week they have not seen.
+    await expect(page.getByTestId('task-save-status')).toHaveAttribute('data-status', 'conflict');
+  });
+});
+
+test.describe('Task 4 — geometry', () => {
+  for (const width of [320, 430]) {
+    test(`${width}px: no horizontal overflow, and every control is at least 44x44`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 860 });
+      await openTask(page, { draftOver: { data: { availability: weekOf([0, 1, 2, 3, 4]) } } });
+
+      await expectNoHorizontalPageOverflow(page);
+
+      // Seven toggles must still fit a 320px column without wrapping into
+      // something unusable, and each must remain a real target.
+      for (const day of [0, 3, 6]) {
+        const box = (await page.getByTestId(`day-toggle-${day}`).boundingBox())!;
+        expect(box.width, `day ${day} too narrow`).toBeGreaterThanOrEqual(44);
+        expect(box.height, `day ${day} too short`).toBeGreaterThanOrEqual(44);
+      }
+      for (const id of ['bulk-start', 'bulk-end', 'apply-to-selected']) {
+        const box = (await page.getByTestId(id).boundingBox())!;
+        expect(box.height, `${id} too short`).toBeGreaterThanOrEqual(44);
+      }
+    });
+  }
+
+  test('the checkbox row is reachable, not trapped under the sticky bar', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+    await openTask(page);
+
+    const row = page.getByTestId('mark-unavailable');
+    await row.scrollIntoViewIfNeeded();
+    const box = (await row.boundingBox())!;
+    const sticky = (await page.getByTestId('onboarding-v2-sticky').boundingBox())!;
+    expect(box.y + box.height, 'the last row sits above the action bar').toBeLessThanOrEqual(
+      sticky.y + 1,
     );
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GEOMETRY — the half a DOM shim cannot answer.
-// ─────────────────────────────────────────────────────────────────────────────
-
-for (const width of [320, 430]) {
-  test.describe(`Task 4 — geometry at ${width}px`, () => {
-    test.skip(
-      ({ viewport }) => (viewport?.width ?? 0) > 500,
-      'the provider app is a phone surface',
-    );
-
-    test('no horizontal overflow, and every control is at least 44x44', async ({ page }) => {
-      await page.setViewportSize({ width, height: 780 });
-      await openTask(page, {
-        draftOver: {
-          data: {
-            availability: [0, 1, 2, 3, 4, 5, 6].map((d) => ({
-              id: `a${d}`,
-              dayOfWeek: d,
-              startMinute: 540,
-              endMinute: 1020,
-              timezone: 'Asia/Damascus',
-            })),
-          },
-        },
-      });
-
-      await expectNoHorizontalPageOverflow(page);
-
-      // Seven day toggles plus the seven per-day controls: the densest row in
-      // the screen at the narrowest width it has to work at.
-      for (const testId of [
-        'day-toggle-0',
-        'day-toggle-6',
-        'preset-sun-thu',
-        'apply-to-selected',
-        'day-clear-6',
-        'day-edit-6',
-      ]) {
-        const box = await page.getByTestId(testId).boundingBox();
-        expect({ testId, ok: (box?.height ?? 0) >= 44 && (box?.width ?? 0) >= 44 }).toEqual({
-          testId,
-          ok: true,
-        });
-      }
-    });
-
-    test('the LAST day row is reachable, not trapped under the bottom edge', async ({ page }) => {
-      // The brief's requirement, measured rather than asserted. Saturday is the
-      // last row, and it is the one a sticky action or a raised keyboard would
-      // cover.
-      await page.setViewportSize({ width, height: 640 });
-      await openTask(page, {
-        draftOver: {
-          data: {
-            availability: [0, 1, 2, 3, 4, 5, 6].map((d) => ({
-              id: `a${d}`,
-              dayOfWeek: d,
-              startMinute: 540,
-              endMinute: 1020,
-              timezone: 'Asia/Damascus',
-            })),
-          },
-        },
-      });
-
-      const last = page.getByTestId('day-row-6');
-      await last.scrollIntoViewIfNeeded();
-      await expect(last).toBeInViewport();
-
-      // And it is not merely visible — its control is hittable, which is the
-      // property that fails when something floats over it.
-      await page.getByTestId('day-clear-6').click();
-      await expect(page.getByTestId('day-row-6')).toHaveAttribute('data-available', 'false');
-    });
-
-    test('this screen raises no keyboard, because it has no text input', async ({ page }) => {
-      await page.setViewportSize({ width, height: 640 });
-      await openTask(page);
-      expect(await page.locator('input[type="text"], input[type="time"], textarea').count()).toBe(
-        0,
-      );
-    });
-  });
-}
-
 test.describe('Task 4 — Arabic', () => {
-  test('renders the week in Arabic with the times unchanged', async ({ page }) => {
-    await openTask(page, {
-      lang: 'ar',
-      draftOver: {
-        data: {
-          availability: [
-            { id: 'a', dayOfWeek: 0, startMinute: 540, endMinute: 1020, timezone: 'Asia/Damascus' },
-          ],
-        },
-      },
-    });
+  test('renders the approved Arabic copy with the times unchanged', async ({ page }) => {
+    await openTask(page, { lang: 'ar', draftOver: { data: { availability: weekOf([0, 1]) } } });
 
-    await expect(page.getByTestId('preset-sun-thu')).toContainText('الأحد');
-    await expect(page.getByTestId('day-summary-0')).toHaveText('09:00–17:00');
-    await expect(page.getByTestId('day-summary-6')).toHaveText('غير متاح');
+    expect(await htmlLangDir(page)).toEqual({ lang: 'ar', dir: 'rtl' });
+    // Times stay in Latin digits on a 24-hour clock: a stamp the provider
+    // matches against their own phone, not prose.
+    await expect(page.getByTestId('bulk-start')).toHaveValue('09:00');
+    await expect(page.getByTestId('day-toggle-0')).toHaveAttribute('aria-label', 'الأحد');
   });
 
-  test('does not overflow sideways under RTL at 320px', async ({ page, viewport }) => {
-    test.skip((viewport?.width ?? 0) > 500, 'the provider app is a phone surface');
-    await page.setViewportSize({ width: 320, height: 780 });
-    await openTask(page, { lang: 'ar' });
+  test('does not overflow sideways under RTL at 320px', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 860 });
+    await openTask(page, { lang: 'ar', draftOver: { data: { availability: weekOf([0, 1, 2]) } } });
     await expectNoHorizontalPageOverflow(page);
   });
 });

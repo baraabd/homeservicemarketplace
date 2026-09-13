@@ -24,26 +24,61 @@ const TONE_ICON: Record<ProviderTone, typeof Check> = {
 };
 
 /**
- * A status badge: hue, icon AND word, always all three.
+ * The approved `.hsm-badge` fills, which are not the workspace badge's.
  *
- * The baseline carried status in a small pill whose colour did most of the
- * work. A provider who cannot distinguish the greens from the ambers had to
- * infer their application's state from position in a list.
+ * Two differences, both measured against the reference: the pill carries no
+ * border, and `todo` sits on the SUNKEN surface (#f1f5f9) rather than on
+ * `--pv-todo-bg` (#f8fafc), which is the page background and would make the
+ * commonest badge on the hub invisible against it.
+ */
+const PILL_CLASSES: Readonly<Record<ProviderTone, string>> = Object.freeze({
+  done: 'text-pv-done bg-pv-done-bg',
+  todo: 'text-pv-todo bg-pv-surface-sunken',
+  blocked: 'text-pv-blocked bg-pv-blocked-bg',
+  waiting: 'text-pv-waiting bg-pv-waiting-bg',
+  danger: 'text-pv-danger bg-pv-danger-bg',
+  accent: 'text-pv-accent bg-pv-accent-subtle',
+});
+
+/**
+ * A status badge.
+ *
+ * `workspace` carries hue, icon AND word, always all three: the baseline
+ * carried status in a small pill whose colour did most of the work, and a
+ * provider who cannot distinguish the greens from the ambers had to infer
+ * their application's state from position in a list.
+ *
+ * `pill` is the approved onboarding shape — an 11px bold word on a tinted pill
+ * with no icon and no border. The word is still there, which is what the
+ * colour-independence rule actually requires; what it drops is a 13px glyph
+ * that, at this size and beside a word that already says it, was decoration.
  */
 export function ProviderStatusBadge({
   tone,
   label,
+  shape = 'workspace',
   className = '',
 }: {
   tone: ProviderTone;
   label: string;
+  shape?: 'workspace' | 'pill';
   className?: string;
 }) {
+  if (shape === 'pill') {
+    return (
+      <span
+        className={`inline-flex min-h-[28px] items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-pv-caption font-bold ${PILL_CLASSES[tone]} ${className}`}
+      >
+        {label}
+      </span>
+    );
+  }
+
   const Icon = TONE_ICON[tone];
   const c = TONE_CLASSES[tone];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[12px] font-semibold ${c.text} ${c.bg} ${c.border} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-pv-help font-semibold ${c.text} ${c.bg} ${c.border} ${className}`}
     >
       <Icon size={13} aria-hidden="true" className="flex-shrink-0" />
       {label}
@@ -67,6 +102,8 @@ export function ProviderNotice({
   actionLabel,
   onAction,
   className = '',
+  'data-testid': testId,
+  actionTestId,
 }: {
   tone?: ProviderTone;
   title: string;
@@ -74,6 +111,10 @@ export function ProviderNotice({
   actionLabel?: string;
   onAction?: () => void;
   className?: string;
+  'data-testid'?: string;
+  /** Addressed separately from the notice, because a test that can find the
+   *  sentence but not the way out of it proves only half of the point. */
+  actionTestId?: string;
 }) {
   const Icon = TONE_ICON[tone];
   const c = TONE_CLASSES[tone];
@@ -81,16 +122,18 @@ export function ProviderNotice({
     <div
       className={`flex items-start gap-3 rounded-xl border p-3.5 ${c.bg} ${c.border} ${className}`}
       role={tone === 'danger' ? 'alert' : 'status'}
+      data-testid={testId}
     >
       <Icon size={18} aria-hidden="true" className={`mt-0.5 flex-shrink-0 ${c.text}`} />
       <div className="min-w-0 flex-1">
-        <p className={`text-[14px] font-semibold ${c.text}`}>{title}</p>
-        {description ? <p className="mt-1 text-[13px] text-pv-text">{description}</p> : null}
+        <p className={`text-pv-body font-semibold ${c.text}`}>{title}</p>
+        {description ? <p className="mt-1 text-pv-label text-pv-text">{description}</p> : null}
         {actionLabel && onAction ? (
           <ProviderButton
             tone="secondary"
             onClick={onAction}
             className="mt-2.5 !min-h-[40px] px-3.5"
+            data-testid={actionTestId}
           >
             {actionLabel}
           </ProviderButton>
@@ -131,9 +174,9 @@ export function ProviderTaskRow({
   const body = (
     <>
       <div className="min-w-0 flex-1 text-start">
-        <p className="text-[15px] font-semibold text-pv-text">{title}</p>
-        {description ? <p className="mt-0.5 text-[13px] text-pv-muted">{description}</p> : null}
-        {explanation ? <p className="mt-1.5 text-[13px] text-pv-blocked">{explanation}</p> : null}
+        <p className="text-pv-heading font-semibold text-pv-text">{title}</p>
+        {description ? <p className="mt-0.5 text-pv-label text-pv-muted">{description}</p> : null}
+        {explanation ? <p className="mt-1.5 text-pv-label text-pv-blocked">{explanation}</p> : null}
       </div>
       <div className="flex flex-shrink-0 items-center gap-2">
         <ProviderStatusBadge tone={tone} label={statusLabel} />
@@ -203,7 +246,7 @@ export function ProviderAutosaveIndicator({
       aria-live="polite"
       data-testid="provider-autosave"
       data-state={state}
-      className={`text-[12px] font-medium ${TONE_CLASSES[tone].text}`}
+      className={`text-pv-help font-medium ${TONE_CLASSES[tone].text}`}
     >
       {labels[state]}
     </p>
@@ -226,8 +269,8 @@ export function ProviderEmptyState({
       className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-pv-border px-6 py-12 text-center"
       data-testid="provider-empty"
     >
-      <p className="text-[15px] font-semibold text-pv-text">{title}</p>
-      {description ? <p className="max-w-sm text-[13px] text-pv-muted">{description}</p> : null}
+      <p className="text-pv-heading font-semibold text-pv-text">{title}</p>
+      {description ? <p className="max-w-sm text-pv-label text-pv-muted">{description}</p> : null}
       {actionLabel && onAction ? (
         <ProviderButton onClick={onAction} className="mt-2">
           {actionLabel}
@@ -242,23 +285,28 @@ export function ProviderErrorState({
   description,
   retryLabel,
   onRetry,
+  testId,
 }: {
   title: string;
   description?: string;
   retryLabel?: string;
   onRetry?: () => void;
+  /** Overrides the default id, for a screen whose failure already had a stable
+   *  one. Migrating presentation must not silently rename a hook a test or a
+   *  support engineer relies on. */
+  testId?: string;
 }) {
   return (
     <div
       role="alert"
-      data-testid="provider-error"
+      data-testid={testId ?? 'provider-error'}
       className="flex flex-col items-start gap-2 rounded-xl border border-pv-danger-border bg-pv-danger-bg p-4"
     >
-      <p className="flex items-center gap-2 text-[14px] font-semibold text-pv-danger">
+      <p className="flex items-center gap-2 text-pv-body font-semibold text-pv-danger">
         <AlertTriangle size={16} aria-hidden="true" />
         {title}
       </p>
-      {description ? <p className="text-[13px] text-pv-text">{description}</p> : null}
+      {description ? <p className="text-pv-label text-pv-text">{description}</p> : null}
       {retryLabel && onRetry ? (
         <ProviderButton tone="secondary" onClick={onRetry} className="mt-1 !min-h-[40px]">
           {retryLabel}
@@ -274,8 +322,14 @@ export function ProviderErrorState({
  * A spinner in place of content tells the reader nothing about what will
  * appear; a skeleton the same size stops the layout jumping when it does.
  */
-export function ProviderSkeleton({ rows = 3 }: { rows?: number }) {
-  return (
+export function ProviderSkeleton({ rows = 3, label }: { rows?: number; label?: string }) {
+  // The bars themselves stay hidden from assistive technology — they carry no
+  // information and announcing three grey rectangles helps nobody. When a
+  // caller supplies a label, the WAITING is announced instead, once, through a
+  // live region wrapping them. A screen that replaced a spoken "loading" with
+  // a silent shimmer would be a regression for exactly the users who cannot
+  // see the shimmer.
+  const bars = (
     <div className="flex flex-col gap-3" data-testid="provider-skeleton" aria-hidden="true">
       {Array.from({ length: rows }, (_, i) => (
         <div
@@ -283,6 +337,15 @@ export function ProviderSkeleton({ rows = 3 }: { rows?: number }) {
           className="h-[72px] animate-pulse rounded-xl bg-pv-surface-sunken motion-reduce:animate-none"
         />
       ))}
+    </div>
+  );
+
+  if (!label) return bars;
+
+  return (
+    <div role="status" aria-live="polite">
+      <span className="sr-only">{label}</span>
+      {bars}
     </div>
   );
 }
@@ -316,12 +379,12 @@ export function ProviderStatusTimeline({ entries }: { entries: readonly Timeline
             </div>
             <div className={`min-w-0 flex-1 ${last ? 'pb-0' : 'pb-5'}`}>
               <p
-                className={`text-[14px] ${e.current ? 'font-semibold text-pv-text' : 'font-medium text-pv-text'}`}
+                className={`text-pv-body ${e.current ? 'font-semibold text-pv-text' : 'font-medium text-pv-text'}`}
               >
                 {e.title}
               </p>
-              {e.detail ? <p className="mt-0.5 text-[13px] text-pv-muted">{e.detail}</p> : null}
-              {e.at ? <p className="mt-0.5 text-[12px] text-pv-muted">{e.at}</p> : null}
+              {e.detail ? <p className="mt-0.5 text-pv-label text-pv-muted">{e.detail}</p> : null}
+              {e.at ? <p className="mt-0.5 text-pv-help text-pv-muted">{e.at}</p> : null}
             </div>
           </li>
         );

@@ -384,8 +384,13 @@ test.describe('provider onboarding v2 — the edit survives', () => {
 
     // 1. Back into the task in the same session — the hub says it is done.
     await page.goto('/provider/onboarding/WORKING_HOURS');
-    await expect(page.getByTestId('task-screen-status')).toBeVisible();
+    // Sprint 09B.29 Phase 5A — the status pill is gone from the task body; the
+    // approved screen carries neither it nor the task description. What the
+    // returning provider reads instead is the header (the screen and its
+    // position in the flow) and the sticky bar's save line, so those are what
+    // is asserted. The durable evidence is still the server answer below.
     await expect(page.getByTestId('task-screen-WORKING_HOURS')).toBeVisible();
+    await expect(page.getByTestId('onboarding-v2-progress')).toBeVisible();
 
     // 2. Hard reload.
     await page.reload();
@@ -500,15 +505,12 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     // One complete save, so a "Saved" chip genuinely exists to go stale.
     await field.fill('First value');
     await field.blur();
-    await expect(page.getByTestId('basics-save-status')).toHaveAttribute('data-status', 'saved');
+    await expect(page.getByTestId('task-save-status')).toHaveAttribute('data-status', 'saved');
 
     // Now type again. The chip must change in the SAME tick — this is the
     // false-saved-state, and it is what made the data loss invisible.
     await field.fill('Second value');
-    await expect(page.getByTestId('basics-save-status')).not.toHaveAttribute(
-      'data-status',
-      'saved',
-    );
+    await expect(page.getByTestId('task-save-status')).not.toHaveAttribute('data-status', 'saved');
   });
 
   // ── The hub must not serve a stale projection ────────────────────────────

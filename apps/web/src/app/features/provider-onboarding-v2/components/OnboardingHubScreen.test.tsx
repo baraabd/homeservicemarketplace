@@ -135,29 +135,30 @@ describe('OnboardingHubScreen — the task list', () => {
 
     await screen.findByTestId('hub-task-list');
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    // Five groups, because the response sends five. The two COVERAGE tasks
-    // share one heading rather than repeating it.
+    // FOUR sections, from five server groups. The approved hub puts Review
+    // under the same "Public profile" heading as the portfolio task, so those
+    // two codes resolve to one section — see `sectionOf`. The two COVERAGE
+    // tasks still share one heading rather than repeating it.
     //
     // Sentence case, not caps: Mode B replaced 11px tracked-out all-caps grey
     // — decoration that happened to contain words — with a readable heading.
-    // The COPY is unchanged; only the transform applied to it is gone.
-    expect(headings).toEqual([
-      'Basics',
-      'Your services',
-      'Where and when you work',
-      'Your profile',
-      'Review',
-    ]);
+    expect(headings).toEqual(['Basics', 'Your services', 'Where and when', 'Public profile']);
 
-    const coverage = screen.getByRole('region', { name: 'Where and when you work' });
+    const coverage = screen.getByRole('region', { name: 'Where and when' });
     expect(within(coverage).getAllByTestId(/^task-row-/)).toHaveLength(2);
+
+    // The merge must not swallow a task: all six rows are still rendered, and
+    // the section that absorbed Review carries both of its rows.
+    expect(screen.getAllByTestId(/^task-row-/)).toHaveLength(6);
+    const profile = screen.getByRole('region', { name: 'Public profile' });
+    expect(within(profile).getAllByTestId(/^task-row-/)).toHaveLength(2);
   });
 
   it('renders the progress COUNT the server sent', async () => {
     mock.onGet(HUB_URL).reply(200, hub());
     renderHub();
     expect(await screen.findByTestId('onboarding-v2-progress')).toHaveTextContent(
-      '0 of 6 complete',
+      '0 of 6 tasks complete',
     );
   });
 
@@ -168,7 +169,7 @@ describe('OnboardingHubScreen — the task list', () => {
     mock.onGet(HUB_URL).reply(200, hub({ tasks, progress: { complete: 3, total: 6 } }));
     renderHub();
     expect(await screen.findByTestId('onboarding-v2-progress')).toHaveTextContent(
-      '3 of 6 complete',
+      '3 of 6 tasks complete',
     );
   });
 });
@@ -293,7 +294,10 @@ describe('OnboardingHubScreen — a specialty still in moderation', () => {
     mock.onGet(HUB_URL).reply(200, PENDING_MODERATION);
     renderHub();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Submit application' }));
+    // The approved complete-hub action reads 'Review application': submission
+    // itself lives on the review screen, and a hub button that said 'Submit'
+    // promised a write it does not perform.
+    fireEvent.click(await screen.findByRole('button', { name: 'Review application' }));
     await waitFor(() => expect(at()).toBe('/provider/onboarding/REVIEW_SUBMISSION'));
   });
 
@@ -303,7 +307,7 @@ describe('OnboardingHubScreen — a specialty still in moderation', () => {
     // Before the repair this read 4 of 6 and told a provider who had finished
     // that they had not.
     expect(await screen.findByTestId('onboarding-v2-progress')).toHaveTextContent(
-      '5 of 6 complete',
+      '5 of 6 tasks complete',
     );
   });
 
@@ -322,8 +326,8 @@ describe('OnboardingHubScreen — a specialty still in moderation', () => {
     const row = await screen.findByTestId('task-row-SERVICES_EXPERIENCE');
     expect(row).toHaveAttribute('data-actionable', 'false');
     // The Arabic CTA, not a transliteration and not the English string.
-    expect(screen.getByRole('button', { name: 'إرسال الطلب' })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: 'Submit application' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'مراجعة الطلب' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Review application' })).toBeNull();
   });
 });
 
@@ -334,7 +338,9 @@ describe('OnboardingHubScreen — the dynamic CTA', () => {
       .reply(200, hub({ nextAction: { kind: 'COMPLETE_TASK', taskId: 'WORK_AREA' } }));
     renderHub();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+    // The approved label names WHERE it goes — 'Start: <section>' — and the
+    // section comes from the group of the task the server nominated.
+    fireEvent.click(await screen.findByRole('button', { name: 'Start: Where and when' }));
     await waitFor(() => expect(at()).toBe('/provider/onboarding/WORK_AREA'));
   });
 
@@ -403,10 +409,15 @@ describe('OnboardingHubScreen — states', () => {
     await screen.findByTestId('hub-task-list');
   });
 
-  it('shows the unauthorized state on 401', async () => {
+  // Sprint 09B.29 Phase 5A — the approved expired-session screen. Same state,
+  // same precedence, its own surface: what it adds is the sentence a provider
+  // in that moment actually wants, which is that nothing they saved is lost.
+  it('shows the approved session-expired screen on 401', async () => {
     mock.onGet(HUB_URL).reply(401);
     renderHub();
-    await screen.findByTestId('hub-state-UNAUTHORIZED');
+    await screen.findByTestId('session-expired');
+    expect(screen.getByTestId('session-expired-safe')).toBeInTheDocument();
+    expect(screen.getByTestId('session-expired-sign-in')).toBeInTheDocument();
   });
 
   // Sprint 9B.29 — 403 gets its OWN screen. This case used to be folded into
@@ -459,13 +470,30 @@ describe('OnboardingHubScreen — states', () => {
     expect(screen.queryByText(/approved/i)).toBeNull();
   });
 
-  it('shows ACTION_REQUIRED as a banner ABOVE the tasks, not instead of them', async () => {
-    mock.onGet(HUB_URL).reply(200, hub({ status: 'ACTION_REQUIRED' }));
+  // Sprint 09B.29 Phase 5A — the approved action-required screen, which is NOT
+  // the hub with a banner on it.
+  //
+  // The old assertion said the banner was only useful beside the task list.
+  // That worry is answered better than it was: the approved screen names the
+  // ONE task the server flagged and puts a button on it, so the provider is not
+  // asked to find their own problem among five rows that are already done. The
+  // assertion moved with the design and is now stronger — it checks the button
+  // reaches the right task rather than that a list exists.
+  it('names the one flagged task instead of re-listing the finished ones', async () => {
+    mock.onGet(HUB_URL).reply(
+      200,
+      hub({
+        status: 'ACTION_REQUIRED',
+        nextAction: { kind: 'COMPLETE_TASK', taskId: 'WORK_AREA' },
+      }),
+    );
     renderHub();
 
-    await screen.findByTestId('hub-state-ACTION_REQUIRED');
-    // The banner is only useful if the provider can act on it.
-    expect(screen.getByTestId('hub-task-list')).toBeInTheDocument();
+    await screen.findByTestId('onboarding-returned');
+    expect(screen.getByTestId('returned-complete-now')).toHaveTextContent('Work area');
+    expect(screen.getByTestId('returned-todo')).toBeInTheDocument();
+    // The checklist is gone; the way to the flagged task is not.
+    expect(screen.queryByTestId('hub-task-list')).toBeNull();
   });
 
   it('tells an already-active provider there is nothing to fill in', async () => {
@@ -494,7 +522,7 @@ describe('OnboardingHubScreen — Arabic', () => {
     renderHub('en');
 
     await screen.findByTestId('hub-task-list');
-    expect(screen.getByText('Your details')).toBeInTheDocument();
+    expect(screen.getByText('Basic details')).toBeInTheDocument();
     expect(screen.queryByText('البيانات الأساسية')).toBeNull();
     expect(screen.getByTestId('onboarding-v2-shell')).toHaveAttribute('dir', 'ltr');
   });

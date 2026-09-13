@@ -82,7 +82,14 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-function renderScreen(view = DRAFT(), lang: 'en' | 'ar' = 'en', editable = true) {
+type Part = 'profile' | 'portfolio';
+
+function renderScreen(
+  view = DRAFT(),
+  lang: 'en' | 'ar' = 'en',
+  editable = true,
+  part: Part = 'profile',
+) {
   window.localStorage.setItem('hsm.lang', lang);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(providerQueryKeys.onboarding.draft(), view);
@@ -91,7 +98,12 @@ function renderScreen(view = DRAFT(), lang: 'en' | 'ar' = 'en', editable = true)
       <QueryClientProvider client={client}>
         <LanguageProvider>
           <ProviderOnboardingAutosaveProvider>
-            <PublicProfileTaskScreen view={view as never} lang={lang} editable={editable} />
+            <PublicProfileTaskScreen
+              view={view as never}
+              lang={lang}
+              editable={editable}
+              part={part}
+            />
           </ProviderOnboardingAutosaveProvider>
         </LanguageProvider>
       </QueryClientProvider>
@@ -99,292 +111,227 @@ function renderScreen(view = DRAFT(), lang: 'en' | 'ar' = 'en', editable = true)
   );
 }
 
-async function lastPatch(): Promise<Record<string, unknown>> {
-  await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-  return JSON.parse(mock.history.patch[mock.history.patch.length - 1]!.data as string) as Record<
-    string,
-    unknown
-  >;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('the title, suggested and then owned by the provider', () => {
-  it('offers the suggestion from Task 2 without writing it', () => {
-    renderScreen();
-    expect(screen.getByTestId('title-suggestion')).toHaveTextContent('Electrician');
-    expect((screen.getByTestId('title-input') as HTMLInputElement).value).toBe('');
-    expect(mock.history.patch).toHaveLength(0);
-  });
-
-  it('fills the box when the provider accepts it, and still does not save', () => {
-    renderScreen();
-    fireEvent.click(screen.getByTestId('title-use-suggestion'));
-    expect((screen.getByTestId('title-input') as HTMLInputElement).value).toBe('Electrician');
-    expect(mock.history.patch).toHaveLength(0);
-  });
-
-  it('saves the edited title on blur', async () => {
-    renderScreen();
-    fireEvent.change(screen.getByTestId('title-input'), {
-      target: { value: 'Electrician' },
-    });
-    fireEvent.blur(screen.getByTestId('title-input'));
-    expect(await lastPatch()).toMatchObject({ headline: 'Electrician' });
-  });
-
-  it('trims before saving', async () => {
-    renderScreen();
-    fireEvent.change(screen.getByTestId('title-input'), {
-      target: { value: '   Electrician   ' },
-    });
-    fireEvent.blur(screen.getByTestId('title-input'));
-    expect(await lastPatch()).toMatchObject({ headline: 'Electrician' });
-  });
-
-  it('clears the title to null rather than saving an empty string', async () => {
-    renderScreen(DRAFT({ data: { headline: 'Old title here' } }));
-    fireEvent.change(screen.getByTestId('title-input'), { target: { value: '   ' } });
-    fireEvent.blur(screen.getByTestId('title-input'));
-    expect(await lastPatch()).toMatchObject({ headline: null });
-  });
-});
-
-describe('a title is sanitised before it can be published', () => {
-  it.each([
-    ['a phone number', 'Electrician call 0991234567', 'CONTAINS_CONTACT'],
-    ['an email address', 'Electrician me@example.test', 'CONTAINS_CONTACT'],
-    // A .com address matches the URL rule first. Still refused, which is the
-    // property that matters; the code differs and the test says so rather than
-    // pretending the order is something else.
-    ['an email at a known TLD', 'Electrician me@example.com', 'CONTAINS_URL'],
-    ['a link', 'Electrician www.example.com', 'CONTAINS_URL'],
-  ])('refuses %s and does not save it', async (_name, value, code) => {
-    renderScreen();
-    fireEvent.change(screen.getByTestId('title-input'), { target: { value } });
-    fireEvent.blur(screen.getByTestId('title-input'));
-
-    expect(screen.getByTestId('title-help')).toHaveTextContent(EN.titleRefusal[code]!);
-    // Sending it anyway would trade a clear inline message for a 422 the
-    // provider has to decode.
-    expect(mock.history.patch).toHaveLength(0);
-  });
-
-  it('marks the field invalid for assistive technology', () => {
-    renderScreen();
-    fireEvent.change(screen.getByTestId('title-input'), {
-      target: { value: 'Call me on 0991234567' },
-    });
-    expect(screen.getByTestId('title-input')).toHaveAttribute('aria-invalid', 'true');
-    expect(screen.getByTestId('title-help')).toHaveAttribute('role', 'alert');
-  });
-
-  it('caps the length at the input itself, so the refusal is rare', () => {
-    renderScreen();
-    expect(screen.getByTestId('title-input')).toHaveAttribute('maxLength', '60');
-  });
-});
+// Sprint 09B.29 Phase 5A — Task 5 is TWO approved screens: `profile` (the bio
+// and a preview of what a customer reads) and `portfolio` (the uploader, the
+// tiles and the moderation notice).
+//
+// SUPERSEDED, and recorded rather than deleted:
+//
+//   the title input   and with it the client-side sanitisation that refused a
+//                     phone number, an email or a link inside it. Ruling C1
+//                     makes the generated title SERVER-owned and the approved
+//                     screen shows it without an editor, so nothing
+//                     unverifiable can be typed there at all — which is
+//                     stricter than sanitising what was typed. The absence of
+//                     an editor is asserted below and in the Task 2 suite.
+//   the bio counter   and the minimum-length hint. The server still enforces
+//                     the minimum; the ceiling is now an input cap rather than
+//                     a number on screen. RECORDED FOR PHASE 5B: a provider
+//                     learns about the minimum at submission rather than while
+//                     writing.
+//   the examples      the prompts panel is not on the approved screen.
 
 describe('the bio', () => {
-  it('offers prompts rather than a template to send unedited', () => {
+  it('is the one thing the approved profile screen asks for', async () => {
     renderScreen();
-    const examples = screen.getByTestId('bio-examples');
-    expect(within(examples).getAllByRole('listitem').length).toBeGreaterThanOrEqual(3);
-    expect((screen.getByTestId('bio-input') as HTMLTextAreaElement).value).toBe('');
+
+    expect(await screen.findByTestId('bio-input')).toBeInTheDocument();
+    // No editor for a server-owned title, anywhere on this screen.
+    expect(screen.queryByTestId('title-input')).toBeNull();
+    expect(screen.queryByTestId('title-use-suggestion')).toBeNull();
+    expect(screen.queryByTestId('bio-examples')).toBeNull();
   });
 
-  it('counts what the SERVER measures — the trimmed length', () => {
+  it('saves to the PROFILE step as it is typed', async () => {
     renderScreen();
-    fireEvent.change(screen.getByTestId('bio-input'), { target: { value: '  hello  ' } });
-    // Five, not nine: the DTO trims before its length check, so a counter that
-    // included the spaces would promise a save the server refuses.
-    expect(screen.getByTestId('bio-counter')).toHaveTextContent('5 of 2,000 characters');
+
+    fireEvent.change(await screen.findByTestId('bio-input'), {
+      target: { value: 'Painting professional with 14 years of experience.' },
+    });
+
+    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
+    const sent = mock.history.patch.find((r) => r.url?.includes('PROFILE'));
+    expect(sent, 'the write goes to the PROFILE step').toBeTruthy();
+    expect(JSON.parse(sent!.data).bio).toBe('Painting professional with 14 years of experience.');
   });
 
-  it('warns below the minimum the completeness policy enforces', () => {
-    renderScreen();
-    fireEvent.change(screen.getByTestId('bio-input'), { target: { value: 'Too short.' } });
-    expect(screen.getByTestId('bio-help')).toHaveTextContent(EN.bioTooShort('40'));
-  });
+  it('clears to null rather than saving an empty string', async () => {
+    renderScreen(DRAFT({ data: { bio: 'Something already said.' } }));
 
-  it('saves a bio that is long enough', async () => {
-    const text = 'I handle residential and light commercial electrical work across the city.';
-    renderScreen();
-    fireEvent.change(screen.getByTestId('bio-input'), { target: { value: text } });
+    fireEvent.change(await screen.findByTestId('bio-input'), { target: { value: '   ' } });
     fireEvent.blur(screen.getByTestId('bio-input'));
-    expect(await lastPatch()).toMatchObject({ bio: text });
+
+    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
+    const sent = mock.history.patch[mock.history.patch.length - 1]!;
+    expect(JSON.parse(sent.data).bio).toBeNull();
   });
 
-  it('refuses to save an over-long bio, and says so', () => {
+  it('caps the length at the input, so the server never has to refuse it', async () => {
     renderScreen();
-    fireEvent.change(screen.getByTestId('bio-input'), { target: { value: 'x'.repeat(2001) } });
-
-    expect(screen.getByTestId('bio-help')).toHaveTextContent(EN.bioCounterOver);
-    expect(screen.getByTestId('bio-input')).toHaveAttribute('aria-invalid', 'true');
-    fireEvent.blur(screen.getByTestId('bio-input'));
-    expect(mock.history.patch).toHaveLength(0);
+    // The counter is gone with the approved design; the ceiling is not.
+    expect(await screen.findByTestId('bio-input')).toHaveAttribute('maxLength', '2000');
   });
 
-  it('announces the count politely rather than re-reading the field', () => {
+  it('carries the privacy guidance as the field’s own hint', async () => {
     renderScreen();
-    const counter = screen.getByTestId('bio-counter');
-    expect(counter).toHaveAttribute('aria-live', 'polite');
-    expect(screen.getByTestId('bio-input')).toHaveAttribute(
-      'aria-describedby',
-      expect.stringContaining('bio-counter') as unknown as string,
+
+    const hint = screen.getByText(EN.bioApprovedHint);
+    const bio = await screen.findByTestId('bio-input');
+    expect(bio.getAttribute('aria-describedby')).toContain(hint.id);
+  });
+});
+
+describe('the customer preview', () => {
+  const populated = DRAFT({
+    data: {
+      suggestedTitle: { en: 'Painting professional', ar: 'فني دهانات' },
+      serviceAreaCity: 'Aleppo, Al-Furqan',
+      serviceAreaRadiusKm: 15,
+      yearsOfExperience: 14,
+    },
+  });
+
+  it('reads back what the provider already told the server', async () => {
+    renderScreen(populated);
+
+    expect(await screen.findByTestId('preview-title')).toHaveTextContent('Painting professional');
+    expect(screen.getByTestId('preview-line')).toHaveTextContent(
+      'Aleppo • 15 km radius • 14 years experience',
     );
+  });
+
+  it('offers nothing to edit — the title is the server’s', async () => {
+    renderScreen(populated);
+    await screen.findByTestId('preview-title');
+
+    expect(screen.queryByTestId('title-input')).toBeNull();
+    expect(screen.queryByTestId('title-edit')).toBeNull();
+    expect(screen.queryByTestId('title-accept')).toBeNull();
+  });
+
+  it('says nothing rather than half a sentence', async () => {
+    // A line missing its radius or its years would read as a defect. The
+    // provider has not finished telling us; the preview waits.
+    renderScreen(DRAFT({ data: { serviceAreaCity: 'Aleppo', serviceAreaRadiusKm: null } }));
+    await screen.findByTestId('customer-preview');
+    expect(screen.queryByTestId('preview-line')).toBeNull();
+  });
+});
+
+describe('the portfolio', () => {
+  /**
+   * Replace the gallery answer for one test.
+   *
+   * `beforeEach` already registered an empty gallery, and axios-mock-adapter
+   * matches handlers in REGISTRATION order — so adding a second one inside a
+   * test never runs. Resetting and re-registering is the only way to change
+   * the answer, and doing it in one helper keeps the other handlers intact.
+   */
+  function withGallery(items: unknown[]) {
+    mock.reset();
+    mock.onGet(PREVIEW).reply(200, PREVIEW_RESPONSE());
+    mock.onPatch(PATCH).reply(200, DRAFT());
+    mock.onGet(PORTFOLIO).reply(200, { items, remainingSlots: 7, maxItems: 10 });
+  }
+
+  it('draws the approved upload surface and the moderation notice', async () => {
+    renderScreen(DRAFT(), 'en', true, 'portfolio');
+
+    expect(await screen.findByTestId('portfolio-add-photo')).toBeInTheDocument();
+    expect(screen.getByTestId('portfolio-moderation-notice')).toHaveTextContent(
+      EN.photosCheckingTitle,
+    );
+  });
+
+  it('does NOT show a photo the platform has not cleared', async () => {
+    // The notice beside it promises review "controls when photos become
+    // visible". Rendering the image anyway would contradict it on the one
+    // screen that states it.
+    withGallery([
+      {
+        id: 'pf-1',
+        media: { url: 'https://cdn.test/one.jpg' },
+        title: null,
+        description: null,
+        serviceCategoryId: null,
+        position: 0,
+        moderationState: 'PENDING',
+        moderationReason: null,
+        createdAt: '2026-09-01T00:00:00.000Z',
+      },
+    ]);
+
+    renderScreen(DRAFT(), 'en', true, 'portfolio');
+
+    const tile = await screen.findByTestId('portfolio-item-pf-1');
+    expect(tile).toHaveAttribute('data-moderation', 'PENDING');
+    expect(tile.querySelector('img')).toBeNull();
+  });
+
+  it('shows a cleared photo', async () => {
+    withGallery([
+      {
+        id: 'pf-2',
+        media: { url: 'https://cdn.test/two.jpg' },
+        title: 'Finished wall',
+        description: null,
+        serviceCategoryId: null,
+        position: 0,
+        moderationState: 'APPROVED',
+        moderationReason: null,
+        createdAt: '2026-09-01T00:00:00.000Z',
+      },
+    ]);
+
+    renderScreen(DRAFT(), 'en', true, 'portfolio');
+
+    const tile = await screen.findByTestId('portfolio-item-pf-2');
+    expect(tile.querySelector('img')).toHaveAttribute('src', 'https://cdn.test/two.jpg');
+  });
+
+  it('will not upload until the publication wording has been agreed to', async () => {
+    renderScreen(DRAFT(), 'en', true, 'portfolio');
+
+    const input = (await screen.findByLabelText(EN.choosePhotoFile)) as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [new File([new Uint8Array([1])], 'w.jpg', { type: 'image/jpeg' })] },
+    });
+
+    // The server records WHICH wording was agreed to and refuses a stale
+    // version, so a create sent without showing the sentence would be
+    // recording agreement to text nobody saw.
+    const gate = await screen.findByTestId('portfolio-consent');
+    expect(gate).toBeInTheDocument();
+    expect(screen.getByTestId('portfolio-consent-agree')).toBeDisabled();
+
+    fireEvent.click(within(gate).getByRole('checkbox'));
+    expect(screen.getByTestId('portfolio-consent-agree')).toBeEnabled();
   });
 });
 
 describe('Arabic', () => {
-  it('counts Arabic content correctly', () => {
-    // Arabic is not surrogate-paired, so UTF-16 length and character count
-    // agree — which is what makes counting the way the server does safe here.
+  it('renders the approved Arabic copy on both halves', async () => {
     renderScreen(DRAFT(), 'ar');
-    fireEvent.change(screen.getByTestId('bio-input'), { target: { value: 'أعمل في الكهرباء' } });
-    expect(screen.getByTestId('bio-counter')).toHaveTextContent('١٦');
+    expect(await screen.findByText(PUBLIC_PROFILE_COPY.ar.bioApprovedLabel)).toBeInTheDocument();
+    expect(screen.queryByText(EN.bioApprovedLabel)).toBeNull();
   });
 
-  it('renders the counter in Arabic-Indic digits', () => {
-    renderScreen(DRAFT(), 'ar');
-    // ٢٬٠٠٠ — the localised maximum. A Latin "2,000" inside Arabic copy is the
-    // thing "a correct localised counter" is asking about.
-    expect(screen.getByTestId('bio-counter').textContent).toMatch(/[٠-٩]/);
-  });
-
-  it('localises the digits in the minimum-length hint too', () => {
-    // The hint sits directly beside the counter. Localising one and not the
-    // other puts two digit systems on the same row — "اكتب 40" next to
-    // "٠ من ٢٬٠٠٠" — which reads as a rendering bug rather than as copy.
-    renderScreen(DRAFT(), 'ar');
-    fireEvent.change(screen.getByTestId('bio-input'), { target: { value: 'قصير' } });
-    const hint = screen.getByTestId('bio-help').textContent ?? '';
-    expect(hint).toMatch(/[٠-٩]/);
-    expect(hint).not.toMatch(/[0-9]/);
-  });
-
-  it('offers the Arabic suggestion, not the English one', () => {
-    renderScreen(DRAFT(), 'ar');
-    expect(screen.getByTestId('title-suggestion')).toHaveTextContent('كهربائي');
-  });
-
-  it('keeps Arabic bio text through a save', async () => {
-    const text = 'أعمل في تمديدات الكهرباء المنزلية والتجارية الخفيفة منذ عشر سنوات في المدينة.';
-    renderScreen(DRAFT(), 'ar');
-    fireEvent.change(screen.getByTestId('bio-input'), { target: { value: text } });
-    fireEvent.blur(screen.getByTestId('bio-input'));
-    expect(await lastPatch()).toMatchObject({ bio: text });
-  });
-});
-
-describe('the preview comes from the server, not from this page', () => {
-  it('renders the public projection the server returned', async () => {
-    renderScreen();
-    await waitFor(() => expect(screen.getByTestId('public-preview')).toBeInTheDocument());
-    expect(screen.getByTestId('preview-display-name')).toHaveTextContent('Ada Lovelace Services');
-    expect(screen.getByTestId('preview-headline')).toHaveTextContent('Electrician');
-    expect(screen.getByTestId('preview-area')).toHaveTextContent('Damascus');
-  });
-
-  it('does NOT reflect unsaved local edits', async () => {
-    // The preview is what a CUSTOMER would get. Echoing the textarea would
-    // make it a mirror of this page instead.
-    renderScreen();
-    await waitFor(() => expect(screen.getByTestId('public-preview')).toBeInTheDocument());
-
-    fireEvent.change(screen.getByTestId('bio-input'), { target: { value: 'Unsaved words.' } });
-    expect(screen.getByTestId('preview-bio')).toHaveTextContent('I do electrical work.');
-    expect(screen.getByTestId('preview-bio')).not.toHaveTextContent('Unsaved words.');
-  });
-
-  it('renders only the fields the public contract carries', async () => {
-    // If the server ever started returning a phone number, this screen would
-    // have nowhere to put it — but the assertion is worth making explicitly.
-    renderScreen();
-    await waitFor(() => expect(screen.getByTestId('public-preview')).toBeInTheDocument());
-    const markup = screen.getByTestId('public-preview').textContent ?? '';
-    expect(markup).not.toMatch(/\+?\d{9,}/);
-    expect(markup).not.toMatch(/33\.5|36\.2/);
-  });
-
-  it('says so when the preview cannot be loaded', async () => {
-    mock.onGet(PREVIEW).reply(500);
-    renderScreen();
-    await waitFor(() => expect(screen.getByTestId('preview-load-failed')).toBeInTheDocument());
-  });
-});
-
-describe('the notices tell the truth about what is not built', () => {
-  it('says customer profiles are not live yet', async () => {
-    renderScreen();
-    await waitFor(() => expect(screen.getByTestId('notice-route-unavailable')).toBeInTheDocument());
-  });
-
-  it('counts photos awaiting review and says they are not visible', async () => {
-    mock.onGet(PREVIEW).reply(200, PREVIEW_RESPONSE({ awaitingReviewCount: 3 }));
-    renderScreen();
-    await waitFor(() =>
-      expect(screen.getByTestId('notice-awaiting-review')).toHaveTextContent('3 photo(s)'),
-    );
-  });
-
-  it('admits no reviewer exists rather than implying a queue is moving', async () => {
-    mock.onGet(PREVIEW).reply(200, PREVIEW_RESPONSE({ awaitingReviewCount: 1 }));
-    renderScreen();
-    await waitFor(() => expect(screen.getByTestId('notice-no-reviewer')).toBeInTheDocument());
-  });
-
-  it('drops the waiting notices once the server says review exists', async () => {
-    // Driven by the SERVER flag, so the day the capability ships the sentence
-    // disappears without a web deploy guessing.
-    mock
-      .onGet(PREVIEW)
-      .reply(200, PREVIEW_RESPONSE({ awaitingReviewCount: 0, moderationReviewAvailable: true }));
-    renderScreen();
-    await waitFor(() => expect(screen.getByTestId('public-preview')).toBeInTheDocument());
-    expect(screen.queryByTestId('notice-no-reviewer')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('notice-awaiting-review')).not.toBeInTheDocument();
-  });
-
-  it('always states that private details are not part of the profile', async () => {
-    renderScreen();
-    await waitFor(() =>
-      expect(screen.getByTestId('notice-private-not-shown')).toHaveTextContent(
-        'phone number, exact location',
-      ),
-    );
-  });
-
-  it('shows no photos, and says why, while none is approved', async () => {
-    renderScreen();
-    await waitFor(() => expect(screen.getByTestId('preview-no-photos')).toBeInTheDocument());
-  });
-});
-
-describe('the portfolio is the existing component', () => {
-  it('renders inside the task rather than a second gallery', async () => {
-    renderScreen();
-    // The Sprint 9B.10 section, mounted as-is. It fetches its own data through
-    // the same hooks the standalone screen uses.
-    await waitFor(() =>
-      expect(mock.history.get.some((r) => PORTFOLIO.test(r.url ?? ''))).toBe(true),
-    );
-    expect(screen.getByTestId('public-profile-portfolio')).toBeInTheDocument();
+  it('renders the portfolio half in Arabic', async () => {
+    renderScreen(DRAFT(), 'ar', true, 'portfolio');
+    expect(await screen.findByText(PUBLIC_PROFILE_COPY.ar.uploadPrompt)).toBeInTheDocument();
   });
 });
 
 describe('a locked application', () => {
-  it('disables the inputs but still shows the preview', async () => {
-    renderScreen(DRAFT({ data: { headline: 'Electrician' } }), 'en', false);
-    expect(screen.getByTestId('title-input')).toBeDisabled();
-    expect(screen.getByTestId('bio-input')).toBeDisabled();
-    await waitFor(() => expect(screen.getByTestId('public-preview')).toBeInTheDocument());
+  it('disables the bio', async () => {
+    renderScreen(DRAFT(), 'en', false);
+    expect(await screen.findByTestId('bio-input')).toBeDisabled();
   });
 
-  it('saves nothing on blur while locked', () => {
-    renderScreen(DRAFT(), 'en', false);
-    fireEvent.blur(screen.getByTestId('title-input'));
-    fireEvent.blur(screen.getByTestId('bio-input'));
-    expect(mock.history.patch).toHaveLength(0);
+  it('disables the uploader', async () => {
+    renderScreen(DRAFT(), 'en', false, 'portfolio');
+    expect(await screen.findByTestId('portfolio-add-photo')).toBeDisabled();
   });
 });

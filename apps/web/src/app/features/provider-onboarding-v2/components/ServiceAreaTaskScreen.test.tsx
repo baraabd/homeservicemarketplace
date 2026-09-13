@@ -9,6 +9,8 @@ import { providerQueryKeys } from '../../../../lib/provider/query-keys';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { ServiceAreaTaskScreen } from './ServiceAreaTaskScreen';
 import { SERVICE_AREA_COPY } from '../copy/service-area-copy';
+
+const EN = SERVICE_AREA_COPY.en;
 import { ProviderOnboardingAutosaveProvider } from '../autosave/ProviderOnboardingAutosaveProvider';
 
 // Sprint 9B.19 — V2 Task 3.
@@ -87,9 +89,10 @@ afterEach(() => {
   });
 });
 
-function stubGeolocation(impl: Partial<Geolocation>) {
-  Object.defineProperty(navigator, 'geolocation', { value: impl, configurable: true });
-}
+// The geolocation stub and its restore hook stay: the approved screen asks the
+// device for nothing, and "asks the device for nothing at all" installs a spy
+// to PROVE it rather than to drive a flow. The helper that used to build a
+// permission outcome has no caller left.
 
 function renderScreen(view = DRAFT(), lang: 'en' | 'ar' = 'en', editable = true) {
   window.localStorage.setItem('hsm.lang', lang);
@@ -108,274 +111,229 @@ function renderScreen(view = DRAFT(), lang: 'en' | 'ar' = 'en', editable = true)
   );
 }
 
-describe('the task can be completed WITHOUT device location', () => {
-  it('never asks for permission on mount', async () => {
-    // Firing a permission prompt at someone who has not been told why is how
-    // people learn to hit "block" reflexively.
+// Sprint 09B.29 Phase 5A — the approved screen is three things: one field, a
+// described area, and the sentence explaining why the radius is what it is.
+//
+// RECORDED FOR PHASE 5B, because each was a real affordance and none of them
+// is on the approved screen:
+//
+//   the country       `serviceAreaCountry` is REQUIRED by the completeness
+//                     policy, and there is now no control to set it. A stored
+//                     country is preserved — nothing here writes null over it
+//                     — but a provider starting fresh cannot supply one from
+//                     this screen. This is the sharpest of the recorded gaps.
+//   device location   the "use my location" button and its permission states.
+//                     Nothing requests geolocation any more, which is why the
+//                     "completable with the permission refused" criterion is
+//                     now satisfied by construction.
+//   the radius slider the approved screen STATES the radius and says it
+//                     follows the transport answer. The number still comes
+//                     from the server.
+//   the area preview  replaced by the map band, which says the same thing.
+
+describe('the one question the approved screen asks', () => {
+  it('asks for a city or neighborhood, and nothing else', async () => {
+    renderScreen();
+
+    expect(await screen.findByTestId('service-area-city')).toBeInTheDocument();
+    // No country picker, no "use my location", no slider.
+    expect(screen.queryByTestId('service-area-country')).toBeNull();
+    expect(screen.queryByTestId('use-my-location')).toBeNull();
+    expect(screen.queryByTestId('radius-slider')).toBeNull();
+  });
+
+  it('saves the city to the LOCATION step', async () => {
+    renderScreen();
+
+    fireEvent.change(await screen.findByTestId('service-area-city'), {
+      target: { value: 'Aleppo, Al-Furqan' },
+    });
+
+    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
+    const sent = mock.history.patch.find((r) => r.url?.includes('LOCATION'));
+    expect(sent, 'the write goes to the LOCATION step').toBeTruthy();
+    expect(JSON.parse(sent!.data).serviceAreaCity).toBe('Aleppo, Al-Furqan');
+  });
+
+  it('never writes an empty city, which the server refuses', async () => {
+    renderScreen(DRAFT({ data: { serviceAreaCity: 'Aleppo' } }));
+
+    fireEvent.change(await screen.findByTestId('service-area-city'), { target: { value: '  ' } });
+    fireEvent.blur(screen.getByTestId('service-area-city'));
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const cityWrites = mock.history.patch.filter((r) => 'serviceAreaCity' in JSON.parse(r.data));
+    expect(cityWrites).toHaveLength(0);
+  });
+
+  it('asks the device for nothing at all', async () => {
+    // The old screen offered geolocation behind an explicit button. The
+    // approved one has no such control, so the strongest form of "completable
+    // with location refused" now holds: there is nothing to refuse.
     const getCurrentPosition = vi.fn();
-    stubGeolocation({ getCurrentPosition } as unknown as Geolocation);
+    Object.defineProperty(navigator, 'geolocation', {
+      value: { getCurrentPosition },
+      configurable: true,
+    });
 
     renderScreen();
+    await screen.findByTestId('service-area-city');
     expect(getCurrentPosition).not.toHaveBeenCalled();
   });
 
-  it('offers the manual fields immediately, before any permission decision', () => {
-    renderScreen();
-    expect(screen.getByTestId('service-area-city')).toBeInTheDocument();
-    expect(screen.getByTestId('service-area-country')).toBeInTheDocument();
-    expect(screen.getByTestId('radius-slider')).toBeInTheDocument();
-  });
-
-  it('saves a typed city and a chosen country with NO location granted', async () => {
-    renderScreen();
-
-    const cityField = screen.getByTestId('service-area-city');
-    fireEvent.change(cityField, { target: { value: 'Damascus' } });
-    fireEvent.blur(cityField);
-
-    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-    expect(JSON.parse(mock.history.patch[0].data).serviceAreaCity).toBe('Damascus');
-  });
-
-  it('sends BOTH the display name and the normalised code for the country', async () => {
-    // The name is what the provider chose to call it; the code is what a
-    // timezone and a market policy are looked up by.
-    renderScreen();
-    fireEvent.change(screen.getByTestId('service-area-country'), { target: { value: 'SY' } });
-
-    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-    const body = JSON.parse(mock.history.patch[0].data);
-    expect(body.serviceAreaCountryCode).toBe('SY');
-    expect(typeof body.serviceAreaCountry).toBe('string');
-  });
-
-  it('treats a DENIED permission as a fact with a way forward, not an error', async () => {
-    stubGeolocation({
-      getCurrentPosition: (_ok: PositionCallback, fail?: PositionErrorCallback) =>
-        fail?.({ code: 1, PERMISSION_DENIED: 1 } as GeolocationPositionError),
-    } as unknown as Geolocation);
-
-    renderScreen();
-    fireEvent.click(screen.getByTestId('use-my-location'));
-
-    const fallback = await screen.findByTestId('location-permission-fallback');
-    expect(fallback).toHaveTextContent(SERVICE_AREA_COPY.en.permissionDenied);
-    // And the manual path is still right there.
-    expect(screen.getByTestId('service-area-city')).toBeEnabled();
-  });
-
-  it('still saves everything after a refusal', async () => {
-    stubGeolocation({
-      getCurrentPosition: (_ok: PositionCallback, fail?: PositionErrorCallback) =>
-        fail?.({ code: 1, PERMISSION_DENIED: 1 } as GeolocationPositionError),
-    } as unknown as Geolocation);
-
-    renderScreen();
-    fireEvent.click(screen.getByTestId('use-my-location'));
-    await screen.findByTestId('location-permission-fallback');
-
-    const cityField = screen.getByTestId('service-area-city');
-    fireEvent.change(cityField, { target: { value: 'Aleppo' } });
-    fireEvent.blur(cityField);
-
-    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-    expect(JSON.parse(mock.history.patch[0].data).serviceAreaCity).toBe('Aleppo');
-  });
-
-  it('handles a device with no geolocation API at all', async () => {
-    Object.defineProperty(navigator, 'geolocation', { value: undefined, configurable: true });
-
-    renderScreen();
-    fireEvent.click(screen.getByTestId('use-my-location'));
-
-    expect(await screen.findByTestId('location-permission-fallback')).toHaveTextContent(
-      SERVICE_AREA_COPY.en.permissionUnavailable,
+  it('preserves a stored country rather than clearing it — RECORDED 5B GAP', async () => {
+    // The screen cannot SET a country any more. It must not unset one either:
+    // `serviceAreaCountry` is required for submission, and a write that
+    // cleared it would turn a missing control into data loss.
+    renderScreen(
+      DRAFT({
+        data: {
+          serviceAreaCity: 'Aleppo',
+          serviceAreaCountry: 'Syria',
+          serviceAreaCountryCode: 'SY',
+        },
+      }),
     );
-  });
 
-  it('sends coordinates only when permission is actually GRANTED', async () => {
-    stubGeolocation({
-      getCurrentPosition: (ok: PositionCallback) =>
-        ok({ coords: { latitude: 33.5, longitude: 36.3 } } as GeolocationPosition),
-    } as unknown as Geolocation);
-
-    renderScreen();
-    fireEvent.click(screen.getByTestId('use-my-location'));
-
+    fireEvent.change(await screen.findByTestId('service-area-city'), {
+      target: { value: 'Aleppo, Al-Furqan' },
+    });
     await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-    const body = JSON.parse(mock.history.patch[0].data);
-    expect(body.serviceAreaLat).toBe(33.5);
-    expect(body.serviceAreaLng).toBe(36.3);
+
+    for (const request of mock.history.patch) {
+      const body = JSON.parse(request.data) as Record<string, unknown>;
+      expect(body).not.toHaveProperty('serviceAreaCountry');
+      expect(body).not.toHaveProperty('serviceAreaCountryCode');
+    }
   });
 });
 
 describe('the radius comes from server policy', () => {
-  it('starts at the SERVER suggestion, not a client constant', () => {
-    renderScreen(
-      DRAFT({
-        data: { radiusPolicy: { suggestedKm: 7, minKm: 1, maxKm: 40, basedOn: 'MOTORCYCLE' } },
-      }),
-    );
-    expect(screen.getByTestId('radius-value')).toHaveTextContent('Up to 7 km');
+  it('states the radius the server granted', async () => {
+    renderScreen(DRAFT({ data: { serviceAreaRadiusKm: 15 } }));
+    expect(await screen.findByTestId('service-area-radius')).toHaveTextContent('15');
   });
 
-  it('bounds the control with the SERVER floor and ceiling', () => {
-    renderScreen(
-      DRAFT({ data: { radiusPolicy: { suggestedKm: 7, minKm: 2, maxKm: 40, basedOn: 'CAR' } } }),
-    );
-    const slider = screen.getByTestId('radius-slider');
-    expect(slider).toHaveAttribute('min', '2');
-    expect(slider).toHaveAttribute('max', '40');
-    expect(screen.getByTestId('radius-bounds')).toHaveTextContent('Between 2 and 40 km');
+  it('falls back to the suggestion, never to a number of its own', async () => {
+    renderScreen(DRAFT({ data: { serviceAreaRadiusKm: null } }));
+    // `radiusPolicy.suggestedKm` is 25 in this draft. "Walking is 3 km" is a
+    // market judgement an operator tunes; a constant here would be one the
+    // save refuses.
+    expect(await screen.findByTestId('service-area-radius')).toHaveTextContent('25');
   });
 
-  it('says WHY the suggestion is what it is', async () => {
-    // An unexplained default looks arbitrary and gets ignored.
-    renderScreen(
-      DRAFT({
-        data: { radiusPolicy: { suggestedKm: 3, minKm: 1, maxKm: 40, basedOn: 'ON_FOOT' } },
-      }),
-    );
-    expect(screen.getByTestId('radius-basis')).toHaveTextContent('you travel by foot');
-  });
-
-  it('does not claim a basis when the server reports none', () => {
-    renderScreen(
-      DRAFT({ data: { radiusPolicy: { suggestedKm: 3, minKm: 1, maxKm: 40, basedOn: null } } }),
-    );
-    expect(screen.getByTestId('radius-basis')).toHaveTextContent(
-      SERVICE_AREA_COPY.en.radiusNoBasis,
-    );
-  });
-
-  it('lets the provider REDUCE the suggestion', async () => {
-    renderScreen();
-    const slider = screen.getByTestId('radius-slider');
-    fireEvent.change(slider, { target: { value: '5' } });
-    fireEvent.blur(slider);
+  it('commits the suggestion once when nothing is stored, so the task can complete', async () => {
+    // Without a slider there is otherwise no way for `serviceAreaRadiusKm` to
+    // become non-null, and the completeness policy requires it — the task
+    // would look finished and never be.
+    renderScreen(DRAFT({ data: { serviceAreaRadiusKm: null } }));
 
     await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-    expect(JSON.parse(mock.history.patch[0].data).serviceAreaRadiusKm).toBe(5);
+    const sent = mock.history.patch.map((r) => JSON.parse(r.data));
+    expect(sent.some((b) => b.serviceAreaRadiusKm === 25)).toBe(true);
   });
 
-  it('prefers a value the provider already saved over the suggestion', () => {
-    renderScreen(DRAFT({ data: { serviceAreaRadiusKm: 12 } }));
-    expect(screen.getByTestId('radius-value')).toHaveTextContent('Up to 12 km');
+  it('writes nothing when a radius is already stored', async () => {
+    renderScreen(DRAFT({ data: { serviceAreaRadiusKm: 15 } }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mock.history.patch).toHaveLength(0);
   });
+});
 
-  it('makes no promise about how much work a larger radius brings', () => {
-    // A volume guarantee the marketplace cannot keep, paid for in fuel by the
-    // provider who believes it.
+describe('the reward sentence is the server’s, never the client’s', () => {
+  const ladder = {
+    show: true,
+    allowedMaxKm: 15,
+    baseMaxKm: 15,
+    currentTier: null,
+    nextTier: { key: 'tier-2', maxKm: 25 },
+    progress: [{ key: 'RATING_SAMPLE', met: false, progress: 0, current: 0, target: 3 }],
+    reasonCodes: [],
+    policyVersion: 'ladder-1',
+  };
+
+  it('says nothing at all when the server says not to', async () => {
+    // `show: false` is the default. With no answer there is no card, and the
+    // client never computes eligibility of its own.
     renderScreen();
-    const text = document.body.textContent ?? '';
-    for (const promise of [/more customers/i, /more jobs/i, /more work/i, /earn more/i]) {
-      expect(text).not.toMatch(promise);
-    }
+    await screen.findByTestId('service-area-city');
+    expect(screen.queryByTestId('expansion-reward-card')).toBeNull();
+  });
+
+  it('names the radius, the transport it came from, and what widens it', async () => {
+    renderScreen(DRAFT({ data: { serviceAreaRadiusKm: 15, serviceAreaExpansion: ladder } }));
+
+    const card = await screen.findByTestId('expansion-reward-card');
+    expect(card).toHaveTextContent('15 km');
+    expect(card).toHaveTextContent('car');
+    expect(card).toHaveTextContent('3 excellent ratings');
+    expect(card).toHaveTextContent('25 km');
+  });
+
+  it('shortens rather than guesses when the ladder withholds a number', async () => {
+    // The anti-abuse criteria deliberately publish no target. A sentence that
+    // invented one would be publishing a threshold the platform chose not to.
+    renderScreen(
+      DRAFT({
+        data: {
+          serviceAreaRadiusKm: 15,
+          serviceAreaExpansion: { ...ladder, progress: [] },
+        },
+      }),
+    );
+
+    const card = await screen.findByTestId('expansion-reward-card');
+    expect(card).toHaveTextContent('15 km');
+    expect(card).not.toHaveTextContent('excellent ratings');
   });
 });
 
 describe('privacy is stated on the screen', () => {
-  it('says the exact location stays private, beside the question', () => {
-    renderScreen();
-    const note = screen.getByTestId('location-privacy-note');
-    expect(note).toHaveTextContent(SERVICE_AREA_COPY.en.privacyTitle);
-    expect(note).toHaveTextContent(SERVICE_AREA_COPY.en.privacyBody);
-  });
-
-  it('says what IS public', () => {
-    renderScreen();
-    expect(screen.getByTestId('location-privacy-note')).toHaveTextContent(/approximate area/i);
-  });
-
-  it('shows an AREA rather than a pin on the base', async () => {
-    // A marker would show the provider exactly the thing the note promises
-    // nobody else can see, and would teach them the pin is what is published.
-    renderScreen(DRAFT({ data: { serviceAreaCity: 'Damascus', serviceAreaRadiusKm: 10 } }));
-    expect(screen.getByTestId('area-preview-approx')).toHaveTextContent('about 20 km across');
-  });
-
-  it('asks for no street address anywhere', () => {
-    // Asserted on the CONTROLS, not on all page text: the privacy note says
-    // the word "street" on purpose — "never your street" — and a naive text
-    // scan would forbid the very sentence that makes the promise.
+  it('promises the starting point is not a published address, beside the question', async () => {
     renderScreen();
 
-    const fields = Array.from(document.querySelectorAll('input, textarea, select'));
-    for (const field of fields) {
-      const described = [
-        field.getAttribute('id') ?? '',
-        field.getAttribute('name') ?? '',
-        field.getAttribute('placeholder') ?? '',
-        field.getAttribute('aria-label') ?? '',
-        document.querySelector(`label[for="${field.getAttribute('id')}"]`)?.textContent ?? '',
-      ]
-        .join(' ')
-        .toLowerCase();
+    // Moved from a panel of its own into the field's own hint, which is where
+    // it does its work: a provider decides how honestly to answer while
+    // reading the field, not while reading a card above it.
+    const hint = screen.getByText(EN.areaHint);
+    expect(hint).toBeInTheDocument();
 
-      for (const word of ['street', 'postcode', 'zip', 'address']) {
-        expect({ field: field.getAttribute('id'), word, asks: described.includes(word) }).toEqual({
-          field: field.getAttribute('id'),
-          word,
-          asks: false,
-        });
-      }
-    }
-  });
-});
-
-describe('timezone', () => {
-  it('shows a city and an offset, never an IANA identifier', () => {
-    renderScreen(
-      DRAFT({
-        data: {
-          resolvedTimezone: {
-            resolved: 'Asia/Damascus',
-            display: { city: 'Damascus', offset: 'UTC+3' },
-            needsConfirmation: false,
-          },
-        },
-      }),
-    );
-
-    const note = screen.getByTestId('timezone-note');
-    expect(note).toHaveTextContent('Damascus time (UTC+3)');
-    expect(document.body.textContent ?? '').not.toContain('Asia/Damascus');
+    const city = await screen.findByTestId('service-area-city');
+    expect(city.getAttribute('aria-describedby')).toContain(hint.id);
   });
 
-  it('defers to the availability step when the country is ambiguous', () => {
-    renderScreen(
-      DRAFT({
-        data: {
-          resolvedTimezone: { resolved: null, display: null, needsConfirmation: true },
-        },
-      }),
-    );
-    expect(screen.getByTestId('timezone-needs-confirmation')).toBeInTheDocument();
-  });
+  it('draws an AREA, not a pin', async () => {
+    renderScreen(DRAFT({ data: { serviceAreaRadiusKm: 15 } }));
 
-  it('says nothing at all before a country is chosen', () => {
-    renderScreen();
-    expect(screen.queryByTestId('timezone-note')).toBeNull();
-    expect(screen.queryByTestId('timezone-needs-confirmation')).toBeNull();
+    // A map with a marker on the provider's base would show them exactly the
+    // thing the hint promises nobody else can see, and would teach them the
+    // pin is what gets published. The accessible name states the radius,
+    // which is all a customer gets.
+    const map = await screen.findByTestId('service-area-map');
+    expect(map).toHaveAttribute('role', 'img');
+    expect(map.getAttribute('aria-label')).toContain('15');
   });
 });
 
 describe('Arabic', () => {
-  it('renders Arabic copy', () => {
-    renderScreen(DRAFT(), 'ar');
-    expect(screen.getByTestId('location-privacy-note')).toHaveTextContent(
-      SERVICE_AREA_COPY.ar.privacyTitle,
-    );
-    expect(screen.queryByText(SERVICE_AREA_COPY.en.privacyTitle)).toBeNull();
+  it('renders the approved Arabic copy', async () => {
+    renderScreen(DRAFT({ data: { serviceAreaRadiusKm: 15 } }), 'ar');
+
+    expect(await screen.findByText(SERVICE_AREA_COPY.ar.areaLabel)).toBeInTheDocument();
+    expect(screen.getByText(SERVICE_AREA_COPY.ar.areaHint)).toBeInTheDocument();
+    expect(screen.queryByText(EN.areaLabel)).toBeNull();
   });
 });
 
 describe('a locked application', () => {
-  it('disables every control', () => {
-    renderScreen(DRAFT(), 'en', false);
-    expect(screen.getByTestId('service-area-city')).toBeDisabled();
-    expect(screen.getByTestId('service-area-country')).toBeDisabled();
-    expect(screen.getByTestId('radius-slider')).toBeDisabled();
-    expect(screen.getByTestId('use-my-location')).toBeDisabled();
+  it('disables the one field it has', async () => {
+    renderScreen(DRAFT({ data: { serviceAreaCity: 'Aleppo' } }), 'en', false);
+    expect(await screen.findByTestId('service-area-city')).toBeDisabled();
+  });
+
+  it('writes nothing, not even the radius suggestion', async () => {
+    renderScreen(DRAFT({ data: { serviceAreaRadiusKm: null } }), 'en', false);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mock.history.patch).toHaveLength(0);
   });
 });

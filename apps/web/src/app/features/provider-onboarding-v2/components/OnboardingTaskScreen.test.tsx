@@ -105,7 +105,13 @@ describe('OnboardingTaskScreen', () => {
 
     await screen.findByTestId('task-screen-BASICS_IDENTITY');
     // Client prose, not the server's Arabic, for an English reader.
-    expect(screen.getByText('Your details')).toBeInTheDocument();
+    //
+    // Sprint 09B.29 Phase 5A — the header is the APPROVED SCREEN's title and
+    // its "Task 1 of 6" position, not the hub row's task name. The assertion
+    // that matters is unchanged: an English reader gets English, chosen by the
+    // client, rather than whatever single language the server happened to send.
+    expect(screen.getByText('Basic details')).toBeInTheDocument();
+    expect(screen.getByText('Task 1 of 6')).toBeInTheDocument();
   });
 
   it('refuses a task the server says is blocked, even when reached by URL', async () => {
@@ -152,6 +158,10 @@ describe('OnboardingTaskScreen', () => {
 
     await screen.findByTestId('task-screen-BASICS_IDENTITY');
     expect(screen.getByTestId('onboarding-v2-shell')).toHaveAttribute('dir', 'rtl');
-    expect(screen.getByText('الاسم، رقم الهاتف، والصورة الشخصية')).toBeInTheDocument();
+    // The approved screen carries no task description — the header says what
+    // the screen is, and the hub row already said what the task was. Arabic is
+    // still asserted, on the copy the screen actually renders.
+    expect(screen.getByText('البيانات الأساسية')).toBeInTheDocument();
+    expect(screen.getByText('المهمة 1 من 6')).toBeInTheDocument();
   });
 });
