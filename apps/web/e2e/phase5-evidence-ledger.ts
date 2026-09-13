@@ -94,7 +94,28 @@ export const RESPONSIVE_VIEWPORTS = [
 export const MAX_DIFF_PIXEL_RATIO = 0.005;
 
 /** WCAG tag set every scan must declare it ran. */
-export const REQUIRED_AXE_TAGS = ['wcag2a', 'wcag2aa'] as const;
+/**
+ * The WCAG tag set every scan must declare it ran.
+ *
+ * Sprint 09B.29 Phase 5B — widened from 2.0 alone.
+ *
+ * `wcag2a`/`wcag2aa` are WCAG **2.0**. The acceptance criteria name WCAG 2.2
+ * AA, and 2.2 is cumulative: it contains 2.1, which contains 2.0. Running only
+ * the 2.0 tags therefore skipped every success criterion added since 2008 —
+ * among them target size, focus appearance, dragging movements, reflow, and
+ * orientation, which are exactly the criteria a phone-first onboarding flow is
+ * most likely to break.
+ *
+ * Requiring the tags here is what makes the omission impossible to repeat: a
+ * scan that does not DECLARE these tags is refused by the ledger, so narrowing
+ * the scan narrows the evidence rather than quietly narrowing the gate.
+ *
+ * WHAT THIS IS STILL NOT. Automated rules detect a minority of WCAG failures.
+ * A clean scan across these tags is necessary and nowhere near sufficient, and
+ * nothing in this repository may describe it as WCAG certification — see
+ * PHASE5_VERIFICATION.md for the checks that require a human.
+ */
+export const REQUIRED_AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] as const;
 
 /** Mechanisms whose presence disqualifies route evidence. */
 export const FORBIDDEN_MECHANISMS = [
@@ -153,7 +174,18 @@ export interface CanonicalCellEvidence {
   readonly metricsValid: boolean;
   readonly identityMatches: boolean;
   readonly runId: string | null;
+  /** What the METRICS FILE claims. A claim, never a verdict. */
   readonly diffPixelRatio: number | null;
+  /**
+   * What the decoded pixels actually measure, or null when the pair could not
+   * be compared at all.
+   *
+   * This is the number that decides. The stored one is kept beside it only so
+   * a disagreement can be reported.
+   */
+  readonly recomputedRatio: number | null;
+  /** Every check in the image verifier passed. */
+  readonly imageOk: boolean;
   readonly problems: readonly string[];
 }
 
@@ -218,19 +250,47 @@ export function canonicalCellEvidence(
     identityMatches,
     runId: typeof metrics?.runId === 'string' ? metrics.runId : null,
     diffPixelRatio: ratio,
+    recomputedRatio: image.recomputedRatio,
+    imageOk: image.ok,
     problems,
   };
 }
 
+/**
+ * Does this cell pass? FAIL CLOSED.
+ *
+ * Sprint 09B.29 Phase 5B — this used to decide on the STORED ratio.
+ *
+ * `verifyCanonicalCell` already decoded both images, recomputed the difference
+ * and compared it against the stored claim. Every one of those findings landed
+ * in `problems` — and this function read none of them. It checked three
+ * booleans derived by substring-matching problem strings, the stored number,
+ * and nothing else. So "recomputed diffPixelRatio exceeds 0.005" and "stored
+ * and recomputed ratios disagree" were both computed, written down, and
+ * ignored: a metrics file claiming 0.001 over two wholly different images
+ * passed.
+ *
+ * The rule now is the one the evidence design always intended. A cell passes
+ * only when the verifier is clean, NOTHING was reported against it, the
+ * difference was genuinely RECOMPUTED, and that recomputed difference is
+ * within budget. The stored ratio can no longer establish anything on its own;
+ * it is only evidence of what the writer claimed, and it is checked against the
+ * measurement rather than trusted instead of it.
+ */
 export function canonicalCellPasses(e: CanonicalCellEvidence): boolean {
   return (
+    e.imageOk &&
+    e.problems.length === 0 &&
     e.expected &&
     e.actual &&
     e.diff &&
     e.metricsValid &&
     e.identityMatches &&
-    e.diffPixelRatio !== null &&
-    e.diffPixelRatio <= MAX_DIFF_PIXEL_RATIO
+    // RECOMPUTED, not stored. A comparison that could not be performed is not
+    // a pass — it is an absence of evidence.
+    e.recomputedRatio !== null &&
+    e.recomputedRatio <= MAX_DIFF_PIXEL_RATIO &&
+    e.diffPixelRatio !== null
   );
 }
 

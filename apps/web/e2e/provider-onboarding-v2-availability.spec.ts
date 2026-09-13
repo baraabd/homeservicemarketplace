@@ -153,7 +153,16 @@ test.describe('Task 4 — a working week in one action', () => {
     await page.getByTestId('apply-to-selected').click();
 
     await expect.poll(() => rec.patches.length).toBeGreaterThan(0);
-    const sent = rec.patches[0].availability as Array<{ dayOfWeek: number; startMinute: number }>;
+    // `endMinute` belongs in the annotation: the assertion below reads it, and
+    // leaving it out made the cast quietly narrower than the data. Nothing was
+    // wrong at runtime, but the type said the field did not exist while the
+    // test depended on it — and no gate saw that, because `typecheck:e2e` was
+    // never wired into CI.
+    const sent = rec.patches[0].availability as Array<{
+      dayOfWeek: number;
+      startMinute: number;
+      endMinute: number;
+    }>;
     expect(sent.map((i) => i.dayOfWeek).sort()).toEqual([0, 1, 2, 3, 4]);
     expect(sent.every((i) => i.startMinute === 540 && i.endMinute === 1020)).toBe(true);
     // One request, the whole week. A partial schedule must not be expressible.

@@ -247,6 +247,67 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # ── the approved design, measured ─────────────────────────────────────────
+  # Sprint 09B.29 Phase 5B. The visual gate produced its evidence only on a
+  # developer's machine, which meant the one check that can tell whether the
+  # shipped screens still match the approved prototype was never a merge
+  # blocker. A gate that does not run in CI is a gate somebody remembers to run.
+  #
+  # It is its own job rather than a step inside browser-e2e because it is a
+  # different kind of check with a different failure mode: browser-e2e asserts
+  # behaviour, this one asserts appearance and accessibility against a frozen
+  # reference, and its artifacts are images a human has to look at.
+  phase5-visual:
+    name: Phase 5 visual, responsive and accessibility gate
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Build the web app
+        env:
+          VITE_API_URL: https://api.example.com
+        run: pnpm --filter @homeservicemarketplace/web build
+      - name: Capture and measure the 18 approved states
+        # Single worker, deliberately. The matrix captures screenshots, and
+        # parallel browsers on a 2-core runner contend for CPU badly enough to
+        # change antialiasing at the margins — which is a difference in the
+        # measurement apparatus, not in the product.
+        env:
+          VITE_API_URL: https://api.example.com
+          E2E_API_URL: https://api.example.com
+          E2E_PREBUILT: '1'
+          E2E_PHASE5: '1'
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            phase5-visual phase5-responsive phase5-reference \
+            --project=chromium-desktop --workers=1
+      - name: Re-derive the ledger counters from the artifacts just produced
+        # The suite writes evidence; this reads it back and recomputes every
+        # ratio from the decoded pixels. A green Playwright run whose artifacts
+        # do not survive independent verification is not evidence.
+        run: pnpm --filter @homeservicemarketplace/web exec vitest run phase5-
+      - name: Upload the visual evidence
+        # ALWAYS, not only on failure. A passing run's contact sheets are what
+        # a reviewer needs in order to agree that the screens are right — the
+        # ratio says they are identical to the reference, not that the
+        # reference was the right thing to copy.
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase5-visual-evidence
+          path: |
+            apps/web/test-results/phase5-visual/
+          retention-days: 14
+          if-no-files-found: warn
+
   # ── cookies / CSRF / refresh / logout, in a REAL browser ──────────────────
   # These behaviours are defined by rules only a browser implements: HttpOnly
   # hides a cookie from document.cookie, SameSite withholds it cross-site, and
@@ -627,6 +688,9 @@ jobs:
       - verify
       - integration-e2e
       - browser-e2e
+      # The approved design is an acceptance criterion, so the check that
+      # measures it blocks merges like any other.
+      - phase5-visual
       # The cookie/CSRF/refresh/logout contract is a merge blocker like any
       # other. A security check that is allowed to fail is not a check.
       - browser-auth-e2e

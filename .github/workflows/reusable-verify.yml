@@ -139,6 +139,22 @@ jobs:
         run: pnpm --filter @homeservicemarketplace/web lint
       - name: Typecheck web
         run: pnpm --filter @homeservicemarketplace/web typecheck
+      - name: Typecheck web E2E specs
+        # Sprint 09B.29 Phase 5B — this was missing, and the gap was not
+        # theoretical.
+        #
+        # `typecheck` is `tsc -b`, which builds tsconfig.app.json and
+        # tsconfig.node.json. Neither includes `e2e/`, so the entire browser
+        # suite — the thing that gates delivery — was never typechecked by any
+        # job. A real error had been sitting in
+        # provider-onboarding-v2-availability.spec.ts: a cast that omitted
+        # `endMinute` while the assertion two lines below read it.
+        #
+        # It cost nothing at runtime, which is exactly why nothing caught it:
+        # Playwright transpiles without checking, so a spec can drift from the
+        # shapes it asserts on indefinitely and only ever fail for a reason
+        # that looks unrelated.
+        run: pnpm --filter @homeservicemarketplace/web typecheck:e2e
       - name: Test web
         # Emit a machine-readable report alongside the console output. Twice now
         # a web test has failed here and been diagnosable only by guesswork:
