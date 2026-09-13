@@ -196,10 +196,10 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
   return (
     <div className="flex flex-col gap-[18px]" data-testid="availability-task">
       <div>
-        <p className="break-words text-pv-label font-bold leading-[21px] text-pv-accent-hover">
+        <p className="break-words text-pv-label font-bold leading-pv-base text-pv-accent-hover">
           {copy.kicker}
         </p>
-        <h2 className="break-words text-pv-hero font-bold leading-[1.35] text-pv-text">
+        <h2 className="break-words text-pv-hero font-bold leading-pv-heading text-pv-text">
           {copy.question}
         </h2>
       </div>
@@ -294,7 +294,7 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
         // weight and everything inside inherits it, so the help line rendered
         // heavier and darker than the reference. Only the `strong` is 500,
         // which is what the approved design declares.
-        className="flex items-start gap-2.5 rounded-pv-choice border border-pv-border bg-pv-surface p-3.5 text-pv-label font-normal leading-[1.6]"
+        className="flex items-start gap-2.5 rounded-pv-choice border border-pv-border bg-pv-surface p-3.5 text-pv-label font-normal leading-pv-help"
         data-testid="mark-unavailable"
       >
         <input

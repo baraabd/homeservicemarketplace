@@ -114,7 +114,11 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     route: '/provider/activate',
     precondition: 'anonymous-customer',
     readySelector: '[data-testid="activation-screen"]',
-    primaryAction: 'provider-activate-submit',
+    // The id the screen actually carries. The registry named a different one
+    // for four sprints and nothing read the field, so the two never had to
+    // agree; the responsive gate reads it now, and this is the drift it found
+    // on its first run.
+    primaryAction: 'activation-cta',
     requiredCopy: {
       en: ['Turn your skills into work'],
       ar: ['حوّل خبرتك إلى فرص عمل'],

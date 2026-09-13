@@ -295,7 +295,7 @@ function ReviewSummaryScreen({
     // and one panel, and 18px between them read as two unrelated blocks.
     <div className="grid gap-3" data-testid="review-screen">
       {/* `.hsm-lead`: pulled up 8px against the column's own 20px inset. */}
-      <p className="-mt-2 break-words text-pv-body leading-[1.75] text-pv-muted">
+      <p className="-mt-2 break-words text-pv-body leading-pv-lead text-pv-muted">
         {copy.approvedLead}
       </p>
 
@@ -379,7 +379,7 @@ function SummaryRow({
         <strong className="break-words text-pv-label font-medium text-pv-text">{row.title}</strong>
         {/* 12px muted, 3px below the title, on the 1.65 line height it inherits
             from `.hsm-panel p`. */}
-        <p className="mt-[3px] break-words text-pv-help leading-[1.65] text-pv-muted">
+        <p className="mt-[3px] break-words text-pv-help leading-pv-panel text-pv-muted">
           {row.value}
         </p>
       </div>
@@ -509,7 +509,7 @@ function ConsentScreen({
           The 20px box with the UA's own side margins is what the reference
           measures, which is why no reset is applied to it here. */}
       <label
-        className="flex items-start gap-2.5 rounded-xl border border-pv-border bg-pv-surface p-3.5 text-pv-label leading-[1.6]"
+        className="flex items-start gap-2.5 rounded-xl border border-pv-border bg-pv-surface p-3.5 text-pv-label leading-pv-help"
         data-testid="terms-consent"
       >
         <input
@@ -538,7 +538,7 @@ function ConsentScreen({
               had to be asked for rather than assumed. */}
           <span
             id={versionId}
-            className="break-words text-pv-help font-normal leading-[1.6] text-pv-muted"
+            className="break-words text-pv-help font-normal leading-pv-help text-pv-muted"
             data-testid={accepted ? 'terms-accepted' : 'terms-body'}
           >
             {copy.consentVersion(review.terms.version)}
@@ -569,7 +569,7 @@ function ConsentScreen({
         >
           {copy.afterSubmitTitle}
         </h3>
-        <p className="break-words text-pv-label leading-[1.65] text-pv-muted">
+        <p className="break-words text-pv-label leading-pv-panel text-pv-muted">
           {copy.afterSubmitBody}
         </p>
       </ProviderCard>

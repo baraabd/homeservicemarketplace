@@ -294,10 +294,10 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
             `<div>`, so only the column gap separates the pair from what
             follows. */}
         <div>
-          <p className="break-words text-pv-label font-bold leading-[21px] text-pv-accent-hover">
+          <p className="break-words text-pv-label font-bold leading-pv-base text-pv-accent-hover">
             {copy.kicker}
           </p>
-          <h2 className="break-words text-pv-hero font-bold leading-[1.35] text-pv-text">
+          <h2 className="break-words text-pv-hero font-bold leading-pv-heading text-pv-text">
             {copy.question}
           </h2>
         </div>
@@ -341,7 +341,7 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
                 already stuck. */}
             {visibleLeaves.length === 0 ? (
               <p
-                className="break-words text-pv-help leading-[1.6] text-pv-muted"
+                className="break-words text-pv-help leading-pv-help text-pv-muted"
                 data-testid="specialty-no-results"
               >
                 {copy.noResults} {copy.noResultsHint}
@@ -402,7 +402,7 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
           on a flex gap: a `<legend>` is not laid out as an ordinary flex item,
           so a gap here would be applied inconsistently across engines. */}
       <fieldset className="flex flex-col" data-testid="transport-options">
-        <legend className="mb-[7px] break-words text-pv-label font-bold leading-[21px] text-pv-text">
+        <legend className="mb-[7px] break-words text-pv-label font-bold leading-pv-base text-pv-text">
           {copy.transportQuestion}
         </legend>
         <div className="grid gap-2">

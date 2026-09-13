@@ -5,6 +5,8 @@ import { BadgeCheck, Clock } from 'lucide-react';
 import { getProviderCapabilities } from '../../../../lib/provider/provider-verification-api';
 import { useProviderProfile } from '../../../hooks/provider/useProviderProfile';
 import { useProviderOnboardingHub } from '../../../hooks/provider/useProviderOnboardingHub';
+import { useWithdrawOnboarding } from '../../../hooks/provider/useProviderOnboarding';
+import { useOnboardingReview } from '../../../hooks/provider/useProviderOnboardingReview';
 import { useLang } from '../../../i18n/LanguageContext';
 import { ProviderButton, ProviderSkeleton } from '../../provider-ui';
 import { STATUS_CENTRE_COPY, type Lang } from '../copy/status-centre-copy';
@@ -63,6 +65,15 @@ export function ProviderStatusCentreScreen() {
   // The same key the verification screen uses, so the two share one answer
   // rather than asking the capability service the same question twice.
   const capsQuery = useQuery({ queryKey: CAPS_KEY, queryFn: getProviderCapabilities });
+
+  // The withdraw command and the server's verdict on whether it would succeed.
+  //
+  // `canWithdraw` is computed from the SAME states the server scopes the write
+  // to, so a control that appears is a control that works. Deciding it here —
+  // "the status is PENDING_REVIEW, so surely they can withdraw" — is how a
+  // client offers a button the server answers with a 409.
+  const review = useOnboardingReview(lang);
+  const withdraw = useWithdrawOnboarding();
 
   const profile = profileQuery.data?.profile;
   const hub = hubQuery.data;
@@ -225,11 +236,24 @@ export function ProviderStatusCentreScreen() {
         // invite it. Drawn only when the server says the command would succeed
         // — `canWithdraw` is computed from the same states the write is scoped
         // to, so a control that appears is a control that works.
+        // Withdrawing STOPS the review and requires a fresh submission. It
+        // does not delete the draft, the uploaded evidence or the review
+        // history — which is why the label says "to edit" and why this is a
+        // secondary action rather than a destructive one.
         <ProviderButton
           tone="secondary"
           shape="onboarding"
           size="block"
-          onClick={() => navigate('/provider/onboarding/REVIEW_SUBMISSION')}
+          disabled={review.data?.canWithdraw !== true || withdraw.isPending}
+          onClick={() =>
+            withdraw.mutate(undefined, {
+              // Straight to the application, because editing it is the entire
+              // reason for the command. Only on SUCCESS: a failed withdraw that
+              // navigated anyway would show a provider an application the
+              // server still considers submitted.
+              onSuccess: () => navigate('/provider/onboarding'),
+            })
+          }
           data-testid="status-withdraw"
         >
           {copy.withdraw}

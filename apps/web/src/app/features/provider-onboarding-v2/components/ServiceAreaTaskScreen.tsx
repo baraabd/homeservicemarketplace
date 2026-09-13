@@ -178,7 +178,7 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
           data-testid="expansion-reward-card"
         >
           <Star size={16} strokeWidth={1.8} aria-hidden="true" />
-          <p className="break-words text-pv-label leading-[1.65]">{rewardSentence}</p>
+          <p className="break-words text-pv-label leading-pv-panel">{rewardSentence}</p>
         </div>
       ) : null}
     </div>

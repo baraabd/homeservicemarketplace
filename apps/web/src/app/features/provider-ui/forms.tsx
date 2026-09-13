@@ -52,11 +52,11 @@ export function ProviderField({
     <div className="flex flex-col gap-[7px]">
       <label
         htmlFor={id}
-        // `leading-[21px]` explicitly: the base layer gives every `label` a 1.5
+        // `leading-pv-base` explicitly: the base layer gives every `label` a 1.5
         // RATIO, which at 13px is 19.5px and silently undoes the 21px line box
         // the approved screens inherit. A utility beats the base layer; an
         // inherited value does not.
-        className="flex items-center gap-1.5 text-pv-label font-bold leading-[21px] text-pv-text"
+        className="flex items-center gap-1.5 text-pv-label font-bold leading-pv-base text-pv-text"
       >
         {label}
         {required === false && requiredLabel ? (
@@ -71,7 +71,7 @@ export function ProviderField({
       ) : hint ? (
         // `.hsm-help`: 12px at 1.6, one of the few places the approved design
         // overrides the 21px base line box.
-        <p id={hintId} className="text-pv-help leading-[1.6] text-pv-muted">
+        <p id={hintId} className="text-pv-help leading-pv-help text-pv-muted">
           {hint}
         </p>
       ) : null}
@@ -92,7 +92,7 @@ const CONTROL =
   //
   // No `md:` step down any more. Onboarding is a focused column at every
   // width, so a desktop viewport is not a reason for a different control size.
-  'w-full min-h-12 rounded-pv-control border bg-pv-surface px-[13px] py-3 text-pv-input leading-[21px] text-pv-text placeholder:text-pv-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-pv-accent disabled:bg-pv-surface-sunken disabled:text-pv-muted';
+  'w-full min-h-12 rounded-pv-control border bg-pv-surface px-[13px] py-3 text-pv-input leading-pv-base text-pv-text placeholder:text-pv-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-pv-accent disabled:bg-pv-surface-sunken disabled:text-pv-muted';
 
 export function ProviderTextInput({
   label,
@@ -436,7 +436,7 @@ export function ProviderStepper({
     // (6px) the two gaps here cost 2px, and everything below the stepper on
     // the experience screen sat 2px high because of it.
     <div className="flex flex-col gap-[7px]">
-      <span id={labelId} className="text-pv-label font-bold leading-[21px] text-pv-text">
+      <span id={labelId} className="text-pv-label font-bold leading-pv-base text-pv-text">
         {label}
       </span>
       <div
@@ -479,7 +479,7 @@ export function ProviderStepper({
       </div>
       {hint ? (
         // `.hsm-help` again: 12px at 1.6, not the 13px label size.
-        <p id={hintId} className="text-pv-help leading-[1.6] text-pv-muted">
+        <p id={hintId} className="text-pv-help leading-pv-help text-pv-muted">
           {hint}
         </p>
       ) : null}

@@ -140,7 +140,7 @@ export function OnboardingShell({
       <div
         dir={dir}
         data-testid="onboarding-v2-shell"
-        // `leading-[21px]` is the approved screens' base line box, and it is a
+        // `leading-pv-base` is the approved screens' base line box, and it is a
         // LENGTH rather than a ratio.
         //
         // The reference's wrapper sets `line-height: calc(14px * 1.5)` on the
@@ -152,7 +152,7 @@ export function OnboardingShell({
         //
         // Components that need their own leading (the hero, the centred
         // screens, the help text at 1.6) still declare it and are unaffected.
-        className={`flex w-full flex-col leading-[21px] sm:max-w-[480px] sm:border-x sm:shadow-xl ${
+        className={`flex w-full flex-col leading-pv-base sm:max-w-[480px] sm:border-x sm:shadow-xl ${
           darkMode ? 'bg-slate-900 sm:border-slate-800' : 'bg-white sm:border-slate-200'
         }`}
         style={{ height: '100svh' }}

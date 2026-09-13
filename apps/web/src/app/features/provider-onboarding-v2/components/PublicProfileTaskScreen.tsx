@@ -229,10 +229,10 @@ export function PublicProfileTaskScreen({
         className="grid min-h-[128px] w-full place-items-center rounded-pv-card border-[1.5px] border-dashed border-pv-border-strong bg-pv-surface p-[18px] text-center text-pv-accent-hover disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
       >
         <ImagePlus size={16} strokeWidth={1.8} aria-hidden="true" />
-        <span className="mt-2 text-pv-label font-bold leading-[21px]">{copy.uploadPrompt}</span>
+        <span className="mt-2 text-pv-label font-bold leading-pv-base">{copy.uploadPrompt}</span>
         {/* No margin here: `.hsm-upload` stretches its rows, and only its `p`
             declares one. A second `mt-2` added 5px the reference does not have. */}
-        <span className="text-pv-help font-normal leading-[1.6] text-pv-muted">
+        <span className="text-pv-help font-normal leading-pv-help text-pv-muted">
           {copy.uploadHint}
         </span>
       </button>
@@ -295,7 +295,7 @@ export function PublicProfileTaskScreen({
               server will record agreement to. Not a button whose label implies
               consent: the version is stored against the wording, and a provider
               must have been shown the wording they are agreeing to. */}
-          <label className="flex items-start gap-2.5 text-pv-label font-normal leading-[1.6] text-pv-text">
+          <label className="flex items-start gap-2.5 text-pv-label font-normal leading-pv-help text-pv-text">
             <input
               type="checkbox"
               className="ms-1 me-[3px] mt-0.5 h-5 w-5 flex-shrink-0 accent-pv-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"

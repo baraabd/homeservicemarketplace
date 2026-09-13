@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -25,6 +25,8 @@ import { STATUS_CENTRE_COPY } from '../copy/status-centre-copy';
 const PROFILE_URL = /\/v1\/me\/provider\/profile$/;
 const HUB_URL = /\/v1\/me\/provider\/onboarding\/hub$/;
 const CAPS_URL = /\/v1\/me\/provider\/capabilities$/;
+const REVIEW_URL = /\/v1\/me\/provider\/onboarding\/review/;
+const WITHDRAW_URL = /\/v1\/me\/provider\/onboarding\/withdraw$/;
 
 const EN = STATUS_CENTRE_COPY.en;
 const AR = STATUS_CENTRE_COPY.ar;
@@ -84,6 +86,8 @@ function renderScreen(
     profile?: ReturnType<typeof PROFILE>;
     hub?: ReturnType<typeof HUB>;
     caps?: string[];
+    /** The server's verdict on whether the withdraw command would succeed. */
+    canWithdraw?: boolean;
     lang?: 'en' | 'ar';
   } = {},
 ) {
@@ -91,6 +95,22 @@ function renderScreen(
   mock.onGet(PROFILE_URL).reply(200, options.profile ?? PROFILE());
   mock.onGet(HUB_URL).reply(200, options.hub ?? HUB());
   mock.onGet(CAPS_URL).reply(200, CAPS(options.caps ?? WAITING_CAPS));
+  mock.onGet(REVIEW_URL).reply(200, {
+    groups: [],
+    canSubmit: false,
+    blockedReason: null,
+    terms: {
+      version: 'v2',
+      locale: 'en',
+      accepted: true,
+      acceptedVersion: 'v2',
+      acceptedAt: null,
+    },
+    draftVersion: 7,
+    lifecycleState: 'SUBMITTED',
+    canWithdraw: options.canWithdraw ?? true,
+  });
+  mock.onPost(WITHDRAW_URL).reply(200, { state: 'DRAFT', version: 8 });
 
   window.localStorage.setItem('hsm.lang', options.lang ?? 'en');
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -176,6 +196,29 @@ describe('the waiting screen', () => {
     );
     expect(screen.getByTestId('status-view-application')).toBeInTheDocument();
     expect(screen.getByTestId('status-withdraw')).toHaveTextContent(EN.withdraw);
+  });
+
+  it('withdraws through the SERVER command, not by navigating somewhere', async () => {
+    renderScreen();
+
+    const button = await screen.findByTestId('status-withdraw');
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+
+    // A button labelled "withdraw" that only changed route would leave the
+    // application submitted and the provider unable to edit it — which is the
+    // shape of every control that describes an outcome it does not produce.
+    await waitFor(() =>
+      expect(mock.history.post.filter((r) => /withdraw$/.test(r.url ?? ''))).toHaveLength(1),
+    );
+  });
+
+  it('does not offer a withdraw the server would refuse', async () => {
+    renderScreen({ canWithdraw: false });
+
+    // `canWithdraw` is scoped to the same states the write is. Offering the
+    // control anyway is how a client earns a 409 it caused itself.
+    await waitFor(() => expect(screen.getByTestId('status-withdraw')).toBeDisabled());
   });
 
   it('timestamps itself from the SERVER, not from a client clock', async () => {

@@ -347,7 +347,7 @@ export function OnboardingHubScreen() {
             >
               {lifecycle.returnedDoTitle}
             </h2>
-            <p className="break-words text-pv-label leading-[1.65] text-pv-muted">
+            <p className="break-words text-pv-label leading-pv-panel text-pv-muted">
               {(flaggedTask && lifecycle.returnedDoBody[flaggedTask.id]) ??
                 lifecycle.returnedDoBodyFallback}
             </p>
@@ -397,7 +397,7 @@ export function OnboardingHubScreen() {
         ) : (
           // `.hsm-lead`: pulled up 8px against the column's own 20px inset,
           // exactly as the reference has it.
-          <p className="-mt-2 break-words text-pv-body leading-[1.75] text-pv-muted">
+          <p className="-mt-2 break-words text-pv-body leading-pv-lead text-pv-muted">
             {HUB_LEAD[lang]}
           </p>
         )}
@@ -423,12 +423,12 @@ export function OnboardingHubScreen() {
                       // of the grid's own 8px gap, so dropping it made every
                       // section 2px short and the error accumulated down the
                       // list — 14px by the last row.
-                      // `leading-[21px]` for the same reason the field label
+                      // `leading-pv-base` for the same reason the field label
                       // needs it: this is an `h2`, and the base layer gives
                       // every heading a 1.5 RATIO, which at 13px is 19.5px.
                       // Two pixels per section, four sections, and the last
                       // row of the hub sat 6px high of the reference.
-                      'mx-0.5 mb-0.5 mt-1.5 break-words text-pv-label font-bold leading-[21px] text-pv-muted'
+                      'mx-0.5 mb-0.5 mt-1.5 break-words text-pv-label font-bold leading-pv-base text-pv-muted'
                 }
               >
                 {groupLabel(section, lang)}

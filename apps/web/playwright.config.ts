@@ -96,7 +96,13 @@ export default defineConfig({
     // Platform-specific baselines; see VISUAL_REFERENCE_RUN above.
     ...(VISUAL_REFERENCE_RUN ? [] : ['**/prototype-reference.spec.ts']),
     // Evidence-writing visual gate; see PHASE5_RUN above.
-    ...(PHASE5_RUN ? [] : ['**/phase5-reference.spec.ts', '**/phase5-visual.spec.ts']),
+    ...(PHASE5_RUN
+      ? []
+      : [
+          '**/phase5-reference.spec.ts',
+          '**/phase5-visual.spec.ts',
+          '**/phase5-responsive.spec.ts',
+        ]),
     ...(REAL_API_RUN
       ? []
       : [

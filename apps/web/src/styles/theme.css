@@ -338,6 +338,30 @@
   /* The cover-photo caption on a portfolio tile. */
   --text-pv-photo-caption: 9px;
 
+  /* ── Provider line heights ──────────────────────────────────────────────
+   *
+   * The approved design uses five, and every one of them appeared in the task
+   * screens as an arbitrary "leading-[...]" — which reads like a token and
+   * answers to nothing, exactly as "text-[13px]" did before the type scale
+   * replaced it. The conformance gate refuses those, and correctly.
+   *
+   * "base" is a LENGTH rather than a ratio, and that is the whole reason it
+   * has to be named. The prototype wrapper sets line-height: calc(14px * 1.5)
+   * on the body and almost nothing overrides it, so a 13px label, a 12px hint
+   * and an 11px save line all sit in the SAME 21px box and do not shrink with
+   * their font size. Expressed as a ratio the error accumulates down the
+   * column — by the phone field the application was 12px short.
+   */
+  --leading-pv-base: 21px;
+  /* .hsm-help, and the consent sentence. */
+  --leading-pv-help: 1.6;
+  /* .hsm-panel p, and the summary row's value. */
+  --leading-pv-panel: 1.65;
+  /* .hsm-lead — the paragraph under a screen heading. */
+  --leading-pv-lead: 1.75;
+  /* .hsm-heading — the 24px hero on a task screen. */
+  --leading-pv-heading: 1.35;
+
   /* ── Provider radii ─────────────────────────────────────────────────────
    *
    * The prototype uses 14px for its upload surface and cards, 10-12px for
