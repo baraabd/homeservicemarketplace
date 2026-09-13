@@ -14,12 +14,14 @@ import {
   EMPTY_WEEK,
   MAX_INTERVALS_PER_WEEK,
   applyToDays,
+  discardedByApply,
   clearDay,
   isDayAvailable,
   formatMinute,
   toIntervals,
   toWeek,
   type RejectionCode,
+  type DiscardedDay,
   type Week,
 } from '../availability/weekly-schedule';
 
@@ -119,6 +121,14 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
   /** Whether "Apply" clears the chosen days instead of setting them. */
   const [markUnavailable, setMarkUnavailable] = useState(false);
 
+  /**
+   * Days a pending Apply would overwrite, awaiting the provider's decision.
+   *
+   * Sprint 09B.29 Phase 5B — G-04. Null means nothing is pending: either
+   * nothing would be lost, or the question has been answered.
+   */
+  const [pendingDiscards, setPendingDiscards] = useState<DiscardedDay[] | null>(null);
+
   /** One save path. Every mutation goes through here with the COMPLETE week,
    *  so there is no request that carries a partial schedule. */
   const commit = useCallback(
@@ -177,10 +187,33 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
     // existing week instead would let them turn Wednesday off, press Apply,
     // and still be matched on a Wednesday.
     //
-    // RECORDED FOR PHASE 5B: this also replaces any SECOND window on a
-    // selected day, because the approved screen expresses one window across
-    // the days it is applied to. The contract still stores several per day;
-    // there is simply no surface here to create or keep a second one.
+    // G-04, closed in Phase 5B.
+    //
+    // Apply still expresses ONE window across the days it covers — that is what
+    // makes it a bulk control, and building on the existing week instead would
+    // let a provider turn Wednesday off, press Apply, and still be matched on a
+    // Wednesday.
+    //
+    // What it no longer does is discard the things it cannot express WITHOUT
+    // SAYING SO. A second window on a selected day, or a day whose hours differ
+    // from the pair above, used to be replaced unseen and written straight
+    // through, so a reload confirmed the loss rather than revealing it.
+    //
+    // Nothing to lose is the ordinary case — a uniform week — and it applies
+    // immediately, so the common path costs no extra tap.
+    const window = { startMinute: bulkStart, endMinute: bulkEnd };
+    const discards = discardedByApply(week, selectedDays, window);
+    if (discards.length > 0) {
+      setRejected(null);
+      setPendingDiscards(discards);
+      return;
+    }
+    applyChange(applyToDays(EMPTY_WEEK, selectedDays, window));
+  };
+
+  /** The provider said yes to the replacement they were shown. */
+  const confirmDiscards = () => {
+    setPendingDiscards(null);
     applyChange(
       applyToDays(EMPTY_WEEK, selectedDays, { startMinute: bulkStart, endMinute: bulkEnd }),
     );
@@ -276,6 +309,72 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
       >
         {copy.applyToSelectedDays}
       </ProviderButton>
+
+      {/* ── G-04: what Apply would overwrite, before it does ────────────────
+          Named day by day with the old hours and the new, because "some of
+          your days will change" is not something a provider can check. It is a
+          `role="alertdialog"` rather than a passive notice: it interrupts an
+          action the provider has already started, and it has to be answered
+          before anything is written.
+
+          Rendered only when there is something to lose, so the uniform week
+          the approved screen depicts never sees it — which is also why state 7
+          measures the same as it did before this existed. */}
+      {pendingDiscards ? (
+        <div
+          role="alertdialog"
+          aria-modal="false"
+          aria-labelledby="apply-discards-title"
+          data-testid="apply-discards"
+          className="grid gap-2.5 rounded-xl border border-pv-blocked-border bg-pv-blocked-bg p-3.5"
+        >
+          <h3
+            id="apply-discards-title"
+            className="break-words text-pv-label font-bold leading-pv-base text-pv-blocked"
+          >
+            {copy.discardTitle(pendingDiscards.length)}
+          </h3>
+          <ul className="grid list-none gap-1 p-0">
+            {pendingDiscards.map((day) => (
+              <li
+                key={day.dayOfWeek}
+                className="break-words text-pv-help leading-pv-help text-pv-text"
+                data-testid={`apply-discards-day-${day.dayOfWeek}`}
+              >
+                {day.reason === 'SECOND_WINDOW'
+                  ? copy.discardSecondWindow(DAY_NAMES[lang][day.dayOfWeek]!)
+                  : copy.discardLine(
+                      DAY_NAMES[lang][day.dayOfWeek]!,
+                      `${formatMinute(day.windows[0]!.startMinute)}–${formatMinute(
+                        day.windows[0]!.endMinute,
+                      )}`,
+                      `${formatMinute(bulkStart)}–${formatMinute(bulkEnd)}`,
+                    )}
+              </li>
+            ))}
+          </ul>
+          <div className="grid gap-2">
+            <ProviderButton
+              tone="primary"
+              shape="onboarding"
+              size="block"
+              onClick={confirmDiscards}
+              data-testid="apply-discards-confirm"
+            >
+              {copy.discardConfirm}
+            </ProviderButton>
+            <ProviderButton
+              tone="secondary"
+              shape="onboarding"
+              size="block"
+              onClick={() => setPendingDiscards(null)}
+              data-testid="apply-discards-cancel"
+            >
+              {copy.discardCancel}
+            </ProviderButton>
+          </div>
+        </div>
+      ) : null}
 
       {/* ── "Unavailable on selected days" ──────────────────────────────────
           `.hsm-consent`. What the label promises is exactly what this does:

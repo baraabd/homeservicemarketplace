@@ -43,25 +43,41 @@ passed+skipped+failed equals the `--list` total for that project.
 
 ## Checklist
 
-- [x] P0-1 `provider-onboarding-v2.spec.ts:424` ACTION_REQUIRED — obsolete
-      assertion replaced by five stricter ones (reason readable, deep link
-      reaches the task, data intact on arrival, no invented submit, broken deep
-      link detected, fallback heading). Two mutations confirm sensitivity.
-- [ ] P0-2 Integration & E2E — `providerLifecycle` advisory-lock starvation.
-      Two suites (`provider-journey`, `provider-lifecycle-backfill`) take it
-      EXCLUSIVE for their whole run; ~24 take it SHARED for theirs. The
-      try-lock never queues, so the exclusive acquirers poll for 120s and time
-      out. `test/support/db-isolation.ts` documents why blocking locks are NOT
-      the answer (measured: 32 suites / 851 tests failed, cross-resource cycle).
-- [ ] P0-3 Re-run the browser suite under the gate runner with count
-      reconciliation.
-- [ ] P1 Visual pipeline: fail-closed image verification, negative tests,
-      18x2 exactly, derived counters, immutable run dirs + manifest, audit
-      reference normalisation, Phase 5 job into required CI, axe wcag21aa +
-      wcag22aa, responsive zoom/reflow + reduced-motion.
-- [ ] P2 The thirteen integration gaps in `PHASE5A_INTEGRATION_GAPS.md`.
+- [x] P0-1 ACTION_REQUIRED browser failure — obsolete assertion replaced by five
+      stricter ones; two mutations confirm sensitivity.
+- [x] P0-2 Integration lock starvation — three causes, all fixed: hold-and-wait
+      across 16 suites (atomic set acquisition), an EXCLUSIVE lock
+      `provider-journey` never used (downgraded to SHARED), and
+      `provider-lifecycle-backfill` owning a database instead of locking a
+      shared table. Worst wait 74.3s -> 32.5s; no EXCLUSIVE providerLifecycle
+      acquirers remain. A lock-aware sequencer was tried and REVERTED — it made
+      things far worse (117.2s of 120s).
+- [x] P0-3 Gate discipline — every gate now runs through
+      `scripts/ci/run-gate.sh`.
+- [x] P1 Visual gate fails closed (recomputed ratio decides, not the stored
+      one) + 4 negative tests; WCAG widened to 2.0+2.1+2.2 AA; Phase 5 job is a
+      CI merge blocker with artifacts uploaded always; `typecheck:e2e` wired
+      into CI after it turned out nothing typechecked `e2e/`.
+- [x] P2 G-01 — market selection. Server side already existed (C2); the web
+      never called it. Substate only, so state 6 is pixel-identical.
+- [ ] P2 remaining gaps: G-04 scheduling (destructive — highest priority),
+      G-05 transport, G-06 primary specialty, G-07 bio limit, G-09/G-10 prose,
+      G-11 verification axis, G-12 timestamp zone, G-13 covered by G-01.
 - [ ] P3 Six real-API journeys with database reads.
-- [ ] P4 Docs, PR body, CI green on the final SHA.
+- [ ] P4 PR body, migration matrix, verification doc.
+
+## CI, by revision
+
+| SHA       | Result                                              |
+| --------- | --------------------------------------------------- |
+| `f35d0c8` | Browser E2E, Integration & E2E, CI gate FAILED      |
+| `09503b0` | all 14 green                                        |
+| `1adbbd0` | all green incl. the new Phase 5 visual job on Linux |
+| `9de2d3d` | pushed, awaiting checks                             |
+
+The Phase 5 gate passing on Ubuntu answers the cross-platform question: both
+sides are captured in the same job under the same pinned conditions, so the
+0.005 budget holds off Windows.
 
 ## Local throwaway infrastructure
 

@@ -26,6 +26,22 @@ export interface AvailabilityCopy {
   applyToSelectedDays: string;
   /** The approved consent row. */
   unavailableLabel: string;
+
+  // ── Sprint 09B.29 Phase 5B — G-04 ───────────────────────────────────────
+  //
+  // Apply expresses ONE window across the days it covers, which is what makes
+  // it a bulk control. It used to discard everything that did not fit — a
+  // second window, a day with different hours — without saying so, and write
+  // the result straight through. These say so, and make the replacement the
+  // provider's decision rather than a side effect of pressing Apply.
+  /** Heading of the confirmation, e.g. "This will change 2 days". */
+  discardTitle: (count: number) => string;
+  /** One line per affected day: "Thursday: 09:00–13:00 becomes 09:00–17:00". */
+  discardLine: (day: string, from: string, to: string) => string;
+  /** A day holding hours the screen cannot show at all. */
+  discardSecondWindow: (day: string) => string;
+  discardConfirm: string;
+  discardCancel: string;
   unavailableHint: string;
   intro: string;
 
@@ -87,6 +103,15 @@ export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
     dayAbbrev: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
     applyToSelectedDays: 'Apply to selected days',
     unavailableLabel: 'Unavailable on selected days',
+    discardTitle: (count) =>
+      count === 1
+        ? 'This will change 1 day you have already set'
+        : `This will change ${count} days you have already set`,
+    discardLine: (day, from, to) => `${day}: ${from} becomes ${to}`,
+    discardSecondWindow: (day) =>
+      `${day}: a second time range will be removed — this screen can only hold one per day`,
+    discardConfirm: 'Apply these hours',
+    discardCancel: 'Leave them as they are',
     unavailableHint: 'Disables days without deleting saved time ranges.',
     heading: 'Working hours',
     intro: 'Tell us when you can take jobs. You can change this any time.',
@@ -146,6 +171,15 @@ export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
     dayAbbrev: ['ح', 'ن', 'ث', 'ر', 'خ', 'ج', 'س'],
     applyToSelectedDays: 'تطبيق على الأيام المحددة',
     unavailableLabel: 'غير متاح في أيام محددة',
+    discardTitle: (count) =>
+      count === 1
+        ? 'سيغيّر هذا يوماً واحداً سبق أن حددته'
+        : `سيغيّر هذا ${count} أيام سبق أن حددتها`,
+    discardLine: (day, from, to) => `${day}: ${from} تصبح ${to}`,
+    discardSecondWindow: (day) =>
+      `${day}: ستُحذف فترة زمنية ثانية — هذه الشاشة تعرض فترة واحدة لكل يوم`,
+    discardConfirm: 'طبّق هذه الساعات',
+    discardCancel: 'اتركها كما هي',
     unavailableHint: 'يعطّل الأيام من دون حذف الفترات المحفوظة.',
     heading: 'ساعات العمل',
     intro: 'أخبرنا متى يمكنك قبول الأعمال. يمكنك تغيير ذلك في أي وقت.',

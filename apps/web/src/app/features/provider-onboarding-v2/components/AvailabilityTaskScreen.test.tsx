@@ -206,6 +206,120 @@ describe('applying is deliberate, never automatic', () => {
   });
 });
 
+// Sprint 09B.29 Phase 5B — G-04, reproduced before it was fixed.
+//
+// docs/provider-experience-v2/PHASE5A_INTEGRATION_GAPS.md
+//
+// "The toggles are the schedule" is a defensible rule and it is not what these
+// are about. Turning a day off and applying is an explicit act, and the toggles
+// are seeded from the stored week, so the provider is looking at their own
+// answer when they change it.
+//
+// What was NOT explicit is everything else Apply discarded on its way past:
+//
+//   a second window on a day that stays selected, which the approved screen
+//   cannot express and therefore destroyed without ever showing it;
+//
+//   a per-day window that differs from the bulk From/To — a provider with a
+//   short Thursday who toggles an unrelated day and presses Apply loses the
+//   short Thursday, having touched nothing about it.
+//
+// Both wrote through to the server, so a reload confirmed the loss rather than
+// revealing it. The fix does not stop Apply replacing things; it stops it doing
+// so SILENTLY.
+describe('G-04 — applying must not quietly discard what it was not asked about', () => {
+  it('warns before replacing a second window on a day that stays selected', async () => {
+    // Monday has two windows: a morning and an evening. The approved screen
+    // shows one From/To, so Apply can only express one of them.
+    renderScreen(
+      DRAFT({
+        data: {
+          availability: [
+            ...week([0], 540, 720),
+            {
+              id: 'av-0b',
+              dayOfWeek: 0,
+              startMinute: 1020,
+              endMinute: 1260,
+              timezone: 'Asia/Damascus',
+            },
+            ...week([1, 2]),
+          ],
+        },
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+
+    // Nothing may have been sent yet: the provider is told what Apply would
+    // discard and has to say yes.
+    const notice = await screen.findByTestId('apply-discards');
+    expect(notice).toBeInTheDocument();
+    expect(mock.history.patch).toHaveLength(0);
+  });
+
+  it('warns before overwriting a day whose hours differ from the bulk pair', async () => {
+    // Thursday is a short day. The provider toggles nothing about it.
+    renderScreen(
+      DRAFT({
+        data: { availability: [...week([0, 1, 2]), ...week([4], 540, 780)] },
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+
+    expect(await screen.findByTestId('apply-discards')).toBeInTheDocument();
+    expect(mock.history.patch).toHaveLength(0);
+  });
+
+  it('applies straight through when nothing would be lost', async () => {
+    // The common case, and the one the approved screen depicts: a uniform week.
+    // No warning, no extra tap — the gate must not tax the ordinary path.
+    renderScreen(DRAFT({ data: { availability: week([0, 1, 2, 3, 4]) } }));
+
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+
+    const sent = (await lastPatch()).availability as Array<{ dayOfWeek: number }>;
+    expect(sent.map((i) => i.dayOfWeek).sort()).toEqual([0, 1, 2, 3, 4]);
+    expect(screen.queryByTestId('apply-discards')).toBeNull();
+  });
+
+  it('proceeds once the provider confirms, and the replacement is what they chose', async () => {
+    renderScreen(
+      DRAFT({
+        data: { availability: [...week([0, 1, 2]), ...week([4], 540, 780)] },
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+    fireEvent.click(await screen.findByTestId('apply-discards-confirm'));
+
+    const sent = (await lastPatch()).availability as Array<{
+      dayOfWeek: number;
+      startMinute: number;
+      endMinute: number;
+    }>;
+    // Thursday now carries the bulk window — the provider said so.
+    const thursday = sent.filter((i) => i.dayOfWeek === 4);
+    expect(thursday).toHaveLength(1);
+    expect(thursday[0]).toMatchObject({ startMinute: 540, endMinute: 1020 });
+  });
+
+  it('lets the provider back out, changing nothing', async () => {
+    renderScreen(
+      DRAFT({
+        data: { availability: [...week([0, 1, 2]), ...week([4], 540, 780)] },
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+    fireEvent.click(await screen.findByTestId('apply-discards-cancel'));
+
+    expect(screen.queryByTestId('apply-discards')).toBeNull();
+    expect(mock.history.patch).toHaveLength(0);
+  });
+});
+
 describe('marking days unavailable', () => {
   it('clears the selected days and keeps the rest of the week', async () => {
     renderScreen(DRAFT({ data: { availability: week([0, 1, 2, 3, 4]) } }));
