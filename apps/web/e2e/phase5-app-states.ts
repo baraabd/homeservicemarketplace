@@ -728,6 +728,29 @@ export async function installPrecondition(
 
     if (url.includes('/notifications/unread-count')) return json(route, { count: 0 });
 
+    // The operator's market registry (C2), as the SETTLED case.
+    //
+    // Every approved state depicts a provider whose market is known and still
+    // open, so the work-area screen asks nothing about it and its canonical
+    // cell is unchanged. Stubbed explicitly rather than left to the catch-all
+    // below, which would hand the screen an object with no `markets` array —
+    // the shape the client now degrades on rather than crashes on, but which
+    // would still render a retry where the reference has a city field.
+    if (url.includes('/me/provider/onboarding/markets')) {
+      return json(route, {
+        markets: [
+          {
+            countryCode: 'SY',
+            displayNameKey: 'SY',
+            radius: { minKm: 3, maxKm: 25, defaultKm: 15 },
+            timezone: { kind: 'RESOLVED', id: 'Asia/Damascus' },
+          },
+        ],
+        selectedCountryCode: 'SY',
+        locationSuggestionAvailable: false,
+      });
+    }
+
     // Three photos, uploaded and still in moderation — which is exactly the
     // state the approved portfolio screen depicts, and the reason its tiles
     // show a placeholder rather than the photographs: review "controls when

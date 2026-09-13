@@ -6,6 +6,8 @@ import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboardin
 import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { SERVICE_AREA_COPY, type Lang } from '../copy/service-area-copy';
 import { ProviderErrorState, ProviderSkeleton, ProviderTextInput } from '../../provider-ui';
+import { marketPrompt, useSupportedMarkets } from '../../../hooks/provider/useSupportedMarkets';
+import { MarketPicker } from './MarketPicker';
 
 // Sprint 9B.19 — V2 Task 3: where you work.
 //
@@ -96,6 +98,39 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
    * ceiling. When the server withholds any of them the sentence simply gets
    * shorter — it never guesses, and with `show: false` there is no card at all.
    */
+  // Sprint 09B.29 Phase 5B — G-01, the market a provider works in.
+  //
+  // `serviceAreaCountry` is REQUIRED for submission and the approved screen has
+  // nowhere to enter it, so a provider whose market was never recorded could
+  // complete every task and still be refused with no screen able to fix it.
+  //
+  // The question is asked only when the SERVER's answer makes it necessary —
+  // no market recorded, the operator has withdrawn from theirs, or the country
+  // does not pin a timezone. In the settled case this renders nothing and the
+  // approved screen is untouched, which is why the canonical cell for state 6
+  // is unchanged.
+  const marketsQuery = useSupportedMarkets();
+  const prompt = marketsQuery.isError
+    ? ({ kind: 'UNAVAILABLE' } as const)
+    : marketPrompt(marketsQuery.data, view);
+
+  /**
+   * Record the chosen market, or the confirmed timezone.
+   *
+   * Through the SAME autosave coordinator every other field on this screen
+   * uses, so a market choice is drained by the exit contract like any other
+   * unsaved work. The server validates the ISO code and the market's
+   * enablement on the write — this is a projection of the operator's list, not
+   * a second gate.
+   */
+  const chooseMarket = (value: string) => {
+    if (prompt?.kind === 'CONFIRM_TIMEZONE') {
+      autosave.save({ timezone: value });
+      return;
+    }
+    autosave.save({ serviceAreaCountryCode: value });
+  };
+
   const rewardSentence = (() => {
     if (!expansion?.show) return null;
     const transport = policy?.basedOn ? copy.transportNames[policy.basedOn] : null;
@@ -114,6 +149,22 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
 
   return (
     <div className="flex flex-col gap-[18px]" data-testid="work-area-task">
+      {/* ── The market, when there is a question about it ───────────────────
+          ABOVE the city field, because a city means something different in a
+          different country and answering the second question first would be
+          asking somebody to describe a place before saying where it is. */}
+      {prompt && prompt.kind !== 'SETTLED' ? (
+        <MarketPicker
+          prompt={prompt}
+          lang={lang}
+          markets={marketsQuery.data?.markets ?? []}
+          editable={editable}
+          pending={marketsQuery.isFetching}
+          onChoose={chooseMarket}
+          onRetry={() => void marketsQuery.refetch()}
+        />
+      ) : null}
+
       {/* ── The one field the approved screen asks for ──────────────────────
           Its hint is the privacy promise, moved from a card of its own into
           the place the question is actually asked. That is where it does its

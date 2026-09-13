@@ -30,6 +30,13 @@ export const providerQueryKeys = {
     // show a provider who switched language the other locale's document while
     // recording agreement to it.
     review: (locale: 'en' | 'ar') => ['provider', 'onboarding', 'review', locale] as const,
+    // Sprint 09B.29 Phase 5B — the operator's market registry.
+    //
+    // Its own slot rather than a slice of the draft, because it is OPERATOR
+    // state: it changes when a market opens or closes, not when the provider
+    // types. Invalidated by a LOCATION write only because that write can change
+    // `selectedCountryCode`, which this response carries.
+    markets: () => ['provider', 'onboarding', 'markets'] as const,
   },
   jobs: {
     root: ['provider', 'jobs'] as const,
