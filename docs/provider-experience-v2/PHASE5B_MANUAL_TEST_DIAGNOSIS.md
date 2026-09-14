@@ -257,6 +257,62 @@ pixel baseline at 393 would be invented rather than approved).
 
 ---
 
+## 6A. Evidence artifacts
+
+Playwright traces of the repaired journey, captured with `--trace on` against
+the real API and a real database. A trace carries the DOM snapshots, the console
+and the full network panel, so it is the before/after record for the reported
+requests.
+
+```
+apps/web/test-results/phase5-evidence/services-journey-after-repair.trace.zip
+apps/web/test-results/phase5-evidence/work-area-journey-after-repair.trace.zip
+
+pnpm --filter @homeservicemarketplace/web exec playwright show-trace <file>
+```
+
+Network results extracted from those traces — the counterpart to the reported
+404s and the stuck task:
+
+```
+work-area journey
+  200  GET   /v1/me/provider/onboarding/markets      <- was 404, repeatedly
+  200  GET   /v1/me/provider/onboarding/hub
+  200  GET   /v1/me/provider/onboarding/draft
+  200  PATCH /v1/me/provider/onboarding/steps/LOCATION
+  200  GET   /v1/me/provider/profile
+
+services journey
+  200  GET   /v1/me/provider/onboarding/hub
+  200  GET   /v1/me/provider/onboarding/draft
+  200  PATCH /v1/me/provider/onboarding/steps/SPECIALTIES
+  200  PATCH /v1/me/provider/onboarding/steps/EXPERIENCE
+```
+
+No unexpected 401 or 404 in the repaired happy path.
+
+### The value table, from the markers that journey wrote
+
+Each column is an INDEPENDENT read — the rendered control or the API, a fresh
+authenticated session, and a direct PostgreSQL query — not one value copied
+across.
+
+| Screen    | Field                    | Intended / API          | After reload | After fresh sign-in | In PostgreSQL | Ack. revision |
+| --------- | ------------------------ | ----------------------- | ------------ | ------------------- | ------------- | ------------- |
+| Basics    | `displayName`            | `Left Immediately …`    | same         | same                | same          | v7            |
+| Services  | `professionSince`        | `2016-12-31T22:00Z`     | same         | same                | same          | v8            |
+| Work area | `serviceAreaCity`        | `Aleppo …`              | same         | same                | same          | v7            |
+| Hours     | `intervals`              | Sun–Thu 540→1020        | same         | same                | same          | v7            |
+| Portfolio | `bio`                    | `I have wired houses …` | same         | same                | same          | v7            |
+| Review    | `acceptedConsentVersion` | `v1`                    | same         | same                | same          | v8            |
+
+Specialty membership is asserted separately, because choosing a specialty creates
+a PENDING application rather than membership: the journey checks the chosen set
+reaches the server as held-or-applied-for, then — after an administrator
+approves — that every one has a `ProviderProfileServiceCategory` row.
+
+---
+
 ## 7. Still outstanding
 
 - **Whole-flow keyboard traversal, 200% zoom/reflow and reduced-motion** have no
