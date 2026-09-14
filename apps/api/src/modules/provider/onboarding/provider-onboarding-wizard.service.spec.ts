@@ -1754,6 +1754,53 @@ describe('patchStep — LOCATION only accepts markets the operator serves', () =
 describe('patchStep — AVAILABILITY derives the timezone from the market', () => {
   const week = [{ dayOfWeek: 0, startMinute: 540, endMinute: 1020 }];
 
+  const withConfirmedTimezone = () => {
+    const h = build({
+      profile: { ...makeCompleteProfile(), serviceAreaCountryCode: 'CA' },
+      intervals: [],
+      draft: {
+        id: 'd-1',
+        version: 3,
+        policyVersion: 'sprint-08',
+        lastSavedAt: new Date('2026-09-14T00:00:00Z'),
+        data: { timezone: 'America/Toronto' },
+      },
+    });
+    h.markets.findEnabled.mockResolvedValue({
+      countryCode: 'CA',
+      enabled: true,
+      displayNameKey: 'CA',
+      timezones: ['America/Toronto', 'America/Vancouver'],
+    });
+    return h;
+  };
+
+  it('uses a previously confirmed timezone when saving the first working hours', async () => {
+    // A timezone-only PATCH has no intervals to stamp yet; its acknowledged
+    // value lives in draft.data until the first hours are written.
+    const h = withConfirmedTimezone();
+    await expect(
+      h.service.patchStep('u-1', 'AVAILABILITY', { version: 3, availability: week }),
+    ).resolves.toBeDefined();
+    expect(h.drafts.replaceAvailability).toHaveBeenCalledWith(
+      'pp-1',
+      [{ ...week[0], timezone: 'America/Toronto' }],
+      h.trx,
+    );
+  });
+
+  it('does not revive the stored confirmation when a request explicitly clears it', async () => {
+    const h = withConfirmedTimezone();
+    await expect(
+      h.service.patchStep('u-1', 'AVAILABILITY', {
+        version: 3,
+        availability: week,
+        timezone: null,
+      }),
+    ).rejects.toMatchObject({ status: 400, details: { reason: 'TIMEZONE_AMBIGUOUS' } });
+    expect(h.drafts.replaceAvailability).not.toHaveBeenCalled();
+  });
+
   /** A provider with a market and NO stored timezone — the new-provider case
    *  that used to be impossible to save. */
   const inMarket = (countryCode: string | null) =>

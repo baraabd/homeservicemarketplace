@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ADMIN_SETTINGS_SCHEMA } from '@homeservicemarketplace/contracts';
 import type {
   ProviderSupportedMarketsResponse,
   SupportedMarketView,
@@ -101,6 +102,10 @@ export class SupportedMarketsService {
 
   private async numberSetting(key: string): Promise<number> {
     const row = await this.settings.findByKey(key);
-    return typeof row?.value === 'number' && Number.isFinite(row.value) ? row.value : 0;
+    if (typeof row?.value === 'number' && Number.isFinite(row.value)) return row.value;
+    // Match the wizard's setting reader: an absent radius row means the
+    // schema default, not zero (which the LOCATION write correctly refuses).
+    const fallback = ADMIN_SETTINGS_SCHEMA.find((field) => field.key === key)?.default;
+    return typeof fallback === 'number' ? fallback : 0;
   }
 }

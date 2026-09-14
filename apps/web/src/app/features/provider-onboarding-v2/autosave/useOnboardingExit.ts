@@ -92,7 +92,7 @@ export function useOnboardingExit(): OnboardingExit {
   const leaving = useRef(false);
 
   const run = useCallback(
-    async (to: string) => {
+    async (to: string, retryRejected = false) => {
       // Guard on the REF, not on `state`: two taps in the same tick both read
       // the pre-render state and both would pass a state-based check.
       if (leaving.current) return;
@@ -101,7 +101,7 @@ export function useOnboardingExit(): OnboardingExit {
       target.current = to;
       setState({ kind: 'leaving' });
 
-      const result = await flushAll();
+      const result = await flushAll({ retryRejected });
 
       leaving.current = false;
       if (result.ok) {
@@ -127,7 +127,7 @@ export function useOnboardingExit(): OnboardingExit {
     const to = target.current;
     if (!to) return;
     setState({ kind: 'idle' });
-    void run(to);
+    void run(to, true);
   }, [run]);
 
   const dismiss = useCallback(() => {

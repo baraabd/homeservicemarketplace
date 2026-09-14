@@ -940,7 +940,11 @@ export class ProviderOnboardingWizardService {
         const explicitTimezone =
           body.timezone !== undefined
             ? trimToNull(body.timezone)
-            : (ctx.relations.availabilityIntervals[0]?.timezone ?? null);
+            : (ctx.relations.availabilityIntervals[0]?.timezone ??
+              // A timezone can be confirmed before the first working window.
+              // That acknowledged answer lives in the draft until intervals
+              // exist. An explicit null above must still clear it.
+              (typeof scratch.timezone === 'string' ? scratch.timezone : null));
 
         const decision = decideTimezone({
           existingTimezone: explicitTimezone,

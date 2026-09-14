@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 import { api } from '../../../../lib/api';
 import { providerQueryKeys } from '../../../../lib/provider/query-keys';
@@ -11,7 +12,10 @@ import { ServiceAreaTaskScreen } from './ServiceAreaTaskScreen';
 import { SERVICE_AREA_COPY } from '../copy/service-area-copy';
 
 const EN = SERVICE_AREA_COPY.en;
-import { ProviderOnboardingAutosaveProvider } from '../autosave/ProviderOnboardingAutosaveProvider';
+import {
+  ProviderOnboardingAutosaveProvider,
+  useOnboardingAutosave,
+} from '../autosave/ProviderOnboardingAutosaveProvider';
 
 // Sprint 9B.19 — V2 Task 3.
 //
@@ -132,6 +136,45 @@ function renderScreen(view = DRAFT(), lang: 'en' | 'ar' = 'en', editable = true)
 //   the area preview  replaced by the map band, which says the same thing.
 
 describe('the one question the approved screen asks', () => {
+  it('confirms timezone through AVAILABILITY, never the LOCATION field guard', async () => {
+    const view = DRAFT({ data: { serviceAreaCountryCode: 'CA', serviceAreaRadiusKm: 25 } });
+    mock.onGet('/v1/me/provider/onboarding/markets').reply(200, {
+      selectedCountryCode: 'CA',
+      markets: [{ countryCode: 'CA', displayNameKey: 'CA', timezone: { kind: 'ASK' } }],
+    });
+    mock.onPatch(/\/steps\/AVAILABILITY$/).reply(200, { ...view, version: 6 });
+    let flush!: ReturnType<typeof useOnboardingAutosave>['flushAll'];
+    function FlushProbe() {
+      const { flushAll } = useOnboardingAutosave();
+      useEffect(() => {
+        flush = flushAll;
+      }, [flushAll]);
+      return null;
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(providerQueryKeys.onboarding.draft(), view);
+    render(
+      <QueryClientProvider client={client}>
+        <ProviderOnboardingAutosaveProvider>
+          <ServiceAreaTaskScreen view={view as never} lang="en" editable />
+          <FlushProbe />
+        </ProviderOnboardingAutosaveProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.change(await screen.findByTestId('market-timezone-select'), {
+      target: { value: 'America/Toronto' },
+    });
+    await act(async () => {
+      await flush();
+    });
+    expect(mock.history.patch).toHaveLength(1);
+    expect(mock.history.patch[0].url).toMatch(/\/steps\/AVAILABILITY$/);
+    expect(JSON.parse(mock.history.patch[0].data)).toEqual({
+      version: 5,
+      timezone: 'America/Toronto',
+    });
+  });
+
   it('asks for a city or neighborhood, and nothing else', async () => {
     renderScreen();
 

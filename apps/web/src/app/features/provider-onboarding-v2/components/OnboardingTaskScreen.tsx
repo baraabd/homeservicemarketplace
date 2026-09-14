@@ -5,6 +5,7 @@ import { Button } from '../../../components/ds/Button';
 import { ProviderButton, ProviderStickyActionRow } from '../../provider-ui';
 import { AutosaveStatus } from './AutosaveStatus';
 import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
+import { mergeAutosaveStatus } from '../autosave-status';
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
 import { TASK_CHROME_COPY, TASK_SCREEN_ROUTES, taskScreenKeyFor } from '../copy/task-chrome-copy';
 import { useLang } from '../../../i18n/LanguageContext';
@@ -96,6 +97,11 @@ export function OnboardingTaskScreen() {
   // The save line the approved sticky bar carries. `REVIEW` collects nothing
   // of its own, so it is the harmless default for a screen with no step.
   const chromeAutosave = useOnboardingStepAutosave(screenRoute?.step ?? 'REVIEW');
+  const timezoneAutosave = useOnboardingStepAutosave('AVAILABILITY');
+  const chromeStatus =
+    taskId === 'WORK_AREA'
+      ? mergeAutosaveStatus(chromeAutosave.status, timezoneAutosave.status)
+      : chromeAutosave.status;
 
   /**
    * A primary action the body owns, published up to the approved position.
@@ -297,7 +303,7 @@ export function OnboardingTaskScreen() {
       {chrome && screenRoute?.autosaveLine !== false ? (
         <div className="flex items-center justify-center">
           <AutosaveStatus
-            status={chromeAutosave.status}
+            status={chromeStatus}
             lang={lang}
             testIdPrefix="task"
             lastSavedAt={draft.data?.lastSavedAt ?? null}
