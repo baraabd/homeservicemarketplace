@@ -218,6 +218,27 @@ export async function readDraftScratch(
 }
 
 /**
+ * The specialty ids a provider actually HOLDS, from the membership table.
+ *
+ * Its own read because the reported failure lived exactly in the gap between
+ * two facts: `ProviderProfile.primaryServiceCategoryId` was set while
+ * `ProviderProfileServiceCategory` held no rows — a primary pointing at
+ * nothing. An API projection can paper over that; the rows cannot.
+ */
+export async function readSpecialtyMembership(providerProfileId: string): Promise<string[]> {
+  return withClient(async (client) => {
+    const { rows } = await client.query<{ serviceCategoryId: string }>(
+      `SELECT s."serviceCategoryId"
+         FROM "ProviderProfileServiceCategory" s
+        WHERE s."providerProfileId" = $1
+        ORDER BY s."serviceCategoryId"`,
+      [providerProfileId],
+    );
+    return rows.map((r) => r.serviceCategoryId);
+  });
+}
+
+/**
  * The portfolio item ids, in the order the rows say they are in.
  *
  * Its own function for the same reason availability has one: the durable fact

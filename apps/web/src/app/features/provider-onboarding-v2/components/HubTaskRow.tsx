@@ -92,6 +92,18 @@ export function HubTaskRow({ task, lang, onOpen, summary = null }: HubTaskRowPro
   const tone = task.status === 'BLOCKED' ? 'todo' : toneForTaskStatus(task.status);
   const Icon = TASK_ICONS[task.id];
 
+  /**
+   * The one sentence the row's second line carries.
+   *
+   * A real `summary` first — the provider's own hours or photo count, which is
+   * what the reference draws. Then the status EXPLANATION, for the statuses
+   * where the badge cannot speak for itself: this copy maps both `AVAILABLE`
+   * and `BLOCKED` to "Required", and the sentence telling them apart used to be
+   * `sr-only`, so a sighted provider staring at two "Required" rows was told
+   * nothing about which one was theirs to act on. Then the static description.
+   */
+  const secondLine = summary ?? explanation ?? copy.description;
+
   const body = (
     <>
       {/* `.hsm-task-icon`: a 34px sunken tile, muted glyph, 10px radius. 16px
@@ -135,10 +147,40 @@ export function HubTaskRow({ task, lang, onOpen, summary = null }: HubTaskRowPro
             `button` a 500 weight that everything inside it inherits. The two
             shapes were rendering the same sentence at two different weights,
             and the open one was heavier than the reference. */}
-        <span className="mt-0.5 block break-words text-pv-caption font-normal leading-4 text-pv-muted">
-          {summary ?? copy.description}
+        {/* The second line, and WHICH sentence belongs on it.
+
+            Reported from manual testing: the hub sat at 4 of 6 with two tasks
+            reading "Required", and nothing on screen said why either was
+            required or what to do about it. The reason is that this copy maps
+            BOTH `AVAILABLE` (your input is needed) and `BLOCKED` (finish an
+            earlier task first) to the same word, and the sentence that told
+            them apart was rendered `sr-only` — so a sighted provider was told
+            nothing at all.
+
+            The explanation now takes this line for the statuses where the badge
+            is ambiguous on its own. No line is added: the reference draws one
+            second line per row, and for a blocked or waiting task "Finish the
+            tasks above first" is strictly more useful than a static description
+            of a task they cannot open yet.
+
+            A real `summary` still wins, because that is provider data — their
+            actual hours, their photo count — and the reference shows it. The
+            `sr-only` copy is gone rather than duplicated: the same sentence
+            twice is announced twice. */}
+        <span
+          className="mt-0.5 block break-words text-pv-caption font-normal leading-4 text-pv-muted"
+          // The testid travels with the SENTENCE, not with a fixed element, so
+          // the reason lives in exactly one node whether it is the visible line
+          // or the announced-only one. Rendering it twice made "find the
+          // explanation" ambiguous — which is its own small lesson about
+          // duplicating copy for the convenience of a selector.
+          data-testid={secondLine === explanation ? `task-explanation-${task.id}` : undefined}
+        >
+          {secondLine}
         </span>
-        {explanation ? (
+        {/* Only when the visible line is a SUMMARY does the reason still need a
+            home: provider data wins the line, and the reason is announced. */}
+        {explanation && secondLine !== explanation ? (
           <span className="sr-only" data-testid={`task-explanation-${task.id}`}>
             {explanation}
           </span>

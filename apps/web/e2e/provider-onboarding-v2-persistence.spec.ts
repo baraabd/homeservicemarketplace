@@ -6,6 +6,7 @@ import {
   readAvailability,
   readPortfolioOrder,
   readProfileValues,
+  readSpecialtyMembership,
 } from './phase5-db-read';
 import type { TaskScreenFile } from './phase5-evidence-ledger';
 
@@ -587,6 +588,107 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     await page.goto('/provider/onboarding/SERVICES_EXPERIENCE');
     await expect(page.getByTestId('services-task')).toBeVisible();
 
+    // ── The specialties, actually chosen ──────────────────────────────────
+    //
+    // This test was titled "rapid edits across BOTH its steps" and changed
+    // only the years. It opened this screen, asserted it was visible, and
+    // navigated away — so the SPECIALTIES half of the two-writer scenario it
+    // claimed to cover was never exercised at all. That blind spot is why a
+    // real defect reached manual testing: toggles derived their next set from
+    // the last ACKNOWLEDGED server state, so a second pick made before the
+    // first round trip replaced it, and the provider's chosen specialties were
+    // silently reduced to whichever they pressed last.
+    //
+    // Clicked back to back with NOTHING awaited between them, which is what
+    // makes the saves overlap against a real server. No interception: the
+    // requests are real, merely concurrent. The deterministic version of this
+    // race — an acknowledgement held open — lives in the component suite,
+    // where a barrier is possible without faking a response.
+    const choices = page.locator('[data-testid^="specialty-choice-"]');
+    await expect(choices.first()).toBeVisible();
+
+    // Which leaves are on offer, and which the provider ALREADY holds.
+    //
+    // `readyProvider` completes every step except EXPERIENCE, and completing
+    // SPECIALTIES means one leaf is already selected. Clicking blindly from the
+    // top of the list therefore DE-selected it — a first version of this test
+    // did exactly that and then asserted a set that could never be reached.
+    // Read the ticks, choose from the unticked, and expect the union.
+    const offered = (await choices.evaluateAll((nodes) =>
+      nodes.map((n) => ({
+        id: (n.getAttribute('data-testid') ?? '').replace('specialty-choice-', ''),
+        checked: n.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked === true,
+      })),
+    )) as Array<{ id: string; checked: boolean }>;
+
+    const already = offered.filter((o) => o.checked).map((o) => o.id);
+    const free = offered.filter((o) => !o.checked).map((o) => o.id);
+    expect(free.length, 'the catalogue should offer at least two unchosen leaves').toBeGreaterThan(
+      1,
+    );
+
+    const [firstLeaf, secondLeaf] = free;
+    const expectedSet = [...already, firstLeaf, secondLeaf].sort();
+    // A user presses the ROW, not the input: the real checkbox is visually
+    // hidden behind its styled span, which is what a label is for. Clicking the
+    // input directly is both blocked by the span and less faithful to the
+    // gesture under test.
+    const row = (id: string) => page.getByTestId(`specialty-choice-${id}`);
+    const box = (id: string) =>
+      page.locator(`[data-testid="specialty-choice-${id}"] input[type="checkbox"]`);
+
+    await row(firstLeaf).click();
+    await row(secondLeaf).click();
+
+    // The tick is the provider's own feedback and must not wait for the server.
+    await expect(box(firstLeaf)).toBeChecked();
+    await expect(box(secondLeaf)).toBeChecked();
+
+    // Remove one and put it back while saves are still settling — the path that
+    // used to resurrect a de-selected specialty.
+    await row(secondLeaf).click();
+    await row(secondLeaf).click();
+
+    // ── What "stored" MEANS for a specialty ───────────────────────────────
+    //
+    // Choosing one does not grant it. `applyForSpecialties` creates a PENDING
+    // `ProviderCategoryApplication`; membership rows appear only when an
+    // administrator approves. So the draft's `specialtyLeafIds` is the APPROVED
+    // set and a new pick lands in `pendingSpecialtyIds`.
+    //
+    // A first version of this test asserted membership immediately and failed
+    // for the right reason — worth recording, because the same confusion is
+    // what made the reported bug hard to read: that provider's row had
+    // `primaryServiceCategoryId` set with no membership, which looks like data
+    // loss and is actually five specialties waiting on a moderator.
+    //
+    // The invariant the provider cares about is "the platform has my choice",
+    // which is held-or-applied-for.
+    await expect
+      .poll(
+        async () => {
+          const data = await draftFromApi(account);
+          const held = (data.specialtyLeafIds as string[]) ?? [];
+          const pending = (data.pendingSpecialtyIds as string[]) ?? [];
+          return [...new Set([...held, ...pending])].sort();
+        },
+        { timeout: 30_000, message: 'both chosen specialties should reach the server' },
+      )
+      .toEqual(expectedSet);
+
+    // NOTE on what is deliberately NOT asserted here.
+    //
+    // The property "a pending specialty is the moderator's item, never provider
+    // input still missing" is the deadlock this sprint's policy split ended, and
+    // it is what the reported hub was showing. It is not asserted in THIS test,
+    // for a precise reason: the fixture already holds an APPROVED specialty, so
+    // the policy raises no specialties issue at all and the check would pass
+    // vacuously. The scenario that matters is zero approved with one pending —
+    // exactly the reported account — and it is covered where its preconditions
+    // can be set exactly: provider-onboarding.policy.spec.ts, the hub resolver
+    // and the review resolver. Asserting it loosely here would add a third
+    // half-true copy of a rule three suites already pin.
+
     await page.goto('/provider/onboarding/SERVICES_EXPERIENCE#experience');
     await expect(page.getByTestId('experience-section')).toBeVisible();
 
@@ -686,6 +788,18 @@ test.describe('provider onboarding v2 — the edit survives', () => {
     // The API value above is a different kind of value and is read differently:
     // it arrives as an ISO string with an explicit `Z`, so UTC is exactly right
     // there. Two representations of one fact, each read on its own terms.
+    // The membership rows themselves, straight from Postgres. The reported
+    // failure had `primaryServiceCategoryId` set with NO rows here — a primary
+    // pointing at nothing — which is exactly what a truncated set produces and
+    // what kept the Services task "Required".
+    // Approved by an administrator, then the membership rows exist. Before this
+    // the choices are applications, which is the contract rather than a defect.
+    await approveCategoriesFor(account);
+    expect(
+      (await readSpecialtyMembership(account.profileId)).sort(),
+      'every approved specialty must have a membership row',
+    ).toEqual(expectedSet);
+
     const stored = await readProfileValues(account.profileId, ['professionSince']);
     const storedDate = stored.professionSince;
     expect(storedDate, 'the row should carry a start date at all').toBeInstanceOf(Date);

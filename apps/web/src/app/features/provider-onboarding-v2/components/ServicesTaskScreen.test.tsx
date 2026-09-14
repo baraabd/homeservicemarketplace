@@ -362,6 +362,115 @@ describe('selection and review state are separate', () => {
   });
 });
 
+// ── Pending intent: the defect behind the user's stuck Services task ────────
+//
+// Reported from manual testing: specialties were entered, the hub stayed at
+// 4 of 6, and Services kept saying مطلوب. The developer's database showed
+// `primaryServiceCategoryId` SET and `ProviderProfileServiceCategory` EMPTY —
+// a primary with no membership, which is what an empty `specialtyLeafIds`
+// payload produces.
+//
+// `chosenIds` derives from `view.data.specialties`, which is the last
+// ACKNOWLEDGED server state, and every toggle computed its next set from it. So
+// a second pick made before the first was acknowledged replaced the first
+// instead of joining it, and a de-select could resurrect a selection. The queue
+// merges by property, so the later array simply wins.
+//
+// These tests hold the acknowledgement open, which is the only way the race is
+// deterministic — awaited clicks on a fast runner do not overlap.
+describe('selections made before the server answers', () => {
+  /** Hold every step PATCH until `release()`, capturing what was sent. */
+  function heldPatch(): { sent: () => Record<string, unknown>[]; release: () => void } {
+    const bodies: Record<string, unknown>[] = [];
+    let unblock: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    mock.onPatch(PATCH).reply(async (config) => {
+      bodies.push(JSON.parse(String(config.data)) as Record<string, unknown>);
+      await gate;
+      return [200, DRAFT()];
+    });
+    return { sent: () => bodies, release: () => unblock() };
+  }
+
+  it('keeps BOTH specialties when the second is chosen before the first is saved', async () => {
+    const held = heldPatch();
+    renderScreen();
+
+    fireEvent.click(
+      within(await screen.findByTestId('specialty-choice-plumbing')).getByRole('checkbox'),
+    );
+    fireEvent.click(
+      within(await screen.findByTestId('specialty-choice-wiring')).getByRole('checkbox'),
+    );
+
+    // The payload the server is asked to store must contain both. Reading the
+    // LAST body rather than the first: the coordinator may coalesce, and what
+    // matters is that the set it finally sends is the set the provider chose.
+    await waitFor(() => expect(held.sent().length).toBeGreaterThan(0));
+    held.release();
+
+    await waitFor(() => {
+      const last = held.sent()[held.sent().length - 1];
+      expect(last.specialtyLeafIds).toEqual(expect.arrayContaining(['plumbing', 'wiring']));
+    });
+  });
+
+  it('shows the tick immediately, not only once the server agrees', async () => {
+    // The checkbox rendered acknowledged state, so a provider who tapped a
+    // specialty saw nothing happen until the round trip finished — which is
+    // exactly what "I entered them and it did not take" looks like.
+    const held = heldPatch();
+    renderScreen();
+
+    const box = within(await screen.findByTestId('specialty-choice-plumbing')).getByRole(
+      'checkbox',
+    );
+    fireEvent.click(box);
+    expect(box).toBeChecked();
+    held.release();
+  });
+
+  it('removes a specialty that is de-selected before its own save lands', async () => {
+    const held = heldPatch();
+    renderScreen();
+
+    const box = within(await screen.findByTestId('specialty-choice-plumbing')).getByRole(
+      'checkbox',
+    );
+    fireEvent.click(box);
+    fireEvent.click(box);
+    expect(box).not.toBeChecked();
+
+    await waitFor(() => expect(held.sent().length).toBeGreaterThan(0));
+    held.release();
+
+    await waitFor(() => {
+      const last = held.sent()[held.sent().length - 1];
+      expect(last.specialtyLeafIds).toEqual([]);
+    });
+  });
+
+  it('keeps BOTH transport modes when the second is chosen before the first is saved', async () => {
+    const held = heldPatch();
+    renderScreen(DRAFT(), 'en', true, 'experience');
+
+    fireEvent.click(within(await screen.findByTestId('transport-CAR')).getByRole('checkbox'));
+    fireEvent.click(
+      within(await screen.findByTestId('transport-MOTORCYCLE')).getByRole('checkbox'),
+    );
+
+    await waitFor(() => expect(held.sent().length).toBeGreaterThan(0));
+    held.release();
+
+    await waitFor(() => {
+      const last = held.sent()[held.sent().length - 1];
+      expect(last.transportModes).toEqual(expect.arrayContaining(['CAR', 'MOTORCYCLE']));
+    });
+  });
+});
+
 describe('the primary service', () => {
   const withPrimary = DRAFT({
     data: {

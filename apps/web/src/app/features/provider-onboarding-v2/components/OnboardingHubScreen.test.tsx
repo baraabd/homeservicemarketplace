@@ -203,6 +203,24 @@ describe('OnboardingHubScreen — what can be pressed', () => {
     expect(explanation.textContent?.trim().length ?? 0).toBeGreaterThan(0);
   });
 
+  it('shows that reason ON SCREEN, not only to a screen reader', async () => {
+    // The reported dead end: the hub said "Required" against two tasks and a
+    // sighted provider was told nothing about the difference between "your
+    // input is needed" and "finish an earlier task first", because the
+    // sentence that distinguishes them was rendered sr-only.
+    mock.onGet(HUB_URL).reply(200, hub());
+    renderHub();
+
+    const row = await screen.findByTestId('task-row-WORK_AREA');
+    const reason = statusExplanation('BLOCKED', 'en');
+    expect(reason).toBeTruthy();
+    // Present in the row's VISIBLE text, which is what `textContent` on a row
+    // whose only hidden node is a duplicate proves.
+    expect(row).toHaveTextContent(String(reason));
+    const visible = within(row).getByText(String(reason));
+    expect(visible).not.toHaveClass('sr-only');
+  });
+
   it('explains a WAITING row differently from a BLOCKED one', async () => {
     const tasks = CANONICAL.tasks.map((t) =>
       t.id === 'WORK_AREA' ? { ...t, status: 'WAITING' } : t,

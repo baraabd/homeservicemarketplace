@@ -143,7 +143,45 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
   // Memoised because `?? []` allocates a fresh array on every render, which
   // would make it a new dependency each time and defeat both memos below.
   const specialties = useMemo(() => data.specialties ?? [], [data.specialties]);
-  const chosenIds = useMemo(() => specialties.map((s) => s.categoryId), [specialties]);
+  /**
+   * What the SERVER has agreed to, and what the provider has ASKED for.
+   *
+   * These are two different things and conflating them lost real work. Every
+   * toggle used to compute its next set from the acknowledged one, so a second
+   * pick made before the first round trip finished replaced it instead of
+   * joining it: choose A, choose B, and the payload was [B]. A de-select made
+   * in the same window was lost the same way. The queue merges by property, so
+   * whichever array arrived last simply won.
+   *
+   * That is the defect behind the reported dead end. The provider's database
+   * row showed `primaryServiceCategoryId` set with NO membership rows — a
+   * primary with nothing under it, which is exactly what an emptied or
+   * truncated `specialtyLeafIds` produces — so the Services task stayed
+   * "Required" over answers the provider had genuinely given.
+   *
+   * `intendedIds` is null whenever the two agree; while it is set, it is the
+   * truth the screen renders and the base every new toggle derives from.
+   */
+  const acknowledgedIds = useMemo(() => specialties.map((s) => s.categoryId), [specialties]);
+  const [intendedIds, setIntendedIds] = useState<string[] | null>(null);
+
+  /**
+   * Hand authority back to the server once nothing is queued.
+   *
+   * Adjusted during render rather than in an effect — the same pattern the
+   * availability screen uses for a server week — so there is no frame where the
+   * screen shows one set and the base for the next toggle is another.
+   *
+   * `isDirty` covers queued, in-flight and debounced work, so intent survives a
+   * failed save: the provider keeps seeing what they chose, the error surface
+   * says it has not been stored, and a retry sends their set rather than a
+   * stale one. Only when the queue is genuinely empty does the server's answer
+   * take over — which is what lets a moderator's decision, or a leaf the server
+   * legitimately dropped, reach the screen.
+   */
+  if (intendedIds !== null && !specialtiesAutosave.isDirty) setIntendedIds(null);
+
+  const chosenIds = intendedIds ?? acknowledgedIds;
 
   // ── Specialties ──────────────────────────────────────────────────────────
 
@@ -162,6 +200,9 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
     const chosen = chosenIds.includes(categoryId);
     if (!chosen && atLimit) return;
     const next = chosen ? chosenIds.filter((id) => id !== categoryId) : [...chosenIds, categoryId];
+    // Recorded BEFORE the save, so the tick appears on press and the next
+    // toggle builds on this set rather than on whatever the server last said.
+    setIntendedIds(next);
     specialtiesAutosave.save({ specialtyLeafIds: next });
   };
 
@@ -253,7 +294,12 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
 
   // ── Transport ────────────────────────────────────────────────────────────
 
-  const selectedModes = data.transportModes ?? [];
+  const acknowledgedModes = data.transportModes ?? [];
+  const [intendedModes, setIntendedModes] = useState<ProviderTransportModeCode[] | null>(null);
+  // Same reconciliation as the specialties above, for the same reason: picking
+  // Car and then Motorbike sent only [MOTORCYCLE].
+  if (intendedModes !== null && !experienceAutosave.isDirty) setIntendedModes(null);
+  const selectedModes = intendedModes ?? acknowledgedModes;
   const primaryMode = data.transportMode ?? null;
 
   /**
@@ -279,6 +325,7 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
     // the four on screen is carried through untouched.
     const preserved = selectedModes.filter((m) => !APPROVED_TRANSPORT.includes(m));
     const merged = [...new Set([...next, ...preserved])];
+    setIntendedModes(merged);
     // The primary is NOT sent. The server keeps it consistent with the set —
     // re-pointing it when the set no longer contains it — so the client never
     // has to decide, and two clients cannot decide differently.

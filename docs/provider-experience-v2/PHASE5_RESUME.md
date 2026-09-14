@@ -10,6 +10,36 @@ work.
 **Base** `develop` @ `ba8613b` (unchanged)
 **Last pushed** `ec9b956` — Phase 5B defect fixes (G-11, G-14, testid guard, DB reads)
 
+### The reported manual-test failure — DIAGNOSED, see PHASE5B_MANUAL_TEST_DIAGNOSIS.md
+
+The user could not complete specialties/experience/location; the hub sat at 4 of
+6 with Services and Review reading مطلوب, plus a repeating markets 404 and an
+auth 401.
+
+**Primary cause, proven: their API was a fifteen-day-old container.**
+`docker-api-1` runs image `hsm-api:dev` built **2026-08-30**; the markets route
+entered Git on **2026-09-11**, and the container's compiled bundle contains zero
+occurrences of `specialtyLeafIds`, `primarySpecialtyId`, `markets`,
+`resolvedTimezone` or `serviceAreaExpansion`. `docker compose up -d` reuses that
+image unless `--build` is passed. Their frontend was current; their API was not.
+
+Their database shows the answers were NOT lost: `professionSince`,
+`transportMode`, city, country and radius are all stored, and there are **5
+PENDING specialty applications with 0 approved memberships**. Current code
+classifies that as `AWAITING_REVIEW` (the platform's item, never blocking
+submission); the stale build predates that split and raises `REQUIRED`, which is
+the 4-of-6 deadlock exactly.
+
+**The 401 on `/auth/me` is expected** — the anonymous boot probe — and is not the
+cause of anything reported.
+
+**Three product defects found alongside it and fixed:** stale selection
+snapshots in ServicesTaskScreen (a real bug on current code), the hub's
+sr-only-only explanation, and unbounded retrying of a permanent markets failure.
+
+**Nothing of the developer's was touched** — no container restarted, no volume
+removed, no row mutated. All inspection was read-only.
+
 ### Disposable infrastructure this task owns
 
 Nothing here belongs to the developer. Their own Postgres, Redis, Mailpit, API

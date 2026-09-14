@@ -24,7 +24,37 @@ export function useSupportedMarkets() {
     queryKey: providerQueryKeys.onboarding.markets(),
     queryFn: getSupportedMarkets,
     staleTime: 5 * 60 * 1000,
-    retry: 1,
+
+    /**
+     * Retry what might succeed; stop asking for what cannot.
+     *
+     * Reported from manual testing: this endpoint answered 404 and the console
+     * filled with the same failed request over and over. Two things produced
+     * that. `retry: 1` doubled every attempt, and React Query re-attempts a
+     * failed query on each MOUNT — so every trip between the hub and the work
+     * area asked again for a route that was never going to appear.
+     *
+     * The 404 itself was a stale API build, not a client bug. But a permanent
+     * failure repeating itself forever IS a client bug: it buries the one
+     * console line that would have named the cause, and it tells the provider
+     * nothing.
+     *
+     * A 4xx is the server saying the answer will not change by asking again —
+     * the route is absent, or this caller may not have it. Those stop
+     * immediately. Network errors, 5xx and 429 are transient and keep their one
+     * retry.
+     *
+     * This is deliberately NOT a blanket "never retry": the screen's
+     * UNAVAILABLE state carries a real Retry button, so recovery stays in the
+     * provider's hands rather than in a loop.
+     */
+    retry: (failureCount, error) => {
+      const status = error.response?.status;
+      if (status !== undefined && status >= 400 && status < 500) return false;
+      return failureCount < 1;
+    },
+    /** A remount is not new information about a permanent failure. */
+    retryOnMount: false,
   });
 }
 

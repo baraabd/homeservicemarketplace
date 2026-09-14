@@ -502,6 +502,13 @@ export const CANONICAL_VIEWPORT = { width: 390, height: 844 } as const;
 export const PHASE5_VIEWPORTS = Object.freeze([
   { name: '320x568', width: 320, height: 568, mode: 'pixel' },
   { name: '390x844', width: 390, height: 844, mode: 'pixel' },
+  // The size the reported manual testing actually used — Chrome's iPhone 14/15
+  // Pro emulation. STRUCTURAL, not pixel: the frozen prototype supplies a
+  // genuine rendering at 390 and nowhere else, so a pixel baseline here would
+  // be invented rather than approved. It is three pixels from a covered width
+  // and still worth asserting, because "nearly the same width" is exactly the
+  // assumption that hides an overflow at one of them.
+  { name: '393x852', width: 393, height: 852, mode: 'structural' },
   { name: '430x932', width: 430, height: 932, mode: 'structural' },
   { name: '768x1024', width: 768, height: 1024, mode: 'structural' },
   { name: '1024x768', width: 1024, height: 768, mode: 'structural' },
@@ -582,7 +589,7 @@ export function canonicalCells(): { state: Phase5State; locale: Phase5Locale }[]
   return PHASE5_STATES.flatMap((state) => PHASE5_LOCALES.map((locale) => ({ state, locale })));
 }
 
-/** The full 216-record responsive matrix: 18 × 2 × 6. */
+/** The full 252-record responsive matrix: 18 × 2 × 7. */
 export function responsiveCells(): {
   state: Phase5State;
   locale: Phase5Locale;

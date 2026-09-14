@@ -29,7 +29,7 @@ import { assertFontsReady, freezeMotion } from './prototype-assets';
 // ONE TEST PER (STATE, LOCALE), SIX WIDTHS INSIDE IT
 //
 // The state is installed once and the viewport is resized, rather than booting
-// the app 216 times. The checks are independent of each other and of order —
+// the app 252 times. The checks are independent of each other and of order —
 // each one reads the DOM as it stands at that width — so the saving costs
 // nothing in isolation.
 //

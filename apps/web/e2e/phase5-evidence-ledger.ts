@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { verifyCanonicalCell } from './phase5-image-verify';
-import { PHASE5_STATES, type Phase5State } from './phase5-visual-states';
+import { PHASE5_STATES, PHASE5_VIEWPORTS, type Phase5State } from './phase5-visual-states';
 
 // Sprint 09B.29 Phase 5 — the evidence ledger.
 //
@@ -82,14 +82,24 @@ export type Locale = (typeof LOCALES)[number];
  */
 export const CANONICAL_VIEWPORT = { width: 390, height: 844 } as const;
 
-export const RESPONSIVE_VIEWPORTS = [
-  { width: 320, height: 568, pixelComparison: false },
-  { width: 390, height: 844, pixelComparison: true },
-  { width: 430, height: 932, pixelComparison: false },
-  { width: 768, height: 1024, pixelComparison: false },
-  { width: 1024, height: 768, pixelComparison: false },
-  { width: 1440, height: 900, pixelComparison: false },
-] as const;
+/**
+ * The responsive matrix, DERIVED from the state registry.
+ *
+ * Sprint 09B.29 — this used to be a second hand-written copy of the same list
+ * that `PHASE5_VIEWPORTS` holds, and the two were free to disagree. They did:
+ * adding 393x852 to the registry moved the registry's own unit test from 216 to
+ * 252 records and changed nothing about what the browser actually visited,
+ * because the spec iterates THIS array. A passing count over a list nobody runs
+ * is the same vacuous shape as a testid no component renders.
+ *
+ * One source now. `pixelComparison` is the registry's `mode`, which is the only
+ * thing this shape added.
+ */
+export const RESPONSIVE_VIEWPORTS = PHASE5_VIEWPORTS.map((v) => ({
+  width: v.width,
+  height: v.height,
+  pixelComparison: v.mode === 'pixel',
+}));
 
 export const MAX_DIFF_PIXEL_RATIO = 0.005;
 

@@ -133,11 +133,11 @@ describe('Phase 5 — the 18-state registry', () => {
     }
   });
 
-  it('produces 36 canonical cells and 216 responsive records', () => {
+  it('produces 36 canonical cells and 252 responsive records', () => {
     expect(PHASE5_LOCALES).toEqual(['en', 'ar']);
-    expect(PHASE5_VIEWPORTS).toHaveLength(6);
+    expect(PHASE5_VIEWPORTS).toHaveLength(7);
     expect(canonicalCells()).toHaveLength(36);
-    expect(responsiveCells()).toHaveLength(216);
+    expect(responsiveCells()).toHaveLength(252);
   });
 
   it('compares pixels only where the prototype supplies valid geometry', () => {
