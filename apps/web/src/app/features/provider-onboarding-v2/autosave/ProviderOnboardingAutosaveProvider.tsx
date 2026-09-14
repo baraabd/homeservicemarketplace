@@ -112,6 +112,14 @@ const PROFILE_AFFECTING_STEPS = new Set<ProviderOnboardingStep>([
 
 interface CoordinatorValue {
   statusOf: (step: ProviderOnboardingStep) => AutosaveStatusKind;
+  /**
+   * Has this step got local work the server has not acknowledged?
+   *
+   * Queued, resting in the debounce, IN FLIGHT, held offline, or failed. Not
+   * merely "is something waiting to be sent" — a request that has left but not
+   * come back is work the server has not agreed to, and a screen that treats
+   * those two as the same state hands authority back mid-round-trip.
+   */
   isDirtyStep: (step: ProviderOnboardingStep) => boolean;
   save: (step: ProviderOnboardingStep, patch: StepPatch) => void;
   /** Drain everything, for every step. Resolves only when the queue is empty
@@ -146,6 +154,55 @@ interface CoordinatorValue {
    * cannot become the discard by accident.
    */
   discardFailedUploads: () => void;
+}
+
+/**
+ * Status kinds that mean the server has NOT yet agreed to what is on screen.
+ *
+ * `saving` is the one that was missing, and it is the one that mattered. The
+ * drain takes a step OUT of `pending` before it awaits — deliberately, so a
+ * fresh edit for the same step can queue independently — which left a window,
+ * exactly as long as the request, in which nothing was queued and the status
+ * was `saving`. `isDirtyStep` answered false for a step whose write had not
+ * come back yet.
+ *
+ * The screens that hold the provider's intent until the server acknowledges it
+ * ask this question, so for the length of one round trip they concluded the
+ * server had agreed and handed authority back to a draft that did not contain
+ * the edit yet. Choose A, then choose B before A's PATCH returns, and the tick
+ * on A vanished mid-press and the payload for B was computed without it.
+ *
+ * `offline` and `error` are here for completeness rather than necessity —
+ * both paths put the patch back in `pending`, so they were already covered —
+ * but a predicate that depends on which branch happened to re-queue is one
+ * refactor away from being wrong again.
+ *
+ * `conflict` is deliberately ABSENT. Its patch is dropped rather than
+ * re-queued, because another writer advanced the draft and re-sending would
+ * overwrite work the provider has not seen. Authority genuinely does belong to
+ * the server there, and holding local intent on screen would show them a
+ * selection that no longer exists anywhere.
+ */
+const UNACKNOWLEDGED_KINDS = new Set<AutosaveStatusKind['kind']>([
+  'dirty',
+  'saving',
+  'offline',
+  'error',
+]);
+
+/**
+ * Is there local work this step's server has not acknowledged?
+ *
+ * Extracted so the rule can be tested directly rather than only through seven
+ * layers of provider, and so both readings of "dirty" — something to send, and
+ * something not yet agreed to — cannot drift apart in two expressions.
+ */
+export function isUnacknowledged(
+  step: ProviderOnboardingStep,
+  queued: ReadonlyMap<ProviderOnboardingStep, StepPatch>,
+  status: AutosaveStatusKind | undefined,
+): boolean {
+  return queued.has(step) || UNACKNOWLEDGED_KINDS.has(status?.kind ?? 'idle');
 }
 
 const CoordinatorContext = createContext<CoordinatorValue | null>(null);
@@ -562,7 +619,7 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
   const value = useMemo<CoordinatorValue>(
     () => ({
       statusOf: (step) => statuses[step] ?? { kind: 'idle' },
-      isDirtyStep: (step) => pending.current.has(step) || statuses[step]?.kind === 'dirty',
+      isDirtyStep: (step) => isUnacknowledged(step, pending.current, statuses[step]),
       save,
       flushAll,
       isBusy: busy,

@@ -172,7 +172,11 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
    * availability screen uses for a server week — so there is no frame where the
    * screen shows one set and the base for the next toggle is another.
    *
-   * `isDirty` covers queued, in-flight and debounced work, so intent survives a
+   * `isDirty` covers queued, debounced and IN-FLIGHT work. Phase 5B had to
+   * widen it to cover the third: the coordinator dequeues a step before it
+   * awaits, so for the length of one round trip this condition was true and
+   * the screen handed authority back to a draft that did not contain the edit
+   * yet — un-ticking what the provider had just pressed. Intent also survives a
    * failed save: the provider keeps seeing what they chose, the error surface
    * says it has not been stored, and a retry sends their set rather than a
    * stale one. Only when the queue is genuinely empty does the server's answer

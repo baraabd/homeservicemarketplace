@@ -154,6 +154,10 @@ function Harness({
     <div>
       <span data-testid="specialties-status">{specialties.status.kind}</span>
       <span data-testid="experience-status">{experience.status.kind}</span>
+      {/* Sprint 09B.29 Phase 5B — BUG 8. The screens hold the provider's
+          intent on this flag, so it is part of the coordinator's contract and
+          not an implementation detail. */}
+      <span data-testid="specialties-dirty">{String(specialties.isDirty)}</span>
     </div>
   );
 }
@@ -311,6 +315,131 @@ describe('Sprint 9B.28 — onboarding draft coordinator', () => {
     expect(
       qc.getQueryData<{ version: number }>(providerQueryKeys.onboarding.draft())?.version,
     ).toBe(4);
+  });
+
+  it('BUG 8: a step with a request IN FLIGHT is not reported as acknowledged', async () => {
+    // Sprint 09B.29 Phase 5B — the defect behind "I picked two services and
+    // only the second one stuck".
+    //
+    // The drain takes a step OUT of `pending` before it awaits, deliberately,
+    // so a fresh edit for the same step can queue independently. `isDirtyStep`
+    // was `pending.has(step) || status === 'dirty'` — and in the window between
+    // those two facts the status is `saving` and the map is empty, so it
+    // answered FALSE for a write that had not come back.
+    //
+    // The screens read that flag to decide when to stop showing what the
+    // provider chose and defer to the server's draft. For the length of one
+    // round trip they deferred to a draft that did not contain the edit yet.
+    //
+    // This asserts the two facts together, because either alone is satisfiable
+    // by a wrong implementation: `saving` alone is satisfied by a coordinator
+    // that never clears the flag, and `isDirty` alone by one that never sends.
+    gate = newGate();
+    const h = mountHarness();
+
+    await act(async () => {
+      h().save('SPECIALTIES', { specialtyLeafIds: ['a'] });
+      void h().flushAll();
+    });
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(screen.getByTestId('specialties-status').textContent).toBe('saving');
+    expect(screen.getByTestId('specialties-dirty').textContent).toBe('true');
+
+    await act(async () => {
+      gate!.release();
+      await Promise.resolve();
+    });
+
+    // ...and it IS acknowledged once the response lands with nothing queued
+    // behind it. A flag that is permanently true would pass the half above.
+    await waitFor(() => {
+      expect(screen.getByTestId('specialties-status').textContent).toBe('saved');
+      expect(screen.getByTestId('specialties-dirty').textContent).toBe('false');
+    });
+  });
+
+  it('BUG 8: an edit made DURING the in-flight window is queued, then sent behind it', async () => {
+    // Not a discriminating test for the predicate — `pending` holds the second
+    // edit, so the flag reads true here with or without the repair. It is kept
+    // because it pins what the repair DEPENDS on: that a same-step edit made
+    // mid-flight is queued rather than coalesced into the open request, and
+    // that the write behind it carries the union rather than replacing it.
+    // The test above is the one that fails without the repair.
+    gate = newGate();
+    const h = mountHarness();
+
+    await act(async () => {
+      h().save('SPECIALTIES', { specialtyLeafIds: ['a'] });
+      void h().flushAll();
+    });
+    await waitFor(() => expect(sent).toHaveLength(1));
+
+    // The second choice, made while the first is open.
+    act(() => h().save('SPECIALTIES', { specialtyLeafIds: ['a', 'b'] }));
+    expect(screen.getByTestId('specialties-dirty').textContent).toBe('true');
+
+    // Release the FIRST request and stop holding later ones. Nulling `gate`
+    // alone would not do it: the open request captured the promise when it was
+    // issued, so it would wait on a gate nothing could ever open.
+    const first = gate!;
+    gate = null;
+    await act(async () => {
+      first.release();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await act(async () => {
+      await h().flushAll();
+    });
+
+    // Both writes reached the wire, in order, and the LAST one carries both.
+    expect(sent).toHaveLength(2);
+    expect(sent[1].body.specialtyLeafIds).toEqual(['a', 'b']);
+    await waitFor(() => expect(screen.getByTestId('specialties-dirty').textContent).toBe('false'));
+  });
+
+  it('BUG 8: a FAILED save leaves the step unacknowledged so a retry sends it', async () => {
+    // The error path already put the patch back in `pending`, so this passed
+    // before the fix. It is here because the predicate must not depend on
+    // WHICH branch happened to re-queue: a later refactor that moved the
+    // re-queue would silently reopen the window this file exists to close.
+    mock.onPatch(PATCH).reply(500, { code: 'INTERNAL_ERROR' });
+    const h = mountHarness();
+
+    await act(async () => {
+      h().save('SPECIALTIES', { specialtyLeafIds: ['a'] });
+      await h().flushAll();
+    });
+
+    expect(screen.getByTestId('specialties-status').textContent).toBe('error');
+    expect(screen.getByTestId('specialties-dirty').textContent).toBe('true');
+  });
+
+  it('BUG 8: a CONFLICT hands authority back, because the local edit was dropped', async () => {
+    // The one status deliberately absent from the unacknowledged set. A 409
+    // means another writer advanced the draft and the patch is DISCARDED
+    // rather than re-queued, so holding local intent on screen would show the
+    // provider a selection that exists nowhere. Pinned so nobody "fixes" the
+    // asymmetry by adding conflict to the set.
+    const h = mountHarness();
+
+    await act(async () => {
+      // A stale version is what the server refuses.
+      h().save('SPECIALTIES', { specialtyLeafIds: ['a'] });
+      await h().flushAll();
+    });
+    // First write succeeds and advances the server to 4; now present a stale 3
+    // by rewinding the cache the way a second tab's write would.
+    qc.setQueryData(providerQueryKeys.onboarding.draft(), DRAFT(3));
+
+    await act(async () => {
+      h().save('SPECIALTIES', { specialtyLeafIds: ['a', 'b'] });
+      await h().flushAll();
+    });
+
+    expect(screen.getByTestId('specialties-status').textContent).toBe('conflict');
+    expect(screen.getByTestId('specialties-dirty').textContent).toBe('false');
   });
 
   it('BUG 7: flushAll reports a terminal failure instead of resolving clean', async () => {

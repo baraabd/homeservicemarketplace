@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -7,9 +7,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { api } from '../../../../lib/api';
 import { providerQueryKeys } from '../../../../lib/provider/query-keys';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
-import { ServicesTaskScreen } from './ServicesTaskScreen';
+import { ServicesTask, ServicesTaskScreen } from './ServicesTaskScreen';
 import { SERVICES_COPY } from '../copy/services-copy';
-import { ProviderOnboardingAutosaveProvider } from '../autosave/ProviderOnboardingAutosaveProvider';
+import {
+  AUTOSAVE_DEBOUNCE_MS,
+  ProviderOnboardingAutosaveProvider,
+} from '../autosave/ProviderOnboardingAutosaveProvider';
 
 // Sprint 9B.18 — V2 Task 2.
 //
@@ -468,6 +471,221 @@ describe('selections made before the server answers', () => {
       const last = held.sent()[held.sent().length - 1];
       expect(last.transportModes).toEqual(expect.arrayContaining(['CAR', 'MOTORCYCLE']));
     });
+  });
+});
+
+describe('selections made while a save is OPEN', () => {
+  // Sprint 09B.29 Phase 5B — the half of the defect the block above could not
+  // see.
+  //
+  // Those tests click both boxes inside the 900 ms debounce, so nothing has
+  // been SENT when the second press happens. The provider's report was
+  // different: they pressed, waited, and pressed again. By then the request had
+  // left, and the coordinator reported the step acknowledged for the whole
+  // length of the round trip — so the screen handed authority back to a draft
+  // that did not contain the first choice yet, un-ticked it, and computed the
+  // second payload from a set that had lost it.
+  //
+  // These render the CONTAINER rather than the screen, because the mechanism is
+  // the draft cache moving underneath: a static `view` prop can never un-tick
+  // anything, which is exactly why a screen-level test could not catch it.
+  //
+  // NO `waitFor` BELOW THE FAKE TIMERS. Testing Library's fake-timer detection
+  // does not recognise vitest's, so a `waitFor` here polls on a clock nothing
+  // will advance and hangs until the test times out — which it did, and the
+  // failure looks like a product bug rather than a harness one. Every wait is
+  // an explicit `settle()` instead, and the assertions after it are synchronous.
+
+  /** A server that ACKNOWLEDGES what it is sent, held open until released. */
+  function heldServer() {
+    const bodies: Record<string, unknown>[] = [];
+    let unblock: () => void = () => {};
+    let gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    let version = 4;
+    mock.onPatch(PATCH).reply(async (config) => {
+      const body = JSON.parse(String(config.data)) as Record<string, unknown>;
+      bodies.push(body);
+      await gate;
+      version += 1;
+      const ids = (body.specialtyLeafIds as string[] | undefined) ?? [];
+      return [
+        200,
+        DRAFT({
+          version,
+          data: {
+            specialtyLeafIds: ids,
+            // What the server gives back after a choice: an application, not a
+            // membership. The tick has to follow THIS, not an approval.
+            specialties: ids.map((id) => specialty(id, 'PENDING')),
+            transportModes: (body.transportModes as string[] | undefined) ?? [],
+          },
+        }),
+      ];
+    });
+    return {
+      sent: () => bodies,
+      last: () => bodies[bodies.length - 1],
+      release: () => {
+        unblock();
+        // Later writes are no longer held.
+        gate = Promise.resolve();
+      },
+    };
+  }
+
+  function renderContainer(part: Part = 'services') {
+    window.localStorage.setItem('hsm.lang', 'en');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(providerQueryKeys.onboarding.draft(), DRAFT());
+    mock.onGet(/onboarding\/draft$/).reply(200, DRAFT());
+    mock.onGet(/onboarding\/hub$/).reply(200, {
+      tasks: [],
+      progress: { complete: 0, total: 6 },
+      nextAction: { kind: 'NONE' },
+      status: 'DRAFT',
+    });
+    mock.onGet(/onboarding\/review/).reply(200, {
+      sections: [],
+      blockers: [],
+      canSubmit: false,
+      version: 4,
+    });
+    return render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <LanguageProvider>
+            <ProviderOnboardingAutosaveProvider>
+              <ServicesTask lang="en" part={part} />
+            </ProviderOnboardingAutosaveProvider>
+          </LanguageProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  /** Expire the debounce and drain everything it set off. */
+  async function settle() {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 50);
+    });
+    // A second pass: the response seeds the draft cache and fires the
+    // projection invalidations, and those resolve a turn later.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+  }
+
+  const box = (id: string) =>
+    within(screen.getByTestId(`specialty-choice-${id}`)).getByRole('checkbox');
+  const transport = (code: string) =>
+    within(screen.getByTestId(`transport-${code}`)).getByRole('checkbox');
+
+  it('keeps the first choice ticked while its own PATCH is still open', async () => {
+    const held = heldServer();
+    renderContainer();
+    await screen.findByTestId('specialty-choices');
+    vi.useFakeTimers();
+
+    fireEvent.click(box('plumbing'));
+    expect(box('plumbing')).toBeChecked();
+
+    await settle();
+    expect(held.sent()).toHaveLength(1);
+
+    // BEFORE THE FIX: the tick disappeared here, mid-round-trip, with nothing
+    // on screen to explain it.
+    expect(box('plumbing')).toBeChecked();
+
+    held.release();
+    await settle();
+    // ...and it is still ticked once the server has agreed — this time because
+    // the acknowledged set says so, not because intent is being held.
+    expect(box('plumbing')).toBeChecked();
+  });
+
+  it('keeps BOTH when the second is chosen while the first is open', async () => {
+    const held = heldServer();
+    renderContainer();
+    await screen.findByTestId('specialty-choices');
+    vi.useFakeTimers();
+
+    fireEvent.click(box('plumbing'));
+    await settle();
+    expect(held.sent()).toHaveLength(1);
+
+    // The press that used to lose the first choice: the payload was derived
+    // from the acknowledged set, which was still empty.
+    fireEvent.click(box('wiring'));
+    expect(box('plumbing')).toBeChecked();
+    expect(box('wiring')).toBeChecked();
+
+    held.release();
+    await settle();
+
+    expect(held.last().specialtyLeafIds).toEqual(expect.arrayContaining(['plumbing', 'wiring']));
+    expect(box('plumbing')).toBeChecked();
+    expect(box('wiring')).toBeChecked();
+  });
+
+  it('keeps a de-selection made while an earlier save is open', async () => {
+    const held = heldServer();
+    renderContainer();
+    await screen.findByTestId('specialty-choices');
+    vi.useFakeTimers();
+
+    fireEvent.click(box('plumbing'));
+    fireEvent.click(box('wiring'));
+    await settle();
+    expect(held.sent()).toHaveLength(1);
+
+    // Removing one while the write that added both is still open. A snap-back
+    // here would silently re-add it.
+    fireEvent.click(box('plumbing'));
+    expect(box('plumbing')).not.toBeChecked();
+    expect(box('wiring')).toBeChecked();
+
+    held.release();
+    await settle();
+
+    expect(held.last().specialtyLeafIds).toEqual(['wiring']);
+    expect(box('plumbing')).not.toBeChecked();
+    expect(box('wiring')).toBeChecked();
+  });
+
+  it('keeps both transport modes when the second is chosen while the first is open', async () => {
+    const held = heldServer();
+    renderContainer('experience');
+    await screen.findByTestId('transport-CAR');
+    vi.useFakeTimers();
+
+    fireEvent.click(transport('CAR'));
+    await settle();
+    expect(held.sent()).toHaveLength(1);
+
+    fireEvent.click(transport('MOTORCYCLE'));
+    expect(transport('CAR')).toBeChecked();
+    expect(transport('MOTORCYCLE')).toBeChecked();
+
+    held.release();
+    await settle();
+
+    expect(held.last().transportModes).toEqual(expect.arrayContaining(['CAR', 'MOTORCYCLE']));
+  });
+
+  it('keeps the choice on screen when the save FAILS, so the retry sends it', async () => {
+    renderContainer();
+    await screen.findByTestId('specialty-choices');
+    mock.onPatch(PATCH).reply(500, { code: 'INTERNAL_ERROR' });
+    vi.useFakeTimers();
+
+    fireEvent.click(box('plumbing'));
+    await settle();
+
+    // Nothing was stored, and the screen must not pretend otherwise by
+    // reverting to a server state that never received the choice.
+    expect(box('plumbing')).toBeChecked();
   });
 });
 
