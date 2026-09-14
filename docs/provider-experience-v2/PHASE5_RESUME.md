@@ -8,7 +8,27 @@ work.
 
 **Branch** `feat/provider-onboarding-v2-phase5-exact-visual-parity`
 **Base** `develop` @ `ba8613b` (unchanged)
-**Last pushed** `ec9b956` — Phase 5B defect fixes (G-11, G-14, testid guard, DB reads)
+**Last pushed** `93aed3c` — all 16 CI checks green
+
+### Next real item
+
+Everything authorized and implementable is done. What remains needs a decision
+that cannot be made in the repository:
+
+1. **G-05 (VAN/TRUCK) and G-06 (primary-specialty change)** — ONE product-owner
+   decision covering both. Measured: state 4 has ~460-500 px of headroom inside
+   the 0.005 budget and a usable control is ~15,000 px, about nine times the
+   whole budget. Either the frozen reference gains these controls and the
+   baseline is re-approved with them, or the product accepts that onboarding
+   does not offer them. A silently-clickable panel would satisfy the budget and
+   fail a real provider, so it was deliberately not shipped.
+2. **G-04 non-uniform hours**, **G-09/G-10** (contract change), **portfolio
+   crop** — same class.
+3. **Human acceptance**: NVDA/VoiceOver, product-owner visual sign-off.
+4. **A second enabled market journey** — substates are unit-tested; no
+   real-API journey runs in two markets.
+5. **Whole-flow keyboard traversal, 200% zoom/reflow, reduced-motion** — no
+   automated gate.
 
 ### The reported manual-test failure — DIAGNOSED, see PHASE5B_MANUAL_TEST_DIAGNOSIS.md
 

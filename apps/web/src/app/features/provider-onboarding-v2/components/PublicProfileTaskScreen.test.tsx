@@ -183,6 +183,54 @@ describe('the bio', () => {
   });
 });
 
+// ── G-07: the bio minimum, said at the input ────────────────────────────────
+//
+// The server has always refused a bio under its minimum, and the provider used
+// to meet that rule for the first time as a blocker on the review screen —
+// several screens after the field, having been told "Saved" in between.
+describe('the bio minimum', () => {
+  it('says the minimum once what is typed falls under it', async () => {
+    renderScreen(DRAFT({ data: { minBioLength: 40 } }));
+
+    const field = await screen.findByTestId('bio-input');
+    fireEvent.change(field, { target: { value: 'Too short.' } });
+
+    expect(await screen.findByText(EN.bioTooShort('40'))).toBeInTheDocument();
+  });
+
+  it('says NOTHING on an empty field — that is not a mistake yet', async () => {
+    // Also why the approved screen at rest is unchanged: the message exists only
+    // when there is something to correct.
+    renderScreen(DRAFT({ data: { minBioLength: 40 } }));
+
+    await screen.findByTestId('bio-input');
+    expect(screen.queryByText(EN.bioTooShort('40'))).toBeNull();
+  });
+
+  it('clears once the bio is long enough', async () => {
+    renderScreen(DRAFT({ data: { minBioLength: 40 } }));
+
+    const field = await screen.findByTestId('bio-input');
+    fireEvent.change(field, { target: { value: 'short' } });
+    expect(await screen.findByText(EN.bioTooShort('40'))).toBeInTheDocument();
+
+    fireEvent.change(field, {
+      target: { value: 'I have wired houses and rewired workshops for nine years in Aleppo.' },
+    });
+    await waitFor(() => expect(screen.queryByText(EN.bioTooShort('40'))).toBeNull());
+  });
+
+  it('claims no minimum when the server did not serve one', async () => {
+    // The field is optional on the contract so an older server still parses.
+    // Inventing 40 here is the drift the served value exists to prevent.
+    renderScreen(DRAFT());
+
+    const field = await screen.findByTestId('bio-input');
+    fireEvent.change(field, { target: { value: 'x' } });
+    await waitFor(() => expect(screen.queryByText(/at least/i)).toBeNull());
+  });
+});
+
 describe('the customer preview', () => {
   const populated = DRAFT({
     data: {

@@ -205,6 +205,17 @@ export function PublicProfileTaskScreen({
     if (file) setPendingFile(file);
   };
 
+  /**
+   * The server's own minimum, and whether what is typed falls under it.
+   *
+   * `minBioLength` is optional on the contract so an older server's response
+   * still parses; without it nothing is claimed, because inventing a number here
+   * is exactly the drift the field is served to avoid.
+   */
+  const minBio = data.minBioLength;
+  const trimmedBio = bio.trim();
+  const bioTooShort = minBio !== undefined && trimmedBio.length > 0 && trimmedBio.length < minBio;
+
   // ── Screen 8: the public profile ─────────────────────────────────────────
   if (part === 'profile') {
     return (
@@ -216,6 +227,19 @@ export function PublicProfileTaskScreen({
           maxLength={MAX_BIO_LENGTH}
           value={bio}
           disabled={!editable}
+          /* G-07 — the minimum, said where it can be acted on.
+
+             The server has always refused a short bio, and the provider used to
+             discover that several screens later as a blocker on review: they had
+             typed something, been told "Saved", and learned only at submission
+             that it was never going to be enough.
+
+             Shown only once there IS something too short — an empty field is not
+             a mistake, it is a field they have not reached yet — so the approved
+             screen at rest gains nothing, and the canonical cell is unchanged.
+             The length comes from the draft, not a constant here: the rule is the
+             server's and a second copy would drift. */
+          error={bioTooShort ? copy.bioTooShort(String(minBio)) : undefined}
           onChange={(event) => {
             setBio(event.target.value);
             commitBio(event.target.value);

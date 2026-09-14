@@ -65,6 +65,7 @@ import {
   evaluateOnboarding,
   moderationIssues,
   providerActionIssues,
+  MIN_BIO_LENGTH,
   type OnboardingCandidate,
 } from './provider-onboarding.policy';
 
@@ -1384,6 +1385,9 @@ export class ProviderOnboardingWizardService {
       specialties,
       primarySpecialtyId: p.primaryServiceCategoryId ?? null,
       maxSpecialties: ctx.maxSpecialties,
+      // The policy's own constant, never a duplicate: if the rule changes, the
+      // screen that explains it changes with it.
+      minBioLength: MIN_BIO_LENGTH,
       radiusPolicy: ctx.radiusPolicy,
       // Sprint 9B.20 — the reward card, decided entirely on the server. The
       // client renders what is here and asks no questions of its own: an

@@ -88,17 +88,70 @@ uniform, so the DATA supports it and the screen does not.
 modes. `toggleMode` preserves any unlisted mode already stored, so a provider
 with a van keeps it; they cannot add one here.
 
+### The pixel budget and a visible control cannot both be satisfied — measured
+
+Stated with arithmetic rather than asserted, because two gaps below turn on it
+and "it would change the screen" is not a finding anybody can check.
+
+The canonical budget is **0.005 of 390×844 = 1,646 pixels** per cell. Measured
+headroom on the two screens that would host the missing controls:
+
+| State                        | EN      | AR      | Headroom    |
+| ---------------------------- | ------- | ------- | ----------- |
+| 4 — services picker          | 0.00196 | 0.00220 | ~460–500 px |
+| 5 — experience and transport | 0.00153 | 0.00120 | ~580–630 px |
+
+A usable control is far larger than that. One 44px-tall select at a readable
+width is ~340 × 44 = **~15,000 changed pixels**, about **nine times** the whole
+budget and thirty times the remaining headroom. Two more transport checkboxes are
+of the same order. Roughly 500 pixels buys a few words of text, not a control.
+
+So for G-05 and G-06 the options are: change the frozen reference, widen the
+budget, or ship the control on a supplemental surface whose ENTRY POINT still has
+to live on a canonical screen — and that entry point is the 15,000-pixel problem.
+
+**What was NOT done, deliberately.** Both screens contain static panels that
+could be made silently clickable for zero pixels at rest — the same technique
+that made the portfolio tiles the reorder control. That works for a tile the
+provider already expects to press. It does not work for a paragraph: a secretly
+interactive block of text is discoverable only to somebody who happens to try it,
+and it would let this document claim the gap was closed while a real provider
+still could not find the control. An honest gap is better than a hidden control.
+
+G-14 and G-18 were closable precisely because they needed **no new affordance**:
+one drew the body it already had, the other made an element the provider already
+pressed do one more thing. G-07 was closable because its message appears only
+when there is a mistake to correct, so the screen at rest is byte-for-byte
+unchanged — verified: state 8 stayed at 0.00117 EN / 0.00293 AR to the digit.
+
+**This needs a product-owner decision**, and it is one decision covering both
+gaps: either the reference gains these controls (and the baseline is re-approved
+with them), or the product accepts that a provider cannot change their primary
+specialty or select VAN/TRUCK during onboarding and does it elsewhere. Nothing in
+the repository can settle that.
+
 ### G-06 — primary specialty has no change control
 
 **Where** state 4. The server owns `primarySpecialtyId` and the approved screen
 shows no way to move it.
 
-### G-07 — the bio minimum is learned at submission
+### G-07 — the bio minimum is learned at submission — **CLOSED in Phase 5B**
 
 **Where** state 8. The approved screen has an input cap (2,000) and no counter
 and no minimum hint. The server still enforces a minimum, so a provider can write
 a short bio, leave, and meet the rule for the first time as a blocker on the
 review screen.
+
+**Closed by** the draft serving `minBioLength` — the policy's own
+`MIN_BIO_LENGTH`, not a second copy in the client — and the field showing it the
+moment what is typed falls under it. An empty field says nothing, because an
+unfilled field is not a mistake; that is also why state 8 at rest is byte-for-byte
+unchanged (0.00117 EN / 0.00293 AR, to the digit).
+
+Four tests: the message appears under the minimum, stays away on an empty field,
+clears once the bio is long enough, and — the one that matters for drift — claims
+no minimum at all when the server did not serve one. The contract field is
+optional so an older server's response still parses.
 
 **Test consequence, recorded in 5B** the persistence test for this screen used to
 type into a `title-input`. The approved profile screen has no such field — the
