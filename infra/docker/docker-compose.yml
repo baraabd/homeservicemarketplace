@@ -180,6 +180,26 @@ services:
       SMTP_SECURE: 'false'
       SMTP_FROM: noreply@homeservicemarketplace.local
 
+      # -- abuse budgets, LOCAL DEVELOPMENT VALUES -------------------------
+      #
+      # The production defaults are 5 registrations per rolling hour, 20 OTP
+      # verifications per rolling minute, and a 100-request-per-minute per-IP
+      # backstop. On a developer's machine every browser journey, every
+      # real-API spec and every manual retry arrives from ONE address, so a
+      # morning of work looks exactly like abuse: five accounts into a session
+      # the API starts answering 429 and the failure reads as a broken
+      # registration flow rather than a limiter doing its job.
+      #
+      # These are the same values CI uses (see `browser-real-api-e2e` in
+      # ci.yml) and they are dev-only by construction, not by convention:
+      # `env.validation.ts` refuses to BOOT a production environment above any
+      # of these ceilings, so this block cannot travel. The sensitive routes
+      # keep their own tighter guards regardless — raising the backstop widens
+      # the backstop, never the guards in front of it.
+      AUTH_REGISTER_THROTTLE_LIMIT: '200'
+      AUTH_OTP_VERIFY_THROTTLE_LIMIT: '400'
+      GLOBAL_THROTTLE_LIMIT: '5000'
+
       # -- media uploads ---------------------------------------------------
       # Local disk driver. The directory is created and chowned to the non-root
       # runtime user in the image (see apps/api/Dockerfile) and is backed by

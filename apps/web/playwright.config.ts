@@ -141,6 +141,11 @@ export default defineConfig({
           '**/phase3-activation-chain.real-api.spec.ts',
           '**/phase3-v2-journey.real-api.spec.ts',
           '**/phase3-v1-flag-off.real-api.spec.ts',
+          // Sprint 09B.29 Phase 5B — the DEVELOPER'S OWN runtime. It starts no
+          // server and builds no bundle; it is pointed at the running dev stack
+          // by environment and asserts what that stack does. Without the real
+          // stack there is nothing for it to be true or false about.
+          '**/phase5b-user-runtime.real-api.spec.ts',
         ]),
   ],
   // Sprint 09B.29 — one stable snapshot location, shared by the spec that
