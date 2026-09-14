@@ -42,10 +42,21 @@ pnpm docker:up:app                   # migrations run, then the API starts
 curl -fsS http://localhost:4000/health/ready
 ```
 
-`pnpm docker:up:app` is self-contained: it applies migrations through a
-separate one-shot job and only then starts the API. To prove the whole stack
-end to end (build, migrate, boot, readiness, media upload, OTP through real
-SMTP) run the same check CI runs:
+`pnpm docker:up:app` is self-contained: it rebuilds the API image, applies
+migrations through a separate one-shot job, and only then starts the API.
+
+The rebuild is not ceremony. Compose starts a service from its `image:` tag and
+only builds when that tag is absent, so a `hsm-api:dev` left behind by an older
+checkout keeps reclaiming port 4000 indefinitely — silently, because the
+container is healthy and the port is answering. That happened in Sprint 09B.29:
+the API serving the browser was a fortnight older than the working tree, so a
+route added since simply 404'd while every test suite in the repository passed
+against a different build. Docker's layer cache makes the rebuild nearly free
+when nothing has changed; the guarantee it buys is that the process answering on
+4000 is the code in front of you.
+
+To prove the whole stack end to end (build, migrate, boot, readiness, media
+upload, OTP through real SMTP) run the same check CI runs:
 
 ```bash
 pnpm smoke:compose                   # ~3 min; tears the stack down afterwards
