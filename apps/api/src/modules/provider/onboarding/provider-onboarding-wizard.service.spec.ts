@@ -458,17 +458,17 @@ describe('submit — the transition, and what it must not do', () => {
   });
 });
 
-describe('experience projection — the displayed years follow the stored start date', () => {
+describe('experience projection — explicit numeric years precede the start-date fallback', () => {
   // Between seven and eight full years, away from anniversary boundaries.
   const started = new Date(Date.now() - 2800 * 24 * 60 * 60 * 1000);
 
   it.each([
     { name: 'date-only answer', professionSince: started, yearsOfExperience: null, expected: 7 },
     {
-      name: 'date with an older numeric answer',
+      name: 'explicit numeric answer alongside a start date',
       professionSince: started,
       yearsOfExperience: 3,
-      expected: 7,
+      expected: 3,
     },
     { name: 'legacy numeric answer', professionSince: null, yearsOfExperience: 12, expected: 12 },
     {
@@ -491,6 +491,29 @@ describe('experience projection — the displayed years follow the stored start 
       expect(h.trx.providerProfile.update).not.toHaveBeenCalled();
     },
   );
+
+  it('reads back a legacy numeric edit on a date-backed profile', async () => {
+    const profile = makeCompleteProfile({ professionSince: started, yearsOfExperience: null });
+    const h = build({ profile });
+    h.trx.providerProfile.update.mockImplementation(
+      async ({ data }: { data: Partial<ProviderProfileWithCategories> }) =>
+        Object.assign(profile, data),
+    );
+    expect((await h.service.get('u-1')).data.yearsOfExperience).toBe(7);
+
+    const saved = await h.service.patchStep('u-1', 'EXPERIENCE', {
+      version: 3,
+      yearsOfExperience: 3,
+    });
+
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ yearsOfExperience: 3 }) }),
+    );
+    expect(saved.data.yearsOfExperience).toBe(3);
+    const reread = await h.service.get('u-1');
+    expect(reread.data.yearsOfExperience).toBe(3);
+    expect(reread.data.professionSince).toBe(started.toISOString());
+  });
 });
 
 describe('review and submit — the enabled market must agree', () => {

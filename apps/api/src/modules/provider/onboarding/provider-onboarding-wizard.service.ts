@@ -1434,12 +1434,11 @@ export class ProviderOnboardingWizardService {
           }
         : null,
 
-      // V2 stores the start date. Review summaries consume this numeric
-      // projection, so derive it using the same elapsed-years helper as the
-      // completeness policy; legacy profiles retain their numeric fallback.
-      yearsOfExperience: p.professionSince
-        ? yearsSince(p.professionSince)
-        : (p.yearsOfExperience ?? null),
+      // Match completeness policy: an explicit numeric answer wins. Legacy
+      // clients can edit it without clearing an existing start date; V2 clears
+      // it when choosing the date-based answer, which uses the same helper.
+      yearsOfExperience:
+        p.yearsOfExperience ?? (p.professionSince ? yearsSince(p.professionSince) : null),
       professionSince: p.professionSince?.toISOString() ?? null,
       equipmentCodes: ctx.relations.equipment.map((e) => e.equipmentItem.code),
       transportMode: p.transportMode ?? null,

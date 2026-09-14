@@ -11,8 +11,9 @@ Final GitHub results must be attached to this commit in the PR description.
   acknowledgement before leaving. Merely viewing the screen writes nothing.
   Existing numeric experience is displayed and preserved until edited; an
   explicit stepper edit clears the old numeric field in the same date write.
-  The API derives the displayed numeric summary from the stored start date,
-  using its existing elapsed-years helper. Clean server changes hydrate the
+  The API derives a missing numeric summary from the stored start date,
+  using its existing elapsed-years helper. Explicit numeric answers retain
+  precedence, matching the existing policy and legacy editor. Clean server changes hydrate the
   stepper without replacing newer in-flight edits. Continue is disabled while
   the draft form is unavailable.
 - **Working hours:** an older response can no longer replace the newer week
@@ -59,7 +60,7 @@ the final source changes; external-service-gated skips are not passes.
 | Final local gate                             | Result                                                                      |
 | -------------------------------------------- | --------------------------------------------------------------------------- |
 | Complete web unit/component suite            | 127 files / 1750 passed                                                     |
-| Complete API hermetic suite                  | 179 suites / 3270 passed; existing service gates skip 40 suites / 907 tests |
+| Complete API hermetic suite                  | 179 suites / 3271 passed; existing service gates skip 40 suites / 907 tests |
 | Web production build, including TypeScript   | Passed                                                                      |
 | API typecheck and production build           | Passed                                                                      |
 | E2E TypeScript                               | Passed                                                                      |
@@ -68,7 +69,7 @@ the final source changes; external-service-gated skips are not passes.
 | Shared contracts build                       | Passed                                                                      |
 | Design-system and all four reference files   | Byte-identical to parent commit                                             |
 
-The final API suite contains 4177 tests in total. Only the service-backed CI
+The final API suite contains 4178 tests in total. Only the service-backed CI
 run can establish whether the 907 locally gated tests pass. The two added
 browser journeys likewise require the real-API CI job, not the component
 suite above. No retry/skip settings or visual baselines were changed.
