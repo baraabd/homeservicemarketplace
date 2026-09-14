@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ADMIN_SETTINGS_SCHEMA } from '@homeservicemarketplace/contracts';
+import { settingDefault } from '@homeservicemarketplace/contracts';
 import type { PrismaTx } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../../../../infrastructure/prisma/prisma.service';
@@ -377,5 +377,5 @@ function emptySignals(subject: ExpansionSubject): ExpansionSignals {
  *  what an absent row means. A literal here instead would let the two drift the
  *  moment someone edits the schema. */
 function defaultSetting(key: string): unknown {
-  return ADMIN_SETTINGS_SCHEMA.find((f) => f.key === key)?.default;
+  return settingDefault(key);
 }

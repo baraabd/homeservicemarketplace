@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type {
-  ProviderSupportedMarketsResponse,
-  SupportedMarketView,
+import {
+  settingDefault,
+  type ProviderSupportedMarketsResponse,
+  type SupportedMarketView,
 } from '@homeservicemarketplace/contracts';
 
 import { ProviderProfileRepository } from '../../../../infrastructure/persistence/bids/provider-profile.repository';
@@ -99,8 +100,19 @@ export class SupportedMarketsService {
     };
   }
 
+  /**
+   * An operator's number for this key, or the schema's if they have not set one.
+   *
+   * Sprint 09B.29 Phase 5 — this used to fall back to a literal `0`, which on a
+   * database with no radius rows made the picker advertise a 0–0 km radius while
+   * the LOCATION write path, falling back to the same schema the admin screen
+   * renders, went on enforcing 1–100. The picker's promise and the server's rule
+   * have to come from one place; `settingDefault` is that place.
+   */
   private async numberSetting(key: string): Promise<number> {
     const row = await this.settings.findByKey(key);
-    return typeof row?.value === 'number' && Number.isFinite(row.value) ? row.value : 0;
+    if (typeof row?.value === 'number' && Number.isFinite(row.value)) return row.value;
+    const fallback = settingDefault(key, 0);
+    return typeof fallback === 'number' && Number.isFinite(fallback) ? fallback : 0;
   }
 }

@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  ADMIN_SETTINGS_SCHEMA,
   PROVIDER_ONBOARDING_STEPS,
   isPlausibleE164,
   suggestProfessionalTitle,
+  settingDefault,
   type ProviderSpecialtyState,
   type ProviderSpecialtyView,
   type ProviderTransportModeCode,
@@ -1917,10 +1917,13 @@ function toExpansionView(decision: ExpansionDecision): ProviderServiceAreaExpans
 }
 
 /** The schema default for a key, so the wizard and the admin screen agree on
- *  what an absent row means. Falling back to a literal here instead would let
- *  the two drift the moment someone edits the schema. */
+ *  what an absent row means.
+ *
+ *  Sprint 09B.29 Phase 5 — delegates to the contract's own lookup rather than
+ *  repeating the `.find()`. Three copies of this had accumulated and one of
+ *  them had stopped agreeing with the others; see `settingDefault`. */
 function defaultSetting(key: string, fallback: unknown): unknown {
-  return ADMIN_SETTINGS_SCHEMA.find((f) => f.key === key)?.default ?? fallback;
+  return settingDefault(key, fallback);
 }
 
 function trimToNull(value: string | null | undefined): string | null {

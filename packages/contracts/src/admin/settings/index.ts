@@ -390,6 +390,26 @@ export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
 
 export type AdminSettingKey = (typeof ADMIN_SETTINGS_SCHEMA)[number]['key'];
 
+/**
+ * What an ABSENT setting row means.
+ *
+ * Sprint 09B.29 Phase 5 — this used to be copied into every service that reads
+ * a setting, and the copies had stopped agreeing. The market picker's radius
+ * bounds fell back to a literal `0` while the write path that enforces those
+ * same bounds fell back to the schema, so on a database with no radius rows the
+ * picker offered a slider of 0–0 km and the server went on accepting 1–100. A
+ * client is not the validator, but a client drawn from different numbers than
+ * the validator's is a defect the provider experiences as a broken control.
+ *
+ * One lookup, beside the schema it reads, so "absent" has exactly one meaning.
+ * `fallback` covers a key that is not whitelisted at all — the caller's
+ * problem, not a silent zero.
+ */
+export function settingDefault(key: string, fallback?: unknown): unknown {
+  const field = ADMIN_SETTINGS_SCHEMA.find((f) => f.key === key);
+  return field ? field.default : fallback;
+}
+
 // Wire shape of the whitelisted values. Type-safe per key would be
 // nice but the lowest-friction wire surface is `Record<string, unknown>`
 // — the schema doc above is the source of truth for shape.
