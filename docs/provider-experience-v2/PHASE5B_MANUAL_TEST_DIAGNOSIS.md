@@ -190,6 +190,30 @@ reddens both the component tests and the browser journey.
 
 ---
 
+## 5A. Two evidence defects found while proving the repair
+
+Neither is user-visible, and both made the evidence weaker than it looked.
+
+**`acknowledgedVersion` was always 0.** The marker read `version` from the
+draft's `data` projection, where it does not live — it is on the response
+ENVELOPE — so it was `undefined` and a `?? 0` fallback wrote `0` into every
+marker on disk. Every one claimed the draft had never been written to, for
+screens that had just been written to half a dozen times. It is now read from the
+envelope and ASSERTED to be a positive integer: a marker whose central claim is
+"the server acknowledged this revision" must not be able to say revision 0
+because a field moved. Verified: a real journey now records `acknowledgedVersion:
+7`.
+
+**A second viewport list.** Adding 393x852 to `PHASE5_VIEWPORTS` moved the
+registry unit test from 216 to 252 records and changed nothing the browser
+visited, because `phase5-responsive.spec.ts` iterates `RESPONSIVE_VIEWPORTS` — a
+hand-written duplicate in the ledger. A passing count over a list nobody runs is
+the same vacuous shape as a testid no component renders. `RESPONSIVE_VIEWPORTS`
+now derives from the registry, and the artifact records seven widths:
+`320, 390, 393, 430, 768, 1024, 1440`, zero problems.
+
+---
+
 ## 6. Exact retest recipe
 
 The developer's own stack is **untouched** — no container restarted, no volume
@@ -227,16 +251,14 @@ this. You do not need to do anything." on the Services row rather than
 | Database   | throwaway Postgres on **55432** (`hsm-p5-pg`)                                       |
 | Viewports  | 390×844 canonical, plus 320/430/768/1024/1440 structural                            |
 
-The reported **393×852** is not yet in the responsive matrix — recorded as
-outstanding in §7 rather than claimed.
+The reported **393×852** is now in the responsive matrix (structural, not pixel:
+the frozen prototype supplies a genuine rendering at 390 and nowhere else, so a
+pixel baseline at 393 would be invented rather than approved).
 
 ---
 
 ## 7. Still outstanding
 
-- **393×852** is not in the responsive viewport set. The matrix covers
-  320/390/430/768/1024/1440; 393 sits between two covered widths but has not
-  been measured.
 - **Whole-flow keyboard traversal, 200% zoom/reflow and reduced-motion** have no
   automated gate. Keyboard operation is proved for the controls added this
   sprint.

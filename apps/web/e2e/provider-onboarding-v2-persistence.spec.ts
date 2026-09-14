@@ -176,8 +176,29 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       `${screen}: the row in Postgres must carry what the provider left on screen`,
     ).toEqual(values.after);
 
-    const row = await draftFromApi(account);
-    const version = typeof row.version === 'number' ? row.version : 0;
+    /**
+     * The revision the server acknowledged — read from the ENVELOPE.
+     *
+     * This used to read `version` off the draft's `data` projection, where it
+     * does not live, so it was always `undefined` and the `?? 0` fallback wrote
+     * `acknowledgedVersion: 0` into every marker on disk. Every one of them
+     * claimed a draft had never been written to, for screens that had just been
+     * written to half a dozen times.
+     *
+     * Asserted rather than defaulted. A marker whose central claim is "the
+     * server acknowledged this revision" must not be able to say "revision 0"
+     * because a field moved.
+     */
+    const envelope = await api<{ version?: unknown }>(
+      account.jar,
+      '/v1/me/provider/onboarding/draft',
+    );
+    expect(envelope.status, 'the draft envelope must be readable').toBe(200);
+    const version = envelope.body.version;
+    expect(
+      Number.isInteger(version) && (version as number) > 0,
+      `${screen}: the server should report the revision it acknowledged, got ${JSON.stringify(version)}`,
+    ).toBe(true);
 
     writeRouteMarker({
       screen,
@@ -201,7 +222,7 @@ test.describe('provider onboarding v2 — the edit survives', () => {
       observedAfterFreshSignIn: values.observedAfterFreshSignIn,
       databaseValues,
       databaseSystemId: await databaseSystemId(),
-      acknowledgedVersion: version,
+      acknowledgedVersion: version as number,
     });
   }
 
