@@ -58,7 +58,21 @@ export interface SupportedMarketView {
    * never be asked. `ASK` means it spans several and a focused question is
    * coming. The client renders the difference; it does not decide it.
    */
-  timezone: { kind: 'RESOLVED'; id: string } | { kind: 'ASK' };
+  timezone:
+    | { kind: 'RESOLVED'; id: string }
+    | {
+        kind: 'ASK';
+        /**
+         * IANA identifiers permitted by this market's server-owned policy,
+         * in registry order. The provider must explicitly choose one.
+         *
+         * Optional for compatibility with older API responses. Missing or
+         * empty means no choices can be offered; clients must allow retry
+         * without substituting browser zones or inferring a country.
+         * Compatibility is still enforced on every server write.
+         */
+        allowedIds?: readonly string[];
+      };
 }
 
 /** `GET /v1/me/provider/onboarding/markets`. */

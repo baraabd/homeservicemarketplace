@@ -427,6 +427,28 @@ d('Onboarding review and submission (real Postgres)', () => {
       await makeComplete({ serviceAreaCountryCode: 'FR' });
       await acceptCurrentTerms();
 
+      const review = await getReview();
+      expect(review.status).toBe(200);
+      expect(review.body.canSubmit).toBe(false);
+      expect(review.body.blockedReason).toMatchObject({
+        field: 'serviceAreaCountry',
+        code: 'OUT_OF_RANGE',
+        step: 'LOCATION',
+        taskId: 'WORK_AREA',
+      });
+      const hub = await getHub();
+      expect(hub.status).toBe(200);
+      expect(hub.body.tasks).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: 'WORK_AREA', status: 'AVAILABLE' })]),
+      );
+      const draftView = await request(http).get('/v1/me/provider/onboarding/draft');
+      expect(draftView.status).toBe(200);
+      expect(draftView.body.complete).toBe(false);
+      expect(draftView.body.missing).toContainEqual({
+        field: 'serviceAreaCountry',
+        code: 'OUT_OF_RANGE',
+      });
+
       const draft = await prisma.providerOnboardingDraft.findUnique({
         where: { providerProfileId: PP },
       });
@@ -454,6 +476,8 @@ d('Onboarding review and submission (real Postgres)', () => {
       // else the fixture happens to be missing.
       await makeComplete({ serviceAreaCountryCode: 'SY' });
       await acceptCurrentTerms();
+
+      expect((await getReview()).body.canSubmit).toBe(true);
 
       const draft = await prisma.providerOnboardingDraft.findUnique({
         where: { providerProfileId: PP },

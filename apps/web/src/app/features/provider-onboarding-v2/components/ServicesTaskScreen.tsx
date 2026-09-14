@@ -110,9 +110,16 @@ interface ServicesTaskScreenProps {
   lang: Lang;
   editable: boolean;
   part: ServicesPart;
+  onContinue?: () => void;
 }
 
-export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskScreenProps) {
+export function ServicesTaskScreen({
+  view,
+  lang,
+  editable,
+  part,
+  onContinue,
+}: ServicesTaskScreenProps) {
   const copy = SERVICES_COPY[lang];
 
   const specialtiesAutosave = useOnboardingStepAutosave('SPECIALTIES');
@@ -277,18 +284,30 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
    */
   const storedYears = (() => {
     const since = data.professionSince;
-    if (!since) return null;
+    if (!since) {
+      // Older profiles may hold the numeric answer without a start date.
+      // Showing zero would misrepresent data the server already accepted.
+      const legacy = data.yearsOfExperience;
+      return typeof legacy === 'number' && Number.isFinite(legacy)
+        ? Math.min(MAX_YEARS, Math.max(0, legacy))
+        : null;
+    }
     const started = new Date(since).getUTCFullYear();
     if (!Number.isFinite(started)) return null;
     return Math.min(MAX_YEARS, Math.max(0, thisYear - started));
   })();
 
-  const [years, setYears] = useState(storedYears ?? 0);
+  const [intendedYears, setIntendedYears] = useState<number | null>(null);
+  if (intendedYears !== null && !experienceAutosave.isDirty) setIntendedYears(null);
+  const years = intendedYears ?? storedYears ?? 0;
 
   const commitYears = (next: number) => {
-    setYears(next);
+    setIntendedYears(next);
     experienceAutosave.save({
       professionSince: `${thisYear - next}-01-01T00:00:00.000Z`,
+      // An explicit date-based edit replaces the legacy numeric answer.
+      // Otherwise the old number still wins the server's completeness rule.
+      yearsOfExperience: null,
     });
   };
 
@@ -430,7 +449,19 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
 
   // ── Screen 5: experience and transport ───────────────────────────────────
   return (
-    <div className="flex flex-col gap-[18px]" data-testid="experience-section">
+    <form
+      id="provider-experience-form"
+      className="flex flex-col gap-[18px]"
+      data-testid="experience-section"
+      onSubmit={(event) => {
+        event.preventDefault();
+        // Save and continue explicitly confirms the displayed zero for a new
+        // provider. Merely opening the screen must never write an answer.
+        // An existing or queued answer is preserved, including legacy data.
+        if (editable && storedYears === null && intendedYears === null) commitYears(0);
+        onContinue?.();
+      }}
+    >
       <ProviderStepper
         label={copy.yearsLabel}
         hint={copy.startYearHint}
@@ -491,7 +522,7 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
           </p>
         </ProviderCard>
       ) : null}
-    </div>
+    </form>
   );
 }
 
@@ -499,7 +530,15 @@ export function ServicesTaskScreen({ view, lang, editable, part }: ServicesTaskS
 
 /** Loads the draft and renders Task 2. Mirrors BasicsTask — see it for why the
  *  shape is validated rather than merely checked for presence. */
-export function ServicesTask({ lang, part }: { lang: Lang; part: ServicesPart }) {
+export function ServicesTask({
+  lang,
+  part,
+  onContinue,
+}: {
+  lang: Lang;
+  part: ServicesPart;
+  onContinue?: () => void;
+}) {
   const draft = useOnboardingDraft();
   const copy = SERVICES_COPY[lang];
 
@@ -518,5 +557,13 @@ export function ServicesTask({ lang, part }: { lang: Lang; part: ServicesPart })
     return <ProviderErrorState title={copy.heading} testId="services-load-failed" />;
   }
 
-  return <ServicesTaskScreen view={view} lang={lang} editable={view.editable} part={part} />;
+  return (
+    <ServicesTaskScreen
+      view={view}
+      lang={lang}
+      editable={view.editable}
+      part={part}
+      onContinue={onContinue}
+    />
+  );
 }

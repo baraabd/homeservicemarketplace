@@ -63,13 +63,16 @@ export function MarketPicker({
   // only exists because the server's answer made it necessary.
   if (prompt.kind === 'SETTLED') return null;
 
-  if (prompt.kind === 'UNAVAILABLE') {
+  const timezoneUnavailable =
+    prompt.kind === 'CONFIRM_TIMEZONE' && candidateZones(prompt.market).length === 0;
+
+  if (prompt.kind === 'UNAVAILABLE' || timezoneUnavailable) {
     return (
       <div className="grid gap-3" data-testid="market-unavailable">
         <OnboardingAlert
           tone="warning"
           icon={TriangleAlert}
-          title={copy.unavailableTitle}
+          title={timezoneUnavailable ? copy.timezoneUnavailableTitle : copy.unavailableTitle}
           body={copy.unavailableBody}
           density="compact"
         />
@@ -78,6 +81,7 @@ export function MarketPicker({
           shape="onboarding"
           size="block"
           onClick={onRetry}
+          disabled={pending}
           data-testid="market-retry"
         >
           {copy.retry}
@@ -89,6 +93,7 @@ export function MarketPicker({
   if (prompt.kind === 'CONFIRM_TIMEZONE') {
     return (
       <TimezoneConfirmation
+        key={prompt.market.countryCode}
         market={prompt.market}
         lang={lang}
         editable={editable}
@@ -165,9 +170,9 @@ export function MarketPicker({
  *
  * The server answers `ASK` when a market spans several zones or the platform
  * has no mapping for it. Storing working hours against an unconfirmed zone
- * makes every one of them ambiguous, so this asks before that can happen — and
- * it asks with the browser's own zone offered first, which is a suggestion the
- * provider confirms rather than a value written on their behalf.
+ * makes every one of them ambiguous, so this asks before that can happen.
+ * Choices come from the same server policy that checks the eventual write;
+ * the browser's timezone cannot add a choice or answer on the provider's behalf.
  */
 function TimezoneConfirmation({
   market,
@@ -183,7 +188,7 @@ function TimezoneConfirmation({
   onChoose: (timezoneId: string) => void;
 }) {
   const copy = MARKET_COPY[lang];
-  const zones = candidateZones();
+  const zones = candidateZones(market);
 
   return (
     <div className="grid gap-3" data-testid="market-timezone">
@@ -204,12 +209,12 @@ function TimezoneConfirmation({
             defaultValue=""
             onChange={(event) => {
               const zone = event.target.value;
-              if (zone !== '') onChoose(zone);
+              if (editable && !pending && zones.includes(zone)) onChoose(zone);
             }}
             className="min-h-12 w-full rounded-pv-control border border-pv-border-strong bg-pv-surface px-[13px] py-3 text-pv-input leading-pv-base text-pv-text disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
           >
             <option value="" disabled>
-              {copy.choosePlaceholder}
+              {copy.timezonePlaceholder}
             </option>
             {zones.map((zone) => (
               <option key={zone} value={zone}>
@@ -225,32 +230,17 @@ function TimezoneConfirmation({
 }
 
 /**
- * Zones to offer, browser's own first.
- *
- * The browser's zone is a SUGGESTION — it is where the device thinks it is, not
- * where the provider works, and the two differ for anyone travelling. It is
- * offered first because it is usually right and never pre-selected because it
- * is sometimes wrong.
- *
- * `supportedValuesOf` gives the full IANA list where the browser has it; the
- * fallback is the device zone alone, which still lets the provider proceed.
+ * Only zones the server declares for this market, in the server's order.
+ * An old or malformed response provides no usable choices. It must never
+ * become a browser-derived global list that the market's write policy rejects.
  */
-function candidateZones(): string[] {
-  let local: string | undefined;
-  try {
-    local = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    local = undefined;
+function candidateZones(market: SupportedMarketView): readonly string[] {
+  const allowed = market.timezone.kind === 'ASK' ? market.timezone.allowedIds : undefined;
+  if (
+    !Array.isArray(allowed) ||
+    !allowed.every((zone: unknown) => typeof zone === 'string' && zone.length > 0)
+  ) {
+    return [];
   }
-
-  let all: string[] = [];
-  try {
-    const supported = (Intl as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf;
-    if (typeof supported === 'function') all = supported('timeZone');
-  } catch {
-    all = [];
-  }
-
-  if (all.length === 0) return local ? [local] : [];
-  return local ? [local, ...all.filter((z) => z !== local)] : all;
+  return [...new Set<string>(allowed)];
 }

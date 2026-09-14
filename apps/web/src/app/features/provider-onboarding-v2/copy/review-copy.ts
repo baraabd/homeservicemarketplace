@@ -164,6 +164,8 @@ const EN: ReviewCopy = {
     'emailVerified:UNVERIFIED': 'Confirm your email address.',
     'serviceAreaCity:REQUIRED': 'Choose the city you work in.',
     'serviceAreaCountry:REQUIRED': 'Choose the country you work in.',
+    'serviceAreaCountry:OUT_OF_RANGE':
+      'Your selected country is no longer available. Choose an available country in Work area.',
     'serviceAreaRadiusKm:REQUIRED': 'Set how far you are willing to travel.',
     'serviceCategories:REQUIRED': 'Choose at least one service.',
     'providerType:REQUIRED': 'Choose whether you work as an individual or a business.',
@@ -273,6 +275,8 @@ const AR: ReviewCopy = {
     'emailVerified:UNVERIFIED': 'أكّد بريدك الإلكتروني.',
     'serviceAreaCity:REQUIRED': 'اختر المدينة التي تعمل فيها.',
     'serviceAreaCountry:REQUIRED': 'اختر الدولة التي تعمل فيها.',
+    'serviceAreaCountry:OUT_OF_RANGE':
+      'البلد الذي اخترته لم يعد متاحاً. اختر بلداً متاحاً في منطقة العمل.',
     'serviceAreaRadiusKm:REQUIRED': 'حدّد المسافة التي يمكنك السفر إليها.',
     'serviceCategories:REQUIRED': 'اختر خدمة واحدة على الأقل.',
     'providerType:REQUIRED': 'اختر إن كنت تعمل كفرد أو كمنشأة.',

@@ -458,6 +458,88 @@ describe('submit — the transition, and what it must not do', () => {
   });
 });
 
+describe('experience projection — the displayed years follow the stored start date', () => {
+  // Between seven and eight full years, away from anniversary boundaries.
+  const started = new Date(Date.now() - 2800 * 24 * 60 * 60 * 1000);
+
+  it.each([
+    { name: 'date-only answer', professionSince: started, yearsOfExperience: null, expected: 7 },
+    {
+      name: 'date with an older numeric answer',
+      professionSince: started,
+      yearsOfExperience: 3,
+      expected: 7,
+    },
+    { name: 'legacy numeric answer', professionSince: null, yearsOfExperience: 12, expected: 12 },
+    {
+      name: 'unanswered experience',
+      professionSince: null,
+      yearsOfExperience: null,
+      expected: null,
+    },
+  ])(
+    'projects $name without rewriting the stored answers',
+    async ({ professionSince, yearsOfExperience, expected }) => {
+      const profile = makeCompleteProfile({ professionSince, yearsOfExperience });
+      const h = build({ profile });
+
+      const view = await h.service.get('u-1');
+
+      expect(view.data.yearsOfExperience).toBe(expected);
+      expect(view.data.professionSince).toBe(professionSince?.toISOString() ?? null);
+      expect(profile.yearsOfExperience).toBe(yearsOfExperience);
+      expect(h.trx.providerProfile.update).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe('review and submit — the enabled market must agree', () => {
+  it('routes a withdrawn market back to work area before offering submission', async () => {
+    const h = build({ profile: makeCompleteProfile({ serviceAreaCountryCode: 'SE' }) });
+    expect((await h.service.review('u-1', 'en')).canSubmit).toBe(true);
+
+    // The operator withdraws after the provider saved their country. Re-read
+    // the registry instead of trusting that earlier successful LOCATION write.
+    h.markets.findEnabled.mockResolvedValue(null);
+    const review = await h.service.review('u-1', 'en');
+
+    expect(review.canSubmit).toBe(false);
+    expect(review.blockedReason).toMatchObject({
+      field: 'serviceAreaCountry',
+      code: 'OUT_OF_RANGE',
+      step: 'LOCATION',
+      taskId: 'WORK_AREA',
+    });
+    const hub = await h.service.hub('u-1');
+    expect(hub.tasks.find((task) => task.id === 'WORK_AREA')?.status).toBe('AVAILABLE');
+    const draft = await h.service.get('u-1');
+    expect(draft.complete).toBe(false);
+    expect(draft.steps.find((step) => step.step === 'LOCATION')?.complete).toBe(false);
+    expect(draft.missing).toContainEqual({ field: 'serviceAreaCountry', code: 'OUT_OF_RANGE' });
+    await expect(h.service.submit('u-1', { version: 3 })).rejects.toMatchObject({
+      status: 422,
+      details: {
+        reason: 'MARKET_NOT_SUPPORTED',
+        missing: [{ field: 'serviceAreaCountryCode', code: 'MARKET_NOT_SUPPORTED' }],
+      },
+    });
+    expect(h.trx.providerProfile.updateMany).not.toHaveBeenCalled();
+    expect(h.trx.providerOnboardingSubmission.create).not.toHaveBeenCalled();
+  });
+
+  it('still submits when the selected market remains enabled', async () => {
+    const h = build({ profile: makeCompleteProfile({ serviceAreaCountryCode: 'SE' }) });
+    expect((await h.service.review('u-1', 'en')).canSubmit).toBe(true);
+    expect((await h.service.hub('u-1')).tasks.find((task) => task.id === 'WORK_AREA')?.status).toBe(
+      'COMPLETE',
+    );
+    expect((await h.service.get('u-1')).complete).toBe(true);
+    await h.service.submit('u-1', { version: 3 });
+    expect(h.markets.findEnabled).toHaveBeenCalledWith('SE', h.trx);
+    expect(h.trx.providerOnboardingSubmission.create).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('submit — completeness and idempotency', () => {
   it('refuses an incomplete application with 422 and machine-readable codes', async () => {
     const h = build({ profile: makeCompleteProfile({ bio: null }) });

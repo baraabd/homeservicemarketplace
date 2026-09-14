@@ -140,7 +140,13 @@ describe('the one question the approved screen asks', () => {
     const view = DRAFT({ data: { serviceAreaCountryCode: 'CA', serviceAreaRadiusKm: 25 } });
     mock.onGet('/v1/me/provider/onboarding/markets').reply(200, {
       selectedCountryCode: 'CA',
-      markets: [{ countryCode: 'CA', displayNameKey: 'CA', timezone: { kind: 'ASK' } }],
+      markets: [
+        {
+          countryCode: 'CA',
+          displayNameKey: 'CA',
+          timezone: { kind: 'ASK', allowedIds: ['America/Toronto', 'America/Vancouver'] },
+        },
+      ],
     });
     mock.onPatch(/\/steps\/AVAILABILITY$/).reply(200, { ...view, version: 6 });
     let flush!: ReturnType<typeof useOnboardingAutosave>['flushAll'];

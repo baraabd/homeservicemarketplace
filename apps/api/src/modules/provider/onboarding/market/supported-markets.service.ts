@@ -17,7 +17,7 @@ import {
   MarketLocationResolverPort,
 } from './market-location-resolver.port';
 import { MarketRegistryService } from './market-registry.service';
-import { decideTimezone } from './timezone-precedence.policy';
+import { decideTimezone, marketTimezones } from './timezone-precedence.policy';
 import type { SupportedMarket } from './supported-market';
 
 // Sprint 09B.29 Phase 5 (C2) — the read model behind the market picker.
@@ -96,7 +96,7 @@ export class SupportedMarketsService {
       timezone:
         timezone.kind === 'RESOLVED'
           ? { kind: 'RESOLVED', id: timezone.timezone }
-          : { kind: 'ASK' },
+          : { kind: 'ASK', allowedIds: [...new Set(marketTimezones(market))] },
     };
   }
 

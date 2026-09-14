@@ -149,7 +149,13 @@ describe('OnboardingTaskScreen', () => {
     });
     mock.onGet('/v1/me/provider/onboarding/markets').reply(200, {
       selectedCountryCode: 'CA',
-      markets: [{ countryCode: 'CA', displayNameKey: 'CA', timezone: { kind: 'ASK' } }],
+      markets: [
+        {
+          countryCode: 'CA',
+          displayNameKey: 'CA',
+          timezone: { kind: 'ASK', allowedIds: ['America/Toronto', 'America/Vancouver'] },
+        },
+      ],
     });
     let release!: (response: [number, object]) => void;
     mock.onPatch(/\/steps\/AVAILABILITY$/).reply(

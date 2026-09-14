@@ -12,6 +12,8 @@ import {
 import { MarketLocationResolverPort } from './market-location-resolver.port';
 import { MarketRegistryService } from './market-registry.service';
 import { SupportedMarketsService } from './supported-markets.service';
+import type { SupportedMarket } from './supported-market';
+import { checkTimezoneAgainstMarket } from './timezone-precedence.policy';
 
 describe('supported-market radius agrees with the write policy', () => {
   const defaults = (key: string): number =>
@@ -72,5 +74,53 @@ describe('supported-market radius agrees with the write policy', () => {
     });
     expect(checkRadius(offered.defaultKm, policy)).toEqual({ ok: true });
     expect(offered.defaultKm).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('supported-market timezone choices agree with the write policy', () => {
+  const canada: SupportedMarket = {
+    countryCode: 'CA',
+    enabled: true,
+    displayNameKey: 'CA',
+    timezones: ['America/Vancouver', 'America/Toronto'],
+  };
+
+  function serviceFor(market: SupportedMarket) {
+    return new SupportedMarketsService(
+      { enabled: async () => [market] } as unknown as MarketRegistryService,
+      { findByKey: async () => null } as unknown as PlatformSettingRepository,
+      { findByUserId: async () => null } as unknown as ProviderProfileRepository,
+      { isAvailable: false } as MarketLocationResolverPort,
+    );
+  }
+
+  it('projects permitted choices for a multi-zone market without a default', async () => {
+    const response = await serviceFor(canada).list('provider-owner');
+
+    expect(response.markets[0].timezone).toEqual({
+      kind: 'ASK',
+      allowedIds: ['America/Vancouver', 'America/Toronto'],
+    });
+    for (const timezone of canada.timezones!) {
+      expect(checkTimezoneAgainstMarket(timezone, canada)).toEqual({ kind: 'COMPATIBLE' });
+    }
+    expect(checkTimezoneAgainstMarket('Asia/Riyadh', canada).kind).toBe('NOT_IN_MARKET');
+    expect(response.markets[0]).not.toHaveProperty('timezones');
+    expect(response.markets[0]).not.toHaveProperty('enabled');
+  });
+
+  it('does not invent choices when the market has no declared zones', async () => {
+    const response = await serviceFor({ ...canada, timezones: undefined }).list('provider-owner');
+    expect(response.markets[0].timezone).toEqual({ kind: 'ASK', allowedIds: [] });
+  });
+
+  it('keeps the existing single-zone response shape', async () => {
+    const response = await serviceFor({
+      countryCode: 'SY',
+      enabled: true,
+      displayNameKey: 'SY',
+      defaultTimezone: 'Asia/Damascus',
+    }).list('provider-owner');
+    expect(response.markets[0].timezone).toEqual({ kind: 'RESOLVED', id: 'Asia/Damascus' });
   });
 });

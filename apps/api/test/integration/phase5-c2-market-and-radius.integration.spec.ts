@@ -892,6 +892,15 @@ d('Phase 5 C2 - enabled markets and radius provenance (real HTTP, real Postgres)
   // --- the markets read model ----------------------------------------------
 
   describe('GET /markets', () => {
+    it('projects the permitted choices for the multi-zone market without choosing a default', async () => {
+      const res = await getMarkets();
+      expect(res.status).toBe(200);
+      const multi = res.body.markets.find(
+        (market: { countryCode: string }) => market.countryCode === MINE_MULTI,
+      );
+      expect(multi.timezone).toEqual({ kind: 'ASK', allowedIds: MULTI_ZONES });
+    });
+
     it('serves the enabled markets and omits the disabled one', async () => {
       const res = await getMarkets();
       expect(res.status).toBe(200);
