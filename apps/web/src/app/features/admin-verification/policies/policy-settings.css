@@ -1,6 +1,11 @@
 .ap-settings {
+  width: 100%;
   max-width: 1120px;
   margin-inline: auto;
+}
+.ap-settings > .ar-header > .ar-button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .ap-policy-grid {
   display: grid;

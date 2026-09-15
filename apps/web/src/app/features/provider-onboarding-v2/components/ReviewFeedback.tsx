@@ -42,7 +42,8 @@ export function ReviewFeedback({
               }
               density="compact"
             />
-            {onOpen && (!taskId || feedbackTaskPath(item) === '/provider/verification') ? (
+            {onOpen &&
+            (!taskId || !!item.field || feedbackTaskPath(item) === '/provider/verification') ? (
               <ProviderButton
                 tone="secondary"
                 shape="onboarding"

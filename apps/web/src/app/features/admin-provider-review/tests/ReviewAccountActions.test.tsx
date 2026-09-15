@@ -217,6 +217,7 @@ describe('provider account controls use actual API hooks', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Your text remains on this screen');
     expect(notes).toHaveValue('Internal inspection context only');
     expect(screen.queryByText('Internal notes saved.')).not.toBeInTheDocument();
+    expect(changed).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Save notes' }));
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent('Internal notes saved.'),
@@ -230,6 +231,7 @@ describe('provider account controls use actual API hooks', () => {
         ?.reviewNotes,
     ).toBe('Internal inspection context only');
     expect(mock.history.post).toHaveLength(0);
+    await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
   });
 
   it('does not overwrite newer typing when an earlier note save finishes', async () => {

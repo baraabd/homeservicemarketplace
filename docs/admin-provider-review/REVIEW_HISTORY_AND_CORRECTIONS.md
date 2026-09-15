@@ -18,10 +18,16 @@ superseded evidence and mismatched document kinds are rejected. A whole-step
 instruction remains valid when `field` is omitted.
 
 Provider instructions display the localized field label. Navigation reuses the
-existing task routes and `#experience`, `#portfolio`, and `#terms` sub-screens;
-evidence corrections open `/provider/verification`. These links do not create a
-second save implementation. Unsent correction text and internal notes keep their
-existing conflict/retry behavior.
+existing task routes and `#experience`, `#portfolio`, and `#terms` sub-screens,
+adding `reviewField` and optional `reviewItem` query values. A task-scoped hook
+validates these domain values against the shared catalog and focuses the real
+editor or the exact rendered, owned image/selected specialty. No URL value is
+used as a DOM selector. Focus runs once per explicit navigation, waits for an
+asynchronously rendered target, and cancels if the provider starts interacting.
+Ordinary visits, readonly tasks, unknown fields and foreign item ids do not move
+focus. Evidence corrections retain `/provider/verification`. These links do not
+create a second save implementation. Unsent correction text and internal notes
+keep their existing conflict/retry behavior.
 
 ## History read contract
 
@@ -51,7 +57,8 @@ storage keys, access logs, and signed URLs are excluded.
 
 The React history query is under the existing admin-provider query-key root so
 domain decisions can invalidate it with the dossier and directory. Loading,
-empty, denied, failed, retry, and cursor-pagination states are explicit.
+empty, denied, failed, retry, and cursor-pagination states are explicit. A later
+401, 403, or 404 hides cached timeline content, including private notes.
 
 ## Verification
 

@@ -383,6 +383,7 @@ export function ServicesTaskScreen({
             disabled={!editable}
             onChange={(event) => setQuery(event.target.value)}
             data-testid="specialty-search"
+            data-review-field="specialties"
           />
           <Search
             size={16}
@@ -414,19 +415,24 @@ export function ServicesTaskScreen({
               </p>
             ) : null}
             {visibleLeaves.map((leaf) => (
-              <ProviderChoiceToggle
+              <div
                 key={leaf.id}
-                testId={`specialty-choice-${leaf.id}`}
-                checked={chosenIds.includes(leaf.id)}
-                onToggle={() => toggleSpecialty(leaf.id)}
-                // At the ceiling the unchosen rows are genuinely unavailable,
-                // and say so, rather than accepting a press that the save
-                // would refuse. The chosen ones stay live so the provider can
-                // always make room.
-                disabled={!editable || (atLimit && !chosenIds.includes(leaf.id))}
-                label={lang === 'ar' ? leaf.labelAr : leaf.labelEn}
-                meta={metaFor(leaf.id)}
-              />
+                data-review-field={chosenIds.includes(leaf.id) ? 'specialties' : undefined}
+                data-review-item={chosenIds.includes(leaf.id) ? leaf.id : undefined}
+              >
+                <ProviderChoiceToggle
+                  testId={`specialty-choice-${leaf.id}`}
+                  checked={chosenIds.includes(leaf.id)}
+                  onToggle={() => toggleSpecialty(leaf.id)}
+                  // At the ceiling the unchosen rows are genuinely unavailable,
+                  // and say so, rather than accepting a press that the save
+                  // would refuse. The chosen ones stay live so the provider can
+                  // always make room.
+                  disabled={!editable || (atLimit && !chosenIds.includes(leaf.id))}
+                  label={lang === 'ar' ? leaf.labelAr : leaf.labelEn}
+                  meta={metaFor(leaf.id)}
+                />
+              </div>
             ))}
           </div>
         )}
@@ -462,24 +468,30 @@ export function ServicesTaskScreen({
         onContinue?.();
       }}
     >
-      <ProviderStepper
-        label={copy.yearsLabel}
-        hint={copy.startYearHint}
-        value={years}
-        min={0}
-        max={MAX_YEARS}
-        decreaseLabel={copy.yearsDecrease}
-        increaseLabel={copy.yearsIncrease}
-        onChange={commitYears}
-        disabled={!editable}
-        testId="experience-years"
-      />
+      <div data-review-field="yearsOfExperience">
+        <ProviderStepper
+          label={copy.yearsLabel}
+          hint={copy.startYearHint}
+          value={years}
+          min={0}
+          max={MAX_YEARS}
+          decreaseLabel={copy.yearsDecrease}
+          increaseLabel={copy.yearsIncrease}
+          onChange={commitYears}
+          disabled={!editable}
+          testId="experience-years"
+        />
+      </div>
 
       {/* A real fieldset/legend, because this is a group of checkboxes and the
           platform announces it as one. The 7px sits on the legend rather than
           on a flex gap: a `<legend>` is not laid out as an ordinary flex item,
           so a gap here would be applied inconsistently across engines. */}
-      <fieldset className="flex flex-col" data-testid="transport-options">
+      <fieldset
+        className="flex flex-col"
+        data-testid="transport-options"
+        data-review-field="transportModes"
+      >
         <legend className="mb-[7px] break-words text-pv-label font-bold leading-pv-base text-pv-text">
           {copy.transportQuestion}
         </legend>

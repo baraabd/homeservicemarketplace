@@ -131,6 +131,28 @@ function renderTask(taskId: string, lang: 'en' | 'ar' = 'en') {
 }
 
 describe('OnboardingTaskScreen', () => {
+  it.each(['displayName', 'phoneNumber'])(
+    'opens the actual %s editor from a correction URL without saving or changing its value',
+    async (field) => {
+      mock.onGet(HUB_URL).reply(200, HUB);
+      mock.onGet(DRAFT_URL).reply(200, DRAFT);
+      renderTask(`BASICS_IDENTITY?reviewField=${field}`);
+      const input = await screen.findByTestId(`field-${field}`);
+      await waitFor(() => expect(input).toHaveFocus());
+      expect(input).toHaveValue(DRAFT.data[field as 'displayName' | 'phoneNumber']);
+      expect(mock.history.patch).toHaveLength(0);
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it('does not focus a read-only task from an old correction link', async () => {
+    mock.onGet(HUB_URL).reply(200, HUB);
+    mock.onGet(DRAFT_URL).reply(200, { ...DRAFT, editable: false });
+    renderTask('BASICS_IDENTITY?reviewField=phoneNumber');
+    const input = await screen.findByTestId('field-phoneNumber');
+    expect(input).toBeDisabled();
+    expect(input).not.toHaveFocus();
+  });
   it('the work-area save line reports a rejected timezone confirmation', async () => {
     mock.onGet(HUB_URL).reply(200, {
       ...HUB,

@@ -132,6 +132,7 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
       <ProviderTextInput
         label={copy.displayName}
         data-testid="field-displayName"
+        data-review-field="displayName"
         value={displayName}
         disabled={!editable}
         autoComplete="name"
@@ -161,6 +162,7 @@ export function BasicsTaskScreen({ view, lang, editable }: BasicsTaskScreenProps
         hint={copy.phoneNotVerified}
         error={phoneError ?? undefined}
         data-testid="field-phoneNumber"
+        data-review-field="phoneNumber"
         type="tel"
         inputMode="tel"
         value={phone}

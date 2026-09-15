@@ -23,6 +23,7 @@ import { ServiceAreaTask } from './ServiceAreaTaskScreen';
 import { AvailabilityTask } from './AvailabilityTaskScreen';
 import { PublicProfileTask, type PublicProfilePart } from './PublicProfileTaskScreen';
 import { ReviewTask, type ReviewPart, type TaskPrimaryCommand } from './ReviewTaskScreen';
+import { useReviewCorrectionFocus } from '../useReviewCorrectionFocus';
 
 // Sprint 9B.16 — the per-task route.
 //
@@ -84,6 +85,12 @@ export function OnboardingTaskScreen() {
   // same query key every task body already reads, so this shares their cache
   // entry rather than issuing a second request for the same draft.
   const draft = useOnboardingDraft();
+  const correctionRoot = useReviewCorrectionFocus({
+    taskId,
+    search: location.search,
+    navigationKey: location.key,
+    enabled: draft.data?.editable === true,
+  });
 
   // One resolution of "which approved screen", from the URL and — for the
   // review task alone — the application's own state. Doing it here rather than
@@ -359,7 +366,11 @@ export function OnboardingTaskScreen() {
           vertically has a box with a resolved height to centre in; for a column
           of fields it changes nothing, because they stack from the top either
           way. */}
-      <div className="flex flex-1 flex-col gap-[18px]" data-testid={`task-screen-${task.id}`}>
+      <div
+        ref={correctionRoot}
+        className="flex flex-1 flex-col gap-[18px]"
+        data-testid={`task-screen-${task.id}`}
+      >
         <ReviewFeedback
           feedback={draft.data?.reviewFeedback}
           taskId={task.id === 'REVIEW_SUBMISSION' ? undefined : task.id}

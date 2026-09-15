@@ -119,6 +119,27 @@ export async function openSubmittedProvider(page: Page, account: Account) {
   await row.getByRole('link', { name: /^Open profile / }).click();
   await expect(page.getByTestId('admin-provider-review-workspace')).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/admin/providers/${account.profileId}\\?`));
+  // Verify the actual route landing before any screenshot helper normalizes scroll.
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  const workspace = page.getByTestId('admin-provider-review-workspace');
+  const back = workspace.getByRole('button', { name: 'Back to providers', exact: true });
+  const heading = workspace.getByRole('heading', { level: 1 });
+  await expect
+    .poll(async () => {
+      const [bar, backBox, headingBox] = await Promise.all([
+        page.getByTestId('admin-topbar').boundingBox(),
+        back.boundingBox(),
+        heading.boundingBox(),
+      ]);
+      return Boolean(
+        bar &&
+        backBox &&
+        headingBox &&
+        backBox.y >= bar.y + bar.height - 1 &&
+        headingBox.y >= bar.y + bar.height - 1,
+      );
+    })
+    .toBe(true);
   return review;
 }
 
@@ -139,11 +160,12 @@ export async function recordAdminEvidence(
   testInfo: TestInfo,
   name: string,
   source: Pick<AdminProviderReview, 'provider' | 'submission' | 'revision'>,
+  options: { accessibilityScope?: string; fullPage?: boolean } = {},
 ) {
   await expectNoHorizontalPageOverflow(page);
   await page.evaluate(() => document.fonts.ready);
   const accessibility = await new AxeBuilder({ page })
-    .include('#admin-content')
+    .include(options.accessibilityScope ?? '#admin-content')
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
     .analyze();
   await testInfo.attach(`${name}-accessibility.json`, {
@@ -151,8 +173,14 @@ export async function recordAdminEvidence(
     body: Buffer.from(JSON.stringify(accessibility.violations)),
   });
   expect(accessibility.violations, `${name}: accessibility violations`).toEqual([]);
+  if (options.fullPage !== false) {
+    // Full-page screenshots retain the current sticky position. Normalize it
+    // after accessibility analysis so the captured hero is the actual page top.
+    await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  }
   const path = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path, fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path, fullPage: options.fullPage ?? true, animations: 'disabled' });
   await testInfo.attach(name, { path, contentType: 'image/png' });
   await testInfo.attach(`${name}-runtime.json`, {
     contentType: 'application/json',

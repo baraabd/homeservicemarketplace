@@ -25,6 +25,7 @@ import { AdminRouteContent } from './AdminRouteContent';
 import { resolveAdminRoute, sectionPath } from './admin-routes';
 import '../../features/admin-provider-review/admin-review.css';
 import { AdminNotificationsBell } from './AdminNotificationsBell';
+import { useAdminHeaderOffset } from './useAdminHeaderOffset';
 
 const NAV_ITEMS = [
   { id: 'dashboard', icon: LayoutDashboard, en: 'Dashboard', ar: 'لوحة التحكم' },
@@ -42,6 +43,7 @@ const NAV_ITEMS = [
 // refresh, login round trip, deep link, and browser Back show the same surface.
 export function AdminDashboard() {
   const { lang, dir, darkMode, toggleDarkMode } = useLang();
+  const { shellRef, headerRef } = useAdminHeaderOffset();
   const { logout } = useAuth();
   const identity = useAuthIdentity();
   const location = useLocation();
@@ -80,10 +82,14 @@ export function AdminDashboard() {
     if (previousPath.current !== location.pathname) {
       returnFocusToContent.current = true;
       setMobileOpen(false);
-      mainRef.current?.focus();
+      // Native focus scrolls a long main landmark beneath the sticky topbar.
+      // Route changes start at the page heading; URL-only filters keep their
+      // position, and a targeted fragment keeps its own scroll destination.
+      mainRef.current?.focus({ preventScroll: true });
+      if (!location.hash) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       previousPath.current = location.pathname;
     }
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
 
   async function signOut() {
     setSigningOut(true);
@@ -136,6 +142,7 @@ export function AdminDashboard() {
 
   return (
     <div
+      ref={shellRef}
       className={`min-h-screen ${darkMode ? 'dark bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}
       dir={dir}
       lang={lang}
@@ -193,7 +200,9 @@ export function AdminDashboard() {
             <Dialog.Content
               onCloseAutoFocus={(event) => {
                 event.preventDefault();
-                (returnFocusToContent.current ? mainRef.current : menuButtonRef.current)?.focus();
+                (returnFocusToContent.current ? mainRef.current : menuButtonRef.current)?.focus({
+                  preventScroll: true,
+                });
                 returnFocusToContent.current = false;
               }}
               dir={dir}
@@ -231,7 +240,11 @@ export function AdminDashboard() {
           </Dialog.Portal>
         </Dialog.Root>
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-800 lg:px-6">
+          <header
+            ref={headerRef}
+            data-testid="admin-topbar"
+            className="sticky top-0 z-20 flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-800 lg:px-6"
+          >
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
@@ -248,7 +261,7 @@ export function AdminDashboard() {
               </button>
               <h1 className="text-lg font-extrabold">{title}</h1>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 [&>button]:min-h-11 [&>button]:min-w-11">
               <button
                 type="button"
                 onClick={toggleDarkMode}

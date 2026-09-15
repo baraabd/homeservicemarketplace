@@ -4,11 +4,12 @@ import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import type { AdminProviderReview } from '@homeservicemarketplace/contracts';
+import { LEGACY_PUBLICATION_ACK_TEXT } from '@homeservicemarketplace/contracts';
 import { api } from '../../../../lib/api';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { AdminProviderReviewWorkspace } from '../components/AdminProviderReviewWorkspace';
-import { REVIEW_COPY } from '../copy';
-import { reviewFixture } from './fixtures';
+import { REVIEW_COPY, statusLabel } from '../copy';
+import { reviewFixture, STAMP } from './fixtures';
 
 const PATH = '/v1/admin/providers/provider-1/review';
 let mock: MockAdapter;
@@ -42,6 +43,119 @@ afterEach(() => {
 });
 
 describe('Admin application dossier', () => {
+  it.each(['en', 'ar'] as const)(
+    'explains a submitted application with received evidence and unset legacy status axes in %s',
+    async (lang) => {
+      localStorage.setItem('hsm.lang', lang);
+      review.provider.standingState = null;
+      review.provider.verificationState = null;
+      review.verification = {
+        id: 'case-1',
+        providerProfileId: 'provider-1',
+        state: 'SUBMITTED',
+        policyVersion: 'v1',
+        country: 'SY',
+        providerType: 'INDIVIDUAL',
+        submittedAt: STAMP,
+        assignedToUserId: null,
+        assignedAt: null,
+        decidedAt: null,
+        requirements: [],
+        documents: [
+          {
+            id: 'document-1',
+            kind: 'INDIVIDUAL_IDENTITY',
+            serviceCategoryId: null,
+            serviceCategoryLabelEn: null,
+            serviceCategoryLabelAr: null,
+            detectedMimeType: 'image/png',
+            sizeBytes: 20,
+            displayFilename: 'identity.png',
+            scanState: 'CLEAN',
+            viewable: true,
+            uploadedAt: STAMP,
+            evidenceDeletedAt: null,
+            supersededAt: null,
+          },
+        ],
+        decisions: [],
+        availableActions: [],
+        blockedReason: null,
+        workAccess: null,
+      };
+      setup();
+      await screen.findByRole('heading', { name: 'Current provider' });
+      const t = REVIEW_COPY[lang];
+      const account = within(screen.getByText(t.account).parentElement!);
+      expect(account.getByText(statusLabel('ACTIVE', lang))).toBeInTheDocument();
+      expect(account.queryByText(t.notProvided)).not.toBeInTheDocument();
+      const application = within(screen.getByText(t.application).parentElement!);
+      expect(application.getByText(statusLabel('PENDING_REVIEW', lang))).toBeInTheDocument();
+      expect(
+        application.queryByText(statusLabel('DOCUMENTS_REQUIRED', lang)),
+      ).not.toBeInTheDocument();
+      const identity = within(screen.getByText(t.identity).parentElement!);
+      expect(identity.getByText(statusLabel('UNVERIFIED', lang))).toBeInTheDocument();
+      expect(
+        identity.getByText(`${t.identityCaseState}: ${statusLabel('SUBMITTED', lang)}`),
+      ).toBeInTheDocument();
+      expect(identity.queryByText(t.notProvided)).not.toBeInTheDocument();
+      expect(screen.queryByText(t.noEvidence)).not.toBeInTheDocument();
+      expect(screen.getByTestId('review-evidence-document-1')).toBeInTheDocument();
+      expect(screen.getByText(t.awaitingDecision)).toBeInTheDocument();
+      expect(screen.getByText('v1')).toHaveAttribute('dir', 'ltr');
+      expect(mock.history.get.some((request) => request.url?.endsWith('/content'))).toBe(false);
+    },
+  );
+  it('focuses the loaded dossier heading without scrolling underneath the admin header', async () => {
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+    setup();
+    const heading = await screen.findByRole('heading', { name: 'Current provider' });
+    expect(heading).toHaveFocus();
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+  it('keeps a recorded decision authoritative and does not invent a pending decision without a submission', async () => {
+    review.submission!.decision = 'APPROVED';
+    setup();
+    await screen.findByRole('heading', { name: 'Current provider' });
+    const decision = () =>
+      within(screen.getByText(REVIEW_COPY.en.applicationDecision).parentElement!);
+    expect(decision().getByText('Approved')).toBeInTheDocument();
+    expect(decision().queryByText(REVIEW_COPY.en.awaitingDecision)).not.toBeInTheDocument();
+    review.submission = null;
+    fireEvent.click(screen.getByTestId('review-refresh'));
+    await screen.findByText(REVIEW_COPY.en.noSubmission);
+    expect(decision().getByText(REVIEW_COPY.en.noHistory)).toBeInTheDocument();
+    expect(decision().queryByText(REVIEW_COPY.en.awaitingDecision)).not.toBeInTheDocument();
+  });
+  it.each(['en', 'ar'] as const)(
+    'labels a legacy publication acknowledgement honestly without exposing its storage token in %s',
+    async (lang) => {
+      localStorage.setItem('hsm.lang', lang);
+      review.submission!.snapshot!.portfolio = [
+        {
+          id: 'image-1',
+          mediaAssetId: 'asset-1',
+          revision: 1,
+          title: 'Submitted project',
+          description: null,
+          serviceCategoryId: 'electrical',
+          position: 0,
+          publicationRightAckAt: STAMP,
+          publicationRightAckVersion: LEGACY_PUBLICATION_ACK_TEXT,
+          moderationState: 'PENDING',
+        },
+      ];
+      setup();
+      await screen.findByRole('heading', { name: 'Current provider' });
+      expect(screen.getByTestId('review-section-PORTFOLIO')).toHaveTextContent(
+        REVIEW_COPY[lang].legacyPublicationAck,
+      );
+      expect(screen.getByTestId('review-section-PORTFOLIO')).not.toHaveTextContent(
+        LEGACY_PUBLICATION_ACK_TEXT,
+      );
+    },
+  );
   it('keeps submitted facts distinct from current profile and renders all six tasks', async () => {
     setup();
     await screen.findByRole('heading', { name: 'Current provider' });
@@ -62,21 +176,31 @@ describe('Admin application dossier', () => {
     expect(screen.getAllByText(REVIEW_COPY.en.notCaptured).length).toBeGreaterThan(5);
     expect(screen.queryByTestId('review-approve')).not.toBeInTheDocument();
   });
-  it('renders server permission failures without keeping dossier data visible', async () => {
-    setup();
-    await screen.findByText('Submitted biography');
-    mock.onGet(PATH).reply(403, { error: { code: 'FORBIDDEN' } });
-    fireEvent.click(screen.getByTestId('review-refresh'));
-    await screen.findByText(REVIEW_COPY.en.forbidden);
-    expect(screen.queryByText('Submitted biography')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('review-approve')).not.toBeInTheDocument();
-  });
+  it.each([
+    [401, REVIEW_COPY.en.failed],
+    [403, REVIEW_COPY.en.forbidden],
+    [404, REVIEW_COPY.en.notFound],
+  ] as const)(
+    'hides cached dossier data after an access refetch fails with %s',
+    async (status, message) => {
+      setup();
+      await screen.findByText('Submitted biography');
+      mock.onGet(PATH).reply(status, { error: { code: 'ACCESS_UNAVAILABLE' } });
+      fireEvent.click(screen.getByTestId('review-refresh'));
+      await screen.findByText(message);
+      expect(screen.queryByText('Submitted biography')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('review-approve')).not.toBeInTheDocument();
+    },
+  );
   it('uses Arabic direction and localized review tasks', async () => {
     localStorage.setItem('hsm.lang', 'ar');
     setup();
     await screen.findByRole('heading', { name: 'Current provider' });
     expect(screen.getByTestId('admin-provider-review-workspace')).toHaveAttribute('dir', 'rtl');
     expect(screen.getByRole('heading', { name: 'البيانات والهوية' })).toBeInTheDocument();
+    expect(screen.getByText('Submitted biography')).toHaveAttribute('dir', 'auto');
+    expect(screen.getByText('policy-v1')).toHaveAttribute('dir', 'ltr');
+    expect(screen.getByText('terms-v1')).toHaveAttribute('dir', 'ltr');
   });
 });
 

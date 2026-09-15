@@ -104,7 +104,7 @@ export function ReviewIdentity({
           <div className="ar-meta">
             <StatusBadge value={kase.state} lang={lang} />
             <span>
-              {t.policyVersion}: {kase.policyVersion}
+              {t.policyVersion}: <bdi dir="ltr">{kase.policyVersion}</bdi>
             </span>
             <span>{formatReviewDate(kase.submittedAt, lang, t.notProvided)}</span>
           </div>
@@ -226,7 +226,7 @@ export function ReviewIdentity({
                     <p>{verificationReasonLabel(decision.reasonCode, lang)}</p>
                     <small className="ar-muted">
                       {formatReviewDate(decision.decidedAt, lang, t.notProvided)} ·{' '}
-                      {decision.policyVersion}
+                      <bdi dir="ltr">{decision.policyVersion}</bdi>
                     </small>
                   </li>
                 ))}

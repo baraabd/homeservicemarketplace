@@ -55,9 +55,10 @@ export function ReviewAccountActions({
     try {
       await notes.mutateAsync({ providerProfileId, notes: submitted });
       const result = await detail.refetch();
-      if (result.isError) setRefreshFailed(true);
-      else setEditedNotes((current) => (current === submitted ? null : current));
+      setRefreshFailed(result.isError);
+      if (!result.isError) setEditedNotes((current) => (current === submitted ? null : current));
       setNotice(isAr ? 'تم حفظ الملاحظات الداخلية.' : 'Internal notes saved.');
+      await onChanged().catch(() => setRefreshFailed(true));
     } catch {
       // Retain the author's text so a failed save never loses work.
     }
@@ -81,8 +82,8 @@ export function ReviewAccountActions({
         {(detail.isError || refreshFailed) && (
           <ReviewBanner role="alert" tone="warning">
             {isAr
-              ? 'تعذر تحديث حالة الحساب. أعد التحميل لرؤية أحدث نتيجة.'
-              : 'Could not refresh account state. Reload to see the latest result.'}
+              ? 'تعذر تحديث حالة المهني. أعد التحميل لرؤية أحدث نتيجة.'
+              : 'Could not refresh provider state. Reload to see the latest result.'}
             <div>
               <button
                 type="button"
@@ -95,7 +96,7 @@ export function ReviewAccountActions({
           </ReviewBanner>
         )}
         {detail.isPending && (
-          <p role="status">{isAr ? 'جارٍ تحميل الحساب…' : 'Loading account…'}</p>
+          <p role="status">{isAr ? 'جارٍ تحميل حالة المهني…' : 'Loading provider state…'}</p>
         )}
         {detail.data && !detail.isError && (
           <>

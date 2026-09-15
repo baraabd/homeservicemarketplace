@@ -12,7 +12,7 @@ const LABELS: Record<AdminProviderReviewHistoryKind, { en: string; ar: string }>
   APPROVED: { en: 'Application approved', ar: 'تمت الموافقة على الطلب' },
   CHANGES_REQUESTED: { en: 'Application returned for changes', ar: 'أُعيد الطلب للتصحيح' },
   REJECTED: { en: 'Application rejected', ar: 'رُفض الطلب' },
-  SUSPENDED: { en: 'Professional suspended', ar: 'أُوقف حساب المهني' },
+  SUSPENDED: { en: 'Professional suspended', ar: 'عُلّق نشاط المهني' },
   REACTIVATED: { en: 'Suspension lifted', ar: 'رُفع الإيقاف عن المهني' },
   NOTES_UPDATED: { en: 'Internal notes updated', ar: 'حُدّثت الملاحظات الداخلية' },
   CATEGORY_APPROVED: { en: 'Service approved', ar: 'تمت الموافقة على الخدمة' },
@@ -22,7 +22,7 @@ const LABELS: Record<AdminProviderReviewHistoryKind, { en: string; ar: string }>
   IDENTITY_CHANGES_REQUESTED: { en: 'Identity changes requested', ar: 'طُلب تصحيح وثائق الهوية' },
   IDENTITY_REJECTED: { en: 'Identity rejected', ar: 'رُفضت وثائق الهوية' },
   IDENTITY_APPROVED: { en: 'Identity verified', ar: 'تم توثيق الهوية' },
-  IDENTITY_REVOKED: { en: 'Verification revoked', ar: 'أُلغي التوثيق' },
+  IDENTITY_REVOKED: { en: 'Work grant revoked', ar: 'سُحبت صلاحية العمل في التطبيق' },
   IDENTITY_REVERIFY_REQUIRED: { en: 'Verification requested again', ar: 'طُلب تجديد التوثيق' },
   IDENTITY_EXPIRED: { en: 'Verification expired', ar: 'انتهت صلاحية التوثيق' },
   PORTFOLIO_APPROVED: { en: 'Portfolio image approved', ar: 'تمت الموافقة على صورة العمل' },
@@ -40,7 +40,7 @@ export function ReviewHistory({ providerId, lang }: { providerId: string; lang: 
     retry: false,
   });
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
-  const forbidden = requestStatus(query.error) === 403;
+  const forbidden = [401, 403, 404].includes(requestStatus(query.error) ?? 0);
   return (
     <section className="ar-stack" aria-label={t.history} data-testid="review-history">
       <div className="ar-subheader">

@@ -231,6 +231,7 @@ export function PublicProfileTaskScreen({
           label={copy.bioApprovedLabel}
           hint={copy.bioApprovedHint}
           data-testid="bio-input"
+          data-review-field="bio"
           maxLength={MAX_BIO_LENGTH}
           value={bio}
           disabled={!editable}
@@ -293,6 +294,7 @@ export function PublicProfileTaskScreen({
       <button
         type="button"
         data-testid="portfolio-add-photo"
+        data-review-field="portfolio"
         disabled={!editable}
         onClick={() => fileInput.current?.click()}
         className="grid min-h-[128px] w-full place-items-center rounded-pv-card border-[1.5px] border-dashed border-pv-border-strong bg-pv-surface p-[18px] text-center text-pv-accent-hover disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
@@ -350,6 +352,8 @@ export function PublicProfileTaskScreen({
               <button
                 type="button"
                 data-testid={`portfolio-reorder-${item.id}`}
+                data-review-field="portfolio"
+                data-review-item={item.id}
                 disabled={!editable}
                 aria-label={copy.photoPosition(index + 1, items.length)}
                 aria-describedby={REORDER_HINT_ID}

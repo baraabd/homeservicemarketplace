@@ -485,6 +485,11 @@
   .ad-search-row > .ad-filter-label {
     min-width: 0;
   }
+  /* Native selects cannot wrap their selected value. Give localized state
+     labels a full row instead of truncating them in half-width controls. */
+  .ad-filter-grid {
+    grid-template-columns: 1fr;
+  }
   .ad-row-heading {
     flex-direction: column;
   }
@@ -541,9 +546,6 @@
   }
 }
 @media (max-width: 370px) {
-  .ad-filter-grid {
-    grid-template-columns: 1fr;
-  }
   .ad-header-main {
     flex-wrap: wrap;
   }

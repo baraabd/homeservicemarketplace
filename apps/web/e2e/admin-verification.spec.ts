@@ -1,4 +1,10 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import {
+  ProviderCapability,
+  type AdminProviderReview,
+  type AdminProviderSummary,
+  type VerificationPolicySummary,
+} from '@homeservicemarketplace/contracts';
 
 import { seedLanguage, signedInAdmin, stubApi } from './fixtures';
 
@@ -9,24 +15,19 @@ import { seedLanguage, signedInAdmin, stubApi } from './fixtures';
 // The component tests already prove each panel in isolation. What only a
 // browser can show is the reviewer's actual path through the console: sign in,
 // reach the section, work the queue, open a case, look at the evidence, decide,
-// and — on the OTHER axis, in its own block — act on the account.
+// and — on the OTHER axis, in its dossier block — act on provider status.
 //
-// Viewport policy follows the existing admin suite: the Admin Dashboard is a
-// declared desktop surface (a 256px sidebar beside a data table), so these
-// flows run at the desktop project only. Asserting them at 375px would be
-// testing a surface the console was never built for, and the brief asks for
-// desktop admin flows.
+// These historical reviewer flows retain their desktop project scope. The
+// redesigned queue, dossier and policies have their responsive acceptance
+// matrix in admin-provider-review and admin-review-workflow.real-api suites.
 //
 // The API is stubbed so each scenario starts from a known state. The
 // authorization behind these states is proved against the real API and database
 // by the API integration suite; what is under test here is what the reviewer
 // sees and can reach.
 
-// The console is built around a 256px sidebar beside a data table; the other
-// admin suite documents the same policy. Below this width these flows would be
-// asserting a surface the console was never designed for.
 const DESKTOP_WIDTH = 1440;
-const DESKTOP_ONLY = 'The admin console is a declared desktop surface; these are desktop flows.';
+const DESKTOP_ONLY = 'Historical desktop reviewer flows; responsive coverage is in review suites.';
 
 const QUEUE_ITEM = {
   id: 'case-1',
@@ -87,7 +88,7 @@ function verificationCase(over: Record<string, unknown> = {}) {
   };
 }
 
-const POLICY = {
+const POLICY: VerificationPolicySummary = {
   version: '2026.08-v1',
   country: 'SY',
   providerType: null,
@@ -97,12 +98,13 @@ const POLICY = {
   retiredAt: null,
   publishedByUserId: 'admin-1',
   isLive: true,
+  state: 'ACTIVE',
 };
 
-/** Provider rows for the ACCOUNT axis, each carrying what the server says is
- *  legal from its status. The drawer renders nothing without them — a missing
+/** Provider rows for the status axis, each carrying what the server says is
+ *  legal from its status. The dossier renders no action without them — a missing
  *  rule fails closed, which is itself part of what these rows exercise. */
-function providerRows() {
+function providerRows(): AdminProviderSummary[] {
   return [
     {
       id: 'pp-active',
@@ -151,6 +153,87 @@ function providerRows() {
   ];
 }
 
+/** Older provider profiles may have no application snapshot. They still have
+ * a dossier, with status controls driven by the separate detail endpoint. */
+function providerReview(row: AdminProviderSummary): AdminProviderReview {
+  return {
+    provider: {
+      id: row.id,
+      userId: row.userId,
+      displayName: row.displayName,
+      email: row.email,
+      accountStatus: 'ACTIVE',
+      providerStatus: row.status,
+      onboardingState: 'ACCEPTED',
+      verificationState: 'VERIFIED',
+      standingState: 'GOOD',
+    },
+    revision: 'a'.repeat(64),
+    submission: null,
+    current: {
+      schemaVersion: 1,
+      capturedAt: row.updatedAt,
+      providerProfileId: row.id,
+      profile: {
+        displayName: row.displayName,
+        profileImageUrl: null,
+        providerType: 'INDIVIDUAL',
+        legalBusinessName: null,
+        phoneNumber: null,
+        phoneVerifiedAt: null,
+        email: row.email,
+        emailVerified: true,
+        headline: null,
+        bio: null,
+        additionalInformation: null,
+        yearsOfExperience: null,
+        professionSince: null,
+        transportMode: null,
+        transportModes: [],
+      },
+      services: {
+        primaryGroupIds: [],
+        primarySpecialtyId: null,
+        specialties: [],
+        equipmentCodes: [],
+      },
+      workArea: {
+        country: row.serviceAreaCountry,
+        countryCode: 'SY',
+        city: row.serviceAreaCity,
+        lat: null,
+        lng: null,
+        radiusKm: null,
+        workshopAddressLine: null,
+        workshopLat: null,
+        workshopLng: null,
+        areas: [],
+      },
+      availability: { timezone: 'Asia/Damascus', intervals: [] },
+      consent: { acceptedAt: null, acceptedVersion: null },
+      portfolio: [],
+    },
+    verification: null,
+    categoryApplications: [],
+    capabilities: {
+      capabilities: Object.values(ProviderCapability).map((capability) => ({
+        capability,
+        allowed: capability === ProviderCapability.ViewOwnProfile,
+        ...(capability === ProviderCapability.ViewOwnProfile
+          ? {}
+          : { reason: 'NO_WORK_ACCESS' as const }),
+      })),
+      allowed: [ProviderCapability.ViewOwnProfile],
+      nextActions: ['CONTACT_SUPPORT'],
+      primaryReason: 'NO_WORK_ACCESS',
+    },
+    canWork: false,
+    availableActions: [],
+    blockers: [{ code: 'NOT_SUBMITTED' }],
+    permissions: { canDecide: true, canViewEvidence: true, canModeratePortfolio: true },
+  };
+}
+
 interface Recorded {
   path: string;
   body: unknown;
@@ -182,9 +265,10 @@ interface Options {
 async function openVerification(page: Page, options: Options = {}): Promise<void> {
   const lang = options.lang ?? 'en';
   const sent = options.sent ?? [];
+  const providers = providerRows();
 
   await seedLanguage(page, lang);
-  await stubApi(page, { me: signedInAdmin(), providers: providerRows() });
+  await stubApi(page, { me: signedInAdmin(), providers });
 
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
@@ -194,9 +278,8 @@ async function openVerification(page: Page, options: Options = {}): Promise<void
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
     if (method === 'POST') {
-      // A body-less POST (reactivate takes no reason) throws rather than
-      // returning null, and losing the record would make the assertion below
-      // silently vacuous.
+      // Record commands whether they use JSON or a body-less request. Losing
+      // a record must never make the command assertions silently vacuous.
       let body: unknown;
       try {
         body = request.postDataJSON();
@@ -228,6 +311,12 @@ async function openVerification(page: Page, options: Options = {}): Promise<void
       }
       return json({ items: options.queueItems ?? [QUEUE_ITEM], nextCursor: null });
     }
+    if (pathname.endsWith('/admin/settings')) {
+      return json({ values: {}, schema: [], lastUpdatedAt: null });
+    }
+    if (pathname.endsWith('/admin/verification/policies/options')) {
+      return json({ countries: [{ countryCode: 'SY', enabled: true }], categories: [] });
+    }
     if (pathname.includes('/admin/verification/policies')) {
       if (method === 'POST') return json({ policy: POLICY });
       return json({ policies: [POLICY] });
@@ -249,8 +338,20 @@ async function openVerification(page: Page, options: Options = {}): Promise<void
     // ── the ACCOUNT axis ─────────────────────────────────────────────────
     if (method === 'POST' && /\/admin\/providers\/[^/]+\/[a-z]+$/.test(pathname)) {
       const id = pathname.split('/admin/providers/')[1].split('/')[0];
-      const row = providerRows().find((p) => p.id === id);
-      return json({ ...row, status: pathname.endsWith('/suspend') ? 'SUSPENDED' : 'ACTIVE' });
+      const row = providers.find((p) => p.id === id);
+      if (!row) return json({ error: { code: 'NOT_FOUND' } }, 404);
+      const suspended = pathname.endsWith('/suspend');
+      row.status = suspended ? 'SUSPENDED' : 'ACTIVE';
+      row.availableActions = suspended ? ['reactivate'] : ['suspend'];
+      return json({ provider: row });
+    }
+    if (/\/admin\/providers\/[^/]+\/review$/.test(pathname)) {
+      const id = pathname.split('/admin/providers/')[1].split('/')[0];
+      const row = providers.find((provider) => provider.id === id);
+      return row ? json(providerReview(row)) : json({ error: { code: 'NOT_FOUND' } }, 404);
+    }
+    if (/\/admin\/providers\/[^/]+\/portfolio$/.test(pathname)) {
+      return json({ items: [], nextCursor: null });
     }
     if (/\/admin\/providers\/[^/]+\/verification$/.test(pathname)) {
       return json(null);
@@ -260,7 +361,7 @@ async function openVerification(page: Page, options: Options = {}): Promise<void
     }
     if (/\/admin\/providers\/[^/]+$/.test(pathname)) {
       const id = pathname.split('/admin/providers/')[1];
-      const row = providerRows().find((p) => p.id === id);
+      const row = providers.find((p) => p.id === id);
       return row ? json(row) : json({ success: false, error: { code: 'NOT_FOUND' } }, 404);
     }
 
@@ -275,6 +376,24 @@ async function openVerification(page: Page, options: Options = {}): Promise<void
   } else {
     await page.getByTestId('nav-identity-cases').click();
   }
+}
+
+async function openPolicySettings(page: Page, lang: 'en' | 'ar' = 'en'): Promise<void> {
+  await page.getByTestId('nav-settings').click();
+  await page.getByRole('link', { name: /Verification policies|سياسات التوثيق/ }).click();
+  await expect(page).toHaveURL(/\/admin\/settings\/verification-policies$/);
+  await expect(page.getByTestId('policy-panel')).toHaveAttribute(
+    'dir',
+    lang === 'ar' ? 'rtl' : 'ltr',
+  );
+  await expect(page.getByTestId('policy-new-version')).toBeEnabled();
+}
+
+async function openProviderDossier(page: Page, provider: string): Promise<void> {
+  await page.getByTestId('nav-providers').click();
+  await page.getByRole('link', { name: `Open profile ${provider}`, exact: true }).click();
+  await expect(page.getByTestId('admin-provider-review-workspace')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: provider, exact: true })).toBeVisible();
 }
 
 /** Open the one queue row and wait for the case behind it. */
@@ -487,9 +606,12 @@ test.describe('Admin verification — desktop reviewer flows', () => {
 
   test('policy versions are inspectable and append-only', async ({ page }) => {
     await openVerification(page);
+    await expect(page.getByTestId('policy-panel')).toHaveCount(0);
+    await openPolicySettings(page);
 
     const panel = page.getByTestId('policy-panel');
-    await expect(panel).toContainText('Policies are append-only');
+    await expect(panel).toContainText('Published versions are preserved.');
+    await expect(panel).toContainText('earlier cases keep their recorded policy.');
     await expect(page.getByTestId('policy-row-2026.08-v1')).toBeVisible();
     await expect(page.getByTestId('policy-live-2026.08-v1')).toHaveAttribute('data-live', 'true');
     // Editing a published version would change what a provider was judged
@@ -503,11 +625,11 @@ test.describe('Admin verification — the account axis', () => {
   test.skip(({ viewport }) => (viewport?.width ?? 0) < DESKTOP_WIDTH, DESKTOP_ONLY);
 
   for (const [flow, provider, label, path] of [
-    ['suspension', 'Working Provider', 'Suspend', '/v1/admin/providers/pp-active/suspend'],
+    ['suspension', 'Working Provider', 'Suspend provider', '/v1/admin/providers/pp-active/suspend'],
     [
       'reactivation',
       'Paused Provider',
-      'Reactivate',
+      'Reactivate provider',
       '/v1/admin/providers/pp-suspended/reactivate',
     ],
   ] as const) {
@@ -515,11 +637,40 @@ test.describe('Admin verification — the account axis', () => {
       const sent: Recorded[] = [];
       await openVerification(page, { sent });
 
-      await page.getByText(provider).click();
+      await openProviderDossier(page, provider);
       await expect(page.getByRole('button', { name: label })).toBeEnabled();
       await page.getByRole('button', { name: label }).click();
+      const dialog = page.getByRole('dialog', { name: label, exact: true });
+      await expect(dialog).toBeVisible();
+      const confirm = dialog.getByRole('button', { name: 'Confirm decision', exact: true });
+      if (flow === 'suspension') {
+        await expect(confirm).toBeDisabled();
+        await dialog.getByLabel('Reason for suspension').fill('  Confirmed conduct violation  ');
+      }
+      await expect(confirm).toBeEnabled();
+      await confirm.click();
 
       await expect.poll(() => sent.map((s) => s.path)).toContain(path);
+      expect(sent.filter((request) => request.path === path)).toEqual([
+        { path, body: flow === 'suspension' ? { reason: 'Confirmed conduct violation' } : {} },
+      ]);
+      await expect(dialog).toHaveCount(0);
+      await expect(
+        page.getByText('Provider status decision saved.', { exact: true }),
+      ).toBeVisible();
+      // Reactivation changes provider status only; an absent grant still denies work.
+      await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+      await expect(
+        page
+          .getByTestId('admin-provider-review-workspace')
+          .getByText('Can take work', { exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        page
+          .getByTestId('admin-provider-review-workspace')
+          .getByText('Not enabled', { exact: true })
+          .first(),
+      ).toBeVisible();
     });
   }
 
@@ -529,9 +680,12 @@ test.describe('Admin verification — the account axis', () => {
     // to click and hope.
     await openVerification(page);
 
-    await page.getByText('Working Provider').click();
-    await expect(page.getByRole('button', { name: 'Reactivate' })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Approve' })).toBeDisabled();
+    await openProviderDossier(page, 'Working Provider');
+    await expect(page.getByRole('button', { name: 'Suspend provider', exact: true })).toBeEnabled();
+    await expect(
+      page.getByRole('button', { name: 'Reactivate provider', exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByTestId('review-approve')).toHaveCount(0);
   });
 });
 
@@ -543,11 +697,13 @@ test.describe('Admin verification — Arabic', () => {
 
     await expect(page.getByTestId('admin-verification-workspace')).toHaveAttribute('dir', 'rtl');
     await expect(page.getByTestId('verification-queue')).toHaveAttribute('dir', 'rtl');
-    await expect(page.getByTestId('policy-panel')).toHaveAttribute('dir', 'rtl');
+    await expect(page.getByTestId('policy-panel')).toHaveCount(0);
     await expect(page.getByTestId('verification-queue')).toContainText('قائمة التحقق');
 
     await page.getByRole('button', { name: 'Pat Provider' }).click();
     await expect(page.getByTestId('case-actions')).toHaveAttribute('dir', 'rtl');
     await expect(page.getByTestId('case-action-reject')).toContainText('رفض');
+    await openPolicySettings(page, 'ar');
+    await expect(page.getByTestId('policy-panel')).toContainText('سياسات التوثيق');
   });
 });

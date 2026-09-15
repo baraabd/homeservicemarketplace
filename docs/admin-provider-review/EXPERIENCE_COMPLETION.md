@@ -39,10 +39,17 @@ limited to known Admin list routes. No new UI feature flag hides these entries.
 - At 1440px use the available content width; at 768px reflow controls and summary
   columns; at 390px stack rows/cards and maintain full-width, readable fields.
   Existing responsive primitives also support narrow 320px content.
+- Mobile filters occupy full rows so native selected values remain readable in
+  both languages. Route focus does not scroll headings under the sticky header;
+  section links share its measured height, and query-only filters keep position.
 - Use visible focus, labelled regions, 44px controls, RTL logical spacing and
   complete Arabic labels. Technical enum values remain API values, never labels.
 - Loading, empty, unavailable, forbidden, pending-save, stale-data and conflict
   states have distinct text and recovery. Failed mutation forms retain input.
+- Application status, identity-case progress and work eligibility remain distinct.
+  A null verification state means unverified, not absent documents. Undecided
+  submissions say they await a decision. Policy identifiers use explicit LTR
+  isolation inside Arabic content; free text determines its own direction.
 
 ## Data corrections
 
@@ -63,8 +70,17 @@ legacy events are not attributed to today's submission. Private notes require
 decision permission; portfolio events respect portfolio-read permission.
 
 Correction targets are a shared catalog of fields that the current Provider
-editors can actually change. The API validates task/field pairs and image
-ownership. Provider feedback retains the task link and displays the target field.
+editors can actually change. The API validates task/field pairs and item
+ownership. Provider feedback displays the target field and links to its real
+editor using validated `reviewField`/`reviewItem` query context, preserving
+the existing experience, gallery and consent sub-screen fragments. Focus is
+scoped to the current task, runs once per explicit navigation, and waits for a
+rendered target. Only owned gallery items or selected specialties register item
+anchors; foreign ids and unknown fields are ignored. User interaction cancels
+delayed focus, readonly tasks do not focus, and draft values are never changed
+by navigation. Evidence instructions retain the existing verification route.
+History hides cached content after session, permission or availability denials
+(401/403/404), including previously loaded private notes.
 
 ## Verification and evidence boundaries
 
@@ -78,6 +94,12 @@ results. Policy publication and retirement are verified through UI and API.
 The real runtime suite also captures queue, dossier and policy settings in
 English/Arabic, light/dark and 390/768/1440 widths. Screenshots must be inspected;
 their generation and an accessibility scan are not design approval by themselves.
+The protected image viewer also records desktop English/light, mobile Arabic/dark
+and tablet Arabic/light states, with dialog accessibility and restored-focus
+checks. Correction navigation checks focus on the actual editable city control,
+including after reload.
+Arabic mobile policy captures also cover a filled form with real catalog choices
+and a maximum-length version, plus its confirmation dialog before cancellation.
 Existing deterministic browser tests remain useful for rare conflict and denied
 states, but are not the sole integration evidence.
 
@@ -87,9 +109,11 @@ instance, production deployment or database migration has been verified.
 
 ## Rollout and rollback
 
-1. Apply the additive policy-management permission migration and normal seed
-   provisioning. Existing Admin role provisioning is preserved; policy access
-   can be narrowed by role configuration. See `POLICY_SETTINGS.md`.
+1. Apply the additive policy-management permission migration. It provisions the
+   permission for the existing Admin role; an existing environment does not need
+   development fixture seeding. Fresh environments use the normal documented
+   role provisioning. Policy access can be narrowed by role configuration.
+   See `POLICY_SETTINGS.md`.
 2. Build and deploy the frontend and backend from the reviewed commit together.
    Reusing an older running Vite process or Docker image does not update it.
 3. Verify normal navigation and the redirected old bookmark, then test one

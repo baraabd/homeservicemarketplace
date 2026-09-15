@@ -53,6 +53,20 @@ afterEach(() => {
 });
 
 describe('unified review history', () => {
+  it.each([401, 403, 404])(
+    'hides cached private history when a refresh denies access with %s',
+    async (status) => {
+      mock.onGet(PATH).replyOnce(200, { items: [event], nextCursor: null });
+      mock.onGet(PATH).reply(status);
+      setup();
+      expect(await screen.findByText('Internal only')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      await waitFor(() => expect(screen.queryByText('Internal only')).not.toBeInTheDocument());
+      expect(screen.queryByText('Reviewer One')).not.toBeInTheDocument();
+      expect(screen.queryByText('Confirm the city.')).not.toBeInTheDocument();
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    },
+  );
   it('shows the reviewer, recorded submission, private context and targeted provider instructions', async () => {
     mock.onGet(PATH).reply(200, { items: [event], nextCursor: null });
     setup();

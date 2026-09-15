@@ -74,7 +74,7 @@ describe('requested changes in the Provider journey', () => {
       }),
     ).toBe('/provider/verification');
     expect(feedbackTaskPath({ ...feedback.items[0], itemId: 'image-1' })).toBe(
-      '/provider/onboarding/PORTFOLIO#portfolio',
+      '/provider/onboarding/PORTFOLIO?reviewField=portfolio&reviewItem=image-1#portfolio',
     );
     expect(
       feedbackTaskPath({
@@ -82,7 +82,7 @@ describe('requested changes in the Provider journey', () => {
         taskId: 'SERVICES_EXPERIENCE',
         field: 'yearsOfExperience',
       }),
-    ).toBe('/provider/onboarding/SERVICES_EXPERIENCE#experience');
+    ).toBe('/provider/onboarding/SERVICES_EXPERIENCE?reviewField=yearsOfExperience#experience');
     expect(Object.keys(REVIEW_FEEDBACK_COPY.en)).toEqual(Object.keys(REVIEW_FEEDBACK_COPY.ar));
   });
 
@@ -91,9 +91,9 @@ describe('requested changes in the Provider journey', () => {
     expect(screen.getByText('نبذة عن المهني')).toBeInTheDocument();
     expect(
       feedbackTaskPath({ ...feedback.items[0], taskId: 'REVIEW_SUBMISSION', field: 'consent' }),
-    ).toBe('/provider/onboarding/REVIEW_SUBMISSION#terms');
+    ).toBe('/provider/onboarding/REVIEW_SUBMISSION?reviewField=consent#terms');
     expect(feedbackTaskPath({ ...feedback.items[0], field: 'portfolio' })).toBe(
-      '/provider/onboarding/PORTFOLIO#portfolio',
+      '/provider/onboarding/PORTFOLIO?reviewField=portfolio#portfolio',
     );
   });
 });

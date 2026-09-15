@@ -109,9 +109,12 @@ test('normal Admin entry reaches the submitted file, and a field correction reac
       .getByRole('button', { name: /^Review this task:/ })
       .click();
     await expect(providerPage).toHaveURL(/\/provider\/onboarding\/WORK_AREA/);
+    await expect(providerPage).toHaveURL(/reviewField=serviceAreaCity/);
+    await expect(providerPage.getByTestId('service-area-city')).toBeFocused();
     await expect(providerPage.getByTestId('review-feedback')).toContainText(message);
     await providerPage.reload();
     await expect(providerPage.getByTestId('review-feedback')).toContainText(message);
+    await expect(providerPage.getByTestId('service-area-city')).toBeFocused();
   } finally {
     await providerContext.close();
   }
@@ -131,7 +134,7 @@ test('normal Admin entry reaches the submitted file, and a field correction reac
 
 test('reviewing protected identity then approving in the Admin UI persists acceptance and opens work', async ({
   page,
-}) => {
+}, testInfo) => {
   const account = await submittedProvider({ evidence: true });
   expect((await api(account.jar, '/v1/provider/bids')).status).toBe(403);
   await enterAdmin(page);
@@ -143,17 +146,60 @@ test('reviewing protected identity then approving in the Admin UI persists accep
 
   const document = original.verification!.documents.find((item) => item.viewable)!;
   expect(document).toBeTruthy();
-  await page.getByTestId(`review-evidence-${document.id}`).click();
-  const viewer = page.getByTestId('identity-evidence-viewer');
-  await expect(viewer).toBeVisible();
-  const image = page.getByTestId('identity-evidence-image');
-  await expect(image).toHaveAttribute('src', /^blob:/);
-  await expect
-    .poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth))
-    .toBeGreaterThan(0);
-  await page.getByTestId('identity-evidence-zoom-in').click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
-  await expect(viewer).toHaveCount(0);
+  const initialViewport = page.viewportSize()!;
+  let language = 'en';
+  let currentTheme = 'light';
+  for (const variant of [
+    { width: 1440, height: 900, lang: 'en', theme: 'light' },
+    { width: 390, height: 844, lang: 'ar', theme: 'dark' },
+    { width: 768, height: 1024, lang: 'ar', theme: 'light' },
+  ]) {
+    await page.setViewportSize({ width: variant.width, height: variant.height });
+    if (language !== variant.lang) {
+      await page.getByRole('button', { name: 'Switch language', exact: true }).click();
+      language = variant.lang;
+    }
+    if (currentTheme !== variant.theme) {
+      const name =
+        language === 'ar'
+          ? variant.theme === 'dark'
+            ? 'الوضع الداكن'
+            : 'الوضع الفاتح'
+          : variant.theme === 'dark'
+            ? 'Dark theme'
+            : 'Light theme';
+      await page.getByRole('button', { name, exact: true }).click();
+      currentTheme = variant.theme;
+    }
+    const opener = page.getByTestId(`review-evidence-${document.id}`);
+    await opener.click();
+    const viewer = page.getByTestId('identity-evidence-viewer');
+    await expect(viewer).toBeVisible();
+    const image = page.getByTestId('identity-evidence-image');
+    await expect(image).toHaveAttribute('src', /^blob:/);
+    await expect
+      .poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+    await page.getByTestId('identity-evidence-zoom-in').click();
+    await recordAdminEvidence(
+      page,
+      testInfo,
+      `identity-viewer-${language}-${variant.theme}-${variant.width}`,
+      original,
+      { accessibilityScope: '[role="dialog"]', fullPage: false },
+    );
+    await page
+      .getByRole('dialog')
+      .getByRole('button', {
+        name: language === 'ar' ? 'إغلاق' : 'Close',
+        exact: true,
+      })
+      .click();
+    await expect(viewer).toHaveCount(0);
+    await expect(opener).toBeFocused();
+  }
+  await page.getByRole('button', { name: 'Switch language', exact: true }).click();
+  await page.setViewportSize(initialViewport);
 
   await page.getByTestId('review-approve').click();
   await page.getByTestId('review-approval-ack').check();
@@ -305,6 +351,58 @@ test.describe('real rendered Admin screens', () => {
           await expect(page.getByTestId('policy-loading')).toHaveCount(0);
           await expect(page.getByTestId('policy-new-version')).toBeEnabled();
           await recordAdminEvidence(page, testInfo, `policies-${lang}-${theme}-${width}`, review);
+          if (lang === 'ar' && width === 390) {
+            // Exercise long real options and the maximum supported version
+            // before reviewing the draft. Cancel keeps this visual flow read-only.
+            await page.getByTestId('policy-new-version').click();
+            const form = page.getByTestId('policy-publish-form');
+            const version = `2026.09-${'a'.repeat(53)}-v1`;
+            await page.getByTestId('policy-version').fill(version);
+            for (const testId of ['policy-country', 'policy-category']) {
+              const select = page.getByTestId(testId);
+              const longest = await select.locator('option').evaluateAll(
+                (options) =>
+                  options
+                    .map((option) => ({
+                      value: (option as HTMLOptionElement).value,
+                      text: option.textContent?.trim() ?? '',
+                      disabled: (option as HTMLOptionElement).disabled,
+                    }))
+                    .filter((option) => option.value && !option.disabled)
+                    .sort((first, second) => second.text.length - first.text.length)[0],
+              );
+              expect(longest, `${testId}: real options must be loaded`).toBeDefined();
+              await select.selectOption(longest!.value);
+              await expect(select).toHaveValue(longest!.value);
+            }
+            await page.getByTestId('policy-provider-type').selectOption('BUSINESS');
+            await expect(page.getByTestId('policy-kind-CATEGORY_LICENSE')).toBeChecked();
+            await expect(page.getByTestId('policy-version')).toHaveValue(version);
+            await recordAdminEvidence(
+              page,
+              testInfo,
+              `policy-form-${lang}-${theme}-${width}`,
+              review,
+              { accessibilityScope: '[data-testid="policy-publish-form"]' },
+            );
+            await page.getByTestId('policy-publish').click();
+            const dialog = page.getByRole('dialog');
+            await expect(dialog).toContainText(version);
+            await expect(dialog.getByTestId('policy-confirm')).toBeEnabled();
+            await recordAdminEvidence(
+              page,
+              testInfo,
+              `policy-confirmation-${lang}-${theme}-${width}`,
+              review,
+              { accessibilityScope: '[role="dialog"]', fullPage: false },
+            );
+            await dialog.getByRole('button', { name: 'إلغاء', exact: true }).click();
+            await expect(dialog).toHaveCount(0);
+            await expect(page.getByTestId('policy-publish')).toBeFocused();
+            await expect(page.getByTestId('policy-version')).toHaveValue(version);
+            await form.getByRole('button', { name: 'إلغاء', exact: true }).click();
+            await expect(form).toHaveCount(0);
+          }
         }
         expect(traffic.length).toBeGreaterThan(0);
         expect(traffic.filter((entry) => entry.status >= 400)).toEqual([]);

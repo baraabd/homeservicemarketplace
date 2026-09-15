@@ -233,7 +233,8 @@
 }
 .ar-decision {
   position: sticky;
-  top: 100px;
+  top: var(--admin-header-offset, 100px);
+  scroll-margin-top: var(--admin-header-offset, 110px);
 }
 .ar-tabs {
   display: flex;
@@ -282,8 +283,9 @@
   flex-shrink: 0;
   color: var(--ar-accent);
 }
-.ar-section {
-  scroll-margin-top: 110px;
+.ar-section,
+#admin-content {
+  scroll-margin-top: var(--admin-header-offset, 110px);
 }
 .ar-section-header {
   display: flex;

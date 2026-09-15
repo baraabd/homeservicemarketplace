@@ -272,7 +272,11 @@ export function AvatarUploader({
   const hasPhoto = Boolean(shown);
 
   return (
-    <div className="flex flex-col gap-3" data-testid="avatar-uploader">
+    <div
+      className="flex flex-col gap-3"
+      data-testid="avatar-uploader"
+      data-review-field="profileImageUrl"
+    >
       {/* ── Nothing uploaded yet: the approved upload surface ─────────────
           Sprint 09B.29 Phase 5A. `.hsm-upload` — one dashed box, one camera
           glyph, one sentence — replaces the titled card with a grey circle and

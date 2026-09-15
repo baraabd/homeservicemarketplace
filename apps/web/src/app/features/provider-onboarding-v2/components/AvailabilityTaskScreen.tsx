@@ -254,6 +254,7 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
         aria-label={copy.daysLegend}
         className="flex flex-wrap gap-[7px]"
         data-testid="day-toggles"
+        data-review-field="availability"
       >
         {copy.dayAbbrev.map((abbrev, day) => {
           const on = selectedDays.includes(day);
