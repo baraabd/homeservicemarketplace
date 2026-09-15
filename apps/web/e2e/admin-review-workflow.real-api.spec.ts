@@ -2,9 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import {
   ADMIN_PROVIDER_REVIEW_TASK_IDS,
+  type AdminPortfolioItem,
+  type AdminPortfolioListResponse,
+  type AdminProviderReviewHistoryResponse,
   type AdminProviderReviewMutationResponse,
   type ListVerificationPoliciesResponse,
   type ProviderOnboardingDraftView,
+  type ProviderPortfolioListResponse,
 } from '@homeservicemarketplace/contracts';
 
 import { adminJar, api, loginViaUi, REAL_API, type Account } from './real-api';
@@ -230,6 +234,105 @@ test('reviewing protected identity then approving in the Admin UI persists accep
   expect(persisted.canWork).toBe(true);
   expect((await capabilitiesOf(account.jar)).allowed).toContain('SUBMIT_BID');
   expect((await api(account.jar, '/v1/provider/bids')).status).toBe(200);
+});
+
+test('inspecting and approving a real portfolio image persists its revision without granting work', async ({
+  page,
+}, testInfo) => {
+  const account = await submittedProvider({ portfolio: true });
+  const admin = await adminJar();
+  const portfolioPath = `/v1/admin/providers/${account.profileId}/portfolio`;
+  const before = await api<AdminPortfolioListResponse>(admin, portfolioPath);
+  expect(before.status).toBe(200);
+  expect(before.body.items).toHaveLength(1);
+  const item = before.body.items[0]!;
+  expect(item.moderationState).toBe('PENDING');
+  expect(item.reviewBlockedReason).toBeNull();
+  expect(item.availableActions).toContain('APPROVE');
+
+  await enterAdmin(page);
+  const original = await openSubmittedProvider(page, account);
+  expect(original.canWork).toBe(false);
+  expect((await capabilitiesOf(account.jar)).allowed).not.toContain('SUBMIT_BID');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Switch language', exact: true }).click();
+  const mediaResponse = page.waitForResponse(
+    (response) =>
+      response.url() === `${REAL_API}${portfolioPath}/${item.id}/media` &&
+      response.request().method() === 'GET',
+  );
+  await page.getByTestId(`review-portfolio-open-${item.id}`).click();
+  expect((await mediaResponse).status()).toBe(200);
+  const dialog = page.getByRole('dialog');
+  const image = dialog.getByRole('img');
+  await expect(image).toHaveAttribute('src', /^blob:/);
+  await expect
+    .poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+  await expect(dialog.getByRole('button', { name: 'قبول الصورة', exact: true })).toBeEnabled();
+  await recordAdminEvidence(page, testInfo, 'portfolio-inspection-ar-light-390', original, {
+    accessibilityScope: '[role="dialog"]',
+    fullPage: false,
+  });
+  await dialog.getByRole('button', { name: 'قبول الصورة', exact: true }).click();
+  const decisionResponse = page.waitForResponse(
+    (response) =>
+      response.url() === `${REAL_API}${portfolioPath}/${item.id}/review` &&
+      response.request().method() === 'PATCH',
+  );
+  await page.getByTestId('review-portfolio-confirm').click();
+  const decision = await decisionResponse;
+  expect(decision.request().postDataJSON()).toEqual({
+    action: 'APPROVE',
+    expectedRevision: item.revision,
+  });
+  expect(decision.status()).toBe(200);
+  expect((await decision.json()) as AdminPortfolioItem).toMatchObject({
+    id: item.id,
+    moderationState: 'APPROVED',
+    revision: item.revision + 1,
+  });
+  await expect(dialog).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId(`review-portfolio-${item.id}`)).toContainText('مقبول');
+  await expect(page.getByTestId('review-history')).toContainText('تمت الموافقة على صورة العمل');
+
+  const after = await api<AdminPortfolioListResponse>(admin, portfolioPath);
+  expect(after.status).toBe(200);
+  const approved = after.body.items.find((entry) => entry.id === item.id);
+  expect(approved).toMatchObject({
+    moderationState: 'APPROVED',
+    revision: item.revision + 1,
+    moderatedAt: expect.any(String),
+    history: expect.arrayContaining([
+      expect.objectContaining({ action: 'APPROVED', revision: item.revision + 1 }),
+    ]),
+  });
+  const own = await api<ProviderPortfolioListResponse>(account.jar, '/v1/me/provider/portfolio');
+  expect(own.status).toBe(200);
+  expect(own.body.items.find((entry) => entry.id === item.id)).toMatchObject({
+    moderationState: 'APPROVED',
+    moderationReason: null,
+  });
+  const history = await api<AdminProviderReviewHistoryResponse>(
+    admin,
+    `/v1/admin/providers/${account.profileId}/review/history`,
+  );
+  expect(history.status).toBe(200);
+  expect(history.body.items).toContainEqual(
+    expect.objectContaining({
+      kind: 'PORTFOLIO_APPROVED',
+      subject: expect.objectContaining({ id: item.id }),
+      contentRevision: item.revision + 1,
+      submission: null,
+    }),
+  );
+  const persisted = await providerApplicationReview(account);
+  expect(persisted.provider.providerStatus).toBe('PENDING_REVIEW');
+  expect(persisted.canWork).toBe(false);
+  expect(persisted.verification?.workAccess ?? null).toBeNull();
+  expect((await capabilitiesOf(account.jar)).allowed).not.toContain('SUBMIT_BID');
+  expect((await api(account.jar, '/v1/provider/bids')).status).toBe(403);
 });
 
 test('legacy entry has no policy editor; Settings publishes a scoped license policy and retires it', async ({

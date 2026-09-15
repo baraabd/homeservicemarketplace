@@ -100,6 +100,9 @@ checks. Correction navigation checks focus on the actual editable city control,
 including after reload.
 Arabic mobile policy captures also cover a filled form with real catalog choices
 and a maximum-length version, plus its confirmation dialog before cancellation.
+An Arabic mobile portfolio dialog uses an image uploaded through the real public
+media flow; approval checks its exact revision, both Admin and Provider persisted
+views, and the audit timeline while work access remains denied.
 Existing deterministic browser tests remain useful for rare conflict and denied
 states, but are not the sole integration evidence.
 
@@ -118,10 +121,20 @@ instance, production deployment or database migration has been verified.
    Reusing an older running Vite process or Docker image does not update it.
 3. Verify normal navigation and the redirected old bookmark, then test one
    genuine submitted application in the intended environment.
-4. Existing verification/work-enforcement flags still govern server eligibility;
-   this UI update neither enables those flags nor bypasses their policy.
-5. Roll back frontend/backend builds together if required. The additive grant
+4. Admin destinations have no new UI flag. Field-focused Provider correction
+   links use the existing V2 task editors: build with
+   `VITE_PROVIDER_ONBOARDING_V2=true` and restart Vite after changing local env.
+   A nonempty `localStorage['hsm.ff.providerOnboardingV2']` override wins over
+   the build value in either direction; an unset/unrecognized build value is OFF.
+   Remove only that override when evaluating the deployment default. CI tests
+   the real V2 route ON; the user's running build and production flag are unknown.
+5. Existing `VERIFICATION_ENFORCED` and `WORK_ACCESS_ENFORCED` server flags still
+   govern eligibility. Admin runtime acceptance runs both ON; this UI update
+   neither changes their deployment values nor bypasses their policy.
+6. Roll back frontend/backend builds together if required. The additive grant
    migration can remain; do not erase policy versions or historical decisions.
+   Turning the existing V2 build flag OFF returns the Provider wizard after a
+   rebuild, subject to the same browser override; persisted corrections remain.
 
 Do not remove the development/test policies visible in the original screenshot
 without checking references and environment ownership. This change does not

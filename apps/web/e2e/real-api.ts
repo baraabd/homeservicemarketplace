@@ -468,9 +468,11 @@ export async function adminJar(): Promise<Jar> {
  * portfolio item exists the way one actually comes to exist — presign, upload,
  * register — so the thing under test (the ORDER) is the only part the test
  * performs itself.
+ * Encoded from phase3-activation's valid EVIDENCE_PNG generator; keeping the
+ * bytes here avoids a circular import between the two HTTP helpers.
  */
 const TINY_PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==',
   'base64',
 );
 
