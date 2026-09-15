@@ -455,6 +455,26 @@ jobs:
             e2e/provider-onboarding-v2-real-api.spec.ts \
             e2e/provider-onboarding-v2-persistence.spec.ts \
             --project=chromium-desktop --workers=1
+      - name: Accept repaired Provider input, session gates and rendered screens
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/provider-repairs-report
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/provider-onboarding-repairs.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --output=test-results/provider-repairs
+      - name: Upload Provider repair runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: provider-onboarding-repairs-real-api-evidence
+          path: |
+            apps/web/test-results/provider-repairs/
+            apps/web/test-results/provider-repairs-report/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed

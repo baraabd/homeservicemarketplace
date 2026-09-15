@@ -139,13 +139,8 @@ test.describe('provider onboarding v2 — real browser, real API', () => {
 
     await page.goto('/provider');
 
-    // `/provider` is a gate, not a redirect: an unfinished provider is offered
-    // the way in rather than thrown at it. With the flag on, that door opens
-    // the V2 route; with it off, the same control opens the legacy wizard in
-    // place (asserted above). Same button, two surfaces — which is exactly
-    // what makes the flag a UX rollback rather than a deploy.
-    await page.getByRole('button', { name: 'Continue onboarding' }).click();
-
+    // Server capabilities route incomplete V2 providers straight to their
+    // application. A fresh login must never mount the opportunities workspace.
     await expect(page).toHaveURL(/\/provider\/onboarding$/);
     await expect(page.getByTestId('onboarding-v2-shell')).toBeVisible();
   });

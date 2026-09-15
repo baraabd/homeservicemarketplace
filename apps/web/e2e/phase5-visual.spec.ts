@@ -8,6 +8,10 @@ import {
   LOCALES,
   PROVISIONAL_ROOT,
   REQUIRED_AXE_TAGS,
+  ONBOARDING_REPAIR_REVISION,
+  revisionChecks,
+  revisionProblems,
+  type Locale,
 } from './phase5-evidence-ledger';
 import { PHASE5_STATES, type Phase5State } from './phase5-visual-states';
 import { assertFontsReady, freezeMotion } from './prototype-assets';
@@ -78,6 +82,54 @@ async function settle(page: Page, state: Phase5State): Promise<void> {
   );
 }
 
+/** Measured presentation evidence for the user's scoped repair. This does not
+ * claim GPS permission, dragging, saving or server capability correctness;
+ * those belong to provider-onboarding-repairs.real-api.spec.ts. */
+async function captureRevision(page: Page, state: Phase5State, locale: Locale) {
+  const checks = revisionChecks(state.id, locale);
+  if (checks.length === 0) return null;
+  // Leaflet is lazy-loaded; a shell being ready is not proof its map is ready.
+  for (const check of checks)
+    await page.locator(check.selector).first().waitFor({ state: 'attached' });
+  const observations = await page.evaluate((requirements) => {
+    const rect = (element: Element | null) => {
+      if (!element) return null;
+      const { x, y, width, height } = element.getBoundingClientRect();
+      return { x, y, width, height };
+    };
+    return {
+      lang: document.documentElement.lang.split('-')[0],
+      dir: document.documentElement.dir,
+      documentWidth: document.documentElement.scrollWidth,
+      shell: rect(document.querySelector('[data-testid="onboarding-v2-shell"]')),
+      main: rect(document.querySelector('main')),
+      footer: rect(document.querySelector('[data-testid="onboarding-v2-sticky"]')),
+      elements: requirements.map((check) => {
+        const elements = [...document.querySelectorAll<HTMLElement>(check.selector)];
+        return {
+          key: check.key,
+          texts: elements.map((element) =>
+            (element.innerText.trim() || element.getAttribute('aria-label') || '').replace(
+              /\s+/g,
+              ' ',
+            ),
+          ),
+          rects: elements.map(rect),
+        };
+      }),
+    };
+  }, checks);
+  return {
+    revision: ONBOARDING_REPAIR_REVISION,
+    runId: RUN_ID,
+    stateId: state.id,
+    locale,
+    route: state.route,
+    viewport: CANONICAL_VIEWPORT,
+    ...observations,
+  };
+}
+
 test.describe('Phase 5A — approved states, EN and AR at 390x844', () => {
   test.describe.configure({ timeout: 180_000 });
 
@@ -96,6 +148,9 @@ test.describe('Phase 5A — approved states, EN and AR at 390x844', () => {
         await page.goto(state.route);
         await reachState(page, state);
         await settle(page, state);
+
+        const revision = await captureRevision(page, state, locale);
+        if (revision) writeArtifact(dir, 'revision.json', `${JSON.stringify(revision, null, 2)}\n`);
 
         const actual = await page.screenshot();
         writeArtifact(dir, 'actual.png', actual);
@@ -205,6 +260,9 @@ test.describe('Phase 5A — approved states, EN and AR at 390x844', () => {
               diffPixelRatio: outcome.diffPixelRatio,
               comparable: outcome.comparable,
               note: outcome.note,
+              acceptance: revision
+                ? ONBOARDING_REPAIR_REVISION
+                : 'IMMUTABLE_PROTOTYPE_PIXEL_PARITY',
             },
             null,
             2,
@@ -247,7 +305,22 @@ test.describe('Phase 5A — approved states, EN and AR at 390x844', () => {
           axe.violations.map((v) => `${v.id} (${v.nodes.length})`),
           'accessibility violations',
         ).toEqual([]);
-        expect(outcome.diffPixelRatio, 'diffPixelRatio').toBeLessThanOrEqual(0.005);
+        if (revision) {
+          expect(
+            revisionProblems(revision, state, locale, RUN_ID),
+            'revised presentation measurements',
+          ).toEqual([]);
+          // Keep a second, explicitly labelled capture of long revised content
+          // so the weekly schedule can be visually reviewed below the editor.
+          await page.evaluate(() => {
+            const main = document.querySelector('main');
+            if (main) main.scrollTop = main.scrollHeight;
+          });
+          await freezeMotion(page);
+          writeArtifact(dir, 'revision-detail.png', await page.screenshot());
+        } else {
+          expect(outcome.diffPixelRatio, 'diffPixelRatio').toBeLessThanOrEqual(0.005);
+        }
       });
     }
   }

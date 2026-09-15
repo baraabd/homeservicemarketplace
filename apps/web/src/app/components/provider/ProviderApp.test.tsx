@@ -1,3 +1,4 @@
+import { WORKING_CAPABILITIES } from '../../../test-support/provider-capability-fixtures';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -145,6 +146,7 @@ let qc: QueryClient;
 const ORIGINAL_FETCH = globalThis.fetch;
 beforeEach(() => {
   mock = new MockAdapter(api);
+  mock.onGet('/v1/me/provider/capabilities').reply(200, WORKING_CAPABILITIES);
   qc = createAuthQueryClient();
   // Sprint 7.x — LiveJobsScreen now forward-geocodes the provider's
   // serviceAreaCity through Nominatim when lat/lng are null. Stub
@@ -393,25 +395,15 @@ describe('ProviderApp — non-provider onboarding', () => {
     // No client-supplied body — userId comes from the session only.
     expect(upgradeBody === null || upgradeBody === '').toBe(true);
 
-    // ...and the cache is actually seeded. The test's name has always promised
-    // that and never checked it; the old comment deferred to the shell-identity
-    // tests, which start from a different state and so cannot catch a
-    // regression in THIS transition.
-    //
-    // The assertion has to be chosen carefully, because the obvious candidates
-    // are both vacuous — verified by deleting the `setQueryData` call and
-    // watching them still pass:
-    //   - "Grace Hopper" renders from the AUTH identity via
-    //     deriveShellIdentity, with or without a profile in the cache.
-    //   - "the CTA disappears" is briefly true during the post-mutation
-    //     refetch, when the query's 403 error is cleared before the next
-    //     response pins it again.
-    //
-    // `completedJobs` has no such second source. It is read straight off
-    // profileQuery.data.profile, and the GET is still mocked 403 here, so the
-    // only thing that can put 540 on the screen is onSuccess having seeded the
-    // cache. Deleting the seed now fails this line, which is the point.
-    expect(await screen.findByText('540')).toBeInTheDocument();
+    // The mutation seeds the profile cache even if session synchronisation
+    // subsequently fails. A still-forbidden GET must not expose that cached
+    // profile as proof of access. Inspect the cache fact this test promises.
+    await waitFor(() =>
+      expect(
+        qc.getQueryData<{ profile: typeof MOCK_PROFILE }>(['provider', 'profile', 'get'])?.profile
+          .completedJobs,
+      ).toBe(540),
+    );
   });
 
   it('shows the safe upgrade error when POST /upgrade fails (no raw payload)', async () => {
@@ -450,10 +442,10 @@ describe('ProviderApp — shell top bar identity', () => {
     mock.onGet('/v1/me/provider/profile').reply(403);
 
     renderProvider();
-    // The Bids tab renders the top bar (Live Jobs hides it).
-    // Phase 4: the shell mounts only once the provider profile query has
-    // settled (no marketplace flash), so the tab bar must be AWAITED.
-    fireEvent.click(await screen.findByRole('link', { name: /^my bids|عروضي/i }));
+    // The activation profile renders the auth identity while work links
+    // remain unavailable to a user with no provider profile.
+    await openProfileTab();
+    expect(screen.queryByRole('link', { name: /^my bids|عروضي/i })).toBeNull();
 
     await waitFor(() => expect(screen.getAllByText('Grace Hopper').length).toBeGreaterThan(0));
     expect(screen.queryByText(/Omar Al-Khalid/i)).toBeNull();

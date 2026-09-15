@@ -1,4 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { ProviderCapabilitiesResponse } from '@homeservicemarketplace/contracts';
+
+import {
+  APPLYING_CAPABILITIES,
+  SUSPENDED_CAPABILITIES,
+  WORKING_CAPABILITIES,
+} from '../src/test-support/provider-capability-fixtures';
+import { SUBMITTED_CAPABILITIES } from './provider-capabilities-fixtures';
 
 import {
   PROVIDER_STATUSES,
@@ -36,6 +44,16 @@ const PROVIDER_ME = {
   emailVerifiedAt: '2026-08-01T00:00:00.000Z',
   mfaEnabled: false,
   roles: ['customer', 'provider'],
+};
+
+// Scenario responses are explicit: account status and profile presentation are
+// not permissions. In particular, a returned application can still be completed.
+const CAPABILITIES_BY_SCENARIO: Record<ProviderStatus, ProviderCapabilitiesResponse> = {
+  DRAFT: APPLYING_CAPABILITIES,
+  PENDING_REVIEW: SUBMITTED_CAPABILITIES,
+  ACTIVE: WORKING_CAPABILITIES,
+  SUSPENDED: SUSPENDED_CAPABILITIES,
+  REJECTED: APPLYING_CAPABILITIES,
 };
 
 function profileFor(status: ProviderStatus) {
@@ -87,6 +105,7 @@ async function openProvider(
       route.fulfill({ status: s, contentType: 'application/json', body: JSON.stringify(body) });
 
     if (url.includes('/auth/me')) return json(PROVIDER_ME);
+    if (url.includes('/me/provider/capabilities')) return json(CAPABILITIES_BY_SCENARIO[status]);
     if (url.includes('/me/provider/profile')) {
       if (delayProfileMs > 0) await new Promise((r) => setTimeout(r, delayProfileMs));
       return json(profileFor(status));

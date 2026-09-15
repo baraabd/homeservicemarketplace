@@ -1,4 +1,10 @@
-import type { ProviderOnboardingIssue } from '@homeservicemarketplace/contracts';
+import {
+  knownTitleSlugs,
+  suggestProfessionalTitle,
+  validateProfessionalTitle,
+  type ProviderOnboardingIssue,
+} from '@homeservicemarketplace/contracts';
+import { buildHub } from './hub/onboarding-hub-resolver';
 
 import {
   ISSUE_OWNER,
@@ -90,6 +96,27 @@ describe('provider onboarding completeness policy', () => {
   });
 
   describe('minimum useful length', () => {
+    it.each(
+      knownTitleSlugs().flatMap((slug) =>
+        (['en', 'ar'] as const).map((lang) => [slug, lang] as const),
+      ),
+    )(
+      'accepts the generated %s title in %s and completes the public-profile task',
+      (slug, lang) => {
+        const headline = suggestProfessionalTitle({
+          slug,
+          labelEn: 'Trade',
+          labelAr: 'مهنة',
+          lang,
+        });
+        expect(validateProfessionalTitle(headline)).toEqual({ ok: true });
+        const issues = evaluateOnboarding(complete({ headline }));
+        expect(issues).not.toContainEqual({ field: 'headline', code: 'TOO_SHORT' });
+        const hub = buildHub({ issues, lifecycleState: 'DRAFT' });
+        expect(hub.tasks.find((task) => task.id === 'PORTFOLIO')?.status).toBe('COMPLETE');
+      },
+    );
+
     it('distinguishes TOO_SHORT from REQUIRED for the headline', () => {
       // Present but useless is a different problem from absent, and the app
       // should tell the user which one it is.

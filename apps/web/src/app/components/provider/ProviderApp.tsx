@@ -1,12 +1,17 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Map, Briefcase, Wallet, User, MessageCircle } from 'lucide-react';
-import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router';
-import type { ProviderProfileSummary } from '@homeservicemarketplace/contracts';
+import { Navigate, NavLink, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router';
+import type {
+  ProviderCapabilitiesResponse,
+  ProviderProfileSummary,
+} from '@homeservicemarketplace/contracts';
 
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { isProviderOnboardingV2Enabled } from '../../../lib/feature-flags';
 import { useProviderProfile } from '../../hooks/provider/useProviderProfile';
+import { useProviderCapabilities } from '../../hooks/provider/useProviderCapabilities';
+import { ProviderAccessUnavailable } from './ProviderAccessUnavailable';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { ProviderStatusState } from './ProviderStatusState';
 import { ProviderOnboardingWizard } from './onboarding/ProviderOnboardingWizard';
@@ -49,15 +54,10 @@ import {
 // what would actually move it; that is a separate change, and it belongs to
 // the whole router rather than to this file.
 //
-// WHAT DELIBERATELY DID NOT CHANGE
-//
-// Every gating rule below is carried over verbatim, because it is a
-// server-mirroring rule and not a layout decision. The statuses that may enter
-// onboarding still mirror COMPLETE_ONBOARDING (docs/adr/0005); marketplace
-// screens still never mount for a non-ACTIVE provider; the first-resolution
-// gate still cannot re-open. Routing changed where a provider can BE. It
-// changed nothing about what they are allowed to DO — that stays with the
-// server, which answers 403 regardless of what this file renders.
+// Workspace admission reads the canonical capability endpoint. A legacy ACTIVE
+// profile can still have incomplete onboarding, a suspended standing, or an
+// expired work grant. None of those may be converted into access by logging in.
+// Backend guards independently enforce the same decisions on every request.
 
 // Route-level code splitting. Jobs pulls leaflet and wallet pulls recharts;
 // neither belongs in the chunk a provider downloads to look at their profile.
@@ -93,17 +93,14 @@ export const PROVIDER_NAV = [
   { to: '/provider/profile', icon: User, labelEn: 'Profile', labelAr: 'ملفي' },
 ] as const;
 
-/** The statuses that may reach onboarding — a mirror of the server's
- *  COMPLETE_ONBOARDING capability (docs/adr/0005), not a second opinion.
- *  DRAFT and REJECTED are still drafting; PENDING_REVIEW may keep editing
- *  while queued; SUSPENDED may not. */
-function canEnterOnboarding(profile: ProviderProfileSummary | null): boolean {
-  return (
-    profile !== null &&
-    (profile.status === 'DRAFT' ||
-      profile.status === 'PENDING_REVIEW' ||
-      profile.status === 'REJECTED')
-  );
+type AllowedCapabilities = ProviderCapabilitiesResponse['allowed'];
+
+/** Route declarations mirror their API controllers' capability requirements. */
+function navigationAllowed(to: string, allowed: AllowedCapabilities): boolean {
+  if (to === '/provider/profile') return true; // own profile/activation remains reachable
+  if (to === '/provider/wallet') return allowed.includes('VIEW_EARNINGS');
+  if (to === '/provider/messages') return allowed.includes('MANAGE_BOOKINGS');
+  return allowed.includes('VIEW_MARKETPLACE');
 }
 
 /**
@@ -190,7 +187,7 @@ function ProviderTopBar({
  * previous version compared against `activeTab`, a second copy of the same
  * fact.
  */
-function ProviderBottomNav() {
+function ProviderBottomNav({ allowed }: { allowed: AllowedCapabilities }) {
   const { lang } = useLang();
   return (
     <nav
@@ -199,44 +196,46 @@ function ProviderBottomNav() {
       data-testid="provider-bottom-nav"
     >
       <div className="mx-auto flex w-full max-w-2xl items-center justify-around px-2 pt-2 pb-3">
-        {PROVIDER_NAV.map(({ to, icon: Icon, labelEn, labelAr }) => (
-          <NavLink
-            key={to}
-            to={to}
-            data-testid={`provider-nav-${to.split('/').pop()}`}
-            className="relative flex flex-col items-center gap-1 px-4 py-1.5 rounded-2xl transition-all min-w-[60px]"
-          >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <motion.div
-                    layoutId="provider-nav-pill"
-                    className="absolute inset-0 bg-blue-50 dark:bg-blue-900/20 rounded-2xl"
-                    transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+        {PROVIDER_NAV.filter(({ to }) => navigationAllowed(to, allowed)).map(
+          ({ to, icon: Icon, labelEn, labelAr }) => (
+            <NavLink
+              key={to}
+              to={to}
+              data-testid={`provider-nav-${to.split('/').pop()}`}
+              className="relative flex flex-col items-center gap-1 px-4 py-1.5 rounded-2xl transition-all min-w-[60px]"
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <motion.div
+                      layoutId="provider-nav-pill"
+                      className="absolute inset-0 bg-blue-50 dark:bg-blue-900/20 rounded-2xl"
+                      transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+                    />
+                  )}
+                  <Icon
+                    size={22}
+                    className={`relative z-10 transition-colors ${isActive ? 'text-pv-accent' : 'text-pv-muted'}`}
                   />
-                )}
-                <Icon
-                  size={22}
-                  className={`relative z-10 transition-colors ${isActive ? 'text-pv-accent' : 'text-pv-muted'}`}
-                />
-                {/* Sprint 09B.29 — semantic tokens, not literals.
-                 *
-                 * The inactive label was `#94a3b8` (2.56:1 on the white bar);
-                 * at 10px the large-text allowance does not apply, so axe
-                 * reported it SERIOUS on every workspace screen.
-                 * `--pv-text-muted` is 7.58:1 and `--pv-accent` 5.17:1, and
-                 * both already carry dark-theme values. */}
-                <span
-                  className={`relative z-10 text-[10px] ${
-                    isActive ? 'font-bold text-pv-accent' : 'font-medium text-pv-muted'
-                  }`}
-                >
-                  {lang === 'ar' ? labelAr : labelEn}
-                </span>
-              </>
-            )}
-          </NavLink>
-        ))}
+                  {/* Sprint 09B.29 — semantic tokens, not literals.
+                   *
+                   * The inactive label was `#94a3b8` (2.56:1 on the white bar);
+                   * at 10px the large-text allowance does not apply, so axe
+                   * reported it SERIOUS on every workspace screen.
+                   * `--pv-text-muted` is 7.58:1 and `--pv-accent` 5.17:1, and
+                   * both already carry dark-theme values. */}
+                  <span
+                    className={`relative z-10 text-[10px] ${
+                      isActive ? 'font-bold text-pv-accent' : 'font-medium text-pv-muted'
+                    }`}
+                  >
+                    {lang === 'ar' ? labelAr : labelEn}
+                  </span>
+                </>
+              )}
+            </NavLink>
+          ),
+        )}
       </div>
     </nav>
   );
@@ -245,9 +244,11 @@ function ProviderBottomNav() {
 /** Chrome around every workspace route: top bar, notifications, bottom nav. */
 function WorkspaceChrome({
   identity,
+  allowed,
   children,
 }: {
   identity: { displayName: string; initials: string };
+  allowed: AllowedCapabilities;
   children: React.ReactNode;
 }) {
   const { lang, dir, darkMode } = useLang();
@@ -294,14 +295,33 @@ function WorkspaceChrome({
         </AnimatePresence>
       </div>
 
-      <ProviderBottomNav />
+      <ProviderBottomNav allowed={allowed} />
     </div>
   );
 }
 
 export function ProviderApp() {
+  const isActivationEntry = Boolean(useMatch('/provider/activate'));
+  // Activation owns a session transition. Keep its query observers separate:
+  // leaving it must create a fresh capability observer, even when this shell
+  // previously rendered an allowed workspace before visiting activation.
+  return (
+    <ProviderAppRoutes
+      key={isActivationEntry ? 'activation' : 'workspace'}
+      checksWorkspaceAccess={!isActivationEntry}
+    />
+  );
+}
+
+function ProviderAppRoutes({ checksWorkspaceAccess }: { checksWorkspaceAccess: boolean }) {
   const navigate = useNavigate();
+  // Activation owns its upgrade + verified session handoff. Querying provider
+  // permissions before that handoff would race the still-customer token and
+  // unmount the very screen that can recover it. Its destination is guarded.
   const profileQuery = useProviderProfile();
+  const capsQuery = useProviderCapabilities(
+    checksWorkspaceAccess && Boolean(profileQuery.data?.profile),
+  );
   const authIdentity = useAuthIdentity();
   const onboardingV2 = isProviderOnboardingV2Enabled();
 
@@ -324,28 +344,58 @@ export function ProviderApp() {
   if (!profileQuery.isFetched) return <ShellSpinner testId="provider-shell-loading" />;
 
   const profile = profileQuery.data?.profile ?? null;
-  const isActive = profile?.status === 'ACTIVE';
-  const mayOnboard = canEnterOnboarding(profile);
+  // Wait for this entry's server answer even when another screen left an
+  // allowed result in cache. Later invalidations do not reopen the spinner,
+  // but a denied/error result immediately removes workspace content.
+  if (checksWorkspaceAccess && profile && !capsQuery.isFetchedAfterMount) {
+    return <ShellSpinner testId="provider-shell-loading" />;
+  }
+  const profileStatus = profileQuery.error?.response?.status;
+  if (
+    checksWorkspaceAccess &&
+    ((profile && capsQuery.isError) ||
+      (profileQuery.isError &&
+        (profile !== null || (profileStatus !== 403 && profileStatus !== 404))))
+  ) {
+    return (
+      <ProviderAccessUnavailable
+        busy={profileQuery.isFetching || capsQuery.isFetching}
+        retry={() => {
+          if (profileQuery.isError) void profileQuery.refetch();
+          if (profile) void capsQuery.refetch();
+        }}
+      />
+    );
+  }
 
-  // NO PROFILE ROW is not a status, and must not be treated as one.
-  //
-  // A user with the provider role but no profile has not applied yet: the
-  // right screen is the Activate one on the profile route, not a status
-  // surface reporting a status they do not have. The old gate expressed this
-  // as `profile && profile.status !== 'ACTIVE'` — the `profile &&` was doing
-  // real work, and dropping it sent every not-yet-provider to a DRAFT status
-  // page they had never earned.
-  const home = isActive ? '/provider/jobs' : profile ? '/provider/status' : '/provider/profile';
+  // A disabled query retains data. A removed/missing profile cannot inherit
+  // that earlier profile's work capabilities from the shared cache.
+  const allowed =
+    checksWorkspaceAccess && profile && capsQuery.isSuccess && capsQuery.isFetchedAfterMount
+      ? (capsQuery.data?.allowed ?? [])
+      : [];
+  const hasMarketplace = allowed.includes('VIEW_MARKETPLACE');
+  const mayOnboard = allowed.includes('COMPLETE_ONBOARDING');
+  const incomplete = capsQuery.data?.primaryReason === 'ONBOARDING_INCOMPLETE';
+  const isActive = profile?.status === 'ACTIVE'; // presentation only
+  const home = !profile
+    ? '/provider/profile'
+    : onboardingV2 && incomplete && mayOnboard
+      ? '/provider/onboarding'
+      : hasMarketplace
+        ? '/provider/jobs'
+        : '/provider/status';
 
-  // Resolving the profile BEFORE deciding what to mount is what stops a DRAFT
-  // or SUSPENDED provider seeing the marketplace map flash up — every call it
-  // fired during that moment came back 403.
-  //
-  // As a redirect rather than a pinned tab, this is the same rule with an
-  // address: the provider can now be linked to their own status, and the back
-  // button behaves.
-  const guardMarketplace = (screen: React.ReactNode) =>
-    isActive ? screen : <Navigate to={home} replace />;
+  // Guard the chrome too: forbidden destinations must never briefly display
+  // workspace navigation while React Router commits their redirect.
+  const workspace = (to: string, screen: React.ReactNode) =>
+    navigationAllowed(to, allowed) ? (
+      <WorkspaceChrome identity={identity} allowed={allowed}>
+        {screen}
+      </WorkspaceChrome>
+    ) : (
+      <Navigate to={home} replace />
+    );
 
   return (
     <Routes>
@@ -363,7 +413,7 @@ export function ProviderApp() {
       <Route
         path="status"
         element={
-          !profile ? (
+          !profile || (onboardingV2 && incomplete && mayOnboard) ? (
             <Navigate to={home} replace />
           ) : // Scoped to the two lifecycles the approved screens describe: an
           // application that has been HANDED IN, and one that has been
@@ -372,11 +422,12 @@ export function ProviderApp() {
           // would tell them we are reviewing something they have not sent.
           onboardingV2 && (profile.status === 'PENDING_REVIEW' || isActive) ? (
             <ProviderStatusCentreScreen />
-          ) : isActive ? (
+          ) : hasMarketplace ? (
             <Navigate to={home} replace />
           ) : (
             <ProviderStatusState
-              status={profile?.status ?? 'DRAFT'}
+              workAccessDenied={!hasMarketplace}
+              status={incomplete && isActive ? 'DRAFT' : (profile?.status ?? 'DRAFT')}
               onContinueOnboarding={
                 mayOnboard
                   ? () => navigate(onboardingV2 ? '/provider/onboarding' : '/provider/profile')
@@ -407,50 +458,18 @@ export function ProviderApp() {
         }
       />
 
-      <Route
-        path="jobs"
-        element={
-          <WorkspaceChrome identity={identity}>
-            {guardMarketplace(<LiveJobsScreen />)}
-          </WorkspaceChrome>
-        }
-      />
-      <Route
-        path="bids"
-        element={
-          <WorkspaceChrome identity={identity}>
-            {guardMarketplace(<MyBidsScreen />)}
-          </WorkspaceChrome>
-        }
-      />
+      <Route path="jobs" element={workspace('/provider/jobs', <LiveJobsScreen />)} />
+      <Route path="bids" element={workspace('/provider/bids', <MyBidsScreen />)} />
       {/* Two paths, one screen. The list and the open thread are the same
           two-pane surface at different widths — on a phone the thread covers
           the list — so splitting them into separate components would duplicate
           it. The param is what the screen reads to decide which is showing. */}
-      <Route
-        path="messages"
-        element={
-          <WorkspaceChrome identity={identity}>
-            {guardMarketplace(<ProviderChatScreen />)}
-          </WorkspaceChrome>
-        }
-      />
+      <Route path="messages" element={workspace('/provider/messages', <ProviderChatScreen />)} />
       <Route
         path="messages/:threadId"
-        element={
-          <WorkspaceChrome identity={identity}>
-            {guardMarketplace(<ProviderChatScreen />)}
-          </WorkspaceChrome>
-        }
+        element={workspace('/provider/messages', <ProviderChatScreen />)}
       />
-      <Route
-        path="wallet"
-        element={
-          <WorkspaceChrome identity={identity}>
-            {guardMarketplace(<WalletScreen />)}
-          </WorkspaceChrome>
-        }
-      />
+      <Route path="wallet" element={workspace('/provider/wallet', <WalletScreen />)} />
 
       {/* Profile is the one workspace route a non-ACTIVE provider may open,
           because for them it is not the profile editor — it is the place the
@@ -462,31 +481,25 @@ export function ProviderApp() {
       <Route
         path="profile"
         element={
-          <WorkspaceChrome identity={identity}>
-            {/* No profile yet: this screen owns the Activate call that creates
-                one. Mounting the marketplace here instead would fire calls
-                that all 403 and paint a broken marketplace over what is
-                really an unfinished signup.
-
-                Sprint 09B.29 — with V2 on, a provider with no profile gets the
-                approved activation surface instead (prototype screens 0 and 1),
-                which is the only place the post-upgrade session rotation is
-                visible and recoverable. V1 keeps ProviderProfileScreen, so the
-                flag remains a true rollback. */}
-            {!profile && onboardingV2 ? (
-              <Navigate to="/provider/activate" replace />
-            ) : isActive || !profile ? (
+          !profile && onboardingV2 ? (
+            <Navigate to="/provider/activate" replace />
+          ) : !profile ? (
+            <WorkspaceChrome identity={identity} allowed={allowed}>
               <ProviderProfileScreen />
-            ) : mayOnboard ? (
-              onboardingV2 ? (
-                <Navigate to="/provider/onboarding" replace />
-              ) : (
-                <ProviderOnboardingWizard />
-              )
+            </WorkspaceChrome>
+          ) : incomplete && mayOnboard ? (
+            onboardingV2 ? (
+              <Navigate to="/provider/onboarding" replace />
             ) : (
-              <Navigate to="/provider/status" replace />
-            )}
-          </WorkspaceChrome>
+              <ProviderOnboardingWizard />
+            )
+          ) : hasMarketplace || allowed.includes('VIEW_EARNINGS') ? (
+            workspace('/provider/profile', <ProviderProfileScreen />)
+          ) : mayOnboard && !onboardingV2 ? (
+            <ProviderOnboardingWizard />
+          ) : (
+            <Navigate to="/provider/status" replace />
+          )
         }
       />
 

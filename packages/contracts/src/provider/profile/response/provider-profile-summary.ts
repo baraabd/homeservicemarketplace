@@ -31,12 +31,10 @@ export interface ProviderProfileSummary {
   verified: boolean;
   topPro: boolean;
   availability: ProviderAvailability;
-  // Marketplace-readiness state. ACTIVE means the profile is approved and
-  // can bid; DRAFT / PENDING_REVIEW are pre-approval states; SUSPENDED /
-  // REJECTED are admin-applied lock states. The Provider app branches on
-  // this field to render the right onboarding / pending / locked / live
-  // surface; it is independent of `availability` (the live working
-  // ONLINE/OFFLINE/PAUSED toggle).
+  // Legacy approval/display status, independent of availability and of the
+  // canonical onboarding, verification, standing, and work-grant axes.
+  // ACTIVE alone never authorizes a workspace or bid: consumers read the
+  // ProviderCapabilitiesResponse and backend guards enforce it per request.
   status: ProviderProfileStatus;
   serviceAreaCity: string | null;
   serviceAreaCountry: string | null;

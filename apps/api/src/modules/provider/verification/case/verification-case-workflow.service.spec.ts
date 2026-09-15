@@ -56,7 +56,10 @@ interface CaseRow {
   requirementsSnapshot: unknown;
   assignedToUserId: string | null;
   submittedAt: Date | null;
-  providerProfile: typeof COMPLETE_PROFILE;
+  providerProfile: Omit<typeof COMPLETE_PROFILE, 'serviceAreaCountry'> & {
+    serviceAreaCountry: string | null;
+    serviceAreaCountryCode?: string | null;
+  };
   documents: Array<{
     kind: string;
     serviceCategoryId: string | null;
@@ -170,6 +173,38 @@ async function failure(p: Promise<unknown>): Promise<AppError> {
 // ── submit ────────────────────────────────────────────────────────────────
 
 describe('submit', () => {
+  it('accepts clean evidence for a V2 profile with only its canonical country code', async () => {
+    const h = harness({
+      row: caseRow({
+        providerProfile: {
+          ...COMPLETE_PROFILE,
+          serviceAreaCountry: null,
+          serviceAreaCountryCode: 'SY',
+        },
+      }),
+    });
+    expect(await h.service.submit(PROVIDER_USER, { caseId: CASE_ID })).toMatchObject({
+      state: 'SUBMITTED',
+      changed: true,
+    });
+  });
+
+  it('refuses submission when neither country representation exists', async () => {
+    const h = harness({
+      row: caseRow({
+        providerProfile: {
+          ...COMPLETE_PROFILE,
+          serviceAreaCountry: null,
+          serviceAreaCountryCode: null,
+        },
+      }),
+    });
+    await expect(h.service.submit(PROVIDER_USER, { caseId: CASE_ID })).rejects.toMatchObject({
+      status: 422,
+    });
+    expect(h.updates).toEqual([]);
+  });
+
   it('moves a ready draft to SUBMITTED and stamps the time', async () => {
     const h = harness();
     const out = await h.service.submit(PROVIDER_USER, { caseId: CASE_ID });
