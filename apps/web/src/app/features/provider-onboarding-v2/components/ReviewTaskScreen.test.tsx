@@ -577,9 +577,10 @@ describe('the submission the chrome draws', () => {
 
     act(() => command()!.run());
 
-    expect(await screen.findByTestId('review-blocked-reason')).toHaveTextContent(
-      EN.blocker['serviceAreaCountry:OUT_OF_RANGE']!,
-    );
+    const blockedReason = await screen.findByTestId('review-blocked-reason');
+    expect(blockedReason).toHaveTextContent(EN.blocker['serviceAreaCountry:OUT_OF_RANGE']!);
+    expect(blockedReason).toHaveAttribute('role', 'status');
+    expect(blockedReason).toHaveAttribute('aria-live', 'polite');
     expect(screen.queryByTestId('terms-ready')).toBeNull();
     expect(screen.getByTestId('review-complete-now-serviceAreaCountry')).toBeEnabled();
     await waitFor(() => expect(command()?.disabled).toBe(true));

@@ -122,6 +122,7 @@ export function ProviderNotice({
     <div
       className={`flex items-start gap-3 rounded-xl border p-3.5 ${c.bg} ${c.border} ${className}`}
       role={tone === 'danger' ? 'alert' : 'status'}
+      aria-live={tone === 'danger' ? undefined : 'polite'}
       data-testid={testId}
     >
       <Icon size={18} aria-hidden="true" className={`mt-0.5 flex-shrink-0 ${c.text}`} />

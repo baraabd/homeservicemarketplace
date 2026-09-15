@@ -74,6 +74,29 @@ run can establish whether the 907 locally gated tests pass. The two added
 browser journeys likewise require the real-API CI job, not the component
 suite above. No retry/skip settings or visual baselines were changed.
 
+## CI follow-up — 2026-09-15
+
+CI #162 on `4f1279d` passed 4178 API tests with real Postgres/Redis, 1750 web
+tests, 26 real-API browser journeys, 108 visual/responsive/accessibility tests,
+and 8 auth-cookie tests. Combined presentation/route/persistence evidence was
+6/6 on each axis. The general browser matrix was red: 703 passed, 88 existing
+skips, and one failing assertion requiring `aria-live="polite"` on the submit
+blocker. The new status notice had retained `role="status"` but omitted this
+explicit attribute. The follow-up restores explicit polite announcements in
+the shared status-notice primitive and adds the same assertion to the review
+component regression. The existing browser assertion is unchanged.
+
+After that fix, all 1750 local web tests, focused component/primitive tests,
+TypeScript, lint and formatting passed. The local browser attempt could build
+the application but could not launch because Chromium is not installed in
+this workspace; it is not counted as a passing browser run. CI supplies that
+browser verification.
+
+The API integration job also printed a Jest worker-shutdown warning after all
+tests passed. Its cause was not established; it is not being described as a
+production failure or a repaired leak. Final-head CI and warning observations
+belong in the PR report. Earlier passing runs cannot replace that final check.
+
 ## Access and delivery limits
 
 This checkout does not contain the user's unpublished Windows commits or
