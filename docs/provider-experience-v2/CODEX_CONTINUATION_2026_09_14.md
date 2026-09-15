@@ -94,8 +94,16 @@ browser verification.
 
 The API integration job also printed a Jest worker-shutdown warning after all
 tests passed. Its cause was not established; it is not being described as a
-production failure or a repaired leak. Final-head CI and warning observations
-belong in the PR report. Earlier passing runs cannot replace that final check.
+production failure. A bounded audit identified existing missing Prisma teardown
+in the C1 defaults and C2 market integration suites. Each owns its database
+client within its Jest environment; neither supplies a real PrismaService
+destroy hook. The advisory-lock helper owns a separate client, so releasing
+that lock does not disconnect the suite client. Their teardown now closes the
+suite client in nested finally blocks, after fixture cleanup, app closure
+(where present), and lock release. This fixes the verified cleanup omissions;
+it does not establish that they caused the warning. Final-head CI and warning
+observations belong in the PR report. Earlier passing runs cannot replace that
+final check.
 
 ## Access and delivery limits
 
