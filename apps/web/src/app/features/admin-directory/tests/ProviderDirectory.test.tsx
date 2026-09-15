@@ -221,6 +221,35 @@ describe('ProviderDirectory', () => {
     );
   });
 
+  it.each([
+    ['en', 'Not verified', 'Not available'],
+    ['ar', 'غير موثّق', 'غير متاح'],
+  ])(
+    'distinguishes a null identity axis from missing or unknown data in %s',
+    async (lang, unverified, unavailable) => {
+      window.localStorage.setItem('hsm.lang', lang);
+      mock.onGet('/v1/admin/providers').reply(200, {
+        items: [
+          { ...provider('null-axis', 'Not Yet Verified'), verificationState: null },
+          { ...provider('missing-axis', 'Older Response'), verificationState: undefined },
+          { ...provider('unknown-axis', 'Future Response'), verificationState: 'FUTURE_STATE' },
+        ],
+        nextCursor: null,
+      });
+      renderDirectory('/admin/reviews', true);
+
+      const unverifiedRow = within(await screen.findByTestId('provider-row-null-axis'));
+      expect(unverifiedRow.getByText(unverified)).toBeInTheDocument();
+      expect(unverifiedRow.queryByText(unavailable)).not.toBeInTheDocument();
+      for (const id of ['missing-axis', 'unknown-axis']) {
+        const row = within(screen.getByTestId(`provider-row-${id}`));
+        expect(row.getByText(unavailable)).toBeInTheDocument();
+        expect(row.queryByText(unverified)).not.toBeInTheDocument();
+        expect(row.queryByText('FUTURE_STATE')).not.toBeInTheDocument();
+      }
+    },
+  );
+
   it('shows a forbidden response distinctly from an empty directory without a retry loop', async () => {
     mock.onGet('/v1/admin/providers').reply(403);
     renderDirectory();

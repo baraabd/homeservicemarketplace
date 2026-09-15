@@ -18,7 +18,7 @@ import {
   registerProvider,
   type Account,
 } from './real-api';
-import { seedLanguage, expectNoHorizontalPageOverflow } from './fixtures';
+import { expectNoHorizontalPageOverflow } from './fixtures';
 import {
   providerApplicationReview,
   submitVerificationCase,
@@ -57,9 +57,12 @@ export async function submittedProvider(options: { evidence?: boolean; portfolio
 
 /** The normal protected entry must take a fresh browser through login and OTP. */
 export async function enterAdmin(page: Page): Promise<void> {
-  await seedLanguage(page, 'en');
+  // Each test supplies a fresh browser context. Keep the product's initial
+  // language and persisted UI choices; a recurring language init script would
+  // silently reset an Arabic choice to English on every subsequent reload.
   await page.goto('/admin');
   await expect(page).toHaveURL(/\/login(?:\?|$)/);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await loginViaUi(page, {
     email: 'test1@admin.com',
     password: 'DevAdmin123!',

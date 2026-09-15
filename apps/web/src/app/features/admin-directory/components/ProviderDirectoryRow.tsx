@@ -154,7 +154,14 @@ export function ProviderDirectoryRow({
         <div>
           <dt>{t.identity}</dt>
           <dd>
-            <AxisState value={provider.verificationState} lang={lang} />
+            <AxisState
+              // The API treats a recorded null axis as unverified. An omitted
+              // field in an older response still means the state is unknown.
+              value={
+                provider.verificationState === null ? 'UNVERIFIED' : provider.verificationState
+              }
+              lang={lang}
+            />
           </dd>
         </div>
         <div>

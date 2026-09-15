@@ -294,6 +294,7 @@ test('inspecting and approving a real portfolio image persists its revision with
   });
   await expect(dialog).toHaveCount(0);
   await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
   await expect(page.getByTestId(`review-portfolio-${item.id}`)).toContainText('مقبول');
   await expect(page.getByTestId('review-history')).toContainText('تمت الموافقة على صورة العمل');
 

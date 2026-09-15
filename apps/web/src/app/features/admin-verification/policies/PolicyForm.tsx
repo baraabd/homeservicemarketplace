@@ -7,6 +7,8 @@ import type {
 import { DOCUMENT_KIND_LABELS } from '../copy/verification-copy';
 import { POLICY_COPY, policyCountryName, type PolicyLanguage } from './policy-copy';
 
+const POLICY_VERSION_EXAMPLE = '2026.09-sy-v1';
+
 const DOCUMENT_KINDS: VerificationDocumentKindCode[] = [
   'INDIVIDUAL_IDENTITY',
   'BUSINESS_REGISTRATION',
@@ -32,6 +34,7 @@ export function PolicyForm({
   pending: boolean;
 }) {
   const t = POLICY_COPY[lang];
+  const [versionHintBefore, versionHintAfter] = t.versionHint.split('{version}');
   const [errors, setErrors] = useState<{
     version?: boolean;
     category?: boolean;
@@ -84,9 +87,13 @@ export function PolicyForm({
           onChange={(event) => onChange({ ...draft, version: event.target.value })}
           aria-invalid={!!errors.version}
           aria-describedby={errors.version ? 'policy-version-error' : 'policy-version-hint'}
-          placeholder="2026.09-sy-v1"
+          placeholder={POLICY_VERSION_EXAMPLE}
         />
-        <small id="policy-version-hint">{t.versionHint}</small>
+        <small id="policy-version-hint">
+          {versionHintBefore}
+          <bdi dir="ltr">{POLICY_VERSION_EXAMPLE}</bdi>
+          {versionHintAfter}
+        </small>
         {errors.version && (
           <span role="alert" id="policy-version-error" className="ap-error">
             {t.versionRequired}
