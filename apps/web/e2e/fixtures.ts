@@ -1,3 +1,4 @@
+import type { AdminProviderSummary } from '@homeservicemarketplace/contracts';
 import { expect, type Locator, type Page, type BrowserContext } from '@playwright/test';
 
 // Phase 12 — shared fixtures for the real-browser suite.
@@ -123,7 +124,7 @@ export const PROVIDER_STATUSES = [
 ] as const;
 export type ProviderStatus = (typeof PROVIDER_STATUSES)[number];
 
-export function adminProviderRows() {
+export function adminProviderRows(): AdminProviderSummary[] {
   return PROVIDER_STATUSES.map((status, i) => ({
     id: `pp-${status.toLowerCase()}`,
     status,
@@ -134,11 +135,44 @@ export function adminProviderRows() {
     ratingAvg: 4.5,
     reviewCount: 10,
     completedJobs: 5,
-    verified: status === 'ACTIVE',
+    verified: status === 'ACTIVE' || status === 'SUSPENDED',
     topPro: false,
     serviceAreaCity: 'Gothenburg',
     serviceAreaCountry: 'Sweden',
     reviewNotes: null,
+    account: { status: 'ACTIVE', isActive: true, deletedAt: null },
+    onboardingState:
+      status === 'DRAFT'
+        ? 'DRAFT'
+        : status === 'REJECTED'
+          ? 'RETURNED'
+          : status === 'PENDING_REVIEW'
+            ? 'SUBMITTED'
+            : 'ACCEPTED',
+    verificationState: status === 'ACTIVE' || status === 'SUSPENDED' ? 'VERIFIED' : 'UNVERIFIED',
+    standingState: status === 'SUSPENDED' ? 'SUSPENDED' : 'GOOD',
+    verificationCase: null,
+    portfolio: { total: 0, pending: 0, approved: 0, rejected: 0 },
+    workAccess: {
+      canWork: status === 'ACTIVE',
+      hasLiveGrant: status === 'ACTIVE' || status === 'SUSPENDED',
+      denialReason:
+        status === 'ACTIVE'
+          ? null
+          : status === 'SUSPENDED'
+            ? 'PROVIDER_SUSPENDED'
+            : status === 'DRAFT'
+              ? 'ONBOARDING_INCOMPLETE'
+              : 'AWAITING_REVIEW',
+    },
+    attentionReasons:
+      status === 'DRAFT'
+        ? ['APPLICATION_NOT_SUBMITTED']
+        : status === 'PENDING_REVIEW'
+          ? ['APPLICATION_REVIEW_REQUIRED', 'IDENTITY_REQUIRED']
+          : status === 'REJECTED'
+            ? ['APPLICATION_RETURNED']
+            : [],
     submittedForReviewAt: status === 'DRAFT' ? null : '2026-08-06T00:00:00.000Z',
     reviewedAt: status === 'ACTIVE' || status === 'REJECTED' ? '2026-08-07T00:00:00.000Z' : null,
     rejectionReason: status === 'REJECTED' ? 'Service area outside current coverage.' : null,
@@ -195,7 +229,33 @@ export async function stubApi(page: Page, options: StubOptions = {}): Promise<vo
         ],
       });
     }
-    if (url.includes('/admin/providers')) return json({ items: providers, nextCursor: null });
+    if (url.includes('/admin/providers')) {
+      const path = new URL(url).pathname;
+      if (path.endsWith('/review/history')) return json({ items: [], nextCursor: null });
+      const detail = /^\/v1\/admin\/providers\/([^/]+)$/.exec(path);
+      if (detail) {
+        const found = (providers as Array<{ id: string }>).find(
+          (provider) => provider.id === detail[1],
+        );
+        return found ? json(found) : json({ error: { code: 'NOT_FOUND' } }, 404);
+      }
+      const rows = providers as Array<{ status: string }>;
+      const count = (status: string) =>
+        rows.filter((provider) => provider.status === status).length;
+      return json({
+        items: providers,
+        total: providers.length,
+        counts: {
+          all: providers.length,
+          pendingReview: count('PENDING_REVIEW'),
+          active: count('ACTIVE'),
+          returned: count('REJECTED'),
+          suspended: count('SUSPENDED'),
+          draft: count('DRAFT'),
+        },
+        nextCursor: null,
+      });
+    }
     if (url.includes('/admin/access-requests')) return json({ items: [], nextCursor: null });
     if (url.includes('/notifications/unread-count')) return json({ count: 0 });
 

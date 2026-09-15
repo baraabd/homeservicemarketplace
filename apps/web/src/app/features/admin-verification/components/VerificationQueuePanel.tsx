@@ -42,18 +42,32 @@ const STATES: VerificationCaseStateCode[] = [
 export interface VerificationQueuePanelProps {
   onOpenCase: (item: AdminVerificationQueueItem) => void;
   selectedCaseId?: string | null;
+  locationState?: {
+    filters: AdminVerificationQueueQuery;
+    onFiltersChange: (filters: AdminVerificationQueueQuery) => void;
+    pagination: ReturnType<typeof useCursorHistory>;
+  };
 }
 
 export function VerificationQueuePanel({
   onOpenCase,
   selectedCaseId = null,
+  locationState,
 }: VerificationQueuePanelProps) {
   const { lang, dir } = useLang();
   const t = UI[lang];
 
-  const [filters, setFilters] = useState<AdminVerificationQueueQuery>({});
-  const [searchDraft, setSearchDraft] = useState('');
-  const pagination = useCursorHistory();
+  const [localFilters, setLocalFilters] = useState<AdminVerificationQueueQuery>({});
+  const filters = locationState?.filters ?? localFilters;
+  const setFilters = locationState?.onFiltersChange ?? setLocalFilters;
+  const [searchDraft, setSearchDraft] = useState(filters.search ?? '');
+  const [appliedSearch, setAppliedSearch] = useState(filters.search);
+  if (appliedSearch !== filters.search) {
+    setAppliedSearch(filters.search);
+    setSearchDraft(filters.search ?? '');
+  }
+  const localPagination = useCursorHistory();
+  const pagination = locationState?.pagination ?? localPagination;
   const pageFilters = { ...filters, ...(pagination.cursor ? { cursor: pagination.cursor } : {}) };
 
   const query = useQuery({
@@ -63,14 +77,12 @@ export function VerificationQueuePanel({
 
   const set = (patch: Partial<AdminVerificationQueueQuery>) => {
     pagination.reset();
-    setFilters((f) => {
-      const next = { ...f, ...patch };
-      // An empty control means "no filter", not "filter on empty string".
-      for (const key of Object.keys(next) as Array<keyof AdminVerificationQueueQuery>) {
-        if (next[key] === '' || next[key] === undefined) delete next[key];
-      }
-      return next;
-    });
+    const next = { ...filters, ...patch };
+    // An empty control means "no filter", not "filter on empty string".
+    for (const key of Object.keys(next) as Array<keyof AdminVerificationQueueQuery>) {
+      if (next[key] === '' || next[key] === undefined) delete next[key];
+    }
+    setFilters(next);
   };
 
   const items = query.data?.items ?? [];
@@ -82,14 +94,14 @@ export function VerificationQueuePanel({
       aria-label={t.queueTitle}
       dir={dir}
       data-testid="verification-queue"
-      className="space-y-3"
+      className="ar-card ar-stack"
     >
-      <h3 className="text-base font-semibold">{t.queueTitle}</h3>
+      <h3 className="ar-heading">{t.queueTitle}</h3>
 
       {/* ── filters ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="ar-case-filters">
         <div>
-          <label className="block text-xs" htmlFor="queue-search">
+          <label className="ar-muted" htmlFor="queue-search">
             {t.searchLabel}
           </label>
           <input
@@ -108,7 +120,7 @@ export function VerificationQueuePanel({
         </div>
 
         <div>
-          <label className="block text-xs" htmlFor="queue-state">
+          <label className="ar-muted" htmlFor="queue-state">
             {t.filterState}
           </label>
           <select
@@ -128,7 +140,7 @@ export function VerificationQueuePanel({
         </div>
 
         <div>
-          <label className="block text-xs" htmlFor="queue-policy">
+          <label className="ar-muted" htmlFor="queue-policy">
             {t.filterPolicy}
           </label>
           <input
@@ -141,7 +153,7 @@ export function VerificationQueuePanel({
         </div>
 
         <div>
-          <label className="block text-xs" htmlFor="queue-from">
+          <label className="ar-muted" htmlFor="queue-from">
             {t.filterFrom}
           </label>
           <input
@@ -155,7 +167,7 @@ export function VerificationQueuePanel({
         </div>
 
         <div>
-          <label className="block text-xs" htmlFor="queue-to">
+          <label className="ar-muted" htmlFor="queue-to">
             {t.filterTo}
           </label>
           <input
@@ -226,7 +238,7 @@ export function VerificationQueuePanel({
 
       {!query.isError && items.length > 0 && (
         <div className="overflow-x-auto" role="region" aria-label={t.queueTitle} tabIndex={0}>
-          <table className="w-full text-sm" data-testid="queue-table">
+          <table className="w-full text-sm ar-case-table" data-testid="queue-table">
             <thead>
               <tr className="text-start">
                 <th scope="col" className="p-2 text-start">
@@ -263,7 +275,9 @@ export function VerificationQueuePanel({
                     </button>
                   </td>
                   <td className="p-2">{CASE_STATE_LABELS[lang][item.state]}</td>
-                  <td className="p-2">{item.policyVersion}</td>
+                  <td className="p-2">
+                    <bdi>{item.policyVersion}</bdi>
+                  </td>
                   <td className="p-2">
                     {item.submittedAt ? new Date(item.submittedAt).toLocaleDateString(lang) : '—'}
                   </td>

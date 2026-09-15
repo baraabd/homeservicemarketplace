@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, matchPath, useLocation, useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   AlertTriangle,
@@ -21,55 +21,29 @@ import {
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { useAuth } from '../../../lib/auth-provider';
-import { UsersSection } from '../../features/admin-directory/components/UsersSection';
-import { ProviderDirectory } from '../../features/admin-directory/components/ProviderDirectory';
-import { AdminProviderReviewWorkspace } from '../../features/admin-provider-review/components/AdminProviderReviewWorkspace';
-import { VerificationSection } from './VerificationSection';
-import { AdminVerificationCaseWorkspace } from '../../features/admin-verification/components/AdminVerificationCaseWorkspace';
-import { VerificationPolicyPanel } from '../../features/admin-verification/components/VerificationPolicyPanel';
-import { DisputeSection } from './DisputesSection';
-import { DashboardOverview } from './DashboardOverview';
-import { FinancialsSection } from './FinancialsSection';
-import { SettingsSection } from './SettingsSection';
-import { AuditLogsSection } from './AuditLogsSection';
+import { AdminRouteContent } from './AdminRouteContent';
+import { resolveAdminRoute, sectionPath } from './admin-routes';
+import '../../features/admin-provider-review/admin-review.css';
 import { AdminNotificationsBell } from './AdminNotificationsBell';
+import { useAdminHeaderOffset } from './useAdminHeaderOffset';
 
-type Section =
-  | 'dashboard'
-  | 'users'
-  | 'providers'
-  | 'reviews'
-  | 'verification'
-  | 'financials'
-  | 'disputes'
-  | 'settings'
-  | 'audit';
 const NAV_ITEMS = [
   { id: 'dashboard', icon: LayoutDashboard, en: 'Dashboard', ar: 'لوحة التحكم' },
   { id: 'users', icon: Users, en: 'User Control', ar: 'إدارة المستخدمين' },
   { id: 'providers', icon: BriefcaseBusiness, en: 'Providers', ar: 'المهنيون' },
   { id: 'reviews', icon: ClipboardCheck, en: 'Application review', ar: 'مراجعة الطلبات' },
-  { id: 'verification', icon: ShieldCheck, en: 'Pro Verification', ar: 'توثيق المحترفين' },
+  { id: 'identity-cases', icon: ShieldCheck, en: 'Identity cases', ar: 'قضايا الهوية' },
   { id: 'financials', icon: DollarSign, en: 'Financials', ar: 'الماليات' },
   { id: 'disputes', icon: AlertTriangle, en: 'Dispute Center', ar: 'مركز النزاعات' },
   { id: 'settings', icon: Settings, en: 'Settings', ar: 'الإعدادات' },
   { id: 'audit', icon: FileText, en: 'Audit Logs', ar: 'سجل التدقيق' },
 ] as const;
 
-function sectionPath(section: Section) {
-  return section === 'dashboard' ? '/admin' : `/admin/${section}`;
-}
-
-/** A review link may return only to its own directory, never to an arbitrary URL. */
-function directoryReturn(search: string) {
-  const target = new URLSearchParams(search).get('returnTo');
-  return target && /^\/admin\/(providers|reviews)(\?|$)/.test(target) ? target : '/admin/reviews';
-}
-
 // Admin is a full-width, role-gated route tree. The URL owns navigation so a
 // refresh, login round trip, deep link, and browser Back show the same surface.
 export function AdminDashboard() {
   const { lang, dir, darkMode, toggleDarkMode } = useLang();
+  const { shellRef, headerRef } = useAdminHeaderOffset();
   const { logout } = useAuth();
   const identity = useAuthIdentity();
   const location = useLocation();
@@ -82,15 +56,23 @@ export function AdminDashboard() {
   const returnFocusToContent = useRef(false);
   const previousPath = useRef(location.pathname);
   const isAr = lang === 'ar';
-  const providerMatch = matchPath('/admin/providers/:providerProfileId', location.pathname);
-  const segment = location.pathname.split('/')[2] || 'dashboard';
-  const active = NAV_ITEMS.find((item) => item.id === segment);
-  const activeSection = active?.id ?? 'dashboard';
-  const title = providerMatch
-    ? isAr
-      ? 'مراجعة ملف المهني'
-      : 'Provider review'
-    : (active?.[lang] ?? (isAr ? 'لوحة التحكم' : 'Dashboard'));
+  const route = resolveAdminRoute(location.pathname);
+  const activeSection = 'section' in route ? route.section : undefined;
+  const active = NAV_ITEMS.find((item) => item.id === activeSection);
+  const title =
+    route.kind === 'provider'
+      ? isAr
+        ? 'مراجعة ملف المهني'
+        : 'Provider review'
+      : route.kind === 'policies'
+        ? isAr
+          ? 'سياسات التوثيق'
+          : 'Verification policies'
+        : route.kind === 'notFound'
+          ? isAr
+            ? 'الصفحة غير موجودة'
+            : 'Page not found'
+          : (active?.[lang] ?? (isAr ? 'مراجعة الطلبات' : 'Application review'));
   const initials = identity.initials ?? '';
   const displayName = identity.displayName ?? '';
   const email = identity.email ?? '';
@@ -100,10 +82,14 @@ export function AdminDashboard() {
     if (previousPath.current !== location.pathname) {
       returnFocusToContent.current = true;
       setMobileOpen(false);
-      mainRef.current?.focus();
+      // Native focus scrolls a long main landmark beneath the sticky topbar.
+      // Route changes start at the page heading; URL-only filters keep their
+      // position, and a targeted fragment keeps its own scroll destination.
+      mainRef.current?.focus({ preventScroll: true });
+      if (!location.hash) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       previousPath.current = location.pathname;
     }
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
 
   async function signOut() {
     setSigningOut(true);
@@ -156,6 +142,7 @@ export function AdminDashboard() {
 
   return (
     <div
+      ref={shellRef}
       className={`min-h-screen ${darkMode ? 'dark bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}
       dir={dir}
       lang={lang}
@@ -213,7 +200,9 @@ export function AdminDashboard() {
             <Dialog.Content
               onCloseAutoFocus={(event) => {
                 event.preventDefault();
-                (returnFocusToContent.current ? mainRef.current : menuButtonRef.current)?.focus();
+                (returnFocusToContent.current ? mainRef.current : menuButtonRef.current)?.focus({
+                  preventScroll: true,
+                });
                 returnFocusToContent.current = false;
               }}
               dir={dir}
@@ -251,7 +240,11 @@ export function AdminDashboard() {
           </Dialog.Portal>
         </Dialog.Root>
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-800 lg:px-6">
+          <header
+            ref={headerRef}
+            data-testid="admin-topbar"
+            className="sticky top-0 z-20 flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-800 lg:px-6"
+          >
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
@@ -268,7 +261,7 @@ export function AdminDashboard() {
               </button>
               <h1 className="text-lg font-extrabold">{title}</h1>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 [&>button]:min-h-11 [&>button]:min-w-11">
               <button
                 type="button"
                 onClick={toggleDarkMode}
@@ -302,40 +295,7 @@ export function AdminDashboard() {
             tabIndex={-1}
             className="min-w-0 flex-1 p-4 outline-none lg:p-6"
           >
-            {providerMatch ? (
-              <AdminProviderReviewWorkspace
-                providerProfileId={providerMatch.params.providerProfileId!}
-                onBack={() => navigate(directoryReturn(location.search), { state: location.state })}
-              />
-            ) : (
-              <>
-                {activeSection === 'dashboard' &&
-                  (segment === 'dashboard' ? (
-                    <DashboardOverview lang={lang} />
-                  ) : (
-                    <div className="space-y-3">
-                      <p>{isAr ? 'الصفحة غير موجودة.' : 'Page not found.'}</p>
-                      <Link to="/admin" className="font-semibold text-amber-700 underline">
-                        {isAr ? 'لوحة التحكم' : 'Dashboard'}
-                      </Link>
-                    </div>
-                  ))}
-                {activeSection === 'users' && <UsersSection lang={lang} />}
-                {activeSection === 'providers' && <ProviderDirectory key="providers" />}
-                {activeSection === 'reviews' && <ProviderDirectory key="reviews" reviewQueue />}
-                {activeSection === 'verification' && (
-                  <div className="space-y-8">
-                    <AdminVerificationCaseWorkspace />
-                    <VerificationSection />
-                    <VerificationPolicyPanel />
-                  </div>
-                )}
-                {activeSection === 'financials' && <FinancialsSection lang={lang} />}
-                {activeSection === 'disputes' && <DisputeSection lang={lang} />}
-                {activeSection === 'settings' && <SettingsSection lang={lang} />}
-                {activeSection === 'audit' && <AuditLogsSection lang={lang} />}
-              </>
-            )}
+            <AdminRouteContent route={route} />
           </main>
         </div>
       </div>

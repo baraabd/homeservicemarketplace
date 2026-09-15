@@ -50,6 +50,8 @@ export interface VerificationPolicySummary {
   /** Server-computed: published, and not yet retired. The client never derives
    *  this from the dates, for the same reason it never derives availableActions. */
   isLive: boolean;
+  /** Server-owned lifecycle, including future publications. */
+  state: 'ACTIVE' | 'SCHEDULED' | 'RETIRED';
 }
 
 export interface PublishVerificationPolicyRequest {
@@ -68,4 +70,15 @@ export interface ListVerificationPoliciesResponse {
 
 export interface VerificationPolicyMutationResponse {
   policy: VerificationPolicySummary;
+}
+
+/** Curated scope choices for the restricted policy settings screen. */
+export interface VerificationPolicyOptionsResponse {
+  countries: Array<{ countryCode: string; enabled: boolean }>;
+  categories: Array<{
+    id: string;
+    labelEn: string;
+    labelAr: string;
+    selectable: boolean;
+  }>;
 }

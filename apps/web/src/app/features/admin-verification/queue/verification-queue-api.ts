@@ -37,7 +37,9 @@ export async function listVerificationQueue(
 }
 
 export async function getVerificationCase(caseId: string): Promise<AdminVerificationCase> {
-  const { data } = await api.get<AdminVerificationCase>(`/v1/admin/verification/cases/${caseId}`);
+  const { data } = await api.get<AdminVerificationCase>(
+    `/v1/admin/verification/cases/${encodeURIComponent(caseId)}`,
+  );
   return data;
 }
 
@@ -53,9 +55,12 @@ export interface CaseAuditPage {
 }
 
 export async function getCaseAudit(caseId: string, cursor?: string): Promise<CaseAuditPage> {
-  const { data } = await api.get<CaseAuditPage>(`/v1/admin/verification/cases/${caseId}/audit`, {
-    params: cursor ? { cursor } : undefined,
-  });
+  const { data } = await api.get<CaseAuditPage>(
+    `/v1/admin/verification/cases/${encodeURIComponent(caseId)}/audit`,
+    {
+      params: cursor ? { cursor } : undefined,
+    },
+  );
   return data;
 }
 
@@ -83,7 +88,7 @@ export interface CaseCommandInput {
 
 export async function runCaseCommand(input: CaseCommandInput): Promise<unknown> {
   const { data } = await api.post(
-    `/v1/admin/verification/cases/${input.caseId}/${ACTION_PATH[input.action]}`,
+    `/v1/admin/verification/cases/${encodeURIComponent(input.caseId)}/${ACTION_PATH[input.action]}`,
     {
       ...(input.reasonCode ? { reasonCode: input.reasonCode } : {}),
       ...(input.note ? { note: input.note } : {}),

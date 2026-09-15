@@ -25,11 +25,14 @@ import {
 import type {
   ListVerificationPoliciesResponse,
   VerificationPolicyMutationResponse,
+  VerificationPolicyOptionsResponse,
 } from '@homeservicemarketplace/contracts';
 
 import { CurrentUser } from '../../iam/authentication/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
 import { CsrfGuard } from '../../iam/authentication/guards/csrf.guard';
+import { PermissionsGuard } from '../../iam/authorization/guards/permissions.guard';
+import { Permissions } from '../../iam/authorization/decorators/permissions.decorator';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
@@ -100,7 +103,8 @@ export class PublishVerificationPolicyDto {
   publishedAt?: string;
 }
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@Permissions('verification:policy:manage')
 @Roles('admin')
 @Controller({ path: 'admin/verification/policies', version: '1' })
 export class AdminVerificationPolicyController {
@@ -108,8 +112,14 @@ export class AdminVerificationPolicyController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  list(): Promise<ListVerificationPoliciesResponse> {
-    return this.policies.list() as unknown as Promise<ListVerificationPoliciesResponse>;
+  list(@CurrentUser() admin: AuthenticatedUser): Promise<ListVerificationPoliciesResponse> {
+    return this.policies.list(admin.id) as unknown as Promise<ListVerificationPoliciesResponse>;
+  }
+
+  @Get('options')
+  @HttpCode(HttpStatus.OK)
+  options(@CurrentUser() admin: AuthenticatedUser): Promise<VerificationPolicyOptionsResponse> {
+    return this.policies.options(admin.id);
   }
 
   @UseGuards(CsrfGuard)

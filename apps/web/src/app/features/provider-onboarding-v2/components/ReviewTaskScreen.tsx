@@ -561,6 +561,7 @@ function ConsentScreen({
           disabled={!editable || acceptPending}
           aria-describedby={versionId}
           data-testid="terms-accept"
+          data-review-field="consent"
           className="mt-0.5 h-5 w-5 accent-pv-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
           style={{ marginInlineStart: '4px', marginInlineEnd: '3px' }}
         />

@@ -135,7 +135,7 @@ async function openAdmin(page: Page, lang: 'en' | 'ar'): Promise<void> {
 
 // Targets the section by ID rather than by its translated label, so the same
 // helper works in both directions and a copy change cannot break the suite.
-async function openSection(page: Page, id: 'users' | 'verification'): Promise<void> {
+async function openSection(page: Page, id: 'users' | 'providers'): Promise<void> {
   const menu = page.getByRole('button', { name: /Open navigation|فتح القائمة/ });
   if (await menu.isVisible()) {
     await menu.click();
@@ -217,8 +217,10 @@ test.describe('Admin dashboard — the three account axes', () => {
       await openUsersSection(page, lang);
 
       const row = page.locator('tbody tr').filter({ hasText: 'customer@example.com' });
-      await expect(row.getByTestId('badge-account-status')).toHaveText('ACTIVE');
-      await expect(row.getByTestId('badge-role')).toHaveText(['customer']);
+      await expect(row.getByTestId('badge-account-status')).toHaveText(
+        lang === 'ar' ? 'نشط' : 'Active',
+      );
+      await expect(row.getByTestId('badge-role')).toHaveText([lang === 'ar' ? 'عميل' : 'Customer']);
       // Never asked for admin access → no badge at all.
       await expect(row.getByTestId('badge-admin-access')).toHaveCount(0);
     });
@@ -229,11 +231,13 @@ test.describe('Admin dashboard — the three account axes', () => {
       await openUsersSection(page, lang);
 
       const row = page.locator('tbody tr').filter({ hasText: 'hopeful@example.com' });
-      await expect(row.getByTestId('badge-account-status')).toHaveText('ACTIVE');
+      await expect(row.getByTestId('badge-account-status')).toHaveText(
+        lang === 'ar' ? 'نشط' : 'Active',
+      );
       await expect(row.getByTestId('badge-admin-access')).toBeVisible();
       // Asked is not granted: the roles cell must not contain `admin`.
       const roles = await row.getByTestId('badge-role').allTextContents();
-      expect(roles).not.toContain('admin');
+      expect(roles).not.toContain(lang === 'ar' ? 'مسؤول إدارة' : 'Administrator');
     });
 
     test(`a SUSPENDED account is visually distinct from a REJECTED admin request (${lang})`, async ({
@@ -244,7 +248,7 @@ test.describe('Admin dashboard — the three account axes', () => {
       const row = page.locator('tbody tr').filter({ hasText: 'suspended@example.com' });
       const accountBadge = row.getByTestId('badge-account-status');
       const accessBadge = row.getByTestId('badge-admin-access');
-      await expect(accountBadge).toHaveText('SUSPENDED');
+      await expect(accountBadge).toHaveText(lang === 'ar' ? 'معلّق' : 'Suspended');
       await expect(accessBadge).toBeVisible();
 
       // Different axes must not share a colour, or the reader learns nothing
@@ -288,7 +292,7 @@ test.describe('Admin dashboard — provider status badges', () => {
       page,
     }) => {
       await openAdmin(page, lang);
-      await openSection(page, 'verification');
+      await openSection(page, 'providers');
 
       // DRAFT, PENDING_REVIEW, ACTIVE, SUSPENDED, REJECTED must each be
       // representable — a queue that can only show one of them hides work.

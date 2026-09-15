@@ -68,7 +68,7 @@ const REVENUE = {
 
 function renderAdmin() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={['/admin']}>
       <AuthProvider client={qc}>
         <LanguageProvider>
           <EcosystemProvider>

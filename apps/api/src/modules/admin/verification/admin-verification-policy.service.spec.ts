@@ -32,6 +32,8 @@ interface Overrides {
   createImpl?: () => Promise<unknown>;
   retireCount?: number;
   found?: unknown;
+  permissions?: string[];
+  category?: { id: string } | null;
 }
 
 function build(over: Overrides = {}) {
@@ -43,7 +45,12 @@ function build(over: Overrides = {}) {
   const updateMany = jest.fn().mockResolvedValue({ count: over.retireCount ?? 1 });
 
   const client = {
+    userRole: { findFirst: jest.fn().mockResolvedValue({ roleId: 'admin-role' }) },
     verificationRequirementPolicy: { create, findMany, findUnique, updateMany },
+    serviceCategory: {
+      findFirst: jest.fn().mockResolvedValue(over.category ?? null),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
 
   // The transaction runner hands the same client back, so a test can assert
@@ -52,11 +59,18 @@ function build(over: Overrides = {}) {
   const auditRecord = jest.fn().mockResolvedValue(undefined);
   const settingsMax = jest.fn().mockResolvedValue(over.maxDocuments ?? 10);
 
+  const resolveFreshForUser = jest
+    .fn()
+    .mockResolvedValue(new Set(over.permissions ?? ['verification:policy:manage']));
+  const markets = jest.fn().mockResolvedValue([{ countryCode: 'ZZ', enabled: true }]);
+
   const service = new AdminVerificationPolicyService(
     { client } as never,
     { run: txRun } as never,
     { record: auditRecord } as never,
     { policyMaxDocuments: settingsMax } as never,
+    { resolveFreshForUser } as never,
+    { all: markets } as never,
   );
 
   // Typed handles for assertions. The constructor arguments are cast to
@@ -64,6 +78,9 @@ function build(over: Overrides = {}) {
   // touches; returning the mocks separately keeps the assertions type-checked.
   return {
     service,
+    resolveFreshForUser,
+    markets,
+    client,
     create: create as jest.Mock,
     findMany: findMany as jest.Mock,
     findUnique: findUnique as jest.Mock,
@@ -277,7 +294,7 @@ describe('list', () => {
         },
       ],
     });
-    const out = await h.service.list();
+    const out = await h.service.list(ADMIN);
     expect(out.policies).toHaveLength(1);
     expect(out.policies[0]).toMatchObject({ version: '2026.08-zz-v1', isLive: true });
   });
@@ -297,7 +314,156 @@ describe('list', () => {
         },
       ],
     });
-    const out = await h.service.list();
+    const out = await h.service.list(ADMIN);
     expect(out.policies[0].isLive).toBe(false);
+  });
+});
+
+describe('restricted policy management', () => {
+  it.each(['list', 'options'] as const)(
+    'denies %s to a reviewer without the policy permission',
+    async (method) => {
+      const h = build({ permissions: ['verification:decide', 'verification:evidence:view'] });
+      await expect(h.service[method](ADMIN)).rejects.toMatchObject({ status: 403 });
+      expect(h.findMany).not.toHaveBeenCalled();
+      expect(h.markets).not.toHaveBeenCalled();
+    },
+  );
+
+  it('denies a stale admin claim after membership is removed even if a different role grants policy access', async () => {
+    const h = build();
+    h.client.userRole.findFirst.mockResolvedValue(null);
+    await expect(h.service.list(ADMIN)).rejects.toMatchObject({ status: 403 });
+    expect(h.findMany).not.toHaveBeenCalled();
+  });
+
+  it('denies publication before any policy lookup or write', async () => {
+    const h = build({ permissions: [] });
+    await expect(h.service.publish(ADMIN, VALID)).rejects.toMatchObject({ status: 403 });
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.findMany).not.toHaveBeenCalled();
+    expect(h.auditRecord).not.toHaveBeenCalled();
+  });
+
+  it.each(['publish', 'retire'] as const)(
+    'rechecks permission inside the %s transaction after a revoke',
+    async (method) => {
+      const h = build({
+        found: { ...VALID, publishedAt: new Date('2026-01-01'), retiredAt: null },
+      });
+      h.resolveFreshForUser
+        .mockResolvedValueOnce(new Set(['verification:policy:manage']))
+        .mockResolvedValueOnce(new Set());
+      const result =
+        method === 'publish'
+          ? h.service.publish(ADMIN, VALID)
+          : h.service.retire(ADMIN, VALID.version);
+      await expect(result).rejects.toMatchObject({ status: 403 });
+      expect(h.resolveFreshForUser).toHaveBeenLastCalledWith(ADMIN, h.client);
+      expect(h.create).not.toHaveBeenCalled();
+      expect(h.updateMany).not.toHaveBeenCalled();
+      expect(h.auditRecord).not.toHaveBeenCalled();
+    },
+  );
+
+  it('publishes a licence for a real active specialty and preserves its scope', async () => {
+    const h = build({ category: { id: 'plumbing' } });
+    await h.service.publish(ADMIN, {
+      ...VALID,
+      providerType: 'INDIVIDUAL',
+      categoryId: 'plumbing',
+      requirements: { documents: ['CATEGORY_LICENSE'], verificationRequired: true },
+    });
+    expect(h.create.mock.calls[0][0].data).toMatchObject({
+      categoryId: 'plumbing',
+      providerType: 'INDIVIDUAL',
+    });
+    expect(h.client.serviceCategory.findFirst).toHaveBeenCalledWith({
+      where: { id: 'plumbing', deletedAt: null, isActive: true, isLeaf: true },
+      select: { id: true },
+    });
+  });
+
+  it('refuses a licence category retired since the form loaded', async () => {
+    const h = build();
+    await expect(
+      h.service.publish(ADMIN, {
+        ...VALID,
+        categoryId: 'retired',
+        requirements: { documents: ['CATEGORY_LICENSE'], verificationRequired: true },
+      }),
+    ).rejects.toMatchObject({ status: 400, details: { reason: 'POLICY_CATEGORY_UNAVAILABLE' } });
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a country removed from the configured registry', async () => {
+    const h = build();
+    await expect(h.service.publish(ADMIN, { ...VALID, country: 'SE' })).rejects.toMatchObject({
+      status: 400,
+      details: { reason: 'POLICY_COUNTRY_UNAVAILABLE' },
+    });
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('allows preparing a policy for a configured market before launch', async () => {
+    const h = build();
+    h.markets.mockResolvedValue([{ countryCode: 'ZZ', enabled: false }]);
+    await h.service.publish(ADMIN, VALID);
+    expect(h.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reuse the name of a stopped policy', async () => {
+    const h = build({
+      existing: [
+        { ...VALID, publishedAt: new Date('2026-01-01'), retiredAt: new Date('2026-02-01') },
+      ],
+    });
+    await expect(h.service.publish(ADMIN, VALID)).rejects.toMatchObject({
+      status: 409,
+      details: { reason: 'VERSION_EXISTS' },
+    });
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('includes historical category labels but only offers active leaf scopes', async () => {
+    const h = build();
+    h.client.serviceCategory.findMany.mockResolvedValue([
+      {
+        id: 'active',
+        labelEn: 'Plumbing',
+        labelAr: 'السباكة',
+        isActive: true,
+        isLeaf: true,
+        deletedAt: null,
+      },
+      {
+        id: 'old',
+        labelEn: 'Old trade',
+        labelAr: 'تخصص سابق',
+        isActive: false,
+        isLeaf: true,
+        deletedAt: null,
+      },
+    ]);
+    const result = await h.service.options(ADMIN);
+    expect(result.categories).toEqual([
+      { id: 'active', labelEn: 'Plumbing', labelAr: 'السباكة', selectable: true },
+      { id: 'old', labelEn: 'Old trade', labelAr: 'تخصص سابق', selectable: false },
+    ]);
+  });
+
+  it('projects scheduled status separately from stopped history', async () => {
+    const h = build({
+      existing: [
+        {
+          ...VALID,
+          publishedAt: new Date('2099-01-01'),
+          retiredAt: null,
+          publishedByUserId: ADMIN,
+        },
+      ],
+    });
+    const result = await h.service.list(ADMIN);
+    expect(result.policies[0]).toMatchObject({ state: 'SCHEDULED', isLive: false });
   });
 });

@@ -1,5 +1,6 @@
 import type {
   AdminProviderReview,
+  AdminProviderReviewHistoryResponse,
   AdminProviderReviewMutationResponse,
   ApproveAdminProviderReviewRequest,
   RequestAdminProviderReviewChangesRequest,
@@ -11,6 +12,19 @@ import { adminProvidersQueryKeys } from '../../hooks/admin/useAdminProviders';
 export const reviewQueryKey = (id: string) =>
   [...adminProvidersQueryKeys.detail(id), 'review'] as const;
 const reviewPath = (id: string) => `/v1/admin/providers/${encodeURIComponent(id)}/review`;
+export const reviewHistoryQueryKey = (id: string) =>
+  [...adminProvidersQueryKeys.detail(id), 'review-history'] as const;
+export async function getProviderReviewHistory(
+  id: string,
+  cursor: string | undefined,
+  signal?: AbortSignal,
+): Promise<AdminProviderReviewHistoryResponse> {
+  const response = await api.get<AdminProviderReviewHistoryResponse>(`${reviewPath(id)}/history`, {
+    params: { limit: 20, ...(cursor ? { cursor } : {}) },
+    signal,
+  });
+  return response.data;
+}
 export async function getProviderReview(
   id: string,
   signal?: AbortSignal,

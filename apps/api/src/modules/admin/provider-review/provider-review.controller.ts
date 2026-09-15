@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUser } from '../../iam/authentication/decorators/current-user.decorator';
@@ -18,17 +19,31 @@ import { PermissionsGuard } from '../../iam/authorization/guards/permissions.gua
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import { ApproveProviderReviewDto, RequestProviderReviewChangesDto } from './provider-review.dto';
 import { AdminProviderReviewService } from './provider-review.service';
+import { AdminProviderReviewHistoryService } from './provider-review-history.service';
+import { ListProviderAuditQueryDto } from '../verification/dto/list-provider-audit.query';
 
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles('admin')
 @Permissions('user:read:any')
 @Controller({ path: 'admin/providers/:providerProfileId/review', version: '1' })
 export class AdminProviderReviewController {
-  constructor(private readonly reviews: AdminProviderReviewService) {}
+  constructor(
+    private readonly reviews: AdminProviderReviewService,
+    private readonly history: AdminProviderReviewHistoryService,
+  ) {}
 
   @Get()
   get(@CurrentUser() actor: AuthenticatedUser, @Param('providerProfileId') id: string) {
     return this.reviews.get(actor, id);
+  }
+
+  @Get('history')
+  listHistory(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('providerProfileId') id: string,
+    @Query() query: ListProviderAuditQueryDto,
+  ) {
+    return this.history.list(actor.id, id, query);
   }
 
   @Post('approve')

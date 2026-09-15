@@ -106,7 +106,7 @@ describe('AdminDashboard — User Control (Sprint 6.1)', () => {
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
     expect(screen.getByText('ada@example.com')).toBeInTheDocument();
     // The status badge text is the canonical enum value.
-    expect(screen.getAllByText('ACTIVE').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
     // The "Coming Soon" placeholder must not be rendered any more.
     expect(screen.queryByText(/User Control — Coming Soon/i)).toBeNull();
   });

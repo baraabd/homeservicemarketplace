@@ -1,4 +1,6 @@
 import { formatReviewDate } from '../format-review-date';
+import { ReviewHistory } from './ReviewHistory';
+import { reviewCorrectionFieldLabel } from '../../provider-onboarding-v2/copy/review-correction-fields';
 import type { ReactNode } from 'react';
 import { useEquipmentCatalog } from '../../../../lib/use-service-categories';
 import type {
@@ -6,6 +8,7 @@ import type {
   AdminProviderReviewTaskId,
   ProviderReviewSnapshot,
 } from '@homeservicemarketplace/contracts';
+import { LEGACY_PUBLICATION_ACK_TEXT } from '@homeservicemarketplace/contracts';
 import {
   BadgeCheck,
   BriefcaseBusiness,
@@ -85,8 +88,14 @@ export function ReviewDossier({
     return entry ? (lang === 'ar' ? entry.labelAr : entry.labelEn) : code;
   };
   const empty = snapshot ? t.notProvided : t.notCaptured;
-  const text = (value: string | number | null | undefined) =>
-    value === null || value === undefined || value === '' ? empty : value;
+  const text = (value: string | number | null | undefined): ReactNode =>
+    value === null || value === undefined || value === '' ? (
+      empty
+    ) : typeof value === 'string' ? (
+      <bdi dir="auto">{value}</bdi>
+    ) : (
+      value
+    );
   const date = (value: string | null | undefined) => formatReviewDate(value, lang, empty);
   const serviceName = (id: string | null | undefined) => {
     const item = snapshot?.services.specialties.find((entry) => entry.id === id);
@@ -274,7 +283,13 @@ export function ReviewDossier({
         4,
         <div className="ar-stack">
           <dl className="ar-fields">
-            <ReviewField label={t.timezone}>{text(snapshot?.availability.timezone)}</ReviewField>
+            <ReviewField label={t.timezone}>
+              {snapshot?.availability.timezone ? (
+                <bdi dir="ltr">{snapshot.availability.timezone}</bdi>
+              ) : (
+                empty
+              )}
+            </ReviewField>
           </dl>
           {snapshot ? (
             <ul className="ar-list" aria-label={t.hours}>
@@ -341,14 +356,25 @@ export function ReviewDossier({
                   {snapshot.portfolio.map((item, index) => (
                     <li className="ar-list-row" key={item.id}>
                       <div>
-                        <strong>{item.title || `${t.order} ${index + 1}`}</strong>
-                        <p>{item.description}</p>
+                        <strong>
+                          <bdi dir="auto">{item.title || `${t.order} ${index + 1}`}</bdi>
+                        </strong>
+                        <p>
+                          <bdi dir="auto">{item.description}</bdi>
+                        </p>
                         <p className="ar-muted">{serviceName(item.serviceCategoryId)}</p>
                         <small className="ar-muted">
                           {t.publicationAck}: {date(item.publicationRightAckAt)}
-                          {item.publicationRightAckVersion
-                            ? ` · ${item.publicationRightAckVersion}`
-                            : ''}
+                          {item.publicationRightAckVersion && (
+                            <>
+                              {' · '}
+                              {item.publicationRightAckVersion === LEGACY_PUBLICATION_ACK_TEXT ? (
+                                t.legacyPublicationAck
+                              ) : (
+                                <bdi dir="ltr">{item.publicationRightAckVersion}</bdi>
+                              )}
+                            </>
+                          )}
                         </small>
                       </div>
                       <StatusBadge value={item.moderationState} lang={lang} />
@@ -373,29 +399,31 @@ export function ReviewDossier({
             <ReviewField label={t.submittedAt}>{date(review.submission?.submittedAt)}</ReviewField>
             <ReviewField label={t.capturedAt}>{date(snapshot?.capturedAt)}</ReviewField>
             <ReviewField label={t.policyVersion}>
-              {text(review.submission?.policyVersion)}
+              {review.submission?.policyVersion ? (
+                <bdi dir="ltr">{review.submission.policyVersion}</bdi>
+              ) : (
+                empty
+              )}
             </ReviewField>
             <ReviewField label={t.applicationDecision}>
-              <StatusBadge value={review.submission?.decision} lang={lang} />
+              {review.submission?.decision ? (
+                <StatusBadge value={review.submission.decision} lang={lang} />
+              ) : (
+                <ReviewBadge tone={review.submission ? 'warning' : 'neutral'}>
+                  {review.submission ? t.awaitingDecision : t.noHistory}
+                </ReviewBadge>
+              )}
             </ReviewField>
             <ReviewField label={t.consentVersion}>
-              {text(snapshot?.consent.acceptedVersion)}
+              {snapshot?.consent.acceptedVersion ? (
+                <bdi dir="ltr">{snapshot.consent.acceptedVersion}</bdi>
+              ) : (
+                empty
+              )}
             </ReviewField>
             <ReviewField label={t.consentAt}>{date(snapshot?.consent.acceptedAt)}</ReviewField>
           </dl>
-          <div>
-            <h3 className="ar-subheading">{t.history}</h3>
-            {review.submission?.decidedAt ? (
-              <div className="ar-timeline">
-                <div className="ar-timeline-item">
-                  <StatusBadge value={review.submission.decision} lang={lang} />
-                  <p className="ar-muted">{date(review.submission.decidedAt)}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="ar-muted">{t.historyEmpty}</p>
-            )}
-          </div>
+          <ReviewHistory providerId={review.provider.id} lang={lang} />
           {!!review.submission?.feedback?.items.length && (
             <div>
               <h3 className="ar-subheading">{t.previousCorrections}</h3>
@@ -404,7 +432,10 @@ export function ReviewDossier({
                   <li key={item.id} className="ar-list-row">
                     <div>
                       <strong>{TASK_LABELS[lang][item.taskId]}</strong>
-                      <p>{item.providerMessage}</p>
+                      {item.field && <p>{reviewCorrectionFieldLabel(item.field, lang)}</p>}
+                      <p>
+                        <bdi dir="auto">{item.providerMessage}</bdi>
+                      </p>
                     </div>
                   </li>
                 ))}

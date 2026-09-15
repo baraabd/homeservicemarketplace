@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../../../config/app-config.service';
-import {
-  ADMIN_PROVIDER_TRANSITIONS,
-  availableAdminProviderActions,
-} from '@homeservicemarketplace/contracts';
+import { ADMIN_PROVIDER_TRANSITIONS } from '@homeservicemarketplace/contracts';
 import type {
   AdminProviderMutationResponse,
   AdminProviderSummary,
@@ -17,7 +14,6 @@ import {
   NotificationResourceType,
   NotificationType,
   type AuditEventType,
-  type ProviderProfile,
   type ProviderOnboardingState,
   type ProviderProfileStatus,
 } from '@homeservicemarketplace/database';
@@ -29,6 +25,12 @@ import { AppError } from '../../../shared/errors/app-error';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { SecurityEventsBus } from '../../../shared/security-events/security-events.bus';
 import { AdminAuditService } from '../admin-audit.service';
+import { ProviderCapabilityService } from '../../provider/capability/provider-capability.service';
+import { toAdminProviderSummary } from './admin-provider-summary';
+import {
+  adminSubmissionDate,
+  type AdminProviderDirectoryRow,
+} from '../../../infrastructure/persistence/bids/admin-provider-directory.query';
 
 const DEFAULT_PAGE_SIZE = 50;
 
@@ -73,31 +75,85 @@ export class AdminVerificationService {
     // socket already sitting in `provider:{id}` must be evicted post-commit.
     private readonly securityEvents: SecurityEventsBus,
     private readonly config: AppConfigService,
+    private readonly capabilities: ProviderCapabilityService,
   ) {}
 
-  private summary(row: Parameters<typeof toSummary>[0]): AdminProviderSummary {
-    const summary = toSummary(row);
+  private summary(row: AdminProviderDirectoryRow): AdminProviderSummary {
+    const capabilitySet = this.capabilities.forContext({
+      accountEligible:
+        !!row.user &&
+        row.user.status === 'ACTIVE' &&
+        row.user.isActive &&
+        row.user.deletedAt === null,
+      hasProfile: true,
+      onboardingState: row.onboardingState ?? null,
+      standingState: row.standingState ?? null,
+      legacyStatus: row.status,
+      verificationState: row.verificationState ?? null,
+      hasLiveWorkAccessGrant: (row.workAccessGrants?.length ?? 0) > 0,
+    });
+    const summary = toAdminProviderSummary(row, capabilitySet);
     if (this.config.get('VERIFICATION_ENFORCED') || this.config.get('WORK_ACCESS_ENFORCED')) {
       summary.availableActions = summary.availableActions?.filter((action) => action !== 'approve');
     }
     return summary;
   }
 
-  async list(query: ListAdminProvidersQuery): Promise<ListAdminProvidersResponse> {
+  async list(
+    query: ListAdminProvidersQuery,
+    reviewerUserId?: string,
+  ): Promise<ListAdminProvidersResponse> {
     const take = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), 100);
-    // Preserve the legacy queue default; the complete directory explicitly asks for ALL.
     const status = query.status === 'ALL' ? undefined : (query.status ?? 'PENDING_REVIEW');
-    const rows = await this.providers.listForAdmin({
-      status,
+    if (query.assignment === 'MINE' && !reviewerUserId) {
+      throw new AppError('FORBIDDEN', 'A reviewer is required for this filter.', 403);
+    }
+    const from = query.submittedFrom ? adminSubmissionDate(query.submittedFrom) : null;
+    const to = query.submittedTo ? adminSubmissionDate(query.submittedTo, true) : null;
+    if (
+      (from && Number.isNaN(from.getTime())) ||
+      (to && Number.isNaN(to.getTime())) ||
+      (from && to && from > to)
+    ) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid submission date range.', 400, {
+        reason: 'INVALID_DATE_RANGE',
+      });
+    }
+    const filters = {
       query: query.query?.trim() || undefined,
       userId: query.userId,
-      take: take + 1,
-      cursor: query.cursor,
-    });
-    const page = rows.slice(0, take);
-    const items = page.map((row) => this.summary(row));
-    const nextCursor = rows.length > take ? items[items.length - 1].id : null;
-    return { items, nextCursor };
+      sort: query.sort ?? (status === 'PENDING_REVIEW' ? 'SUBMITTED_OLDEST' : 'UPDATED_NEWEST'),
+      assignment: query.assignment,
+      reviewerUserId,
+      identityState: query.identityState,
+      portfolioState: query.portfolioState,
+      country: query.country,
+      submittedFrom: query.submittedFrom,
+      submittedTo: query.submittedTo,
+    };
+    const [rows, grouped] = await Promise.all([
+      this.providers.listForAdmin({ ...filters, status, take: take + 1, cursor: query.cursor }),
+      this.providers.countForAdmin(filters),
+    ]);
+    const counts = { all: 0, pendingReview: 0, active: 0, returned: 0, suspended: 0, draft: 0 };
+    const keys = {
+      PENDING_REVIEW: 'pendingReview',
+      ACTIVE: 'active',
+      REJECTED: 'returned',
+      SUSPENDED: 'suspended',
+      DRAFT: 'draft',
+    } as const;
+    for (const group of grouped) {
+      counts.all += group._count._all;
+      counts[keys[group.status]] = group._count._all;
+    }
+    const items = rows.slice(0, take).map((row) => this.summary(row));
+    return {
+      items,
+      nextCursor: rows.length > take ? items[items.length - 1].id : null,
+      total: status ? counts[keys[status]] : counts.all,
+      counts,
+    };
   }
 
   async detail(id: string): Promise<AdminProviderSummary> {
@@ -430,31 +486,4 @@ export class AdminVerificationService {
     const nextCursor = rows.length > take ? items[items.length - 1].id : null;
     return { items, nextCursor };
   }
-}
-
-function toSummary(
-  row: ProviderProfile & { user: { id: string; email: string } | null },
-): AdminProviderSummary {
-  return {
-    id: row.id,
-    status: row.status,
-    // Sprint 9 — the server decides what is offerable, from the same table it
-    // enforces. The client used to work this out for itself and got `approve`
-    // wrong for DRAFT (docs/sprint-09/INSPECTION.md D-3).
-    availableActions: availableAdminProviderActions(row.status),
-    userId: row.user?.id ?? null,
-    email: row.user?.email ?? null,
-    displayName: row.displayName,
-    initials: row.initials,
-    ratingAvg: row.ratingAvg,
-    reviewCount: row.reviewCount,
-    completedJobs: row.completedJobs,
-    verified: row.verified,
-    topPro: row.topPro,
-    serviceAreaCity: row.serviceAreaCity,
-    serviceAreaCountry: row.serviceAreaCountry,
-    reviewNotes: (row as { reviewNotes?: string | null }).reviewNotes ?? null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
 }

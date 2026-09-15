@@ -468,9 +468,11 @@ export async function adminJar(): Promise<Jar> {
  * portfolio item exists the way one actually comes to exist — presign, upload,
  * register — so the thing under test (the ORDER) is the only part the test
  * performs itself.
+ * Encoded from phase3-activation's valid EVIDENCE_PNG generator; keeping the
+ * bytes here avoids a circular import between the two HTTP helpers.
  */
 const TINY_PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==',
   'base64',
 );
 
@@ -599,7 +601,15 @@ export async function loginViaUi(page: Page, account: Account): Promise<void> {
   await page.locator('input[type="password"]').fill(account.password);
   // The sign-in screen is not a <form>; the control is a plain button, so it
   // is addressed by its accessible name rather than by a submit type.
+  const loginResponse = page.waitForResponse(
+    (response) =>
+      response.url() === `${REAL_API}/v1/auth/login` && response.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: 'Log In', exact: true }).click();
+  expect(
+    (await loginResponse).status(),
+    `UI login should be accepted before waiting for OTP mail for ${account.email}`,
+  ).toBe(200);
 
   const otpInput = page.getByTestId('otp-input');
   await otpInput.waitFor({ state: 'visible', timeout: 45_000 });

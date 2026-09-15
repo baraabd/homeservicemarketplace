@@ -1,248 +1,223 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import { Plus, ShieldCheck } from 'lucide-react';
 import type {
-  ListVerificationPoliciesResponse,
-  VerificationDocumentKindCode,
+  PublishVerificationPolicyRequest,
   VerificationPolicySummary,
 } from '@homeservicemarketplace/contracts';
-
-import { api } from '../../../../lib/api';
 import { useLang } from '../../../i18n/LanguageContext';
-import { DOCUMENT_KIND_LABELS, UI } from '../copy/verification-copy';
+import { ReviewBanner } from '../../admin-provider-review/components/ReviewPrimitives';
+import { ReviewDialog } from '../../admin-provider-review/components/ReviewDialog';
+import { POLICY_COPY, policyErrorMessage } from '../policies/policy-copy';
+import { usePolicySettings } from '../policies/usePolicySettings';
+import { PolicyForm } from '../policies/PolicyForm';
+import { initialPolicyDraft } from '../policies/policy-draft';
+import { PolicyScope, PolicyVersionCard } from '../policies/PolicyScope';
+import '../../admin-provider-review/admin-review.css';
+import '../policies/policy-settings.css';
 
-// Sprint 9B.12 — publishing, inspecting and retiring verification policies.
-//
-// docs/sprint-09b12/ADMIN_VERIFICATION_UX.md
-//
-// POLICIES ARE APPEND-ONLY, and the UI has to make that obvious rather than
-// merely enforce it. There is no edit control anywhere on this panel — not
-// disabled, absent — because editing a published version would change what a
-// provider was judged against AFTER they were judged. An operator who wants
-// different rules publishes a new version; the old one is retired, and every
-// case decided under it still points at what it actually said.
-//
-// The server owns the lifecycle (ADR 0010): overlap rules, version format, and
-// what may be retired. This panel renders `isLive` and offers retire on what
-// the server says is live — it derives neither.
+type Confirmation =
+  | { kind: 'publish'; policy: PublishVerificationPolicyRequest }
+  | { kind: 'retire'; policy: VerificationPolicySummary };
 
-const POLICY_KEY = ['admin', 'verification', 'policies'] as const;
-
-const DOCUMENT_KINDS: VerificationDocumentKindCode[] = [
-  'INDIVIDUAL_IDENTITY',
-  'BUSINESS_REGISTRATION',
-  'AUTHORIZED_REPRESENTATIVE_IDENTITY',
-  'CATEGORY_LICENSE',
-];
-
-async function listPolicies(): Promise<ListVerificationPoliciesResponse> {
-  const { data } = await api.get<ListVerificationPoliciesResponse>(
-    '/v1/admin/verification/policies',
-  );
-  return data;
-}
-
+/** Global requirements belong to restricted settings, separate from individual review decisions. */
 export function VerificationPolicyPanel() {
-  const { lang, dir } = useLang();
-  const t = UI[lang];
-  const qc = useQueryClient();
+  const { lang, dir, darkMode } = useLang();
+  const t = POLICY_COPY[lang];
+  const { query, options, publish, retire } = usePolicySettings();
+  const [showForm, setShowForm] = useState(false);
+  const [draft, setDraft] = useState(initialPolicyDraft);
+  const openerRef = useRef<HTMLButtonElement | null>(null);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  const [success, setSuccess] = useState<'publish' | 'retire' | null>(null);
+  const pending = publish.isPending || retire.isPending;
+  const mutationError = confirmation?.kind === 'publish' ? publish.error : retire.error;
+  const forbidden = (query.error as { response?: { status?: number } })?.response?.status === 403;
 
-  const query = useQuery({ queryKey: POLICY_KEY, queryFn: listPolicies });
-  const invalidate = () => void qc.invalidateQueries({ queryKey: POLICY_KEY });
-
-  const publishMut = useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      api.post('/v1/admin/verification/policies', body),
-    onSuccess: invalidate,
-  });
-  const retireMut = useMutation({
-    mutationFn: (version: string) =>
-      api.post(`/v1/admin/verification/policies/${encodeURIComponent(version)}/retire`),
-    onSuccess: invalidate,
-  });
-
-  const [version, setVersion] = useState('');
-  const [country, setCountry] = useState('');
-  const [kinds, setKinds] = useState<VerificationDocumentKindCode[]>(['INDIVIDUAL_IDENTITY']);
-  const [error, setError] = useState<string | null>(null);
-
-  const failureStatus = (query.error as { response?: { status?: number } } | null)?.response
-    ?.status;
-
-  if (query.isError && failureStatus === 403) {
-    return (
-      <section aria-label={t.policyTitle} dir={dir} data-testid="policy-forbidden">
-        <h3 className="text-base font-semibold">{t.forbiddenTitle}</h3>
-        <p role="alert" className="text-sm">
-          {t.forbiddenBody}
-        </p>
-      </section>
-    );
-  }
-
-  const policies: VerificationPolicySummary[] = query.data?.policies ?? [];
+  const closeConfirmation = () => {
+    if (!pending) setConfirmation(null);
+  };
+  const openConfirmation = (next: Confirmation) => {
+    const active = document.activeElement;
+    openerRef.current = active instanceof HTMLButtonElement ? active : null;
+    setConfirmation(next);
+  };
+  const resetMutation = () => {
+    publish.reset();
+    retire.reset();
+    setSuccess(null);
+  };
+  const execute = () => {
+    if (!confirmation || pending) return;
+    const kind = confirmation.kind;
+    const completed = () => {
+      setSuccess(kind);
+      setConfirmation(null);
+      if (kind === 'publish') {
+        setDraft(initialPolicyDraft());
+        setShowForm(false);
+      }
+    };
+    if (kind === 'publish') publish.mutate(confirmation.policy, { onSuccess: completed });
+    else retire.mutate(confirmation.policy.version, { onSuccess: completed });
+  };
 
   return (
-    <section aria-label={t.policyTitle} dir={dir} data-testid="policy-panel" className="space-y-3">
-      <h3 className="text-base font-semibold">{t.policyTitle}</h3>
-      {/* Stated, not just enforced: an operator hunting for an edit button
-          should find out why there isn't one. */}
-      <p className="text-xs text-slate-500 dark:text-slate-400">{t.policyAppendOnly}</p>
-
-      {query.isLoading && (
-        <p aria-busy="true" data-testid="policy-loading" className="text-sm">
+    <section
+      aria-label={t.title}
+      dir={dir}
+      lang={lang}
+      data-testid="policy-panel"
+      className={`admin-review ap-settings ar-stack${darkMode ? ' dark' : ''}`}
+    >
+      <header className="ar-header">
+        <div className="ar-stack">
+          <span className="ar-eyebrow">{t.eyebrow}</span>
+          <h1 className="ar-title">{t.title}</h1>
+          <p className="ar-muted">{t.description}</p>
+        </div>
+        {query.isSuccess && !showForm && (
+          <button
+            type="button"
+            data-testid="policy-new-version"
+            className="ar-button ar-button-primary"
+            disabled={!options.isSuccess || pending}
+            onClick={() => {
+              setShowForm(true);
+              setSuccess(null);
+            }}
+          >
+            <Plus size={18} aria-hidden />
+            {t.newVersion}
+          </button>
+        )}
+      </header>
+      {forbidden ? (
+        <div className="ar-card ar-stack" data-testid="policy-forbidden">
+          <ShieldCheck size={28} aria-hidden />
+          <h2 className="ar-heading">{t.forbiddenTitle}</h2>
+          <ReviewBanner tone="warning" role="alert">
+            {t.forbiddenBody}
+          </ReviewBanner>
+        </div>
+      ) : query.isError ? (
+        <ReviewBanner tone="danger" role="alert">
+          <p>{t.loadFailed}</p>
+          <button className="ar-button" type="button" onClick={() => void query.refetch()}>
+            {t.retry}
+          </button>
+        </ReviewBanner>
+      ) : query.isPending ? (
+        <p role="status" aria-busy="true" data-testid="policy-loading">
           {t.loading}
         </p>
+      ) : (
+        <>
+          <ReviewBanner>{t.appendOnly}</ReviewBanner>
+          {success && (
+            <ReviewBanner tone="success" role="status">
+              {success === 'publish' ? t.publishedSuccess : t.stoppedSuccess}
+            </ReviewBanner>
+          )}
+          {options.isError && (
+            <ReviewBanner tone="danger" role="alert">
+              <p>{t.optionsFailed}</p>
+              <button type="button" className="ar-button" onClick={() => void options.refetch()}>
+                {t.retry}
+              </button>
+            </ReviewBanner>
+          )}
+          {showForm && options.data && (
+            <PolicyForm
+              draft={draft}
+              onChange={setDraft}
+              lang={lang}
+              options={options.data}
+              pending={pending}
+              onCancel={() => setShowForm(false)}
+              onReview={() => {
+                resetMutation();
+                openConfirmation({
+                  kind: 'publish',
+                  policy: { ...draft, version: draft.version.trim() },
+                });
+              }}
+            />
+          )}
+          <div className="ar-subheader">
+            <h2 className="ar-heading">{t.history}</h2>
+            <span className="ar-muted">{query.data.policies.length.toLocaleString(lang)}</span>
+          </div>
+          {query.data.policies.length === 0 ? (
+            <p className="ar-card ar-muted" data-testid="policy-empty">
+              {t.empty}
+            </p>
+          ) : (
+            <div className="ap-policy-grid" data-testid="policy-versions">
+              {query.data.policies.map((policy) => (
+                <PolicyVersionCard
+                  key={policy.version}
+                  policy={policy}
+                  options={options.data}
+                  lang={lang}
+                  pending={pending}
+                  onRetire={() => {
+                    resetMutation();
+                    openConfirmation({ kind: 'retire', policy });
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
-
-      {!query.isLoading && policies.length === 0 && (
-        <p data-testid="policy-empty" className="text-sm">
-          {t.policyEmpty}
-        </p>
-      )}
-
-      {policies.length > 0 && (
-        <table className="w-full text-sm" data-testid="policy-table">
-          <thead>
-            <tr>
-              <th scope="col" className="p-2 text-start">
-                {t.policyVersionLabel}
-              </th>
-              <th scope="col" className="p-2 text-start">
-                {t.policyCountry}
-              </th>
-              <th scope="col" className="p-2 text-start">
-                {t.policyDocuments}
-              </th>
-              <th scope="col" className="p-2 text-start">
-                {t.policyPublishedAt}
-              </th>
-              <th scope="col" className="p-2 text-start">
-                {t.filterState}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {policies.map((p) => (
-              <tr key={p.version} data-testid={`policy-row-${p.version}`}>
-                <td className="p-2 font-semibold">{p.version}</td>
-                <td className="p-2">{p.country ?? '—'}</td>
-                <td className="p-2">
-                  {p.requirements.documents.map((d) => DOCUMENT_KIND_LABELS[lang][d]).join('، ')}
-                </td>
-                <td className="p-2">{new Date(p.publishedAt).toLocaleDateString(lang)}</td>
-                <td className="p-2">
-                  <span
-                    data-testid={`policy-live-${p.version}`}
-                    data-live={p.isLive ? 'true' : 'false'}
-                  >
-                    {p.isLive ? t.policyLive : t.policyRetired}
-                  </span>
-                  {p.isLive && (
-                    <button
-                      type="button"
-                      data-testid={`policy-retire-${p.version}`}
-                      onClick={() => retireMut.mutate(p.version)}
-                      className="ms-2 rounded-lg border px-2 py-1 text-xs font-semibold"
-                    >
-                      {t.policyRetire}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {/* ── publish a new version ────────────────────────────────────────── */}
-      <form
-        data-testid="policy-publish-form"
-        className="space-y-2 rounded-lg border p-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError(null);
-          if (!version.trim()) {
-            setError(t.reasonRequired);
-            return;
-          }
-          publishMut.mutate(
-            {
-              version: version.trim(),
-              country: country.trim() || null,
-              requirements: { documents: kinds, verificationRequired: true },
-            },
-            {
-              onSuccess: () => {
-                setVersion('');
-                setCountry('');
-              },
-              // The server owns version format and overlap. Its refusal is
-              // shown rather than pre-empted by a rule copied into React.
-              onError: (err) =>
-                setError(
-                  (err as { response?: { data?: { error?: { message?: string } } } })?.response
-                    ?.data?.error?.message ?? t.failed,
-                ),
-            },
-          );
-        }}
+      <ReviewDialog
+        openerRef={openerRef}
+        open={confirmation !== null}
+        onClose={closeConfirmation}
+        title={confirmation?.kind === 'retire' ? t.confirmStop : t.confirmPublish}
+        description={confirmation?.kind === 'retire' ? t.stopImpact : t.publishImpact}
       >
-        <h4 className="text-sm font-semibold">{t.policyPublish}</h4>
-
-        <label className="block text-xs" htmlFor="policy-version">
-          {t.policyVersionLabel}
-        </label>
-        <input
-          id="policy-version"
-          data-testid="policy-version"
-          value={version}
-          onChange={(e) => setVersion(e.target.value)}
-          className="w-full rounded-lg border px-2 py-1.5 text-sm"
-        />
-
-        <label className="block text-xs" htmlFor="policy-country">
-          {t.policyCountry}
-        </label>
-        <input
-          id="policy-country"
-          data-testid="policy-country"
-          value={country}
-          onChange={(e) => setCountry(e.target.value)}
-          className="w-full rounded-lg border px-2 py-1.5 text-sm"
-        />
-
-        <fieldset>
-          <legend className="text-xs">{t.policyDocuments}</legend>
-          {DOCUMENT_KINDS.map((kind) => (
-            <label key={kind} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                data-testid={`policy-kind-${kind}`}
-                checked={kinds.includes(kind)}
-                onChange={(e) =>
-                  setKinds((k) => (e.target.checked ? [...k, kind] : k.filter((x) => x !== kind)))
-                }
-              />
-              {DOCUMENT_KIND_LABELS[lang][kind]}
-            </label>
-          ))}
-        </fieldset>
-
-        {error && (
-          <p role="alert" data-testid="policy-error" className="text-sm text-red-600">
-            {error}
-          </p>
+        {confirmation && (
+          <>
+            <p className="ar-wrap">
+              <bdi dir="ltr">{confirmation.policy.version}</bdi>
+            </p>
+            <div className="ap-form-scope">
+              <PolicyScope policy={confirmation.policy} options={options.data} lang={lang} />
+            </div>
+            {mutationError && (
+              <ReviewBanner tone="danger" role="alert">
+                <p data-testid="policy-error">{policyErrorMessage(mutationError, lang)}</p>
+              </ReviewBanner>
+            )}
+            <div className="ar-actions">
+              <button
+                type="button"
+                data-testid="policy-confirm"
+                className={`ar-button ${confirmation.kind === 'retire' ? 'ar-button-danger' : 'ar-button-primary'}`}
+                disabled={pending}
+                onClick={execute}
+              >
+                {pending
+                  ? confirmation.kind === 'retire'
+                    ? t.stopping
+                    : t.publishing
+                  : confirmation.kind === 'retire'
+                    ? t.stop
+                    : t.publish}
+              </button>
+              <button
+                type="button"
+                className="ar-button"
+                disabled={pending}
+                onClick={closeConfirmation}
+              >
+                {t.cancel}
+              </button>
+            </div>
+          </>
         )}
-
-        <button
-          type="submit"
-          data-testid="policy-publish"
-          disabled={publishMut.isPending}
-          className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {t.policyPublish}
-        </button>
-      </form>
+      </ReviewDialog>
     </section>
   );
 }

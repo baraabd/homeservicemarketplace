@@ -108,6 +108,9 @@ export default defineConfig({
       : [
           '**/auth-cookies.spec.ts',
           '**/provider-onboarding-v2-real-api.spec.ts',
+          // Admin navigation, decisions, policy settings and visual evidence
+          // are accepted against the same running API, never the UI fixture job.
+          '**/admin-review-workflow.real-api.spec.ts',
           // Sprint 9B.28 — the persistence journey. Same rule and same reason:
           // it reads the draft back through an independent API client and a
           // second browser context, so a stubbed run could not prove anything

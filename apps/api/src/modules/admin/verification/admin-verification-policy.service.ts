@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { VerificationPolicyOptionsResponse } from '@homeservicemarketplace/contracts';
 import type { Prisma, PrismaTx, ProviderType } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
@@ -19,6 +20,8 @@ import {
 } from '../../provider/verification/policy/policy-lifecycle';
 import { VerificationSettingsService } from '../../provider/verification/verification-settings.service';
 import { AppError } from '../../../shared/errors/app-error';
+import { PermissionResolverService } from '../../iam/authorization/services/permission-resolver.service';
+import { MarketRegistryService } from '../../provider/onboarding/market/market-registry.service';
 
 // Sprint 9B.2 — publishing and retiring verification policy versions.
 //
@@ -55,6 +58,7 @@ export interface PolicySummary {
   retiredAt: string | null;
   publishedByUserId: string | null;
   isLive: boolean;
+  state: 'ACTIVE' | 'SCHEDULED' | 'RETIRED';
 }
 
 @Injectable()
@@ -64,9 +68,12 @@ export class AdminVerificationPolicyService {
     private readonly tx: TransactionRunner,
     private readonly audit: AuditService,
     private readonly settings: VerificationSettingsService,
+    private readonly permissions: PermissionResolverService,
+    private readonly markets: MarketRegistryService,
   ) {}
 
   async publish(adminUserId: string, input: PublishPolicyInput): Promise<PolicySummary> {
+    await this.requireManagement(adminUserId);
     const now = new Date();
     const publishedAt = input.publishedAt ?? now;
 
@@ -111,6 +118,14 @@ export class AdminVerificationPolicyService {
         retiredAt: true,
       },
     });
+    if (existing.some((policy) => policy.version === input.version)) {
+      throw new AppError(
+        'CONFLICT',
+        'Choose a new version name. Published versions are immutable.',
+        409,
+        { reason: 'VERSION_EXISTS' },
+      );
+    }
     try {
       assertNoLiveOverlap(candidate, existing, now);
     } catch (err) {
@@ -119,6 +134,8 @@ export class AdminVerificationPolicyService {
 
     // ── the write ────────────────────────────────────────────────────────
     return this.tx.run(async (trx: PrismaTx) => {
+      await this.requireManagement(adminUserId, trx);
+      await this.assertScope(input, trx);
       let row;
       try {
         row = await trx.verificationRequirementPolicy.create({
@@ -153,6 +170,7 @@ export class AdminVerificationPolicyService {
   }
 
   async retire(adminUserId: string, version: string): Promise<PolicySummary> {
+    await this.requireManagement(adminUserId);
     try {
       assertVersionFormat(version);
     } catch (err) {
@@ -174,6 +192,7 @@ export class AdminVerificationPolicyService {
     }
 
     return this.tx.run(async (trx: PrismaTx) => {
+      await this.requireManagement(adminUserId, trx);
       // The WHERE clause IS the concurrency guard — this table has no version
       // column, and it does not need one: "still un-retired" is exactly the
       // precondition. Two admins retiring at once means one UPDATE matches
@@ -188,6 +207,7 @@ export class AdminVerificationPolicyService {
           'CONFLICT',
           `Policy ${version} was retired by someone else. Reload to see the current state.`,
           409,
+          { reason: 'ALREADY_RETIRED' },
         );
       }
 
@@ -204,12 +224,87 @@ export class AdminVerificationPolicyService {
     });
   }
 
-  async list(): Promise<{ policies: PolicySummary[] }> {
+  async list(adminUserId: string): Promise<{ policies: PolicySummary[] }> {
+    await this.requireManagement(adminUserId);
     const rows = await this.prisma.client.verificationRequirementPolicy.findMany({
       orderBy: [{ publishedAt: 'desc' }, { version: 'desc' }],
     });
     const now = new Date();
     return { policies: rows.map((r) => toSummary(r, now)) };
+  }
+
+  async options(adminUserId: string): Promise<VerificationPolicyOptionsResponse> {
+    await this.requireManagement(adminUserId);
+    const [markets, categories] = await Promise.all([
+      this.markets.all(),
+      this.prisma.client.serviceCategory.findMany({
+        // Keep labels of historical scopes, but never offer retired categories
+        // for a new policy. Policy rows themselves remain append-only.
+        orderBy: [{ sortOrder: 'asc' }, { slug: 'asc' }],
+        select: {
+          id: true,
+          labelEn: true,
+          labelAr: true,
+          isActive: true,
+          isLeaf: true,
+          deletedAt: true,
+        },
+      }),
+    ]);
+    return {
+      countries: markets.map(({ countryCode, enabled }) => ({ countryCode, enabled })),
+      categories: categories.map(({ id, labelEn, labelAr, isActive, isLeaf, deletedAt }) => ({
+        id,
+        labelEn,
+        labelAr,
+        selectable: isActive && isLeaf && deletedAt === null,
+      })),
+    };
+  }
+
+  private async requireManagement(adminUserId: string, trx?: PrismaTx): Promise<void> {
+    const granted = await this.permissions.resolveFreshForUser(adminUserId, trx);
+    const adminMembership = granted.has('verification:policy:manage')
+      ? await (trx ?? this.prisma.client).userRole.findFirst({
+          where: {
+            userId: adminUserId,
+            user: { deletedAt: null, status: 'ACTIVE', isActive: true },
+            role: { name: 'admin', deletedAt: null },
+          },
+          select: { roleId: true },
+        })
+      : null;
+    if (!adminMembership) {
+      throw new AppError(
+        'FORBIDDEN',
+        'You do not have permission to manage verification policies.',
+        403,
+      );
+    }
+  }
+
+  private async assertScope(input: PublishPolicyInput, trx: PrismaTx): Promise<void> {
+    // Disabled configured markets are intentionally allowed: policy preparation
+    // must be possible before a market is opened to providers.
+    if (
+      input.country &&
+      !(await this.markets.all(trx)).some((m) => m.countryCode === input.country)
+    ) {
+      throw new AppError('VALIDATION_ERROR', 'Choose a configured country.', 400, {
+        reason: 'POLICY_COUNTRY_UNAVAILABLE',
+      });
+    }
+    if (input.categoryId) {
+      const category = await trx.serviceCategory.findFirst({
+        where: { id: input.categoryId, deletedAt: null, isActive: true, isLeaf: true },
+        select: { id: true },
+      });
+      if (!category) {
+        throw new AppError('VALIDATION_ERROR', 'Choose an active specialty.', 400, {
+          reason: 'POLICY_CATEGORY_UNAVAILABLE',
+        });
+      }
+    }
   }
 }
 
@@ -271,5 +366,6 @@ function toSummary(
     retiredAt: row.retiredAt ? row.retiredAt.toISOString() : null,
     publishedByUserId: row.publishedByUserId,
     isLive: isLiveAt(row, now),
+    state: isLiveAt(row, now) ? 'ACTIVE' : row.retiredAt ? 'RETIRED' : 'SCHEDULED',
   };
 }

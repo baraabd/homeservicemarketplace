@@ -3,6 +3,7 @@ import type { ProviderReviewSnapshot } from '../../provider/onboarding/response/
 import type { ProviderOnboardingFeedback } from '../../provider/onboarding/response/provider-onboarding-feedback';
 import type { AdminVerificationCase } from '../verification/response/admin-verification-case';
 import type { PendingCategorySummary } from '../category-applications/response/pending-category-summary';
+export * from './history';
 
 export const ADMIN_PROVIDER_REVIEW_TASK_IDS = [
   'BASICS_IDENTITY',

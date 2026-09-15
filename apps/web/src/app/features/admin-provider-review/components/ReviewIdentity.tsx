@@ -8,11 +8,14 @@ import type {
 import { useEvidenceDownload } from '../../admin-verification/evidence/useEvidenceDownload';
 import { DOCUMENT_KIND_LABELS, UI } from '../../admin-verification/copy/verification-copy';
 import { runCaseCommand } from '../../admin-verification/queue/verification-queue-api';
-import { Download, FileText, LockKeyhole } from 'lucide-react';
+import { Download, FileText, LockKeyhole, ScanSearch } from 'lucide-react';
 import { REVIEW_COPY, type ReviewLanguage } from '../copy';
 import { requestStatus } from '../api';
 import { ReviewBadge, ReviewBanner, StatusBadge } from './ReviewPrimitives';
 import { ReviewDialog } from './ReviewDialog';
+import { IdentityEvidenceViewer } from '../evidence/IdentityEvidenceViewer';
+import { IDENTITY_PREVIEW_COPY } from '../evidence/identity-preview-copy';
+import { verificationReasonLabel } from '../evidence/verification-reason-labels';
 
 const ACTION_LABEL: Record<VerificationCaseActionCode, string> = {
   assign: 'actionAssign',
@@ -28,34 +31,6 @@ const REASONS: Partial<Record<VerificationCaseActionCode, string[]>> = {
   reject: ['DOCUMENT_MISMATCH', 'SUSPECTED_FORGERY', 'DUPLICATE_IDENTITY', 'OTHER'],
   reverify: ['POLICY_PERIOD_ELAPSED', 'OTHER'],
   revoke: ['TRUST_AND_SAFETY_ACTION', 'PROVIDER_REQUESTED', 'OTHER'],
-};
-const REASON_LABELS: Record<ReviewLanguage, Record<string, string>> = {
-  en: {
-    DOCUMENTS_COMPLETE_AND_LEGIBLE: 'Documents complete and legible',
-    DOCUMENT_MISSING: 'Document missing',
-    DOCUMENT_ILLEGIBLE: 'Document unreadable',
-    DOCUMENT_EXPIRED: 'Document expired',
-    DOCUMENT_MISMATCH: 'Document does not match',
-    SUSPECTED_FORGERY: 'Suspected forgery',
-    DUPLICATE_IDENTITY: 'Duplicate identity',
-    POLICY_PERIOD_ELAPSED: 'Verification period elapsed',
-    TRUST_AND_SAFETY_ACTION: 'Trust and safety action',
-    PROVIDER_REQUESTED: 'Provider requested',
-    OTHER: 'Other',
-  },
-  ar: {
-    DOCUMENTS_COMPLETE_AND_LEGIBLE: 'الوثائق كاملة وواضحة',
-    DOCUMENT_MISSING: 'وثيقة ناقصة',
-    DOCUMENT_ILLEGIBLE: 'وثيقة غير مقروءة',
-    DOCUMENT_EXPIRED: 'وثيقة منتهية الصلاحية',
-    DOCUMENT_MISMATCH: 'الوثيقة غير مطابقة',
-    SUSPECTED_FORGERY: 'اشتباه في التزوير',
-    DUPLICATE_IDENTITY: 'هوية مكررة',
-    POLICY_PERIOD_ELAPSED: 'انتهت فترة التوثيق',
-    TRUST_AND_SAFETY_ACTION: 'إجراء للحماية والأمان',
-    PROVIDER_REQUESTED: 'بطلب من المهني',
-    OTHER: 'سبب آخر',
-  },
 };
 
 export function ReviewIdentity({
@@ -76,6 +51,9 @@ export function ReviewIdentity({
       : UI[lang][ACTION_LABEL[action]];
   const kase = review.verification;
   const evidence = useEvidenceDownload();
+  const previewOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewDocument = kase?.documents.find((document) => document.id === previewId);
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const [chosen, setChosen] = useState<{
     action: VerificationCaseActionCode;
@@ -126,7 +104,7 @@ export function ReviewIdentity({
           <div className="ar-meta">
             <StatusBadge value={kase.state} lang={lang} />
             <span>
-              {t.policyVersion}: {kase.policyVersion}
+              {t.policyVersion}: <bdi dir="ltr">{kase.policyVersion}</bdi>
             </span>
             <span>{formatReviewDate(kase.submittedAt, lang, t.notProvided)}</span>
           </div>
@@ -176,18 +154,35 @@ export function ReviewIdentity({
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  data-testid={`review-evidence-${document.id}`}
-                  className="ar-button"
-                  disabled={!review.permissions.canViewEvidence || !document.viewable}
-                  onClick={() => evidence.open(document.id)}
-                >
-                  <Download size={16} aria-hidden />
-                  {document.viewable && review.permissions.canViewEvidence
-                    ? t.download
-                    : t.unavailable}
-                </button>
+                <div className="ar-actions">
+                  <button
+                    type="button"
+                    data-testid={`review-evidence-${document.id}`}
+                    className="ar-button"
+                    disabled={!review.permissions.canViewEvidence || !document.viewable}
+                    onClick={(event) => {
+                      previewOpenerRef.current = event.currentTarget;
+                      setPreviewId(document.id);
+                    }}
+                  >
+                    <ScanSearch size={16} aria-hidden />
+                    {document.viewable && review.permissions.canViewEvidence
+                      ? IDENTITY_PREVIEW_COPY[lang].open
+                      : t.unavailable}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`review-evidence-download-${document.id}`}
+                    className="ar-button"
+                    disabled={!review.permissions.canViewEvidence || !document.viewable}
+                    onClick={() => evidence.open(document.id)}
+                  >
+                    <Download size={16} aria-hidden />
+                    {document.viewable && review.permissions.canViewEvidence
+                      ? t.download
+                      : t.unavailable}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -228,10 +223,10 @@ export function ReviewIdentity({
                 {kase.decisions.map((decision) => (
                   <li key={decision.id} className="ar-timeline-item">
                     <StatusBadge value={decision.toState} lang={lang} />
-                    <p>{REASON_LABELS[lang][decision.reasonCode] ?? decision.reasonCode}</p>
+                    <p>{verificationReasonLabel(decision.reasonCode, lang)}</p>
                     <small className="ar-muted">
                       {formatReviewDate(decision.decidedAt, lang, t.notProvided)} ·{' '}
-                      {decision.policyVersion}
+                      <bdi dir="ltr">{decision.policyVersion}</bdi>
                     </small>
                   </li>
                 ))}
@@ -241,6 +236,16 @@ export function ReviewIdentity({
             )}
           </details>
         </>
+      )}
+      {previewDocument && (
+        <IdentityEvidenceViewer
+          key={`${review.provider.id}:${previewDocument.id}`}
+          document={previewDocument}
+          allowed={review.permissions.canViewEvidence && previewDocument.viewable}
+          lang={lang}
+          onClose={() => setPreviewId(null)}
+          openerRef={previewOpenerRef}
+        />
       )}
       <ReviewDialog
         open={!!chosen}
@@ -265,7 +270,7 @@ export function ReviewIdentity({
               <option value="">{t.reasonRequired}</option>
               {(REASONS[chosen?.action ?? 'assign'] ?? []).map((code) => (
                 <option key={code} value={code}>
-                  {REASON_LABELS[lang][code]}
+                  {verificationReasonLabel(code, lang)}
                 </option>
               ))}
             </select>

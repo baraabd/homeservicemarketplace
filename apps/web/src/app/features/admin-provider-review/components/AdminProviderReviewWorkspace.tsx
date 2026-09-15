@@ -7,13 +7,14 @@ import type { AdminProviderReviewMutationResponse } from '@homeservicemarketplac
 import { useLang } from '../../../i18n/LanguageContext';
 import { adminProvidersQueryKeys } from '../../../hooks/admin/useAdminProviders';
 import { getProviderReview, requestStatus, reviewQueryKey } from '../api';
-import { REVIEW_COPY } from '../copy';
+import { REVIEW_COPY, statusLabel } from '../copy';
 import { ReviewBadge, ReviewBanner, StatusBadge } from './ReviewPrimitives';
 import { ReviewDossier, ReviewTaskNavigation } from './ReviewDossier';
 import { ReviewIdentity } from './ReviewIdentity';
 import { ReviewCategories } from './ReviewCategories';
 import { ReviewPortfolio } from './ReviewPortfolio';
 import { ReviewDecisionPanel } from './ReviewDecisionPanel';
+import { ReviewAccountActions } from './ReviewAccountActions';
 import '../admin-review.css';
 
 /** Route-owned application review; server actions and capabilities are authoritative. */
@@ -55,13 +56,14 @@ function ReviewWorkspace({
   const review = query.data;
   const loadedProviderId = review?.provider.id;
   useEffect(() => {
-    if (loadedProviderId) headingRef.current?.focus();
+    if (loadedProviderId) headingRef.current?.focus({ preventScroll: true });
   }, [loadedProviderId]);
-  const denied = query.isError && [403, 404].includes(requestStatus(query.error) ?? 0);
+  const denied = query.isError && [401, 403, 404].includes(requestStatus(query.error) ?? 0);
   async function refresh() {
     const response = await query.refetch();
     // Keep a failed refresh in the error surface, never pretend stale facts are current.
     if (response.isError) throw response.error;
+    void qc.invalidateQueries({ queryKey: adminProvidersQueryKeys.detail(providerProfileId) });
     return response.data;
   }
   function decided(response: AdminProviderReviewMutationResponse) {
@@ -142,7 +144,7 @@ function ReviewWorkspace({
               <div>
                 <span className="ar-eyebrow">{t.eyebrow}</span>
                 <h1 className="ar-title" ref={headingRef} tabIndex={-1}>
-                  {review.provider.displayName}
+                  <bdi dir="auto">{review.provider.displayName}</bdi>
                 </h1>
                 <div className="ar-meta">
                   {review.provider.email && (
@@ -169,15 +171,22 @@ function ReviewWorkspace({
             <div className="ar-status-cell">
               <span className="ar-muted">{t.account}</span>
               <StatusBadge value={review.provider.accountStatus} lang={lang} />
-              <StatusBadge value={review.provider.standingState} lang={lang} />
+              {review.provider.standingState && (
+                <StatusBadge value={review.provider.standingState} lang={lang} />
+              )}
             </div>
             <div className="ar-status-cell">
               <span className="ar-muted">{t.application}</span>
-              <StatusBadge value={review.provider.onboardingState} lang={lang} />
+              <StatusBadge value={review.provider.providerStatus} lang={lang} />
             </div>
             <div className="ar-status-cell">
               <span className="ar-muted">{t.identity}</span>
-              <StatusBadge value={review.provider.verificationState} lang={lang} />
+              <StatusBadge value={review.provider.verificationState ?? 'UNVERIFIED'} lang={lang} />
+              {review.verification && (
+                <small className="ar-muted">
+                  {t.identityCaseState}: {statusLabel(review.verification.state, lang)}
+                </small>
+              )}
             </div>
             <div className="ar-status-cell">
               <span className="ar-muted">{t.access}</span>
@@ -231,6 +240,11 @@ function ReviewWorkspace({
                 identity={<ReviewIdentity review={review} lang={lang} onChanged={refresh} />}
                 categories={<ReviewCategories review={review} lang={lang} onChanged={refresh} />}
                 portfolio={<ReviewPortfolio review={review} lang={lang} onChanged={refresh} />}
+              />
+              <ReviewAccountActions
+                providerProfileId={providerProfileId}
+                lang={lang}
+                onChanged={refresh}
               />
             </div>
             <ReviewDecisionPanel

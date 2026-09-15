@@ -1,0 +1,70 @@
+.ar-evidence-dialog {
+  width: min(1040px, calc(100vw - 32px));
+}
+.ar-evidence-dialog .ar-modal-title {
+  overflow-wrap: anywhere;
+}
+.ar-evidence-viewer {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.ar-evidence-toolbar,
+.ar-evidence-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ar-evidence-toolbar output {
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.ar-evidence-pages {
+  justify-content: center;
+}
+.ar-evidence-scroll {
+  height: min(50dvh, 600px);
+  min-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--ar-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--ar-sunken);
+}
+.ar-evidence-scroll:focus-visible {
+  outline: 3px solid var(--ar-accent);
+  outline-offset: 3px;
+}
+.ar-evidence-image-stage {
+  position: relative;
+  margin-inline: auto;
+}
+.ar-evidence-image-stage img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: none;
+  object-fit: contain;
+}
+.ar-evidence-canvas {
+  display: block;
+  margin-inline: auto;
+  max-width: none;
+}
+.ar-evidence-placeholder {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  background: var(--ar-sunken);
+  border-radius: 12px;
+}
+@media (max-width: 540px) {
+  .ar-evidence-dialog {
+    padding: 16px;
+  }
+  .ar-evidence-toolbar .ar-button {
+    padding-inline: 10px;
+  }
+}

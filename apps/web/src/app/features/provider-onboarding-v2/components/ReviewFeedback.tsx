@@ -6,6 +6,7 @@ import { LIFECYCLE_COPY, type Lang } from '../copy/onboarding-hub-copy';
 import { REVIEW_FEEDBACK_COPY } from '../copy/review-feedback-copy';
 import { OnboardingAlert } from './OnboardingAlert';
 import { feedbackTaskPath } from '../feedback-task-path';
+import { reviewCorrectionFieldLabel } from '../copy/review-correction-fields';
 
 export function ReviewFeedback({
   feedback,
@@ -33,10 +34,16 @@ export function ReviewFeedback({
               tone="warning"
               icon={TriangleAlert}
               title={LIFECYCLE_COPY[lang].returnedTaskLabel[item.taskId] ?? copy.title}
-              body={<bdi className="whitespace-pre-wrap">{item.providerMessage}</bdi>}
+              body={
+                <div className="flex flex-col gap-1">
+                  {item.field && <strong>{reviewCorrectionFieldLabel(item.field, lang)}</strong>}
+                  <bdi className="whitespace-pre-wrap">{item.providerMessage}</bdi>
+                </div>
+              }
               density="compact"
             />
-            {onOpen && (!taskId || feedbackTaskPath(item) === '/provider/verification') ? (
+            {onOpen &&
+            (!taskId || !!item.field || feedbackTaskPath(item) === '/provider/verification') ? (
               <ProviderButton
                 tone="secondary"
                 shape="onboarding"

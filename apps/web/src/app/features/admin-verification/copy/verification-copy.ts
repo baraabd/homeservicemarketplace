@@ -134,7 +134,8 @@ export const UI: Record<Lang, Record<string, string>> = {
     noteLabel: 'Note for the record (optional)',
     noteHint: 'Only reviewers see this. The provider is shown the reason, never the note.',
     confirmTitle: 'Confirm this decision',
-    confirmApprove: 'Approving opens work access for this provider.',
+    confirmApprove:
+      'This approves the identity documents. A pending application still needs final approval in the full provider profile before work is allowed.',
     confirmReject: 'Rejecting closes this case. The provider must start again.',
     confirmRevoke: 'Revoking ends this provider’s ability to take work immediately.',
     confirmGeneric: 'This is recorded against your account and cannot be undone.',
@@ -150,7 +151,7 @@ export const UI: Record<Lang, Record<string, string>> = {
     forbiddenBody: 'Your account cannot decide verification cases. Ask an administrator.',
 
     // ── work access ──────────────────────────────────────────────────────
-    workAccess: 'Work access',
+    workAccess: 'Work grant',
     workAccessActive: 'Active',
     workAccessInactive: 'Not active',
     workAccessNone: 'Never granted',
@@ -231,7 +232,8 @@ export const UI: Record<Lang, Record<string, string>> = {
     noteLabel: 'ملاحظة للسجل (اختياري)',
     noteHint: 'يراها المراجعون فقط. يُعرض للمحترف السبب، ولا تُعرض الملاحظة أبدًا.',
     confirmTitle: 'تأكيد هذا القرار',
-    confirmApprove: 'الموافقة تفتح صلاحية العمل لهذا المحترف.',
+    confirmApprove:
+      'هذا القرار يوثّق مستندات الهوية. طلب التسجيل المنتظر يحتاج أيضًا إلى الاعتماد النهائي من ملف المهني قبل السماح بالعمل.',
     confirmReject: 'الرفض يغلق هذا الملف. سيتعيّن على المحترف البدء من جديد.',
     confirmRevoke: 'السحب ينهي قدرة هذا المحترف على استلام الأعمال فورًا.',
     confirmGeneric: 'سيُسجَّل هذا على حسابك ولا يمكن التراجع عنه.',
@@ -244,7 +246,7 @@ export const UI: Record<Lang, Record<string, string>> = {
     forbiddenTitle: 'ليس لديك صلاحية',
     forbiddenBody: 'لا يمكن لحسابك البتّ في ملفات التحقق. راجع أحد المسؤولين.',
 
-    workAccess: 'صلاحية العمل',
+    workAccess: 'منحة العمل',
     workAccessActive: 'نشطة',
     workAccessInactive: 'غير نشطة',
     workAccessNone: 'لم تُمنح قط',
@@ -271,3 +273,26 @@ export const UI: Record<Lang, Record<string, string>> = {
     evidenceOpenFailed: 'تعذّر فتح الوثيقة. سُجّلت محاولة الوصول على حسابك.',
   },
 };
+
+const CASE_AUDIT_LABELS: Record<string, { en: string; ar: string }> = {
+  VERIFICATION_CASE_SUBMITTED: { en: 'Identity submitted', ar: 'أُرسلت الهوية للمراجعة' },
+  VERIFICATION_CASE_ASSIGNED: { en: 'Identity reviewer assigned', ar: 'أُسندت مراجعة الهوية' },
+  VERIFICATION_CASE_ACTION_REQUESTED: {
+    en: 'Document correction requested',
+    ar: 'طُلب تصحيح الوثائق',
+  },
+  VERIFICATION_CASE_REJECTED: { en: 'Identity rejected', ar: 'رُفضت وثائق الهوية' },
+  VERIFICATION_CASE_APPROVED: { en: 'Identity verified', ar: 'تم توثيق الهوية' },
+  VERIFICATION_CASE_REVOKED: { en: 'Work grant revoked', ar: 'سُحبت منحة العمل' },
+  VERIFICATION_CASE_REVERIFY_REQUIRED: {
+    en: 'Verification requested again',
+    ar: 'طُلب تجديد التوثيق',
+  },
+  VERIFICATION_CASE_EXPIRED: { en: 'Verification expired', ar: 'انتهت صلاحية التوثيق' },
+};
+export function caseAuditLabel(code: string, lang: Lang): string {
+  return (
+    CASE_AUDIT_LABELS[code]?.[lang] ??
+    (lang === 'ar' ? 'تحديث مسجّل لقضية الهوية' : 'Recorded identity case update')
+  );
+}

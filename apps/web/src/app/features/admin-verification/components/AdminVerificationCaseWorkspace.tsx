@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AdminVerificationQueueItem } from '@homeservicemarketplace/contracts';
 
 import { useLang } from '../../../i18n/LanguageContext';
-import { CASE_STATE_LABELS, UI } from '../copy/verification-copy';
+import { CASE_STATE_LABELS, UI, caseAuditLabel } from '../copy/verification-copy';
 import {
   getCaseAudit,
   getVerificationCase,
@@ -15,6 +15,8 @@ import { CaseActionsPanel } from './CaseActionsPanel';
 import { VerificationEvidencePanel } from './VerificationEvidencePanel';
 import { VerificationQueuePanel } from './VerificationQueuePanel';
 import { WorkAccessPanel } from './WorkAccessPanel';
+import { verificationReasonLabel } from '../../admin-provider-review/evidence/verification-reason-labels';
+import { statusLabel } from '../../admin-provider-review/copy';
 
 // Sprint 9B.12 — the reviewer's workspace: queue on one side, the open case on
 // the other.
@@ -31,12 +33,24 @@ import { WorkAccessPanel } from './WorkAccessPanel';
 const caseKey = (id: string) => ['admin', 'verification', 'case', id] as const;
 const auditKey = (id: string) => ['admin', 'verification', 'case', id, 'audit'] as const;
 
-export function AdminVerificationCaseWorkspace() {
+export function AdminVerificationCaseWorkspace({
+  selectedCaseId,
+  onSelectCase,
+  onOpenProvider,
+  queueLocationState,
+}: {
+  selectedCaseId?: string | null;
+  onSelectCase?: (id: string | null) => void;
+  onOpenProvider?: (id: string) => void;
+  queueLocationState?: import('./VerificationQueuePanel').VerificationQueuePanelProps['locationState'];
+} = {}) {
   const { lang, dir } = useLang();
   const t = UI[lang];
   const qc = useQueryClient();
 
-  const [openCaseId, setOpenCaseId] = useState<string | null>(null);
+  const [localCaseId, setLocalCaseId] = useState<string | null>(null);
+  const openCaseId = selectedCaseId === undefined ? localCaseId : selectedCaseId;
+  const setOpenCaseId = onSelectCase ?? setLocalCaseId;
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const evidence = useEvidenceDownload();
 
@@ -82,13 +96,26 @@ export function AdminVerificationCaseWorkspace() {
 
   return (
     <div dir={dir} data-testid="admin-verification-workspace" className="space-y-6">
-      <VerificationQueuePanel onOpenCase={openCase} selectedCaseId={openCaseId} />
+      {(!onSelectCase || !openCaseId) && (
+        <VerificationQueuePanel
+          onOpenCase={openCase}
+          selectedCaseId={openCaseId}
+          locationState={queueLocationState}
+        />
+      )}
+      {onSelectCase && openCaseId && (
+        <div>
+          <button type="button" className="ar-button" onClick={() => setOpenCaseId(null)}>
+            {lang === 'ar' ? 'العودة إلى قضايا الهوية' : 'Back to identity cases'}
+          </button>
+        </div>
+      )}
 
       {openCaseId && (
         <section
           aria-label={t.caseActions}
           data-testid="admin-case-detail"
-          className="space-y-4 rounded-xl border p-4"
+          className="ar-card ar-stack"
         >
           {caseQuery.isLoading && (
             <p aria-busy="true" data-testid="case-loading" className="text-sm">
@@ -104,7 +131,7 @@ export function AdminVerificationCaseWorkspace() {
             </p>
           )}
 
-          {kase && (
+          {kase && !caseQuery.isError && (
             <>
               <header className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-semibold">{CASE_STATE_LABELS[lang][kase.state]}</h3>
@@ -112,6 +139,18 @@ export function AdminVerificationCaseWorkspace() {
                   {t.policyVersion}: {kase.policyVersion}
                 </span>
               </header>
+
+              {onOpenProvider && (
+                <div>
+                  <button
+                    type="button"
+                    className="ar-button ar-button-primary"
+                    onClick={() => onOpenProvider(kase.providerProfileId)}
+                  >
+                    {lang === 'ar' ? 'فتح ملف المهني الكامل' : 'Open full provider profile'}
+                  </button>
+                </div>
+              )}
 
               {/* Whether they can work RIGHT NOW — a different fact from the
                   case state, and the one a revoke decision turns on. */}
@@ -155,7 +194,8 @@ export function AdminVerificationCaseWorkspace() {
                   <ul className="space-y-1 text-sm">
                     {kase.decisions.map((d) => (
                       <li key={d.id} data-testid={`case-decision-${d.id}`}>
-                        {d.outcome} — {d.reasonCode} ({d.policyVersion})
+                        {statusLabel(d.outcome, lang)} —{' '}
+                        {verificationReasonLabel(d.reasonCode, lang)} (<bdi>{d.policyVersion}</bdi>)
                       </li>
                     ))}
                   </ul>
@@ -171,7 +211,8 @@ export function AdminVerificationCaseWorkspace() {
                   <ul className="space-y-1 text-sm">
                     {(auditQuery.data?.items ?? []).map((a) => (
                       <li key={a.id} data-testid={`case-audit-${a.id}`}>
-                        {a.type} — {new Date(a.createdAt).toLocaleString(lang)}
+                        {caseAuditLabel(a.type, lang)} —{' '}
+                        {new Date(a.createdAt).toLocaleString(lang)}
                       </li>
                     ))}
                   </ul>

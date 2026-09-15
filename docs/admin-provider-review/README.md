@@ -1,5 +1,7 @@
 # Admin provider review
 
+[Screen organization and data completion](EXPERIENCE_COMPLETION.md) · [Policy settings](POLICY_SETTINGS.md) · [Protected identity preview](IDENTITY_PREVIEW.md)
+
 This workspace connects the provider's six onboarding tasks to an explicit,
 audited Admin decision. It extends the existing React, NestJS, Prisma and shared
 contracts architecture. No new application framework is introduced.

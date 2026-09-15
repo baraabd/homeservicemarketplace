@@ -175,6 +175,7 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
         label={copy.areaLabel}
         hint={copy.areaHint}
         data-testid="service-area-city"
+        data-review-field="serviceAreaCity"
         value={city}
         disabled={!editable}
         autoComplete="address-level2"
