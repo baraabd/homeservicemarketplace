@@ -655,14 +655,12 @@ d('Phase 3 Journey B — pending moderation denies work access (real Postgres)',
   describe('the denial reason', () => {
     beforeEach(asProvider);
 
-    it('is VERIFICATION_REQUIRED, exactly', async () => {
-      // Asserted exactly rather than loosely. Submission moved the provider to
-      // `DOCUMENTS_REQUIRED`, which matches none of rank 5's onboarding values
-      // — so the ladder falls through to rank 6 and answers
-      // VERIFICATION_REQUIRED, NOT the AWAITING_REVIEW that belongs to the
-      // `SUBMITTED` lifecycle value this path does not write.
+    it('is AWAITING_REVIEW for the canonical pending application', async () => {
+      // Canonical submission writes DOCUMENTS_REQUIRED. Final application
+      // acceptance is still outstanding, so rank 5 must hold this boundary
+      // even if identity approval later creates a live work grant.
       const res = await capabilities().expect(200);
-      expect(res.body.primaryReason).toBe(ProviderCapabilityDenialReason.VerificationRequired);
+      expect(res.body.primaryReason).toBe(ProviderCapabilityDenialReason.AwaitingReview);
     });
 
     it('withholds every work capability and names the same reason on each', async () => {
@@ -682,7 +680,7 @@ d('Phase 3 Journey B — pending moderation denies work access (real Postgres)',
       for (const c of [ProviderCapability.ViewMarketplace, ProviderCapability.SubmitBid]) {
         const decision = decisions.find((x) => x.capability === c);
         expect(decision?.allowed).toBe(false);
-        expect(decision?.reason).toBe(ProviderCapabilityDenialReason.VerificationRequired);
+        expect(decision?.reason).toBe(ProviderCapabilityDenialReason.AwaitingReview);
       }
     });
 
@@ -723,7 +721,7 @@ d('Phase 3 Journey B — pending moderation denies work access (real Postgres)',
       asProvider();
       expect(codeOf(await listWork().expect(403))).toBe('FORBIDDEN');
       const res = await capabilities().expect(200);
-      expect(res.body.primaryReason).toBe(ProviderCapabilityDenialReason.VerificationRequired);
+      expect(res.body.primaryReason).toBe(ProviderCapabilityDenialReason.AwaitingReview);
     });
   });
 

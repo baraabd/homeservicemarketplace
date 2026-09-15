@@ -45,8 +45,11 @@ const SECRET = makeTestSecret('phase3-journey-c-activation');
 //
 // THE CHAIN (established by the read-only audit in §3.9.2)
 //
-// No single endpoint owns activation. Three independent canonical decisions are
-// required, and they are gated differently on purpose:
+// Historical staged compatibility coverage: the new unified review endpoint
+// now coordinates activation under enforcement (covered by admin-provider-review
+// integration). This suite retains the independent decisions below, enabling
+// compatibility only for the status-only command and restoring enforcement
+// before every protected-work assertion:
 //
 //   1. POST /v1/me/provider/onboarding/submit          provider
 //   2. POST /v1/admin/providers/:id/approve            RolesGuard('admin')
@@ -55,7 +58,7 @@ const SECRET = makeTestSecret('phase3-journey-c-activation');
 //   5. evidence prepare → PUT content → finalize       provider
 //   6. EvidenceScanService.scanPending()               system sweep
 //   7. POST /v1/me/provider/verification/case/submit   provider
-//   8. POST /v1/admin/verification/cases/:id/approve   PermissionsGuard('verification:decide')
+//   8. POST /v1/admin/verification/cases/:id/approve   decide + evidence:view permissions
 //
 // Only #8 writes `verificationState = VERIFIED` and issues the
 // `ProviderWorkAccessGrant`. #2 cannot, and never could.
@@ -185,6 +188,7 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
   let applicationId: string;
   let otherApplicationId: string;
   let caseId: string;
+  let lifecycleEnforcementEnabled = true;
   /**
    * Outbox ids that existed BEFORE this suite ran.
    *
@@ -569,10 +573,9 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
 
     const { RedisService } = r('../../src/infrastructure/redis/redis.service');
 
-    // `PermissionResolverService` caches role→permission sets in Redis, so the
-    // REAL RedisService is wired against the isolated stack rather than
-    // stubbed: the permission gate that decides Stage 4 is exactly the
-    // production one, cache included. The connection details come from the
+    // Wire the real permission resolver and Redis dependency. Sensitive
+    // decision routes resolve current database membership, while ordinary
+    // permissions may still use the role cache. The connection details come from the
     // REDIS_URL the runner already points at this stack — never a hard-coded
     // port, because the isolated stack publishes an ephemeral one.
     const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379');
@@ -594,7 +597,13 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
       STARTUP_RETRY_BASE_MS: 100,
       STARTUP_RETRY_CAP_MS: 1_000,
     };
-    const config = { get: (k: string) => FLAGS[k], isProduction: false };
+    const config = {
+      get: (k: string) =>
+        ['WORK_ACCESS_ENFORCED', 'VERIFICATION_ENFORCED'].includes(k)
+          ? lifecycleEnforcementEnabled
+          : FLAGS[k],
+      isProduction: false,
+    };
 
     /** In-memory implementation of the REAL abstract port. */
     const restrictedStorage = {
@@ -750,6 +759,11 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
         },
       });
     }
+    // Sensitive permissions resolve current membership rather than trusting
+    // the test JWT's role string. Use the real seeded Admin role and grants.
+    const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: 'admin' } });
+    await prisma.userRole.create({ data: { userId: ADMIN, roleId: adminRole.id } });
+
     await prisma.serviceCategory.create({
       data: { id: ROOT, slug: ROOT, labelEn: 'Electrical', labelAr: 'كهرباء', icon: 'bolt' },
     });
@@ -833,19 +847,32 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
       expect(codeOf(await listWork().expect(403))).toBe('FORBIDDEN');
       expect(codeOf(await createBid().expect(403))).toBe('FORBIDDEN');
       const caps = await capabilities().expect(200);
-      expect(caps.body.primaryReason).toBe(ProviderCapabilityDenialReason.VerificationRequired);
+      // The application itself is still awaiting an Admin decision; this
+      // outranks its independent outstanding identity requirement.
+      expect(caps.body.primaryReason).toBe(ProviderCapabilityDenialReason.AwaitingReview);
     });
   });
 
   // ══ STAGE 1 — provider-status approval, and ONLY that axis ═══════════════
 
   describe('Stage 1 — provider-status approval moves only its own axis', () => {
-    it('succeeds through the canonical admin endpoint', async () => {
+    it('requires unified review under enforcement, retaining the status-only compatibility route with flags off', async () => {
       asAdmin();
-      const res = await approveProvider(profileId, { note: 'Application looks complete.' }).expect(
-        200,
-      );
-      expect(res.body.provider.status).toBe('ACTIVE');
+      const guarded = await approveProvider(profileId, {
+        note: 'Application looks complete.',
+      }).expect(409);
+      expect(guarded.body.error.details.reason).toBe('USE_REVIEW_WORKSPACE');
+      try {
+        // This historical staged suite isolates the legacy status axis. The
+        // unified workspace suite proves full approval with both flags ON.
+        lifecycleEnforcementEnabled = false;
+        const res = await approveProvider(profileId, {
+          note: 'Application looks complete.',
+        }).expect(200);
+        expect(res.body.provider.status).toBe('ACTIVE');
+      } finally {
+        lifecycleEnforcementEnabled = true;
+      }
     });
 
     it('moved the status and onboarding axes', async () => {
@@ -1077,6 +1104,11 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     });
 
     it('succeeds for an admin, whose role carries the permission', async () => {
+      // This compatibility journey already recorded an application decision
+      // in Stage 1. Identity approval is never a substitute for that decision.
+      expect(
+        (await prisma.providerProfile.findUnique({ where: { id: profileId } })).onboardingState,
+      ).toBe('ACCEPTED');
       asAdmin();
       await approveCase(caseId, {
         reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE',

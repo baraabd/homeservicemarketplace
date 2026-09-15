@@ -322,6 +322,7 @@ async function open(page: Page, lang: 'en' | 'ar', options: HarnessOptions = {})
         contentType: 'application/pdf',
         headers: {
           'Content-Disposition': 'attachment; filename="Identity document.pdf"',
+          'Access-Control-Expose-Headers': 'Content-Disposition',
           'Cache-Control': 'private, no-store',
         },
       });
@@ -551,6 +552,8 @@ test('Arabic dossier adapts to narrow phones and small desktop without losing ac
     expect(box!.height).toBeGreaterThanOrEqual(44);
     expect(box!.x).toBeGreaterThanOrEqual(-1);
     expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+    // Capture the normal sticky-header position after verifying the action.
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
       path: testInfo.outputPath(`admin-ar-width-${width}.png`),
       fullPage: true,

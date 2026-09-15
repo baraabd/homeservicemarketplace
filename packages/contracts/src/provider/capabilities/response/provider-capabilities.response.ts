@@ -39,8 +39,9 @@ export const ProviderCapability = {
   /** Sprint 9B.9 — see a heavily redacted slice of the marketplace while
    *  waiting for work access.
    *
-   *  Held ONLY by a provider who has finished onboarding and is being denied
-   *  work — the two states where "you may not work yet" is the whole message.
+   *  Held only when application input is complete and work is still denied:
+   *  the canonical application awaits review, identity is outstanding, or a
+   *  work grant is missing. Preview never substitutes for application approval.
    *  Deliberately NOT held by a provider who already has work access (they get
    *  the real feed) nor by one still in onboarding (they have a task in front
    *  of them and a preview is a distraction from it), and never by a suspended,

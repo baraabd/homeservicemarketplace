@@ -586,18 +586,19 @@ test.describe('Phase 3 — V2 provider journey, real browser, real API', () => {
   // ══ 11-12. the canonical admin chain, then work succeeds ═══════════════
 
   test('the canonical admin chain activates the provider', async () => {
-    // Genuine authenticated admin HTTP with real CSRF — no UI exists for the
-    // verification queue, and no state is written with SQL.
-    await approveProviderApplication(account);
-    expect((await capabilitiesOf(account.jar)).primaryReason).toBe('VERIFICATION_REQUIRED');
-
+    // Genuine authenticated admin HTTP with real CSRF, using the endpoints
+    // exposed by the Admin workspace. No state is written with SQL.
+    expect((await capabilitiesOf(account.jar)).primaryReason).toBe('AWAITING_REVIEW');
     await approveCategoriesFor(account);
-    expect((await capabilitiesOf(account.jar)).primaryReason).toBe('VERIFICATION_REQUIRED');
+    expect((await capabilitiesOf(account.jar)).primaryReason).toBe('AWAITING_REVIEW');
 
     ({ caseId } = await supplyEvidence(account));
     await waitForEvidenceClean(account);
     await submitVerificationCase(account);
     await approveVerificationCase(caseId);
+    expect((await capabilitiesOf(account.jar)).primaryReason).toBe('AWAITING_REVIEW');
+    expect((await api(account.jar, '/v1/provider/bids')).status).toBe(403);
+    await approveProviderApplication(account);
 
     const caps = await capabilitiesOf(account.jar);
     expect(caps.primaryReason).toBeNull();
@@ -783,13 +784,16 @@ test.describe('Phase 3 — V2 provider journey, real browser, real API', () => {
     await axe(page, 'work-denied', 'ar');
     await shot(page, 'ar-04-work-denied');
 
-    // Activate through the canonical chain and confirm in the browser.
-    await approveProviderApplication(ar);
+    // Complete the evidence and service prerequisites, then approve the
+    // exact submitted application and confirm access in the browser.
     await approveCategoriesFor(ar);
     const { caseId: arCase } = await supplyEvidence(ar);
     await waitForEvidenceClean(ar);
     await submitVerificationCase(ar);
     await approveVerificationCase(arCase);
+    expect((await capabilitiesOf(ar.jar)).primaryReason).toBe('AWAITING_REVIEW');
+    expect((await api(ar.jar, '/v1/provider/bids')).status).toBe(403);
+    await approveProviderApplication(ar);
 
     const w2 = watch(page);
     await page.goto('/provider/bids');

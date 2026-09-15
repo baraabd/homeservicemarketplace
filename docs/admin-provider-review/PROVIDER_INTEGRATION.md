@@ -43,7 +43,7 @@ The V2 hub lists all requested tasks and offers review/resubmit when the server 
 
 `/provider/verification` is an authenticated route outside the workspace's ACTIVE-only operational routes. It reuses `ProviderVerificationScreen`; applicants can reach identity upload before activation and reopen a case after an explicit re-verification decision. Its controls continue to come from the existing capabilities and verification API. The route is available with either onboarding UI flag value.
 
-The V2 status centre links to this route. `BASICS_IDENTITY` corrections offer the document link as well as the form task. Corrections with `field` equal to `identityDocument`, `verificationDocuments` or `categoryLicense` link directly to verification. Portfolio item corrections link to the existing gallery sub-screen; experience corrections use the existing experience sub-screen.
+The V2 status centre links to this route when verification needs provider attention: not started, draft, requested corrections, rejection or expiry. A submitted or reviewed case keeps the approved waiting layout without an additional task button. The dedicated route remains directly reachable in every state. `BASICS_IDENTITY` corrections offer the document link as well as the form task. Corrections with `field` equal to `identityDocument`, `verificationDocuments` or `categoryLicense` link directly to verification. Portfolio item corrections link to the existing gallery sub-screen; experience corrections use the existing experience sub-screen.
 
 ## Verification evidence
 

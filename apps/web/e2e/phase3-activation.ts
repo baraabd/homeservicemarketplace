@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { deflateSync } from 'node:zlib';
+import type { AdminProviderReview } from '@homeservicemarketplace/contracts';
 
 import { expect } from '@playwright/test';
 
@@ -20,10 +22,9 @@ import { adminJar, api, type Account, type Jar } from './real-api';
 //
 // WHY THESE ARE API CALLS RATHER THAN UI CLICKS
 //
-// There is no admin UI in this application for the verification-case queue, so
-// there is no screen to drive. The user-facing half of every journey below is
-// driven through the real browser; the operator half is driven here, through
-// the same HTTP surface an operator console would call.
+// These provider journey tests drive the operator decisions through the same
+// authenticated API used by the Admin workspace. They prove real persisted
+// decisions and provider behavior; Admin browser interaction has its own suite.
 
 /** The evidence a provider uploads. A genuinely valid 1×1 PNG — signature,
  *  IHDR, IDAT and IEND with real CRCs.
@@ -65,15 +66,43 @@ export const EVIDENCE_PNG: Buffer = (() => {
   ]);
 })();
 
-/** Axis 2 — the provider application decision. Moves status and the onboarding
- *  axis; issues NO grant and does NOT verify. */
+/** Fresh submitted application and its server-owned approval prerequisites. */
+export async function providerApplicationReview(account: Account): Promise<AdminProviderReview> {
+  const res = await api<AdminProviderReview>(
+    await adminJar(),
+    `/v1/admin/providers/${account.profileId}/review`,
+  );
+  expect(res.status, `application review should be readable: ${JSON.stringify(res.body)}`).toBe(
+    200,
+  );
+  return res.body;
+}
+
+/** Final application acceptance uses the same exact-submission decision as the
+ * Admin workspace. Category and evidence prerequisites must already be ready.
+ * Identity approval alone is intentionally insufficient to open work. */
 export async function approveProviderApplication(account: Account): Promise<void> {
   const admin = await adminJar();
-  const res = await api(admin, `/v1/admin/providers/${account.profileId}/approve`, {
+  const review = await providerApplicationReview(account);
+  expect(
+    review.availableActions,
+    `application blockers: ${JSON.stringify(review.blockers)}`,
+  ).toContain('approve');
+  expect(review.submission, 'the reviewed application must have been submitted').not.toBeNull();
+  const res = await api(admin, `/v1/admin/providers/${account.profileId}/review/approve`, {
     method: 'POST',
-    body: { note: 'Phase 3 browser acceptance.' },
+    body: {
+      submissionId: review.submission!.id,
+      expectedRevision: review.revision,
+      idempotencyKey: randomUUID(),
+      reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE',
+      note: 'Phase 3 browser acceptance.',
+    },
   });
-  expect(res.status, `provider approval should be accepted: ${JSON.stringify(res.body)}`).toBe(200);
+  expect(
+    res.status,
+    `final application approval should be accepted: ${JSON.stringify(res.body)}`,
+  ).toBe(200);
 }
 
 export async function suspendProvider(account: Account, reason: string): Promise<void> {
@@ -196,7 +225,8 @@ export async function submitVerificationCase(account: Account): Promise<void> {
 }
 
 /**
- * Axis 4 — the decision that issues the work-access grant.
+ * Identity decision and its work-access grant. The application must still be
+ * ACCEPTED by final review before that grant permits working capabilities.
  *
  * Gated by the `verification:decide` PERMISSION rather than the admin role, so
  * this exercises a different guard from the provider-application approval

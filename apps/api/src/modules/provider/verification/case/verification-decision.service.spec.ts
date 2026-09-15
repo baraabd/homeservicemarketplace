@@ -394,7 +394,11 @@ describe('revoke', () => {
     // Re-closing an already-revoked grant would move its revokedAt forward and
     // rewrite when access actually ended.
     const h = harness({ row: caseRow({ state: 'VERIFIED' }) });
-    await h.service.revoke(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+    await h.service.revoke(REVIEWER, {
+      caseId: CASE_ID,
+      reasonCode: 'TRUST_AND_SAFETY_ACTION',
+      expectedState: 'VERIFIED',
+    });
 
     const call = (h.client.providerWorkAccessGrant.updateMany.mock.calls[0] as unknown[])[0] as {
       where: Record<string, unknown>;
@@ -404,6 +408,17 @@ describe('revoke', () => {
 });
 
 describe('reverify', () => {
+  it('requires the observed state even when called without HTTP validation', async () => {
+    const h = harness({ row: caseRow({ state: 'VERIFIED' }) });
+    await expect(
+      h.service.reverify(REVIEWER, { caseId: CASE_ID, reasonCode: 'OTHER' } as never),
+    ).rejects.toMatchObject({
+      status: 400,
+      details: { reason: 'EXPECTED_STATE_REQUIRED' },
+    });
+    expect(h.writes).toEqual([]);
+  });
+
   it.each(['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'ACTION_REQUIRED'])(
     'opens a path to a fresh scoped case from %s without rewriting pinned evidence',
     async (state) => {
@@ -440,6 +455,7 @@ describe('reverify', () => {
     await h.service.reverify(REVIEWER, {
       caseId: CASE_ID,
       reasonCode: 'POLICY_PERIOD_ELAPSED',
+      expectedState: 'VERIFIED',
     });
 
     expect(h.grantUpdates[0]).toMatchObject({ status: 'EXPIRED' });
@@ -553,7 +569,11 @@ describe('the grant window', () => {
 describe('grant closure is scoped to the case that issued it', () => {
   it('revocation closes only grants carrying THIS case id', async () => {
     const h = harness({ row: caseRow({ state: 'VERIFIED' }) });
-    await h.service.revoke(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+    await h.service.revoke(REVIEWER, {
+      caseId: CASE_ID,
+      reasonCode: 'TRUST_AND_SAFETY_ACTION',
+      expectedState: 'VERIFIED',
+    });
 
     expect(h.client.providerWorkAccessGrant.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -564,7 +584,11 @@ describe('grant closure is scoped to the case that issued it', () => {
 
   it('re-verification is scoped the same way', async () => {
     const h = harness({ row: caseRow({ state: 'VERIFIED' }) });
-    await h.service.reverify(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+    await h.service.reverify(REVIEWER, {
+      caseId: CASE_ID,
+      reasonCode: 'TRUST_AND_SAFETY_ACTION',
+      expectedState: 'VERIFIED',
+    });
 
     expect(h.client.providerWorkAccessGrant.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -577,7 +601,11 @@ describe('grant closure is scoped to the case that issued it', () => {
     // The precise regression. A `where` naming only the provider is what
     // swept up MANUAL_OVERRIDE and LEGACY_BACKFILL rows.
     const h = harness({ row: caseRow({ state: 'VERIFIED' }) });
-    await h.service.revoke(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+    await h.service.revoke(REVIEWER, {
+      caseId: CASE_ID,
+      reasonCode: 'TRUST_AND_SAFETY_ACTION',
+      expectedState: 'VERIFIED',
+    });
 
     for (const call of h.client.providerWorkAccessGrant.updateMany.mock.calls) {
       const where = call[0].where;
@@ -588,11 +616,19 @@ describe('grant closure is scoped to the case that issued it', () => {
   it('still records REVOKED for a revocation and EXPIRED for a re-verify', async () => {
     // Non-vacuity: scoping the WHERE must not have changed what is written.
     const r = harness({ row: caseRow({ state: 'VERIFIED' }) });
-    await r.service.revoke(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+    await r.service.revoke(REVIEWER, {
+      caseId: CASE_ID,
+      reasonCode: 'TRUST_AND_SAFETY_ACTION',
+      expectedState: 'VERIFIED',
+    });
     expect(r.grantUpdates[0]).toMatchObject({ status: 'REVOKED' });
 
     const v = harness({ row: caseRow({ state: 'VERIFIED' }) });
-    await v.service.reverify(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
+    await v.service.reverify(REVIEWER, {
+      caseId: CASE_ID,
+      reasonCode: 'TRUST_AND_SAFETY_ACTION',
+      expectedState: 'VERIFIED',
+    });
     expect(v.grantUpdates[0]).toMatchObject({ status: 'EXPIRED' });
   });
 });

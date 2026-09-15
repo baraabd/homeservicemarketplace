@@ -91,6 +91,22 @@ d('Route/capability matrix (real guard, real Postgres, flags ON)', () => {
       profile: { status: 'PENDING_REVIEW', onboardingState: 'SUBMITTED' },
       grant: false,
     },
+    documentsRequired: {
+      profile: {
+        status: 'PENDING_REVIEW',
+        onboardingState: 'DOCUMENTS_REQUIRED',
+        verificationState: 'UNVERIFIED',
+      },
+      grant: false,
+    },
+    documentsRequiredVerified: {
+      profile: {
+        status: 'PENDING_REVIEW',
+        onboardingState: 'DOCUMENTS_REQUIRED',
+        verificationState: 'VERIFIED',
+      },
+      grant: true,
+    },
     unverified: {
       profile: { status: 'ACTIVE', onboardingState: 'ACCEPTED', verificationState: 'UNVERIFIED' },
       grant: false,
@@ -195,7 +211,16 @@ d('Route/capability matrix (real guard, real Postgres, flags ON)', () => {
     {
       name: 'categories — GET /me/provider/categories/applications',
       call: () => request(http).get('/v1/me/provider/categories/applications'),
-      allow: ['draft', 'submitted', 'unverified', 'verifiedNoGrant', 'working', 'restricted'],
+      allow: [
+        'draft',
+        'submitted',
+        'documentsRequired',
+        'documentsRequiredVerified',
+        'unverified',
+        'verifiedNoGrant',
+        'working',
+        'restricted',
+      ],
     },
     {
       name: 'profile read — GET /me/provider/profile',
@@ -203,6 +228,8 @@ d('Route/capability matrix (real guard, real Postgres, flags ON)', () => {
       allow: [
         'draft',
         'submitted',
+        'documentsRequired',
+        'documentsRequiredVerified',
         'unverified',
         'verifiedNoGrant',
         'working',
@@ -214,17 +241,44 @@ d('Route/capability matrix (real guard, real Postgres, flags ON)', () => {
     {
       name: 'profile write — PATCH /me/provider/profile',
       call: () => request(http).patch('/v1/me/provider/profile').send({}),
-      allow: ['draft', 'submitted', 'unverified', 'verifiedNoGrant', 'working', 'restricted'],
+      allow: [
+        'draft',
+        'submitted',
+        'documentsRequired',
+        'documentsRequiredVerified',
+        'unverified',
+        'verifiedNoGrant',
+        'working',
+        'restricted',
+      ],
     },
     {
       name: 'onboarding wizard — GET /me/provider/onboarding/draft',
       call: () => request(http).get('/v1/me/provider/onboarding/draft'),
-      allow: ['draft', 'submitted', 'unverified', 'verifiedNoGrant', 'working', 'restricted'],
+      allow: [
+        'draft',
+        'submitted',
+        'documentsRequired',
+        'documentsRequiredVerified',
+        'unverified',
+        'verifiedNoGrant',
+        'working',
+        'restricted',
+      ],
     },
     {
       name: 'verification case — GET /me/provider/verification/case',
       call: () => request(http).get('/v1/me/provider/verification/case'),
-      allow: ['draft', 'submitted', 'unverified', 'verifiedNoGrant', 'working', 'restricted'],
+      allow: [
+        'draft',
+        'submitted',
+        'documentsRequired',
+        'documentsRequiredVerified',
+        'unverified',
+        'verifiedNoGrant',
+        'working',
+        'restricted',
+      ],
     },
   ];
 

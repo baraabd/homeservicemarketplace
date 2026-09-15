@@ -156,7 +156,7 @@ export function AdminDashboard() {
 
   return (
     <div
-      className={`${darkMode ? 'dark' : ''} min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100`}
+      className={`min-h-screen ${darkMode ? 'dark bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}
       dir={dir}
       lang={lang}
       style={{ fontFamily: isAr ? "'Cairo','Inter',sans-serif" : "'Inter',sans-serif" }}

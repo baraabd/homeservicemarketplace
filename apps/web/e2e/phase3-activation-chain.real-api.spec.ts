@@ -10,6 +10,7 @@ import {
 } from './real-api';
 import {
   approveProviderApplication,
+  providerApplicationReview,
   capabilitiesOf,
   reactivateProvider,
   supplyEvidence,
@@ -64,22 +65,26 @@ test.describe('Phase 3 — the activation chain is reachable in a running API', 
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(200);
   });
 
-  test('work is refused before any decision, for the verification reason', async () => {
+  test('work is refused while the application awaits review', async () => {
     const listed = await api(account.jar, '/v1/provider/bids');
     expect(listed.status).toBe(403);
 
     const caps = await capabilitiesOf(account.jar);
-    expect(caps.primaryReason).toBe('VERIFICATION_REQUIRED');
+    expect(caps.primaryReason).toBe('AWAITING_REVIEW');
     expect(caps.allowed).not.toContain('SUBMIT_BID');
   });
 
-  test('provider-application approval alone does NOT open work', async () => {
-    await approveProviderApplication(account);
-
+  test('final application approval is unavailable before category and evidence review', async () => {
+    const review = await providerApplicationReview(account);
+    expect(
+      review.submission?.snapshot,
+      'canonical submit captures the review metadata',
+    ).toMatchObject({ schemaVersion: 1 });
+    expect(review.availableActions).not.toContain('approve');
+    expect(review.blockers.map((blocker) => blocker.code)).toContain('VERIFICATION_REQUIRED');
     const listed = await api(account.jar, '/v1/provider/bids');
-    expect(listed.status, 'approval is not verification and issues no grant').toBe(403);
-    const caps = await capabilitiesOf(account.jar);
-    expect(caps.primaryReason).toBe('VERIFICATION_REQUIRED');
+    expect(listed.status).toBe(403);
+    expect((await capabilitiesOf(account.jar)).primaryReason).toBe('AWAITING_REVIEW');
   });
 
   test('specialty moderation is its own decision, and still opens no work', async () => {
@@ -102,9 +107,26 @@ test.describe('Phase 3 — the activation chain is reachable in a running API', 
     await waitForEvidenceClean(account);
   });
 
-  test('the case can then be submitted and approved', async () => {
+  test('identity approval records a grant but leaves final application acceptance outstanding', async () => {
     await submitVerificationCase(account);
     await approveVerificationCase(caseId);
+    expect((await api(account.jar, '/v1/provider/bids')).status).toBe(403);
+    const caps = await capabilitiesOf(account.jar);
+    expect(caps.primaryReason).toBe('AWAITING_REVIEW');
+    expect(caps.allowed).not.toContain('SUBMIT_BID');
+    const review = await providerApplicationReview(account);
+    expect(review.provider.onboardingState).toBe('DOCUMENTS_REQUIRED');
+    expect(review.verification?.state).toBe('VERIFIED');
+    expect(review.verification?.workAccess?.active).toBe(true);
+    expect(review.canWork).toBe(false);
+  });
+
+  test('the final application decision accepts the submitted information and opens work', async () => {
+    await approveProviderApplication(account);
+    const review = await providerApplicationReview(account);
+    expect(review.provider.onboardingState).toBe('ACCEPTED');
+    expect(review.submission?.decision).toBe('ACCEPTED');
+    expect(review.canWork).toBe(true);
   });
 
   test('the same endpoint that returned 403 now returns 200', async () => {

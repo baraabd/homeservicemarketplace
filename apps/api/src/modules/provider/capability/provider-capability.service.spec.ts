@@ -179,6 +179,71 @@ describe('ProviderCapabilityService — rank 5: onboarding (the DRAFT fix)', () 
     },
   );
 
+  describe.each([
+    { WORK_ACCESS_ENFORCED: false, VERIFICATION_ENFORCED: false },
+    { WORK_ACCESS_ENFORCED: false, VERIFICATION_ENFORCED: true },
+    { WORK_ACCESS_ENFORCED: true, VERIFICATION_ENFORCED: false },
+    { WORK_ACCESS_ENFORCED: true, VERIFICATION_ENFORCED: true },
+  ])('canonical submission with rollout flags %j', (flags) => {
+    it.each(['PENDING_REVIEW', 'ACTIVE'])(
+      'identity approval and a live grant do not open work before application acceptance (legacy %s)',
+      async (status) => {
+        const { service } = makeService(
+          ELIGIBLE,
+          profile({ status, onboardingState: 'DOCUMENTS_REQUIRED', verificationState: 'VERIFIED' }),
+          { flags, liveGrant: true },
+        );
+        const set = await service.for('u-1');
+        expect(set.primaryReason).toBe(ProviderCapabilityDenialReason.AwaitingReview);
+        for (const capability of [
+          ProviderCapability.ViewMarketplace,
+          ProviderCapability.SubmitBid,
+          ProviderCapability.ManageBookings,
+          ProviderCapability.ViewEarnings,
+          ProviderCapability.SubmitForReview,
+        ]) {
+          expect(set.capabilities.find((item) => item.capability === capability)).toEqual({
+            capability,
+            allowed: false,
+            reason: ProviderCapabilityDenialReason.AwaitingReview,
+          });
+        }
+        expect(set.allowed).toEqual(
+          expect.arrayContaining([
+            ProviderCapability.ViewOwnProfile,
+            ProviderCapability.EditOwnProfile,
+            ProviderCapability.CompleteOnboarding,
+            ProviderCapability.ManageVerification,
+            ProviderCapability.PreviewMarketplace,
+          ]),
+        );
+        expect(set.nextActions).toEqual([ProviderNextAction.WaitForReview]);
+      },
+    );
+  });
+
+  it('keeps identity completion reachable while a canonical submission awaits both reviews', async () => {
+    const { service } = makeService(
+      ELIGIBLE,
+      profile({
+        status: 'PENDING_REVIEW',
+        onboardingState: 'DOCUMENTS_REQUIRED',
+        verificationState: 'UNVERIFIED',
+      }),
+      { flags: { WORK_ACCESS_ENFORCED: true, VERIFICATION_ENFORCED: true }, liveGrant: false },
+    );
+    const set = await service.for('u-1');
+    expect(set.primaryReason).toBe(ProviderCapabilityDenialReason.AwaitingReview);
+    expect(set.allowed).toContain(ProviderCapability.ManageVerification);
+    expect(set.allowed).toContain(ProviderCapability.CompleteOnboarding);
+    expect(set.allowed).toContain(ProviderCapability.PreviewMarketplace);
+    expect(set.nextActions).toEqual([
+      ProviderNextAction.VerifyIdentity,
+      ProviderNextAction.WaitForReview,
+    ]);
+    expect(set.allowed).not.toContain(ProviderCapability.SubmitBid);
+  });
+
   it('lets a SUBMITTED provider keep editing while they wait', async () => {
     const { service } = makeService(
       ELIGIBLE,

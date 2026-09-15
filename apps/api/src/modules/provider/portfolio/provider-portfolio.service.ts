@@ -150,6 +150,23 @@ export class ProviderPortfolioService {
         { reason: 'MEDIA_MIGRATION_REQUIRED' },
       );
     }
+    // Prove the caller owns a live reservation before touching its bytes.
+    // The conditional transaction claim below rechecks this after inspection.
+    const reservation = {
+      storageKey: input.storageKey,
+      ownerUserId: userId,
+      visibility: 'PUBLIC' as const,
+      uploadCompletedAt: null,
+      deletedAt: null,
+      declaredMimeType: input.contentType,
+      sizeBytes: input.sizeBytes,
+    };
+    const reserved = await this.prisma.client.mediaAsset.findFirst({
+      where: reservation,
+      select: { id: true },
+    });
+    if (!reserved) throw uploadNotReserved();
+
     const stored = await this.storage.readObjectHead(
       input.storageKey,
       AVATAR_SIGNATURE_PROBE_BYTES,
@@ -192,27 +209,14 @@ export class ProviderPortfolioService {
       // client cannot attach a key it was never issued, cannot attach another
       // provider's reservation, and two concurrent creates resolve to one.
       const claimedAsset = await client.mediaAsset.updateMany({
-        where: {
-          storageKey: input.storageKey,
-          ownerUserId: userId,
-          visibility: 'PUBLIC',
-          uploadCompletedAt: null,
-          deletedAt: null,
-          declaredMimeType: input.contentType,
-          sizeBytes: input.sizeBytes,
-        },
+        where: reservation,
         data: { uploadCompletedAt: new Date() },
       });
       if (claimedAsset.count !== 1) {
         // No reservation to claim: either it was never made, it belongs to
         // somebody else, or it is already attached. All three are the same
         // answer to the caller, so the surface cannot be probed for which.
-        throw new AppError(
-          'VALIDATION_ERROR',
-          'We could not find that upload. Please try again.',
-          400,
-          { reason: 'UPLOAD_NOT_RESERVED' },
-        );
+        throw uploadNotReserved();
       }
       const asset = await client.mediaAsset.findUniqueOrThrow({
         where: { storageKey: input.storageKey },
@@ -552,4 +556,10 @@ function toAppError(err: unknown): AppError {
     return new AppError('VALIDATION_ERROR', err.message, 400, { reason: err.code });
   }
   return err as AppError;
+}
+
+function uploadNotReserved(): AppError {
+  return new AppError('VALIDATION_ERROR', 'We could not find that upload. Please try again.', 400, {
+    reason: 'UPLOAD_NOT_RESERVED',
+  });
 }

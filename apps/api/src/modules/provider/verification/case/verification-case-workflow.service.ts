@@ -476,10 +476,18 @@ export class VerificationCaseWorkflowService {
       caseId: string;
       reasonCode: VerificationReasonCode;
       note?: string | null;
-      expectedState?: VerificationCaseState;
+      expectedState: VerificationCaseState;
     },
     context?: VerificationWorkflowContext,
   ): Promise<CaseCommandResult> {
+    if (!input.expectedState) {
+      throw new AppError(
+        'VALIDATION_ERROR',
+        'Reload the verification case before requesting fresh evidence.',
+        400,
+        { reason: 'EXPECTED_STATE_REQUIRED' },
+      );
+    }
     return this.closeAccess('reverify', reviewerUserId, input, context);
   }
 

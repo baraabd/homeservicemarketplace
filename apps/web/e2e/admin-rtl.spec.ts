@@ -32,55 +32,97 @@ import {
 // behaviour behind those states is proved against the real API/database by
 // scripts/runtime/verify-sprint01-security.cjs.
 
-// ── Viewport policy for the Admin console ────────────────────────────────────
-//
-// The Admin Dashboard is a DECLARED DESKTOP SURFACE: the app selector labels it
-// "Desktop 1440px", and the shell is built around a fixed 256px sidebar beside
-// a data table. At 375px and 768px the page therefore scrolls horizontally by
-// ~210-270px.
-//
-// That is intended layout, not an RTL regression — it reproduces identically in
-// English and Arabic — so the strict "the page must not scroll sideways" rule
-// is asserted at DESKTOP, where the surface is meant to be used. At the smaller
-// viewports these tests assert the properties that actually matter there:
-// nothing is clipped out of reach, the overflow is bounded rather than runaway,
-// and the direction flip does not make it worse.
-//
-// Making the console responsive at 375px is a redesign of a surface this sprint
-// was told not to redesign. It is reported as a remaining risk instead of being
-// silently accepted here.
-const DESKTOP_WIDTH = 1440;
+// The approved Admin redesign fits every supported viewport. Wide data tables
+// scroll inside their labeled keyboard-focusable regions; page-level overflow
+// is always a defect, in both directions. Reachability is checked independently
+// so hiding overflow cannot make this gate pass while concealing a column.
+async function expectResponsiveAdminLayout(page: Page, label: string): Promise<void> {
+  await expectNoHorizontalPageOverflow(page);
+  const viewport = page.viewportSize()!;
+  const originalY = await page.evaluate(() => window.scrollY);
+  const regions = page.getByRole('region').filter({ has: page.locator('table') });
 
-async function expectViewportAppropriateOverflow(page: Page, label: string): Promise<void> {
-  const width = page.viewportSize()!.width;
-  if (width >= DESKTOP_WIDTH) {
-    await expectNoHorizontalPageOverflow(page);
-    return;
+  for (let index = 0; index < (await regions.count()); index += 1) {
+    const region = regions.nth(index);
+    const box = await region.boundingBox();
+    expect(box, `${label}: table region ${index} has no box`).not.toBeNull();
+    expect(box!.x, `${label}: table region escapes the left viewport edge`).toBeGreaterThanOrEqual(
+      -1,
+    );
+    expect(
+      box!.x + box!.width,
+      `${label}: table region escapes the right viewport edge`,
+    ).toBeLessThanOrEqual(viewport.width + 1);
+
+    const scrolling = await region.evaluate((node) => {
+      const element = node as HTMLElement;
+      const overflow = element.scrollWidth - element.clientWidth;
+      const original = element.scrollLeft;
+      const style = getComputedStyle(element);
+      if (overflow > 1) element.scrollLeft = style.direction === 'rtl' ? -overflow : overflow;
+      const reached = Math.abs(element.scrollLeft);
+      element.scrollLeft = original;
+      return { overflow, reached, overflowX: style.overflowX, tabIndex: element.tabIndex };
+    });
+    if (scrolling.overflow > 1) {
+      expect(scrolling.overflowX, `${label}: a wide table must own its scrolling`).toMatch(
+        /^(auto|scroll)$/,
+      );
+      expect(
+        scrolling.tabIndex,
+        `${label}: the table scroll region must be keyboard focusable`,
+      ).toBeGreaterThanOrEqual(0);
+      expect(
+        scrolling.reached,
+        `${label}: table contents cannot be scrolled into view`,
+      ).toBeGreaterThan(0);
+      await region.focus();
+      await expect(region).toBeFocused();
+    }
+
+    // Each column must be fully revealable inside the scroll region. This
+    // catches overflow:hidden wrappers and clipped far-edge columns in RTL.
+    const columns = region.locator('thead th');
+    for (let column = 0; column < (await columns.count()); column += 1) {
+      const heading = columns.nth(column);
+      await heading.scrollIntoViewIfNeeded();
+      const bounds = await heading.evaluate((node) => {
+        const owner = node.closest('[role="region"]')!;
+        const cell = node.getBoundingClientRect();
+        const clip = owner.getBoundingClientRect();
+        return { left: clip.left - cell.left, right: cell.right - clip.right };
+      });
+      expect(
+        Math.max(bounds.left, bounds.right),
+        `${label}: column ${column} cannot be revealed`,
+      ).toBeLessThanOrEqual(1);
+    }
+    const buttons = region.getByRole('button');
+    if (await buttons.count()) {
+      for (const button of [buttons.first(), buttons.last()]) {
+        await button.scrollIntoViewIfNeeded();
+        await expect(button).toBeInViewport({ ratio: 1 });
+      }
+    }
+    await region.evaluate((node) => {
+      (node as HTMLElement).scrollLeft = 0;
+    });
   }
 
-  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-
-  // Bounded: the console needs about a desktop's width, and no more. A runaway
-  // value means something genuinely escaped the layout rather than the shell
-  // simply being wider than a phone.
-  expect(
-    scrollWidth,
-    `${label}: admin console is ${scrollWidth}px wide at a ${width}px viewport, which is beyond the desktop width it is designed for`,
-  ).toBeLessThanOrEqual(DESKTOP_WIDTH);
-
-  // And it must remain REACHABLE — scrolling to the far edge has to work,
-  // otherwise the content past the fold is simply lost.
-  //
-  // Direction matters: in an RTL document the scroll origin is the RIGHT edge,
-  // so scrolling towards the overflow yields a NEGATIVE window.scrollX. Testing
-  // for a positive value would report every RTL page as unscrollable.
-  const scrolled = await page.evaluate(() => {
-    const el = document.documentElement;
-    window.scrollTo(getComputedStyle(el).direction === 'rtl' ? -el.scrollWidth : el.scrollWidth, 0);
-    return Math.abs(window.scrollX);
-  });
-  expect(scrolled, `${label}: the overflowing content cannot be scrolled to`).toBeGreaterThan(0);
-  await page.evaluate(() => window.scrollTo(0, 0));
+  const dialogs = page.getByRole('dialog');
+  for (let index = 0; index < (await dialogs.count()); index += 1) {
+    const box = await dialogs.nth(index).boundingBox();
+    expect(box, `${label}: dialog has no box`).not.toBeNull();
+    expect(box!.x, `${label}: dialog escapes the left viewport edge`).toBeGreaterThanOrEqual(-1);
+    expect(
+      box!.x + box!.width,
+      `${label}: dialog escapes the right viewport edge`,
+    ).toBeLessThanOrEqual(viewport.width + 1);
+  }
+  if ((await dialogs.count()) === 0)
+    await expect(langToggle(page).first()).toBeInViewport({ ratio: 1 });
+  await expectNoHorizontalPageOverflow(page);
+  await page.evaluate((y) => window.scrollTo(0, y), originalY);
 }
 
 async function openAdmin(page: Page, lang: 'en' | 'ar'): Promise<void> {
@@ -115,7 +157,7 @@ test.describe('Admin dashboard — direction', () => {
     const { lang, dir } = await htmlLangDir(page);
     expect(lang).toBe('en');
     expect(dir).toBe('ltr');
-    await expectViewportAppropriateOverflow(page, 'admin shell (en)');
+    await expectResponsiveAdminLayout(page, 'admin shell (en)');
   });
 
   test('renders RTL in Arabic', async ({ page }) => {
@@ -123,14 +165,12 @@ test.describe('Admin dashboard — direction', () => {
     const { lang, dir } = await htmlLangDir(page);
     expect(lang).toBe('ar');
     expect(dir).toBe('rtl');
-    await expectViewportAppropriateOverflow(page, 'admin shell (ar)');
+    await expectResponsiveAdminLayout(page, 'admin shell (ar)');
   });
 
   test('the in-dashboard language control flips direction without a reload', async ({ page }) => {
     await openAdmin(page, 'en');
-    // Flipping direction must not make the layout WORSE than it already is —
-    // an RTL-only overflow would be a genuine regression, unlike the shell's
-    // baseline desktop width.
+    // Both directions fit the viewport; a language switch cannot widen it.
     const before = await page.evaluate(() => document.documentElement.scrollWidth);
     await langToggle(page).first().click();
     await expect.poll(async () => (await htmlLangDir(page)).dir).toBe('rtl');
@@ -138,7 +178,7 @@ test.describe('Admin dashboard — direction', () => {
     expect(after, 'RTL widened the admin shell beyond its LTR width').toBeLessThanOrEqual(
       before + 1,
     );
-    await expectViewportAppropriateOverflow(page, 'admin shell (flipped to ar)');
+    await expectResponsiveAdminLayout(page, 'admin shell (flipped to ar)');
   });
 
   test('navigation is legible in Arabic', async ({ page }) => {
@@ -223,9 +263,11 @@ test.describe('Admin dashboard — the three account axes', () => {
       await expectContainedInParent(page.getByTestId('badge-role'), 'role badge');
     });
 
-    test(`the users table stays within the console's width budget (${lang})`, async ({ page }) => {
+    test(`the users table fits the viewport and every column remains reachable (${lang})`, async ({
+      page,
+    }) => {
       await openUsersSection(page, lang);
-      await expectViewportAppropriateOverflow(page, `users table (${lang})`);
+      await expectResponsiveAdminLayout(page, `users table (${lang})`);
     });
   }
 
@@ -252,7 +294,7 @@ test.describe('Admin dashboard — provider status badges', () => {
       // representable — a queue that can only show one of them hides work.
       const body = page.locator('body');
       await expect(body).toContainText(adminProviderRows()[0].displayName);
-      await expectViewportAppropriateOverflow(page, `verification queue (${lang})`);
+      await expectResponsiveAdminLayout(page, `verification queue (${lang})`);
     });
   }
 });
@@ -275,10 +317,10 @@ test.describe('Admin dashboard — dialogs and actions stay reachable', () => {
         .first();
       await expect(drawerAction).toBeVisible();
       await expectLegible(drawerAction, 'drawer action control');
-      await expectViewportAppropriateOverflow(page, `user drawer (${lang})`);
+      await expectResponsiveAdminLayout(page, `user drawer (${lang})`);
 
-      // The action must be reachable after scrolling to it — which is the real
-      // requirement on a console wider than the viewport.
+      // The action remains reachable within the drawer, including when its
+      // contents require vertical scrolling on a phone.
       await drawerAction.scrollIntoViewIfNeeded();
       const box = await drawerAction.boundingBox();
       expect(box, 'drawer action has no box').not.toBeNull();
