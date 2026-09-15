@@ -17,7 +17,7 @@
 
 export {};
 
-import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { fixturePrefix } from '../support/db-isolation';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -48,9 +48,15 @@ d('Provider lifecycle backfill (real Postgres)', () => {
    * suite that writes ProviderProfile takes it SHARED, so they still run
    * concurrently with each other and only this suite serialises against them.
    */
-  let lifecycleLock: HeldLock;
-  let grantsLock: HeldLock;
+  let scratchDb: string | undefined;
+  let scratchDbUrl: string;
 
+  /** The server this run is pointed at. The gated suites always set it. */
+  function requireDatabaseUrl(): string {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error('provider-lifecycle-backfill requires DATABASE_URL');
+    return url;
+  }
   /** A provider profile with a chosen legacy status and NULL axes, i.e. what
    *  an upgraded (pre-Sprint-7) database looks like. */
   async function legacyProfile(
@@ -92,7 +98,82 @@ d('Provider lifecycle backfill (real Postgres)', () => {
   }
 
   beforeAll(async () => {
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'exclusive');
+    // Sprint 09B.29 Phase 5B — taken as ONE SET, atomically.
+    //
+    // Acquiring these one after another is hold-and-wait: the second
+    // acquisition can queue for up to the whole budget while the first is
+    // already held, so every suite waiting on the first is blocked by a
+    // suite that is doing no work. That is what took CI down — see
+    // `acquireAdvisoryLocks` in test/support/db-isolation.ts.
+    //
+    // The set is sorted into the canonical order by the helper, so the
+    // order written here cannot be wrong.
+    // Sprint 09B.29 Phase 5B — THIS SUITE OWNS A DATABASE, NOT A LOCK.
+    //
+    // It used to take `providerLifecycle` EXCLUSIVE, and that was the single
+    // worst source of contention in the gated run. The reason it needed the
+    // lock is real: a backfill scans every row by definition, and
+    // `totals.written` / `totals.scanned` are global by construction, so no
+    // fixture namespace can express what this suite asserts.
+    //
+    // But a lock over a SHARED table is the wrong boundary for that. About
+    // twenty-five suites hold the same lock SHARED for their whole runs, and the
+    // acquisition deliberately does not queue (see db-isolation.ts — making it
+    // queue convoys the entire run). One exclusive acquirer against
+    // twenty-five whole-run shared holders is a starvation problem with no
+    // stable answer, and it is what CI timed out on. Measured at
+    // --maxWorkers=4: 53.6s of a 120s budget on a host several times faster
+    // than the runner.
+    //
+    // A suite that asserts on table-wide totals should have a table nobody else
+    // writes. So this one provisions its own database, migrates it, and points
+    // both its client and the CLI it spawns at it. The assertions become
+    // genuinely table-wide rather than table-wide-because-a-lock-held-everyone-
+    // out, the suite can never be perturbed by a sibling, and it contends with
+    // nothing.
+    //
+    // With this gone there is no EXCLUSIVE acquirer of `providerLifecycle`
+    // left, so every remaining SHARED acquisition succeeds immediately —
+    // shared locks do not block each other. The other suites keep taking it,
+    // which costs a round trip and nothing else, and the lock stays available
+    // for the next suite that genuinely needs to own the table.
+    scratchDb = `hsm_backfill_${process.pid}_${Date.now().toString(36)}`;
+    const adminUrl = new URL(requireDatabaseUrl());
+    const scratchUrl = new URL(adminUrl.toString());
+    scratchUrl.pathname = `/${scratchDb}`;
+    scratchDbUrl = scratchUrl.toString();
+
+    const { execFileSync: exec } =
+      require('node:child_process') as typeof import('node:child_process');
+    const nodePath = require('node:path') as typeof import('node:path');
+    const repoRoot = nodePath.join(__dirname, '..', '..', '..', '..');
+    // Resolved to prisma's JS ENTRY and run with node, rather than the .bin
+    // shim. The shim is a .CMD on Windows and spawnSync refuses those without a
+    // shell (EINVAL); going through node behaves identically on both platforms
+    // and needs no shell quoting.
+    const prismaEntry = require.resolve('prisma/build/index.js', {
+      paths: [nodePath.join(repoRoot, 'packages', 'database')],
+    });
+    const schemaPath = nodePath.join(repoRoot, 'packages', 'database', 'prisma', 'schema.prisma');
+
+    // Created through a client on the SERVER's default database: you cannot
+    // CREATE DATABASE from inside the database being created.
+    const { PrismaClient: AdminClient } =
+      require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
+    const admin: RawSqlClient = new AdminClient({
+      datasources: { db: { url: adminUrl.toString() } },
+    });
+    try {
+      await admin.$executeRawUnsafe(`CREATE DATABASE "${scratchDb}"`);
+    } finally {
+      await admin.$disconnect().catch(() => undefined);
+    }
+
+    exec(process.execPath, [prismaEntry, 'migrate', 'deploy', '--schema', schemaPath], {
+      env: { ...process.env, DATABASE_URL: scratchDbUrl },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
     // Sprint 9B.21 — SHARED on the grant table, and acquired LAST.
     //
     // work-access-enforcement drives the expiry sweep, which scans every
@@ -103,11 +184,12 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     // Last, because the order providerLifecycle -> outbox -> workAccessGrants
     // is the same in every suite. Two suites taking two locks in opposite
     // orders is a deadlock, and a deadlocked CI job looks like a hang.
-    grantsLock = await acquireAdvisoryLock('workAccessGrants', 'shared');
 
-    const db =
+    // Its OWN client, not the app singleton: the singleton is bound to
+    // DATABASE_URL at import time and every other suite shares it.
+    const { PrismaClient } =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
-    prisma = db.prisma;
+    prisma = new PrismaClient({ datasources: { db: { url: scratchDbUrl } } });
 
     // Drive the REAL CLI as a child process rather than importing it.
     //
@@ -133,7 +215,10 @@ d('Provider lifecycle backfill (real Postgres)', () => {
     runBackfill = (opts: { apply?: boolean } = {}) => {
       const args = [script, '--json', ...(opts.apply ? ['--apply'] : [])];
       const out = execFileSync(process.execPath, args, {
-        env: { ...process.env },
+        // The CLI is the real operator command and reads DATABASE_URL, so
+        // pointing it here is what makes the child process operate on this
+        // suite's own database rather than the shared one.
+        env: { ...process.env, DATABASE_URL: scratchDbUrl },
         encoding: 'utf8',
       });
       return JSON.parse(out);
@@ -142,13 +227,45 @@ d('Provider lifecycle backfill (real Postgres)', () => {
 
   afterEach(cleanup);
   afterAll(async () => {
-    await cleanup();
-    await prisma.$disconnect();
-    await grantsLock?.release();
-    await lifecycleLock.release();
+    // Guarded: when setup fails there is no client, and an unguarded
+    // disconnect would mask the real error with a TypeError AND skip the drop
+    // below, leaking a database per failed run.
+    await cleanup().catch(() => undefined);
+    await prisma?.$disconnect().catch(() => undefined);
+    // Dropped, not left behind: a scratch database per run would otherwise
+    // accumulate on a developer's server forever. FORCE disconnects anything
+    // still attached, so a failed test cannot leave the drop hanging.
+    if (scratchDb) {
+      const { PrismaClient: DropClient } =
+        require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
+      const admin: RawSqlClient = new DropClient({
+        datasources: { db: { url: requireDatabaseUrl() } },
+      });
+      try {
+        await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${scratchDb}" WITH (FORCE)`);
+      } catch {
+        // A drop that fails must not fail the suite: the assertions are done
+        // and the only cost is a leftover database named after this run.
+      } finally {
+        await admin.$disconnect().catch(() => undefined);
+      }
+    }
   });
 
   // ── schema shape ─────────────────────────────────────────────────────────
+
+  /**
+   * The two operations a server-level client performs here.
+   *
+   * Narrower than the generated PrismaClient on purpose: this suite only ever
+   * runs raw DDL and disconnects, so the type says exactly that. It also avoids
+   * an `any`, which the lint rule rightly refuses — a client typed `any` would
+   * accept a typo for a model name as readily as a real one.
+   */
+  interface RawSqlClient {
+    $executeRawUnsafe(query: string): Promise<number>;
+    $disconnect(): Promise<void>;
+  }
 
   describe('migration produces a backward-compatible schema', () => {
     it('leaves every new axis NULL on a freshly created row', async () => {

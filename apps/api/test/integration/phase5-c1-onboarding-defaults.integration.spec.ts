@@ -144,8 +144,16 @@ d('Phase 5 C1 — onboarding defaults are race-safe (real Postgres)', () => {
   });
 
   afterAll(async () => {
-    await wipe();
-    await lifecycleLock?.release();
+    try {
+      await wipe();
+    } finally {
+      try {
+        await lifecycleLock?.release();
+      } finally {
+        // This harness creates no PrismaService to disconnect its suite client.
+        await prisma?.$disconnect();
+      }
+    }
   });
 
   beforeEach(async () => {

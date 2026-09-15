@@ -10,7 +10,7 @@ import { APP_FILTER, Reflector } from '@nestjs/core';
 import { CanActivate, ExecutionContext, INestApplication, VersioningType } from '@nestjs/common';
 import request from 'supertest';
 
-import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
 
 // Sprint 9B.10 — the provider portfolio over real HTTP against a real database.
 //
@@ -63,10 +63,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
   const PP = `${P}pp`;
   const PP2 = `${P}pp2`;
   const CATEGORY = `${P}cat`;
-
-  let lifecycleLock: HeldLock;
-  let mediaLock: HeldLock;
-
+  let locks: HeldLock | undefined;
   const base = '/v1/me/provider/portfolio';
   const list = () => request(http).get(base);
   /**
@@ -155,9 +152,21 @@ d('Provider portfolio (real guard, real Postgres)', () => {
   }
 
   beforeAll(async () => {
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // Sprint 09B.29 Phase 5B — taken as ONE SET, atomically.
+    //
+    // Acquiring these one after another is hold-and-wait: the second
+    // acquisition can queue for up to the whole budget while the first is
+    // already held, so every suite waiting on the first is blocked by a
+    // suite that is doing no work. That is what took CI down — see
+    // `acquireAdvisoryLocks` in test/support/db-isolation.ts.
+    //
+    // The set is sorted into the canonical order by the helper, so the
+    // order written here cannot be wrong.
+    locks = await acquireAdvisoryLocks([
+      { resource: 'providerLifecycle' as const, mode: 'shared' as const },
+      { resource: 'mediaAssets' as const, mode: 'exclusive' as const },
+    ]);
     // LAST in the canonical order. EXCLUSIVE: this suite RUNS a global media sweep.
-    mediaLock = await acquireAdvisoryLock('mediaAssets', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -300,8 +309,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
     await cleanupFixtures();
     await app?.close();
     await prisma.$disconnect();
-    await mediaLock?.release();
-    await lifecycleLock.release();
+    await locks?.release();
   });
 
   // ── lifecycle ───────────────────────────────────────────────────────────

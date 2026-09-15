@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, Image as ImageIcon, RotateCw, Trash2, Upload } from 'lucide-react';
+import { Camera, RotateCw, Trash2, Upload } from 'lucide-react';
 
 import {
   finalizeAvatar,
@@ -273,41 +273,58 @@ export function AvatarUploader({
 
   return (
     <div className="flex flex-col gap-3" data-testid="avatar-uploader">
-      <div className="flex items-center gap-3">
-        <div
-          className="relative flex-shrink-0 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700"
-          style={{ width: '72px', height: '72px' }}
-          data-testid="avatar-preview"
+      {/* ── Nothing uploaded yet: the approved upload surface ─────────────
+          Sprint 09B.29 Phase 5A. `.hsm-upload` — one dashed box, one camera
+          glyph, one sentence — replaces the titled card with a grey circle and
+          a pair of buttons beside it.
+
+          It is a BUTTON, not the reference's inert div, and it opens a single
+          `accept="image/*"` input rather than the camera-specific one. That is
+          what makes the sentence true on a phone: with no `capture` attribute
+          iOS and Android both offer "Take Photo" and "Photo Library" from that
+          one control, so "take a photo or choose from gallery" is a promise the
+          control actually keeps. The camera-specific input is still here and is
+          still offered once there is a photo to replace. */}
+      {!hasPhoto ? (
+        <button
+          type="button"
+          data-testid="avatar-empty-prompt"
+          disabled={disabled || busy}
+          onClick={() => galleryInput.current?.click()}
+          // A GRID, not a centred flex column, because that is what
+          // `.hsm-upload` is and the two do not lay out the same way: grid
+          // gives the icon and the caption a row each and STRETCHES both to
+          // fill the box, then centres each item inside its own row. A flex
+          // column centres the pair as one block, which put the caption 15px
+          // high of the reference.
+          className="grid min-h-[128px] w-full place-items-center rounded-pv-card border-[1.5px] border-dashed border-pv-border-strong bg-pv-surface p-[18px] text-center text-pv-accent-hover disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
         >
-          {shown ? (
+          <Camera size={16} aria-hidden="true" />
+          {/* Same reason as the field label: the base layer puts a 1.5 ratio on
+              `button`, and everything inside inherits it. */}
+          <span className="mt-2 text-pv-label font-bold leading-[21px]">{copy.emptyPrompt}</span>
+        </button>
+      ) : (
+        <div className="flex items-center gap-3">
+          <div
+            className="relative flex-shrink-0 overflow-hidden rounded-full bg-pv-surface-sunken"
+            style={{ width: '72px', height: '72px' }}
+            data-testid="avatar-preview"
+          >
             <img
-              src={shown}
+              src={shown ?? undefined}
               alt={copy.previewAlt}
               className="h-full w-full object-cover"
               data-testid="avatar-preview-image"
             />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-slate-400">
-              <ImageIcon size={24} aria-hidden="true" />
-            </div>
-          )}
-        </div>
+          </div>
 
-        <div className="min-w-0 flex-1">
-          <p
-            className="break-words text-slate-900 dark:text-white"
-            style={{ fontSize: '14px', fontWeight: 600 }}
-          >
-            {copy.title}
-          </p>
-          <p
-            className="mt-0.5 break-words text-slate-500 dark:text-slate-400"
-            style={{ fontSize: '12px' }}
-          >
-            {copy.hint}
-          </p>
+          <div className="min-w-0 flex-1">
+            <p className="break-words text-pv-body font-semibold text-pv-text">{copy.title}</p>
+            <p className="mt-0.5 break-words text-pv-help text-pv-muted">{copy.hint}</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Two inputs, not one. `capture` opens the camera directly on a phone,
           which is the fastest path for someone who has not taken the photo
@@ -335,22 +352,26 @@ export function AvatarUploader({
         tabIndex={-1}
       />
 
-      <div className="flex flex-wrap gap-2">
-        <UploaderButton
-          testId="avatar-take-photo"
-          icon={<Camera size={16} aria-hidden="true" />}
-          label={copy.takePhoto}
-          onClick={() => cameraInput.current?.click()}
-          disabled={disabled || busy}
-        />
-        <UploaderButton
-          testId="avatar-choose-file"
-          icon={<Upload size={16} aria-hidden="true" />}
-          label={hasPhoto ? copy.replace : copy.choose}
-          onClick={() => galleryInput.current?.click()}
-          disabled={disabled || busy}
-        />
-        {hasPhoto ? (
+      {/* The explicit controls belong to the REPLACE case. While there is no
+          photo the approved surface above is the only control, and offering
+          the same two actions twice on one screen is how the baseline ended up
+          with three ways to do one thing. */}
+      {hasPhoto ? (
+        <div className="flex flex-wrap gap-2">
+          <UploaderButton
+            testId="avatar-take-photo"
+            icon={<Camera size={16} aria-hidden="true" />}
+            label={copy.takePhoto}
+            onClick={() => cameraInput.current?.click()}
+            disabled={disabled || busy}
+          />
+          <UploaderButton
+            testId="avatar-choose-file"
+            icon={<Upload size={16} aria-hidden="true" />}
+            label={copy.replace}
+            onClick={() => galleryInput.current?.click()}
+            disabled={disabled || busy}
+          />
           <>
             <UploaderButton
               testId="avatar-rotate"
@@ -370,10 +391,22 @@ export function AvatarUploader({
               disabled={disabled || busy}
             />
           </>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
-      <div role="status" aria-live="polite" data-testid="avatar-status">
+      {/* The live region stays in the DOM at all times — an `aria-live` region
+          inserted at the same moment as its content is announced unreliably —
+          but while it is IDLE it is taken out of flow rather than left as an
+          empty box. A zero-height flex item still earns the column's 12px gap,
+          which pushed every field on the screen down by that much. `sr-only`
+          is absolutely positioned, so it is not a flex item at all, and it is
+          still readable by assistive technology. */}
+      <div
+        role="status"
+        aria-live="polite"
+        data-testid="avatar-status"
+        className={state.kind === 'idle' ? 'sr-only' : undefined}
+      >
         {state.kind === 'processing' ? (
           <StatusLine text={copy.processing} />
         ) : state.kind === 'uploading' ? (

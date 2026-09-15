@@ -204,16 +204,72 @@ export async function registerProvider(): Promise<Account> {
  *  overwrite by another name, so the server refuses one. */
 async function currentVersion(jar: Jar): Promise<number> {
   const draft = await api<{ version: number }>(jar, '/v1/me/provider/onboarding/draft');
-  return draft.body.version;
+
+  // ── Fail where the failure IS, not one call later ────────────────────────
+  //
+  // This read used to return `draft.body.version` with no check at all, and
+  // that turned every upstream problem into the same confusing lie. In CI the
+  // OTP limiter returned 429, so the session was never established, so this
+  // GET answered with an error envelope, so `version` was `undefined`, so the
+  // NEXT call — a PATCH — was refused with:
+  //
+  //   "version must not be less than 0; version must be an integer number"
+  //
+  // which reads like a contract bug in the wizard and is nothing of the kind.
+  // Two of the three failure classes in that job were this one sentence.
+  //
+  // So the status is asserted here, and the version is asserted to be the shape
+  // the server's own DTO requires. A fixture that cannot read the draft must say
+  // so; it must not hand a malformed version to the next request and let the
+  // server's validator describe the symptom.
+  expect(
+    draft.status,
+    `the draft must be readable before a step is written: ${JSON.stringify(draft.body)}`,
+  ).toBe(200);
+
+  const version = draft.body.version;
+  expect(
+    Number.isInteger(version) && (version as number) >= 0,
+    `the draft should carry a non-negative integer version, got ${JSON.stringify(version)}`,
+  ).toBe(true);
+
+  return version;
 }
 
-async function patchStep(jar: Jar, step: string, body: Record<string, unknown>): Promise<void> {
-  const version = await currentVersion(jar);
-  const res = await api(jar, `/v1/me/provider/onboarding/steps/${step}`, {
+/**
+ * Write one step, and return the version the server reached.
+ *
+ * The version is THREADED rather than re-read. Fetching it before every write
+ * doubled the request count — a GET for each PATCH — and the real-API job hit
+ * the platform's 100-per-minute backstop because of it: six steps per account
+ * across twenty-three tests is roughly a hundred and forty draft reads that
+ * exist only to learn a number the previous response already carried.
+ *
+ * It is also more correct. Read-then-write is a race by construction, however
+ * short the gap; using the version the last write RETURNED is the same
+ * optimistic-concurrency discipline the product's own client follows.
+ *
+ * `known` is optional so the first call in a chain can still discover it.
+ */
+async function patchStep(
+  jar: Jar,
+  step: string,
+  body: Record<string, unknown>,
+  known?: number,
+): Promise<number> {
+  const version = known ?? (await currentVersion(jar));
+  const res = await api<{ version?: number }>(jar, `/v1/me/provider/onboarding/steps/${step}`, {
     method: 'PATCH',
     body: { version, ...body },
   });
   expect(res.status, `PATCH ${step} should be accepted: ${JSON.stringify(res.body)}`).toBe(200);
+
+  const next = res.body.version;
+  expect(
+    Number.isInteger(next) && (next as number) > version,
+    `PATCH ${step} should report the version it advanced to, got ${JSON.stringify(next)}`,
+  ).toBe(true);
+  return next as number;
 }
 
 /** Which collecting steps to fill. Omitting one leaves exactly the blocker a
@@ -248,42 +304,44 @@ export async function completeDraft(
   const leaf = catalogue.body.items.find((c) => c.isLeaf !== false);
   expect(leaf, 'the seeded catalogue should offer at least one leaf category').toBeTruthy();
 
-  if (!skip.has('PROVIDER_TYPE'))
-    await patchStep(jar, 'PROVIDER_TYPE', { providerType: 'INDIVIDUAL' });
-  if (!skip.has('IDENTITY'))
-    await patchStep(jar, 'IDENTITY', {
-      displayName: 'Layla Mansour',
-      phoneNumber: '+963900000444',
-    });
-  if (!skip.has('LOCATION'))
-    await patchStep(jar, 'LOCATION', {
-      serviceAreaCity: 'Damascus',
-      serviceAreaCountry: 'Syria',
-      serviceAreaCountryCode: 'SY',
-      serviceAreaRadiusKm: 20,
-    });
-  if (!skip.has('SPECIALTIES'))
-    await patchStep(jar, 'SPECIALTIES', {
-      specialtyLeafIds: [leaf!.id],
-      primarySpecialtyId: leaf!.id,
-    });
-  if (!skip.has('EXPERIENCE')) await patchStep(jar, 'EXPERIENCE', { yearsOfExperience: 5 });
-  if (!skip.has('AVAILABILITY'))
-    // A timezone must exist before a weekly window can be stored: the server
-    // refuses the write otherwise, because minutes-from-midnight mean nothing
-    // without one.
-    await patchStep(jar, 'AVAILABILITY', {
-      timezone: 'Asia/Damascus',
-      availability: [
-        { dayOfWeek: 1, startMinute: 540, endMinute: 1020 },
-        { dayOfWeek: 2, startMinute: 540, endMinute: 1020 },
-      ],
-    });
-  if (!skip.has('PROFILE'))
-    await patchStep(jar, 'PROFILE', {
-      headline: 'Certified electrician',
-      bio: 'A sufficiently long biography for the onboarding policy to consider this profile complete and useful.',
-    });
+  // One draft read for the whole chain; every write after the first uses the
+  // version its predecessor returned.
+  let version: number | undefined;
+  const step = async (name: CollectingStep, body: Record<string, unknown>): Promise<void> => {
+    if (skip.has(name)) return;
+    version = await patchStep(jar, name, body, version);
+  };
+
+  await step('PROVIDER_TYPE', { providerType: 'INDIVIDUAL' });
+  await step('IDENTITY', {
+    displayName: 'Layla Mansour',
+    phoneNumber: '+963900000444',
+  });
+  await step('LOCATION', {
+    serviceAreaCity: 'Damascus',
+    serviceAreaCountry: 'Syria',
+    serviceAreaCountryCode: 'SY',
+    serviceAreaRadiusKm: 20,
+  });
+  await step('SPECIALTIES', {
+    specialtyLeafIds: [leaf!.id],
+    primarySpecialtyId: leaf!.id,
+  });
+  await step('EXPERIENCE', { yearsOfExperience: 5 });
+  // A timezone must exist before a weekly window can be stored: the server
+  // refuses the write otherwise, because minutes-from-midnight mean nothing
+  // without one.
+  await step('AVAILABILITY', {
+    timezone: 'Asia/Damascus',
+    availability: [
+      { dayOfWeek: 1, startMinute: 540, endMinute: 1020 },
+      { dayOfWeek: 2, startMinute: 540, endMinute: 1020 },
+    ],
+  });
+  await step('PROFILE', {
+    headline: 'Certified electrician',
+    bio: 'A sufficiently long biography for the onboarding policy to consider this profile complete and useful.',
+  });
 }
 
 /**
@@ -325,6 +383,34 @@ function adminForThisWorker(): { email: string; password: string } {
  *  call keeps the mailbox quiet and the queue reads cheap. */
 let adminSession: Promise<Jar> | null = null;
 
+/** When that session was last known good. */
+let adminSessionAt = 0;
+
+/**
+ * How long an admin session is reused before it is refreshed.
+ *
+ * Sprint 09B.29 Phase 5B. `JWT_ACCESS_TTL_SECONDS` defaults to **600** — ten
+ * minutes — and this session was memoised for the lifetime of the worker with
+ * nothing to renew it. Any suite that ran longer than ten minutes therefore
+ * started returning 401 from every admin call, and because the expiry is a
+ * WALL-CLOCK event rather than a property of any one test, the failure landed on
+ * whichever test happened to run next:
+ *
+ *   run 1  'a task edited in the browser is persisted'   (timed out)
+ *   run 2  'a direct task deep link opens that task'     (timed out)
+ *   run 3  'review blockers agree with the hub'          401 from the queue
+ *
+ * Three runs, three different tests, one cause. That is the signature of shared
+ * state with a clock in it, and it is worth recognising: a failure that moves
+ * between runs is rarely three bugs.
+ *
+ * Half the TTL, so the margin is as large as the reuse window. Refreshing
+ * PROACTIVELY rather than retrying on a 401 is deliberate — it keeps every
+ * caller unchanged, and this file must not teach the suite that a 401 is
+ * something to retry past.
+ */
+const ADMIN_SESSION_MAX_AGE_MS = 5 * 60_000;
+
 async function signInAsAdmin(): Promise<Jar> {
   const who = adminForThisWorker();
   const admin = newJar();
@@ -352,8 +438,112 @@ export async function adminJar(): Promise<Jar> {
     // One retry, for the backstop case above only. Not a blanket retry: a
     // failure for any other reason fails again immediately and is reported.
     adminSession = signInAsAdmin().catch(() => signInAsAdmin());
+    adminSessionAt = Date.now();
+    return adminSession;
   }
+
+  if (Date.now() - adminSessionAt < ADMIN_SESSION_MAX_AGE_MS) return adminSession;
+
+  // Old enough that the access token may have lapsed. Renew it the way the
+  // product does — through the refresh endpoint, using the refresh cookie the
+  // jar already scopes to `/v1/auth/refresh` — so this exercises the real
+  // mechanism rather than working around it. If the refresh token has gone too,
+  // sign in again; that is a new session, not a retry of a failed request.
+  const jar = await adminSession;
+  const refreshed = await api(jar, '/v1/auth/refresh', { method: 'POST' });
+  if (refreshed.status === 200) {
+    adminSessionAt = Date.now();
+    return jar;
+  }
+
+  adminSession = signInAsAdmin();
+  adminSessionAt = Date.now();
   return adminSession;
+}
+
+/**
+ * The smallest image the media policy will accept: a 1x1 PNG.
+ *
+ * Real bytes through the real pipeline. The point of these fixtures is that a
+ * portfolio item exists the way one actually comes to exist — presign, upload,
+ * register — so the thing under test (the ORDER) is the only part the test
+ * performs itself.
+ */
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+/** The storage key the server minted, taken out of the file URL it returned. */
+function storageKeyFromFileUrl(fileUrl: string): string {
+  const marker = '/v1/media/files/';
+  const idx = fileUrl.indexOf(marker);
+  if (idx >= 0) return fileUrl.slice(idx + marker.length);
+  return new URL(fileUrl).pathname.replace(/^\/+/, '');
+}
+
+/**
+ * Put one real photo in a provider's portfolio, through the real endpoints.
+ *
+ * Three calls, because that is what the browser makes: a presign for a
+ * server-synthesised key, a PUT of the bytes to the sink that key belongs to,
+ * and a registration that ties the key to the provider. Seeding the row
+ * directly would skip the upload path entirely and leave a test that proves
+ * ordering over rows no provider could have created.
+ *
+ * Returns the item id, so a caller can assert on the ORDER of ids rather than
+ * on positions it has to infer.
+ */
+export async function addPortfolioPhoto(jar: Jar, title: string): Promise<string> {
+  const presigned = await api<{
+    items: Array<{ uploadUrl: string; fileUrl: string }>;
+  }>(jar, '/v1/media/presigned-url', {
+    method: 'POST',
+    body: {
+      purpose: 'portfolio',
+      items: [{ contentType: 'image/png', sizeBytes: TINY_PNG.byteLength }],
+    },
+  });
+  expect(presigned.status, 'a portfolio presign should be granted').toBe(200);
+
+  const { uploadUrl, fileUrl } = presigned.body.items[0];
+
+  // A raw PUT: `api()` speaks JSON, and this is the one step in the journey
+  // that carries bytes. The URL may be relative to the API origin.
+  const target = uploadUrl.startsWith('http') ? uploadUrl : `${REAL_API}${uploadUrl}`;
+  const put = await fetch(target, {
+    method: 'PUT',
+    headers: { 'content-type': 'image/png' },
+    body: TINY_PNG,
+  });
+  expect(put.status, `the upload sink should accept the bytes (got ${put.status})`).toBeLessThan(
+    300,
+  );
+
+  const created = await api<{ id: string }>(jar, '/v1/me/provider/portfolio', {
+    method: 'POST',
+    body: {
+      storageKey: storageKeyFromFileUrl(fileUrl),
+      contentType: 'image/png',
+      sizeBytes: TINY_PNG.byteLength,
+      title,
+      // The consent gate, sent explicitly. The controller overrides it anyway,
+      // but the DTO requires it to be literally true — so a client that has not
+      // shown the provider the wording cannot register a photo by omission.
+      publicationRightAck: true,
+    },
+  });
+  expect(created.status, `the photo should be registered: ${JSON.stringify(created.body)}`).toBe(
+    200,
+  );
+  return created.body.id;
+}
+
+/** The portfolio in the order the server currently holds it. */
+export async function portfolioOrder(jar: Jar): Promise<string[]> {
+  const res = await api<{ items: Array<{ id: string }> }>(jar, '/v1/me/provider/portfolio');
+  expect(res.status, 'the portfolio should be readable').toBe(200);
+  return res.body.items.map((i) => i.id);
 }
 
 export async function approveCategoriesFor(account: Account): Promise<void> {

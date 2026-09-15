@@ -22,7 +22,7 @@ import request from 'supertest';
 
 import { ProviderCapabilityDenialReason } from '@homeservicemarketplace/contracts';
 
-import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
 
 // Derived, never written: a literal here is indistinguishable from a real
@@ -179,10 +179,7 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
   const ROOT = `${P}root`;
   const LEAF = `${P}leaf`;
   const REQUEST = `${P}request`;
-
-  let lifecycleLock: HeldLock;
-  let mediaLock: HeldLock;
-  let serviceRequestsLock: HeldLock;
+  let locks: HeldLock | undefined;
   let profileId: string;
   let otherProfileId: string;
   let applicationId: string;
@@ -384,7 +381,21 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
   });
 
   async function setup(): Promise<void> {
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // Sprint 09B.29 Phase 5B — taken as ONE SET, atomically.
+    //
+    // Acquiring these one after another is hold-and-wait: the second
+    // acquisition can queue for up to the whole budget while the first is
+    // already held, so every suite waiting on the first is blocked by a
+    // suite that is doing no work. That is what took CI down — see
+    // `acquireAdvisoryLocks` in test/support/db-isolation.ts.
+    //
+    // The set is sorted into the canonical order by the helper, so the
+    // order written here cannot be wrong.
+    locks = await acquireAdvisoryLocks([
+      { resource: 'providerLifecycle' as const, mode: 'shared' as const },
+      { resource: 'serviceRequests' as const, mode: 'shared' as const },
+      { resource: 'mediaAssets' as const, mode: 'exclusive' as const },
+    ]);
 
     // Sprint 09B.29 Phase 3 — SHARED on ServiceRequest, acquired LAST.
     //
@@ -400,9 +411,7 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     // only the global reader excludes them. Last, because the canonical order
     // is providerLifecycle -> outbox -> workAccessGrants -> serviceRequests;
     // two suites taking two locks in opposite orders deadlock.
-    serviceRequestsLock = await acquireAdvisoryLock('serviceRequests', 'shared');
     // LAST in the canonical order. EXCLUSIVE: this suite RUNS a global media sweep.
-    mediaLock = await acquireAdvisoryLock('mediaAssets', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -786,9 +795,7 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     await cleanupFixtures();
     await app?.close();
     await prisma.$disconnect();
-    await mediaLock?.release();
-    await serviceRequestsLock.release();
-    await lifecycleLock.release();
+    await locks?.release();
   });
 
   // ══ STAGE 0 — before any decision ════════════════════════════════════════

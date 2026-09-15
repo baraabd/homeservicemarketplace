@@ -7,10 +7,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { api } from '../../../../lib/api';
 import { providerQueryKeys } from '../../../../lib/provider/query-keys';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
+import { AutosaveStatus } from './AutosaveStatus';
 import { BasicsTaskScreen } from './BasicsTaskScreen';
 import { BASICS_COPY } from '../copy/basics-copy';
 import { AUTOSAVE_COPY } from '../copy/autosave-copy';
-import { ProviderOnboardingAutosaveProvider } from '../autosave/ProviderOnboardingAutosaveProvider';
+import {
+  useOnboardingStepAutosave,
+  ProviderOnboardingAutosaveProvider,
+} from '../autosave/ProviderOnboardingAutosaveProvider';
 
 // Sprint 9B.17 — V2 Task 1.
 //
@@ -61,6 +65,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** The chrome's save line, mounted exactly as `OnboardingTaskScreen` mounts it. */
+function SaveStatusProbe({ lang }: { lang: 'en' | 'ar' }) {
+  const { status } = useOnboardingStepAutosave('IDENTITY');
+  return <AutosaveStatus status={status} lang={lang} testIdPrefix="basics" />;
+}
+
 function renderScreen(
   view: ReturnType<typeof DRAFT> = DRAFT(),
   lang: 'en' | 'ar' = 'en',
@@ -80,6 +90,13 @@ function renderScreen(
         <LanguageProvider>
           <ProviderOnboardingAutosaveProvider>
             <BasicsTaskScreen view={view as never} lang={lang} editable={editable} />
+            {/* Sprint 09B.29 Phase 5A — the save status moved OUT of the form
+                and into the approved sticky action bar, which this component
+                does not own. It is still driven by the same step of the same
+                coordinator, so the harness renders it the way the task route
+                does; the assertions below are about the coordinator's
+                behaviour, and that is unchanged. */}
+            <SaveStatusProbe lang={lang} />
           </ProviderOnboardingAutosaveProvider>
         </LanguageProvider>
       </QueryClientProvider>
@@ -115,8 +132,12 @@ describe('BasicsTaskScreen — phone', () => {
     renderScreen();
     // Neither falsely passed nor unsatisfiably required: the note says the
     // number will be confirmed later and that continuing does not need it.
-    const note = screen.getByTestId('phone-verification-note');
-    expect(note.textContent).toBe(BASICS_COPY.en.phoneNotVerified);
+    // Sprint 09B.29 Phase 5A — it is the phone field's HINT now rather than a
+    // paragraph beside it, so the assertion is stronger than it was: the
+    // sentence must be present AND wired to the input it qualifies.
+    const note = screen.getByText(BASICS_COPY.en.phoneNotVerified);
+    const phone = screen.getByTestId('field-phoneNumber');
+    expect(phone.getAttribute('aria-describedby')).toContain(note.id);
     expect(screen.queryByRole('button', { name: /verify/i })).toBeNull();
   });
 
@@ -147,83 +168,90 @@ describe('BasicsTaskScreen — phone', () => {
   });
 });
 
-describe('BasicsTaskScreen — individual vs business', () => {
-  it('does not ask an individual for a business name', () => {
+describe('BasicsTaskScreen — the questions ruling C1 removed', () => {
+  // SUPERSEDED CONTRACT, recorded rather than deleted.
+  //
+  // This block previously asserted that the screen ASKED for provider type
+  // (individual/business), confirmed a change through an alert dialog, and
+  // asked a business for its legal name. Every one of those assertions was
+  // correct for the Sprint 9B.17 design.
+  //
+  // Ruling C1 supersedes it: providerType is a SERVER-side default written
+  // only when absent while creating a new V2 draft, and the business path
+  // belongs to a later approved surface. The ruling says in terms that
+  // provider-type, legal-business-name and duplicate professional-title
+  // controls must not appear on the approved onboarding screens.
+  //
+  // The replacement assertions are STRICTER than the ones they replace: the
+  // old block proved the controls behaved correctly when present, this one
+  // proves they cannot appear at all — in either provider type, and in either
+  // language.
+  it('never asks an INDIVIDUAL for a provider type or a business name', () => {
     renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }));
+
     expect(screen.queryByTestId('field-legalBusinessName')).toBeNull();
-  });
-
-  it('asks a business for one', () => {
-    renderScreen(DRAFT({ data: { providerType: 'BUSINESS' } }));
-    expect(screen.getByTestId('field-legalBusinessName')).toBeInTheDocument();
-  });
-
-  it('saves the first choice immediately, with no dialog', async () => {
-    // Choosing on an empty form is not a CHANGE, and a confirmation there is
-    // friction for nothing.
-    renderScreen();
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
-
+    expect(screen.queryByTestId('provider-type-INDIVIDUAL')).toBeNull();
+    expect(screen.queryByTestId('provider-type-BUSINESS')).toBeNull();
     expect(screen.queryByTestId('provider-type-change-dialog')).toBeNull();
-    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-    expect(JSON.parse(mock.history.patch[0].data).providerType).toBe('BUSINESS');
   });
 
-  it('warns before CHANGING an existing type, and does not save until confirmed', async () => {
-    renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }));
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
+  it('never asks a BUSINESS either — the stored value is untouched, not re-asked', () => {
+    // The provider keeps their type and their legal name server-side. What
+    // changes is that this screen stops collecting them, so a business sees
+    // exactly the three approved questions an individual sees.
+    renderScreen(DRAFT({ data: { providerType: 'BUSINESS', legalBusinessName: 'ACME' } }));
 
-    const dialog = await screen.findByTestId('provider-type-change-dialog');
-    expect(dialog).toBeInTheDocument();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(mock.history.patch).toHaveLength(0);
+    expect(screen.queryByTestId('field-legalBusinessName')).toBeNull();
+    expect(screen.queryByTestId('provider-type-BUSINESS')).toBeNull();
+    expect(screen.queryByText(BASICS_COPY.en.typeLegend)).toBeNull();
+    expect(screen.queryByText('ACME')).toBeNull();
   });
 
-  it('promises that nothing already sent is deleted', () => {
-    // The consequence a provider actually needs: requirements change, evidence
-    // and decisions stay on the record.
-    renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }));
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
-    expect(screen.getByTestId('provider-type-change-dialog').textContent).toContain(
-      'Nothing you have already sent us is deleted',
-    );
-  });
+  it('asks only the three approved questions, photo first', () => {
+    // The approved screen "basics" is: upload surface, customer-facing name,
+    // phone. Order is part of the design, so it is asserted rather than left
+    // to the reading order of the file.
+    const { container } = renderScreen();
 
-  it('saves once the change is confirmed', async () => {
-    renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }));
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
-    fireEvent.click(await screen.findByTestId('provider-type-change-confirm'));
+    expect(screen.getByTestId('field-displayName')).toBeInTheDocument();
+    expect(screen.getByTestId('field-phoneNumber')).toBeInTheDocument();
 
-    await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
-    expect(JSON.parse(mock.history.patch[0].data).providerType).toBe('BUSINESS');
-  });
+    const name = screen.getByTestId('field-displayName');
+    const phone = screen.getByTestId('field-phoneNumber');
+    expect(name.compareDocumentPosition(phone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-  it('cancelling leaves the type alone', async () => {
-    renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }));
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
-    fireEvent.click(await screen.findByTestId('provider-type-change-cancel'));
-
-    expect(screen.queryByTestId('provider-type-change-dialog')).toBeNull();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(mock.history.patch).toHaveLength(0);
+    // The photo comes before both, which is what "photo first" means in DOM
+    // order and therefore in both reading order and tab order.
+    const uploader = container.querySelector('input[type="file"]');
+    if (uploader) {
+      expect(
+        uploader.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
   });
 });
 
 describe('BasicsTaskScreen — saving', () => {
-  it('writes each field to the step that owns it', async () => {
+  it('writes every field to IDENTITY, the one step that owns this screen', async () => {
+    // Was: displayName to IDENTITY and legalBusinessName to PROVIDER_TYPE.
+    // With the business name gone (ruling C1), IDENTITY owns everything here —
+    // so the assertion is now that NOTHING is written to PROVIDER_TYPE, which
+    // is stricter than checking that one write landed on it.
     renderScreen(DRAFT({ data: { providerType: 'BUSINESS' } }));
 
     fireEvent.change(screen.getByTestId('field-displayName'), { target: { value: 'New Name' } });
     fireEvent.blur(screen.getByTestId('field-displayName'));
     await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(0));
 
-    // displayName belongs to IDENTITY; the server refuses it on any other step.
-    expect(mock.history.patch[0].url).toContain('/steps/IDENTITY');
-
-    fireEvent.change(screen.getByTestId('field-legalBusinessName'), { target: { value: 'ACME' } });
-    fireEvent.blur(screen.getByTestId('field-legalBusinessName'));
+    fireEvent.change(screen.getByTestId('field-phoneNumber'), {
+      target: { value: '+963912345678' },
+    });
+    fireEvent.blur(screen.getByTestId('field-phoneNumber'));
     await waitFor(() => expect(mock.history.patch.length).toBeGreaterThan(1));
-    expect(mock.history.patch[1].url).toContain('/steps/PROVIDER_TYPE');
+
+    const urls = mock.history.patch.map((r) => r.url ?? '');
+    expect(urls.every((u) => u.includes('/steps/IDENTITY'))).toBe(true);
+    expect(urls.some((u) => u.includes('/steps/PROVIDER_TYPE'))).toBe(false);
   });
 
   it('never sends an empty display name', async () => {
@@ -276,18 +304,23 @@ describe('BasicsTaskScreen — saving', () => {
 
 describe('BasicsTaskScreen — Arabic', () => {
   it('renders Arabic copy, not English', () => {
+    // The type legend it used to assert on no longer exists, so this asserts
+    // on the copy the approved screen actually shows.
     renderScreen(DRAFT({ data: { providerType: 'BUSINESS' } }), 'ar');
 
-    expect(screen.getByText(BASICS_COPY.ar.typeLegend)).toBeInTheDocument();
     expect(screen.getByText(BASICS_COPY.ar.phoneNotVerified)).toBeInTheDocument();
-    expect(screen.queryByText(BASICS_COPY.en.typeLegend)).toBeNull();
+    expect(screen.getByText(BASICS_COPY.ar.displayName)).toBeInTheDocument();
+    expect(screen.queryByText(BASICS_COPY.en.phoneNotVerified)).toBeNull();
+    expect(screen.queryByText(BASICS_COPY.en.displayName)).toBeNull();
   });
 
-  it('warns about a type change in Arabic too', async () => {
+  it('offers no type-change dialog in Arabic either', async () => {
+    // Same superseding ruling, asserted in the second language so a
+    // regression cannot reappear behind a locale branch.
     renderScreen(DRAFT({ data: { providerType: 'INDIVIDUAL' } }), 'ar');
-    fireEvent.click(screen.getByTestId('provider-type-BUSINESS').querySelector('input')!);
 
-    const dialog = await screen.findByTestId('provider-type-change-dialog');
-    expect(dialog.textContent).toContain(BASICS_COPY.ar.typeChangeTitle);
+    expect(screen.queryByTestId('provider-type-BUSINESS')).toBeNull();
+    expect(screen.queryByTestId('provider-type-change-dialog')).toBeNull();
+    expect(screen.queryByText(BASICS_COPY.ar.typeChangeTitle)).toBeNull();
   });
 });

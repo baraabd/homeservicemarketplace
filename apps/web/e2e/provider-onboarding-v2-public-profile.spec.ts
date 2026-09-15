@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { expectNoHorizontalPageOverflow, seedLanguage, stubApi } from './fixtures';
+import { expectNoHorizontalPageOverflow, htmlLangDir, seedLanguage, stubApi } from './fixtures';
 
 // Sprint 9B.22 — V2 Task 5 in a real browser.
 //
@@ -146,165 +146,132 @@ async function openTask(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Sprint 09B.29 Phase 5A — Task 5 in a real browser, on the two approved
+// screens: `profile` (the bio and the customer preview) and `portfolio`
+// (the uploader, the tiles and the moderation notice).
+//
+// SUPERSEDED, and recorded rather than deleted:
+//
+//   the title editor    ruling C1 makes the generated title server-owned, and
+//                       the approved screen shows it without an editor. The
+//                       client-side refusal of a phone number inside it has
+//                       nothing left to refuse — no unverifiable text can be
+//                       typed there at all, which is stricter.
+//   the preview panel   was the server's public PROJECTION, fetched
+//                       separately. The approved panel reads back the draft
+//                       the provider is filling in, which is the thing they
+//                       are being asked to confirm.
+//   the bio counter     gone with the approved design; the ceiling is an input
+//                       cap now.
+//
+// What this layer still exists for is what a DOM shim cannot see: geometry at
+// 320px, and real bidi layout.
+
+/** Open the second approved screen of this task. */
+async function openPortfolio(page: Page, options: Parameters<typeof openTask>[1] = {}) {
+  const recorded = await openTask(page, options);
+  await page.goto('/provider/onboarding/PORTFOLIO#portfolio');
+  await expect(page.getByTestId('portfolio-section')).toBeVisible();
+  return recorded;
+}
+
 test.describe('Task 5 — the profile a customer will see', () => {
-  test('renders the server’s public projection', async ({ page }) => {
-    await openTask(page);
-    await expect(page.getByTestId('preview-display-name')).toHaveText('Pat Provider');
-    await expect(page.getByTestId('preview-headline')).toHaveText('Electrician');
-    await expect(page.getByTestId('preview-area')).toContainText('Damascus');
-  });
-
-  test('shows nothing from the PRIVATE draft in the preview', async ({ page }) => {
-    // The draft the page loaded carries a phone number, coordinates and a
-    // radius. None of it may appear anywhere on the screen.
-    await openTask(page);
-    const body = (await page.locator('body').textContent()) ?? '';
-    for (const secret of [PHONE, '33.51378', '36.29234', 'Please call before 9am.']) {
-      expect({ secret, leaked: body.includes(secret) }).toEqual({ secret, leaked: false });
-    }
-  });
-
-  test('offers the suggested title and does not save it by itself', async ({ page }) => {
-    const recorded = await openTask(page);
-    await expect(page.getByTestId('title-suggestion')).toContainText('Electrician');
-    expect(recorded.patches).toHaveLength(0);
-
-    await page.getByTestId('title-use-suggestion').click();
-    await expect(page.getByTestId('title-input')).toHaveValue('Electrician');
-    expect(recorded.patches).toHaveLength(0);
-  });
-
-  test('saves the title once the provider leaves the field', async ({ page }) => {
-    const recorded = await openTask(page);
-    await page.getByTestId('title-input').fill('Electrician');
-    await page.getByTestId('bio-input').click();
-
-    await expect.poll(() => recorded.patches.length).toBeGreaterThan(0);
-    expect(recorded.patches[recorded.patches.length - 1]).toMatchObject({
-      headline: 'Electrician',
-    });
-  });
-
-  test('refuses a title carrying a phone number, in the browser', async ({ page }) => {
-    const recorded = await openTask(page);
-    await page.getByTestId('title-input').fill('Electrician call 0991234567');
-    await page.getByTestId('bio-input').click();
-
-    await expect(page.getByTestId('title-help')).toContainText('Leave phone numbers');
-    expect(recorded.patches).toHaveLength(0);
-  });
-});
-
-test.describe('Task 5 — the notices tell the truth', () => {
-  test('says customer profiles are not live yet', async ({ page }) => {
-    await openTask(page);
-    await expect(page.getByTestId('notice-route-unavailable')).toBeVisible();
-  });
-
-  test('counts photos waiting, and admits no reviewer exists', async ({ page }) => {
-    await openTask(page, { previewOver: { awaitingReviewCount: 2 } });
-    await expect(page.getByTestId('notice-awaiting-review')).toContainText('2');
-    await expect(page.getByTestId('notice-no-reviewer')).toBeVisible();
-  });
-
-  test('shows an approved photo when the server returns one', async ({ page }) => {
+  test('reads back what the provider told us, and offers nothing to edit', async ({ page }) => {
     await openTask(page, {
-      previewOver: {
-        profile: {
-          displayName: 'Pat Provider',
-          initials: 'PP',
-          avatarUrl: null,
-          about: { headline: 'Electrician', bio: 'I do residential electrical work.' },
-          area: { city: 'Damascus', country: 'Syria' },
-          standing: { ratingAvg: 4.8, reviewCount: 12, completedJobs: 30, verified: true },
-          portfolio: [
-            { url: '/v1/media/files/portfolio/ref/a.jpg', title: 'Rewire', description: null },
-          ],
-          services: ['Fault finding'],
+      draftOver: {
+        data: {
+          suggestedTitle: { en: 'Painting professional', ar: 'فني دهانات' },
+          serviceAreaCity: 'Aleppo, Al-Furqan',
+          serviceAreaRadiusKm: 15,
+          yearsOfExperience: 14,
         },
       },
     });
-    await expect(page.getByTestId('preview-photos').locator('li')).toHaveCount(1);
-    await expect(page.getByTestId('preview-no-photos')).toHaveCount(0);
+
+    await expect(page.getByTestId('preview-title')).toContainText('Painting professional');
+    await expect(page.getByTestId('preview-line')).toContainText('15 km radius');
+    await expect(page.getByTestId('title-input')).toHaveCount(0);
+  });
+
+  test('saves the bio as it is typed', async ({ page }) => {
+    const rec = await openTask(page);
+
+    await page.getByTestId('bio-input').fill('Painting professional with 14 years of experience.');
+    await expect.poll(() => rec.patches.length).toBeGreaterThan(0);
+    expect(rec.patches.some((p) => typeof p.bio === 'string')).toBe(true);
+  });
+
+  test('caps the bio at the input rather than letting the server refuse it', async ({ page }) => {
+    await openTask(page);
+    await expect(page.getByTestId('bio-input')).toHaveAttribute('maxlength', '2000');
   });
 });
 
-test.describe('Task 5 — the portfolio is the existing component', () => {
-  test('mounts inside the task', async ({ page }) => {
-    await openTask(page);
-    await expect(page.getByTestId('public-profile-portfolio')).toBeVisible();
+test.describe('Task 5 — the portfolio', () => {
+  test('draws the approved upload surface and the moderation notice', async ({ page }) => {
+    await openPortfolio(page);
+
+    await expect(page.getByTestId('portfolio-add-photo')).toBeVisible();
+    await expect(page.getByTestId('portfolio-moderation-notice')).toBeVisible();
+  });
+
+  test('will not upload until the publication wording has been agreed to', async ({ page }) => {
+    await openPortfolio(page);
+
+    // The server records WHICH wording was agreed to. A create sent without
+    // showing the sentence would record agreement to text nobody saw.
+    await page.getByTestId('portfolio-file-input').setInputFiles({
+      name: 'work.jpg',
+      mimeType: 'image/jpeg',
+      buffer: Buffer.from([0xff, 0xd8, 0xff]),
+    });
+
+    await expect(page.getByTestId('portfolio-consent')).toBeVisible();
+    await expect(page.getByTestId('portfolio-consent-agree')).toBeDisabled();
+    await page.getByTestId('portfolio-consent').locator('input[type="checkbox"]').check();
+    await expect(page.getByTestId('portfolio-consent-agree')).toBeEnabled();
   });
 });
 
 test.describe('Task 5 — Arabic', () => {
-  test('renders the Arabic suggestion and an Arabic-Indic counter', async ({ page }) => {
+  test('renders the approved Arabic copy, RTL, without overflow', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 780 });
     await openTask(page, { lang: 'ar' });
-    await expect(page.getByTestId('title-suggestion')).toContainText('كهربائي');
-    await expect(page.getByTestId('bio-counter')).toContainText('٢٬٠٠٠');
+
+    expect(await htmlLangDir(page)).toEqual({ lang: 'ar', dir: 'rtl' });
+    await expect(page.getByTestId('bio-input')).toBeVisible();
+    await expectNoHorizontalPageOverflow(page);
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GEOMETRY
-// ─────────────────────────────────────────────────────────────────────────────
-
-for (const width of [320, 430]) {
-  test.describe(`Task 5 — geometry at ${width}px`, () => {
-    test.skip(
-      ({ viewport }) => (viewport?.width ?? 0) > 500,
-      'the provider app is a phone surface',
-    );
-
-    test('no horizontal overflow, and the controls are at least 44x44', async ({ page }) => {
+test.describe('Task 5 — geometry', () => {
+  for (const width of [320, 430]) {
+    test(`${width}px: no horizontal overflow, and the controls are at least 44x44`, async ({
+      page,
+    }) => {
       await page.setViewportSize({ width, height: 780 });
-      await openTask(page, {
-        previewOver: {
-          awaitingReviewCount: 3,
-          profile: {
-            displayName: 'Pat Provider',
-            initials: 'PP',
-            avatarUrl: null,
-            about: {
-              headline: 'Electrician',
-              bio: 'I do residential electrical work and light commercial installations.',
-            },
-            area: { city: 'Damascus', country: 'Syria' },
-            standing: { ratingAvg: 4.8, reviewCount: 12, completedJobs: 30, verified: true },
-            portfolio: [
-              { url: '/v1/media/files/portfolio/ref/a.jpg', title: 'Rewire', description: null },
-              { url: '/v1/media/files/portfolio/ref/b.jpg', title: 'Board', description: null },
-              { url: '/v1/media/files/portfolio/ref/c.jpg', title: 'Lights', description: null },
-            ],
-            services: ['Fault finding', 'Rewiring'],
-          },
-        },
-      });
+      await openTask(page);
 
       await expectNoHorizontalPageOverflow(page);
 
-      for (const testId of ['title-use-suggestion', 'title-input', 'preview-refresh']) {
-        const box = await page.getByTestId(testId).boundingBox();
-        expect({ testId, ok: (box?.height ?? 0) >= 44 }).toEqual({ testId, ok: true });
-      }
+      const bio = (await page.getByTestId('bio-input').boundingBox())!;
+      expect(bio.height, 'the bio is a real target').toBeGreaterThanOrEqual(44);
     });
 
-    test('a long unbroken bio cannot push the page sideways', async ({ page }) => {
+    test(`${width}px: the uploader is a real target`, async ({ page }) => {
       await page.setViewportSize({ width, height: 780 });
-      await openTask(page, {
-        previewOver: {
-          profile: {
-            displayName: 'Pat Provider',
-            initials: 'PP',
-            avatarUrl: null,
-            about: { headline: 'Electrician', bio: 'x'.repeat(400) },
-            area: { city: 'Damascus', country: 'Syria' },
-            standing: { ratingAvg: 4.8, reviewCount: 12, completedJobs: 30, verified: true },
-            portfolio: [],
-            services: [],
-          },
-        },
-      });
+      await openPortfolio(page);
+
       await expectNoHorizontalPageOverflow(page);
+      const add = (await page.getByTestId('portfolio-add-photo').boundingBox())!;
+      expect(add.height).toBeGreaterThanOrEqual(44);
+      expect(add.width).toBeGreaterThanOrEqual(44);
     });
+  }
+
+  test('a long unbroken bio cannot push the page sideways', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 780 });
+    await openTask(page, { draftOver: { data: { bio: 'x'.repeat(400) } } });
+    await expectNoHorizontalPageOverflow(page);
   });
-}
+});

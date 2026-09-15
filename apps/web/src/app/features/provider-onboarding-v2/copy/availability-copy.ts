@@ -15,6 +15,34 @@ export type Lang = 'en' | 'ar';
 
 export interface AvailabilityCopy {
   heading: string;
+
+  // ── Sprint 09B.29 Phase 5A — the approved working-hours screen ─────────
+  kicker: string;
+  question: string;
+  /** Day initials, in the approved screen's own abbreviations. Moved here from
+   *  the legacy wizard copy, which the V2 tree must not import. */
+  dayAbbrev: readonly string[];
+  /** The approved button carries no count. */
+  applyToSelectedDays: string;
+  /** The approved consent row. */
+  unavailableLabel: string;
+
+  // ── Sprint 09B.29 Phase 5B — G-04 ───────────────────────────────────────
+  //
+  // Apply expresses ONE window across the days it covers, which is what makes
+  // it a bulk control. It used to discard everything that did not fit — a
+  // second window, a day with different hours — without saying so, and write
+  // the result straight through. These say so, and make the replacement the
+  // provider's decision rather than a side effect of pressing Apply.
+  /** Heading of the confirmation, e.g. "This will change 2 days". */
+  discardTitle: (count: number) => string;
+  /** One line per affected day: "Thursday: 09:00–13:00 becomes 09:00–17:00". */
+  discardLine: (day: string, from: string, to: string) => string;
+  /** A day holding hours the screen cannot show at all. */
+  discardSecondWindow: (day: string) => string;
+  discardConfirm: string;
+  discardCancel: string;
+  unavailableHint: string;
   intro: string;
 
   // Time zone
@@ -70,6 +98,21 @@ export interface AvailabilityCopy {
 
 export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
   en: {
+    kicker: 'Select several days at once',
+    question: 'When can you take requests?',
+    dayAbbrev: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
+    applyToSelectedDays: 'Apply to selected days',
+    unavailableLabel: 'Unavailable on selected days',
+    discardTitle: (count) =>
+      count === 1
+        ? 'This will change 1 day you have already set'
+        : `This will change ${count} days you have already set`,
+    discardLine: (day, from, to) => `${day}: ${from} becomes ${to}`,
+    discardSecondWindow: (day) =>
+      `${day}: a second time range will be removed — this screen can only hold one per day`,
+    discardConfirm: 'Apply these hours',
+    discardCancel: 'Leave them as they are',
+    unavailableHint: 'Disables days without deleting saved time ranges.',
     heading: 'Working hours',
     intro: 'Tell us when you can take jobs. You can change this any time.',
 
@@ -123,6 +166,21 @@ export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
     offline: 'Offline — your changes are waiting.',
   },
   ar: {
+    kicker: 'حدد عدة أيام معاً',
+    question: 'متى تستقبل الطلبات؟',
+    dayAbbrev: ['ح', 'ن', 'ث', 'ر', 'خ', 'ج', 'س'],
+    applyToSelectedDays: 'تطبيق على الأيام المحددة',
+    unavailableLabel: 'غير متاح في أيام محددة',
+    discardTitle: (count) =>
+      count === 1
+        ? 'سيغيّر هذا يوماً واحداً سبق أن حددته'
+        : `سيغيّر هذا ${count} أيام سبق أن حددتها`,
+    discardLine: (day, from, to) => `${day}: ${from} تصبح ${to}`,
+    discardSecondWindow: (day) =>
+      `${day}: ستُحذف فترة زمنية ثانية — هذه الشاشة تعرض فترة واحدة لكل يوم`,
+    discardConfirm: 'طبّق هذه الساعات',
+    discardCancel: 'اتركها كما هي',
+    unavailableHint: 'يعطّل الأيام من دون حذف الفترات المحفوظة.',
     heading: 'ساعات العمل',
     intro: 'أخبرنا متى يمكنك قبول الأعمال. يمكنك تغيير ذلك في أي وقت.',
 
@@ -174,4 +232,14 @@ export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
     saveConflict: 'تغيّرت ساعاتك في مكان آخر. أعد التحميل لعرض الجدول الحالي.',
     offline: 'غير متصل — تغييراتك في الانتظار.',
   },
+};
+
+/**
+ * Full day names, for the accessible name on the approved screen's two-letter
+ * toggles. Moved into V2 copy because the tree must not import the legacy
+ * wizard copy — the conformance gate refuses that import by name.
+ */
+export const DAY_NAMES: Record<Lang, readonly string[]> = {
+  en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+  ar: ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'],
 };

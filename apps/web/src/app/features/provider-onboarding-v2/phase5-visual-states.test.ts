@@ -75,18 +75,69 @@ describe('Phase 5 — the 18-state registry', () => {
   });
 
   it('states the four axes only where the design shows them', () => {
-    // The status centre and the active handoff are the two states that carry
-    // all four; a state claiming an axis it does not render would make the
-    // axis assertion vacuous elsewhere.
-    expect(stateById(14).axes).toEqual(['onboarding', 'standing', 'verification', 'workAccess']);
-    expect(stateById(17).axes).toEqual(['onboarding', 'standing', 'verification', 'workAccess']);
+    // Exactly two states draw the lifecycle panel. Any other state carrying
+    // answers would be asserting against rows it never renders, and the
+    // browser gate would report a missing row as a product defect.
+    const withPanel = PHASE5_STATES.filter((s) => s.axisAnswers !== undefined);
+    expect(withPanel.map((s) => s.id)).toEqual([14, 17]);
+    for (const s of withPanel) expect(Object.keys(s.axisAnswers ?? {})).toHaveLength(4);
   });
 
-  it('produces 36 canonical cells and 216 responsive records', () => {
+  it('distinguishes specialty review from account standing', () => {
+    // This is the assertion whose absence let a wrong claim stand: the
+    // registry said state 14 shows ACCOUNT STANDING, and the screen shows
+    // SPECIALTY REVIEW. Nothing caught it, because the only test on the old
+    // field compared the registry to a copy of itself.
+    //
+    // The distinction is the design's, not an implementation detail. A
+    // provider whose application is still in review has no account standing
+    // to report yet; one who is active does, and their specialties have been
+    // decided. Showing the wrong row is answering a question nobody asked
+    // while leaving the one they did ask unanswered.
+    expect(Object.keys(stateById(14).axisAnswers ?? {})).toEqual([
+      'completion',
+      'specialty',
+      'verification',
+      'work-access',
+    ]);
+    expect(Object.keys(stateById(17).axisAnswers ?? {})).toEqual([
+      'completion',
+      'standing',
+      'verification',
+      'work-access',
+    ]);
+  });
+
+  it('carries the words and tones the prototype itself uses', () => {
+    // Transcribed from the frozen prototype's `waiting` and `active` screens.
+    // Held here as a literal so that editing the registry to match a
+    // misbehaving screen breaks this test rather than quietly moving the
+    // target — the failure mode a self-comparing assertion cannot have.
+    expect(stateById(14).axisAnswers).toEqual({
+      completion: { en: 'Complete', ar: 'مكتمل', tone: 'done' },
+      specialty: { en: 'In review', ar: 'قيد المراجعة', tone: 'waiting' },
+      verification: { en: 'In review', ar: 'قيد المراجعة', tone: 'waiting' },
+      'work-access': { en: 'Not active', ar: 'غير مفعّل', tone: 'todo' },
+    });
+    expect(stateById(17).axisAnswers).toEqual({
+      completion: { en: 'Complete', ar: 'مكتمل', tone: 'done' },
+      standing: { en: 'Good', ar: 'سليم', tone: 'done' },
+      verification: { en: 'Verified', ar: 'موثّق', tone: 'done' },
+      'work-access': { en: 'Active', ar: 'مفعّل', tone: 'done' },
+    });
+    // Every Arabic answer must be Arabic, same reason as the copy registry.
+    for (const s of [stateById(14), stateById(17)]) {
+      for (const row of Object.values(s.axisAnswers ?? {})) {
+        expect(row.ar).toMatch(/[؀-ۿ]/);
+      }
+    }
+  });
+
+  it('produces 36 canonical cells and 252 responsive records', () => {
     expect(PHASE5_LOCALES).toEqual(['en', 'ar']);
-    expect(PHASE5_VIEWPORTS).toHaveLength(6);
+    expect(PHASE5_VIEWPORTS).toHaveLength(7);
     expect(canonicalCells()).toHaveLength(36);
-    expect(responsiveCells()).toHaveLength(216);
+    expect(responsiveCells()).toHaveLength(252);
   });
 
   it('compares pixels only where the prototype supplies valid geometry', () => {

@@ -20,7 +20,7 @@ export {}; // module marker.
 // only its own rows — it never truncates, so it can share a database with the
 // other suites.
 
-import { acquireAdvisoryLock, type HeldLock } from '../support/db-isolation';
+import { acquireAdvisoryLocks, type HeldLock } from '../support/db-isolation';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -62,16 +62,26 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
     createdProfileIds.push(profile.id);
     return { user, profile };
   }
-
-  let lifecycleLock: HeldLock;
-  let requestsLock: HeldLock;
-
+  let locks: HeldLock | undefined;
   beforeAll(async () => {
     // SHARED: this suite creates ProviderProfile rows with NULL lifecycle
     // axes, which the lifecycle-backfill suite would otherwise pick up in its
     // whole-table totals. Shared locks are mutually compatible, so this does
     // not serialise against any suite except that one.
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // Sprint 09B.29 Phase 5B — taken as ONE SET, atomically.
+    //
+    // Acquiring these one after another is hold-and-wait: the second
+    // acquisition can queue for up to the whole budget while the first is
+    // already held, so every suite waiting on the first is blocked by a
+    // suite that is doing no work. That is what took CI down — see
+    // `acquireAdvisoryLocks` in test/support/db-isolation.ts.
+    //
+    // The set is sorted into the canonical order by the helper, so the
+    // order written here cannot be wrong.
+    locks = await acquireAdvisoryLocks([
+      { resource: 'providerLifecycle' as const, mode: 'shared' as const },
+      { resource: 'serviceRequests' as const, mode: 'shared' as const },
+    ]);
 
     // SHARED on ServiceRequest. This suite CREATES open requests, and the
     // marketplace-preview suite reads the open-request set globally and counts
@@ -85,7 +95,6 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
     // Note the rows this suite creates carry NO coordinates, which the preview
     // projects to a null cell — the specific contamination that broke that
     // suite on develop after 9B.22.
-    requestsLock = await acquireAdvisoryLock('serviceRequests', 'shared');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -158,8 +167,7 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
     await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     await prisma.serviceCategory.deleteMany({ where: { id: { in: createdCategoryIds } } });
     await prisma.$disconnect();
-    await requestsLock?.release();
-    await lifecycleLock.release();
+    await locks?.release();
   });
 
   // ── C1: one live PENDING application per (provider, category) ────────────

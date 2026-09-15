@@ -378,3 +378,67 @@ function sortWindows(windows: readonly Window[]): Window[] {
     .map((w) => ({ startMinute: w.startMinute, endMinute: w.endMinute }))
     .sort((a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute);
 }
+
+// ─── What a bulk apply would throw away ─────────────────────────────────────
+
+/** One day whose stored hours a bulk apply would not preserve. */
+export interface DiscardedDay {
+  dayOfWeek: number;
+  /** The windows currently stored, in the order they are held. */
+  windows: readonly Window[];
+  /** Why applying would lose something. */
+  reason: 'SECOND_WINDOW' | 'DIFFERENT_HOURS';
+}
+
+/**
+ * What "apply this window to these days" would silently discard.
+ *
+ * Sprint 09B.29 Phase 5B — G-04.
+ *
+ * The approved screen expresses ONE window across the days it is applied to,
+ * and that is a real constraint rather than an oversight: a bulk control that
+ * could express per-day exceptions would not be a bulk control. The defect was
+ * never that Apply replaces things — it is that it replaced them without
+ * saying so, and wrote the result straight through to the server, so a reload
+ * confirmed the loss instead of revealing it.
+ *
+ * Two ways a selected day loses something it was not asked about:
+ *
+ *   SECOND_WINDOW     the day holds more than one window. The screen cannot
+ *                     show the second, so it was destroyed unseen.
+ *   DIFFERENT_HOURS   the day's single window is not the one being applied. A
+ *                     provider with a short Thursday who toggles an unrelated
+ *                     day and presses Apply loses the short Thursday, having
+ *                     touched nothing about it.
+ *
+ * UNSELECTED days are deliberately not reported. The toggles are seeded from
+ * the stored week, so turning one off is the provider looking at their own
+ * answer and changing it — an explicit act, and the one the screen is for.
+ *
+ * Returns an empty array for the ordinary uniform week, which is what keeps the
+ * common path free of an extra tap.
+ */
+export function discardedByApply(
+  week: Week,
+  days: readonly number[],
+  window: Window,
+): DiscardedDay[] {
+  const discarded: DiscardedDay[] = [];
+
+  for (const day of days) {
+    const windows = week[day] ?? [];
+    if (windows.length === 0) continue;
+
+    if (windows.length > 1) {
+      discarded.push({ dayOfWeek: day, windows, reason: 'SECOND_WINDOW' });
+      continue;
+    }
+
+    const only = windows[0]!;
+    if (only.startMinute !== window.startMinute || only.endMinute !== window.endMinute) {
+      discarded.push({ dayOfWeek: day, windows, reason: 'DIFFERENT_HOURS' });
+    }
+  }
+
+  return discarded;
+}

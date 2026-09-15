@@ -79,6 +79,27 @@
   --pv-danger-bg: #fef2f2;
   --pv-danger-border: #fecaca;
 
+  /* The approved work-area map band. A stylised surface, never a real map:
+   * a pin on the provider's base would show them the one thing the field's
+   * own hint promises nobody else can see. */
+  --pv-map: linear-gradient(
+    25deg,
+    #e2e8f0 0 18%,
+    #f8fafc 18% 35%,
+    #dbeafe 35% 37%,
+    #f1f5f9 37% 63%,
+    #e2e8f0 63% 66%,
+    #f8fafc 66%
+  );
+
+  /* A portfolio tile whose photo is not visible yet. The approved screen
+   * draws a soft gradient with a trade glyph, which is what a photo still in
+   * moderation looks like: uploaded, acknowledged, not yet published. */
+  --pv-photo: linear-gradient(145deg, #dbeafe, #c4b5fd);
+  --pv-photo-fg: #1e3a8a;
+  --pv-photo-label: rgb(255 255 255 / 0.9);
+  --pv-photo-label-fg: #334155;
+
   --pv-focus: #2563eb;
   --pv-shadow-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.08);
   --pv-shadow-2: 0 -2px 12px rgb(15 23 42 / 0.08);
@@ -191,6 +212,22 @@
   --lang-toggle-active: #fbbf24;
   --lang-toggle-inactive: #cbd5e1;
 
+  /* Dark: the same bands, remapped. */
+  --pv-map: linear-gradient(
+    25deg,
+    #334155 0 18%,
+    #0f172a 18% 35%,
+    #1e3a5f 35% 37%,
+    #1e293b 37% 63%,
+    #334155 63% 66%,
+    #0f172a 66%
+  );
+
+  --pv-photo: linear-gradient(145deg, #1e3a5f, #3b2f63);
+  --pv-photo-fg: #dbeafe;
+  --pv-photo-label: rgb(15 23 42 / 0.9);
+  --pv-photo-label-fg: #cbd5e1;
+
   --pv-focus: #60a5fa;
   --pv-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
   --pv-shadow-2: 0 -2px 12px rgb(0 0 0 / 0.5);
@@ -263,15 +300,109 @@
   --color-pv-danger: var(--pv-danger);
   --color-pv-danger-bg: var(--pv-danger-bg);
   --color-pv-danger-border: var(--pv-danger-border);
+  /* ── Provider type scale ────────────────────────────────────────────────
+   *
+   * Named by ROLE, not by size. A screen asks for `text-pv-label` because the
+   * thing is a field label; if the approved design later moves labels from
+   * 13px to 14px, one token moves and every label follows.
+   *
+   * These replace the arbitrary `text-[13px]` values the six task screens were
+   * built from. An arbitrary utility reads like a token and answers to
+   * nothing — it is an inline style with extra steps, and the conformance gate
+   * now refuses it.
+   *
+   * The sizes are the approved prototype's own: 13px field labels, 12px help,
+   * 15px section headings, 17px screen titles. `text-pv-input` is 16px because
+   * anything smaller makes iOS Safari zoom the viewport on focus.
+   */
+  --text-pv-caption: 11px;
+  --text-pv-help: 12px;
+  --text-pv-label: 13px;
+  --text-pv-body: 14px;
+  --text-pv-heading: 15px;
+  --text-pv-input: 16px;
+  --text-pv-title: 17px;
+  --text-pv-display: 20px;
+  --text-pv-hero: 24px;
+  /* The approved day toggle.
+   *
+   * `.hsm-day` styles a `<button>` and deliberately sets no font at all, so it
+   * renders at the user agent default — 13.3333px with a `normal` line box.
+   * Our preflight gives buttons `font: inherit` instead, which would make it
+   * 14px on a 21px box and sit the label 2px low in a 44px square.
+   *
+   * Named rather than written inline because the conformance gate refuses an
+   * arbitrary `text-[13.3333px]` in a task screen, and rightly: a number that
+   * answers to nothing is an inline style with extra steps. */
+  --text-pv-day: 13.3333px;
+  /* The cover-photo caption on a portfolio tile. */
+  --text-pv-photo-caption: 9px;
+
+  /* ── Provider line heights ──────────────────────────────────────────────
+   *
+   * The approved design uses five, and every one of them appeared in the task
+   * screens as an arbitrary "leading-[...]" — which reads like a token and
+   * answers to nothing, exactly as "text-[13px]" did before the type scale
+   * replaced it. The conformance gate refuses those, and correctly.
+   *
+   * "base" is a LENGTH rather than a ratio, and that is the whole reason it
+   * has to be named. The prototype wrapper sets line-height: calc(14px * 1.5)
+   * on the body and almost nothing overrides it, so a 13px label, a 12px hint
+   * and an 11px save line all sit in the SAME 21px box and do not shrink with
+   * their font size. Expressed as a ratio the error accumulates down the
+   * column — by the phone field the application was 12px short.
+   */
+  --leading-pv-base: 21px;
+  /* .hsm-help, and the consent sentence. */
+  --leading-pv-help: 1.6;
+  /* .hsm-panel p, and the summary row's value. */
+  --leading-pv-panel: 1.65;
+  /* .hsm-lead — the paragraph under a screen heading. */
+  --leading-pv-lead: 1.75;
+  /* .hsm-heading — the 24px hero on a task screen. */
+  --leading-pv-heading: 1.35;
+
+  /* ── Provider radii ─────────────────────────────────────────────────────
+   *
+   * The prototype uses 14px for its upload surface and cards, 10-12px for
+   * controls, and a pill for badges.
+   */
+  --radius-pv-control: 10px;
+  --radius-pv-card: 14px;
+  /* The sticky action. `.hsm-primary`, `.hsm-secondary` and
+   * `.hsm-danger-action` all share one radius in the approved screens, and it
+   * is neither the control radius nor the card radius. */
+  --radius-pv-action: 11px;
+  /* The hub task row. `.hsm-task` is 13px — between the control and the card. */
+  --radius-pv-row: 13px;
+  /* The multi-select choice row. `.hsm-choice` is 12px. */
+  --radius-pv-choice: 12px;
+
   /* Activation hero (prototype screen 0). */
   --color-pv-hero-from: var(--pv-hero-from);
   --color-pv-hero-to: var(--pv-hero-to);
   --color-pv-hero-fg: var(--pv-hero-fg);
   --color-pv-hero-fg-muted: var(--pv-hero-fg-muted);
+  --color-pv-photo-label: var(--pv-photo-label);
+  --color-pv-photo-label-fg: var(--pv-photo-label-fg);
 
   /* Language toggle (shared chrome, not provider-scoped). */
   --color-lang-toggle-active: var(--lang-toggle-active);
   --color-lang-toggle-inactive: var(--lang-toggle-inactive);
+}
+
+@layer components {
+  /* A gradient cannot be expressed as a Tailwind colour token, so the one
+   * surface that needs it gets a single named class rather than an inline
+   * style repeated per screen. */
+  .pv-map-surface {
+    background: var(--pv-map);
+  }
+
+  .pv-photo-surface {
+    background: var(--pv-photo);
+    color: var(--pv-photo-fg);
+  }
 }
 
 @layer base {

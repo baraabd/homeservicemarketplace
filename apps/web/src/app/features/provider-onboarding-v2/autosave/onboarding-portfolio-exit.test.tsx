@@ -163,7 +163,10 @@ function renderTask() {
       },
       { path: '*', element: <LocationProbe /> },
     ],
-    { initialEntries: ['/provider/onboarding/PORTFOLIO'] },
+    // Sprint 09B.29 Phase 5A — Task 5 is TWO approved screens, and the
+    // uploader is on the second. The exit contract is unchanged; the test has
+    // to open the half that owns the upload it starts.
+    { initialEntries: ['/provider/onboarding/PORTFOLIO#portfolio'] },
   );
   render(
     <QueryClientProvider client={client}>
@@ -178,6 +181,12 @@ function renderTask() {
 /** Pick a file and confirm the publication acknowledgement, which is what
  *  arms the publish button. */
 async function startPortfolioUpload() {
+  // Sprint 09B.29 Phase 5A — the approved portfolio screen, whose upload
+  // surface is one dashed box. The file input behind it is visually hidden and
+  // keeps its accessible name, so it is still addressable; the consent gate
+  // that follows is unchanged, because the server records WHICH wording was
+  // agreed to and a create without it would be recording agreement to text
+  // nobody saw.
   const input = (await screen.findByLabelText('Choose a photo file')) as HTMLInputElement;
   const file = new File([new Uint8Array([1, 2, 3])], 'work.jpg', { type: 'image/jpeg' });
   fireEvent.change(input, { target: { files: [file] } });
@@ -185,9 +194,6 @@ async function startPortfolioUpload() {
   const consent = await screen.findByRole('checkbox');
   fireEvent.click(consent);
 
-  // By accessible name, which is what the provider actually clicks. The
-  // section has no test id here and adding one purely for this test would put
-  // a hook in shipped markup that nothing else needs.
   fireEvent.click(await screen.findByRole('button', { name: 'Add photo' }));
 }
 

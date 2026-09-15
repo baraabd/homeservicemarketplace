@@ -65,6 +65,21 @@ export type ServerPrecondition =
  *  keeps that true. */
 export type NavVisibility = 'hidden' | 'visible';
 
+/**
+ * The panel's row ids, spelled as the component's own `data-testid` suffixes.
+ *
+ * A closed union rather than `string`, so a registry entry naming a row that
+ * does not exist fails to compile instead of silently asserting nothing.
+ * `standing` and `specialty` are separate members because they are different
+ * questions and the two states that draw the panel each draw only one of them.
+ */
+export type Phase5AxisRow =
+  | 'completion'
+  | 'standing'
+  | 'specialty'
+  | 'verification'
+  | 'work-access';
+
 export interface Phase5State {
   /** 0..17, unique, exhaustive. */
   readonly id: number;
@@ -86,8 +101,34 @@ export interface Phase5State {
   readonly primaryAction: string | null;
   /** Copy that must be present, in both languages, keyed by locale. */
   readonly requiredCopy: { readonly en: readonly string[]; readonly ar: readonly string[] };
-  /** Which of the four axes this state is expected to state explicitly. */
-  readonly axes: readonly ('onboarding' | 'standing' | 'verification' | 'workAccess')[];
+  /**
+   * The lifecycle panel's rows, when the state draws one.
+   *
+   * Replaces an `axes` field that listed axis NAMES and was read by nothing.
+   * Two things went unnoticed for as long as it existed: it claimed state 14
+   * shows account standing when that screen shows specialty review, and — the
+   * reason this field now exists — nothing anywhere checked what the four rows
+   * actually SAY.
+   *
+   * That matters more here than on any other state. ADR 0005 keeps the four
+   * axes independent precisely so a provider can tell which one they are
+   * waiting on, and a wrong word in one row is a provider waiting for a queue
+   * they are not in. It is also invisible to every other gate in this suite:
+   * a badge reading "Unavailable" instead of "In review" moves a few hundred
+   * pixels, which is two orders of magnitude inside the 0.5% budget.
+   *
+   * Keyed by the row's `data-testid` suffix. `tone` is asserted alongside the
+   * word because the badge carries the status in both, and an answer with the
+   * right text and the wrong colour is still wrong.
+   *
+   * Values come from the frozen prototype's `waiting` and `active` screens,
+   * not from what the application currently renders.
+   */
+  readonly axisAnswers?: Readonly<
+    Partial<
+      Record<Phase5AxisRow, { readonly en: string; readonly ar: string; readonly tone: string }>
+    >
+  >;
   /** Workspace navigation expectation. */
   readonly nav: NavVisibility;
   /** Where the surface must be scrolled before capture. */
@@ -113,13 +154,16 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     referenceKey: 'activate',
     route: '/provider/activate',
     precondition: 'anonymous-customer',
-    readySelector: '[data-testid="provider-activation-screen"]',
-    primaryAction: 'provider-activate-submit',
+    readySelector: '[data-testid="activation-screen"]',
+    // The id the screen actually carries. The registry named a different one
+    // for four sprints and nothing read the field, so the two never had to
+    // agree; the responsive gate reads it now, and this is the drift it found
+    // on its first run.
+    primaryAction: 'activation-cta',
     requiredCopy: {
       en: ['Turn your skills into work'],
       ar: ['حوّل خبرتك إلى فرص عمل'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -131,13 +175,12 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     referenceKey: 'sync',
     route: '/provider/activate',
     precondition: 'customer-upgrading',
-    readySelector: '[data-testid="provider-activation-syncing"]',
+    readySelector: '[data-testid="activation-sync-screen"]',
     primaryAction: null,
     requiredCopy: {
       en: ['No sign-in needed'],
       ar: ['لا تسجّل الدخول من جديد'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -155,7 +198,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['of 6 tasks complete'],
       ar: ['من 6 مهام مكتملة'],
     },
-    axes: ['onboarding'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -173,7 +215,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Customer-facing name'],
       ar: ['الاسم الذي يراه العملاء'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -191,7 +232,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Specialties are reviewed later'],
       ar: ['تُراجع التخصصات لاحقاً'],
     },
-    axes: ['verification'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -209,7 +249,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Suggested title'],
       ar: ['المسمى المقترح'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'bottom',
   },
@@ -224,10 +263,9 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="work-area-task"]',
     primaryAction: 'task-save-and-continue',
     requiredCopy: {
-      en: ['Your starting range'],
-      ar: ['نطاقك المبدئي'],
+      en: ['City or neighborhood', 'After 3 excellent ratings, it expands to 25 km.'],
+      ar: ['المدينة أو الحي', 'بعد 3 تقييمات ممتازة يتوسع إلى 25 كم.'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -245,7 +283,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Apply to selected days'],
       ar: ['تطبيق على الأيام المحددة'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -260,10 +297,9 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="public-profile-task"]',
     primaryAction: 'task-save-and-continue',
     requiredCopy: {
-      en: ['What customers see'],
-      ar: ['ما يراه العملاء'],
+      en: ['Tell customers about your experience', 'Customer preview'],
+      ar: ['عرّف العملاء بخبرتك', 'معاينة ما يراه العميل'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -278,10 +314,9 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="portfolio-section"]',
     primaryAction: 'portfolio-add-photo',
     requiredCopy: {
-      en: ['Cover'],
-      ar: ['الغلاف'],
+      en: ['Cover photo', 'Photos are being checked'],
+      ar: ['الصورة الرئيسية', 'الصور قيد الفحص'],
     },
-    axes: ['verification'],
     nav: 'hidden',
     scroll: 'bottom',
   },
@@ -299,7 +334,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['6 of 6 tasks complete'],
       ar: ['6 من 6 مهام مكتملة'],
     },
-    axes: ['onboarding', 'verification'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -317,7 +351,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Review your application'],
       ar: ['راجع طلبك'],
     },
-    axes: ['onboarding', 'verification'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -332,10 +365,9 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="terms-section"]',
     primaryAction: 'review-submit',
     requiredCopy: {
-      en: ['I agree'],
-      ar: ['أوافق'],
+      en: ['I have read and accept the provider terms'],
+      ar: ['قرأت شروط مقدمي الخدمة وأوافق عليها'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'bottom',
   },
@@ -353,7 +385,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['does not give you access'],
       ar: ['لا يمنحك ذلك الوصول'],
     },
-    axes: ['onboarding'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -367,11 +398,24 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     precondition: 'draft-submitted',
     readySelector: '[data-testid="provider-status-axes"]',
     primaryAction: null,
+    // '12:43' is asserted because nothing else here can see it. The fixture
+    // pins the profile update to 12:43 in the PROVIDER's zone (G-12), and the
+    // header prints it — but two changed digits cost far under 0.5% of the
+    // pixels, so the ratio passes whatever zone the clock was formatted in.
+    // Proven: moving the fixture to America/Los_Angeles left the cell green.
+    // Arabic renders the same instant in Arabic-Indic digits, which is also
+    // worth pinning: a header that fell back to ASCII digits in Arabic would
+    // otherwise be invisible too.
     requiredCopy: {
-      en: ['Work access'],
-      ar: ['الوصول إلى العمل'],
+      en: ['Work access', 'Not active', '12:43'],
+      ar: ['إمكانية استقبال العمل', 'غير مفعّل', '١٢:٤٣'],
     },
-    axes: ['onboarding', 'standing', 'verification', 'workAccess'],
+    axisAnswers: {
+      completion: { en: 'Complete', ar: 'مكتمل', tone: 'done' },
+      specialty: { en: 'In review', ar: 'قيد المراجعة', tone: 'waiting' },
+      verification: { en: 'In review', ar: 'قيد المراجعة', tone: 'waiting' },
+      'work-access': { en: 'Not active', ar: 'غير مفعّل', tone: 'todo' },
+    },
     nav: 'hidden',
     scroll: 'top',
   },
@@ -389,7 +433,6 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
       en: ['Action required'],
       ar: ['إجراء مطلوب'],
     },
-    axes: ['onboarding'],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -404,10 +447,9 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="session-expired"]',
     primaryAction: 'session-expired-sign-in',
     requiredCopy: {
-      en: ['Session expired'],
-      ar: ['انتهت الجلسة'],
+      en: ['Your session has expired', 'Your data is safe'],
+      ar: ['انتهت جلستك', 'بياناتك محفوظة'],
     },
-    axes: [],
     nav: 'hidden',
     scroll: 'top',
   },
@@ -422,10 +464,19 @@ export const PHASE5_STATES: readonly Phase5State[] = Object.freeze([
     readySelector: '[data-testid="provider-workspace-unlocked"]',
     primaryAction: 'workspace-enter',
     requiredCopy: {
-      en: ['Your account is active'],
-      ar: ['تم تفعيل حسابك'],
+      en: ['You are ready to receive requests', 'Work access'],
+      ar: ['أصبحت جاهزاً لاستقبال الطلبات', 'إمكانية استقبال العمل'],
     },
-    axes: ['onboarding', 'standing', 'verification', 'workAccess'],
+    axisAnswers: {
+      completion: { en: 'Complete', ar: 'مكتمل', tone: 'done' },
+      standing: { en: 'Good', ar: 'سليم', tone: 'done' },
+      verification: { en: 'Verified', ar: 'موثّق', tone: 'done' },
+      'work-access': { en: 'Active', ar: 'مفعّل', tone: 'done' },
+    },
+    // Workspace navigation becomes AVAILABLE here — the approved screen says
+    // so in its own lead — and this is the one state in the journey where that
+    // is true. The confirmation itself draws none: it is a full-bleed handoff,
+    // and the nav appears on the screen its primary action opens.
     nav: 'visible',
     scroll: 'top',
   },
@@ -451,6 +502,13 @@ export const CANONICAL_VIEWPORT = { width: 390, height: 844 } as const;
 export const PHASE5_VIEWPORTS = Object.freeze([
   { name: '320x568', width: 320, height: 568, mode: 'pixel' },
   { name: '390x844', width: 390, height: 844, mode: 'pixel' },
+  // The size the reported manual testing actually used — Chrome's iPhone 14/15
+  // Pro emulation. STRUCTURAL, not pixel: the frozen prototype supplies a
+  // genuine rendering at 390 and nowhere else, so a pixel baseline here would
+  // be invented rather than approved. It is three pixels from a covered width
+  // and still worth asserting, because "nearly the same width" is exactly the
+  // assumption that hides an overflow at one of them.
+  { name: '393x852', width: 393, height: 852, mode: 'structural' },
   { name: '430x932', width: 430, height: 932, mode: 'structural' },
   { name: '768x1024', width: 768, height: 1024, mode: 'structural' },
   { name: '1024x768', width: 1024, height: 768, mode: 'structural' },
@@ -531,7 +589,7 @@ export function canonicalCells(): { state: Phase5State; locale: Phase5Locale }[]
   return PHASE5_STATES.flatMap((state) => PHASE5_LOCALES.map((locale) => ({ state, locale })));
 }
 
-/** The full 216-record responsive matrix: 18 × 2 × 6. */
+/** The full 252-record responsive matrix: 18 × 2 × 7. */
 export function responsiveCells(): {
   state: Phase5State;
   locale: Phase5Locale;

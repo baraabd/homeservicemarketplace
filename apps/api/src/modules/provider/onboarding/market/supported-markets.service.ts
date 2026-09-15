@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ADMIN_SETTINGS_SCHEMA } from '@homeservicemarketplace/contracts';
 import type {
   ProviderSupportedMarketsResponse,
   SupportedMarketView,
@@ -16,7 +17,7 @@ import {
   MarketLocationResolverPort,
 } from './market-location-resolver.port';
 import { MarketRegistryService } from './market-registry.service';
-import { decideTimezone } from './timezone-precedence.policy';
+import { decideTimezone, marketTimezones } from './timezone-precedence.policy';
 import type { SupportedMarket } from './supported-market';
 
 // Sprint 09B.29 Phase 5 (C2) — the read model behind the market picker.
@@ -95,12 +96,16 @@ export class SupportedMarketsService {
       timezone:
         timezone.kind === 'RESOLVED'
           ? { kind: 'RESOLVED', id: timezone.timezone }
-          : { kind: 'ASK' },
+          : { kind: 'ASK', allowedIds: [...new Set(marketTimezones(market))] },
     };
   }
 
   private async numberSetting(key: string): Promise<number> {
     const row = await this.settings.findByKey(key);
-    return typeof row?.value === 'number' && Number.isFinite(row.value) ? row.value : 0;
+    if (typeof row?.value === 'number' && Number.isFinite(row.value)) return row.value;
+    // Match the wizard's setting reader: an absent radius row means the
+    // schema default, not zero (which the LOCATION write correctly refuses).
+    const fallback = ADMIN_SETTINGS_SCHEMA.find((field) => field.key === key)?.default;
+    return typeof fallback === 'number' ? fallback : 0;
   }
 }

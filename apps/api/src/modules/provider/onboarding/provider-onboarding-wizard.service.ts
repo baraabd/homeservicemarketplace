@@ -16,6 +16,7 @@ import {
   type SubmitOnboardingRequest,
   type ProviderOnboardingReview,
   type ProviderOnboardingHubView,
+  type ProviderOnboardingIssue,
 } from '@homeservicemarketplace/contracts';
 import type { Prisma, PrismaTx, ServiceCategory } from '@homeservicemarketplace/database';
 
@@ -65,6 +66,8 @@ import {
   evaluateOnboarding,
   moderationIssues,
   providerActionIssues,
+  MIN_BIO_LENGTH,
+  yearsSince,
   type OnboardingCandidate,
 } from './provider-onboarding.policy';
 
@@ -370,20 +373,16 @@ export class ProviderOnboardingWizardService {
       // 422 and `missing`, matching the completeness refusal directly above:
       // the payload is well-formed and the RESOURCE is not submittable, and
       // the wizard already routes `missing` entries to their step.
-      const submissionCountry = ctx.profile.serviceAreaCountryCode ?? null;
-      if (submissionCountry != null) {
-        const stillOpen = await this.markets.findEnabled(submissionCountry, trx);
-        if (!stillOpen) {
-          throw new AppError(
-            'VALIDATION_ERROR',
-            'We no longer operate in the country on your application. Choose one of the available markets.',
-            422,
-            {
-              reason: 'MARKET_NOT_SUPPORTED',
-              missing: [{ field: 'serviceAreaCountryCode', code: 'MARKET_NOT_SUPPORTED' }],
-            },
-          );
-        }
+      if (await this.submissionMarketIssue(ctx, trx)) {
+        throw new AppError(
+          'VALIDATION_ERROR',
+          'We no longer operate in the country on your application. Choose one of the available markets.',
+          422,
+          {
+            reason: 'MARKET_NOT_SUPPORTED',
+            missing: [{ field: 'serviceAreaCountryCode', code: 'MARKET_NOT_SUPPORTED' }],
+          },
+        );
       }
 
       const candidate = this.toCandidate(ctx);
@@ -939,7 +938,11 @@ export class ProviderOnboardingWizardService {
         const explicitTimezone =
           body.timezone !== undefined
             ? trimToNull(body.timezone)
-            : (ctx.relations.availabilityIntervals[0]?.timezone ?? null);
+            : (ctx.relations.availabilityIntervals[0]?.timezone ??
+              // A timezone can be confirmed before the first working window.
+              // That acknowledged answer lives in the draft until intervals
+              // exist. An explicit null above must still clear it.
+              (typeof scratch.timezone === 'string' ? scratch.timezone : null));
 
         const decision = decideTimezone({
           existingTimezone: explicitTimezone,
@@ -1247,7 +1250,7 @@ export class ProviderOnboardingWizardService {
   async hub(userId: string): Promise<ProviderOnboardingHubView> {
     const ctx = await this.buildContext(userId);
     return buildHub({
-      issues: evaluateOnboarding(this.toCandidate(ctx)),
+      issues: await this.projectedIssues(ctx),
       lifecycleState: this.lifecycleState(ctx),
     });
   }
@@ -1270,8 +1273,7 @@ export class ProviderOnboardingWizardService {
    */
   async review(userId: string, locale: 'en' | 'ar'): Promise<ProviderOnboardingReview> {
     const ctx = await this.buildContext(userId);
-    // THE SAME CALL the submit makes. Not a copy of its rules — the call.
-    const issues = evaluateOnboarding(this.toCandidate(ctx));
+    const issues = await this.projectedIssues(ctx);
     const draft = await this.drafts.findByProfileId(ctx.profile.id);
 
     const current = await this.consentVersion();
@@ -1303,9 +1305,30 @@ export class ProviderOnboardingWizardService {
     });
   }
 
+  /** Every projection uses the same completeness and live-market decisions. */
+  private async projectedIssues(ctx: OnboardingContext): Promise<ProviderOnboardingIssue[]> {
+    const issues = evaluateOnboarding(this.toCandidate(ctx));
+    const marketIssue = await this.submissionMarketIssue(ctx);
+    if (marketIssue) issues.push(marketIssue);
+    return issues;
+  }
+
+  /** A saved country can leave the enabled registry after its LOCATION write.
+   *  Both review and the transactional submit must ask the same live rule.
+   *  The existing country issue routes the review back to WORK_AREA; submit
+   *  retains its established MARKET_NOT_SUPPORTED error payload. */
+  private async submissionMarketIssue(
+    ctx: OnboardingContext,
+    trx?: PrismaTx,
+  ): Promise<ProviderOnboardingIssue | null> {
+    const country = ctx.profile.serviceAreaCountryCode ?? null;
+    if (country === null || (await this.markets.findEnabled(country, trx))) return null;
+    return { field: 'serviceAreaCountry', code: 'OUT_OF_RANGE' };
+  }
+
   private async view(userId: string): Promise<ProviderOnboardingDraftView> {
     const ctx = await this.buildContext(userId);
-    const issues = evaluateOnboarding(this.toCandidate(ctx));
+    const issues = await this.projectedIssues(ctx);
     const progress = computeProgress(issues, ctx.profile.onboardingState);
     const state = this.lifecycleState(ctx);
 
@@ -1384,6 +1407,9 @@ export class ProviderOnboardingWizardService {
       specialties,
       primarySpecialtyId: p.primaryServiceCategoryId ?? null,
       maxSpecialties: ctx.maxSpecialties,
+      // The policy's own constant, never a duplicate: if the rule changes, the
+      // screen that explains it changes with it.
+      minBioLength: MIN_BIO_LENGTH,
       radiusPolicy: ctx.radiusPolicy,
       // Sprint 9B.20 — the reward card, decided entirely on the server. The
       // client renders what is here and asks no questions of its own: an
@@ -1408,7 +1434,11 @@ export class ProviderOnboardingWizardService {
           }
         : null,
 
-      yearsOfExperience: p.yearsOfExperience ?? null,
+      // Match completeness policy: an explicit numeric answer wins. Legacy
+      // clients can edit it without clearing an existing start date; V2 clears
+      // it when choosing the date-based answer, which uses the same helper.
+      yearsOfExperience:
+        p.yearsOfExperience ?? (p.professionSince ? yearsSince(p.professionSince) : null),
       professionSince: p.professionSince?.toISOString() ?? null,
       equipmentCodes: ctx.relations.equipment.map((e) => e.equipmentItem.code),
       transportMode: p.transportMode ?? null,

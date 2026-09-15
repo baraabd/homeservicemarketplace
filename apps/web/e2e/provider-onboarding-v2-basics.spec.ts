@@ -186,37 +186,71 @@ test.describe('task 1 — what it must not ask', () => {
 
   test('does not demand phone verification, and offers no way to fake it', async ({ page }) => {
     await openTask(page);
-    await expect(page.getByTestId('phone-verification-note')).toBeVisible();
+
+    // Sprint 09B.29 Phase 5A — the sentence is the phone field's HINT now
+    // rather than a paragraph beside it, which is where the approved screen
+    // puts it. The assertion is STRONGER than the test id it replaces: the
+    // sentence must be on screen AND programmatically attached to the input it
+    // qualifies, so a screen-reader user hears it on reaching the field
+    // instead of it being prose that merely sits nearby.
+    const note = page.getByText(/SMS verification is not active yet/);
+    await expect(note).toBeVisible();
+
+    const noteId = await note.getAttribute('id');
+    expect(noteId, 'the hint needs an id to be referenced by').toBeTruthy();
+    await expect(page.getByTestId('field-phoneNumber')).toHaveAttribute(
+      'aria-describedby',
+      new RegExp(noteId!),
+    );
+
     await expect(page.getByRole('button', { name: /verify/i })).toHaveCount(0);
   });
 });
 
-test.describe('task 1 — individual vs business', () => {
-  test('asks a business for a registered name and an individual not', async ({ page }) => {
+test.describe('task 1 — the questions ruling C1 removed', () => {
+  // SUPERSEDED CONTRACT, recorded rather than deleted.
+  //
+  // These two tests asserted that the screen asked for a provider type, warned
+  // before changing it, and asked a business for a registered name. They were
+  // correct for the Sprint 9B.17 design.
+  //
+  // Ruling C1 supersedes them: providerType is a SERVER-side default, and the
+  // business path belongs to a later approved surface. The approved screen
+  // asks three things — photo, customer-facing name, phone — and the rule says
+  // in terms not to put provider-type or legal-business-name controls on it.
+  //
+  // What replaces them is stricter: the old tests proved the controls worked
+  // when shown, these prove they cannot be reached at all, for either stored
+  // provider type, on the real route.
+  test('offers no provider-type control and no business name, whatever the stored type is', async ({
+    page,
+  }) => {
     await openTask(page, { draftOver: { data: { providerType: 'INDIVIDUAL' } } });
     await expect(page.getByTestId('field-legalBusinessName')).toHaveCount(0);
+    await expect(page.getByTestId('provider-type-INDIVIDUAL')).toHaveCount(0);
+    await expect(page.getByTestId('provider-type-BUSINESS')).toHaveCount(0);
+    await expect(page.getByTestId('provider-type-change-dialog')).toHaveCount(0);
 
-    await openTask(page, { draftOver: { data: { providerType: 'BUSINESS' } } });
-    await expect(page.getByTestId('field-legalBusinessName')).toBeVisible();
+    // A provider already stored as BUSINESS keeps that value server-side; the
+    // screen simply stops asking. Nothing is deleted and nothing is re-asked.
+    await openTask(page, {
+      draftOver: { data: { providerType: 'BUSINESS', legalBusinessName: 'ACME' } },
+    });
+    await expect(page.getByTestId('field-legalBusinessName')).toHaveCount(0);
+    await expect(page.getByTestId('provider-type-BUSINESS')).toHaveCount(0);
   });
 
-  test('warns before changing type and saves only on confirm', async ({ page }) => {
+  test('writes nothing to the PROVIDER_TYPE step from this screen', async ({ page }) => {
     const rec = await openTask(page, { draftOver: { data: { providerType: 'INDIVIDUAL' } } });
 
-    // click(), not check(): the radio deliberately does NOT move until the
-    // change is confirmed, and check() asserts that it did. The selection
-    // following the server's value rather than the press is the point — it is
-    // what makes "Keep it as it is" mean something.
-    await page.getByTestId('provider-type-BUSINESS').locator('input').click();
-
-    await expect(page.getByTestId('provider-type-change-dialog')).toBeVisible();
-    await expect(page.getByTestId('provider-type-BUSINESS').locator('input')).not.toBeChecked();
-    await expect(page.getByTestId('provider-type-INDIVIDUAL').locator('input')).toBeChecked();
-    expect(rec.patches).toHaveLength(0);
-
-    await page.getByTestId('provider-type-change-confirm').click();
+    await page.getByTestId('field-displayName').fill('Ahmad Fatal');
+    await page.getByTestId('field-displayName').blur();
     await expect.poll(() => rec.patches.length).toBeGreaterThan(0);
-    expect(rec.patches[0].body.providerType).toBe('BUSINESS');
+
+    // Every write from task 1 belongs to IDENTITY now that the type question
+    // has moved server-side.
+    expect(rec.patches.every((patch) => patch.url.includes('/steps/IDENTITY'))).toBe(true);
+    expect(rec.patches.some((patch) => patch.url.includes('/steps/PROVIDER_TYPE'))).toBe(false);
   });
 });
 
@@ -279,17 +313,21 @@ test.describe('task 1 — geometry and keyboard', () => {
   for (const width of [320, 430]) {
     test(`${width}px: no horizontal overflow and 44x44 controls`, async ({ page }) => {
       await page.setViewportSize({ width, height: 780 });
-      await openTask(page, { draftOver: { data: { providerType: 'BUSINESS' } } });
+      await openTask(page);
 
       await expectNoHorizontalPageOverflow(page);
 
-      for (const testId of [
-        'field-displayName',
-        'field-phoneNumber',
-        'field-legalBusinessName',
-        'avatar-take-photo',
-        'avatar-choose-file',
-      ]) {
+      // field-legalBusinessName is gone with ruling C1; the approved screen
+      // asks three things and every one of them is still measured here.
+      // Sprint 09B.29 Phase 5A — the photo is ONE control now, not two.
+      //
+      // The approved screen draws a single upload surface captioned "take a
+      // photo or choose from gallery", and it opens an image input with no
+      // `capture` attribute — which is what makes both halves of that sentence
+      // true on a phone, because iOS and Android each offer camera AND library
+      // from such a control. The separate Take/Replace buttons belong to the
+      // case where a photo already exists, and are measured there.
+      for (const testId of ['field-displayName', 'field-phoneNumber', 'avatar-empty-prompt']) {
         const box = (await page.getByTestId(testId).boundingBox())!;
         expect(box.height, `${testId} is too short`).toBeGreaterThanOrEqual(44);
       }
@@ -325,11 +363,13 @@ test.describe('task 1 — geometry and keyboard', () => {
 test.describe('task 1 — Arabic', () => {
   test('renders Arabic in an RTL document without overflow', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 780 });
-    await openTask(page, { lang: 'ar', draftOver: { data: { providerType: 'BUSINESS' } } });
+    await openTask(page, { lang: 'ar' });
 
     expect(await htmlLangDir(page)).toEqual({ lang: 'ar', dir: 'rtl' });
-    await expect(page.getByTestId('basics-task')).toContainText('كيف تعمل؟');
-    await expect(page.getByTestId('basics-task')).not.toContainText('How do you work?');
+    // Was the provider-type legend, which ruling C1 removed. Asserts instead
+    // on copy the approved screen actually shows.
+    await expect(page.getByTestId('basics-task')).toContainText('الاسم الذي يراه العملاء');
+    await expect(page.getByTestId('basics-task')).not.toContainText('Name customers see');
     await expectNoHorizontalPageOverflow(page);
   });
 });

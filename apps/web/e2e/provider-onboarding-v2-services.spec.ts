@@ -193,37 +193,60 @@ async function openTask(
   return recorded;
 }
 
+// Sprint 09B.29 Phase 5A — the approved services screen is a FLAT, searchable
+// list, not a group browser, and moderation is one sentence rather than a
+// section per state. The tests below are rewritten onto that design; every
+// behavioural intent they carried is preserved and two are stricter.
+
 test.describe('task 2 — the picker at catalogue scale', () => {
-  test('browses by group rather than showing every leaf at once', async ({ page }) => {
+  test('offers every selectable leaf, and nothing that is not one', async ({ page }) => {
     await openTask(page);
 
-    await expect(page.getByTestId('specialty-group-g-1')).toBeVisible();
-    // The old chip cloud rendered every selectable competency immediately.
-    await expect(page.getByTestId('specialty-option-leak')).toHaveCount(0);
-
-    await page.getByTestId('specialty-group-g-1').click();
-    await expect(page.getByTestId('specialty-option-leak')).toBeVisible();
+    // SUPERSEDED: this asserted a group browser that opened one group at a
+    // time. The approved screen lists the leaves directly and puts a search
+    // above them, so "you cannot see a leaf until you open its group" is no
+    // longer true and is no longer the thing worth protecting.
+    //
+    // What IS worth protecting survives, and is asserted harder: a GROUP must
+    // never be selectable. `isLeaf` is a server fact the screen reads rather
+    // than derives, and the failure this guards is a parent whose last child
+    // was retired quietly becoming a competency a provider can claim.
+    await expect(page.getByTestId('specialty-choice-leak')).toBeVisible();
+    await expect(page.getByTestId('specialty-choice-sockets')).toBeVisible();
+    await expect(page.getByTestId('specialty-choice-g-1')).toHaveCount(0);
   });
 
-  test('search finds a leaf in a group that was never opened', async ({ page }) => {
+  test('search narrows the list to what was typed', async ({ page }) => {
     await openTask(page);
     await page.getByTestId('specialty-search').fill('sockets');
 
-    await expect(page.getByTestId('specialty-option-sockets')).toBeVisible();
-    await expect(page.getByTestId('specialty-option-leak')).toHaveCount(0);
+    await expect(page.getByTestId('specialty-choice-sockets')).toBeVisible();
+    await expect(page.getByTestId('specialty-choice-leak')).toHaveCount(0);
   });
 
   test('saves the selection to the SPECIALTIES step', async ({ page }) => {
     const rec = await openTask(page);
-    await page.getByTestId('specialty-group-g-1').click();
     // click(), not check(): the checkbox reflects the SERVER's specialty list,
     // and this stub returns an unchanged draft. What is being asserted is the
     // save that goes out, not an optimistic tick.
-    await page.getByTestId('specialty-option-leak').locator('input').click();
+    // The row, which is what a provider presses. The input behind it is
+    // `sr-only` — focusable and announced, but not a pointer target.
+    await page.getByTestId('specialty-choice-leak').click();
 
     await expect.poll(() => rec.patches.length).toBeGreaterThan(0);
     expect(rec.patches[0].url).toContain('/steps/SPECIALTIES');
     expect(rec.patches[0].body.specialtyLeafIds).toEqual(['leak']);
+  });
+
+  test('every choice is a real checkbox, so the group is genuinely multi-select', async ({
+    page,
+  }) => {
+    await openTask(page);
+    // The approved screen marks more than one service at once. A radio group
+    // could not express that, and `aria-pressed` on a button would describe
+    // the control rather than the choice.
+    const input = page.getByTestId('specialty-choice-leak').locator('input');
+    await expect(input).toHaveAttribute('type', 'checkbox');
   });
 });
 
@@ -239,27 +262,28 @@ test.describe('task 2 — review state is separate from selection', () => {
     },
   };
 
-  test('each state is its own labelled section', async ({ page }) => {
+  test('says once that moderation is separate, not once per state', async ({ page }) => {
     await openTask(page, { draftOver: mixed });
 
-    for (const state of ['APPROVED', 'PENDING', 'REJECTED', 'INACTIVE']) {
-      await expect(page.getByTestId('specialty-state-' + state)).toBeVisible();
-    }
+    // SUPERSEDED: four labelled sections, one per state. The approved screen
+    // carries a single sentence instead — and the sentence is the load-bearing
+    // one, because it is what stops a PENDING specialty reading as a mistake
+    // the provider has to fix before they can submit.
+    await expect(page.getByTestId('specialty-moderation-notice')).toHaveCount(1);
+    await expect(page.getByTestId('specialty-moderation-notice')).toContainText(
+      'will not block submission',
+    );
   });
 
-  test('PENDING is not toned as a failure, and REJECTED is', async ({ page }) => {
+  test('a refusal still says so on its own row', async ({ page }) => {
     await openTask(page, { draftOver: mixed });
 
-    await expect(page.getByTestId('specialty-row-p')).toHaveAttribute('data-tone', 'neutral');
-    await expect(page.getByTestId('specialty-row-r')).toHaveAttribute('data-tone', 'negative');
-  });
-
-  test('the explanation appears ONCE per group, not per row', async ({ page }) => {
-    await openTask(page, { draftOver: mixed });
-
-    await expect(page.getByTestId('specialty-state-explain-PENDING')).toHaveCount(1);
-    // And the row itself carries no repeated state text.
-    await expect(page.getByTestId('specialty-row-p')).not.toContainText('With us for review');
+    // The regression this replaces the state sections with. PENDING is covered
+    // by the notice above and carries no alarm of its own; REJECTED and
+    // INACTIVE are outcomes a provider must be able to see, so they travel on
+    // the row itself rather than disappearing with the section that held them.
+    await expect(page.getByTestId('specialty-choice-r')).toContainText('Not approved');
+    await expect(page.getByTestId('specialty-choice-p')).not.toContainText('Not approved');
   });
 });
 
@@ -272,29 +296,40 @@ test.describe('task 2 — the title is suggested, never published', () => {
     },
   };
 
-  test('offers it and says nothing is published', async ({ page }) => {
+  test('offers it and says it can be changed later', async ({ page }) => {
     const rec = await openTask(page, { draftOver: withSuggestion });
+    // The panel lives on the SECOND approved screen of this task.
+    await page.goto('/provider/onboarding/SERVICES_EXPERIENCE#experience');
+    await expect(page.getByTestId('experience-section')).toBeVisible();
 
     await expect(page.getByTestId('title-suggestion-text')).toContainText('Plumber');
-    await expect(page.getByTestId('title-not-published')).toBeVisible();
+    await expect(page.getByTestId('title-suggestion-text')).toContainText('editable later');
     // Rendering a suggestion must write nothing.
-    expect(rec.patches.filter((p) => 'headline' in p.body)).toHaveLength(0);
+    expect(rec.patches.filter((patch) => 'headline' in patch.body)).toHaveLength(0);
   });
 
-  test('accepting it fills the box without publishing', async ({ page }) => {
+  // SUPERSEDED CONTRACT, recorded rather than deleted.
+  //
+  // These drove an EDITABLE title: accepting a suggestion into a box, and
+  // refusing "Certified Plumber" inline. Ruling C1 makes the generated title
+  // server-owned, and the approved experience screen presents it as a panel
+  // that says it can be changed later on the surface that owns it.
+  //
+  // The replacement is stricter: the old tests proved the editor behaved, this
+  // proves no editor can be reached, so no unverifiable credential can be
+  // typed here at all.
+  test('offers no control to accept or edit it', async ({ page }) => {
     const rec = await openTask(page, { draftOver: withSuggestion });
-    await page.getByTestId('title-accept').click();
+    await page.goto('/provider/onboarding/SERVICES_EXPERIENCE#experience');
+    await expect(page.getByTestId('experience-section')).toBeVisible();
 
-    await expect(page.getByTestId('title-input')).toHaveValue('Plumber');
-    expect(rec.patches.filter((p) => 'headline' in p.body)).toHaveLength(0);
-  });
+    await expect(page.getByTestId('title-suggestion-text')).toBeVisible();
+    await expect(page.getByTestId('title-accept')).toHaveCount(0);
+    await expect(page.getByTestId('title-edit')).toHaveCount(0);
+    await expect(page.getByTestId('title-input')).toHaveCount(0);
 
-  test('refuses an unverifiable credential inline', async ({ page }) => {
-    await openTask(page, { draftOver: withSuggestion });
-    await page.getByTestId('title-edit').click();
-    await page.getByTestId('title-input').fill('Certified Plumber');
-
-    await expect(page.getByTestId('title-help')).toContainText('credentials we have verified');
+    // Still writes nothing: showing a suggestion is not publishing it.
+    expect(rec.patches.filter((patch) => 'headline' in patch.body)).toHaveLength(0);
   });
 });
 
@@ -308,11 +343,16 @@ test.describe('task 2 — geometry and language', () => {
         },
       });
 
-      await page.getByTestId('specialty-group-g-1').click();
+      // No group to open any more — the approved screen lists the leaves.
       await expectNoHorizontalPageOverflow(page);
 
       const box = (await page.getByTestId('specialty-search').boundingBox())!;
       expect(box.height).toBeGreaterThanOrEqual(44);
+
+      // The choice rows are targets too, and they are the controls a provider
+      // actually presses on this screen.
+      const choice = (await page.getByTestId('specialty-choice-leak').boundingBox())!;
+      expect(choice.height, 'a choice row is a touch target').toBeGreaterThanOrEqual(44);
     });
   }
 
@@ -324,12 +364,11 @@ test.describe('task 2 — geometry and language', () => {
     });
 
     expect(await htmlLangDir(page)).toEqual({ lang: 'ar', dir: 'rtl' });
-    // The HEADING names the state; the explanation says what it means for
-    // them. Asserting the heading's words against the explanation was the
-    // test's mistake, not the screen's.
-    await expect(page.getByTestId('specialty-state-PENDING')).toContainText('قيد المراجعة');
-    await expect(page.getByTestId('specialty-state-explain-PENDING')).toContainText(
-      'لا حاجة إلى أي إجراء منك',
+    // The per-state sections are gone with the approved design; the sentence
+    // that replaced them is what has to read correctly in Arabic, and it is
+    // the one a provider with a specialty in moderation depends on.
+    await expect(page.getByTestId('specialty-moderation-notice')).toContainText(
+      'تُراجع التخصصات لاحقاً',
     );
     await expectNoHorizontalPageOverflow(page);
   });

@@ -148,16 +148,36 @@ const DRAFT_VIEW = {
   },
 };
 
-async function stubProvider(page: Page, hub: unknown = HUB): Promise<void> {
+async function stubProvider(
+  page: Page,
+  hub: unknown = HUB,
+  over: { profile?: unknown; draft?: unknown } = {},
+): Promise<void> {
   await stubApi(page, {
     me: PROVIDER_ME,
     extra: {
       '/me/provider/onboarding/hub': hub,
-      '/me/provider/onboarding/draft': DRAFT_VIEW,
-      '/me/provider/profile': DRAFT_PROFILE,
+      '/me/provider/onboarding/draft': over.draft ?? DRAFT_VIEW,
+      '/me/provider/profile': over.profile ?? DRAFT_PROFILE,
     },
   });
 }
+
+/** A returned application: the operator's note lives on the PROFILE. */
+const RETURNED_PROFILE = (rejectionReason: string | null) => ({
+  profile: { ...DRAFT_PROFILE.profile, status: 'REJECTED', rejectionReason },
+});
+
+/** The hub of a returned application: five tasks done, one sent back. */
+const RETURNED_HUB = (taskId: string | null = 'BASICS_IDENTITY') => ({
+  ...HUB,
+  tasks: HUB.tasks.map((t) =>
+    t.id === taskId ? { ...t, status: 'AVAILABLE' } : { ...t, status: 'COMPLETE' },
+  ),
+  progress: { complete: 5, total: 6 },
+  nextAction: taskId ? { kind: 'COMPLETE_TASK', taskId } : { kind: 'NONE' },
+  status: 'ACTION_REQUIRED',
+});
 
 async function openHub(page: Page, opts: { lang?: 'en' | 'ar'; hub?: unknown } = {}) {
   await seedFlag(page, true);
@@ -203,7 +223,9 @@ test.describe('onboarding v2 — the full-screen shell', () => {
       const controls = [
         page.getByTestId('onboarding-v2-close'),
         page.getByTestId('task-row-BASICS_IDENTITY'),
-        page.getByRole('button', { name: 'Continue' }),
+        // The approved hub action names its destination — "Start: <section>"
+        // — so the section of the task the SERVER nominated is in the label.
+        page.getByRole('button', { name: 'Start: Basics' }),
       ];
       for (const control of controls) {
         const box = (await control.boundingBox())!;
@@ -261,7 +283,7 @@ test.describe('onboarding v2 — the hub', () => {
     await openHub(page);
 
     await expect(page.locator('[data-testid^="task-row-"]')).toHaveCount(6);
-    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('0 of 6 complete');
+    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('0 of 6 tasks complete');
   });
 
   test('renders the server count rather than counting the rows', async ({ page }) => {
@@ -269,7 +291,7 @@ test.describe('onboarding v2 — the hub', () => {
     await openHub(page, { hub: { ...HUB, tasks, progress: { complete: 3, total: 6 } } });
 
     // One row reads COMPLETE; the server says three. The server wins.
-    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('3 of 6 complete');
+    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('3 of 6 tasks complete');
   });
 
   test('only the available row is a button; blocked rows explain themselves', async ({ page }) => {
@@ -327,7 +349,7 @@ test.describe('onboarding v2 — keyboard', () => {
 test.describe('onboarding v2 — resume', () => {
   test('the CTA opens the task the server named', async ({ page }) => {
     await openHub(page);
-    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: 'Start: Basics' }).click();
     await expect(page).toHaveURL(/\/provider\/onboarding\/BASICS_IDENTITY$/);
   });
 
@@ -370,7 +392,7 @@ test.describe('onboarding v2 — language parity', () => {
     // Scoped to the row rather than the page: the title text lives in a span
     // INSIDE the row button, so a bare getByText matches both and trips
     // strict mode. What is being asserted is that the row reads in English.
-    await expect(page.getByTestId('task-row-BASICS_IDENTITY')).toContainText('Your details');
+    await expect(page.getByTestId('task-row-BASICS_IDENTITY')).toContainText('Basic details');
     // The server sent Arabic titles; an English reader must not see them.
     await expect(page.getByText('البيانات الأساسية')).toHaveCount(0);
     await expectNoHorizontalPageOverflow(page);
@@ -419,14 +441,122 @@ test.describe('onboarding v2 — states', () => {
     await expect(page.getByText(/approved/i)).toHaveCount(0);
   });
 
-  test('action required: a banner AND the tasks, so it can be acted on', async ({ page }) => {
+  // Sprint 09B.29 Phase 5A — SUPERSEDED, and recorded rather than removed.
+  //
+  // This asserted `hub-state-ACTION_REQUIRED` — a notice drawn ABOVE the full
+  // task list — on the reasoning that a banner is only useful if the provider
+  // can act on it. The approved design answers that worry better and the
+  // assertion moved with it: the screen names the ONE task the server flagged
+  // and puts a button on it, rather than asking a provider to find their own
+  // problem among five rows that are already done.
+  //
+  // What follows is STRICTER than what it replaces. The old test proved a
+  // banner and a list existed. These prove the reason is readable, the button
+  // reaches the right task, the provider's saved answers are still there when
+  // it opens, the screen does not invent a submit the server has not offered,
+  // and — the part that makes the rest mean anything — that a broken deep link
+  // is detected instead of rendered as a dead control.
+  test('action required: the reason is readable and names the task to fix', async ({ page }) => {
     await seedFlag(page, true);
     await seedLanguage(page, 'en');
-    await stubProvider(page, { ...HUB, status: 'ACTION_REQUIRED' });
+    await stubProvider(page, RETURNED_HUB(), {
+      profile: RETURNED_PROFILE('Replace the first work photo. The photo is unclear.'),
+    });
     await page.goto('/provider/onboarding');
 
-    await expect(page.getByTestId('hub-state-ACTION_REQUIRED')).toBeVisible();
-    await expect(page.getByTestId('hub-task-list')).toBeVisible();
+    const screen = page.getByTestId('onboarding-returned');
+    await expect(screen).toBeVisible();
+
+    // Both halves of the operator's note, in the two places the approved
+    // screen puts them. A heading with no detail would lose the WHY.
+    await expect(page.getByTestId('returned-reason')).toContainText('Replace the first work photo');
+    await expect(page.getByTestId('returned-reason')).toContainText('The photo is unclear.');
+    await expect(page.getByTestId('returned-todo')).toBeVisible();
+
+    // Named, not "Complete now": the provider is being sent somewhere specific.
+    const fix = page.getByTestId('returned-complete-now');
+    await expect(fix).toBeVisible();
+    await expect(fix).toContainText('Basic details');
+
+    // The finished checklist is gone; the way to the flagged task is not.
+    await expect(page.getByTestId('hub-task-list')).toHaveCount(0);
+  });
+
+  test("action required: the flagged task opens with the provider's data intact", async ({
+    page,
+  }) => {
+    await seedFlag(page, true);
+    await seedLanguage(page, 'en');
+    await stubProvider(page, RETURNED_HUB(), {
+      profile: RETURNED_PROFILE('Check the name customers will see.'),
+    });
+    await page.goto('/provider/onboarding');
+
+    await page.getByTestId('returned-complete-now').click();
+
+    // The router actually arrives...
+    await expect(page).toHaveURL(/\/provider\/onboarding\/BASICS_IDENTITY$/);
+    // ...and the task hydrates from the draft rather than opening blank. A
+    // returned application that lost the provider's answers on the way to the
+    // fix is the failure this guards.
+    await expect(page.getByTestId('field-displayName')).toHaveValue('Pat Provider');
+  });
+
+  test('action required: no submit is offered while the server still wants a task', async ({
+    page,
+  }) => {
+    await seedFlag(page, true);
+    await seedLanguage(page, 'en');
+    await stubProvider(page, RETURNED_HUB(), {
+      profile: RETURNED_PROFILE('Check the name customers will see.'),
+    });
+    await page.goto('/provider/onboarding');
+    await expect(page.getByTestId('onboarding-returned')).toBeVisible();
+
+    // Readiness is the SERVER's. Its nextAction is COMPLETE_TASK, so the one
+    // dominant action leads to that task — it does not offer to resubmit an
+    // application the server has not said is ready.
+    const primary = page.getByTestId('hub-primary-action');
+    await expect(primary).toBeVisible();
+    await expect(primary).not.toContainText(/submit/i);
+  });
+
+  // THE SENSITIVITY PROOF. Without this the three tests above could all pass
+  // against a screen that renders a button unconditionally: they only ever ask
+  // for a flagged task that exists. Here the server names a task that is NOT in
+  // the list, which is the shape of a stale deep link, and the screen must
+  // decline to draw a control that would lead nowhere.
+  test('action required: a deep link to a task the hub is not showing is not drawn', async ({
+    page,
+  }) => {
+    await seedFlag(page, true);
+    await seedLanguage(page, 'en');
+    await stubProvider(
+      page,
+      { ...RETURNED_HUB(), nextAction: { kind: 'COMPLETE_TASK', taskId: 'NOT_A_TASK' } },
+      { profile: RETURNED_PROFILE('Something needs attention.') },
+    );
+    await page.goto('/provider/onboarding');
+
+    await expect(page.getByTestId('onboarding-returned')).toBeVisible();
+    // The reason still shows — the provider is still told what is wrong.
+    await expect(page.getByTestId('returned-reason')).toBeVisible();
+    // The button does not, because there is nowhere honest to send them.
+    await expect(page.getByTestId('returned-complete-now')).toHaveCount(0);
+  });
+
+  test('action required: falls back to its own heading when the server sent no reason', async ({
+    page,
+  }) => {
+    await seedFlag(page, true);
+    await seedLanguage(page, 'en');
+    await stubProvider(page, RETURNED_HUB(), { profile: RETURNED_PROFILE(null) });
+    await page.goto('/provider/onboarding');
+
+    // An empty alert with a blank heading is worse than a generic sentence.
+    await expect(page.getByTestId('returned-reason')).toContainText(
+      'Something needs your attention',
+    );
   });
 
   test('already active: the hub steps aside', async ({ page }) => {

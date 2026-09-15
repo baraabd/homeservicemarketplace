@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
 
 import { htmlLangDir, seedLanguage } from './fixtures';
 import {
@@ -188,10 +189,12 @@ test.describe('provider onboarding v2 — real browser, real API', () => {
     //    and the hub must move. A fixture cannot follow a write it never saw,
     //    so this fails on any stubbed transport regardless of how faithful the
     //    fixture's shape is.
-    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('0 of 6 complete');
+    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('0 of 6 tasks complete');
     await completeDraft(account, { skip: ['PROFILE'] });
     await page.reload();
-    await expect(page.getByTestId('onboarding-v2-progress')).not.toHaveText('0 of 6 complete');
+    await expect(page.getByTestId('onboarding-v2-progress')).not.toHaveText(
+      '0 of 6 tasks complete',
+    );
     await expect(page.getByTestId('task-row-PORTFOLIO')).toHaveAttribute(
       'data-status',
       'AVAILABLE',
@@ -263,7 +266,12 @@ test.describe('provider onboarding v2 — real browser, real API', () => {
     );
     expect(hub.body.nextAction.kind).toBe('COMPLETE_TASK');
 
-    await page.getByRole('button', { name: 'Continue' }).click();
+    // By testid, not by label. The approved hub names the task in its CTA —
+    // "Start: Basics and identity" rather than a bare "Continue" — so matching
+    // the old label waits three minutes for a button that is right there.
+    // `hub-primary-action` is the stable handle, and this test is about WHICH
+    // TASK the CTA opens, which the assertion below still checks exactly.
+    await page.getByTestId('hub-primary-action').click();
     await expect(page.getByTestId(`task-screen-${hub.body.nextAction.taskId}`)).toBeVisible();
   });
 
@@ -304,6 +312,138 @@ test.describe('provider onboarding v2 — real browser, real API', () => {
     // And the browser reads its own write back after a full reload.
     await page.reload();
     await expect(page.getByTestId('field-displayName')).toHaveValue(typed);
+  });
+
+  test('Save and continue confirms zero experience, persists it, and survives a return and reload', async ({
+    page,
+    context,
+  }) => {
+    const account = await registerProvider();
+    const draftPath = '/v1/me/provider/onboarding/draft';
+    const experiencePath = '/provider/onboarding/SERVICES_EXPERIENCE#experience';
+    await openHub(page, context, account);
+    await page.goto(experiencePath);
+    await expect(page.getByTestId('experience-years-value')).toHaveText('0');
+
+    // A displayed zero is still unanswered until the provider confirms it.
+    // No fixture writes a start date, and neither stepper button is pressed.
+    const before = await api<ProviderOnboardingDraftView>(account.jar, draftPath);
+    expect(before.status).toBe(200);
+    expect(before.body.data.professionSince).toBeNull();
+    expect(before.body.data.yearsOfExperience).toBeNull();
+    expect(before.body.missing).toContainEqual({ field: 'yearsOfExperience', code: 'REQUIRED' });
+
+    const currentYear = await page.evaluate(() => new Date().getUTCFullYear());
+    const expectedSince = `${currentYear}-01-01T00:00:00.000Z`;
+    const write = page.waitForResponse(
+      (response) =>
+        response.url().startsWith(REAL_API) &&
+        response.url().endsWith('/v1/me/provider/onboarding/steps/EXPERIENCE') &&
+        response.request().method() === 'PATCH',
+    );
+    await page.getByTestId('task-save-and-continue').click();
+    const acknowledged = await write;
+    expect(acknowledged.status()).toBe(200);
+    expect(acknowledged.request().postDataJSON()).toMatchObject({
+      professionSince: expectedSince,
+    });
+    await expect(page).toHaveURL(/\/provider\/onboarding\/WORK_AREA$/);
+
+    // Read independently of the browser's React Query cache: the real API
+    // must return the persisted answer and clear its own completeness issue.
+    const saved = await api<ProviderOnboardingDraftView>(account.jar, draftPath);
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.professionSince).toBe(expectedSince);
+    expect(saved.body.missing).not.toContainEqual({
+      field: 'yearsOfExperience',
+      code: 'REQUIRED',
+    });
+
+    await page.goto(experiencePath);
+    await expect(page.getByTestId('experience-years-value')).toHaveText('0');
+    await page.reload();
+    await expect(page.getByTestId('experience-years-value')).toHaveText('0');
+    const reloaded = await api<ProviderOnboardingDraftView>(account.jar, draftPath);
+    expect(reloaded.status).toBe(200);
+    expect(reloaded.body.data.professionSince).toBe(expectedSince);
+    expect(reloaded.body.missing).not.toContainEqual({
+      field: 'yearsOfExperience',
+      code: 'REQUIRED',
+    });
+  });
+
+  test('Save and continue preserves legacy experience until an edit replaces it in the draft and review', async ({
+    page,
+    context,
+  }) => {
+    const account = await registerProvider();
+    // Complete only the other fields so server readiness permits the review
+    // route. The experience answer below still uses the legacy numeric API.
+    await completeDraft(account, { skip: ['EXPERIENCE'] });
+    await approveCategoriesFor(account);
+    const draftPath = '/v1/me/provider/onboarding/draft';
+    const experiencePath = '/provider/onboarding/SERVICES_EXPERIENCE#experience';
+    const before = await api<ProviderOnboardingDraftView>(account.jar, draftPath);
+    expect(before.status).toBe(200);
+    const seeded = await api<ProviderOnboardingDraftView>(
+      account.jar,
+      '/v1/me/provider/onboarding/steps/EXPERIENCE',
+      { method: 'PATCH', body: { version: before.body.version, yearsOfExperience: 7 } },
+    );
+    expect(seeded.status).toBe(200);
+    expect(seeded.body.data.professionSince).toBeNull();
+
+    await openHub(page, context, account);
+    await page.goto(experiencePath);
+    await expect(page.getByTestId('experience-years-value')).toHaveText('7');
+    await page.getByTestId('task-save-and-continue').click();
+    await expect(page).toHaveURL(/\/provider\/onboarding\/WORK_AREA$/);
+
+    const saved = await api<ProviderOnboardingDraftView>(account.jar, draftPath);
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.yearsOfExperience).toBe(7);
+    expect(saved.body.data.professionSince).toBeNull();
+    await page.goto(experiencePath);
+    await page.reload();
+    await expect(page.getByTestId('experience-years-value')).toHaveText('7');
+
+    // The first explicit edit replaces the legacy number with a start date.
+    // Keeping the old number would make readiness or review continue using 7
+    // while this screen displays 8.
+    const currentYear = await page.evaluate(() => new Date().getUTCFullYear());
+    const expectedSince = `${currentYear - 8}-01-01T00:00:00.000Z`;
+    const write = page.waitForResponse(
+      (response) =>
+        response.url().startsWith(REAL_API) &&
+        response.url().endsWith('/v1/me/provider/onboarding/steps/EXPERIENCE') &&
+        response.request().method() === 'PATCH',
+    );
+    await page.getByTestId('experience-years-increase').click();
+    await expect(page.getByTestId('experience-years-value')).toHaveText('8');
+    await page.getByTestId('task-save-and-continue').click();
+    const acknowledged = await write;
+    expect(acknowledged.status()).toBe(200);
+    expect(acknowledged.request().postDataJSON()).toMatchObject({
+      professionSince: expectedSince,
+      yearsOfExperience: null,
+    });
+    await expect(page).toHaveURL(/\/provider\/onboarding\/WORK_AREA$/);
+
+    const edited = await api<ProviderOnboardingDraftView>(account.jar, draftPath);
+    expect(edited.status).toBe(200);
+    expect(edited.body.data.professionSince).toBe(expectedSince);
+    // This is the server's derived read projection. The request above clears
+    // the legacy stored number; the API computes 8 from the persisted date.
+    expect(edited.body.data.yearsOfExperience).toBe(8);
+    await page.goto(experiencePath);
+    await page.reload();
+    await expect(page.getByTestId('experience-years-value')).toHaveText('8');
+
+    await page.goto('/provider/onboarding/REVIEW_SUBMISSION');
+    await expect(page.getByTestId('review-screen')).toBeVisible();
+    const row = page.getByTestId('review-row-SERVICES_EXPERIENCE');
+    await expect(row).toContainText('8 years');
+    await expect(row).not.toContainText('7 years');
   });
 
   test('a direct task deep link opens that task', async ({ page, context }) => {
@@ -397,6 +537,12 @@ test.describe('provider onboarding v2 — real browser, real API', () => {
     await page.getByTestId('task-row-REVIEW_SUBMISSION').click();
     await expect(page.getByTestId('review-screen')).toBeVisible();
 
+    // Phase 5A split this task into the approved summary screen and then the
+    // consent screen. Submit belongs to the second, so the summary's primary
+    // comes first — `review-submit` is simply not on the summary.
+    await page.getByTestId('review-continue-to-consent').click();
+    await expect(page.getByTestId('terms-section')).toBeVisible();
+
     // Everything is collected, so consent is the only thing left — and the
     // server says so, not the client.
     await expect(page.getByTestId('review-submit')).toBeDisabled();
@@ -428,13 +574,17 @@ test.describe('provider onboarding v2 — real browser, real API', () => {
     await openHub(page, context, account);
 
     // Everything collected: five of six, and review is the one left.
-    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('5 of 6 complete');
+    await expect(page.getByTestId('onboarding-v2-progress')).toHaveText('5 of 6 tasks complete');
     await expect(page.getByTestId('task-row-REVIEW_SUBMISSION')).toHaveAttribute(
       'data-status',
       'AVAILABLE',
     );
 
     await page.getByTestId('task-row-REVIEW_SUBMISSION').click();
+    // Through the summary to consent, where Submit lives. Terms were accepted
+    // through the API by `acceptTerms` above, so the button is enabled on
+    // arrival rather than needing a click here.
+    await page.getByTestId('review-continue-to-consent').click();
     await expect(page.getByTestId('review-submit')).toBeEnabled({ timeout: 30_000 });
     await page.getByTestId('review-submit').click();
 

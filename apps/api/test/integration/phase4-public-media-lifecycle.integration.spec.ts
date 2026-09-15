@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
 
 // Sprint 09B.29 Phase 4 — the PUBLIC media lifecycle, against real Postgres and
 // real files on disk.
@@ -46,9 +46,7 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
   const OTHER = `${P}other`;
 
   let storageRoot: string;
-  let lifecycleLock: HeldLock;
-  let mediaLock: HeldLock;
-
+  let locks: HeldLock | undefined;
   const GRACE_MS = 86_400_000;
   const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
   const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
@@ -71,9 +69,21 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
   const sweep = () => cleanup.sweep({ limit: 50, reservationGraceMs: GRACE_MS });
 
   beforeAll(async () => {
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    // Sprint 09B.29 Phase 5B — taken as ONE SET, atomically.
+    //
+    // Acquiring these one after another is hold-and-wait: the second
+    // acquisition can queue for up to the whole budget while the first is
+    // already held, so every suite waiting on the first is blocked by a
+    // suite that is doing no work. That is what took CI down — see
+    // `acquireAdvisoryLocks` in test/support/db-isolation.ts.
+    //
+    // The set is sorted into the canonical order by the helper, so the
+    // order written here cannot be wrong.
+    locks = await acquireAdvisoryLocks([
+      { resource: 'providerLifecycle' as const, mode: 'shared' as const },
+      { resource: 'mediaAssets' as const, mode: 'exclusive' as const },
+    ]);
     // LAST in the canonical order. EXCLUSIVE: this suite RUNS a global media sweep.
-    mediaLock = await acquireAdvisoryLock('mediaAssets', 'exclusive');
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -124,8 +134,7 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
 
   afterAll(async () => {
     await wipe();
-    await mediaLock?.release();
-    await lifecycleLock?.release();
+    await locks?.release();
     if (storageRoot) rmSync(storageRoot, { recursive: true, force: true });
   });
 

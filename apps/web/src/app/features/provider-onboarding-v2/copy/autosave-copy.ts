@@ -30,6 +30,16 @@ export interface AutosaveCopy {
   saving: string;
   /** Written and acknowledged by the server. Never shown optimistically. */
   saved: string;
+  /**
+   * What the SERVER says was last persisted, shown on arrival.
+   *
+   * Sprint 09B.29 Phase 5A. The approved sticky bar answers "is my work safe"
+   * before the provider has touched anything, and it can do so truthfully
+   * because the draft carries `lastSavedAt` — a fact the server wrote, not an
+   * optimistic claim by the client. Without it the bar was empty until the
+   * first keystroke, which is exactly when the question is least urgent.
+   */
+  persisted: string;
   /** The write landed; the hub/review projection refresh that follows it did
    *  not. The data is safe — reporting a failure here would be untrue — but
    *  task statuses elsewhere may lag for a moment. */
@@ -46,6 +56,7 @@ const EN: AutosaveCopy = {
   dirty: 'Not saved yet',
   saving: 'Saving…',
   saved: 'Saved',
+  persisted: 'Changes saved',
   savedProjectionStale: 'Saved — refreshing status',
   // Deliberately "when you are back online", not "your changes are safe".
   //
@@ -63,6 +74,7 @@ const AR: AutosaveCopy = {
   dirty: 'لم يتم الحفظ بعد',
   saving: 'جارٍ الحفظ…',
   saved: 'تم الحفظ',
+  persisted: 'حُفظت التغييرات',
   savedProjectionStale: 'تم الحفظ — يتم تحديث الحالة',
   offline: 'غير متصل — سيتم الحفظ عند عودة الاتصال. أبقِ هذه الصفحة مفتوحة.',
   conflict: 'تم تغيير هذا في مكان آخر. أعد التحميل لعرض النسخة الحالية.',

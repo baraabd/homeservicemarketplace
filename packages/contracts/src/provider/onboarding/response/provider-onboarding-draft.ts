@@ -169,6 +169,21 @@ export interface ProviderOnboardingData {
    *  selection the server accepts or offer one it is about to reject. */
   maxSpecialties: number;
 
+  /**
+   * The shortest bio the server will accept, in characters.
+   *
+   * Sprint 09B.29 — G-07. The rule has always been the server's
+   * (`MIN_BIO_LENGTH`), and the provider used to meet it for the first time as a
+   * blocker on the review screen, several screens after the field. Carrying it
+   * here lets the input say so at the moment it can be acted on, without the
+   * client keeping a second copy of a number the server owns — the same reason
+   * `maxSpecialties` and `radiusPolicy` are served rather than hardcoded.
+   *
+   * Optional so an older client ignores it and an older server's response still
+   * parses.
+   */
+  minBioLength?: number;
+
   // ── Sprint 9B.19 — service area ─────────────────────────────────────────
 
   /** The suggested service radius and the bounds the server enforces.

@@ -1,0 +1,463 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
+import MockAdapter from 'axios-mock-adapter';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+import { api } from '../../../../lib/api';
+import { LanguageProvider } from '../../../i18n/LanguageContext';
+import { ProviderStatusCentreScreen } from './ProviderStatusCentreScreen';
+import { STATUS_CENTRE_COPY } from '../copy/status-centre-copy';
+
+// Sprint 09B.29 Phase 5A — approved screens 14 and 17.
+//
+// WHAT THIS FILE PINS
+//
+// ADR 0005's four axes, answered SEPARATELY and from four different server
+// facts. The surface this replaces rendered one sentence per `profile.status`,
+// and the single thing a test of it could not catch is the failure that
+// matters: a provider being told "pending review" when what is actually true is
+// that their specialties are cleared, their documents were never asked for, and
+// they still cannot take work.
+//
+// So every test below changes ONE server fact and asserts that ONE row moved.
+
+const PROFILE_URL = /\/v1\/me\/provider\/profile$/;
+const HUB_URL = /\/v1\/me\/provider\/onboarding\/hub$/;
+const CAPS_URL = /\/v1\/me\/provider\/capabilities$/;
+const CASE_URL = /\/v1\/me\/provider\/verification\/case$/;
+const REVIEW_URL = /\/v1\/me\/provider\/onboarding\/review/;
+const WITHDRAW_URL = /\/v1\/me\/provider\/onboarding\/withdraw$/;
+const DRAFT_URL = /\/v1\/me\/provider\/onboarding\/draft$/;
+
+const EN = STATUS_CENTRE_COPY.en;
+const AR = STATUS_CENTRE_COPY.ar;
+
+const PROFILE = (over: Record<string, unknown> = {}) => ({
+  profile: {
+    id: 'pp-1',
+    displayName: 'Ahmad Fatal',
+    initials: 'AF',
+    avatarUrl: null,
+    status: 'PENDING_REVIEW',
+    verified: false,
+    topPro: false,
+    serviceCategories: [],
+    pendingCategories: [],
+    submittedForReviewAt: null,
+    reviewedAt: null,
+    rejectionReason: null,
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T12:43:00.000Z',
+    ...over,
+  },
+});
+
+const HUB = (over: Record<string, unknown> = {}) => ({
+  tasks: [],
+  progress: { complete: 6, total: 6 },
+  nextAction: { kind: 'WAIT' },
+  status: 'SUBMITTED',
+  ...over,
+});
+
+/** The capability service's own shape. `allowed` is what the screen reads. */
+const CAPS = (allowed: string[]) => ({
+  capabilities: allowed.map((capability) => ({ capability, allowed: true, reason: null })),
+  allowed,
+  nextActions: [],
+  primaryReason: null,
+});
+
+const WAITING_CAPS = ['VIEW_OWN_PROFILE', 'EDIT_OWN_PROFILE'];
+const ACTIVE_CAPS = [...WAITING_CAPS, 'VIEW_MARKETPLACE', 'SUBMIT_BID'];
+
+let mock: MockAdapter;
+
+beforeEach(() => {
+  mock = new MockAdapter(api);
+});
+
+afterEach(() => {
+  mock.restore();
+  window.localStorage.clear();
+});
+
+function renderScreen(
+  options: {
+    profile?: ReturnType<typeof PROFILE>;
+    hub?: ReturnType<typeof HUB>;
+    caps?: string[];
+    /** The verification case's own state, or null when never started. */
+    caseState?: string | null;
+    /** Make the case read fail, to prove the axis admits it does not know. */
+    caseFails?: boolean;
+    /** The server's verdict on whether the withdraw command would succeed. */
+    canWithdraw?: boolean;
+    lang?: 'en' | 'ar';
+    /** The provider's stored zone, for G-12. `null` serves a draft without one. */
+    timezone?: string | null;
+    /** Make the draft read fail, to prove the header still renders. */
+    draftFails?: boolean;
+  } = {},
+) {
+  mock.reset();
+  mock.onGet(PROFILE_URL).reply(200, options.profile ?? PROFILE());
+  mock.onGet(HUB_URL).reply(200, options.hub ?? HUB());
+  mock.onGet(CAPS_URL).reply(200, CAPS(options.caps ?? WAITING_CAPS));
+  if (options.caseFails) {
+    mock.onGet(CASE_URL).reply(500);
+  } else {
+    mock.onGet(CASE_URL).reply(200, {
+      case:
+        options.caseState === undefined || options.caseState === null
+          ? null
+          : { id: 'vc-1', state: options.caseState, documents: [], requirements: [] },
+    });
+  }
+  mock.onGet(REVIEW_URL).reply(200, {
+    groups: [],
+    canSubmit: false,
+    blockedReason: null,
+    terms: {
+      version: 'v2',
+      locale: 'en',
+      accepted: true,
+      acceptedVersion: 'v2',
+      acceptedAt: null,
+    },
+    draftVersion: 7,
+    lifecycleState: 'SUBMITTED',
+    canWithdraw: options.canWithdraw ?? true,
+  });
+  mock.onPost(WITHDRAW_URL).reply(200, { state: 'DRAFT', version: 8 });
+  // G-12 — the draft carries the provider's own zone, which is what the header
+  // timestamps in. Served by default so the common case is the tested one.
+  if (options.draftFails) {
+    mock.onGet(DRAFT_URL).reply(500);
+  } else {
+    mock.onGet(DRAFT_URL).reply(200, {
+      version: 7,
+      editable: false,
+      data: {
+        timezone: options.timezone === undefined ? 'Asia/Damascus' : options.timezone,
+        resolvedTimezone: { resolved: null, display: null, needsConfirmation: false },
+      },
+    });
+  }
+
+  window.localStorage.setItem('hsm.lang', options.lang ?? 'en');
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <LanguageProvider>
+          <ProviderStatusCentreScreen />
+        </LanguageProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+}
+
+/** The badge on one axis row. */
+const axisValue = async (id: string) => (await screen.findByTestId(`axis-${id}`)).textContent ?? '';
+
+describe('the four axes are answered separately', () => {
+  it('says an application is complete and work access is not, in the same breath', async () => {
+    renderScreen();
+
+    await screen.findByTestId('provider-status-axes');
+    expect(await axisValue('completion')).toContain(EN.valueComplete);
+    // The row this whole surface exists for. "Your application is complete" and
+    // "you may not work" are both true here, and the old screen could say only
+    // one of them.
+    expect(await axisValue('work-access')).toContain(EN.valueNotActive);
+  });
+
+  it('reads work access from the CAPABILITY, not from the profile status', async () => {
+    // An ACTIVE profile with no bidding capability — a suspended grant, an
+    // expired verification, a policy change. The screen reports what the
+    // provider can actually do.
+    renderScreen({ profile: PROFILE({ status: 'ACTIVE', verified: true }), caps: WAITING_CAPS });
+
+    expect(await axisValue('work-access')).toContain(EN.valueNotActive);
+    expect(screen.queryByTestId('provider-workspace-unlocked')).toBeNull();
+  });
+
+  it('shows a specialty decision that is still with a moderator', async () => {
+    renderScreen({ profile: PROFILE({ pendingCategories: ['sp-interior'] }) });
+
+    expect(await axisValue('specialty')).toContain(EN.valueInReview);
+  });
+
+  it('shows a specialty decision that has been made', async () => {
+    renderScreen({ profile: PROFILE({ pendingCategories: [] }) });
+
+    expect(await axisValue('specialty')).toContain(EN.valueComplete);
+  });
+
+  // Sprint 09B.29 Phase 5B — G-11. The axis used to be projected from
+  // `profile.verified` plus whether the application had been handed in, which
+  // gives a plausible answer and a wrong one: a provider whose documents were
+  // SENT BACK read "In review", and so did one whose case was REFUSED. Both of
+  // them were waiting for nothing. It reads the case's own state now.
+  it('reads the case state rather than inferring one from the application', async () => {
+    renderScreen({ caseState: 'IN_REVIEW' });
+    expect(await axisValue('verification')).toContain(EN.valueInReview);
+  });
+
+  it('says ACTION NEEDED when the case was sent back, not "in review"', async () => {
+    renderScreen({ caseState: 'ACTION_REQUIRED' });
+
+    // The failure the old inference produced: somebody with work to do, told
+    // to wait.
+    expect(await axisValue('verification')).toContain(EN.valueActionRequired);
+    const row = await screen.findByTestId('axis-verification');
+    expect(row).toHaveAttribute('data-tone', 'blocked');
+  });
+
+  it('distinguishes a refusal from never having started', async () => {
+    renderScreen({ caseState: 'REJECTED' });
+    expect(await axisValue('verification')).toContain(EN.valueRejected);
+  });
+
+  it('says not started when there is genuinely no case', async () => {
+    renderScreen({ caseState: null });
+    expect(await axisValue('verification')).toContain(EN.valueNotStarted);
+  });
+
+  it('admits it does not know rather than guessing when the read fails', async () => {
+    // An axis that reports "Not started" because a request failed invites a
+    // provider to redo work that may already be done.
+    renderScreen({ caseFails: true });
+    expect(await axisValue('verification')).toContain(EN.valueUnknown);
+  });
+
+  it('says unavailable for a state this bundle has never heard of', async () => {
+    // Picking the nearest known word would be a guess about somebody else's
+    // decision.
+    renderScreen({ caseState: 'SOME_FUTURE_STATE' });
+    expect(await axisValue('verification')).toContain(EN.valueUnknown);
+  });
+
+  it('carries the word as well as the colour on every row', async () => {
+    renderScreen();
+
+    const panel = await screen.findByTestId('provider-status-axes');
+    // Colour alone is not a status. Every row has to read correctly to someone
+    // who cannot distinguish the greens from the ambers.
+    for (const id of ['completion', 'specialty', 'verification', 'work-access']) {
+      expect(within(panel).getByTestId(`axis-${id}`).textContent?.trim()).not.toBe('');
+    }
+  });
+});
+
+describe('the waiting screen', () => {
+  it('says no action is needed, and offers the application rather than a dead end', async () => {
+    renderScreen();
+
+    expect(await screen.findByTestId('status-waiting-alert')).toHaveTextContent(
+      EN.waitingAlertTitle,
+    );
+    expect(screen.getByTestId('status-view-application')).toBeInTheDocument();
+    expect(screen.getByTestId('status-withdraw')).toHaveTextContent(EN.withdraw);
+  });
+
+  it('withdraws through the SERVER command, not by navigating somewhere', async () => {
+    renderScreen();
+
+    const button = await screen.findByTestId('status-withdraw');
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+
+    // A button labelled "withdraw" that only changed route would leave the
+    // application submitted and the provider unable to edit it — which is the
+    // shape of every control that describes an outcome it does not produce.
+    await waitFor(() =>
+      expect(mock.history.post.filter((r) => /withdraw$/.test(r.url ?? ''))).toHaveLength(1),
+    );
+  });
+
+  it('does not offer a withdraw the server would refuse', async () => {
+    renderScreen({ canWithdraw: false });
+
+    // `canWithdraw` is scoped to the same states the write is. Offering the
+    // control anyway is how a client earns a 409 it caused itself.
+    await waitFor(() => expect(screen.getByTestId('status-withdraw')).toBeDisabled());
+  });
+
+  it('timestamps in the PROVIDER zone, not the reader device zone', async () => {
+    // Gap G-12. The submission confirmation formats in the provider's stored
+    // zone; this header used to format in the reader's. For a provider who is
+    // travelling the two screens then timestamped the same application an hour
+    // apart, with nothing to say which was meant.
+    //
+    // 09:05 UTC is 12:05 in Asia/Damascus (UTC+3), and the assertion is written
+    // as that zone's own rendering rather than a hard-coded "12:05" so it holds
+    // wherever the test runner sits — including a runner already in that zone,
+    // where a device-zone bug would be invisible.
+    renderScreen({
+      profile: PROFILE({ updatedAt: '2026-09-01T09:05:00.000Z' }),
+      timezone: 'Asia/Damascus',
+    });
+
+    await screen.findByTestId('provider-status-centre');
+
+    const inProviderZone = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Damascus',
+    }).format(new Date('2026-09-01T09:05:00.000Z'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('onboarding-v2-progress')).toHaveTextContent(inProviderZone),
+    );
+  });
+
+  it('still shows the header when the zone cannot be read', async () => {
+    // The draft is deliberately outside the readiness gate: a provider waiting
+    // on a review must not lose their status screen because one extra request
+    // failed. They get the device's zone, which is what everyone got before.
+    renderScreen({ profile: PROFILE({ updatedAt: '2026-09-01T09:05:00.000Z' }), draftFails: true });
+
+    await screen.findByTestId('provider-status-centre');
+    const onDevice = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date('2026-09-01T09:05:00.000Z'));
+    await waitFor(() =>
+      expect(screen.getByTestId('onboarding-v2-progress')).toHaveTextContent(onDevice),
+    );
+  });
+
+  it('timestamps itself from the SERVER, not from a client clock', async () => {
+    // `timezone: null` on purpose: this test is about WHICH INSTANT was
+    // formatted, so it keeps the device zone and leaves the provider zone to
+    // the G-12 test above. Without it the two assertions would contradict each
+    // other on any runner that is not at UTC+3.
+    renderScreen({ profile: PROFILE({ updatedAt: '2026-09-01T09:05:00.000Z' }), timezone: null });
+
+    await screen.findByTestId('provider-status-centre');
+
+    // The expected string is computed from the SAME instant rather than
+    // hard-coded, so the assertion is about which instant was formatted and not
+    // about the timezone the test runner happens to be in. A client clock would
+    // print the moment the test ran, which this catches.
+    const expected = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date('2026-09-01T09:05:00.000Z'));
+    await waitFor(() =>
+      expect(screen.getByTestId('onboarding-v2-progress')).toHaveTextContent(
+        EN.waitingSubtitle(expected),
+      ),
+    );
+  });
+});
+
+describe('the activation handoff', () => {
+  it('appears when the provider may actually work, and opens the workspace', async () => {
+    renderScreen({
+      profile: PROFILE({ status: 'ACTIVE', verified: true }),
+      hub: HUB({ status: 'ACTIVE' }),
+      caps: ACTIVE_CAPS,
+      caseState: 'VERIFIED',
+    });
+
+    const handoff = await screen.findByTestId('provider-workspace-unlocked');
+    expect(handoff).toHaveTextContent(EN.activeHeading);
+    expect(screen.getByTestId('workspace-enter')).toHaveTextContent(EN.openWorkspace);
+  });
+
+  it('swaps the specialty row for standing, because the decision is history', async () => {
+    renderScreen({
+      profile: PROFILE({ status: 'ACTIVE', verified: true }),
+      hub: HUB({ status: 'ACTIVE' }),
+      caps: ACTIVE_CAPS,
+      caseState: 'VERIFIED',
+    });
+
+    await screen.findByTestId('provider-workspace-unlocked');
+    expect(await axisValue('standing')).toContain(EN.valueGood);
+    expect(screen.queryByTestId('axis-specialty')).toBeNull();
+  });
+
+  it('still shows all four rows, so the day one changes there is somewhere to look', async () => {
+    renderScreen({
+      profile: PROFILE({ status: 'ACTIVE', verified: true }),
+      hub: HUB({ status: 'ACTIVE' }),
+      caps: ACTIVE_CAPS,
+      caseState: 'VERIFIED',
+    });
+
+    await screen.findByTestId('provider-workspace-unlocked');
+    expect(await axisValue('verification')).toContain(EN.valueVerified);
+    expect(await axisValue('work-access')).toContain(EN.valueActive);
+  });
+
+  it('announces itself politely', async () => {
+    renderScreen({
+      profile: PROFILE({ status: 'ACTIVE', verified: true }),
+      hub: HUB({ status: 'ACTIVE' }),
+      caps: ACTIVE_CAPS,
+      caseState: 'VERIFIED',
+    });
+
+    const handoff = await screen.findByTestId('provider-workspace-unlocked');
+    expect(handoff).toHaveAttribute('role', 'status');
+    expect(handoff).toHaveAttribute('aria-live', 'polite');
+  });
+});
+
+describe('Arabic', () => {
+  it('names every axis and every value in Arabic', async () => {
+    renderScreen({ lang: 'ar' });
+
+    const panel = await screen.findByTestId('provider-status-axes');
+    expect(panel).toHaveTextContent(AR.axisWorkAccess);
+    expect(panel).toHaveTextContent(AR.valueNotActive);
+    expect(panel).not.toHaveTextContent(EN.axisWorkAccess);
+  });
+
+  it('renders the Arabic handoff', async () => {
+    renderScreen({
+      lang: 'ar',
+      profile: PROFILE({ status: 'ACTIVE', verified: true }),
+      hub: HUB({ status: 'ACTIVE' }),
+      caps: ACTIVE_CAPS,
+      caseState: 'VERIFIED',
+    });
+
+    expect(await screen.findByTestId('provider-workspace-unlocked')).toHaveTextContent(
+      AR.activeHeading,
+    );
+  });
+});
+
+describe('before the server has answered', () => {
+  it('shows a skeleton rather than guessing at an axis', async () => {
+    mock.reset();
+    mock.onGet(PROFILE_URL).reply(() => new Promise(() => {}));
+    mock.onGet(HUB_URL).reply(200, HUB());
+    mock.onGet(CAPS_URL).reply(200, CAPS(WAITING_CAPS));
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <LanguageProvider>
+            <ProviderStatusCentreScreen />
+          </LanguageProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    // An axis rendered from a half-arrived answer is worse than no axis: it
+    // would say "Not active" about a provider who can work.
+    expect(await screen.findByTestId('provider-status-loading')).toBeInTheDocument();
+    expect(screen.queryByTestId('provider-status-axes')).toBeNull();
+  });
+});

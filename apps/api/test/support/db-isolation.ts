@@ -129,6 +129,24 @@ const LOCK_KEYS = {
 } as const;
 
 export type LockResource = keyof typeof LOCK_KEYS;
+
+/**
+ * The canonical order, as DATA rather than as a comment a caller has to obey.
+ *
+ * `acquireAdvisoryLocks` sorts every request into this order, so a suite that
+ * lists its locks in any order still takes them in the right one. The rule that
+ * a new resource goes on the END still holds — this list is the rule, now
+ * enforced rather than described.
+ */
+const CANONICAL_ORDER: readonly LockResource[] = [
+  'seed',
+  'providerLifecycle',
+  'outbox',
+  'workAccessGrants',
+  'serviceRequests',
+  'marketRegistry',
+  'mediaAssets',
+];
 export type LockMode = 'exclusive' | 'shared';
 
 export interface HeldLock {
@@ -226,6 +244,156 @@ export async function withAdvisoryLock<T>(
  * reduce the number of whole-run shared holders — not to make acquisition
  * fair.
  */
+export interface LockSpec {
+  resource: LockResource;
+  mode: LockMode;
+}
+
+/**
+ * Take a SET of locks atomically, or none of them.
+ *
+ * WHY THIS EXISTS, AND WHAT IT REPLACES
+ *
+ * Sixteen suites needed more than one resource and took them with sequential
+ * `acquireAdvisoryLock` calls. That is hold-and-wait, and on a slow runner it
+ * is the difference between a green job and a red one. `provider-journey` is
+ * the worst case and the one CI reported:
+ *
+ *     providerLifecycle(X)  acquired
+ *     outbox(X)             waits up to 120s — while STILL HOLDING lifecycle(X)
+ *
+ * The `outbox` suite holds its lock for its whole run, so that wait is real.
+ * For its duration every one of the ~24 suites that want providerLifecycle
+ * SHARED is blocked behind an exclusive holder that is not doing any work — it
+ * is queueing for something else. One slow acquisition became a cascade of
+ * timeouts across unrelated suites, which is exactly the shape CI showed:
+ * outbox AND providerLifecycle failing together.
+ *
+ * Taking the set all-or-nothing removes hold-and-wait, which is one of the four
+ * conditions a deadlock needs. Combined with the canonical ordering that is
+ * already here, the lock graph now has two independent reasons it cannot cycle.
+ *
+ * It also stops the amplification: a suite that cannot get its whole set holds
+ * NOTHING while it waits, so nobody is ever blocked by a waiter.
+ *
+ * THE BACKOFF IS RANDOMISED, AND THAT IS NOT DECORATION. Two suites wanting
+ * overlapping sets can release-and-retry in lockstep forever, each politely
+ * dropping what the other needs at the same instant. Jitter is what makes one
+ * of them win.
+ *
+ * ONE CONNECTION FOR THE WHOLE SET. Session advisory locks belong to their
+ * connection, so the set shares a single pinned client: four locks used to mean
+ * four connections per suite, which mattered — `bound-db-pool.cjs` exists
+ * because this suite can exhaust Postgres' `max_connections`.
+ */
+export async function acquireAdvisoryLocks(
+  specs: readonly LockSpec[],
+  timeoutMs = 120_000,
+): Promise<HeldLock> {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error('acquireAdvisoryLocks requires DATABASE_URL; the gated suites set it.');
+  }
+  if (specs.length === 0) {
+    return { release: async () => undefined };
+  }
+
+  // Sorted into the canonical order rather than trusted to arrive in it.
+  const ordered = [...specs].sort(
+    (a, b) => CANONICAL_ORDER.indexOf(a.resource) - CANONICAL_ORDER.indexOf(b.resource),
+  );
+  for (const spec of ordered) {
+    if (!CANONICAL_ORDER.includes(spec.resource)) {
+      throw new Error(`"${spec.resource}" is missing from CANONICAL_ORDER in db-isolation.ts`);
+    }
+  }
+
+  const { PrismaClient } =
+    require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
+
+  const client: any = new PrismaClient({
+    datasources: { db: { url: singleConnectionUrl(databaseUrl) } },
+    log: ['error'],
+  });
+
+  const unlockOf = (mode: LockMode) =>
+    mode === 'shared' ? 'pg_advisory_unlock_shared' : 'pg_advisory_unlock';
+
+  /** Drop everything taken so far, in reverse. Never throws. */
+  const releaseHeld = async (held: LockSpec[]): Promise<void> => {
+    for (const spec of [...held].reverse()) {
+      await client
+        .$queryRawUnsafe(`SELECT ${unlockOf(spec.mode)}($1::bigint)`, LOCK_KEYS[spec.resource])
+        .catch(() => undefined);
+    }
+  };
+
+  const deadline = Date.now() + timeoutMs;
+  const waitStart = Date.now();
+  let blockedOn: LockSpec | null = null;
+
+  try {
+    for (;;) {
+      const held: LockSpec[] = [];
+      let complete = true;
+
+      for (const spec of ordered) {
+        const tryFn =
+          spec.mode === 'shared' ? 'pg_try_advisory_lock_shared' : 'pg_try_advisory_lock';
+        const rows: Array<{ locked: boolean }> = await client.$queryRawUnsafe(
+          `SELECT ${tryFn}($1::bigint) AS locked`,
+          LOCK_KEYS[spec.resource],
+        );
+        if (rows[0]?.locked) {
+          held.push(spec);
+          continue;
+        }
+        // Not available: drop everything and come back with nothing held.
+        blockedOn = spec;
+        complete = false;
+        await releaseHeld(held);
+        break;
+      }
+
+      if (complete) {
+        const waited = Date.now() - waitStart;
+        if (waited >= 5_000) {
+          console.warn(
+            `[db-isolation] waited ${waited}ms for {${ordered
+              .map((l) => `${l.resource}:${l.mode[0]}`)
+              .join(', ')}} (budget ${timeoutMs}ms)`,
+          );
+        }
+        let released = false;
+        return {
+          async release(): Promise<void> {
+            if (released) return;
+            released = true;
+            await releaseHeld(ordered);
+            await client.$disconnect().catch(() => undefined);
+          },
+        };
+      }
+
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Timed out after ${timeoutMs}ms taking {${ordered
+            .map((l) => `${l.resource}:${l.mode}`)
+            .join(', ')}}; blocked on "${blockedOn?.resource}" (${blockedOn?.mode}). ` +
+            'Another suite holds it, or a crashed run leaked it.',
+        );
+      }
+
+      // Randomised: a fixed delay lets two suites with overlapping sets
+      // release and retry in lockstep indefinitely.
+      await sleep(25 + Math.floor(Math.random() * 75));
+    }
+  } catch (err) {
+    await client.$disconnect().catch(() => undefined);
+    throw err;
+  }
+}
+
 export async function acquireAdvisoryLock(
   resource: LockResource,
   mode: LockMode = 'exclusive',
@@ -249,13 +417,29 @@ export async function acquireAdvisoryLock(
   const unlockFn = mode === 'shared' ? 'pg_advisory_unlock_shared' : 'pg_advisory_unlock';
 
   const deadline = Date.now() + timeoutMs;
+  const waitStart = Date.now();
   try {
     for (;;) {
       const rows: Array<{ locked: boolean }> = await client.$queryRawUnsafe(
         `SELECT ${tryFn}($1::bigint) AS locked`,
         key,
       );
-      if (rows[0]?.locked) break;
+      if (rows[0]?.locked) {
+        // Permanent diagnostic, not test-only scaffolding. A try-lock that does
+        // not queue can starve, and the only symptom of near-starvation is a
+        // long wait that still succeeded — invisible on a fast machine and a
+        // timeout on a slow one. Reporting the tail makes the margin
+        // measurable BEFORE it becomes a red CI job. The threshold is high
+        // enough that a healthy run prints nothing.
+        const waited = Date.now() - waitStart;
+        if (waited >= 5_000) {
+          console.warn(
+            `[db-isolation] waited ${waited}ms for the ${mode} lock on "${resource}" ` +
+              `(budget ${timeoutMs}ms)`,
+          );
+        }
+        break;
+      }
       if (Date.now() >= deadline) {
         throw new Error(
           `Timed out after ${timeoutMs}ms taking the ${mode} advisory lock on "${resource}" ` +
