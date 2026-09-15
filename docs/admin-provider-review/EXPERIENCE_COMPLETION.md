@@ -84,12 +84,22 @@ History hides cached content after session, permission or availability denials
 
 ## Verification and evidence boundaries
 
-The dedicated `admin-review-workflow.real-api.spec.ts` runs against the same
-real disposable API/PostgreSQL/Redis stack used for Provider runtime acceptance.
+The dedicated `admin-review-workflow.real-api.spec.ts` runs in the required
+`admin-review-real-api` CI job with its own disposable API, PostgreSQL, Redis and
+Mailpit services. Both enforcement flags are ON from API startup; the Provider
+acceptance job retains its separate configuration and service lifecycle.
 It registers and submits through public APIs, signs in through the Admin UI,
 opens the queue through navigation, checks a real submission date, follows the
 six sections, submits corrections and final approval, and reloads persisted
 results. Policy publication and retirement are verified through UI and API.
+
+The independent job prevents the preceding Provider suite's login traffic from
+consuming the Admin suite's rate budget. Restarting only the API left those
+counters in shared Redis and caused CI #171 to refuse the first Admin flow with 429. The login limit remains 10 requests per IP per minute, and no rate buckets
+are reset. The nine-test, single-worker suite makes eight fresh Admin UI logins,
+one memoized Admin API login and one Provider UI login. Login responses are
+asserted before waiting for OTP mail, so an upstream refusal is reported at its
+source rather than as a missing message.
 
 The real runtime suite also captures queue, dossier and policy settings in
 English/Arabic, light/dark and 390/768/1440 widths. Screenshots must be inspected;

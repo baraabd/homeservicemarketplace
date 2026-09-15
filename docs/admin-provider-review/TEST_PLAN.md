@@ -35,6 +35,29 @@ Screenshots and axe JSON are attached using `testInfo.outputPath` and `testInfo.
 
 These real provider journeys complement the Admin UI fixture suite. They do not establish that an operator clicked through the Admin browser screens, and their execution must be reported separately from test compilation or discovery.
 
+## Real authenticated Admin browser journeys
+
+`admin-review-workflow.real-api.spec.ts` has nine tests and 44 rendered captures.
+The required `admin-review-real-api` CI job starts its own migrated/seeded
+PostgreSQL, Redis, Mailpit, API and built SPA. Verification and work-access
+enforcement are ON from startup. The suite preserves fresh UI login and OTP for
+each Admin browser context; it does not inject an authenticated browser state.
+The separate job isolates its login workload from Provider acceptance without
+changing the 10/IP/minute login limiter or clearing Redis counters.
+
+The suite verifies the normal navigation route, all six submitted sections,
+field correction and Provider focus after reload, identity inspection and final
+approval, revision-bound portfolio approval without granting work, policy
+publication/retirement and non-admin policy denial. Queue, dossier and policy
+screens cover English/Arabic, light/dark and 390/768/1440 widths; additional
+captures cover identity, filled policy forms, confirmation and portfolio
+inspection. Real media bytes and persisted API responses are required. The
+test scanner only supplies deterministic scan outcomes in the disposable job.
+
+CI uploads `admin-review-real-api-evidence` with screenshots, per-capture axe and
+runtime metadata, the Playwright report, and API/preview logs. These captures
+still require inspection on the final tested SHA before visual acceptance.
+
 ## Commands
 
 ```sh
@@ -42,6 +65,7 @@ pnpm --filter @homeservicemarketplace/api typecheck
 RUN_DB_INTEGRATION=1 pnpm --filter @homeservicemarketplace/api test --runInBand admin-provider-review.integration.spec.ts
 pnpm --filter @homeservicemarketplace/web typecheck:e2e
 E2E_PREBUILT=1 pnpm --filter @homeservicemarketplace/web exec playwright test admin-provider-review.spec.ts
+E2E_REAL_API=http://127.0.0.1:4010 E2E_MAILPIT=http://127.0.0.1:8025 E2E_BASE_URL=http://127.0.0.1:4173 VERIFICATION_ENFORCED=true WORK_ACCESS_ENFORCED=true pnpm --filter @homeservicemarketplace/web exec playwright test admin-review-workflow.real-api.spec.ts --project=chromium-desktop --workers=1
 ```
 
 `--runInBand` above scopes one suite for diagnosis; normal CI runs the integration matrix in parallel. Real DB execution requires the migrated/seeded test PostgreSQL environment and normal test configuration. Browser execution requires the production web build and Chromium installed by CI. A fixture screenshot is never substituted for a real API flow or production deployment evidence.
