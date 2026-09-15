@@ -76,7 +76,10 @@ export class AdminCategoryApplicationsService {
       //
       // Sprint 9B.29 — this read is no longer the GUARANTEE, only the message.
       // Part two is the conditional write below.
-      if (existing.status !== 'PENDING') {
+      if (existing.providerProfile.userId === adminUserId) {
+        throw new AppError('FORBIDDEN', 'You cannot review your own category application.', 403);
+      }
+      if (existing.status !== 'PENDING' || existing.supersededAt) {
         throw new AppError('CONFLICT', 'This application has already been reviewed.', 409);
       }
 

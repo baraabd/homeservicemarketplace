@@ -137,6 +137,7 @@ describe('ProviderNotice', () => {
       />,
     );
     expect(screen.getByText('Agree to the terms to submit')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
     fireEvent.click(screen.getByRole('button', { name: 'Review terms' }));
     expect(onAction).toHaveBeenCalledOnce();
   });

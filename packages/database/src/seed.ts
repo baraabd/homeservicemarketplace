@@ -151,6 +151,8 @@ const SYSTEM_ROLES: RoleSpec[] = [
 ];
 
 const PERMISSIONS: PermissionSpec[] = [
+  { key: 'portfolio:read', description: 'Read provider portfolio submissions for review' },
+  { key: 'portfolio:review', description: 'Approve or reject provider portfolio publication' },
   { key: 'user:read:self', description: 'Read own user profile' },
   { key: 'user:write:self', description: 'Update own user profile' },
   { key: 'user:read:any', description: 'Read any user profile (admin)' },

@@ -196,7 +196,7 @@ class ApproveCaseDto {
   expectedState?: 'SUBMITTED' | 'IN_REVIEW';
 }
 
-class CloseAccessDto {
+class AccessClosureReasonDto {
   @IsIn([
     'POLICY_PERIOD_ELAPSED',
     'TRUST_AND_SAFETY_ACTION',
@@ -211,10 +211,17 @@ class CloseAccessDto {
   @IsString()
   @MaxLength(2000)
   note?: string;
+}
 
+class CloseAccessDto extends AccessClosureReasonDto {
   @IsOptional()
   @IsIn(['VERIFIED'])
   expectedState?: 'VERIFIED';
+}
+
+class ReverifyCaseDto extends AccessClosureReasonDto {
+  @IsIn(['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'ACTION_REQUIRED', 'VERIFIED'])
+  expectedState!: 'DRAFT' | 'SUBMITTED' | 'IN_REVIEW' | 'ACTION_REQUIRED' | 'VERIFIED';
 }
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -309,6 +316,7 @@ export class AdminVerificationCaseCommandsController {
    */
   @UseGuards(CsrfGuard)
   @Post(':caseId/approve')
+  @Permissions('verification:decide', 'verification:evidence:view')
   @HttpCode(HttpStatus.OK)
   approve(
     @CurrentUser() user: AuthenticatedUser,
@@ -347,7 +355,7 @@ export class AdminVerificationCaseCommandsController {
   reverify(
     @CurrentUser() user: AuthenticatedUser,
     @Param('caseId') caseId: string,
-    @Body() body: CloseAccessDto,
+    @Body() body: ReverifyCaseDto,
   ): Promise<CaseCommandResult> {
     return this.workflow.reverify(user.id, {
       caseId,

@@ -11,6 +11,7 @@ import type { NotificationsService } from '../../notifications/notifications.ser
 import { SecurityEventsBus } from '../../../shared/security-events/security-events.bus';
 import type { AdminAuditService } from '../admin-audit.service';
 import { AdminVerificationService } from './admin-verification.service';
+import type { AppConfigService } from '../../../config/app-config.service';
 
 const tx: TransactionRunner = {
   run: <T>(fn: (t: undefined) => Promise<T>) => fn(undefined),
@@ -97,7 +98,7 @@ function makeMocks(
   };
 }
 
-function makeService(m: Mocks): AdminVerificationService {
+function makeService(m: Mocks, enforced = false): AdminVerificationService {
   return new AdminVerificationService(
     m.providers,
     m.notifications,
@@ -105,10 +106,24 @@ function makeService(m: Mocks): AdminVerificationService {
     m.auditEvents,
     tx,
     m.securityEvents,
+    { get: () => enforced } as unknown as AppConfigService,
   );
 }
 
 describe('AdminVerificationService', () => {
+  it('hides legacy approval under evidence or work enforcement', async () => {
+    const m = makeMocks(makeProfile());
+    expect((await makeService(m, true).detail('pp-1')).availableActions).not.toContain('approve');
+  });
+
+  it('requires the complete review workspace under evidence or work enforcement', async () => {
+    const m = makeMocks(makeProfile());
+    await expect(makeService(m, true).approve('admin-1', 'pp-1', null)).rejects.toMatchObject({
+      status: 409,
+      details: { reason: 'USE_REVIEW_WORKSPACE' },
+    });
+    expect(m.providers.decideIfInStatus).not.toHaveBeenCalled();
+  });
   it('approve: PENDING_REVIEW → ACTIVE writes audit + notifies provider', async () => {
     const m = makeMocks(makeProfile({ status: 'PENDING_REVIEW' }));
     await makeService(m).approve('admin-1', 'pp-1', 'looks good');

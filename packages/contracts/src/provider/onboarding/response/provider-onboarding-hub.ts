@@ -1,3 +1,5 @@
+import type { ProviderOnboardingFeedback } from './provider-onboarding-feedback';
+
 // Sprint 9B.15/9B.16 — the onboarding HUB read-model.
 //
 // The wizard (Sprint 8) asked the provider to walk nine steps in a fixed
@@ -126,6 +128,7 @@ export const PROVIDER_ONBOARDING_HUB_STATUSES = [
 export type ProviderOnboardingHubStatus = (typeof PROVIDER_ONBOARDING_HUB_STATUSES)[number];
 
 export interface ProviderOnboardingHubView {
+  reviewFeedback?: ProviderOnboardingFeedback | null;
   tasks: ProviderOnboardingHubTask[];
   progress: ProviderOnboardingHubProgress;
   nextAction: ProviderOnboardingHubNextAction;

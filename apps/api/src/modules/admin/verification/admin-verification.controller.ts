@@ -24,6 +24,8 @@ import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
+import { Permissions } from '../../iam/authorization/decorators/permissions.decorator';
+import { PermissionsGuard } from '../../iam/authorization/guards/permissions.guard';
 import {
   AdminProviderApproveDto,
   AdminProviderRejectDto,
@@ -44,12 +46,16 @@ export class AdminVerificationController {
     private readonly cases: AdminVerificationCaseService,
   ) {}
 
+  @UseGuards(PermissionsGuard)
+  @Permissions('user:read:any')
   @Get()
   @HttpCode(HttpStatus.OK)
   list(@Query() query: ListAdminProvidersQueryDto): Promise<ListAdminProvidersResponse> {
     return this.verification.list(query);
   }
 
+  @UseGuards(PermissionsGuard)
+  @Permissions('user:read:any')
   @Get(':providerProfileId')
   @HttpCode(HttpStatus.OK)
   detail(@Param('providerProfileId') providerProfileId: string): Promise<AdminProviderSummary> {
@@ -119,6 +125,8 @@ export class AdminVerificationController {
   // rows filtered by metadata.providerProfileId. Cursor-paginated; no
   // type filter on the wire — every audit row that touched this profile
   // is in the same timeline.
+  @UseGuards(PermissionsGuard)
+  @Permissions('user:read:any')
   @Get(':providerProfileId/audit')
   @HttpCode(HttpStatus.OK)
   audit(
@@ -138,6 +146,8 @@ export class AdminVerificationController {
   // Returns null — not 404 — when the provider has never submitted. "No case
   // yet" is a state a reviewer must be able to see, not a failure the UI has
   // to special-case.
+  @UseGuards(PermissionsGuard)
+  @Permissions('user:read:any')
   @Get(':providerProfileId/verification')
   @HttpCode(HttpStatus.OK)
   verificationCase(

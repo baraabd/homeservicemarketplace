@@ -3,7 +3,7 @@
 // THE COPY RULE FOR THIS SCREEN IS HONESTY ABOUT WHAT IS NOT BUILT.
 //
 // Nothing on this platform publishes a provider profile to customers yet, and
-// nothing reviews a portfolio photo. A screen that showed a polished "this is
+// portfolio images require an explicit Admin review. A screen that showed a polished "this is
 // your public profile" and called unreviewed photos published would be lying to
 // the provider about the state of their own application. So the waiting copy
 // says what is true, the server tells the client which of those facts still
@@ -51,6 +51,10 @@ export interface PublicProfileCopy {
   photoPosition: (position: number, total: number) => string;
   /** How to reorder, announced to assistive technology and drawn nowhere. */
   reorderHint: string;
+  rejectedPhotoTitle: (position: number) => string;
+  rejectedPhotoFallback: string;
+  removeRejectedPhoto: string;
+  removeRejectedPhotoFailed: string;
   photosCheckingTitle: string;
   photosCheckingBody: string;
   /** The publication-rights gate, which appears once a file is waiting. */
@@ -104,6 +108,11 @@ export const PUBLIC_PROFILE_COPY: Record<Lang, PublicProfileCopy> = {
     photoPosition: (position, total) => `Photo ${position} of ${total}`,
     reorderHint:
       'Use the left and right arrow keys to change the order. Home makes a photo the cover.',
+    rejectedPhotoTitle: (position) => `Photo ${position} needs a change`,
+    rejectedPhotoFallback:
+      'Please replace this photo with an image you have permission to publish.',
+    removeRejectedPhoto: 'Remove photo to add a replacement',
+    removeRejectedPhotoFailed: 'We could not remove the photo. Please try again.',
     photosCheckingTitle: 'Photos are being checked',
     photosCheckingBody:
       'Photos uploaded successfully. Review does not block application completion, but controls when photos become visible.',
@@ -174,6 +183,10 @@ export const PUBLIC_PROFILE_COPY: Record<Lang, PublicProfileCopy> = {
     offline: 'Offline — your changes are waiting.',
   },
   ar: {
+    rejectedPhotoTitle: (position) => `الصورة ${position} تحتاج إلى تعديل`,
+    rejectedPhotoFallback: 'يرجى استبدال هذه الصورة بصورة تملك الإذن بنشرها.',
+    removeRejectedPhoto: 'إزالة الصورة لإضافة بديل',
+    removeRejectedPhotoFailed: 'تعذر إزالة الصورة. يرجى المحاولة مجددًا.',
     bioApprovedLabel: 'عرّف العملاء بخبرتك',
     bioApprovedHint: 'اكتب بلغة واضحة وتجنب أرقام الهاتف والعناوين الخاصة.',
     previewTitle: 'معاينة ما يراه العميل',

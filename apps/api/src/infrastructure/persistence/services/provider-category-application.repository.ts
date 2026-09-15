@@ -122,7 +122,7 @@ export class ProviderCategoryApplicationRepository {
     tx?: PrismaTx,
   ): Promise<number> {
     const result = await this.db(tx).providerCategoryApplication.updateMany({
-      where: { id, status: 'PENDING' },
+      where: { id, status: 'PENDING', supersededAt: null },
       data: { status },
     });
     return result.count;

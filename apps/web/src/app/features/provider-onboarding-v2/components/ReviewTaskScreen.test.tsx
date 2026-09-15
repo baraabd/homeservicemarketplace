@@ -363,6 +363,7 @@ describe('consent', () => {
     expect(await screen.findByTestId('review-blocked-reason')).toHaveTextContent(
       EN.blocker['serviceAreaCountry:OUT_OF_RANGE']!,
     );
+    expect(screen.getByTestId('review-blocked-reason')).toHaveAttribute('aria-live', 'polite');
     expect(screen.queryByTestId('terms-ready')).toBeNull();
     expect(screen.getByTestId('terms-accept')).not.toBeChecked();
     expect(screen.getByTestId('terms-accept')).toBeEnabled();

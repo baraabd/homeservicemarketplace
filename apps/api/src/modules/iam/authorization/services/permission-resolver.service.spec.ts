@@ -36,6 +36,20 @@ const config: AppConfigService = {
 } as unknown as AppConfigService;
 
 describe('PermissionResolverService', () => {
+  it('reads current user memberships for sensitive authorization without consulting Redis', async () => {
+    const redis = mkRedis({ store: new Map([['iam:role:perm:admin', '["verification:decide"]']]) });
+    const roles = {
+      listPermissionKeysForUser: jest
+        .fn()
+        .mockResolvedValueOnce(['verification:decide'])
+        .mockResolvedValueOnce([]),
+    };
+    const svc = new PermissionResolverService(roles as unknown as RoleRepository, redis, config);
+    expect(await svc.resolveFreshForUser('reviewer')).toEqual(new Set(['verification:decide']));
+    expect(await svc.resolveFreshForUser('reviewer')).toEqual(new Set());
+    expect(roles.listPermissionKeysForUser).toHaveBeenNthCalledWith(2, 'reviewer', undefined);
+    expect(redis._client.mget).not.toHaveBeenCalled();
+  });
   it('loads permissions from DB on cache miss and sets cache', async () => {
     const state = { store: new Map<string, string>() };
     const redis = mkRedis(state);

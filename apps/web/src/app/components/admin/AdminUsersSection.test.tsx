@@ -226,3 +226,33 @@ describe('AdminDashboard — User Control (Sprint 6.1)', () => {
     expect(dom).not.toContain('mfaSecret');
   });
 });
+
+describe('Admin user directory pagination', () => {
+  it('reaches accounts after the first 50 and resets the cursor when filters change', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    mock.onGet('/v1/admin/roles').reply(200, ROLES);
+    mock.onGet('/v1/admin/users').reply(({ params }) => [
+      200,
+      params.cursor
+        ? {
+            items: [{ ...ADA, id: 'u-51', firstName: 'Grace', lastName: 'Hopper' }],
+            nextCursor: null,
+          }
+        : { items: [ADA], nextCursor: 'u-50' },
+    ]);
+    renderAdmin();
+    openUsersTab();
+    await screen.findByText('Ada Lovelace');
+    fireEvent.click(screen.getByRole('button', { name: /Next|التالي/ }));
+    await screen.findByText('Grace Hopper');
+    const latestList = () =>
+      mock.history.get.filter((request) => request.url === '/v1/admin/users').at(-1);
+    expect(latestList()?.params.cursor).toBe('u-50');
+    fireEvent.change(screen.getByRole('combobox', { name: /^Status$|^الحالة$/ }), {
+      target: { value: 'SUSPENDED' },
+    });
+    await waitFor(() => expect(latestList()?.params.status).toBe('SUSPENDED'));
+    expect(latestList()?.params.cursor).toBeUndefined();
+    expect(screen.getByRole('button', { name: /Previous|السابق/ })).toBeDisabled();
+  });
+});

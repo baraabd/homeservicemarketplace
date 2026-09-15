@@ -1,3 +1,4 @@
+import { PortfolioMediaService } from '../../src/modules/media/portfolio-media.service';
 import { Test } from '@nestjs/testing';
 import { APP_FILTER } from '@nestjs/core';
 import { CanActivate, INestApplication, VersioningType } from '@nestjs/common';
@@ -60,6 +61,14 @@ async function bootApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({
     controllers: [MediaController],
     providers: [
+      {
+        provide: PortfolioMediaService,
+        useValue: {
+          openPublic: jest
+            .fn()
+            .mockRejectedValue(new Error('Portfolio requires a persisted approval.')),
+        },
+      },
       { provide: STORAGE_PORT, useValue: { presignUpload: jest.fn() } },
       { provide: LocalDiskStorageAdapter, useValue: permissiveLocal },
       // The real app registers this via APP_FILTER in AppModule. Without it an

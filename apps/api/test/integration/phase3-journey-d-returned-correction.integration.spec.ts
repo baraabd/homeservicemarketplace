@@ -222,6 +222,9 @@ d('Phase 3 Journey D — a returned application is correctable (real Postgres)',
     const { UserRepository } = require('../../src/infrastructure/persistence/iam/user.repository');
     const { RoleRepository } = require('../../src/infrastructure/persistence/iam/role.repository');
     const {
+      PermissionResolverService,
+    } = require('../../src/modules/iam/authorization/services/permission-resolver.service');
+    const {
       PlatformSettingRepository,
     } = require('../../src/infrastructure/persistence/settings/platform-setting.repository');
     const { AuditService } = require('../../src/modules/iam/audit/audit.service');
@@ -309,8 +312,10 @@ d('Phase 3 Journey D — a returned application is correctable (real Postgres)',
 
     const FLAGS: Record<string, unknown> = {
       JWT_ACCESS_SECRET: SECRET,
-      WORK_ACCESS_ENFORCED: true,
-      VERIFICATION_ENFORCED: true,
+      // Legacy return/approval compatibility only. The enforced structured
+      // correction loop is covered by admin-provider-review.integration.spec.ts.
+      WORK_ACCESS_ENFORCED: false,
+      VERIFICATION_ENFORCED: false,
     };
     const config = { get: (k: string) => FLAGS[k], isProduction: false };
 
@@ -347,6 +352,13 @@ d('Phase 3 Journey D — a returned application is correctable (real Postgres)',
         ProviderCategoryApplicationRepository,
         UserRepository,
         RoleRepository,
+        {
+          provide: PermissionResolverService,
+          inject: [RoleRepository],
+          useFactory: (
+            roles: import('../../src/infrastructure/persistence/iam/role.repository').RoleRepository,
+          ) => new PermissionResolverService(roles, {}, config),
+        },
         PlatformSettingRepository,
         AuditService,
         AuditEventRepository,
@@ -400,6 +412,9 @@ d('Phase 3 Journey D — a returned application is correctable (real Postgres)',
         },
       });
     }
+    // Fresh permission reads resolve the seeded admin role from real membership.
+    const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: 'admin' } });
+    await prisma.userRole.create({ data: { userId: ADMIN, roleId: adminRole.id } });
     await prisma.serviceCategory.create({
       data: { id: ROOT, slug: ROOT, labelEn: 'Electrical', labelAr: 'كهرباء', icon: 'bolt' },
     });

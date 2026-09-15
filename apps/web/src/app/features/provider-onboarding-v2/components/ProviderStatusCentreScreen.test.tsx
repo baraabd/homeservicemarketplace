@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -83,6 +83,10 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+function CurrentRoute() {
+  return <output data-testid="status-current-route">{useLocation().pathname}</output>;
+}
+
 function renderScreen(
   options: {
     profile?: ReturnType<typeof PROFILE>;
@@ -149,10 +153,11 @@ function renderScreen(
   window.localStorage.setItem('hsm.lang', options.lang ?? 'en');
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={['/provider/status']}>
       <QueryClientProvider client={client}>
         <LanguageProvider>
           <ProviderStatusCentreScreen />
+          <CurrentRoute />
         </LanguageProvider>
       </QueryClientProvider>
     </MemoryRouter>,
@@ -161,6 +166,31 @@ function renderScreen(
 
 /** The badge on one axis row. */
 const axisValue = async (id: string) => (await screen.findByTestId(`axis-${id}`)).textContent ?? '';
+
+describe('document entry follows the verification task', () => {
+  it.each([null, 'DRAFT', 'ACTION_REQUIRED', 'REJECTED', 'EXPIRED'])(
+    'keeps verification reachable when the case needs provider attention: %s',
+    async (caseState) => {
+      renderScreen({ caseState });
+      const entry = await screen.findByTestId('status-view-verification');
+      expect(entry).toBeEnabled();
+      fireEvent.click(entry);
+      expect(screen.getByTestId('status-current-route')).toHaveTextContent(
+        '/provider/verification',
+      );
+    },
+  );
+
+  it.each(['SUBMITTED', 'IN_REVIEW', 'VERIFIED'])(
+    'keeps the approved waiting layout focused while there is no document task: %s',
+    async (caseState) => {
+      renderScreen({ caseState });
+      await screen.findByTestId('provider-status-axes');
+      expect(screen.queryByTestId('status-view-verification')).not.toBeInTheDocument();
+      expect(screen.getByTestId('status-view-application')).toBeEnabled();
+    },
+  );
+});
 
 describe('the four axes are answered separately', () => {
   it('says an application is complete and work access is not, in the same breath', async () => {

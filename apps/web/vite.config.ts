@@ -41,6 +41,12 @@ export default defineConfig(({ mode, command }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
+    // Contracts are a linked workspace package emitted as CommonJS for Nest.
+    // Include its real path when using shared runtime constants in the browser.
+    optimizeDeps: { include: ['@homeservicemarketplace/contracts'] },
+    build: {
+      commonjsOptions: { include: [/node_modules/, /packages\/contracts\/dist/] },
+    },
     assetsInclude: ['**/*.svg', '**/*.csv'],
   };
 });

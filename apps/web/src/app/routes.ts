@@ -16,6 +16,7 @@ import {
   ProviderOnboardingHubPage,
   ProviderOnboardingTaskPage,
   ProviderOnboardingLayout,
+  ProviderVerificationPage,
 } from './pages/ProviderOnboardingPage';
 import { RequireAuth, RequireAdmin, GuestOnly } from '../lib/route-guards';
 
@@ -32,7 +33,7 @@ export const router = createBrowserRouter([
   // ── Admin (full-width, no phone container, role-gated) ───────────────────
   {
     Component: RequireAdmin,
-    children: [{ path: 'admin', Component: AdminPage }],
+    children: [{ path: 'admin/*', Component: AdminPage }],
   },
 
   {
@@ -67,6 +68,9 @@ export const router = createBrowserRouter([
           { path: 'home/bookings', Component: HomePage },
           { path: 'home/messages', Component: HomePage },
           { path: 'home/profile', Component: HomePage },
+          // Applicants must be able to provide identity evidence before the
+          // workspace becomes active. The API owns eligibility and actions.
+          { path: 'provider/verification', Component: ProviderVerificationPage },
           // Sprint 9B.16 — the V2 onboarding surface. Full-screen, so it is a
           // ROUTE rather than a tab inside ProviderApp: the task the provider
           // is on has to survive a reload and a login round-trip, and tab

@@ -264,13 +264,13 @@ d('Sprint 9B.22 public profile preview (real Postgres)', () => {
       }).toEqual({ portfolio: [], awaiting: 0 });
     });
 
-    it('reports that no review workflow exists, rather than implying a queue', async () => {
-      // Nothing on this platform writes APPROVED. The screen has to say so.
+    it('reports the deployed Admin review workflow as available', async () => {
+      // The Admin moderation route ships with this build. The customer profile route does not.
       const result = await service.preview(USER_ID, 'en');
       expect({
         moderation: result.moderationReviewAvailable,
         publicRoute: result.publicProfileRouteAvailable,
-      }).toEqual({ moderation: false, publicRoute: false });
+      }).toEqual({ moderation: true, publicRoute: false });
     });
 
     it('ignores a soft-deleted item entirely', async () => {

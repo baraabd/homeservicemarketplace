@@ -40,6 +40,13 @@ import { AdminCategoryApplicationsService } from './category-applications/admin-
 import { AdminAccessRequestsController } from './access-requests/admin-access-requests.controller';
 import { AdminCatalogController } from './catalog/admin-catalog.controller';
 import { AdminCatalogService } from './catalog/admin-catalog.service';
+import { ProviderCapabilityModule } from '../provider/capability/provider-capability.module';
+import { AdminProviderReviewController } from './provider-review/provider-review.controller';
+import { AdminProviderReviewService } from './provider-review/provider-review.service';
+import { AdminProviderReviewRepository } from './provider-review/provider-review.repository';
+import { AdminPortfolioController } from './portfolio/admin-portfolio.controller';
+import { AdminPortfolioService } from './portfolio/admin-portfolio.service';
+import { PortfolioMediaModule } from '../media/portfolio-media.module';
 
 // Admin module. Hosts every admin-side surface so the
 // AuthenticationModule / AuthorizationModule / AdminAuditService
@@ -71,9 +78,13 @@ import { AdminCatalogService } from './catalog/admin-catalog.service';
     // Exports VerificationCaseWorkflowService, the only class allowed to act on
     // the case transition table.
     ProviderVerificationModule,
+    ProviderCapabilityModule,
+    PortfolioMediaModule,
   ],
   controllers: [
     AdminController,
+    AdminProviderReviewController,
+    AdminPortfolioController,
     AdminUsersController,
     AdminRolesController,
     AdminVerificationController,
@@ -104,6 +115,9 @@ import { AdminCatalogService } from './catalog/admin-catalog.service';
   ],
   providers: [
     AdminVerificationQueueService,
+    AdminProviderReviewRepository,
+    AdminProviderReviewService,
+    AdminPortfolioService,
     AdminAuditService,
     AdminUsersService,
     AdminVerificationService,

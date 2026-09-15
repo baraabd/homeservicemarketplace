@@ -189,24 +189,6 @@ describe('the public contract has nowhere to put a private fact', () => {
     }
   });
 
-  it('builds the public url the same way the portfolio service does', () => {
-    // Two files compose `/v1/media/files/<key>`. If they ever disagree, the
-    // preview shows images that 404 while the gallery shows them fine.
-    const portfolio = readFileSync(
-      join(__dirname, '../portfolio/provider-portfolio.service.ts'),
-      'utf8',
-    );
-    const publicProfile = readFileSync(
-      join(__dirname, 'provider-public-profile.service.ts'),
-      'utf8',
-    );
-    const pattern = /return `\/v1\/media\/files\/\$\{storageKey\}`;/;
-    expect({ portfolio: pattern.test(portfolio), preview: pattern.test(publicProfile) }).toEqual({
-      portfolio: true,
-      preview: true,
-    });
-  });
-
   it('never spreads its source, which is how a new column publishes itself', () => {
     const projection = readFileSync(join(__dirname, 'public-profile-projection.ts'), 'utf8');
     const body = projection.slice(projection.indexOf('export function buildPublicProfile'));

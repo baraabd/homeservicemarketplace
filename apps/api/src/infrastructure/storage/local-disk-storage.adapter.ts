@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdir, open, rm, stat, writeFile } from 'node:fs/promises';
 import { join, normalize, sep } from 'node:path';
+import type { Readable } from 'node:stream';
+import { isPortfolioStorageKey } from './portfolio-storage-policy';
 
 import { AppConfigService } from '../../config/app-config.service';
 import { PresignUploadInput, PresignedUpload, StoragePort } from './storage.port';
@@ -63,6 +65,19 @@ export class LocalDiskStorageAdapter extends StoragePort {
     };
   }
 
+  async readObjectStream(key: string): Promise<Readable | null> {
+    try {
+      const file = await open(this.absolutePathForKey(key), 'r');
+      if (!(await file.stat()).isFile()) {
+        await file.close();
+        return null;
+      }
+      return file.createReadStream();
+    } catch {
+      return null;
+    }
+  }
+
   /** The canonical public read URL. Shared with presign above so the two can
    *  never disagree about what a key resolves to. */
   publicUrlForKey(key: string): string {
@@ -109,7 +124,9 @@ export class LocalDiskStorageAdapter extends StoragePort {
     }
     const abs = this.absolutePathForKey(args.key);
     await mkdir(dirname(abs), { recursive: true });
-    await writeFile(abs, args.body);
+    // A signed PUT is reusable until expiry. Exclusive creation prevents a
+    // replay replacing bytes after they were attached or approved.
+    await writeFile(abs, args.body, { flag: isPortfolioStorageKey(args.key) ? 'wx' : 'w' });
     this.log.log({ msg: 'storage.local.write', key: args.key, bytes: args.body.byteLength });
   }
 

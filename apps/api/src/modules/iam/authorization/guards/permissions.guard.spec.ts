@@ -30,6 +30,7 @@ function reflectorWith(required?: string[]): Reflector {
 function resolverReturning(granted: string[]): PermissionResolverService {
   return {
     resolveForRoles: jest.fn().mockResolvedValue(new Set(granted)),
+    resolveFreshForUser: jest.fn().mockResolvedValue(new Set(granted)),
   } as unknown as PermissionResolverService;
 }
 
@@ -66,5 +67,21 @@ describe('PermissionsGuard', () => {
     await expect(
       g.canActivate(ctxWith({ id: 'u', sessionId: 's', jti: 'j', roles: ['admin'] })),
     ).resolves.toBe(true);
+  });
+
+  it.each([
+    'verification:decide',
+    'verification:evidence:view',
+    'portfolio:review',
+    'user:read:any',
+  ])('denies revoked %s even when the token and cached role still grant it', async (permission) => {
+    const resolver = resolverReturning([permission]);
+    jest.spyOn(resolver, 'resolveFreshForUser').mockResolvedValue(new Set());
+    const guard = new PermissionsGuard(reflectorWith([permission]), resolver);
+    await expect(
+      guard.canActivate(ctxWith({ id: 'revoked', sessionId: 's', jti: 'j', roles: ['admin'] })),
+    ).rejects.toThrow(ForbiddenException);
+    expect(resolver.resolveFreshForUser).toHaveBeenCalledWith('revoked');
+    expect(resolver.resolveForRoles).not.toHaveBeenCalled();
   });
 });

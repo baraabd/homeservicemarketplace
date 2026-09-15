@@ -127,11 +127,11 @@ describe('resubmission is the same edge as submission', () => {
 
 describe('what a reviewer is offered, per state', () => {
   it.each([
-    ['SUBMITTED', ['assign', 'requestAction', 'approve', 'reject']],
-    ['IN_REVIEW', ['assign', 'requestAction', 'approve', 'reject']],
-    ['ACTION_REQUIRED', ['reject']],
+    ['SUBMITTED', ['assign', 'requestAction', 'approve', 'reject', 'reverify']],
+    ['IN_REVIEW', ['assign', 'requestAction', 'approve', 'reject', 'reverify']],
+    ['ACTION_REQUIRED', ['reject', 'reverify']],
     ['VERIFIED', ['reverify', 'revoke']],
-    ['DRAFT', []],
+    ['DRAFT', ['reverify']],
     ['REJECTED', []],
     ['EXPIRED', []],
   ] as Array<[VerificationCaseState, VerificationCaseAction[]]>)(
@@ -141,10 +141,8 @@ describe('what a reviewer is offered, per state', () => {
     },
   );
 
-  it('offers a reviewer nothing on a DRAFT case', () => {
-    // A draft is the provider's private workspace. A reviewer acting on one
-    // would be deciding on evidence that was never submitted.
-    expect(availableCaseActions('DRAFT', 'reviewer')).toEqual([]);
+  it('can renew a draft scope without approving or rejecting unsubmitted evidence', () => {
+    expect(availableCaseActions('DRAFT', 'reviewer')).toEqual(['reverify']);
   });
 });
 

@@ -21,7 +21,13 @@ export class PermissionsGuard implements CanActivate {
     const user = ctx.switchToHttp().getRequest<{ user?: AuthenticatedUser }>().user;
     if (!user) throw new ForbiddenException({ code: 'FORBIDDEN' });
 
-    const granted = await this.resolver.resolveForRoles(user.roles);
+    const sensitive = required.some(
+      (key) =>
+        key.startsWith('verification:') || key.startsWith('portfolio:') || key === 'user:read:any',
+    );
+    const granted = sensitive
+      ? await this.resolver.resolveFreshForUser(user.id)
+      : await this.resolver.resolveForRoles(user.roles);
     const missing = required.filter((p) => !granted.has(p));
     if (missing.length > 0) throw new ForbiddenException({ code: 'FORBIDDEN' });
     return true;

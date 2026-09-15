@@ -1,5 +1,8 @@
 export * from './publication-ack';
 
+/** Formats validated from stored bytes before a new portfolio item is attached. */
+export const PROVIDER_PORTFOLIO_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+
 // Sprint 9B.10 — the provider portfolio contract.
 //
 //   GET    /v1/me/provider/portfolio
@@ -16,9 +19,9 @@ export * from './publication-ack';
 // RESTRICTED evidence asset to a portfolio item would publish their own
 // identity documents to the marketplace.
 
-/** Where a portfolio image lives on the public web. */
+/** Portfolio preview resource. Identity evidence uses a separate storage boundary. */
 export interface ProviderPortfolioMedia {
-  /** Absolute, renderable in an <img> with no token handshake. */
+  /** Authenticated owner/reviewer resource; public projections expose approved items only. */
   url: string;
   contentType: string;
 }

@@ -17,6 +17,7 @@ import { useLang } from '../../../i18n/LanguageContext';
 import { ProviderButton, ProviderSkeleton } from '../../provider-ui';
 import type { ProviderTone } from '../../provider-ui/status';
 import { STATUS_CENTRE_COPY, type Lang } from '../copy/status-centre-copy';
+import { REVIEW_FEEDBACK_COPY } from '../copy/review-feedback-copy';
 import { OnboardingAlert } from './OnboardingAlert';
 import { OnboardingAxisPanel, type OnboardingAxisRow } from './OnboardingAxisPanel';
 import { OnboardingShell } from './OnboardingShell';
@@ -148,34 +149,39 @@ export function ProviderStatusCentreScreen() {
    * VERIFIED case really did grant the badge — it is never the source of the
    * word shown, because it cannot distinguish "not started" from "refused".
    */
-  const verificationAxis = ((): { status: string; tone: ProviderTone } => {
-    if (caseQuery.isError) return { status: copy.valueUnknown, tone: 'todo' };
-    if (!caseQuery.isFetched) return { status: copy.valueUnknown, tone: 'todo' };
+  const verificationAxis = ((): {
+    status: string;
+    tone: ProviderTone;
+    needsProviderAttention: boolean;
+  } => {
+    if (caseQuery.isError || !caseQuery.isFetched) {
+      return { status: copy.valueUnknown, tone: 'todo', needsProviderAttention: false };
+    }
 
     const state = caseQuery.data?.case?.state ?? null;
     switch (state) {
       case 'VERIFIED':
-        return { status: copy.valueVerified, tone: 'done' };
+        return { status: copy.valueVerified, tone: 'done', needsProviderAttention: false };
       case 'SUBMITTED':
       case 'IN_REVIEW':
-        return { status: copy.valueInReview, tone: 'waiting' };
+        return { status: copy.valueInReview, tone: 'waiting', needsProviderAttention: false };
       case 'ACTION_REQUIRED':
         // Blocked, not waiting. The provider has something to do and the row
         // has to say so — this is the case the old inference read as "In
         // review", leaving somebody waiting for a queue they were not in.
-        return { status: copy.valueActionRequired, tone: 'blocked' };
+        return { status: copy.valueActionRequired, tone: 'blocked', needsProviderAttention: true };
       case 'REJECTED':
-        return { status: copy.valueRejected, tone: 'danger' };
+        return { status: copy.valueRejected, tone: 'danger', needsProviderAttention: true };
       case 'EXPIRED':
-        return { status: copy.valueExpired, tone: 'blocked' };
+        return { status: copy.valueExpired, tone: 'blocked', needsProviderAttention: true };
       case 'DRAFT':
       case null:
-        return { status: copy.valueNotStarted, tone: 'todo' };
+        return { status: copy.valueNotStarted, tone: 'todo', needsProviderAttention: true };
       default:
         // A state this bundle has never heard of. Saying "unavailable" is the
         // honest rendering; picking the nearest known word would be a guess
         // about a decision somebody else made.
-        return { status: copy.valueUnknown, tone: 'todo' };
+        return { status: copy.valueUnknown, tone: 'todo', needsProviderAttention: false };
     }
   })();
   // Standing is only a question once the application is no longer one. A
@@ -350,6 +356,22 @@ export function ProviderStatusCentreScreen() {
         />
 
         <OnboardingAxisPanel rows={rows} data-testid="provider-status-axes" />
+
+        {/* The pending-review surface stays focused on waiting. A document
+            entry is needed when the case asks the provider to act, while the
+            dedicated verification route remains reachable in every state.
+            The destination's API still owns upload and renewal permissions. */}
+        {verificationAxis.needsProviderAttention ? (
+          <ProviderButton
+            tone="secondary"
+            shape="onboarding"
+            size="block"
+            onClick={() => navigate('/provider/verification')}
+            data-testid="status-view-verification"
+          >
+            {REVIEW_FEEDBACK_COPY[lang].viewVerification}
+          </ProviderButton>
+        ) : null}
 
         {/* The reference's second button. In the prototype it jumps to the
             action-required screen; here it does the real equivalent — reopens

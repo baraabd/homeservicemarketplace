@@ -103,12 +103,18 @@ describe('only images, and only supported ones', () => {
     expect(refusalOf(() => assertPublishableContentType(ct))).toBe('DISALLOWED_FORMAT');
   });
 
-  it.each(['application/pdf', 'text/html', 'image/svg+xml', '', 'image/jpeg; charset=x'])(
-    'refuses %p',
-    (ct) => {
-      expect(refusalOf(() => assertPublishableContentType(ct))).toBe('DISALLOWED_FORMAT');
-    },
-  );
+  it.each([
+    'application/pdf',
+    'text/html',
+    'image/svg+xml',
+    'image/gif',
+    'image/heic',
+    'image/heif',
+    '',
+    'image/jpeg; charset=x',
+  ])('refuses %p', (ct) => {
+    expect(refusalOf(() => assertPublishableContentType(ct))).toBe('DISALLOWED_FORMAT');
+  });
 });
 
 describe('file and gallery limits', () => {

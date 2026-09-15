@@ -1,5 +1,8 @@
 import { ValidationPipe } from '@nestjs/common';
-import type { PatchOnboardingStepRequest } from '@homeservicemarketplace/contracts';
+import type {
+  PatchOnboardingStepRequest,
+  ProviderOnboardingFeedback,
+} from '@homeservicemarketplace/contracts';
 
 import { PatchOnboardingStepDto } from './dto/patch-onboarding-step.dto';
 import type {
@@ -127,7 +130,7 @@ interface Harness {
   /** Sprint 09B.29 Phase 5 (C1) — the onboarding defaults, a no-op double. */
   defaults: { apply: jest.Mock; recordExplicitRadius: jest.Mock };
   trx: {
-    providerProfile: { update: jest.Mock; updateMany: jest.Mock };
+    providerProfile: { update: jest.Mock; updateMany: jest.Mock; findFirst: jest.Mock };
     providerOnboardingSubmission: { create: jest.Mock };
     providerCategoryApplication: { create: jest.Mock };
     providerWorkAccessGrant: { create: jest.Mock };
@@ -156,6 +159,8 @@ function build(
     categories?: { id: string; isLeaf: boolean; isActive: boolean }[];
     /// Sprint 9B.18 — decided applications the wizard reads separately.
     rejectedApplications?: unknown[];
+    onboardingSubmissions?: Array<{ decision: string | null; reviewFeedback: unknown }>;
+    portfolioItems?: Array<{ moderationState: string }>;
   } = {},
 ): Harness {
   const profile = over.profile === undefined ? makeCompleteProfile() : over.profile;
@@ -178,6 +183,32 @@ function build(
     providerProfile: {
       update: jest.fn().mockResolvedValue(profile),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findFirst: jest.fn().mockResolvedValue(
+        profile
+          ? {
+              ...profile,
+              transportModes: profile.transportModes ?? ['VAN'],
+              primaryServiceCategoryId: profile.primaryServiceCategoryId ?? 'cat-leaf-1',
+              serviceAreaCountryCode: profile.serviceAreaCountryCode ?? null,
+              user: {
+                email: 'ada@example.test',
+                emailVerifiedAt: new Date('2026-08-01T00:00:00Z'),
+              },
+              onboardingDraft: draft,
+              equipment: [],
+              serviceAreas: [],
+              availabilityIntervals: intervals,
+              portfolioItems: [],
+              categoryApplications: profile.categoryApplications.map((application, index) => ({
+                id: `app-${index}`,
+                status: 'PENDING',
+                createdAt: new Date('2026-08-01T00:00:00Z'),
+                updatedAt: new Date('2026-08-01T00:00:00Z'),
+                ...application,
+              })),
+            }
+          : null,
+      ),
     },
     providerOnboardingSubmission: { create: jest.fn().mockResolvedValue({ id: 'sub-1' }) },
     providerCategoryApplication: { create: jest.fn().mockResolvedValue({ id: 'app-1' }) },
@@ -193,6 +224,7 @@ function build(
   } as unknown as jest.Mocked<Pick<ProviderProfileRepository, 'findByUserIdWithCategories'>>;
 
   const drafts = {
+    lockProfileForMutation: jest.fn().mockResolvedValue(undefined),
     ensure: jest.fn().mockResolvedValue(draft),
     findByProfileId: jest.fn().mockResolvedValue(draft),
     advanceIfVersion: jest.fn().mockResolvedValue(over.advanceCount ?? 1),
@@ -201,6 +233,8 @@ function build(
       equipment: [],
       serviceAreas: [],
       onboardingDraft: draft,
+      onboardingSubmissions: over.onboardingSubmissions ?? [],
+      portfolioItems: over.portfolioItems ?? [],
     }),
     replaceAvailability: jest.fn().mockResolvedValue(undefined),
     replaceEquipment: jest.fn().mockResolvedValue(undefined),
@@ -356,6 +390,84 @@ function build(
 
   return { service, providers, drafts, categories, audit, expansion, trx, markets, defaults };
 }
+
+describe('review corrections and portfolio projection', () => {
+  const feedback: ProviderOnboardingFeedback = {
+    requestedAt: '2026-09-15T09:00:00.000Z',
+    items: [
+      {
+        id: 'feedback-1',
+        taskId: 'PORTFOLIO',
+        field: 'bio',
+        reasonCode: 'INCOMPLETE',
+        providerMessage: 'Describe the services you offer.',
+      },
+    ],
+  };
+
+  it('projects only public correction instructions from the latest returned submission', async () => {
+    const h = build({
+      profile: makeCompleteProfile({ onboardingState: 'RETURNED', status: 'REJECTED' }),
+      onboardingSubmissions: [
+        {
+          decision: 'RETURNED',
+          reviewFeedback: {
+            ...feedback,
+            internalNote: 'Private reviewer context',
+            items: feedback.items.map((item) => ({ ...item, storageKey: 'restricted/internal' })),
+          },
+        },
+      ],
+    });
+    const [draft, hub, review] = await Promise.all([
+      h.service.get('u-1'),
+      h.service.hub('u-1'),
+      h.service.review('u-1', 'en'),
+    ]);
+    for (const view of [draft, hub, review]) expect(view.reviewFeedback).toEqual(feedback);
+    expect(hub.tasks.find((task) => task.id === 'PORTFOLIO')?.status).toBe('AVAILABLE');
+    expect(hub.nextAction).toEqual({ kind: 'COMPLETE_TASK', taskId: 'PORTFOLIO' });
+    expect(review.canSubmit).toBe(true);
+  });
+
+  it('does not resurrect old returned feedback after a newer submission supersedes it', async () => {
+    const h = build({
+      profile: makeCompleteProfile({ onboardingState: 'RETURNED' }),
+      onboardingSubmissions: [
+        { decision: null, reviewFeedback: null },
+        { decision: 'RETURNED', reviewFeedback: feedback },
+      ],
+    });
+    expect((await h.service.hub('u-1')).reviewFeedback).toBeNull();
+  });
+
+  it('reports actual pending portfolio items without withholding submission', async () => {
+    const h = build({
+      portfolioItems: [
+        { moderationState: 'PENDING' },
+        { moderationState: 'PENDING' },
+        { moderationState: 'APPROVED' },
+        { moderationState: 'REJECTED' },
+      ],
+    });
+    const review = await h.service.review('u-1', 'en');
+    expect(review.canSubmit).toBe(true);
+    expect(review.groups.find((group) => group.kind === 'WAITING')?.items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'PORTFOLIO_REVIEW', count: 2 })]),
+    );
+    expect(review.groups.find((group) => group.kind === 'OPTIONAL')?.items).toEqual([]);
+  });
+
+  it('recommends an empty portfolio without making it a submission requirement', async () => {
+    const h = build({ portfolioItems: [] });
+    const review = await h.service.review('u-1', 'en');
+    expect(review.canSubmit).toBe(true);
+    expect(review.groups.find((group) => group.kind === 'OPTIONAL')?.items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'PORTFOLIO_EMPTY' })]),
+    );
+    await expect(h.service.submit('u-1', { version: 3 })).resolves.toBeDefined();
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SUBMISSION GRANTS NOTHING
@@ -705,6 +817,17 @@ describe('submit — completeness and idempotency', () => {
         data: expect.objectContaining({
           policyVersion: 'sprint-08',
           snapshot: expect.objectContaining({ displayName: 'Ada Lovelace Services' }),
+          reviewSnapshot: expect.objectContaining({
+            schemaVersion: 1,
+            providerProfileId: 'pp-1',
+            profile: expect.objectContaining({ displayName: 'Ada Lovelace Services' }),
+            availability: expect.objectContaining({
+              intervals: expect.arrayContaining([
+                expect.objectContaining({ dayOfWeek: 1, startMinute: 540, endMinute: 1020 }),
+              ]),
+            }),
+            portfolio: [],
+          }),
         }),
       }),
     );

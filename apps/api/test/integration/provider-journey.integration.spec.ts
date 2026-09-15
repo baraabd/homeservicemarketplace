@@ -259,12 +259,19 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
       select: { id: true },
     });
     const assetIds = assets.map((a: { id: string }) => a.id);
+    const submissions = await prisma.providerOnboardingSubmission.findMany({
+      where: { providerProfileId: { in: profileIds } },
+      select: { id: true },
+    });
+    const submissionIds = submissions.map((submission: { id: string }) => submission.id);
 
     await prisma.notification.deleteMany({ where: { userId } });
     await prisma.auditEvent.deleteMany({ where: { userId } });
     await prisma.verificationAccessLog.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.outboxEvent.deleteMany({
-      where: { aggregateId: { in: [...caseIds, ...profileIds, ...assetIds, ...ids] } },
+      where: {
+        aggregateId: { in: [...caseIds, ...profileIds, ...assetIds, ...submissionIds, ...ids] },
+      },
     });
     await prisma.verificationDecision.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.verificationDocument.deleteMany({ where: { caseId: { in: caseIds } } });
@@ -918,7 +925,47 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
     expect(JSON.stringify(notifications)).not.toContain('DOCUMENTS_COMPLETE_AND_LEGIBLE_NOTE');
   });
 
-  it('step 14: the marketplace opens', async () => {
+  it('step 13b: identity approval alone cannot bypass the complete application review', async () => {
+    const capabilities = await as(
+      provider,
+      request(http).get('/v1/me/provider/capabilities'),
+    ).expect(200);
+    expect(capabilities.body.primaryReason).toBe('AWAITING_REVIEW');
+    expect(allowedCapabilities(capabilities.body)).not.toContain('SUBMIT_BID');
+    expect(allowedCapabilities(capabilities.body)).toContain('MANAGE_VERIFICATION');
+    await as(provider, request(http).get('/v1/provider/available-requests')).expect(403);
+
+    const review = await as(
+      reviewer,
+      request(http).get(`/v1/admin/providers/${providerProfileId}/review`),
+    ).expect(200);
+    expect(review.body.blockers).toEqual([]);
+    expect(review.body.availableActions).toContain('approve');
+    expect(review.body.submission.snapshot.schemaVersion).toBe(1);
+
+    await as(
+      reviewer,
+      request(http).post(`/v1/admin/providers/${providerProfileId}/review/approve`),
+    )
+      .send({
+        submissionId: review.body.submission.id,
+        expectedRevision: review.body.revision,
+        idempotencyKey: `journey-review-${providerProfileId}`,
+        reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE',
+      })
+      .expect(200);
+
+    const profile = await prisma.providerProfile.findUnique({ where: { id: providerProfileId } });
+    expect(profile.status).toBe('ACTIVE');
+    expect(profile.onboardingState).toBe('ACCEPTED');
+    const submission = await prisma.providerOnboardingSubmission.findUnique({
+      where: { id: review.body.submission.id },
+    });
+    expect(submission.decision).toBe('ACCEPTED');
+    expect(submission.reviewedRevision).toBe(review.body.revision);
+  });
+
+  it('step 14: the marketplace opens after final application approval', async () => {
     const capabilities = await as(
       provider,
       request(http).get('/v1/me/provider/capabilities'),
@@ -969,21 +1016,16 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
   });
 
   it('step 17-18: suspension blocks the account, whatever the verification says', async () => {
-    // THE TWO AXES ARE VISIBLE HERE, and this step is where the journey proves
-    // they are not the same thing.
-    //
-    // The provider has been VERIFIED since step 12 and worked the marketplace
-    // in step 14, yet their ACCOUNT is still PENDING_REVIEW: approving a
-    // verification case decides documents, and it does not touch the account
-    // lifecycle. `suspend` is legal only from ACTIVE, so the account has to be
-    // approved on its own axis first — which is a second, separate decision by
-    // the same reviewer.
+    // Final review accepted the application in step 13b. Expiry revoked work
+    // access without undoing that account decision; suspension now exercises
+    // the independent account axis. The legacy approval route remains closed
+    // under enforcement, so it cannot be used to bypass the review workspace.
     const before = await prisma.providerProfile.findUnique({ where: { id: providerProfileId } });
-    expect(before.status).toBe('PENDING_REVIEW');
+    expect(before.status).toBe('ACTIVE');
 
     await as(reviewer, request(http).post(`/v1/admin/providers/${providerProfileId}/approve`))
       .send({})
-      .expect(200);
+      .expect(409);
 
     await as(reviewer, request(http).post(`/v1/admin/providers/${providerProfileId}/suspend`))
       .send({ reason: 'Journey test suspension' })

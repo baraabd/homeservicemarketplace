@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { Link } from 'react-router';
 import { Check, ChevronRight, Clock, Shield, ShieldCheck, X } from 'lucide-react';
 import type {
   AdminProviderAction,
@@ -7,6 +8,11 @@ import type {
 } from '@homeservicemarketplace/contracts';
 
 import { useLang } from '../../i18n/LanguageContext';
+import { useCursorHistory } from '../../features/admin-directory/hooks/useCursorHistory';
+import {
+  DirectoryPagination,
+  directoryPrimary,
+} from '../../features/admin-directory/components/DirectoryPrimitives';
 import { VerificationEvidencePanel } from '../../features/admin-verification/components/VerificationEvidencePanel';
 import { UI } from '../../features/admin-verification/copy/verification-copy';
 import { useEvidenceDownload } from '../../features/admin-verification/evidence/useEvidenceDownload';
@@ -67,7 +73,12 @@ export function VerificationSection() {
   const [statusFilter, setStatusFilter] = useState<StatusValue>('PENDING_REVIEW');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const providersQuery = useAdminProviders({ status: statusFilter, limit: 50 });
+  const pagination = useCursorHistory();
+  const providersQuery = useAdminProviders({
+    status: statusFilter,
+    cursor: pagination.cursor,
+    limit: 50,
+  });
   const items: AdminProviderSummary[] = providersQuery.data?.items ?? [];
 
   const L = {
@@ -99,7 +110,10 @@ export function VerificationSection() {
                 key={s}
                 role="tab"
                 type="button"
-                onClick={() => setStatusFilter(s)}
+                onClick={() => {
+                  pagination.reset();
+                  setStatusFilter(s);
+                }}
                 aria-selected={active}
                 className={`px-3 py-1.5 rounded-full transition-colors ${
                   active ? statusBadgeClass(s) : 'bg-slate-100 dark:bg-slate-700 text-slate-500'
@@ -135,61 +149,73 @@ export function VerificationSection() {
             {L.empty}
           </p>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100 dark:border-slate-700">
-                {[L.nameCol, L.cityCol, L.statusCol, L.appliedCol].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-3 text-slate-500 text-start"
-                    style={{ fontSize: '11px', fontWeight: 700 }}
-                  >
-                    {h}
-                  </th>
-                ))}
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((p) => (
-                <tr
-                  key={p.id}
-                  onClick={() => setSelectedId(p.id)}
-                  className="border-b border-slate-50 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer"
-                >
-                  <td className="px-4 py-3">
-                    <p
-                      className="text-slate-900 dark:text-white"
-                      style={{ fontSize: '13px', fontWeight: 600 }}
+          <div className="overflow-x-auto" role="region" aria-label={L.title} tabIndex={0}>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-100 dark:border-slate-700">
+                  {[L.nameCol, L.cityCol, L.statusCol, L.appliedCol].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-3 text-slate-500 text-start"
+                      style={{ fontSize: '11px', fontWeight: 700 }}
                     >
-                      {p.displayName}
-                    </p>
-                    <p className="text-slate-400" style={{ fontSize: '11px' }}>
-                      {p.email ?? '—'}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 text-slate-500" style={{ fontSize: '12px' }}>
-                    {p.serviceAreaCity ?? '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`px-2 py-1 rounded-full ${statusBadgeClass(p.status)}`}
-                      style={{ fontSize: '10px', fontWeight: 700 }}
-                    >
-                      {p.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-500" style={{ fontSize: '12px' }}>
-                    {new Date(p.createdAt).toLocaleDateString(isAr ? 'ar' : 'en')}
-                  </td>
-                  <td className="px-4 py-3 text-end">
-                    <ChevronRight size={16} className="text-slate-300" />
-                  </td>
+                      {h}
+                    </th>
+                  ))}
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((p) => (
+                  <tr
+                    key={p.id}
+                    onClick={() => setSelectedId(p.id)}
+                    className="border-b border-slate-50 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer"
+                  >
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(p.id)}
+                        className="min-h-11 text-start font-semibold text-slate-900 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:text-white"
+                      >
+                        {p.displayName}
+                      </button>
+                      <p className="text-slate-400" style={{ fontSize: '11px' }}>
+                        {p.email ?? '—'}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-slate-500" style={{ fontSize: '12px' }}>
+                      {p.serviceAreaCity ?? '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`px-2 py-1 rounded-full ${statusBadgeClass(p.status)}`}
+                        style={{ fontSize: '10px', fontWeight: 700 }}
+                      >
+                        {p.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-500" style={{ fontSize: '12px' }}>
+                      {new Date(p.createdAt).toLocaleDateString(isAr ? 'ar' : 'en')}
+                    </td>
+                    <td className="px-4 py-3 text-end">
+                      <ChevronRight size={16} className="text-slate-300" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
+        <DirectoryPagination
+          nextCursor={providersQuery.isError ? null : providersQuery.data?.nextCursor}
+          onNext={pagination.nextPage}
+          onPrevious={pagination.previousPage}
+          hasPrevious={pagination.hasPrevious}
+          pending={providersQuery.isFetching}
+          count={items.length}
+          isAr={isAr}
+        />
       </div>
 
       {selectedId ? (
@@ -225,15 +251,11 @@ function ProviderDetailDrawer({
   // panel exposed `onView`, nothing passed it. Opening a document is its own
   // audited request (docs/adr/0009), never part of the case payload.
   const evidence = useEvidenceDownload();
-  const [notesDraft, setNotesDraft] = useState('');
+  const [editedNotes, setEditedNotes] = useState<string | null>(null);
+  const notesDraft = editedNotes ?? provider?.reviewNotes ?? '';
   const [decisionReason, setDecisionReason] = useState('');
 
-  // Hydrate the textarea from the latest detail fetch. Whenever the
-  // server-side review notes change (e.g. another admin saved), the
-  // local draft re-syncs unless the user is mid-edit.
-  useEffect(() => {
-    setNotesDraft(provider?.reviewNotes ?? '');
-  }, [provider?.reviewNotes]);
+  // A refreshed server record must not replace a reviewer's unsaved notes.
 
   const L = {
     detail: isAr ? 'تفاصيل المحترف' : 'Provider detail',
@@ -290,11 +312,33 @@ function ProviderDetailDrawer({
         ) : (
           <>
             <ProviderIdentityBlock provider={provider} />
+            <Link
+              className={directoryPrimary}
+              to={`/admin/providers/${encodeURIComponent(provider.id)}`}
+              onClick={onClose}
+            >
+              {isAr ? 'فتح ملف مراجعة التسجيل الكامل' : 'Open full application review'}
+            </Link>
+            {decision.isError && (
+              <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">
+                {isAr
+                  ? 'تعذر تنفيذ القرار. افتح ملف مراجعة التسجيل للحصول على الحالة الحالية والإجراءات المتاحة.'
+                  : 'The decision could not be completed. Open the full application review for the current status and available actions.'}
+              </p>
+            )}
 
             <ReviewNotesBlock
               value={notesDraft}
-              setValue={setNotesDraft}
-              onSave={() => saveNotes.mutate({ providerProfileId: provider.id, notes: notesDraft })}
+              setValue={setEditedNotes}
+              onSave={() =>
+                saveNotes.mutate(
+                  { providerProfileId: provider.id, notes: notesDraft },
+                  {
+                    onSuccess: () =>
+                      setEditedNotes((current) => (current === notesDraft ? null : current)),
+                  },
+                )
+              }
               isSaving={saveNotes.isPending}
               isSaved={saveNotes.isSuccess && (provider.reviewNotes ?? '') === notesDraft}
               labels={L}

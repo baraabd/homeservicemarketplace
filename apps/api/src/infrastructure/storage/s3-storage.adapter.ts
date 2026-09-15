@@ -2,13 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  GetPublicAccessBlockCommand,
+  GetBucketPolicyStatusCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { Readable } from 'node:stream';
 
 import { AppConfigService } from '../../config/app-config.service';
 import { PresignUploadInput, PresignedUpload, StoragePort } from './storage.port';
+import { isStagedPortfolioKey } from './portfolio-storage-policy';
 
 // Production storage backend. Used when STORAGE_DRIVER=s3 (set via
 // .env in production / preview deploys). Hits S3-compatible storage
@@ -62,7 +66,7 @@ export class S3StorageAdapter extends StoragePort {
   }
 
   async presignUpload(input: PresignUploadInput): Promise<PresignedUpload> {
-    const bucket = this.config.get('S3_BUCKET');
+    const bucket = this.bucketForKey(input.key);
     if (!bucket) {
       // Mis-configuration: STORAGE_DRIVER=s3 but no bucket. We surface
       // a clear error rather than letting the SDK fail with an opaque
@@ -70,14 +74,16 @@ export class S3StorageAdapter extends StoragePort {
       throw new Error('S3_BUCKET is required when STORAGE_DRIVER=s3');
     }
 
+    if (isStagedPortfolioKey(input.key)) await this.assertPrivatePortfolioBucket(bucket);
     const cmd = new PutObjectCommand({
       Bucket: bucket,
       Key: input.key,
       ContentType: input.contentType,
       ContentLength: input.sizeBytes,
+      ...(isStagedPortfolioKey(input.key) ? { IfNoneMatch: '*' } : {}),
     });
     const uploadUrl = await getSignedUrl(this.client, cmd, { expiresIn: PRESIGN_TTL_SECONDS });
-    const fileUrl = this.publicReadUrl(bucket, input.key);
+    const fileUrl = this.publicUrlForKey(input.key);
     const expiresAt = new Date(Date.now() + PRESIGN_TTL_SECONDS * 1000).toISOString();
     this.log.log({
       msg: 'storage.s3.presigned',
@@ -86,6 +92,61 @@ export class S3StorageAdapter extends StoragePort {
       bytes: input.sizeBytes,
     });
     return { uploadUrl, fileUrl, expiresAt };
+  }
+
+  async readObjectStream(key: string): Promise<Readable | null> {
+    try {
+      const result = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucketForKey(key), Key: key }),
+      );
+      const body = result.Body;
+      return body && 'pipe' in body ? (body as Readable) : null;
+    } catch (error) {
+      if (
+        (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404
+      ) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private bucketForKey(key: string): string {
+    if (!isStagedPortfolioKey(key)) {
+      const bucket = this.config.get('S3_BUCKET');
+      if (!bucket) throw new Error('S3_BUCKET is required when STORAGE_DRIVER=s3');
+      return bucket;
+    }
+    const bucket = this.config.get('S3_PORTFOLIO_BUCKET');
+    if (
+      !bucket ||
+      bucket === this.config.get('S3_BUCKET') ||
+      bucket === this.config.get('S3_RESTRICTED_BUCKET')
+    ) {
+      throw new Error('S3_PORTFOLIO_BUCKET must be a dedicated private portfolio bucket');
+    }
+    return bucket;
+  }
+
+  /** Refuse new staging uploads when bucket privacy cannot be established. */
+  private async assertPrivatePortfolioBucket(bucket: string): Promise<void> {
+    const block = await this.client.send(new GetPublicAccessBlockCommand({ Bucket: bucket }));
+    const config = block.PublicAccessBlockConfiguration;
+    if (
+      !config?.BlockPublicAcls ||
+      !config.IgnorePublicAcls ||
+      !config.BlockPublicPolicy ||
+      !config.RestrictPublicBuckets
+    ) {
+      throw new Error('Portfolio bucket must block all public access');
+    }
+    try {
+      const policy = await this.client.send(new GetBucketPolicyStatusCommand({ Bucket: bucket }));
+      if (policy.PolicyStatus?.IsPublic !== false)
+        throw new Error('Portfolio bucket policy is not private');
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'NoSuchBucketPolicy') throw error;
+    }
   }
 
   /**
@@ -103,7 +164,7 @@ export class S3StorageAdapter extends StoragePort {
     key: string,
     byteCount: number,
   ): Promise<{ sizeBytes: number; head: Uint8Array } | null> {
-    const bucket = this.config.get('S3_BUCKET');
+    const bucket = this.bucketForKey(key);
     if (!bucket) throw new Error('S3_BUCKET is required when STORAGE_DRIVER=s3');
 
     const lastByte = Math.max(0, byteCount - 1);
@@ -138,7 +199,11 @@ export class S3StorageAdapter extends StoragePort {
    *  the call site. Shared with presign so the two can never disagree about
    *  what a key resolves to. */
   publicUrlForKey(key: string): string {
-    const bucket = this.config.get('S3_BUCKET');
+    if (isStagedPortfolioKey(key)) {
+      const base = this.config.get('PUBLIC_API_URL')?.replace(/\/+$/, '') ?? '';
+      return `${base}/v1/media/files/${key.split('/').map(encodeURIComponent).join('/')}`;
+    }
+    const bucket = this.bucketForKey(key);
     if (!bucket) throw new Error('S3_BUCKET is required when STORAGE_DRIVER=s3');
     return this.publicReadUrl(bucket, key);
   }
@@ -161,7 +226,7 @@ export class S3StorageAdapter extends StoragePort {
    * let the worker write `deletedAt` for bytes that are still being served.
    */
   async deleteObject(key: string): Promise<void> {
-    const bucket = this.config.get('S3_BUCKET');
+    const bucket = this.bucketForKey(key);
     if (!bucket) throw new Error('S3_BUCKET is required when STORAGE_DRIVER=s3');
     try {
       await this.client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));

@@ -108,7 +108,13 @@ async function bootstrap(): Promise<void> {
     // `credentials: true` is required for the HttpOnly cookie flow; never
     // combine it with origin: '*'.
     const corsOrigin = origins.length > 0 ? origins : config.isProduction ? false : true;
-    app.enableCors({ origin: corsOrigin, credentials: true });
+    app.enableCors({
+      origin: corsOrigin,
+      credentials: true,
+      // The authenticated evidence reader preserves the server-sanitized
+      // filename when the Admin app is served from a different origin.
+      exposedHeaders: ['Content-Disposition'],
+    });
     bootstrapLogger.log(
       `CORS: ${origins.length > 0 ? `allowlist=[${origins.join(', ')}]` : corsOrigin === false ? 'blocked (production, no allowlist)' : 'reflect-any (dev fallback)'}`,
     );

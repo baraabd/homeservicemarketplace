@@ -130,6 +130,27 @@ describe('LocalDiskStorageAdapter', () => {
     expect(written.toString()).toBe('PNG!');
   });
 
+  it('refuses replaying a portfolio PUT over previously stored bytes', async () => {
+    const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+    const key = 'portfolio-staging/ref/image.jpg';
+    const upload = await adapter.presignUpload({ key, contentType: 'image/jpeg', sizeBytes: 4 });
+    const url = new URL(upload.uploadUrl);
+    const input = {
+      key,
+      sig: url.searchParams.get('sig')!,
+      exp: Number(url.searchParams.get('exp')),
+      contentType: 'image/jpeg',
+      sizeBytes: 4,
+      body: Buffer.from('OLD!'),
+      actualContentType: 'image/jpeg',
+    };
+    await adapter.acceptUpload(input);
+    await expect(
+      adapter.acceptUpload({ ...input, body: Buffer.from('NEW!') }),
+    ).rejects.toMatchObject({ code: 'EEXIST' });
+    expect((await readFile(join(ROOT, key))).toString()).toBe('OLD!');
+  });
+
   it('acceptUpload rejects a tampered signature', async () => {
     const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
     const presign = await adapter.presignUpload({

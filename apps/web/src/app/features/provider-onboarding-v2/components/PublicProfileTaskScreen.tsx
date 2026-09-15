@@ -1,6 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
-import { Clock, ImagePlus, Paintbrush } from 'lucide-react';
-import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
+import { PortfolioImage } from '../../../components/provider/portfolio/PortfolioImage';
+import { AlertTriangle, Clock, ImagePlus, Paintbrush } from 'lucide-react';
+import {
+  PROVIDER_PORTFOLIO_CONTENT_TYPES,
+  type ProviderOnboardingDraftView,
+} from '@homeservicemarketplace/contracts';
 
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
 import {
@@ -9,6 +13,7 @@ import {
 } from '../autosave/ProviderOnboardingAutosaveProvider';
 import {
   useCreatePortfolioItem,
+  useDeletePortfolioItem,
   useProviderPortfolio,
   useReorderPortfolio,
   portfolioErrorCode,
@@ -129,6 +134,8 @@ export function PublicProfileTaskScreen({
 
   const gallery = useProviderPortfolio();
   const createItem = useCreatePortfolioItem();
+  const removeItem = useDeletePortfolioItem();
+  const [removeError, setRemoveError] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -281,7 +288,7 @@ export function PublicProfileTaskScreen({
     <div className="flex flex-col gap-[18px]" data-testid="portfolio-section">
       {/* `.hsm-upload`, the same surface the photo on Basics uses — with a
           second line here, because this screen can crop and reorder where the
-          avatar cannot. One `accept="image/*"` input with no `capture`, which
+          avatar cannot. One `accept={PROVIDER_PORTFOLIO_CONTENT_TYPES.join(',')}` input with no `capture`, which
           is what makes "take a photo or choose from gallery" true on a phone. */}
       <button
         type="button"
@@ -302,7 +309,7 @@ export function PublicProfileTaskScreen({
       <input
         ref={fileInput}
         type="file"
-        accept="image/*"
+        accept={PROVIDER_PORTFOLIO_CONTENT_TYPES.join(',')}
         className="sr-only"
         onChange={onPick}
         data-testid="portfolio-file-input"
@@ -370,7 +377,7 @@ export function PublicProfileTaskScreen({
                 className="grid h-full w-full place-items-center focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-pv-accent disabled:cursor-default"
               >
                 {item.moderationState === 'APPROVED' && item.media?.url ? (
-                  <img
+                  <PortfolioImage
                     src={item.media.url}
                     alt={item.title ?? ''}
                     className="h-full w-full object-cover"
@@ -391,6 +398,44 @@ export function PublicProfileTaskScreen({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {items.map((item, index) =>
+        item.moderationState === 'REJECTED' ? (
+          <OnboardingAlert
+            key={`review-${item.id}`}
+            tone="danger"
+            icon={AlertTriangle}
+            title={copy.rejectedPhotoTitle(index + 1)}
+            body={
+              <span className="flex flex-col gap-3">
+                <span>{item.moderationReason || copy.rejectedPhotoFallback}</span>
+                <ProviderButton
+                  tone="secondary"
+                  shape="onboarding"
+                  disabled={!editable || removeItem.isPending}
+                  data-testid={`portfolio-remove-rejected-${item.id}`}
+                  onClick={() => {
+                    setRemoveError(false);
+                    trackExternalWork(
+                      removeItem.mutateAsync(item.id).catch(() => setRemoveError(true)),
+                    );
+                  }}
+                >
+                  {copy.removeRejectedPhoto}
+                </ProviderButton>
+              </span>
+            }
+            density="compact"
+            data-testid={`portfolio-review-feedback-${item.id}`}
+          />
+        ) : null,
+      )}
+
+      {removeError ? (
+        <p role="alert" className="text-pv-label text-pv-danger">
+          {copy.removeRejectedPhotoFailed}
+        </p>
       ) : null}
 
       {/* The consent gate. Shown only once a file is waiting, which is why it

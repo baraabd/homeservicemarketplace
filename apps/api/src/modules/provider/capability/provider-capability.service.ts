@@ -289,11 +289,24 @@ export class ProviderCapabilityService {
       return this.render(allowed, reasons, nextActions, primaryReason);
     }
 
-    if (onboarding === 'SUBMITTED') {
+    if (onboarding === 'SUBMITTED' || onboarding === 'DOCUMENTS_REQUIRED') {
       primaryReason = ProviderCapabilityDenialReason.AwaitingReview;
-      // Still allowed to edit and re-submit; a queued application is not a
-      // frozen one.
+      // Both states are queued applications. A separately approved identity
+      // case and its grant cannot substitute for the final application
+      // decision. This boundary precedes both rollout flags, so disabling
+      // evidence/grant enforcement cannot approve an application implicitly.
+      // Keep the review/withdraw surface and evidence management reachable;
+      // the onboarding write service continues to enforce its edit lock.
       allowed.add(ProviderCapability.CompleteOnboarding);
+      if (onboarding === 'DOCUMENTS_REQUIRED') {
+        // Input is complete. Preserve the redacted preview that this state
+        // previously reached through ranks 6/7; the preview's own policy
+        // remains an additional gate and never exposes working endpoints.
+        allowed.add(ProviderCapability.PreviewMarketplace);
+        if (ctx.verificationState !== 'VERIFIED') {
+          nextActions.push(ProviderNextAction.VerifyIdentity);
+        }
+      }
       for (const c of ALL_CAPABILITIES) {
         if (!allowed.has(c)) reasons.set(c, primaryReason);
       }
@@ -316,7 +329,7 @@ export class ProviderCapabilityService {
         // a dead end.
         allowed.add(ProviderCapability.CompleteOnboarding);
         // Sprint 9B.9 — and they may look, if policy allows it. This is one of
-        // exactly two states where the whole message is "not yet", which is
+        // the states where the whole message is "not yet", which is
         // what the preview is for.
         allowed.add(ProviderCapability.PreviewMarketplace);
         for (const c of ALL_CAPABILITIES) {
@@ -344,7 +357,7 @@ export class ProviderCapabilityService {
 
     if (!marketplaceOpen) {
       primaryReason = ProviderCapabilityDenialReason.NoWorkAccess;
-      // Sprint 9B.9 — the second "not yet" state: verified, but the grant is
+      // Sprint 9B.9 — another "not yet" state: verified, but the grant is
       // missing, revoked or lapsed.
       allowed.add(ProviderCapability.PreviewMarketplace);
       for (const c of ALL_CAPABILITIES) {

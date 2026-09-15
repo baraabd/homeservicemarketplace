@@ -17,6 +17,7 @@ import {
   type ProviderOnboardingReview,
   type ProviderOnboardingHubView,
   type ProviderOnboardingIssue,
+  type ProviderOnboardingFeedback,
 } from '@homeservicemarketplace/contracts';
 import type { Prisma, PrismaTx, ServiceCategory } from '@homeservicemarketplace/database';
 
@@ -43,6 +44,8 @@ import {
 import { AppError } from '../../../shared/errors/app-error';
 import { buildHub } from './hub/onboarding-hub-resolver';
 import { buildReview } from './review/onboarding-review-resolver';
+import { readProviderReviewSnapshot } from './review/provider-review-snapshot';
+import { readOnboardingFeedback } from './review/provider-onboarding-feedback';
 import { referencesRestrictedMedia } from './avatar/avatar-policy';
 import { checkRadius, resolveRadiusPolicy, type RadiusPolicy } from './service-area/radius-policy';
 import {
@@ -428,11 +431,16 @@ export class ProviderOnboardingWizardService {
       // The snapshot is what the policy actually evaluated, pinned to the
       // policy version that judged it. Without it, a rule added next month
       // makes it impossible to reconstruct why this application was accepted.
+      const reviewSnapshot = await readProviderReviewSnapshot(trx, ctx.profile.id);
+      if (!reviewSnapshot) {
+        throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
+      }
       await trx.providerOnboardingSubmission.create({
         data: {
           providerProfileId: ctx.profile.id,
           policyVersion: draft?.policyVersion ?? CURRENT_ONBOARDING_POLICY_VERSION,
           snapshot: candidate as unknown as Prisma.InputJsonValue,
+          reviewSnapshot: reviewSnapshot as unknown as Prisma.InputJsonValue,
           issues: undefined,
           submittedByUserId: userId,
         },
@@ -1252,6 +1260,7 @@ export class ProviderOnboardingWizardService {
     return buildHub({
       issues: await this.projectedIssues(ctx),
       lifecycleState: this.lifecycleState(ctx),
+      reviewFeedback: this.reviewFeedback(ctx),
     });
   }
 
@@ -1294,14 +1303,11 @@ export class ProviderOnboardingWizardService {
         acceptedAt: ctx.profile.consentAcceptedAt?.toISOString() ?? null,
       },
       pendingSpecialtyCount: ctx.pendingApplicationCategoryIds.length,
-      // Sprint 9B.22 established that nothing on this platform approves a
-      // portfolio image, so there is no moderation queue to report a count
-      // from and no honest "waiting" line to draw. The projection supports
-      // both the moment a reviewer exists; sourcing them would mean a new
-      // dependency on this controller, which is how 9B.17 broke every gated
-      // spec that mounts it.
-      awaitingPortfolioReviewCount: 0,
-      portfolioEmpty: false,
+      awaitingPortfolioReviewCount: (ctx.relations.portfolioItems ?? []).filter(
+        (item) => item.moderationState === 'PENDING',
+      ).length,
+      portfolioEmpty: (ctx.relations.portfolioItems ?? []).length === 0,
+      reviewFeedback: this.reviewFeedback(ctx),
     });
   }
 
@@ -1311,6 +1317,12 @@ export class ProviderOnboardingWizardService {
     const marketIssue = await this.submissionMarketIssue(ctx);
     if (marketIssue) issues.push(marketIssue);
     return issues;
+  }
+
+  private reviewFeedback(ctx: OnboardingContext): ProviderOnboardingFeedback | null {
+    if (this.lifecycleState(ctx) !== 'RETURNED') return null;
+    const latest = ctx.relations.onboardingSubmissions?.[0];
+    return latest?.decision === 'RETURNED' ? readOnboardingFeedback(latest.reviewFeedback) : null;
   }
 
   /** A saved country can leave the enabled registry after its LOCATION write.
@@ -1333,6 +1345,7 @@ export class ProviderOnboardingWizardService {
     const state = this.lifecycleState(ctx);
 
     return {
+      reviewFeedback: this.reviewFeedback(ctx),
       state,
       currentStep: resumeStep(progress.steps),
       steps: progress.steps,
@@ -1525,6 +1538,7 @@ export class ProviderOnboardingWizardService {
   // ── plumbing ──────────────────────────────────────────────────────────
 
   private async load(userId: string, tx?: PrismaTx): Promise<OnboardingContext> {
+    if (tx) await this.drafts.lockProfileForMutation(userId, tx);
     return this.buildContext(userId, tx);
   }
 

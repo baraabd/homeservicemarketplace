@@ -1,3 +1,4 @@
+import { PortfolioMediaService } from '../../src/modules/media/portfolio-media.service';
 // E2E coverage for the Sprint 7.x media upload pipeline:
 //
 //   POST /v1/media/presigned-url   — auth-gated batch presign
@@ -101,6 +102,14 @@ async function bootApp(): Promise<INestApplication> {
   @Module({
     controllers: [MediaController],
     providers: [
+      {
+        provide: PortfolioMediaService,
+        useValue: {
+          openPublic: jest
+            .fn()
+            .mockRejectedValue(new Error('Portfolio requires a persisted approval.')),
+        },
+      },
       Reflector,
       LocalDiskStorageAdapter,
       S3StorageAdapter,

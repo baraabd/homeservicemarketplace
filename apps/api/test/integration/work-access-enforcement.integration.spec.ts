@@ -6,7 +6,7 @@
 export {};
 
 import { Test } from '@nestjs/testing';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, Reflector } from '@nestjs/core';
 import {
   CanActivate,
   Controller,
@@ -292,7 +292,16 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
       .overrideGuard(RolesGuard)
       .useClass(PassGuard)
       .overrideGuard(PermissionsGuard)
-      .useValue({ canActivate: () => permissions.has('verification:decide') })
+      .useValue({
+        canActivate: (ctx: ExecutionContext) => {
+          const required =
+            new Reflector().getAllAndOverride<string[]>('iam:permissions', [
+              ctx.getHandler(),
+              ctx.getClass(),
+            ]) ?? [];
+          return required.every((key) => permissions.has(key));
+        },
+      })
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -423,7 +432,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
     expect((await work()).status).toBe(403);
 
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     expect((await approve(caseId)).status).toBeLessThan(400);
 
     const decisions = await prisma.verificationDecision.findMany({ where: { caseId } });
@@ -452,7 +461,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   it('revocation denies work on the very next request', async () => {
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await approve(caseId);
     currentUser = { id: OWNER };
     expect((await work()).status).toBe(200);
@@ -476,7 +485,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
     // reason must survive, and the provider keeps working on it.
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await approve(caseId);
 
     const override = await prisma.providerWorkAccessGrant.create({
@@ -525,7 +534,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
     // authorised to work the moment the flag was armed.
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await approve(caseId);
     await prisma.providerWorkAccessGrant.create({
       data: {
@@ -547,7 +556,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   it('suspension preserves the verification evidence and history', async () => {
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await approve(caseId);
 
     await prisma.providerProfile.update({ where: { id: PP }, data: { status: 'SUSPENDED' } });
@@ -566,7 +575,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   it('reactivation restores no revoked grant, and no work access with it', async () => {
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await approve(caseId);
     await revoke(caseId);
 
@@ -585,7 +594,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   it('reactivation does not turn a rejected verification into a verified one', async () => {
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await request(http)
       .post(`/v1/admin/verification/cases/${caseId}/reject`)
       .send({ reasonCode: 'DOCUMENT_ILLEGIBLE' });
@@ -606,7 +615,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   it('the sweep persists the whole lifecycle, not just the denial', async () => {
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await approve(caseId);
 
     const grant = (await grantsOf())[0];
@@ -652,7 +661,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   it('an expired verification denies work', async () => {
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await approve(caseId);
     currentUser = { id: OWNER };
     expect((await work()).status).toBe(200);
@@ -670,7 +679,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
     // sweep at all.
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await approve(caseId);
 
     // BOTH timestamps move into the past. A row with expiresAt before
@@ -698,7 +707,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
     // everything it looked at, they would all pass for the wrong reason.
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await approve(caseId);
 
     const grant = (await grantsOf())[0];
@@ -718,7 +727,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   it('running the sweep twice expires once', async () => {
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await approve(caseId);
 
     const grant = (await grantsOf())[0];
@@ -739,7 +748,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   it('two concurrent sweeps expire once and neither reports a failure', async () => {
     const caseId = await seedCase();
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     await approve(caseId);
 
     const grant = (await grantsOf())[0];

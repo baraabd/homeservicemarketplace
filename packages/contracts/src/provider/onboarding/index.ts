@@ -25,3 +25,5 @@ export * from './professional-title';
 export * from './response/provider-onboarding-review';
 // Sprint 09B.29 Phase 5 (C2) — the sanitized enabled-market projection.
 export * from './response/provider-supported-markets';
+export * from './response/provider-onboarding-feedback';
+export * from './response/provider-review-snapshot';

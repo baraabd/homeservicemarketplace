@@ -179,6 +179,37 @@ const MATRIX: Array<[string, Account | null, Profile | null, boolean, readonly s
     [C.ViewOwnProfile, C.EditOwnProfile, C.ManageVerification, C.CompleteOnboarding],
   ],
 
+  [
+    'onboarding DOCUMENTS_REQUIRED — application pending, evidence can be completed',
+    ELIGIBLE,
+    profile({ onboardingState: 'DOCUMENTS_REQUIRED', status: 'PENDING_REVIEW' }),
+    false,
+    [
+      C.ViewOwnProfile,
+      C.EditOwnProfile,
+      C.ManageVerification,
+      C.CompleteOnboarding,
+      C.PreviewMarketplace,
+    ],
+  ],
+  [
+    'onboarding DOCUMENTS_REQUIRED with approved identity and live grant — final review still pending',
+    ELIGIBLE,
+    profile({
+      onboardingState: 'DOCUMENTS_REQUIRED',
+      status: 'PENDING_REVIEW',
+      verificationState: 'VERIFIED',
+    }),
+    true,
+    [
+      C.ViewOwnProfile,
+      C.EditOwnProfile,
+      C.ManageVerification,
+      C.CompleteOnboarding,
+      C.PreviewMarketplace,
+    ],
+  ],
+
   // ── rank 6: verification, flag ON ──────────────────────────────────────
   [
     'accepted but UNVERIFIED — no work of any kind',

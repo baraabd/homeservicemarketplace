@@ -105,6 +105,9 @@ export function uploadPortfolioFile(
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', uploadUrl, true);
     xhr.setRequestHeader('Content-Type', file.type);
+    // Included in the S3 signature: uploaded portfolio bytes cannot be
+    // overwritten by replaying a still-valid signed PUT after moderation.
+    xhr.setRequestHeader('If-None-Match', '*');
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) {

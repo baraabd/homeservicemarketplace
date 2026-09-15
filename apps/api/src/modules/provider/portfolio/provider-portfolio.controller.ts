@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
@@ -24,9 +25,11 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { ProviderCapability } from '@homeservicemarketplace/contracts';
+import {
+  ProviderCapability,
+  PROVIDER_PORTFOLIO_CONTENT_TYPES,
+} from '@homeservicemarketplace/contracts';
 
-import { ALLOWED_IMAGE_TYPES } from '../../../infrastructure/storage/content-type';
 import type {
   ProviderPortfolioItem,
   ProviderPortfolioListResponse,
@@ -41,6 +44,9 @@ import { ProviderCapabilityGuard } from '../guards/provider-capability.guard';
 import { RequireCapability } from '../guards/require-capability.decorator';
 import { ProviderPortfolioService } from './provider-portfolio.service';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
+import type { Response } from 'express';
+import { PortfolioMediaService } from '../../media/portfolio-media.service';
+import { servePortfolioMedia } from '../../media/serve-portfolio-media';
 
 // Sprint 9B.10 — the provider's own gallery.
 //
@@ -70,7 +76,7 @@ class CreatePortfolioItemDto {
   // Images only. The shared content-type module also allows video; the
   // portfolio deliberately does not — see portfolio-policy.ts.
   @IsString()
-  @IsIn([...ALLOWED_IMAGE_TYPES])
+  @IsIn([...PROVIDER_PORTFOLIO_CONTENT_TYPES])
   contentType!: string;
 
   @IsInt()
@@ -139,7 +145,19 @@ class ReorderPortfolioDto {
 @RequireCapability(ProviderCapability.EditOwnProfile)
 @Controller({ path: 'me/provider/portfolio', version: '1' })
 export class ProviderPortfolioController {
-  constructor(private readonly portfolio: ProviderPortfolioService) {}
+  constructor(
+    private readonly portfolio: ProviderPortfolioService,
+    private readonly media: PortfolioMediaService,
+  ) {}
+
+  @Get(':itemId/media')
+  async image(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId') itemId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    await servePortfolioMedia(res, await this.media.openForOwner(user.id, itemId));
+  }
 
   @Get()
   @HttpCode(HttpStatus.OK)

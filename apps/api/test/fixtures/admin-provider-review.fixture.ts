@@ -1,0 +1,146 @@
+import type { ProviderReviewSnapshot } from '@homeservicemarketplace/contracts';
+import type { AdminProviderReviewData } from '../../src/modules/admin/provider-review/provider-review.repository';
+
+/** Synthetic data shared only by review unit tests. */
+export function reviewFixture(): AdminProviderReviewData {
+  const now = new Date('2026-09-15T12:00:00.000Z');
+  const current: ProviderReviewSnapshot = {
+    schemaVersion: 1,
+    providerProfileId: 'provider-1',
+    capturedAt: now.toISOString(),
+    profile: {
+      displayName: 'Test provider',
+      profileImageUrl: null,
+      providerType: 'INDIVIDUAL',
+      legalBusinessName: null,
+      phoneNumber: '+10000000000',
+      phoneVerifiedAt: null,
+      email: 'provider@example.test',
+      emailVerified: true,
+      headline: 'Plumbing',
+      bio: 'Repairs and maintenance',
+      additionalInformation: null,
+      yearsOfExperience: 5,
+      professionSince: null,
+      transportMode: null,
+      transportModes: [],
+    },
+    services: {
+      primaryGroupIds: ['home'],
+      primarySpecialtyId: 'plumbing',
+      equipmentCodes: [],
+      specialties: [
+        {
+          id: 'plumbing',
+          slug: 'plumbing',
+          labelEn: 'Plumbing',
+          labelAr: 'سباكة',
+          state: 'APPROVED',
+          applicationId: 'application-1',
+          requestedAt: now.toISOString(),
+          reviewedAt: now.toISOString(),
+        },
+      ],
+    },
+    workArea: {
+      country: 'Test country',
+      countryCode: 'ZZ',
+      city: 'Test city',
+      lat: 1,
+      lng: 2,
+      radiusKm: 10,
+      workshopAddressLine: null,
+      workshopLat: null,
+      workshopLng: null,
+      areas: [],
+    },
+    availability: {
+      timezone: 'UTC',
+      intervals: [{ dayOfWeek: 1, startMinute: 540, endMinute: 1020, timezone: 'UTC' }],
+    },
+    consent: { acceptedVersion: 'v1', acceptedAt: now.toISOString() },
+    portfolio: [],
+  };
+  const kase = {
+    id: 'case-1',
+    state: 'SUBMITTED',
+    country: 'ZZ',
+    providerType: 'INDIVIDUAL',
+    policyVersion: 'policy-v1',
+    requirementsSnapshot: {
+      policyVersion: 'policy-v1',
+      verificationRequired: true,
+      subjectScope: { countryCode: 'ZZ', providerType: 'INDIVIDUAL', categoryIds: ['plumbing'] },
+      requirements: [
+        { kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null, fromVersion: 'policy-v1' },
+      ],
+    },
+    createdAt: now,
+    updatedAt: now,
+    assignedToUserId: null,
+    documents: [
+      {
+        id: 'document-1',
+        kind: 'INDIVIDUAL_IDENTITY',
+        serviceCategoryId: null,
+        supersededAt: null,
+        expiresOn: null,
+        updatedAt: now,
+        mediaAsset: {
+          id: 'media-1',
+          scanState: 'CLEAN',
+          visibility: 'RESTRICTED',
+          deletedAt: null,
+          uploadCompletedAt: now,
+          sha256: 'hash',
+          updatedAt: now,
+        },
+      },
+    ],
+  };
+  const submission = {
+    id: 'submission-1',
+    providerProfileId: 'provider-1',
+    submittedAt: now,
+    policyVersion: 'onboarding-v1',
+    decidedAt: null,
+    decision: null,
+    decidedByUserId: null,
+    decisionIdempotencyKey: null,
+    decisionRequestHash: null,
+    decisionNote: null,
+    reviewFeedback: null,
+    reviewedRevision: null,
+    reviewSnapshot: structuredClone(current),
+    snapshot: {},
+  };
+  return {
+    current,
+    submission,
+    verificationCase: kase,
+    historicalRequirements: null,
+    profile: {
+      id: 'provider-1',
+      userId: 'owner-1',
+      displayName: 'Test provider',
+      status: 'PENDING_REVIEW',
+      onboardingState: 'DOCUMENTS_REQUIRED',
+      verificationState: 'PENDING',
+      standingState: 'GOOD',
+      updatedAt: now,
+      submittedForReviewAt: now,
+      user: {
+        id: 'owner-1',
+        email: 'provider@example.test',
+        status: 'ACTIVE',
+        isActive: true,
+        deletedAt: null,
+      },
+      onboardingSubmissions: [submission],
+      categoryApplications: [],
+      serviceCategories: [{ serviceCategoryId: 'plumbing', serviceCategory: { isActive: true } }],
+      workAccessGrants: [],
+      verificationCases: [kase],
+    },
+  } as unknown as AdminProviderReviewData;
+}

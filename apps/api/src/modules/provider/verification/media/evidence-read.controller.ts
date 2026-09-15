@@ -61,7 +61,7 @@ export class EvidenceReadController {
     // permission was revoked a second ago must not still be able to open a
     // document — the same reasoning that forbids caching the capability set
     // (ADR 0006).
-    const granted = await this.permissions.resolveForRoles(user.roles ?? []);
+    const granted = await this.permissions.resolveFreshForUser(user.id);
 
     const grant = await this.reads.authorizeRead({
       documentId,

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   ADMIN_SETTINGS_SCHEMA,
   CURRENT_PUBLICATION_ACK_VERSION,
@@ -15,6 +15,12 @@ import { PlatformSettingRepository } from '../../../infrastructure/persistence/s
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
 import { AppConfigService } from '../../../config/app-config.service';
+import { STORAGE_PORT, StoragePort } from '../../../infrastructure/storage/storage.port';
+import { isStagedPortfolioKey } from '../../../infrastructure/storage/portfolio-storage-policy';
+import {
+  AVATAR_SIGNATURE_PROBE_BYTES,
+  verifyAvatarSignature,
+} from '../../../infrastructure/storage/image-signature';
 import {
   PORTFOLIO_MAX_FILE_BYTES_KEY,
   PORTFOLIO_MAX_ITEMS_KEY,
@@ -62,6 +68,7 @@ const ITEM_SELECT = {
   moderationState: true,
   moderationReason: true,
   createdAt: true,
+  revision: true,
   mediaAsset: { select: { storageKey: true, declaredMimeType: true } },
 } as const;
 
@@ -79,6 +86,7 @@ export class ProviderPortfolioService {
     private readonly settings: PlatformSettingRepository,
     private readonly tx: TransactionRunner,
     private readonly config: AppConfigService,
+    @Inject(STORAGE_PORT) private readonly storage: StoragePort,
   ) {}
 
   async list(userId: string): Promise<ProviderPortfolioListResponse> {
@@ -132,6 +140,52 @@ export class ProviderPortfolioService {
     });
     if (existing) return this.toItem(existing);
 
+    // Existing uploads retain readable history. Every new attachment must
+    // come from private staging, even when an old presigned URL still works.
+    if (!isStagedPortfolioKey(input.storageKey)) {
+      throw new AppError(
+        'CONFLICT',
+        'Please upload this image again using the current upload flow.',
+        409,
+        { reason: 'MEDIA_MIGRATION_REQUIRED' },
+      );
+    }
+    // Prove the caller owns a live reservation before touching its bytes.
+    // The conditional transaction claim below rechecks this after inspection.
+    const reservation = {
+      storageKey: input.storageKey,
+      ownerUserId: userId,
+      visibility: 'PUBLIC' as const,
+      uploadCompletedAt: null,
+      deletedAt: null,
+      declaredMimeType: input.contentType,
+      sizeBytes: input.sizeBytes,
+    };
+    const reserved = await this.prisma.client.mediaAsset.findFirst({
+      where: reservation,
+      select: { id: true },
+    });
+    if (!reserved) throw uploadNotReserved();
+
+    const stored = await this.storage.readObjectHead(
+      input.storageKey,
+      AVATAR_SIGNATURE_PROBE_BYTES,
+    );
+    const signature = stored && verifyAvatarSignature(input.contentType, stored.head);
+    if (
+      !stored ||
+      stored.sizeBytes !== input.sizeBytes ||
+      stored.sizeBytes > limits.maxFileBytes ||
+      !signature?.ok
+    ) {
+      throw new AppError(
+        'VALIDATION_ERROR',
+        'The uploaded image could not be validated. Please upload it again.',
+        400,
+        { reason: 'INVALID_IMAGE' },
+      );
+    }
+
     const count = await this.prisma.client.providerPortfolioItem.count({
       where: { providerProfileId: profileId, deletedAt: null },
     });
@@ -142,7 +196,7 @@ export class ProviderPortfolioService {
     }
 
     const created = await this.tx.run(async (trx) => {
-      const client = trx as unknown as typeof this.prisma.client;
+      const client = trx;
       // Sprint 09B.29 Phase 4 — CLAIM the reservation, do not mint a new row.
       //
       // The MediaAsset is created at PRESIGN now, before the upload URL is
@@ -155,25 +209,14 @@ export class ProviderPortfolioService {
       // client cannot attach a key it was never issued, cannot attach another
       // provider's reservation, and two concurrent creates resolve to one.
       const claimedAsset = await client.mediaAsset.updateMany({
-        where: {
-          storageKey: input.storageKey,
-          ownerUserId: userId,
-          visibility: 'PUBLIC',
-          uploadCompletedAt: null,
-          deletedAt: null,
-        },
+        where: reservation,
         data: { uploadCompletedAt: new Date() },
       });
       if (claimedAsset.count !== 1) {
         // No reservation to claim: either it was never made, it belongs to
         // somebody else, or it is already attached. All three are the same
         // answer to the caller, so the surface cannot be probed for which.
-        throw new AppError(
-          'VALIDATION_ERROR',
-          'We could not find that upload. Please try again.',
-          400,
-          { reason: 'UPLOAD_NOT_RESERVED' },
-        );
+        throw uploadNotReserved();
       }
       const asset = await client.mediaAsset.findUniqueOrThrow({
         where: { storageKey: input.storageKey },
@@ -212,24 +255,73 @@ export class ProviderPortfolioService {
   ): Promise<ProviderPortfolioItem> {
     const profileId = await this.requireProfile(userId);
 
-    // Ownership is in the WHERE. updateMany rather than update so a row that
-    // is not the caller's simply does not match, instead of being loaded and
-    // then compared.
-    const { count } = await this.prisma.client.providerPortfolioItem.updateMany({
-      where: { id: itemId, providerProfileId: profileId, deletedAt: null },
-      data: {
-        ...(input.title !== undefined ? { title: input.title } : {}),
-        ...(input.description !== undefined ? { description: input.description } : {}),
-        ...(input.serviceCategoryId !== undefined
-          ? { serviceCategoryId: input.serviceCategoryId }
-          : {}),
-      },
-    });
-    if (count !== 1) throw notFound();
-
-    const row = await this.prisma.client.providerPortfolioItem.findFirst({
-      where: { id: itemId, providerProfileId: profileId, deletedAt: null },
-      select: ITEM_SELECT,
+    const row = await this.tx.run(async (trx) => {
+      const client = trx;
+      const before = await client.providerPortfolioItem.findFirst({
+        where: { id: itemId, providerProfileId: profileId, deletedAt: null },
+        select: ITEM_SELECT,
+      });
+      if (!before) throw notFound();
+      const changed = (['title', 'description', 'serviceCategoryId'] as const).filter(
+        (field) => input[field] !== undefined && input[field] !== before[field],
+      );
+      if (changed.length === 0) return before;
+      if (
+        this.config.get('STORAGE_DRIVER') === 's3' &&
+        !isStagedPortfolioKey(before.mediaAsset.storageKey)
+      ) {
+        throw new AppError(
+          'CONFLICT',
+          'This older image must be migrated before editing. Please contact support.',
+          409,
+          { reason: 'MEDIA_MIGRATION_REQUIRED' },
+        );
+      }
+      const { count } = await client.providerPortfolioItem.updateMany({
+        where: {
+          id: itemId,
+          providerProfileId: profileId,
+          deletedAt: null,
+          revision: before.revision,
+        },
+        data: {
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.serviceCategoryId !== undefined
+            ? { serviceCategoryId: input.serviceCategoryId }
+            : {}),
+          moderationState: 'PENDING',
+          moderatedAt: null,
+          moderatedByUserId: null,
+          moderationReason: null,
+          revision: { increment: 1 },
+        },
+      });
+      if (count !== 1)
+        throw new AppError(
+          'CONFLICT',
+          'This image changed while you were editing. Reload and try again.',
+          409,
+        );
+      await client.auditEvent.create({
+        data: {
+          userId,
+          type: 'PORTFOLIO_CONTENT_UPDATED',
+          metadata: {
+            providerProfileId: profileId,
+            itemId,
+            previousRevision: before.revision,
+            revision: before.revision + 1,
+            previousState: before.moderationState,
+            newState: 'PENDING',
+            changedFields: changed,
+          },
+        },
+      });
+      return client.providerPortfolioItem.findFirst({
+        where: { id: itemId, providerProfileId: profileId, deletedAt: null },
+        select: ITEM_SELECT,
+      });
     });
     if (!row) throw notFound();
     return this.toItem(row);
@@ -240,7 +332,7 @@ export class ProviderPortfolioService {
     const limits = await this.limits();
 
     const rows = await this.tx.run(async (trx) => {
-      const client = trx as unknown as typeof this.prisma.client;
+      const client = trx;
       const live = await client.providerPortfolioItem.findMany({
         where: { providerProfileId: profileId, deletedAt: null },
         orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
@@ -287,7 +379,7 @@ export class ProviderPortfolioService {
     const profileId = await this.requireProfile(userId);
 
     await this.tx.run(async (trx) => {
-      const client = trx as unknown as typeof this.prisma.client;
+      const client = trx;
       const now = new Date();
 
       const item = await client.providerPortfolioItem.findFirst({
@@ -413,7 +505,7 @@ export class ProviderPortfolioService {
     return {
       id: row.id,
       media: {
-        url: publicUrlFor(row.mediaAsset.storageKey),
+        url: `/v1/me/provider/portfolio/${encodeURIComponent(row.id)}/media`,
         contentType: row.mediaAsset.declaredMimeType,
       },
       title: row.title,
@@ -443,10 +535,6 @@ interface PortfolioRow {
 
 /** The public read path the media module already serves. Composed here rather
  *  than stored, so moving the CDN is a one-line change instead of a backfill. */
-function publicUrlFor(storageKey: string): string {
-  return `/v1/media/files/${storageKey}`;
-}
-
 function notFound(): AppError {
   return new AppError('NOT_FOUND', 'That portfolio item does not exist.', 404);
 }
@@ -468,4 +556,10 @@ function toAppError(err: unknown): AppError {
     return new AppError('VALIDATION_ERROR', err.message, 400, { reason: err.code });
   }
   return err as AppError;
+}
+
+function uploadNotReserved(): AppError {
+  return new AppError('VALIDATION_ERROR', 'We could not find that upload. Please try again.', 400, {
+    reason: 'UPLOAD_NOT_RESERVED',
+  });
 }

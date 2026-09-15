@@ -3,6 +3,7 @@ import type {
   ReviewGroup,
   ReviewItem,
   ReviewTerms,
+  ProviderOnboardingFeedback,
 } from '@homeservicemarketplace/contracts';
 import { STEP_TO_V2_TASK } from '@homeservicemarketplace/contracts';
 import type { ProviderOnboardingIssue } from '@homeservicemarketplace/contracts';
@@ -28,6 +29,7 @@ import { providerActionIssues } from '../provider-onboarding.policy';
 // being computed from a list the UI can influence.
 
 export interface ReviewSource {
+  reviewFeedback?: ProviderOnboardingFeedback | null;
   /** Straight from `evaluateOnboarding(candidate)`. */
   issues: readonly ProviderOnboardingIssue[];
   /** The Sprint 7 lifecycle axis, for the already-submitted cases. */
@@ -180,6 +182,7 @@ export function buildReview(source: ReviewSource): ProviderOnboardingReview {
   ];
 
   return {
+    reviewFeedback: source.lifecycleState === 'RETURNED' ? (source.reviewFeedback ?? null) : null,
     groups,
     canSubmit,
     // The FIRST blocker, in policy order — "the exact next action", singular.

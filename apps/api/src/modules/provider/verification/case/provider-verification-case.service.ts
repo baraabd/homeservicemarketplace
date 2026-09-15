@@ -120,7 +120,7 @@ export class ProviderVerificationCaseService {
             requirementsSnapshot: resolved as unknown as Prisma.InputJsonValue,
             // The case's own column is `country`; the value comes from the
             // provider's operating area.
-            country: profile.serviceAreaCountry ?? null,
+            country: resolved.subjectScope.countryCode,
             providerType: profile.providerType ?? null,
             idempotencyKey: input.idempotencyKey ?? null,
           },
@@ -168,14 +168,15 @@ export class ProviderVerificationCaseService {
       where: { userId, deletedAt: null },
       select: {
         id: true,
-        // The provider's OPERATING country — where they will do the work — is
-        // what decides whose rules apply. There is no separate "country" on
-        // ProviderProfile; serviceAreaCountry is the field, and using it keeps
-        // the requirement set tied to where the work happens rather than to
-        // where the account was created.
+        // Policy uses the stable ISO code, never a translated display label.
+        serviceAreaCountryCode: true,
         serviceAreaCountry: true,
         providerType: true,
         serviceCategories: { select: { serviceCategoryId: true } },
+        categoryApplications: {
+          where: { status: 'PENDING', supersededAt: null },
+          select: { serviceCategoryId: true },
+        },
       },
     });
     if (!profile) {
@@ -205,8 +206,10 @@ export class ProviderVerificationCaseService {
   private async resolveFor(
     profile: {
       serviceAreaCountry: string | null;
+      serviceAreaCountryCode?: string | null;
       providerType: 'INDIVIDUAL' | 'BUSINESS' | null;
       serviceCategories: Array<{ serviceCategoryId: string }>;
+      categoryApplications?: Array<{ serviceCategoryId: string }>;
     },
     at: Date,
   ) {
@@ -222,14 +225,28 @@ export class ProviderVerificationCaseService {
       },
     })) as unknown as CandidatePolicy[];
 
+    const countryCode = verificationCountryCode(profile);
+    const subjectScope = {
+      countryCode,
+      providerType: profile.providerType ?? null,
+      // Applications are reviewed after identity. Include them now so a new
+      // licensed specialty cannot receive a grant under an unrelated checklist.
+      categoryIds: [
+        ...new Set([
+          ...profile.serviceCategories.map((c) => c.serviceCategoryId),
+          ...(profile.categoryApplications ?? []).map((c) => c.serviceCategoryId),
+        ]),
+      ].sort(),
+    };
     try {
-      return resolveRequirements({
-        country: profile.serviceAreaCountry ?? null,
-        providerType: profile.providerType ?? null,
-        categoryIds: profile.serviceCategories.map((c) => c.serviceCategoryId),
+      const resolved = resolveRequirements({
+        country: countryCode,
+        providerType: subjectScope.providerType,
+        categoryIds: subjectScope.categoryIds,
         policies,
         at,
       });
+      return { ...resolved, subjectScope };
     } catch (err) {
       if (err instanceof RequirementResolutionError) {
         // Deliberately NOT a 400. The provider did nothing wrong: nobody has
@@ -247,6 +264,18 @@ export class ProviderVerificationCaseService {
       throw err;
     }
   }
+}
+
+/** Legacy rows may already store a code in the display field. Names cannot
+ * safely be inferred, especially when translated, so only codes are accepted. */
+function verificationCountryCode(profile: {
+  serviceAreaCountryCode?: string | null;
+  serviceAreaCountry: string | null;
+}): string | null {
+  for (const value of [profile.serviceAreaCountryCode, profile.serviceAreaCountry]) {
+    if (value && /^[a-z]{2}$/i.test(value.trim())) return value.trim().toUpperCase();
+  }
+  return null;
 }
 
 function refusal(code: 'ALREADY_VERIFIED' | 'MULTIPLE_ACTIVE_CASES'): AppError {

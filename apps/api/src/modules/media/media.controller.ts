@@ -46,6 +46,13 @@ import { Public } from '../iam/authentication/decorators/public.decorator';
 import { AppError } from '../../shared/errors/app-error';
 import { PresignUploadRequestDto } from './dto/presign-upload.dto';
 import { isRestrictedKey } from '../provider/verification/media/evidence-keys';
+import {
+  isPortfolioStorageKey,
+  PORTFOLIO_STAGING_PREFIX,
+} from '../../infrastructure/storage/portfolio-storage-policy';
+import { PortfolioMediaService } from './portfolio-media.service';
+import { servePortfolioMedia } from './serve-portfolio-media';
+import { assertPublishableContentType } from '../provider/portfolio/portfolio-policy';
 
 // Sprint 7.x — media upload pipeline.
 //
@@ -86,6 +93,7 @@ export class MediaController {
     private readonly local: LocalDiskStorageAdapter,
     private readonly config: AppConfigService,
     private readonly ledger: PublicMediaLedgerService,
+    private readonly portfolioMedia: PortfolioMediaService,
   ) {}
 
   // ─── Presign batch ───────────────────────────────────────────────────────
@@ -121,8 +129,17 @@ export class MediaController {
         // to the seeker and the bidding providers, and changing the scheme
         // would orphan every URL already stored in ServiceRequest.mediaUrls[].
         if (body.purpose === 'portfolio') {
+          try {
+            assertPublishableContentType(item.contentType);
+          } catch {
+            throw new AppError(
+              'VALIDATION_ERROR',
+              'Portfolio uploads must be supported images.',
+              400,
+            );
+          }
           const ref = portfolioOwnerRef(user.id, String(this.config.get('JWT_ACCESS_SECRET')));
-          const portfolioKey = `portfolio/${ref}/${randomUUID()}.${ext}`;
+          const portfolioKey = `${PORTFOLIO_STAGING_PREFIX}${ref}/${randomUUID()}.${ext}`;
           // Sprint 09B.29 Phase 4 — the row exists BEFORE the URL does.
           //
           // An upload abandoned between the PUT and the attach used to leave an
@@ -136,11 +153,19 @@ export class MediaController {
             contentType: item.contentType,
             sizeBytes: item.sizeBytes,
           });
-          return this.storage.presignUpload({
-            key: portfolioKey,
-            contentType: item.contentType as ContentType,
-            sizeBytes: item.sizeBytes,
-          });
+          try {
+            return await this.storage.presignUpload({
+              key: portfolioKey,
+              contentType: item.contentType as ContentType,
+              sizeBytes: item.sizeBytes,
+            });
+          } catch {
+            throw new AppError(
+              'DEPENDENCY_UNAVAILABLE',
+              'Portfolio upload storage is not available. Please try again later.',
+              503,
+            );
+          }
         }
         // Sprint 9B.17 — avatars. Their own namespace, an opaque owner ref for
         // the same reason the portfolio has one (an avatar URL is handed out
@@ -266,6 +291,9 @@ export class MediaController {
       if (reason === 'expired' || reason === 'signature-mismatch') {
         throw new AppError('UNAUTHORIZED', 'Upload URL invalid or expired.', 401);
       }
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new AppError('CONFLICT', 'That upload has already been stored.', 409);
+      }
       if (
         reason === 'content-type-mismatch' ||
         reason === 'size-mismatch' ||
@@ -304,6 +332,11 @@ export class MediaController {
     if (isRestrictedKey(key)) {
       this.log.warn({ msg: 'media.public.restricted_key_refused' });
       throw new AppError('NOT_FOUND', 'File not found.', 404);
+    }
+
+    if (isPortfolioStorageKey(key)) {
+      await servePortfolioMedia(res, await this.portfolioMedia.openPublic(key));
+      return;
     }
 
     let absPath: string;

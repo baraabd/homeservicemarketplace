@@ -234,10 +234,10 @@ jobs:
           # Serve the artefact the step above produced.
           E2E_PREBUILT: '1'
         run: pnpm --filter @homeservicemarketplace/web test:e2e
-      # Traces, screenshots, and videos are configured retain-on-failure, so a
-      # green run uploads nothing.
-      - name: Upload Playwright traces and report on failure
-        if: failure()
+      # Admin review tests also capture successful EN/AR responsive screens for
+      # visual review. Retain those alongside failure traces on every run.
+      - name: Upload Playwright report and visual evidence
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: playwright-report

@@ -31,6 +31,7 @@ import {
 import { HubTaskRow } from './HubTaskRow';
 import { OnboardingAlert } from './OnboardingAlert';
 import { OnboardingShell } from './OnboardingShell';
+import { ReviewFeedback } from './ReviewFeedback';
 
 // Sprint 9B.16 — the resumable hub.
 //
@@ -306,6 +307,26 @@ export function OnboardingHubScreen() {
   // provider should not have to find their own problem among five rows that are
   // already done.
   if (view.state === 'ACTION_REQUIRED') {
+    if (data?.reviewFeedback?.items.length) {
+      const reviewAvailable = tasks.some(
+        (task) => task.id === 'REVIEW_SUBMISSION' && task.status === 'AVAILABLE',
+      );
+      return (
+        <OnboardingShell
+          title={lifecycle.returnedTitle}
+          subtitle={lifecycle.returnedSubtitle}
+          progress={draft.data?.percentComplete ?? progress}
+          onClose={backToProfile}
+        >
+          <ReviewFeedback
+            feedback={data.reviewFeedback}
+            lang={lang}
+            onOpen={(path) => navigate(path)}
+            onResubmit={reviewAvailable ? () => openTask('REVIEW_SUBMISSION') : undefined}
+          />
+        </OnboardingShell>
+      );
+    }
     const flaggedTask = target ? tasks.find((t) => t.id === target) : undefined;
     const reason = splitReturnReason(profileQuery.data?.profile.rejectionReason);
 

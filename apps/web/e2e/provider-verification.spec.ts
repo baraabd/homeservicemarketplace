@@ -144,6 +144,7 @@ const COPY = {
 } as const;
 
 interface Options {
+  direct?: boolean;
   allowed?: string[];
   primaryReason?: string | null;
   verificationCase?: ReturnType<typeof kase> | { case: null };
@@ -179,8 +180,12 @@ async function openVerification(
     }
     return json({ items: [], nextCursor: null });
   });
-  await page.goto('/provider');
-  await page.getByRole('link', { name: lang === 'ar' ? 'ملفي' : 'Profile' }).click();
+  if (options.direct) {
+    await page.goto('/provider/verification');
+  } else {
+    await page.goto('/provider');
+    await page.getByRole('link', { name: lang === 'ar' ? 'ملفي' : 'Profile' }).click();
+  }
   await expect(page.getByRole('region', { name: COPY[lang].axesHeading })).toBeVisible();
 }
 
@@ -188,6 +193,25 @@ for (const lang of ['en', 'ar'] as const) {
   const c = COPY[lang];
 
   test.describe(`provider verification (${lang})`, () => {
+    test('an applicant reaches document upload before workspace activation and after reload', async ({
+      page,
+    }) => {
+      await openVerification(page, lang, {
+        direct: true,
+        profile: PROFILE({ status: 'PENDING_REVIEW', verified: false }),
+        allowed: ['VIEW_OWN_PROFILE', 'MANAGE_VERIFICATION'],
+        verificationCase: kase(),
+      });
+      await expect(page).toHaveURL(/\/provider\/verification$/);
+      await expect(page.getByTestId('verification-EVIDENCE_REQUIRED')).toBeVisible();
+      await expect(
+        page.getByTestId('verification-EVIDENCE_REQUIRED').getByRole('button').first(),
+      ).toBeEnabled();
+      await page.reload();
+      await expect(page.getByTestId('verification-EVIDENCE_REQUIRED')).toBeVisible();
+      await expectNoHorizontalPageOverflow(page);
+    });
+
     test('the document direction matches the language', async ({ page }) => {
       await openVerification(page, lang, { verificationCase: kase() });
 

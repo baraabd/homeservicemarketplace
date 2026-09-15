@@ -1,5 +1,9 @@
 import { useRef, useState } from 'react';
-import type { ProviderPortfolioItem } from '@homeservicemarketplace/contracts';
+import { PortfolioImage } from './PortfolioImage';
+import {
+  PROVIDER_PORTFOLIO_CONTENT_TYPES,
+  type ProviderPortfolioItem,
+} from '@homeservicemarketplace/contracts';
 
 import { useLang } from '../../../i18n/LanguageContext';
 import {
@@ -51,7 +55,7 @@ import {
 // arrows are flipped from `dir`, and the layout uses logical properties so the
 // browser handles the mirroring.
 
-const ACCEPTED = 'image/jpeg,image/png,image/webp';
+const ACCEPTED = PROVIDER_PORTFOLIO_CONTENT_TYPES.join(',');
 
 export interface PortfolioSectionProps {
   /**
@@ -220,7 +224,7 @@ export function PortfolioSection({ trackWork }: PortfolioSectionProps = {}) {
                 data-testid="portfolio-item"
                 className="overflow-hidden rounded-lg border"
               >
-                <img
+                <PortfolioImage
                   src={item.media.url}
                   alt={item.title ?? t.sectionTitle}
                   className="aspect-square w-full object-cover"

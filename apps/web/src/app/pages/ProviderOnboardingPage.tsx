@@ -1,9 +1,13 @@
-import { Navigate, Outlet, useParams } from 'react-router';
+import { Navigate, Outlet, useNavigate, useParams } from 'react-router';
 
 import { isProviderOnboardingV2Enabled } from '../../lib/feature-flags';
 import { OnboardingHubScreen } from '../features/provider-onboarding-v2/components/OnboardingHubScreen';
 import { OnboardingTaskScreen } from '../features/provider-onboarding-v2/components/OnboardingTaskScreen';
 import { ProviderOnboardingAutosaveProvider } from '../features/provider-onboarding-v2/autosave/ProviderOnboardingAutosaveProvider';
+import { OnboardingShell } from '../features/provider-onboarding-v2/components/OnboardingShell';
+import { ProviderVerificationScreen } from '../features/provider-verification/components/ProviderVerificationScreen';
+import { useLang } from '../i18n/LanguageContext';
+import { REVIEW_FEEDBACK_COPY } from '../features/provider-onboarding-v2/copy/review-feedback-copy';
 
 // Sprint 9B.16 — the V2 onboarding routes, behind the flag.
 //
@@ -29,6 +33,21 @@ export function ProviderOnboardingTaskPage() {
   // empty name.
   if (!taskId) return <Navigate to="/provider/onboarding" replace />;
   return <OnboardingTaskScreen />;
+}
+
+/** Evidence belongs to applicants as well as active providers. Authorization
+ * remains in the existing verification API and its server-owned actions. */
+export function ProviderVerificationPage() {
+  const { lang } = useLang();
+  const navigate = useNavigate();
+  return (
+    <OnboardingShell
+      title={REVIEW_FEEDBACK_COPY[lang].verificationTitle}
+      onClose={() => navigate('/provider/status')}
+    >
+      <ProviderVerificationScreen />
+    </OnboardingShell>
+  );
 }
 
 /**
