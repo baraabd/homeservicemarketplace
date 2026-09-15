@@ -2,10 +2,11 @@ import { createHmac } from 'node:crypto';
 
 import {
   LEGACY_PUBLICATION_ACK_TEXT,
+  PROVIDER_PORTFOLIO_CONTENT_TYPES,
   isCurrentPublicationAckVersion,
 } from '@homeservicemarketplace/contracts';
 
-import { ALLOWED_IMAGE_TYPES } from '../../../infrastructure/storage/content-type';
+import { PORTFOLIO_STAGING_PREFIX } from '../../../infrastructure/storage/portfolio-storage-policy';
 
 // Sprint 9B.10 — the portfolio rules, with no database in sight.
 //
@@ -80,7 +81,7 @@ export class PortfolioPolicyError extends Error {
  * would put an unplayable file in front of a customer.
  */
 export function assertPublishableContentType(contentType: string): void {
-  if (!(ALLOWED_IMAGE_TYPES as readonly string[]).includes(contentType)) {
+  if (!(PROVIDER_PORTFOLIO_CONTENT_TYPES as readonly string[]).includes(contentType)) {
     throw new PortfolioPolicyError(
       'DISALLOWED_FORMAT',
       'Portfolio items must be an image in a supported format.',
@@ -98,12 +99,15 @@ export function assertPublishableContentType(contentType: string): void {
  */
 export function assertPublishableKey(key: string, ownerRef: string): void {
   // The OPAQUE ref, never the raw user id — see portfolioOwnerRef.
-  const expectedPrefix = `${PORTFOLIO_KEY_PREFIX}${ownerRef}/`;
+  const expectedPrefixes = [
+    `${PORTFOLIO_KEY_PREFIX}${ownerRef}/`,
+    `${PORTFOLIO_STAGING_PREFIX}${ownerRef}/`,
+  ];
 
   if (key.startsWith(EVIDENCE_KEY_PREFIX)) {
     throw new PortfolioPolicyError('NOT_A_PORTFOLIO_KEY', 'That file is not a portfolio image.');
   }
-  if (!key.startsWith(expectedPrefix)) {
+  if (!expectedPrefixes.some((prefix) => key.startsWith(prefix))) {
     throw new PortfolioPolicyError('NOT_A_PORTFOLIO_KEY', 'That file is not a portfolio image.');
   }
   // Traversal, absolute paths and null bytes. The presign endpoint synthesises

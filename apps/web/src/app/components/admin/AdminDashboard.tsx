@@ -1,28 +1,29 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useEffect, useRef, useState } from 'react';
+import { Link, matchPath, useLocation, useNavigate } from 'react-router';
+import * as Dialog from '@radix-ui/react-dialog';
 import {
-  LayoutDashboard,
-  Users,
-  ShieldCheck,
-  DollarSign,
   AlertTriangle,
-  X,
-  Search,
-  Zap,
+  BriefcaseBusiness,
+  ClipboardCheck,
+  DollarSign,
+  FileText,
+  LayoutDashboard,
   LogOut,
   Menu,
+  Moon,
   Settings,
-  FileText,
+  ShieldCheck,
+  Sun,
+  Users,
+  X,
+  Zap,
 } from 'lucide-react';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { useAuth } from '../../../lib/auth-provider';
-import {
-  useAdminRoles,
-  useAdminUserDetail,
-  useAdminUsers,
-  useUpdateAdminUserStatus,
-} from '../../hooks/admin/useAdminUsers';
+import { UsersSection } from '../../features/admin-directory/components/UsersSection';
+import { ProviderDirectory } from '../../features/admin-directory/components/ProviderDirectory';
+import { AdminProviderReviewWorkspace } from '../../features/admin-provider-review/components/AdminProviderReviewWorkspace';
 import { VerificationSection } from './VerificationSection';
 import { AdminVerificationCaseWorkspace } from '../../features/admin-verification/components/AdminVerificationCaseWorkspace';
 import { VerificationPolicyPanel } from '../../features/admin-verification/components/VerificationPolicyPanel';
@@ -32,784 +33,311 @@ import { FinancialsSection } from './FinancialsSection';
 import { SettingsSection } from './SettingsSection';
 import { AuditLogsSection } from './AuditLogsSection';
 import { AdminNotificationsBell } from './AdminNotificationsBell';
-import type {
-  AdminAccessRequestStatus,
-  AdminUserStatus,
-  AdminUserSummary,
-  UpdateUserStatusRequest,
-} from '@homeservicemarketplace/contracts';
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
 type Section =
   | 'dashboard'
   | 'users'
+  | 'providers'
+  | 'reviews'
   | 'verification'
   | 'financials'
   | 'disputes'
   | 'settings'
   | 'audit';
+const NAV_ITEMS = [
+  { id: 'dashboard', icon: LayoutDashboard, en: 'Dashboard', ar: 'لوحة التحكم' },
+  { id: 'users', icon: Users, en: 'User Control', ar: 'إدارة المستخدمين' },
+  { id: 'providers', icon: BriefcaseBusiness, en: 'Providers', ar: 'المهنيون' },
+  { id: 'reviews', icon: ClipboardCheck, en: 'Application review', ar: 'مراجعة الطلبات' },
+  { id: 'verification', icon: ShieldCheck, en: 'Pro Verification', ar: 'توثيق المحترفين' },
+  { id: 'financials', icon: DollarSign, en: 'Financials', ar: 'الماليات' },
+  { id: 'disputes', icon: AlertTriangle, en: 'Dispute Center', ar: 'مركز النزاعات' },
+  { id: 'settings', icon: Settings, en: 'Settings', ar: 'الإعدادات' },
+  { id: 'audit', icon: FileText, en: 'Audit Logs', ar: 'سجل التدقيق' },
+] as const;
 
-// ─── User Control (Sprint 6.1) ────────────────────────────────────────────────
-//
-// Replaces the prior "Coming Soon" placeholder with a real, API-driven
-// admin user table: search by query, filter by role + status, open the
-// detail drawer, flip the user's status. All mutations are audited
-// server-side; the hook tree invalidates the admin/users root on every
-// successful PATCH so the table reconciles without a manual refetch.
-const STATUS_OPTIONS: ReadonlyArray<AdminUserStatus | 'ALL'> = [
-  'ALL',
-  'ACTIVE',
-  'SUSPENDED',
-  'LOCKED',
-  'PENDING_VERIFICATION',
-];
-
-// Phase 4 — the ADMIN-ACCESS-REQUEST axis, rendered as its own badge.
-//
-// This is deliberately a different colour family from the account-status
-// badge: a reader must not be able to mistake "asked for admin access" for
-// "the account is active". Null (never asked) renders nothing at all — an
-// empty cell is honest, whereas a "NONE" badge invites reading it as a state
-// the user is in.
-function adminAccessBadgeClass(status: AdminAccessRequestStatus): string {
-  // Deliberately a DIFFERENT colour family from statusBadgeClass below.
-  //
-  // A suspended account and a rejected admin request are different facts about
-  // different axes, and they frequently appear in the same row. Painting both
-  // rose made the row say "red, red" and told the reader nothing about which
-  // axis was in trouble — a real defect the browser tests caught by comparing
-  // the two computed backgrounds.
-  switch (status) {
-    case 'PENDING':
-      return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300';
-    case 'APPROVED':
-      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
-    case 'REJECTED':
-      // Purple, not rose: rose is reserved for the ACCOUNT axis (SUSPENDED).
-      return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300';
-    case 'CANCELLED':
-      return 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
-    default:
-      return 'bg-slate-100 text-slate-600';
-  }
+function sectionPath(section: Section) {
+  return section === 'dashboard' ? '/admin' : `/admin/${section}`;
 }
 
-function adminAccessLabel(status: AdminAccessRequestStatus, isAr: boolean): string {
-  switch (status) {
-    case 'PENDING':
-      return isAr ? 'قيد المراجعة' : 'Pending';
-    case 'APPROVED':
-      return isAr ? 'مُعتمد' : 'Approved';
-    case 'REJECTED':
-      return isAr ? 'مرفوض' : 'Rejected';
-    case 'CANCELLED':
-      return isAr ? 'ملغى' : 'Cancelled';
-    default:
-      return status;
-  }
+/** A review link may return only to its own directory, never to an arbitrary URL. */
+function directoryReturn(search: string) {
+  const target = new URLSearchParams(search).get('returnTo');
+  return target && /^\/admin\/(providers|reviews)(\?|$)/.test(target) ? target : '/admin/reviews';
 }
 
-function statusBadgeClass(status: AdminUserStatus): string {
-  switch (status) {
-    case 'ACTIVE':
-      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-    case 'SUSPENDED':
-      return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400';
-    case 'LOCKED':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-    case 'PENDING_VERIFICATION':
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-    case 'DELETED':
-      return 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400';
-    default:
-      return 'bg-slate-100 text-slate-600';
-  }
-}
-
-function UsersSection({ lang }: { lang: string }) {
-  const isAr = lang === 'ar';
-  const [searchInput, setSearchInput] = useState('');
-  const [committedQuery, setCommittedQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState<AdminUserStatus | undefined>(undefined);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-
-  const usersQuery = useAdminUsers({
-    query: committedQuery || undefined,
-    role: roleFilter,
-    status: statusFilter,
-    limit: 50,
-  });
-  const rolesQuery = useAdminRoles();
-
-  const items: AdminUserSummary[] = usersQuery.data?.items ?? [];
-
-  const L = {
-    title: isAr ? 'إدارة المستخدمين' : 'User Control',
-    searchPlaceholder: isAr ? 'ابحث بالبريد أو الاسم' : 'Search by email or name',
-    searchAction: isAr ? 'بحث' : 'Search',
-    role: isAr ? 'الدور' : 'Role',
-    status: isAr ? 'الحالة' : 'Status',
-    allRoles: isAr ? 'كل الأدوار' : 'All roles',
-    allStatuses: isAr ? 'كل الحالات' : 'All statuses',
-    columns: {
-      name: isAr ? 'المستخدم' : 'User',
-      roles: isAr ? 'الأدوار' : 'Roles',
-      status: isAr ? 'الحالة' : 'Status',
-      // Phase 4: a THIRD column, because admin standing is a separate axis
-      // from the account status next to it.
-      adminAccess: isAr ? 'وصول الإدارة' : 'Admin access',
-      created: isAr ? 'منذ' : 'Created',
-    },
-    loading: isAr ? 'جارٍ التحميل…' : 'Loading…',
-    failed: isAr
-      ? 'تعذّر تحميل المستخدمين. حاول مرة أخرى.'
-      : 'Could not load users. Please try again.',
-    empty: isAr ? 'لا يوجد مستخدمون مطابقون.' : 'No users match the current filters.',
-  };
-
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Header + filter bar */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <h2
-          className="text-slate-900 dark:text-white"
-          style={{ fontSize: '22px', fontWeight: 800 }}
-        >
-          {L.title}
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setCommittedQuery(searchInput.trim());
-            }}
-            className="flex gap-2"
-          >
-            <div className="relative">
-              <Search
-                size={14}
-                className="absolute top-1/2 -translate-y-1/2 start-3 text-slate-400"
-              />
-              <input
-                type="search"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder={L.searchPlaceholder}
-                className="ps-9 pe-3 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-                style={{ fontSize: '13px', minWidth: '240px' }}
-                aria-label={L.searchPlaceholder}
-              />
-            </div>
-            <button
-              type="submit"
-              className="px-3 py-2 rounded-2xl bg-blue-600 text-white"
-              style={{ fontSize: '13px', fontWeight: 700 }}
-            >
-              {L.searchAction}
-            </button>
-          </form>
-          <select
-            value={roleFilter ?? ''}
-            onChange={(e) => setRoleFilter(e.target.value || undefined)}
-            className="px-3 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-            style={{ fontSize: '13px' }}
-            aria-label={L.role}
-          >
-            <option value="">{L.allRoles}</option>
-            {(rolesQuery.data?.items ?? []).map((r) => (
-              <option key={r.id} value={r.name}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={statusFilter ?? 'ALL'}
-            onChange={(e) =>
-              setStatusFilter(
-                e.target.value === 'ALL' ? undefined : (e.target.value as AdminUserStatus),
-              )
-            }
-            className="px-3 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-            style={{ fontSize: '13px' }}
-            aria-label={L.status}
-          >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s === 'ALL' ? L.allStatuses : s}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
-        {usersQuery.isPending ? (
-          <p
-            className="py-12 text-center text-slate-400"
-            role="status"
-            style={{ fontSize: '13px' }}
-          >
-            {L.loading}
-          </p>
-        ) : usersQuery.isError ? (
-          <p className="py-12 text-center text-rose-600" role="status" style={{ fontSize: '13px' }}>
-            {L.failed}
-          </p>
-        ) : items.length === 0 ? (
-          <p
-            className="py-12 text-center text-slate-400"
-            role="status"
-            style={{ fontSize: '13px' }}
-          >
-            {L.empty}
-          </p>
-        ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100 dark:border-slate-700 text-start">
-                <th
-                  className="px-4 py-3 text-slate-500 text-start"
-                  style={{ fontSize: '11px', fontWeight: 700 }}
-                >
-                  {L.columns.name}
-                </th>
-                <th
-                  className="px-4 py-3 text-slate-500 text-start"
-                  style={{ fontSize: '11px', fontWeight: 700 }}
-                >
-                  {L.columns.roles}
-                </th>
-                <th
-                  className="px-4 py-3 text-slate-500 text-start"
-                  style={{ fontSize: '11px', fontWeight: 700 }}
-                >
-                  {L.columns.status}
-                </th>
-                <th
-                  className="px-4 py-3 text-slate-500 text-start"
-                  style={{ fontSize: '11px', fontWeight: 700 }}
-                  data-testid="col-admin-access"
-                >
-                  {L.columns.adminAccess}
-                </th>
-                <th
-                  className="px-4 py-3 text-slate-500 text-start"
-                  style={{ fontSize: '11px', fontWeight: 700 }}
-                >
-                  {L.columns.created}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((u) => (
-                <tr
-                  key={u.id}
-                  onClick={() => setSelectedUserId(u.id)}
-                  className="border-b border-slate-50 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer"
-                >
-                  <td className="px-4 py-3">
-                    <p
-                      className="text-slate-900 dark:text-white"
-                      style={{ fontSize: '13px', fontWeight: 600 }}
-                    >
-                      {u.firstName} {u.lastName}
-                    </p>
-                    <p className="text-slate-400" style={{ fontSize: '11px' }}>
-                      {u.email}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3" data-testid="cell-roles">
-                    <div className="flex flex-wrap gap-1">
-                      {u.roles.map((r) => (
-                        <span
-                          key={r}
-                          data-testid="badge-role"
-                          className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
-                          style={{ fontSize: '10px', fontWeight: 600 }}
-                        >
-                          {r}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3" data-testid="cell-account-status">
-                    <span
-                      data-testid="badge-account-status"
-                      className={`px-2 py-1 rounded-full ${statusBadgeClass(u.status)}`}
-                      style={{ fontSize: '10px', fontWeight: 700 }}
-                    >
-                      {u.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3" data-testid="cell-admin-access">
-                    {u.adminAccessRequestStatus ? (
-                      <span
-                        data-testid="badge-admin-access"
-                        className={`px-2 py-1 rounded-full ${adminAccessBadgeClass(
-                          u.adminAccessRequestStatus,
-                        )}`}
-                        style={{ fontSize: '10px', fontWeight: 700 }}
-                      >
-                        {adminAccessLabel(u.adminAccessRequestStatus, isAr)}
-                      </span>
-                    ) : (
-                      // Never asked. An empty cell is honest; a "NONE" badge
-                      // would read as a state the user is in.
-                      <span className="text-slate-300 dark:text-slate-600" aria-hidden="true">
-                        —
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-500" style={{ fontSize: '11px' }}>
-                    {new Date(u.createdAt).toLocaleDateString(isAr ? 'ar' : 'en')}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {selectedUserId ? (
-        <UserDetailDrawer
-          userId={selectedUserId}
-          onClose={() => setSelectedUserId(null)}
-          lang={lang}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function UserDetailDrawer({
-  userId,
-  onClose,
-  lang,
-}: {
-  userId: string;
-  onClose: () => void;
-  lang: string;
-}) {
-  const isAr = lang === 'ar';
-  const detailQuery = useAdminUserDetail(userId);
-  const setStatus = useUpdateAdminUserStatus();
-  const { user: meUser } = useAuth();
-  const isSelf = meUser?.id === userId;
-  const user = detailQuery.data;
-
-  const L = {
-    detail: isAr ? 'تفاصيل المستخدم' : 'User detail',
-    close: isAr ? 'إغلاق' : 'Close',
-    suspend: isAr ? 'تعليق' : 'Suspend',
-    activate: isAr ? 'تفعيل' : 'Activate',
-    selfWarning: isAr ? 'لا يمكنك تعطيل حسابك الخاص.' : 'You cannot disable your own account.',
-    loading: isAr ? 'جارٍ التحميل…' : 'Loading…',
-    error: isAr ? 'تعذّر تحميل التفاصيل.' : 'Could not load user details.',
-    saving: isAr ? 'جارٍ الحفظ…' : 'Saving…',
-    saveFailed: isAr ? 'فشل التحديث.' : 'Update failed.',
-  };
-
-  const onFlip = async (next: 'ACTIVE' | 'SUSPENDED') => {
-    if (!user) return;
-    const body: UpdateUserStatusRequest = { status: next };
-    await setStatus.mutateAsync({ userId: user.id, body });
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-label={L.close} />
-      <div className="relative ms-auto w-full max-w-md bg-white dark:bg-slate-800 h-full overflow-y-auto p-6 flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h3
-            className="text-slate-900 dark:text-white"
-            style={{ fontSize: '18px', fontWeight: 800 }}
-          >
-            {L.detail}
-          </h3>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"
-            aria-label={L.close}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {detailQuery.isPending ? (
-          <p className="text-slate-400" role="status" style={{ fontSize: '13px' }}>
-            {L.loading}
-          </p>
-        ) : detailQuery.isError || !user ? (
-          <p className="text-rose-600" role="status" style={{ fontSize: '13px' }}>
-            {L.error}
-          </p>
-        ) : (
-          <>
-            <div className="flex flex-col gap-1">
-              <p
-                className="text-slate-900 dark:text-white"
-                style={{ fontSize: '16px', fontWeight: 700 }}
-              >
-                {user.firstName} {user.lastName}
-              </p>
-              <p className="text-slate-500" style={{ fontSize: '13px' }}>
-                {user.email}
-              </p>
-              <span
-                className={`mt-1 inline-block w-fit px-2 py-1 rounded-full ${statusBadgeClass(user.status)}`}
-                style={{ fontSize: '10px', fontWeight: 700 }}
-              >
-                {user.status}
-              </span>
-            </div>
-
-            <div>
-              <p className="text-slate-500" style={{ fontSize: '11px', fontWeight: 700 }}>
-                {isAr ? 'الأدوار' : 'Roles'}
-              </p>
-              <div className="flex flex-wrap gap-1 mt-1">
-                {user.roles.map((r) => (
-                  <span
-                    key={r}
-                    className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
-                    style={{ fontSize: '11px', fontWeight: 600 }}
-                  >
-                    {r}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-slate-500" style={{ fontSize: '11px' }}>
-              <div>
-                <p style={{ fontWeight: 700 }}>{isAr ? 'تم التحقق' : 'Email verified'}</p>
-                <p>
-                  {user.emailVerifiedAt ? new Date(user.emailVerifiedAt).toLocaleString() : '—'}
-                </p>
-              </div>
-              <div>
-                <p style={{ fontWeight: 700 }}>MFA</p>
-                <p>{user.mfaEnabled ? '✓' : '—'}</p>
-              </div>
-              <div>
-                <p style={{ fontWeight: 700 }}>{isAr ? 'تاريخ الإنشاء' : 'Created'}</p>
-                <p>{new Date(user.createdAt).toLocaleString()}</p>
-              </div>
-              <div>
-                <p style={{ fontWeight: 700 }}>{isAr ? 'آخر تحديث' : 'Updated'}</p>
-                <p>{new Date(user.updatedAt).toLocaleString()}</p>
-              </div>
-            </div>
-
-            <div className="mt-2 flex flex-col gap-2">
-              {isSelf ? (
-                <p className="text-amber-600" style={{ fontSize: '12px' }} role="status">
-                  {L.selfWarning}
-                </p>
-              ) : null}
-              {user.status === 'ACTIVE' ? (
-                <button
-                  type="button"
-                  disabled={isSelf || setStatus.isPending}
-                  onClick={() => onFlip('SUSPENDED')}
-                  className="w-full py-2 rounded-2xl bg-rose-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ fontSize: '14px', fontWeight: 700 }}
-                >
-                  {setStatus.isPending ? L.saving : L.suspend}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={setStatus.isPending}
-                  onClick={() => onFlip('ACTIVE')}
-                  className="w-full py-2 rounded-2xl bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ fontSize: '14px', fontWeight: 700 }}
-                >
-                  {setStatus.isPending ? L.saving : L.activate}
-                </button>
-              )}
-              {setStatus.isError ? (
-                <p className="text-rose-600" style={{ fontSize: '12px' }} role="status">
-                  {L.saveFailed}
-                </p>
-              ) : null}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Sidebar ───────────────────────────────────────────────────────────────────
-const SIDEBAR_ITEMS: { id: Section; icon: React.ReactNode; en: string; ar: string }[] = [
-  { id: 'dashboard', icon: <LayoutDashboard size={18} />, en: 'Dashboard', ar: 'لوحة التحكم' },
-  { id: 'users', icon: <Users size={18} />, en: 'User Control', ar: 'إدارة المستخدمين' },
-  {
-    id: 'verification',
-    icon: <ShieldCheck size={18} />,
-    en: 'Pro Verification',
-    ar: 'توثيق المحترفين',
-  },
-  { id: 'financials', icon: <DollarSign size={18} />, en: 'Financials', ar: 'الماليات' },
-  { id: 'disputes', icon: <AlertTriangle size={18} />, en: 'Dispute Center', ar: 'مركز النزاعات' },
-  { id: 'settings', icon: <Settings size={18} />, en: 'Settings', ar: 'الإعدادات' },
-  { id: 'audit', icon: <FileText size={18} />, en: 'Audit Logs', ar: 'سجل التدقيق' },
-];
-
-// ─── Admin Dashboard shell ────────────────────────────────────────────────────
+// Admin is a full-width, role-gated route tree. The URL owns navigation so a
+// refresh, login round trip, deep link, and browser Back show the same surface.
 export function AdminDashboard() {
   const { lang, dir, darkMode, toggleDarkMode } = useLang();
-  // Sprint 6.6 retired the `useEcosystem.adminNotifs` mock — the
-  // bell badge is now driven by `useAdminNotifications` inside
-  // `AdminNotificationsBell`.
-  const [activeSection, setActiveSection] = useState<Section>('dashboard');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  // Identity binding (Sprint admin-identity patch). `useAuthIdentity`
-  // returns null fields while /auth/me is loading or absent — we render
-  // those as empty so the existing visual containers stay in place
-  // without flashing fake "AD" / "admin@fixnow.app" copy. The "Platform
-  // Administrator" string below is a generic role label, not a personal
-  // name; it sits next to the user's real identity instead of replacing
-  // it. RequireAdmin already gated this route, so reaching this render
-  // means a real authenticated admin session exists once /me resolves.
+  const { logout } = useAuth();
   const identity = useAuthIdentity();
-  const displayName = identity.displayName ?? '';
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusToContent = useRef(false);
+  const previousPath = useRef(location.pathname);
+  const isAr = lang === 'ar';
+  const providerMatch = matchPath('/admin/providers/:providerProfileId', location.pathname);
+  const segment = location.pathname.split('/')[2] || 'dashboard';
+  const active = NAV_ITEMS.find((item) => item.id === segment);
+  const activeSection = active?.id ?? 'dashboard';
+  const title = providerMatch
+    ? isAr
+      ? 'مراجعة ملف المهني'
+      : 'Provider review'
+    : (active?.[lang] ?? (isAr ? 'لوحة التحكم' : 'Dashboard'));
   const initials = identity.initials ?? '';
+  const displayName = identity.displayName ?? '';
   const email = identity.email ?? '';
-  const roleLabel = lang === 'ar' ? 'مدير المنصة' : 'Platform Administrator';
+  const roleLabel = isAr ? 'مدير المنصة' : 'Platform Administrator';
 
-  const SECTION_TITLES: Record<Section, { en: string; ar: string }> = {
-    dashboard: { en: 'Dashboard', ar: 'لوحة التحكم' },
-    users: { en: 'User Control', ar: 'إدارة المستخدمين' },
-    verification: { en: 'Pro Verification', ar: 'توثيق المحترفين' },
-    financials: { en: 'Financials', ar: 'التقارير المالية' },
-    disputes: { en: 'Dispute Center', ar: 'مركز النزاعات' },
-    settings: { en: 'Settings', ar: 'الإعدادات' },
-    audit: { en: 'Audit Logs', ar: 'سجل التدقيق' },
-  };
+  useEffect(() => {
+    if (previousPath.current !== location.pathname) {
+      returnFocusToContent.current = true;
+      setMobileOpen(false);
+      mainRef.current?.focus();
+      previousPath.current = location.pathname;
+    }
+  }, [location.pathname]);
 
-  const fontFamily = lang === 'ar' ? "'Cairo','Inter',sans-serif" : "'Inter',sans-serif";
+  async function signOut() {
+    setSigningOut(true);
+    setSignOutError(false);
+    try {
+      await logout();
+      navigate('/login?app=admin', { replace: true });
+    } catch {
+      setSignOutError(true);
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
+  const navigation = (mobile = false) => (
+    <nav
+      aria-label={isAr ? 'التنقل في الإدارة' : 'Admin navigation'}
+      className="flex flex-1 flex-col gap-1 px-3 py-4"
+    >
+      {NAV_ITEMS.map(({ id, icon: Icon, en, ar }) => (
+        <button
+          key={id}
+          type="button"
+          data-testid={mobile ? `mobile-nav-${id}` : `nav-${id}`}
+          aria-current={activeSection === id ? 'page' : undefined}
+          onClick={() => {
+            navigate(sectionPath(id));
+            setMobileOpen(false);
+          }}
+          className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-4 py-3 text-start text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 ${activeSection === id ? 'bg-amber-500 font-bold text-slate-950 shadow-lg shadow-amber-950/20' : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}
+        >
+          <Icon aria-hidden="true" size={18} className="shrink-0" />
+          <span>{isAr ? ar : en}</span>
+        </button>
+      ))}
+    </nav>
+  );
+
+  const brand = (
+    <div className="flex items-center gap-3 border-b border-white/10 px-5 py-6">
+      <div className="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg">
+        <Zap size={18} className="text-white" aria-hidden="true" />
+      </div>
+      <div>
+        <p className="font-extrabold text-white">FixNow</p>
+        <p className="text-xs text-slate-400">{isAr ? 'لوحة الإدارة' : 'Admin Panel'}</p>
+      </div>
+    </div>
+  );
 
   return (
     <div
-      className={`flex ${darkMode ? 'dark' : ''} min-h-screen`}
-      style={{ fontFamily, direction: dir, background: '#f8fafc' }}
+      className={`${darkMode ? 'dark' : ''} min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100`}
       dir={dir}
+      lang={lang}
+      style={{ fontFamily: isAr ? "'Cairo','Inter',sans-serif" : "'Inter',sans-serif" }}
     >
-      {/* ── Sidebar ── */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <motion.aside
-            initial={{ x: dir === 'rtl' ? '100%' : '-100%', opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: dir === 'rtl' ? '100%' : '-100%', opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="w-64 flex-shrink-0 bg-slate-900 dark:bg-slate-950 flex flex-col min-h-screen z-20"
-          >
-            {/* Logo */}
-            <div className="flex items-center gap-3 px-5 py-6 border-b border-white/10">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg">
-                <Zap size={18} className="text-white" />
-              </div>
-              <div>
-                <p className="text-white" style={{ fontSize: '16px', fontWeight: 800 }}>
-                  FixNow
-                </p>
-                <p className="text-white/40" style={{ fontSize: '10px' }}>
-                  {lang === 'ar' ? 'لوحة الإدارة' : 'Admin Panel'}
-                </p>
-              </div>
-            </div>
-
-            {/* Nav */}
-            <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
-              {SIDEBAR_ITEMS.map(({ id, icon, en, ar }) => {
-                const active = activeSection === id;
-                return (
-                  <motion.button
-                    key={id}
-                    // Keyed by the SECTION ID, not the translated label, so a
-                    // test (or an automation) targets the same control in
-                    // English and Arabic.
-                    data-testid={`nav-${id}`}
-                    onClick={() => setActiveSection(id)}
-                    whileTap={{ scale: 0.97 }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-start transition-all ${
-                      active
-                        ? 'bg-amber-500 text-white shadow-lg shadow-amber-900/40'
-                        : 'text-white/60 hover:bg-white/5 hover:text-white'
-                    }`}
-                  >
-                    <span className={active ? 'text-white' : 'text-white/40'}>{icon}</span>
-                    <span style={{ fontSize: '14px', fontWeight: active ? 700 : 400 }}>
-                      {lang === 'ar' ? ar : en}
-                    </span>
-                    {id === 'verification' && (
-                      <span
-                        className="ms-auto w-5 h-5 rounded-full bg-amber-400/20 text-amber-300 flex items-center justify-center"
-                        style={{ fontSize: '10px', fontWeight: 800 }}
-                      >
-                        7
-                      </span>
-                    )}
-                    {id === 'disputes' && (
-                      <span
-                        className="ms-auto w-5 h-5 rounded-full bg-red-400/20 text-red-400 flex items-center justify-center"
-                        style={{ fontSize: '10px', fontWeight: 800 }}
-                      >
-                        3
-                      </span>
-                    )}
-                  </motion.button>
-                );
-              })}
-            </nav>
-
-            {/* Sidebar footer */}
-            <div className="px-3 py-4 border-t border-white/10">
-              <div className="flex items-center gap-3 px-4 py-3">
-                <div
-                  data-testid="admin-sidebar-avatar"
-                  className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0"
-                >
-                  <span className="text-white" style={{ fontSize: '12px', fontWeight: 800 }}>
-                    {initials}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p
-                    data-testid="admin-sidebar-name"
-                    className="text-white truncate"
-                    style={{ fontSize: '13px', fontWeight: 600 }}
-                  >
-                    {displayName}
-                  </p>
-                  <p
-                    data-testid="admin-sidebar-email"
-                    className="text-white/40 truncate"
-                    style={{ fontSize: '10px' }}
-                  >
-                    {email || roleLabel}
-                  </p>
-                </div>
-                <button
-                  aria-label={lang === 'ar' ? 'تسجيل الخروج' : 'Sign out'}
-                  className="text-white/40 hover:text-white/70 transition-colors"
-                >
-                  <LogOut size={15} />
-                </button>
-              </div>
-            </div>
-          </motion.aside>
-        )}
-      </AnimatePresence>
-
-      {/* ── Main ── */}
-      <div className="flex-1 flex flex-col min-h-screen min-w-0">
-        {/* Top bar */}
-        <header className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 shadow-sm flex items-center justify-between px-6 py-4 z-10 sticky top-0">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setSidebarOpen((s) => !s)}
-              className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition-all"
-            >
-              <Menu size={18} className="text-slate-600 dark:text-slate-300" />
-            </button>
-            <div>
-              <h1
-                className="text-slate-900 dark:text-white"
-                style={{ fontSize: '18px', fontWeight: 800 }}
+      <a
+        href="#admin-content"
+        className="sr-only z-50 rounded-xl bg-amber-500 p-3 text-slate-950 focus:not-sr-only focus:fixed focus:start-3 focus:top-3"
+      >
+        {isAr ? 'انتقل إلى المحتوى' : 'Skip to content'}
+      </a>
+      <div className="flex min-h-screen">
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col overflow-y-auto bg-slate-900 dark:bg-slate-950 lg:flex">
+          {brand}
+          {navigation()}
+          <div className="border-t border-white/10 px-4 py-4">
+            <div className="flex items-center gap-3">
+              <div
+                data-testid="admin-sidebar-avatar"
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-sm font-extrabold text-white"
               >
-                {lang === 'ar'
-                  ? SECTION_TITLES[activeSection].ar
-                  : SECTION_TITLES[activeSection].en}
-              </h1>
-              <p className="text-slate-400" style={{ fontSize: '12px' }}>
-                {new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Search */}
-            <div className="hidden md:flex items-center gap-2 bg-slate-100 dark:bg-slate-700 rounded-xl px-4 py-2.5 w-64">
-              <Search size={14} className="text-slate-400" />
-              <input
-                placeholder={lang === 'ar' ? 'بحث…' : 'Search…'}
-                className="flex-1 bg-transparent text-slate-600 dark:text-slate-300 placeholder-slate-400 outline-none"
-                style={{ fontSize: '13px' }}
-              />
-            </div>
-
-            {/* Dark mode */}
-            <button
-              onClick={toggleDarkMode}
-              className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition-all"
-            >
-              <span style={{ fontSize: '14px' }}>{darkMode ? '☀️' : '🌙'}</span>
-            </button>
-
-            {/* Lang toggle */}
-            <LangToggle />
-
-            {/* Notifications (Sprint 6.6 — real, API-driven badge + drawer) */}
-            <AdminNotificationsBell lang={lang} />
-
-            {/* Admin avatar */}
-            <div
-              data-testid="admin-topbar-avatar"
-              title={displayName || roleLabel}
-              className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center"
-            >
-              <span className="text-white" style={{ fontSize: '11px', fontWeight: 800 }}>
                 {initials}
-              </span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p
+                  data-testid="admin-sidebar-name"
+                  className="truncate text-sm font-semibold text-white"
+                >
+                  {displayName}
+                </p>
+                <p data-testid="admin-sidebar-email" className="truncate text-xs text-slate-400">
+                  {email || roleLabel}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                disabled={signingOut}
+                aria-label={isAr ? 'تسجيل الخروج' : 'Sign out'}
+                className="flex size-11 items-center justify-center rounded-xl text-slate-300 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+              >
+                <LogOut size={18} />
+              </button>
             </div>
+            {signOutError && (
+              <p role="alert" className="mt-2 text-sm text-rose-300">
+                {isAr ? 'تعذر تسجيل الخروج. حاول مجدداً.' : 'Could not sign out. Please try again.'}
+              </p>
+            )}
           </div>
-        </header>
-
-        {/* Content */}
-        <main className="flex-1 p-6 overflow-auto dark:bg-slate-900">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeSection}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
+        </aside>
+        <Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-50 bg-slate-950/50 lg:hidden" />
+            <Dialog.Content
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                (returnFocusToContent.current ? mainRef.current : menuButtonRef.current)?.focus();
+                returnFocusToContent.current = false;
+              }}
+              dir={dir}
+              aria-describedby={undefined}
+              className="fixed inset-y-0 start-0 z-50 flex w-72 max-w-full flex-col overflow-y-auto bg-slate-900 shadow-2xl lg:hidden"
             >
-              {activeSection === 'dashboard' && <DashboardOverview lang={lang} />}
-              {activeSection === 'verification' && (
-                <div className="space-y-8">
-                  {/* Sprint 9B.12 — the CASE axis: the review queue and the
-                      case a reviewer opens from it. Rendered above the
-                      provider-ACCOUNT section, which keeps its own actions,
-                      because a reviewer arrives here to work the queue. The
-                      two axes stay in separate blocks on purpose. */}
-                  <AdminVerificationCaseWorkspace />
-                  <VerificationSection />
-                  {/* Policy versions are append-only and rarely touched, so
-                      they sit last rather than competing with the queue. */}
-                  <VerificationPolicyPanel />
-                </div>
+              <Dialog.Title className="sr-only">
+                {isAr ? 'التنقل في الإدارة' : 'Admin navigation'}
+              </Dialog.Title>
+              {brand}
+              <Dialog.Close
+                aria-label={isAr ? 'إغلاق القائمة' : 'Close navigation'}
+                className="absolute end-2 top-2 flex size-11 items-center justify-center rounded-xl text-slate-300 focus-visible:ring-2 focus-visible:ring-amber-300"
+              >
+                <X size={18} />
+              </Dialog.Close>
+              {navigation(true)}
+              <button
+                type="button"
+                disabled={signingOut}
+                onClick={() => void signOut()}
+                className="m-4 flex min-h-11 items-center gap-3 rounded-xl px-4 text-white"
+              >
+                <LogOut size={18} />
+                {isAr ? 'تسجيل الخروج' : 'Sign out'}
+              </button>
+              {signOutError && (
+                <p role="alert" className="mx-4 mb-4 text-sm text-rose-300">
+                  {isAr
+                    ? 'تعذر تسجيل الخروج. حاول مجدداً.'
+                    : 'Could not sign out. Please try again.'}
+                </p>
               )}
-              {activeSection === 'financials' && <FinancialsSection lang={lang} />}
-              {activeSection === 'disputes' && <DisputeSection lang={lang} />}
-              {activeSection === 'settings' && <SettingsSection lang={lang} />}
-              {activeSection === 'users' && <UsersSection lang={lang} />}
-              {activeSection === 'audit' && <AuditLogsSection lang={lang} />}
-            </motion.div>
-          </AnimatePresence>
-        </main>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-20 flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-800 lg:px-6">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                ref={menuButtonRef}
+                aria-label={isAr ? 'فتح القائمة' : 'Open navigation'}
+                aria-expanded={mobileOpen}
+                onClick={() => {
+                  returnFocusToContent.current = false;
+                  setMobileOpen(true);
+                }}
+                className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 focus-visible:ring-2 focus-visible:ring-amber-500 dark:bg-slate-700 lg:hidden"
+              >
+                <Menu size={20} />
+              </button>
+              <h1 className="text-lg font-extrabold">{title}</h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleDarkMode}
+                aria-label={
+                  isAr
+                    ? darkMode
+                      ? 'الوضع الفاتح'
+                      : 'الوضع الداكن'
+                    : darkMode
+                      ? 'Light theme'
+                      : 'Dark theme'
+                }
+                className="flex size-11 items-center justify-center rounded-xl bg-slate-100 focus-visible:ring-2 focus-visible:ring-amber-500 dark:bg-slate-700"
+              >
+                {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
+              <LangToggle />
+              <AdminNotificationsBell lang={lang} />
+              <div
+                data-testid="admin-topbar-avatar"
+                title={displayName || roleLabel}
+                className="hidden size-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-xs font-extrabold text-white sm:flex"
+              >
+                {initials}
+              </div>
+            </div>
+          </header>
+          <main
+            id="admin-content"
+            ref={mainRef}
+            tabIndex={-1}
+            className="min-w-0 flex-1 p-4 outline-none lg:p-6"
+          >
+            {providerMatch ? (
+              <AdminProviderReviewWorkspace
+                providerProfileId={providerMatch.params.providerProfileId!}
+                onBack={() => navigate(directoryReturn(location.search), { state: location.state })}
+              />
+            ) : (
+              <>
+                {activeSection === 'dashboard' &&
+                  (segment === 'dashboard' ? (
+                    <DashboardOverview lang={lang} />
+                  ) : (
+                    <div className="space-y-3">
+                      <p>{isAr ? 'الصفحة غير موجودة.' : 'Page not found.'}</p>
+                      <Link to="/admin" className="font-semibold text-amber-700 underline">
+                        {isAr ? 'لوحة التحكم' : 'Dashboard'}
+                      </Link>
+                    </div>
+                  ))}
+                {activeSection === 'users' && <UsersSection lang={lang} />}
+                {activeSection === 'providers' && <ProviderDirectory key="providers" />}
+                {activeSection === 'reviews' && <ProviderDirectory key="reviews" reviewQueue />}
+                {activeSection === 'verification' && (
+                  <div className="space-y-8">
+                    <AdminVerificationCaseWorkspace />
+                    <VerificationSection />
+                    <VerificationPolicyPanel />
+                  </div>
+                )}
+                {activeSection === 'financials' && <FinancialsSection lang={lang} />}
+                {activeSection === 'disputes' && <DisputeSection lang={lang} />}
+                {activeSection === 'settings' && <SettingsSection lang={lang} />}
+                {activeSection === 'audit' && <AuditLogsSection lang={lang} />}
+              </>
+            )}
+          </main>
+        </div>
       </div>
     </div>
   );

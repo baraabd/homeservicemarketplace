@@ -10,6 +10,7 @@
 // validated content-type, never from a filename the user typed.
 
 import { ContentType } from './content-type';
+import type { Readable } from 'node:stream';
 
 /** What the controller asks for: a single file's metadata. */
 export interface PresignUploadInput {
@@ -53,6 +54,9 @@ export interface StoredObjectHead {
 
 export abstract class StoragePort {
   abstract presignUpload(input: PresignUploadInput): Promise<PresignedUpload>;
+
+  /** API-mediated delivery. Authorization is checked before opening this stream. */
+  abstract readObjectStream(key: string): Promise<Readable | null>;
 
   /**
    * Read back an object's size and leading bytes, or null when it is not there.

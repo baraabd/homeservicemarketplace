@@ -268,7 +268,13 @@ async function openVerification(page: Page, options: Options = {}): Promise<void
   });
 
   await page.goto('/admin');
-  await page.getByTestId('nav-verification').click();
+  const menu = page.getByRole('button', { name: /Open navigation|فتح القائمة/ });
+  if (await menu.isVisible()) {
+    await menu.click();
+    await page.getByTestId('mobile-nav-verification').click();
+  } else {
+    await page.getByTestId('nav-verification').click();
+  }
 }
 
 /** Open the one queue row and wait for the case behind it. */

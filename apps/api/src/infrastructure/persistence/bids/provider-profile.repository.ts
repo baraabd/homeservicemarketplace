@@ -516,13 +516,28 @@ export class ProviderProfileRepository {
   // Eager-loads the linked user (id + email) so the admin row can
   // map the profile back to the account.
   listForAdmin(
-    args: { status?: ProviderProfileStatus; take: number; cursor?: string },
+    args: {
+      status?: ProviderProfileStatus;
+      query?: string;
+      userId?: string;
+      take: number;
+      cursor?: string;
+    },
     tx?: PrismaTx,
   ): Promise<(ProviderProfile & { user: { id: string; email: string } | null })[]> {
     return this.db(tx).providerProfile.findMany({
       where: {
         deletedAt: null,
         ...(args.status ? { status: args.status } : {}),
+        ...(args.userId ? { userId: args.userId } : {}),
+        ...(args.query
+          ? {
+              OR: [
+                { displayName: { contains: args.query, mode: 'insensitive' as const } },
+                { user: { is: { email: { contains: args.query, mode: 'insensitive' as const } } } },
+              ],
+            }
+          : {}),
       },
       take: args.take,
       ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),

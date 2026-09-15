@@ -20,6 +20,8 @@ import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
+import { PermissionsGuard } from '../../iam/authorization/guards/permissions.guard';
+import { Permissions } from '../../iam/authorization/decorators/permissions.decorator';
 import {
   ListPendingCategoriesQueryDto,
   ReviewCategoryApplicationDto,
@@ -46,7 +48,8 @@ export class AdminCategoryApplicationsController {
     return this.applications.list(query);
   }
 
-  @UseGuards(CsrfGuard)
+  @UseGuards(CsrfGuard, PermissionsGuard)
+  @Permissions('verification:decide')
   @Patch(':applicationId/review')
   @HttpCode(HttpStatus.OK)
   review(

@@ -39,10 +39,27 @@ function caseRow(over: Partial<CaseRow> = {}): CaseRow {
     state: 'IN_REVIEW',
     providerProfileId: PROFILE,
     policyVersion: 'p1',
-    requirementsSnapshot: { policyVersion: 'p1', verificationRequired: true, requirements: [] },
+    requirementsSnapshot: {
+      policyVersion: 'p1',
+      verificationRequired: true,
+      requirements: [{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }],
+    },
     assignedToUserId: REVIEWER,
     providerProfile: { id: PROFILE, userId: PROVIDER_USER },
-    documents: [],
+    documents: [
+      {
+        kind: 'INDIVIDUAL_IDENTITY',
+        serviceCategoryId: null,
+        supersededAt: null,
+        expiresOn: null,
+        mediaAsset: {
+          scanState: 'CLEAN',
+          visibility: 'RESTRICTED',
+          deletedAt: null,
+          uploadCompletedAt: new Date(),
+        },
+      },
+    ],
     ...over,
   };
 }
@@ -387,6 +404,36 @@ describe('revoke', () => {
 });
 
 describe('reverify', () => {
+  it.each(['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'ACTION_REQUIRED'])(
+    'opens a path to a fresh scoped case from %s without rewriting pinned evidence',
+    async (state) => {
+      const h = harness({ row: caseRow({ state }) });
+      await h.service.reverify(REVIEWER, {
+        caseId: CASE_ID,
+        reasonCode: 'OTHER',
+        expectedState: state as never,
+      });
+      expect(h.decisions[0]).toMatchObject({
+        outcome: 'REVERIFY_REQUIRED',
+        fromState: state,
+        toState: 'EXPIRED',
+      });
+      const change = h.client.verificationCase.updateMany.mock.calls[0] as unknown[];
+      expect(change[0]).toMatchObject({
+        where: { id: CASE_ID, state },
+        data: { state: 'EXPIRED' },
+      });
+      expect(JSON.stringify(change[0])).not.toContain('requirementsSnapshot');
+      const grantChange = h.client.providerWorkAccessGrant.updateMany.mock.calls[0][0];
+      expect(grantChange.where).toMatchObject({
+        providerProfileId: PROFILE,
+        caseId: CASE_ID,
+        status: 'ACTIVE',
+      });
+      expect(h.grants).toEqual([]);
+    },
+  );
+
   it('closes the grant as EXPIRED, not REVOKED', async () => {
     // Asking for fresh evidence is not a sanction.
     const h = harness({ row: caseRow({ state: 'VERIFIED' }) });
@@ -548,4 +595,43 @@ describe('grant closure is scoped to the case that issued it', () => {
     await v.service.reverify(REVIEWER, { caseId: CASE_ID, reasonCode: 'TRUST_AND_SAFETY_ACTION' });
     expect(v.grantUpdates[0]).toMatchObject({ status: 'EXPIRED' });
   });
+});
+
+describe('current evidence at approval', () => {
+  it.each(['PENDING', 'QUARANTINED'])(
+    'refuses a submitted document now scanned as %s',
+    async (scanState) => {
+      const row = caseRow();
+      (row.documents[0] as { mediaAsset: { scanState: string } }).mediaAsset.scanState = scanState;
+      const h = harness({ row });
+      await expect(
+        h.service.approve(REVIEWER, { caseId: CASE_ID, reasonCode: APPROVE_REASON }),
+      ).rejects.toMatchObject({
+        status: 409,
+        details: { reason: 'EVIDENCE_NOT_READY' },
+      });
+      expect(h.writes).toEqual([]);
+    },
+  );
+  it.each(['expired', 'superseded', 'public', 'deleted', 'incomplete'])(
+    'refuses %s evidence without writing a grant',
+    async (condition) => {
+      const row = caseRow();
+      const doc = row.documents[0] as {
+        expiresOn: Date | null;
+        supersededAt: Date | null;
+        mediaAsset: { visibility: string; deletedAt: Date | null; uploadCompletedAt: Date | null };
+      };
+      if (condition === 'expired') doc.expiresOn = new Date('2000-01-01');
+      if (condition === 'superseded') doc.supersededAt = new Date();
+      if (condition === 'public') doc.mediaAsset.visibility = 'PUBLIC';
+      if (condition === 'deleted') doc.mediaAsset.deletedAt = new Date();
+      if (condition === 'incomplete') doc.mediaAsset.uploadCompletedAt = null;
+      const h = harness({ row });
+      await expect(
+        h.service.approve(REVIEWER, { caseId: CASE_ID, reasonCode: APPROVE_REASON }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(h.grants).toEqual([]);
+    },
+  );
 });

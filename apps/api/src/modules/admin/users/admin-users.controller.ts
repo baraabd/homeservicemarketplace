@@ -23,6 +23,8 @@ import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
+import { Permissions } from '../../iam/authorization/decorators/permissions.decorator';
+import { PermissionsGuard } from '../../iam/authorization/guards/permissions.guard';
 import { ListAdminUsersQueryDto } from './dto/list-admin-users.query';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { AdminUsersService } from './admin-users.service';
@@ -36,12 +38,16 @@ import { AdminUsersService } from './admin-users.service';
 export class AdminUsersController {
   constructor(private readonly users: AdminUsersService) {}
 
+  @UseGuards(PermissionsGuard)
+  @Permissions('user:read:any')
   @Get()
   @HttpCode(HttpStatus.OK)
   list(@Query() query: ListAdminUsersQueryDto): Promise<ListAdminUsersResponse> {
     return this.users.list(query);
   }
 
+  @UseGuards(PermissionsGuard)
+  @Permissions('user:read:any')
   @Get(':userId')
   @HttpCode(HttpStatus.OK)
   detail(@Param('userId') userId: string): Promise<AdminUserSummary> {

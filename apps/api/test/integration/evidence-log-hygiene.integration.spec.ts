@@ -248,7 +248,7 @@ d('Evidence log hygiene (real Postgres, real storage)', () => {
         {
           provide: PermissionResolverService,
           useValue: {
-            resolveForRoles: async (): Promise<Set<string>> =>
+            resolveFreshForUser: async (): Promise<Set<string>> =>
               new Set(reviewerPermission ? ['verification:evidence:view'] : []),
           },
         },

@@ -37,6 +37,11 @@ export type ProviderOnboardingRelations = {
     neighborhood: Neighborhood | null;
   })[];
   onboardingDraft: ProviderOnboardingDraft | null;
+  onboardingSubmissions?: Array<{
+    decision: string | null;
+    reviewFeedback: Prisma.JsonValue | null;
+  }>;
+  portfolioItems?: Array<{ moderationState: string }>;
 };
 
 const RELATIONS_INCLUDE = {
@@ -46,6 +51,15 @@ const RELATIONS_INCLUDE = {
   equipment: { include: { equipmentItem: true } },
   serviceAreas: { include: { city: true, district: true, neighborhood: true } },
   onboardingDraft: true,
+  onboardingSubmissions: {
+    orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+    take: 1,
+    select: { decision: true, reviewFeedback: true },
+  },
+  portfolioItems: {
+    where: { deletedAt: null },
+    select: { moderationState: true },
+  },
 } satisfies Prisma.ProviderProfileInclude;
 
 @Injectable()
@@ -54,6 +68,17 @@ export class ProviderOnboardingDraftRepository {
 
   private db(tx?: PrismaTx) {
     return tx ?? this.prisma.client;
+  }
+
+  /** Serialize edits, withdrawal and submission before reading their shared
+   * state. A lock after validation would still permit a stale autosave to land
+   * after the immutable submission was captured. This is read-only SQL. */
+  async lockProfileForMutation(userId: string, tx: PrismaTx): Promise<void> {
+    await tx.$queryRaw`
+      SELECT "id" FROM "ProviderProfile"
+      WHERE "userId" = ${userId} AND "deletedAt" IS NULL
+      FOR UPDATE
+    `;
   }
 
   /** The wizard's read. Ordered deterministically so two loads of an unchanged

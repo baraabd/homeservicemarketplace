@@ -461,6 +461,49 @@ describe('the portfolio', () => {
     expect(tile.querySelector('img')).toHaveAttribute('src', 'https://cdn.test/two.jpg');
   });
 
+  it('shows a rejected-photo explanation and lets its owner remove it before replacing it', async () => {
+    withGallery([
+      {
+        id: 'rejected',
+        media: { url: '/v1/me/provider/portfolio/rejected/media' },
+        title: null,
+        moderationState: 'REJECTED',
+        moderationReason: 'Please remove the customer address.',
+        position: 0,
+      },
+    ]);
+    let removed = false;
+    mock.onDelete('/v1/me/provider/portfolio/rejected').reply(() => {
+      removed = true;
+      withGallery([]);
+      return [204];
+    });
+    renderScreen(DRAFT(), 'en', true, 'portfolio');
+    const feedback = await screen.findByTestId('portfolio-review-feedback-rejected');
+    expect(feedback).toHaveTextContent('Please remove the customer address.');
+    fireEvent.click(within(feedback).getByRole('button', { name: EN.removeRejectedPhoto }));
+    await waitFor(() => expect(removed).toBe(true));
+    await waitFor(() => expect(screen.queryByTestId('portfolio-item-rejected')).toBeNull());
+    expect(screen.getByTestId('portfolio-add-photo')).toBeEnabled();
+  });
+
+  it('keeps the rejection visible but disables removal for a locked application', async () => {
+    withGallery([
+      {
+        id: 'rejected',
+        media: { url: '/v1/me/provider/portfolio/rejected/media' },
+        moderationState: 'REJECTED',
+        moderationReason: 'Remove the address.',
+        position: 0,
+      },
+    ]);
+    renderScreen(DRAFT(), 'ar', false, 'portfolio');
+    expect(await screen.findByText('Remove the address.')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: PUBLIC_PROFILE_COPY.ar.removeRejectedPhoto }),
+    ).toBeDisabled();
+  });
+
   it('will not upload until the publication wording has been agreed to', async () => {
     renderScreen(DRAFT(), 'en', true, 'portfolio');
 

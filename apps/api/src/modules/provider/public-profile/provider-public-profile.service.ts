@@ -21,14 +21,9 @@ import { buildPublicProfile } from './public-profile-projection';
 // nobody edited either. So the preview is built by the same projection a public
 // route would use, and the provider is shown its literal output.
 //
-// TWO THINGS THIS SERVICE REFUSES TO PRETEND
-//
-// There is no public provider-profile route on this platform yet, and nothing
-// moves a portfolio image out of PENDING. Both are reported as flags rather
-// than smoothed over, because a screen that shows a provider a polished public
-// profile which no customer can reach — and photos it calls published when
-// nobody has reviewed them — is lying to them about the state of their
-// application.
+// Availability is reported separately from the projection. This build has
+// Admin portfolio review, while the customer-facing provider-profile route
+// remains unavailable. Only explicitly approved images enter the projection.
 
 /**
  * Whether the platform serves a public provider profile to customers.
@@ -40,16 +35,8 @@ import { buildPublicProfile } from './public-profile-projection';
  */
 export const PUBLIC_PROFILE_ROUTE_AVAILABLE = false;
 
-/**
- * Whether a human reviews portfolio images.
- *
- * FALSE. `PortfolioModerationState` defaults to PENDING and nothing in the
- * codebase ever writes APPROVED — there is no reviewer queue, no admin route
- * and no automated check. Sprint 9B.22 does NOT add one: inventing an approval
- * workflow to make this screen look finished is exactly what the brief forbids,
- * and an auto-approve would publish unreviewed photos of customers' homes.
- */
-export const MODERATION_REVIEW_AVAILABLE = false;
+/** Portfolio decisions are available in the Admin provider review workspace. */
+export const MODERATION_REVIEW_AVAILABLE = true;
 
 export type PreviewLang = 'en' | 'ar';
 
@@ -97,14 +84,14 @@ export class ProviderPublicProfileService {
     }
 
     // APPROVED only. The gallery the provider edits shows everything they
-    // uploaded; this shows what a customer can see, which today is nothing —
-    // and the count below is how the screen explains that honestly.
+    // uploaded; this shows only what an administrator has approved.
     const [approved, awaitingReviewCount] = await Promise.all([
       this.prisma.client.providerPortfolioItem.findMany({
         where: {
           providerProfileId: profile.id,
           deletedAt: null,
           moderationState: 'APPROVED',
+          mediaAsset: { visibility: 'PUBLIC', deletedAt: null },
         },
         orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
         select: {

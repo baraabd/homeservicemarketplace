@@ -23,6 +23,7 @@ import { AppConfigService } from './config/app-config.service';
 import { SecurityEventsModule } from './shared/security-events/security-events.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AdminProviderReviewEventsHandler } from './modules/admin/provider-review/provider-review.events-handler';
 import { BidsModule } from './modules/bids/bids.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
@@ -68,12 +69,13 @@ import { ServicesModule } from './modules/services/services.module';
       // ProviderVerificationModule contributes EvidenceScannedHandler. Without
       // it registered here the worker has no consumer for 'evidence.scanned'
       // and DEAD-LETTERS every scan announcement — see OutboxWorker.
-      imports: [RequestOutboxModule, ProviderVerificationModule],
+      imports: [RequestOutboxModule, ProviderVerificationModule, RealtimeModule],
       handlers: [
         RequestAvailableDispatchHandler,
         RequestAvailableBatchHandler,
         EvidenceScannedHandler,
         VerificationCaseEventsHandler,
+        AdminProviderReviewEventsHandler,
       ],
     }),
     // Global, transport-agnostic post-commit security notifications

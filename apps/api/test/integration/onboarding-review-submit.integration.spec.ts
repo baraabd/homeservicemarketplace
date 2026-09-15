@@ -1117,6 +1117,175 @@ d('Onboarding review and submission (real Postgres)', () => {
 
   // ── the response boundary ────────────────────────────────────────────────
 
+  describe('structured review corrections survive editing and end at a new submission', () => {
+    it('serializes an autosave behind a submission so reviewed input cannot change after capture', async () => {
+      await acceptCurrentTerms();
+      const draft = await request(http).get('/v1/me/provider/onboarding/draft');
+      const {
+        ProviderOnboardingDraftRepository,
+      } = require('../../src/infrastructure/persistence/provider/provider-onboarding-draft.repository');
+      const repository: import('../../src/infrastructure/persistence/provider/provider-onboarding-draft.repository').ProviderOnboardingDraftRepository =
+        app.get(ProviderOnboardingDraftRepository);
+      const originalLoad = repository.loadRelations.bind(repository);
+      const originalLock = repository.lockProfileForMutation.bind(repository);
+      let announceLoaded!: () => void;
+      let releaseSubmit!: () => void;
+      let announceSecondLock!: () => void;
+      const loaded = new Promise<void>((resolve) => {
+        announceLoaded = resolve;
+      });
+      const released = new Promise<void>((resolve) => {
+        releaseSubmit = resolve;
+      });
+      const secondLock = new Promise<void>((resolve) => {
+        announceSecondLock = resolve;
+      });
+      let paused = false;
+      let lockCount = 0;
+      const lock = jest
+        .spyOn(repository, 'lockProfileForMutation')
+        .mockImplementation(async (...args) => {
+          lockCount += 1;
+          if (lockCount === 2) announceSecondLock();
+          return originalLock(...args);
+        });
+      const load = jest.spyOn(repository, 'loadRelations').mockImplementation(async (...args) => {
+        const result = await originalLoad(...args);
+        if (args[1] && !paused) {
+          paused = true;
+          announceLoaded();
+          await released;
+        }
+        return result;
+      });
+      try {
+        const submit = postSubmit({ version: draft.body.version }).then((response) => response);
+        await loaded;
+        const edit = patchProfile({
+          version: draft.body.version,
+          bio: 'This edit must never replace a submitted snapshot.',
+        }).then((response) => response);
+        await secondLock;
+        releaseSubmit();
+        const [submitted, edited] = await Promise.all([submit, edit]);
+        expect(submitted.status).toBe(200);
+        expect(edited.status).toBe(409);
+        const saved = await prisma.providerOnboardingSubmission.findFirst({
+          where: { providerProfileId: PP },
+        });
+        const profile = await prisma.providerProfile.findUnique({ where: { id: PP } });
+        expect(saved.reviewSnapshot.profile.bio).toBe(profile.bio);
+        expect(saved.snapshot.bio).toBe(profile.bio);
+        expect(profile.bio).toBe(draft.body.data.bio);
+      } finally {
+        releaseSubmit();
+        load.mockRestore();
+        lock.mockRestore();
+      }
+    });
+
+    it('reads only public feedback, keeps the original snapshot, and captures a new revision on resubmit', async () => {
+      await acceptCurrentTerms();
+      const initial = await getReview();
+      expect((await postSubmit({ version: initial.body.draftVersion })).status).toBe(200);
+      const first = await prisma.providerOnboardingSubmission.findFirst({
+        where: { providerProfileId: PP },
+        orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+      });
+      expect(first.reviewSnapshot).toMatchObject({
+        schemaVersion: 1,
+        providerProfileId: PP,
+        profile: { displayName: 'Layla Mansour' },
+        portfolio: [],
+        availability: { intervals: [{ dayOfWeek: 0, startMinute: 540, endMinute: 1020 }] },
+      });
+
+      // The Admin HTTP decision itself has its own integration suite. Seed its
+      // persisted outcome here so this fixture exercises the real Provider API.
+      const feedback = {
+        requestedAt: new Date().toISOString(),
+        items: [
+          {
+            id: `${P}feedback`,
+            taskId: 'PORTFOLIO',
+            field: 'bio',
+            reasonCode: 'MORE_DETAIL',
+            providerMessage: 'Describe your services and relevant experience.',
+          },
+        ],
+      };
+      await prisma.$transaction([
+        prisma.providerOnboardingSubmission.update({
+          where: { id: first.id },
+          data: {
+            decision: 'RETURNED',
+            decidedAt: new Date(),
+            decisionNote: 'private reviewer note',
+            reviewFeedback: { ...feedback, internalNote: 'private stored extension' },
+          },
+        }),
+        prisma.providerProfile.update({
+          where: { id: PP },
+          data: {
+            onboardingState: 'RETURNED',
+            status: 'REJECTED',
+          },
+        }),
+      ]);
+
+      const [draft, hub, review] = await Promise.all([
+        request(http).get('/v1/me/provider/onboarding/draft'),
+        getHub(),
+        getReview(),
+      ]);
+      for (const response of [draft, hub, review]) {
+        expect(response.status).toBe(200);
+        expect(response.body.reviewFeedback).toEqual(feedback);
+        expect(JSON.stringify(response.body)).not.toMatch(
+          /private reviewer note|private stored extension/,
+        );
+      }
+      expect(hub.body.status).toBe('ACTION_REQUIRED');
+      expect(hub.body.tasks).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: 'PORTFOLIO', status: 'AVAILABLE' })]),
+      );
+
+      const correctedBio =
+        'I provide indoor and outdoor electrical services with five years of residential repair experience.';
+      const corrected = await patchProfile({ version: draft.body.version, bio: correctedBio });
+      expect(corrected.status).toBe(200);
+      expect(corrected.body.reviewFeedback).toEqual(feedback);
+      expect(corrected.body.state).toBe('RETURNED');
+      expect((await getHub()).body.reviewFeedback).toEqual(feedback);
+      const unchanged = await prisma.providerOnboardingSubmission.findUnique({
+        where: { id: first.id },
+      });
+      expect(unchanged.reviewSnapshot).toEqual(first.reviewSnapshot);
+
+      const ready = await getReview();
+      expect(ready.body.canSubmit).toBe(true); // the empty gallery remains optional
+      expect((await postSubmit({ version: ready.body.draftVersion })).status).toBe(200);
+      const latest = await prisma.providerOnboardingSubmission.findFirst({
+        where: { providerProfileId: PP },
+        orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+      });
+      expect(latest.id).not.toBe(first.id);
+      expect(latest.reviewSnapshot.profile.bio).toBe(correctedBio);
+      expect(latest.decision).toBeNull();
+      for (const response of [
+        await getHub(),
+        await getReview(),
+        await request(http).get('/v1/me/provider/onboarding/draft'),
+      ]) {
+        expect(response.status).toBe(200);
+        expect(response.body.reviewFeedback).toBeNull();
+      }
+      expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
+        0,
+      );
+    });
+  });
+
   describe('what reaches the wire', () => {
     it('carries codes, never prose — the client owns the sentence', async () => {
       await makeComplete({ bio: null });

@@ -169,6 +169,34 @@ describe('filters go to the SERVER', () => {
   });
 });
 
+describe('cursor pagination', () => {
+  it('opens the next server page, returns to the prior page, and resets after filtering', async () => {
+    mock
+      .onGet(QUEUE_URL)
+      .reply(({ params }) => [
+        200,
+        params.cursor
+          ? { items: [item({ id: 'c51', providerDisplayName: 'Next provider' })], nextCursor: null }
+          : { items: [item()], nextCursor: 'c50' },
+      ]);
+    renderQueue();
+    await screen.findByTestId('queue-row-c1');
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByTestId('queue-row-c51');
+    expect(mock.history.get.at(-1)?.params.cursor).toBe('c50');
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    await screen.findByTestId('queue-row-c1');
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByTestId('queue-row-c51');
+    fireEvent.change(screen.getByTestId('queue-state'), { target: { value: 'IN_REVIEW' } });
+    await waitFor(() => expect(mock.history.get.at(-1)?.params.state).toBe('IN_REVIEW'));
+    expect(mock.history.get.at(-1)?.params.cursor).toBeUndefined();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+  });
+});
+
 describe('failures a reviewer must tell apart', () => {
   it('shows a permission message with no retry', async () => {
     // Retrying a 403 forever is not a recovery.

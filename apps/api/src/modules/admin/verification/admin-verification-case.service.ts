@@ -5,6 +5,7 @@ import type {
   AdminVerificationRequirement,
   VerificationCaseActionCode,
 } from '@homeservicemarketplace/contracts';
+import type { PrismaTx } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import { AppError } from '../../../shared/errors/app-error';
@@ -45,14 +46,15 @@ export class AdminVerificationCaseService {
   async forProvider(
     providerProfileId: string,
     reviewerUserId: string,
+    transaction?: PrismaTx,
   ): Promise<AdminVerificationCase | null> {
-    const profile = await this.prisma.client.providerProfile.findFirst({
+    const profile = await (transaction ?? this.prisma.client).providerProfile.findFirst({
       where: { id: providerProfileId, deletedAt: null },
       select: { id: true, userId: true },
     });
     if (!profile) throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
 
-    return this.project({ providerProfileId }, profile, reviewerUserId);
+    return this.project({ providerProfileId }, profile, reviewerUserId, transaction);
   }
 
   /**
@@ -87,10 +89,11 @@ export class AdminVerificationCaseService {
     where: { id: string } | { providerProfileId: string },
     profile: { id: string; userId: string | null },
     reviewerUserId: string,
+    transaction?: PrismaTx,
   ): Promise<AdminVerificationCase | null> {
-    const row = await this.prisma.client.verificationCase.findFirst({
+    const row = await (transaction ?? this.prisma.client).verificationCase.findFirst({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         providerProfileId: true,

@@ -89,7 +89,9 @@ interface StatusChangedEvent {
   status: string;
 }
 
-d('Phase 3 Journey C — canonical admin approval (real Postgres)', () => {
+// This legacy endpoint is retained only with enforcement disabled. The unified
+// flags-on journey lives in admin-provider-review.integration.spec.ts.
+d('Phase 3 Journey C — legacy admin approval compatibility (real Postgres)', () => {
   /* eslint-disable @typescript-eslint/no-explicit-any */
   let prisma: any;
   let app: INestApplication;
@@ -106,6 +108,11 @@ d('Phase 3 Journey C — canonical admin approval (real Postgres)', () => {
   const ADMIN = `${P}admin`;
   const ROOT = `${P}root`;
   const LEAF = `${P}leaf`;
+  const FLAGS: Record<string, unknown> = {
+    JWT_ACCESS_SECRET: SECRET,
+    WORK_ACCESS_ENFORCED: false,
+    VERIFICATION_ENFORCED: false,
+  };
 
   let lifecycleLock: HeldLock;
   let profileId: string;
@@ -265,6 +272,9 @@ d('Phase 3 Journey C — canonical admin approval (real Postgres)', () => {
     const { UserRepository } = require('../../src/infrastructure/persistence/iam/user.repository');
     const { RoleRepository } = require('../../src/infrastructure/persistence/iam/role.repository');
     const {
+      PermissionResolverService,
+    } = require('../../src/modules/iam/authorization/services/permission-resolver.service');
+    const {
       PlatformSettingRepository,
     } = require('../../src/infrastructure/persistence/settings/platform-setting.repository');
     const { AuditService } = require('../../src/modules/iam/audit/audit.service');
@@ -356,14 +366,8 @@ d('Phase 3 Journey C — canonical admin approval (real Postgres)', () => {
     const { AppConfigService } = require('../../src/config/app-config.service');
     const { STORAGE_PORT } = require('../../src/infrastructure/storage/storage.port');
 
-    // Both gates ARMED, as in Journey B — otherwise "did approval open work
-    // access?" would be answered by a legacy fallback rather than by the rule
-    // this sprint is shipping.
-    const FLAGS: Record<string, unknown> = {
-      JWT_ACCESS_SECRET: SECRET,
-      WORK_ACCESS_ENFORCED: true,
-      VERIFICATION_ENFORCED: true,
-    };
+    // Approval is exercised in compatibility mode; capability assertions below
+    // explicitly arm both gates and prove legacy ACTIVE cannot bypass them.
     const config = { get: (k: string) => FLAGS[k], isProduction: false };
 
     const moduleRef = await Test.createTestingModule({
@@ -404,6 +408,13 @@ d('Phase 3 Journey C — canonical admin approval (real Postgres)', () => {
         ProviderCategoryApplicationRepository,
         UserRepository,
         RoleRepository,
+        {
+          provide: PermissionResolverService,
+          inject: [RoleRepository],
+          useFactory: (
+            roles: import('../../src/infrastructure/persistence/iam/role.repository').RoleRepository,
+          ) => new PermissionResolverService(roles, {}, config),
+        },
         PlatformSettingRepository,
         AuditService,
         AuditEventRepository,
@@ -468,6 +479,9 @@ d('Phase 3 Journey C — canonical admin approval (real Postgres)', () => {
         },
       });
     }
+    // Fresh permission reads resolve the seeded admin role from real membership.
+    const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: 'admin' } });
+    await prisma.userRole.create({ data: { userId: ADMIN, roleId: adminRole.id } });
     await prisma.serviceCategory.create({
       data: { id: ROOT, slug: ROOT, labelEn: 'Electrical', labelAr: 'كهرباء', icon: 'bolt' },
     });
@@ -532,6 +546,23 @@ d('Phase 3 Journey C — canonical admin approval (real Postgres)', () => {
   // ── 2. the decision itself ───────────────────────────────────────────────
 
   describe('the approval', () => {
+    it('requires the review workspace with enforcement enabled and makes no decision', async () => {
+      asAdmin();
+      FLAGS.WORK_ACCESS_ENFORCED = true;
+      FLAGS.VERIFICATION_ENFORCED = true;
+      try {
+        const res = await approve(profileId).expect(409);
+        expect(res.body.error.details.reason).toBe('USE_REVIEW_WORKSPACE');
+        expect(await approvalAuditsFor(profileId)).toHaveLength(0);
+        expect(await grantCount(profileId)).toBe(0);
+        const p = await prisma.providerProfile.findUnique({ where: { id: profileId } });
+        expect(p.status).toBe('PENDING_REVIEW');
+      } finally {
+        FLAGS.WORK_ACCESS_ENFORCED = false;
+        FLAGS.VERIFICATION_ENFORCED = false;
+      }
+    });
+
     it('succeeds for a submitted application', async () => {
       asAdmin();
       const res = await approve(profileId, { note: 'Documents check out.' }).expect(200);
@@ -622,10 +653,16 @@ d('Phase 3 Journey C — canonical admin approval (real Postgres)', () => {
       // arming the flags had silently changed what an operator's approval
       // does.
       asProvider(USER);
-      expect(codeOf(await listWork().expect(403))).toBe('FORBIDDEN');
-
-      const caps = await capabilities().expect(200);
-      expect(caps.body.primaryReason).toBe(ProviderCapabilityDenialReason.VerificationRequired);
+      FLAGS.WORK_ACCESS_ENFORCED = true;
+      FLAGS.VERIFICATION_ENFORCED = true;
+      try {
+        expect(codeOf(await listWork().expect(403))).toBe('FORBIDDEN');
+        const caps = await capabilities().expect(200);
+        expect(caps.body.primaryReason).toBe(ProviderCapabilityDenialReason.VerificationRequired);
+      } finally {
+        FLAGS.WORK_ACCESS_ENFORCED = false;
+        FLAGS.VERIFICATION_ENFORCED = false;
+      }
     });
   });
 

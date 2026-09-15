@@ -184,6 +184,61 @@ describe('creating', () => {
     expect(h.caseCreate.mock.calls[0][0].data).toMatchObject({ country: 'ZZ' });
   });
 
+  it('pins the ISO operating country and pending specialty licenses on the case', async () => {
+    const h = build({
+      profile: {
+        id: PROFILE,
+        serviceAreaCountry: 'سوريا',
+        serviceAreaCountryCode: 'SY',
+        providerType: 'INDIVIDUAL',
+        serviceCategories: [{ serviceCategoryId: 'general' }],
+        categoryApplications: [{ serviceCategoryId: 'electrician' }],
+      },
+      policies: [
+        { ...LIVE_POLICY, country: 'SY' },
+        {
+          ...LIVE_POLICY,
+          country: 'SY',
+          version: 'license-v1',
+          categoryId: 'electrician',
+          requirements: { documents: ['CATEGORY_LICENSE'], verificationRequired: true },
+        },
+      ],
+    });
+    await h.service.createOrResume(USER, {});
+    expect(h.caseCreate.mock.calls[0][0].data).toMatchObject({
+      country: 'SY',
+      requirementsSnapshot: {
+        subjectScope: {
+          countryCode: 'SY',
+          providerType: 'INDIVIDUAL',
+          categoryIds: ['electrician', 'general'],
+        },
+        requirements: expect.arrayContaining([
+          { kind: 'CATEGORY_LICENSE', serviceCategoryId: 'electrician', fromVersion: 'license-v1' },
+        ]),
+      },
+    });
+    expect(h.profileFindFirst.mock.calls[0][0].select.categoryApplications.where).toEqual({
+      status: 'PENDING',
+      supersededAt: null,
+    });
+  });
+
+  it('does not treat a localized display name as a country code', async () => {
+    const h = build({
+      profile: {
+        id: PROFILE,
+        serviceAreaCountry: 'سوريا',
+        serviceAreaCountryCode: null,
+        providerType: null,
+        serviceCategories: [],
+      },
+    });
+    await expect(h.service.createOrResume(USER, {})).rejects.toMatchObject({ status: 503 });
+    expect(h.caseCreate).not.toHaveBeenCalled();
+  });
+
   it('stores the idempotency key when one is supplied', async () => {
     const h = build();
     await h.service.createOrResume(USER, { idempotencyKey: 'k-1' });

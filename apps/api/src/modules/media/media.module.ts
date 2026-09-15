@@ -5,6 +5,7 @@ import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { PrismaModule } from '../../infrastructure/prisma/prisma.module';
 import { PublicMediaLedgerModule } from './public-media-ledger.module';
 import { MediaController } from './media.controller';
+import { PortfolioMediaModule } from './portfolio-media.module';
 import { PublicMediaCleanupService } from './public-media-cleanup.service';
 import { PublicMediaCleanupJob } from './public-media-cleanup.job';
 
@@ -22,7 +23,13 @@ import { PublicMediaCleanupJob } from './public-media-cleanup.job';
 // wiring must not depend on config read order at module-construction time.
 // PUBLIC_MEDIA_CLEANUP_WORKER_ENABLED (default false) is what arms it.
 @Module({
-  imports: [AuthenticationModule, StorageModule, PrismaModule, PublicMediaLedgerModule],
+  imports: [
+    AuthenticationModule,
+    StorageModule,
+    PrismaModule,
+    PublicMediaLedgerModule,
+    PortfolioMediaModule,
+  ],
   controllers: [MediaController],
   providers: [PublicMediaCleanupService, PublicMediaCleanupJob],
   exports: [PublicMediaCleanupService],

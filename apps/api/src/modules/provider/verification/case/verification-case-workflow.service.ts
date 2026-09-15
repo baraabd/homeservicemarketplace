@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@homeservicemarketplace/database';
 import type {
   PrismaTx,
   VerificationCaseState,
@@ -55,6 +56,11 @@ export interface CaseCommandResult {
   availableActions: VerificationCaseAction[];
 }
 
+interface VerificationWorkflowContext {
+  transaction: PrismaTx;
+  suppressNotification?: boolean;
+}
+
 interface LoadedCase {
   id: string;
   state: VerificationCaseState;
@@ -79,7 +85,14 @@ interface LoadedCase {
   documents: Array<{
     kind: string;
     serviceCategoryId: string | null;
-    mediaAsset: { scanState: string } | null;
+    supersededAt: Date | null;
+    expiresOn: Date | null;
+    mediaAsset: {
+      scanState: string;
+      visibility: string;
+      deletedAt: Date | null;
+      uploadCompletedAt: Date | null;
+    } | null;
   }>;
 }
 
@@ -245,6 +258,7 @@ export class VerificationCaseWorkflowService {
       note?: string | null;
       expectedState?: VerificationCaseState;
     },
+    context?: VerificationWorkflowContext,
   ): Promise<CaseCommandResult> {
     // The table says this action requires a reason; the check reads it from
     // there rather than restating it, so the two cannot disagree.
@@ -254,34 +268,37 @@ export class VerificationCaseWorkflowService {
       });
     }
 
-    const kase = await this.requireReviewable(input.caseId, reviewerUserId);
+    const kase = await this.requireReviewable(input.caseId, reviewerUserId, context?.transaction);
 
     if (kase.state === 'ACTION_REQUIRED') return this.replay(kase, 'reviewer');
     this.assertFresh(kase, input.expectedState);
     this.assertLegal('requestAction', kase.state);
 
-    return this.commit({
-      kase,
-      action: 'requestAction',
-      actor: 'reviewer',
-      actorUserId: reviewerUserId,
-      data: {
-        state: 'ACTION_REQUIRED',
-        // Reviewer prose lives on the case, which is access-controlled, and is
-        // deleted with the evidence. It never reaches the decision row, the
-        // audit metadata or the notification.
-        reviewerNotes: input.note ?? null,
+    return this.commit(
+      {
+        kase,
+        action: 'requestAction',
+        actor: 'reviewer',
+        actorUserId: reviewerUserId,
+        data: {
+          state: 'ACTION_REQUIRED',
+          // Reviewer prose lives on the case, which is access-controlled, and is
+          // deleted with the evidence. It never reaches the decision row, the
+          // audit metadata or the notification.
+          reviewerNotes: input.note ?? null,
+        },
+        auditType: 'VERIFICATION_CASE_ACTION_REQUESTED',
+        auditMetadata: {
+          caseId: kase.id,
+          providerProfileId: kase.providerProfileId,
+          reasonCode: input.reasonCode,
+        },
+        eventType: OutboxEventType.VERIFICATION_CASE_ACTION_REQUIRED,
+        decision: { outcome: 'ACTION_REQUIRED', reasonCode: input.reasonCode },
+        notifyProvider: context?.suppressNotification ? undefined : 'ACTION_REQUIRED',
       },
-      auditType: 'VERIFICATION_CASE_ACTION_REQUESTED',
-      auditMetadata: {
-        caseId: kase.id,
-        providerProfileId: kase.providerProfileId,
-        reasonCode: input.reasonCode,
-      },
-      eventType: OutboxEventType.VERIFICATION_CASE_ACTION_REQUIRED,
-      decision: { outcome: 'ACTION_REQUIRED', reasonCode: input.reasonCode },
-      notifyProvider: 'ACTION_REQUIRED',
-    });
+      context?.transaction,
+    );
   }
 
   // ── reject ──────────────────────────────────────────────────────────────
@@ -366,7 +383,26 @@ export class VerificationCaseWorkflowService {
       note?: string | null;
       expectedState?: VerificationCaseState;
     },
+    context?: VerificationWorkflowContext,
   ): Promise<CaseCommandResult> {
+    if (!context) {
+      try {
+        return await this.tx.run(
+          (transaction) => this.approve(reviewerUserId, input, { transaction }),
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+          throw new AppError(
+            'CONFLICT',
+            'This verification case changed. Reload before deciding.',
+            409,
+            { reason: 'CONCURRENT_UPDATE' },
+          );
+        }
+        throw error;
+      }
+    }
     // Approval carries a reason like every other judgement: "why did we trust
     // this?" is exactly what the permanent record has to answer years later.
     if (VERIFICATION_CASE_TRANSITIONS.approve.requiresReason && !input.reasonCode) {
@@ -375,7 +411,7 @@ export class VerificationCaseWorkflowService {
       });
     }
 
-    const kase = await this.requireReviewable(input.caseId, reviewerUserId);
+    const kase = await this.requireReviewable(input.caseId, reviewerUserId, context?.transaction);
     if (kase.state === 'VERIFIED') return this.replay(kase, 'reviewer');
     this.assertFresh(kase, input.expectedState);
     this.assertLegal('approve', kase.state);
@@ -385,37 +421,36 @@ export class VerificationCaseWorkflowService {
     // cannot disagree about when the approval happened — see grant-validity.ts
     // on why a second `new Date()` here is a real failure and not pedantry.
     const decidedAt = new Date();
+    this.assertEvidenceReady(kase, decidedAt);
 
-    // Resolved BEFORE the transaction opens. A settings read is a round trip to
-    // a table nothing else in this transaction touches, and holding a write
-    // transaction open across it lengthens the window in which two concurrent
-    // approvals can contend for the grant index, for no benefit.
-    //
-    // It throws on a misconfigured validity, which fails the approval outright
-    // rather than issuing a grant of some unintended length.
+    // Resolve one grant window before writing any decision. A misconfigured
+    // validity fails the whole transaction instead of issuing unintended access.
     const window = computeGrantWindow({
       decidedAt,
       validityDays: await this.settings.workGrantValidityDays(),
     });
 
-    return this.commit({
-      kase,
-      action: 'approve',
-      actor: 'reviewer',
-      actorUserId: reviewerUserId,
-      data: { state: 'VERIFIED', reviewerNotes: input.note ?? null, decidedAt },
-      auditType: 'VERIFICATION_CASE_APPROVED',
-      auditMetadata: {
-        caseId: kase.id,
-        providerProfileId: kase.providerProfileId,
-        reasonCode: input.reasonCode,
+    return this.commit(
+      {
+        kase,
+        action: 'approve',
+        actor: 'reviewer',
+        actorUserId: reviewerUserId,
+        data: { state: 'VERIFIED', reviewerNotes: input.note ?? null, decidedAt },
+        auditType: 'VERIFICATION_CASE_APPROVED',
+        auditMetadata: {
+          caseId: kase.id,
+          providerProfileId: kase.providerProfileId,
+          reasonCode: input.reasonCode,
+        },
+        eventType: OutboxEventType.VERIFICATION_CASE_APPROVED,
+        decision: { outcome: 'APPROVED', reasonCode: input.reasonCode },
+        profileUpdate: { verificationState: 'VERIFIED', verified: true },
+        grant: { open: window },
+        notifyProvider: context?.suppressNotification ? undefined : 'APPROVED',
       },
-      eventType: OutboxEventType.VERIFICATION_CASE_APPROVED,
-      decision: { outcome: 'APPROVED', reasonCode: input.reasonCode },
-      profileUpdate: { verificationState: 'VERIFIED', verified: true },
-      grant: { open: window },
-      notifyProvider: 'APPROVED',
-    });
+      context?.transaction,
+    );
   }
 
   // ── closing access ──────────────────────────────────────────────────────
@@ -443,8 +478,9 @@ export class VerificationCaseWorkflowService {
       note?: string | null;
       expectedState?: VerificationCaseState;
     },
+    context?: VerificationWorkflowContext,
   ): Promise<CaseCommandResult> {
-    return this.closeAccess('reverify', reviewerUserId, input);
+    return this.closeAccess('reverify', reviewerUserId, input, context);
   }
 
   private async closeAccess(
@@ -456,6 +492,7 @@ export class VerificationCaseWorkflowService {
       note?: string | null;
       expectedState?: VerificationCaseState;
     },
+    context?: VerificationWorkflowContext,
   ): Promise<CaseCommandResult> {
     const rule = VERIFICATION_CASE_TRANSITIONS[action];
     if (rule.requiresReason && !input.reasonCode) {
@@ -464,36 +501,39 @@ export class VerificationCaseWorkflowService {
       });
     }
 
-    const kase = await this.requireReviewable(input.caseId, reviewerUserId);
+    const kase = await this.requireReviewable(input.caseId, reviewerUserId, context?.transaction);
     if (kase.state === 'EXPIRED') return this.replay(kase, 'reviewer');
     this.assertFresh(kase, input.expectedState);
     this.assertLegal(action, kase.state);
 
     const closure = grantClosureFor(action);
 
-    return this.commit({
-      kase,
-      action,
-      actor: 'reviewer',
-      actorUserId: reviewerUserId,
-      data: { state: rule.to, reviewerNotes: input.note ?? null, decidedAt: new Date() },
-      auditType:
-        action === 'revoke' ? 'VERIFICATION_CASE_REVOKED' : 'VERIFICATION_CASE_REVERIFY_REQUIRED',
-      auditMetadata: {
-        caseId: kase.id,
-        providerProfileId: kase.providerProfileId,
-        reasonCode: input.reasonCode,
+    return this.commit(
+      {
+        kase,
+        action,
+        actor: 'reviewer',
+        actorUserId: reviewerUserId,
+        data: { state: rule.to, reviewerNotes: input.note ?? null, decidedAt: new Date() },
+        auditType:
+          action === 'revoke' ? 'VERIFICATION_CASE_REVOKED' : 'VERIFICATION_CASE_REVERIFY_REQUIRED',
+        auditMetadata: {
+          caseId: kase.id,
+          providerProfileId: kase.providerProfileId,
+          reasonCode: input.reasonCode,
+        },
+        eventType: OutboxEventType.VERIFICATION_CASE_ACCESS_CLOSED,
+        decision: {
+          outcome: rule.outcome as 'REVOKED' | 'REVERIFY_REQUIRED',
+          reasonCode: input.reasonCode,
+        },
+        // The evidence axis records that verification lapsed. standingState is
+        // untouched: losing a grant is not a disciplinary state.
+        profileUpdate: { verificationState: 'EXPIRED', verified: false },
+        ...(closure ? { grant: { close: closure } } : {}),
       },
-      eventType: OutboxEventType.VERIFICATION_CASE_ACCESS_CLOSED,
-      decision: {
-        outcome: rule.outcome as 'REVOKED' | 'REVERIFY_REQUIRED',
-        reasonCode: input.reasonCode,
-      },
-      // The evidence axis records that verification lapsed. standingState is
-      // untouched: losing a grant is not a disciplinary state.
-      profileUpdate: { verificationState: 'EXPIRED', verified: false },
-      ...(closure ? { grant: { close: closure } } : {}),
-    });
+      context?.transaction,
+    );
   }
   // ── expiry: the SYSTEM actor's edge ─────────────────────────────────────
 
@@ -556,38 +596,41 @@ export class VerificationCaseWorkflowService {
 
   // ── the shared machinery ────────────────────────────────────────────────
 
-  private async commit(input: {
-    kase: LoadedCase;
-    action: VerificationCaseAction;
-    actor: 'provider' | 'reviewer' | 'system';
-    /** Null for the SYSTEM actor: no human decided, and inventing a user id
-     *  to satisfy a column would put a person's name on a machine's act. */
-    actorUserId: string | null;
-    data: Record<string, unknown>;
-    auditType: string;
-    auditMetadata: Record<string, unknown>;
-    eventType: string | null;
-    decision?: {
-      outcome:
-        | 'ACTION_REQUIRED'
-        | 'REJECTED'
-        | 'APPROVED'
-        | 'REVERIFY_REQUIRED'
-        | 'REVOKED'
-        | 'EXPIRED';
-      reasonCode: VerificationReasonCode;
-    };
-    /** Fields to write on the provider profile, in the SAME transaction. */
-    profileUpdate?: Record<string, unknown>;
-    /** Open a work-access grant, or close the one that is open. */
-    grant?: { open: GrantWindow } | { close: 'REVOKED' | 'EXPIRED' };
-    /** Which notification the provider gets, if any. */
-    notifyProvider?: 'ACTION_REQUIRED' | 'REJECTED' | 'APPROVED' | 'EXPIRED';
-  }): Promise<CaseCommandResult> {
+  private async commit(
+    input: {
+      kase: LoadedCase;
+      action: VerificationCaseAction;
+      actor: 'provider' | 'reviewer' | 'system';
+      /** Null for the SYSTEM actor: no human decided, and inventing a user id
+       *  to satisfy a column would put a person's name on a machine's act. */
+      actorUserId: string | null;
+      data: Record<string, unknown>;
+      auditType: string;
+      auditMetadata: Record<string, unknown>;
+      eventType: string | null;
+      decision?: {
+        outcome:
+          | 'ACTION_REQUIRED'
+          | 'REJECTED'
+          | 'APPROVED'
+          | 'REVERIFY_REQUIRED'
+          | 'REVOKED'
+          | 'EXPIRED';
+        reasonCode: VerificationReasonCode;
+      };
+      /** Fields to write on the provider profile, in the SAME transaction. */
+      profileUpdate?: Record<string, unknown>;
+      /** Open a work-access grant, or close the one that is open. */
+      grant?: { open: GrantWindow } | { close: 'REVOKED' | 'EXPIRED' };
+      /** Which notification the provider gets, if any. */
+      notifyProvider?: 'ACTION_REQUIRED' | 'REJECTED' | 'APPROVED' | 'EXPIRED';
+    },
+    transaction?: PrismaTx,
+  ): Promise<CaseCommandResult> {
     const { kase } = input;
     const toState = input.data.state as VerificationCaseState;
 
-    const claimed = await this.tx.run(async (trx: PrismaTx) => {
+    const write = async (trx: PrismaTx): Promise<boolean> => {
       const client = trx as unknown as typeof this.prisma.client;
 
       // Conditional on the state we OBSERVED. Two callers cannot both write,
@@ -745,7 +788,7 @@ export class VerificationCaseWorkflowService {
             // case, as does the reviewer's prose.
             body:
               kind === 'APPROVED'
-                ? 'Your documents have been checked and you can now take work.'
+                ? 'Your documents have been checked. Open your provider workspace to see your current access.'
                 : kind === 'REJECTED'
                   ? 'A reviewer has closed your verification. Open your verification page for details.'
                   : kind === 'EXPIRED'
@@ -762,9 +805,20 @@ export class VerificationCaseWorkflowService {
       }
 
       return true;
-    });
+    };
+    const claimed = transaction ? await write(transaction) : await this.tx.run(write);
 
-    if (!claimed) return this.afterLostRace(kase, toState, input.actor);
+    if (!claimed) {
+      if (transaction) {
+        throw new AppError(
+          'CONFLICT',
+          'This verification case changed. Reload before deciding.',
+          409,
+          { reason: 'CONCURRENT_UPDATE' },
+        );
+      }
+      return this.afterLostRace(kase, toState, input.actor);
+    }
 
     return {
       caseId: kase.id,
@@ -807,8 +861,12 @@ export class VerificationCaseWorkflowService {
   }
 
   /** A reviewer may act on this case at all. */
-  private async requireReviewable(caseId: string, reviewerUserId: string): Promise<LoadedCase> {
-    const kase = await this.load(caseId);
+  private async requireReviewable(
+    caseId: string,
+    reviewerUserId: string,
+    transaction?: PrismaTx,
+  ): Promise<LoadedCase> {
+    const kase = await this.load(caseId, transaction);
     if (!kase) throw notFound();
 
     // Refused here as well as hidden in the read model. Showing the buttons and
@@ -842,8 +900,8 @@ export class VerificationCaseWorkflowService {
     }
   }
 
-  private async load(caseId: string): Promise<LoadedCase | null> {
-    return (await this.prisma.client.verificationCase.findUnique({
+  private async load(caseId: string, transaction?: PrismaTx): Promise<LoadedCase | null> {
+    return (await (transaction ?? this.prisma.client).verificationCase.findUnique({
       where: { id: caseId },
       include: {
         providerProfile: {
@@ -854,9 +912,46 @@ export class VerificationCaseWorkflowService {
             _count: { select: { serviceCategories: true } },
           },
         },
-        documents: { include: { mediaAsset: { select: { scanState: true } } } },
+        documents: {
+          include: {
+            mediaAsset: {
+              select: {
+                scanState: true,
+                visibility: true,
+                deletedAt: true,
+                uploadCompletedAt: true,
+              },
+            },
+          },
+        },
       },
     })) as LoadedCase | null;
+  }
+
+  /** A submitted file may since have expired, been superseded or failed a later scan. */
+  private assertEvidenceReady(kase: LoadedCase, now: Date): void {
+    const requirements = this.requirementsOf(kase);
+    const ready =
+      requirements.policyVersion === kase.policyVersion &&
+      (requirements.verificationRequired === false || requirements.requirements.length > 0) &&
+      requirements.requirements.every((required) =>
+        kase.documents.some(
+          (doc) =>
+            doc.kind === required.kind &&
+            doc.serviceCategoryId === required.serviceCategoryId &&
+            doc.supersededAt === null &&
+            (!doc.expiresOn || doc.expiresOn > now) &&
+            doc.mediaAsset?.scanState === 'CLEAN' &&
+            doc.mediaAsset.visibility === 'RESTRICTED' &&
+            doc.mediaAsset.deletedAt === null &&
+            doc.mediaAsset.uploadCompletedAt !== null,
+        ),
+      );
+    if (!ready) {
+      throw new AppError('CONFLICT', 'Current clean evidence is required before approval.', 409, {
+        reason: 'EVIDENCE_NOT_READY',
+      });
+    }
   }
 
   /** The snapshot taken when the case was created — never the live policy. */

@@ -146,6 +146,25 @@ function makeService(m: Mocks, tx: TransactionRunner = makeTx()) {
 const ADMIN = 'admin-user-1';
 
 describe('AdminCategoryApplicationsService', () => {
+  it('refuses self-review before granting a specialty', async () => {
+    const m = makeMocks(
+      makeRow({ providerProfile: { id: 'pp-1', displayName: 'Admin provider', userId: ADMIN } }),
+    );
+    await expect(
+      makeService(m).review(ADMIN, 'app-1', { action: 'APPROVE' }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(m.applications.ensureProviderHasCategory).not.toHaveBeenCalled();
+    expect(m.audit.record).not.toHaveBeenCalled();
+  });
+
+  it('does not resurrect a superseded category request', async () => {
+    const m = makeMocks(makeRow({ supersededAt: new Date() }));
+    await expect(
+      makeService(m).review(ADMIN, 'app-1', { action: 'APPROVE' }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(m.applications.ensureProviderHasCategory).not.toHaveBeenCalled();
+  });
+
   describe('list', () => {
     it('defaults to PENDING and maps the join into the wire shape', async () => {
       const m = makeMocks();

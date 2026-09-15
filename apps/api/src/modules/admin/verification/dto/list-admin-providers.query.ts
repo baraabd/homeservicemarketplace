@@ -1,12 +1,22 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
 import type { ListAdminProvidersQuery } from '@homeservicemarketplace/contracts';
 import { ProviderProfileStatus } from '@homeservicemarketplace/database';
 
 export class ListAdminProvidersQueryDto implements ListAdminProvidersQuery {
   @IsOptional()
-  @IsEnum(ProviderProfileStatus)
-  status?: ProviderProfileStatus;
+  @IsIn([...Object.values(ProviderProfileStatus), 'ALL'])
+  status?: ProviderProfileStatus | 'ALL';
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 200)
+  query?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  userId?: string;
 
   @IsOptional()
   @Type(() => Number)

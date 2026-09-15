@@ -106,7 +106,7 @@ export class EvidenceReadService {
     });
 
     // Audit BEFORE responding, and regardless of the verdict.
-    await this.recordAccess({
+    const audited = await this.recordAccess({
       caseId: doc.caseId,
       mediaAssetId: doc.mediaAsset.id,
       actorUserId: input.actorUserId,
@@ -126,6 +126,16 @@ export class EvidenceReadService {
         reason: decision.reason,
       });
       throw new AppError('NOT_FOUND', 'Document not found.', 404);
+    }
+
+    // Never disclose identity bytes when their durable access record failed.
+    // Denials above retain the same 404, so the outage cannot reveal existence.
+    if (!audited) {
+      throw new AppError(
+        'DEPENDENCY_UNAVAILABLE',
+        'Document access is temporarily unavailable.',
+        503,
+      );
     }
 
     this.log.log({
@@ -150,10 +160,8 @@ export class EvidenceReadService {
   /**
    * Write the access row.
    *
-   * Deliberately does NOT participate in a caller's transaction and never
-   * throws outward: an audit-write failure must not become a way to make a
-   * read succeed silently, nor a way to deny a legitimate read. It is logged
-   * loudly instead, and the read decision stands on its own.
+   * Does not participate in a caller's transaction. The result gates disclosure;
+   * an audit outage cannot make protected bytes available without a record.
    */
   private async recordAccess(row: {
     caseId: string;
@@ -163,16 +171,17 @@ export class EvidenceReadService {
     outcome: string;
     ipPrefix: string | null;
     userAgentHash: string | null;
-  }): Promise<void> {
+  }): Promise<boolean> {
     try {
       await this.prisma.client.verificationAccessLog.create({ data: row });
-    } catch (err) {
+      return true;
+    } catch {
       this.log.error({
         msg: 'evidence.audit.write_failed',
         caseId: row.caseId,
         outcome: row.outcome,
-        err: (err as Error).message,
       });
+      return false;
     }
   }
 }

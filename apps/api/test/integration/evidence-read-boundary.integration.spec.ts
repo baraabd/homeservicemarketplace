@@ -151,7 +151,7 @@ d('Restricted evidence read boundary (real Postgres, real bytes)', () => {
           // that would need a restart.
           provide: PermissionResolverService,
           useValue: {
-            resolveForRoles: async (): Promise<Set<string>> =>
+            resolveFreshForUser: async (): Promise<Set<string>> =>
               new Set(reviewerPermission ? ['verification:evidence:view'] : []),
           },
         },

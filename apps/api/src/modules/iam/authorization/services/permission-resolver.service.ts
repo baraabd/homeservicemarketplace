@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { PrismaTx } from '@homeservicemarketplace/database';
 
 import { AppConfigService } from '../../../../config/app-config.service';
 import { RoleRepository } from '../../../../infrastructure/persistence/iam/role.repository';
@@ -67,6 +68,12 @@ export class PermissionResolverService {
     }
 
     return union;
+  }
+
+  /** Sensitive reads/decisions must see role removal and permission revocation
+   * on the next request, even while a JWT or Redis entry still names a role. */
+  async resolveFreshForUser(userId: string, tx?: PrismaTx): Promise<Set<string>> {
+    return new Set(await this.roles.listPermissionKeysForUser(userId, tx));
   }
 
   async invalidate(roleName?: string): Promise<void> {

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AppConfigService } from '../../../config/app-config.service';
 import {
   ADMIN_PROVIDER_TRANSITIONS,
   availableAdminProviderActions,
@@ -71,18 +72,30 @@ export class AdminVerificationService {
     // Phase 4 / D-4: a status change withdraws marketplace access, so any
     // socket already sitting in `provider:{id}` must be evicted post-commit.
     private readonly securityEvents: SecurityEventsBus,
+    private readonly config: AppConfigService,
   ) {}
+
+  private summary(row: Parameters<typeof toSummary>[0]): AdminProviderSummary {
+    const summary = toSummary(row);
+    if (this.config.get('VERIFICATION_ENFORCED') || this.config.get('WORK_ACCESS_ENFORCED')) {
+      summary.availableActions = summary.availableActions?.filter((action) => action !== 'approve');
+    }
+    return summary;
+  }
 
   async list(query: ListAdminProvidersQuery): Promise<ListAdminProvidersResponse> {
     const take = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), 100);
-    const status = query.status ?? ('PENDING_REVIEW' as ProviderProfileStatus);
+    // Preserve the legacy queue default; the complete directory explicitly asks for ALL.
+    const status = query.status === 'ALL' ? undefined : (query.status ?? 'PENDING_REVIEW');
     const rows = await this.providers.listForAdmin({
       status,
+      query: query.query?.trim() || undefined,
+      userId: query.userId,
       take: take + 1,
       cursor: query.cursor,
     });
     const page = rows.slice(0, take);
-    const items = page.map(toSummary);
+    const items = page.map((row) => this.summary(row));
     const nextCursor = rows.length > take ? items[items.length - 1].id : null;
     return { items, nextCursor };
   }
@@ -90,7 +103,7 @@ export class AdminVerificationService {
   async detail(id: string): Promise<AdminProviderSummary> {
     const row = await this.providers.findByIdForAdmin(id);
     if (!row) throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
-    return toSummary(row);
+    return this.summary(row);
   }
 
   async approve(
@@ -98,6 +111,14 @@ export class AdminVerificationService {
     providerProfileId: string,
     note: string | null | undefined,
   ): Promise<AdminProviderMutationResponse> {
+    if (this.config.get('VERIFICATION_ENFORCED') || this.config.get('WORK_ACCESS_ENFORCED')) {
+      throw new AppError(
+        'CONFLICT',
+        'Review the complete application before approving this provider.',
+        409,
+        { reason: 'USE_REVIEW_WORKSPACE' },
+      );
+    }
     return this.transition({
       adminUserId,
       providerProfileId,
@@ -335,7 +356,7 @@ export class AdminVerificationService {
       status: args.to as 'DRAFT' | 'PENDING_REVIEW' | 'ACTIVE' | 'SUSPENDED' | 'REJECTED',
     });
 
-    return { provider: toSummary(result) };
+    return { provider: this.summary(result) };
   }
 
   // Sprint 6.2: persist admin-facing review notes on the provider
@@ -377,7 +398,7 @@ export class AdminVerificationService {
       if (!reloaded) throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
       return reloaded;
     });
-    return { provider: toSummary(result) };
+    return { provider: this.summary(result) };
   }
 
   // Sprint 6.2: provider-scoped verification timeline. Returns audit

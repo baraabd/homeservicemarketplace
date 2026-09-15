@@ -4,6 +4,7 @@ import type {
   ProviderOnboardingHubTaskStatus,
   ProviderOnboardingHubView,
   ProviderOnboardingIssue,
+  ProviderOnboardingFeedback,
 } from '@homeservicemarketplace/contracts';
 import { STEP_TO_V2_TASK } from '@homeservicemarketplace/contracts';
 
@@ -65,6 +66,7 @@ const FALLBACK_TEXT: Readonly<Record<string, { title: string; description: strin
   });
 
 export interface HubSource {
+  reviewFeedback?: ProviderOnboardingFeedback | null;
   /** Straight from `evaluateOnboarding(candidate)` — the one policy. */
   issues: readonly ProviderOnboardingIssue[];
   /** The Sprint 7 lifecycle axis. */
@@ -109,6 +111,8 @@ export function hubStatusOf(lifecycleState: string): ProviderOnboardingHubView['
 export function buildHub(source: HubSource): ProviderOnboardingHubView {
   const status = hubStatusOf(source.lifecycleState);
   const editable = status === 'DRAFT' || status === 'ACTION_REQUIRED';
+  const feedback = status === 'ACTION_REQUIRED' ? (source.reviewFeedback ?? null) : null;
+  const requestedTasks = new Set<string>(feedback?.items.map((item) => item.taskId));
 
   // Which tasks own an unmet requirement. Routed through the same two
   // functions the review screen uses, so the two surfaces cannot disagree.
@@ -155,13 +159,15 @@ export function buildHub(source: HubSource): ProviderOnboardingHubView {
     return {
       id: t.id,
       group: t.group,
-      status: taskStatusOf(t.id, {
-        blockedTasks,
-        awaitingReviewTasks,
-        providerActionTasks,
-        collectingComplete,
-        editable,
-      }),
+      status: requestedTasks.has(t.id)
+        ? 'AVAILABLE'
+        : taskStatusOf(t.id, {
+            blockedTasks,
+            awaitingReviewTasks,
+            providerActionTasks,
+            collectingComplete,
+            editable,
+          }),
       title: text.title,
       description: text.description,
     };
@@ -179,12 +185,15 @@ export function buildHub(source: HubSource): ProviderOnboardingHubView {
   const complete = tasks.filter((t) => t.status === 'COMPLETE' || t.status === 'WAITING').length;
 
   return {
+    reviewFeedback: feedback,
     tasks,
     progress: { complete, total: HUB_TASKS.length },
     // Also provider-action only: an `AWAITING_REVIEW` issue that maps to REVIEW
     // is not work the provider can do on the review screen, so it must not turn
     // `SUBMIT` into `COMPLETE_TASK` and send them somewhere with nothing to do.
-    nextAction: nextActionOf(tasks, status, providerActionTasks.has('REVIEW_SUBMISSION')),
+    nextAction: feedback?.items[0]
+      ? { kind: 'COMPLETE_TASK', taskId: feedback.items[0].taskId }
+      : nextActionOf(tasks, status, providerActionTasks.has('REVIEW_SUBMISSION')),
     status,
   };
 }

@@ -1,4 +1,5 @@
 import type { ProviderOnboardingStep } from '../enums/provider-onboarding-step';
+import type { ProviderOnboardingFeedback } from './provider-onboarding-feedback';
 import { PROVIDER_ONBOARDING_STEPS } from '../enums/provider-onboarding-step';
 
 // Sprint 9B.23 — V2 Task 6: the review and submission read-model.
@@ -93,6 +94,7 @@ export interface ReviewTerms {
  * than a ceremony.
  */
 export interface ProviderOnboardingReview {
+  reviewFeedback?: ProviderOnboardingFeedback | null;
   groups: ReviewGroup[];
   /** Server's verdict. The button is disabled on THIS, never on a client-side
    *  count of anything. */

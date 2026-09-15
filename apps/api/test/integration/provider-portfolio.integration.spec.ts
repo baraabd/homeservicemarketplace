@@ -112,7 +112,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
    *  carry a raw user id, so the fixtures cannot use one either. */
   let ownerRef = '';
   let otherRef = '';
-  const keyFor = (ref = ownerRef) => `portfolio/${ref}/${P}img${(seq += 1)}.jpg`;
+  const keyFor = (ref = ownerRef) => `portfolio-staging/${ref}/${P}img${(seq += 1)}.jpg`;
   const goodBody = (over: Record<string, unknown> = {}) => ({
     storageKey: keyFor(),
     contentType: 'image/jpeg',
@@ -143,6 +143,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
 
   async function cleanupFixtures(): Promise<void> {
     await cleanupItems();
+    await prisma.auditEvent.deleteMany({ where: { userId: { startsWith: P } } });
     await prisma.providerProfile.deleteMany({ where: { id: { startsWith: P } } });
     await prisma.user.deleteMany({ where: { id: { startsWith: P } } });
     await prisma.serviceCategory.deleteMany({ where: { id: CATEGORY } });
@@ -194,6 +195,20 @@ d('Provider portfolio (real guard, real Postgres)', () => {
     const { CsrfGuard } = require('../../src/modules/iam/authentication/guards/csrf.guard');
     const { RolesGuard } = require('../../src/modules/iam/authorization/guards/roles.guard');
     const { AppConfigService } = require('../../src/config/app-config.service');
+    const { STORAGE_PORT } = require('../../src/infrastructure/storage/storage.port');
+    const { PortfolioMediaService } = require('../../src/modules/media/portfolio-media.service');
+    const {
+      AdminPortfolioController,
+    } = require('../../src/modules/admin/portfolio/admin-portfolio.controller');
+    const {
+      AdminPortfolioService,
+    } = require('../../src/modules/admin/portfolio/admin-portfolio.service');
+    const {
+      PermissionResolverService,
+    } = require('../../src/modules/iam/authorization/services/permission-resolver.service');
+    const {
+      PermissionsGuard,
+    } = require('../../src/modules/iam/authorization/guards/permissions.guard');
 
     const FLAGS: Record<string, unknown> = {
       WORK_ACCESS_ENFORCED: true,
@@ -203,9 +218,29 @@ d('Provider portfolio (real guard, real Postgres)', () => {
     const config = { get: (k: string) => FLAGS[k], isProduction: false };
 
     const moduleRef = await Test.createTestingModule({
-      controllers: [ProviderPortfolioController],
+      controllers: [ProviderPortfolioController, AdminPortfolioController],
       providers: [
         ProviderPortfolioService,
+        AdminPortfolioService,
+        PermissionsGuard,
+        {
+          provide: PermissionResolverService,
+          useValue: {
+            resolveFreshForUser: async () => new Set(['portfolio:read', 'portfolio:review']),
+          },
+        },
+        PortfolioMediaService,
+        {
+          provide: STORAGE_PORT,
+          useValue: {
+            readObjectHead: async (key: string) => {
+              const asset = await prisma.mediaAsset.findUnique({ where: { storageKey: key } });
+              return asset
+                ? { sizeBytes: asset.sizeBytes, head: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]) }
+                : null;
+            },
+          },
+        },
         ProviderCapabilityService,
         ProviderCapabilityGuard,
         PlatformSettingRepository,
@@ -449,7 +484,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
       const res = await request(http)
         .post(base)
         .send({
-          storageKey: `portfolio/${otherRef}/${P}never-reserved.jpg`,
+          storageKey: `portfolio-staging/${otherRef}/${P}never-reserved.jpg`,
           contentType: 'image/jpeg',
           sizeBytes: 1024,
           publicationRightAck: true,
@@ -465,7 +500,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
       // the other provider. The claim matches on the owner COLUMN, so the
       // attach is refused on ownership rather than on the key's spelling.
       // This is the case a prefix check alone could never catch.
-      const stolen = `portfolio/${otherRef}/${P}not-mine.jpg`;
+      const stolen = `portfolio-staging/${otherRef}/${P}not-mine.jpg`;
       await prisma.mediaAsset.upsert({
         where: { storageKey: stolen },
         create: {
@@ -497,7 +532,9 @@ d('Provider portfolio (real guard, real Postgres)', () => {
 
     it('cannot publish a file uploaded by another provider', async () => {
       // Ownership is inside the storage key, so guessing one is not enough.
-      const res = await create(goodBody({ storageKey: `portfolio/${ownerRef}/${P}stolen.jpg` }));
+      const res = await create(
+        goodBody({ storageKey: `portfolio-staging/${ownerRef}/${P}stolen.jpg` }),
+      );
       expect(res.status).toBe(400);
       expect(res.body?.error?.details?.reason).toBe('NOT_A_PORTFOLIO_KEY');
     });
@@ -514,7 +551,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
 
     it('refuses a traversal that climbs out of the portfolio namespace', async () => {
       const res = await create(
-        goodBody({ storageKey: `portfolio/${ownerRef}/../../verification/case/doc.jpg` }),
+        goodBody({ storageKey: `portfolio-staging/${ownerRef}/../../verification/case/doc.jpg` }),
       );
       expect(res.status).toBe(400);
     });
@@ -526,7 +563,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
         select: { mediaAsset: { select: { visibility: true, storageKey: true } } },
       });
       expect(item.mediaAsset.visibility).toBe('PUBLIC');
-      expect(item.mediaAsset.storageKey.startsWith(`portfolio/${ownerRef}/`)).toBe(true);
+      expect(item.mediaAsset.storageKey.startsWith(`portfolio-staging/${ownerRef}/`)).toBe(true);
     });
 
     it('deleting a portfolio item never marks a RESTRICTED asset for cleanup', async () => {
@@ -600,7 +637,8 @@ d('Provider portfolio (real guard, real Postgres)', () => {
       // HMAC: a public portfolio image URL is handed to every customer, and a
       // raw user id in it would publish an internal identifier that correlates
       // the provider across every other surface.
-      expect(raw).toContain('/v1/media/files/portfolio/');
+      expect(raw).toContain('/v1/me/provider/portfolio/');
+      expect(raw).toContain('/media');
       expect(raw).not.toContain(OWNER);
     });
 
@@ -830,7 +868,7 @@ d('Provider portfolio (real guard, real Postgres)', () => {
       // else. The DTO has no field for it, and an attempt is refused outright.
       const created = await create(goodBody());
       const res = await patch(created.body.id, {
-        storageKey: `portfolio/${ownerRef}/${P}other.jpg`,
+        storageKey: `portfolio-staging/${ownerRef}/${P}other.jpg`,
       });
       expect(res.status).toBe(400);
     });
@@ -851,6 +889,99 @@ d('Provider portfolio (real guard, real Postgres)', () => {
       const created = await create(goodBody());
       await remove(created.body.id);
       expect((await patch(created.body.id, { title: 'zombie' })).status).toBe(404);
+    });
+  });
+  describe('Admin moderation over real transactions', () => {
+    const adminBase = `/v1/admin/providers/${PP}/portfolio`;
+    it('approves the observed image revision and rejects reuse of an older revision', async () => {
+      const created = await create(goodBody({ title: 'Review this work' }));
+      expect(created.status).toBe(200);
+      currentUser = { id: OTHER };
+      const detail = await request(http).get(adminBase);
+      expect(detail.status).toBe(200);
+      const revision = detail.body.items[0].revision;
+      const result = await request(http)
+        .patch(`${adminBase}/${created.body.id}/review`)
+        .send({ action: 'APPROVE', expectedRevision: revision });
+      expect(result.status).toBe(200);
+      expect(result.body).toMatchObject({ moderationState: 'APPROVED', revision: revision + 1 });
+      expect(result.body.history[0]).toMatchObject({ action: 'APPROVED', revision: revision + 1 });
+      const stale = await request(http)
+        .patch(`${adminBase}/${created.body.id}/review`)
+        .send({ action: 'REJECT', expectedRevision: revision, reason: 'Changed my mind' });
+      expect(stale.status).toBe(409);
+      expect(
+        await prisma.auditEvent.count({
+          where: {
+            userId: OTHER,
+            type: 'ADMIN_PORTFOLIO_REJECTED',
+            metadata: { path: ['itemId'], equals: created.body.id },
+          },
+        }),
+      ).toBe(0);
+    });
+
+    it('does not allow an administrator to review their own image', async () => {
+      const created = await create(goodBody());
+      const result = await request(http)
+        .patch(`${adminBase}/${created.body.id}/review`)
+        .send({ action: 'APPROVE', expectedRevision: 1 });
+      expect(result.status).toBe(403);
+      expect((await request(http).get(adminBase)).body.items[0].availableActions).toEqual([]);
+    });
+
+    it('reordering retains approval while a material edit resets review and preserves its history', async () => {
+      const created = await create(goodBody({ title: 'Original' }));
+      currentUser = { id: OTHER };
+      expect(
+        (
+          await request(http)
+            .patch(`${adminBase}/${created.body.id}/review`)
+            .send({ action: 'APPROVE', expectedRevision: 1 })
+        ).status,
+      ).toBe(200);
+      currentUser = { id: OWNER };
+      expect(
+        (
+          await request(http)
+            .post(`${base}/reorder`)
+            .send({ itemIds: [created.body.id] })
+        ).status,
+      ).toBe(200);
+      expect((await list()).body.items[0].moderationState).toBe('APPROVED');
+      expect(
+        (await patch(created.body.id, { title: 'Material new caption' })).body.moderationState,
+      ).toBe('PENDING');
+      currentUser = { id: OTHER };
+      const detail = (await request(http).get(adminBase)).body.items[0];
+      expect(detail.revision).toBe(3);
+      expect(detail.history.map((event: { action: string }) => event.action)).toEqual([
+        'CONTENT_UPDATED',
+        'APPROVED',
+      ]);
+    });
+
+    it('allows only one winner when two reviewers decide the same revision', async () => {
+      const created = await create(goodBody());
+      currentUser = { id: OTHER };
+      const results = await Promise.all([
+        request(http)
+          .patch(`${adminBase}/${created.body.id}/review`)
+          .send({ action: 'APPROVE', expectedRevision: 1 }),
+        request(http)
+          .patch(`${adminBase}/${created.body.id}/review`)
+          .send({ action: 'REJECT', expectedRevision: 1, reason: 'Customer address visible' }),
+      ]);
+      expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+      expect(
+        await prisma.auditEvent.count({
+          where: {
+            userId: OTHER,
+            type: { in: ['ADMIN_PORTFOLIO_APPROVED', 'ADMIN_PORTFOLIO_REJECTED'] },
+            metadata: { path: ['itemId'], equals: created.body.id },
+          },
+        }),
+      ).toBe(1);
     });
   });
 });

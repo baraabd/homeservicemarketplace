@@ -17,6 +17,7 @@ import { useLang } from '../../../i18n/LanguageContext';
 import { ProviderButton, ProviderSkeleton } from '../../provider-ui';
 import type { ProviderTone } from '../../provider-ui/status';
 import { STATUS_CENTRE_COPY, type Lang } from '../copy/status-centre-copy';
+import { REVIEW_FEEDBACK_COPY } from '../copy/review-feedback-copy';
 import { OnboardingAlert } from './OnboardingAlert';
 import { OnboardingAxisPanel, type OnboardingAxisRow } from './OnboardingAxisPanel';
 import { OnboardingShell } from './OnboardingShell';
@@ -350,6 +351,16 @@ export function ProviderStatusCentreScreen() {
         />
 
         <OnboardingAxisPanel rows={rows} data-testid="provider-status-axes" />
+
+        <ProviderButton
+          tone="secondary"
+          shape="onboarding"
+          size="block"
+          onClick={() => navigate('/provider/verification')}
+          data-testid="status-view-verification"
+        >
+          {REVIEW_FEEDBACK_COPY[lang].viewVerification}
+        </ProviderButton>
 
         {/* The reference's second button. In the prototype it jumps to the
             action-required screen; here it does the real equivalent — reopens

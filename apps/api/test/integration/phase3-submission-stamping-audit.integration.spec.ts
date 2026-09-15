@@ -242,6 +242,9 @@ d('Phase 3 — submission-stamping semantic audit (real Postgres)', () => {
     );
     const { UserRepository } = r('../../src/infrastructure/persistence/iam/user.repository');
     const { RoleRepository } = r('../../src/infrastructure/persistence/iam/role.repository');
+    const { PermissionResolverService } = r(
+      '../../src/modules/iam/authorization/services/permission-resolver.service',
+    );
     const { PlatformSettingRepository } = r(
       '../../src/infrastructure/persistence/settings/platform-setting.repository',
     );
@@ -320,8 +323,9 @@ d('Phase 3 — submission-stamping semantic audit (real Postgres)', () => {
 
     const FLAGS: Record<string, unknown> = {
       JWT_ACCESS_SECRET: SECRET,
-      WORK_ACCESS_ENFORCED: true,
-      VERIFICATION_ENFORCED: true,
+      // Compatibility endpoint stamping; enforced final approval has its own suite.
+      WORK_ACCESS_ENFORCED: false,
+      VERIFICATION_ENFORCED: false,
     };
     const config = { get: (k: string) => FLAGS[k], isProduction: false };
 
@@ -357,6 +361,13 @@ d('Phase 3 — submission-stamping semantic audit (real Postgres)', () => {
         ProviderCategoryApplicationRepository,
         UserRepository,
         RoleRepository,
+        {
+          provide: PermissionResolverService,
+          inject: [RoleRepository],
+          useFactory: (
+            roles: import('../../src/infrastructure/persistence/iam/role.repository').RoleRepository,
+          ) => new PermissionResolverService(roles, {}, config),
+        },
         PlatformSettingRepository,
         AuditService,
         AuditEventRepository,
@@ -398,6 +409,9 @@ d('Phase 3 — submission-stamping semantic audit (real Postgres)', () => {
         status: 'ACTIVE',
       },
     });
+    // Fresh permission reads resolve the seeded admin role from real membership.
+    const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: 'admin' } });
+    await prisma.userRole.create({ data: { userId: ADMIN, roleId: adminRole.id } });
     await prisma.serviceCategory.create({
       data: { id: ROOT, slug: ROOT, labelEn: 'Electrical', labelAr: 'كهرباء', icon: 'bolt' },
     });

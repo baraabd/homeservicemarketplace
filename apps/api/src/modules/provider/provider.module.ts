@@ -6,6 +6,7 @@ import { ProviderPublicProfileService } from './public-profile/provider-public-p
 import { MarketplacePreviewController } from './preview/marketplace-preview.controller';
 import { MarketplacePreviewService } from './preview/marketplace-preview.service';
 import { Module } from '@nestjs/common';
+import { PortfolioMediaModule } from '../media/portfolio-media.module';
 
 import { PublicMediaLedgerModule } from '../media/public-media-ledger.module';
 
@@ -92,6 +93,7 @@ import { ProviderWalletService } from './wallet/provider-wallet.service';
     // Its own module because the portfolio and media modules need it too, and
     // it depends on nothing but Prisma.
     PublicMediaLedgerModule,
+    PortfolioMediaModule,
   ],
   controllers: [
     ProviderController,

@@ -24,3 +24,5 @@ export * from './category-applications';
 export * from './access-requests';
 // Sprint 8 — service-category tree and equipment catalogue administration.
 export * from './catalog';
+export * from './provider-review';
+export * from './portfolio';

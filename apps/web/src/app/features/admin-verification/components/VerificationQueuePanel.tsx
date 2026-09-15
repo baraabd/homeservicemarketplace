@@ -9,6 +9,12 @@ import type {
 import { useLang } from '../../../i18n/LanguageContext';
 import { CASE_STATE_LABELS, UI } from '../copy/verification-copy';
 import { listVerificationQueue } from '../queue/verification-queue-api';
+import { useCursorHistory } from '../../admin-directory/hooks/useCursorHistory';
+import {
+  DirectoryPagination,
+  directoryButton,
+  directoryControl,
+} from '../../admin-directory/components/DirectoryPrimitives';
 
 // Sprint 9B.12 — the review queue.
 //
@@ -47,13 +53,16 @@ export function VerificationQueuePanel({
 
   const [filters, setFilters] = useState<AdminVerificationQueueQuery>({});
   const [searchDraft, setSearchDraft] = useState('');
+  const pagination = useCursorHistory();
+  const pageFilters = { ...filters, ...(pagination.cursor ? { cursor: pagination.cursor } : {}) };
 
   const query = useQuery({
-    queryKey: ['admin', 'verification', 'queue', filters],
-    queryFn: () => listVerificationQueue(filters),
+    queryKey: ['admin', 'verification', 'queue', pageFilters],
+    queryFn: () => listVerificationQueue(pageFilters),
   });
 
-  const set = (patch: Partial<AdminVerificationQueueQuery>) =>
+  const set = (patch: Partial<AdminVerificationQueueQuery>) => {
+    pagination.reset();
     setFilters((f) => {
       const next = { ...f, ...patch };
       // An empty control means "no filter", not "filter on empty string".
@@ -62,6 +71,7 @@ export function VerificationQueuePanel({
       }
       return next;
     });
+  };
 
   const items = query.data?.items ?? [];
   const failureStatus = (query.error as { response?: { status?: number } } | null)?.response
@@ -77,7 +87,7 @@ export function VerificationQueuePanel({
       <h3 className="text-base font-semibold">{t.queueTitle}</h3>
 
       {/* ── filters ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-end gap-3">
         <div>
           <label className="block text-xs" htmlFor="queue-search">
             {t.searchLabel}
@@ -93,7 +103,7 @@ export function VerificationQueuePanel({
               // whose answers arrive out of order.
               if (e.key === 'Enter') set({ search: searchDraft.trim() || undefined });
             }}
-            className="rounded-lg border px-2 py-1.5 text-sm"
+            className={`${directoryControl} max-w-full`}
           />
         </div>
 
@@ -106,7 +116,7 @@ export function VerificationQueuePanel({
             data-testid="queue-state"
             value={filters.state ?? ''}
             onChange={(e) => set({ state: (e.target.value || undefined) as never })}
-            className="rounded-lg border px-2 py-1.5 text-sm"
+            className={`${directoryControl} max-w-full`}
           >
             <option value="">{t.filterAll}</option>
             {STATES.map((s) => (
@@ -126,7 +136,7 @@ export function VerificationQueuePanel({
             data-testid="queue-policy"
             value={filters.policyVersion ?? ''}
             onChange={(e) => set({ policyVersion: e.target.value || undefined })}
-            className="rounded-lg border px-2 py-1.5 text-sm"
+            className={`${directoryControl} max-w-full`}
           />
         </div>
 
@@ -140,7 +150,7 @@ export function VerificationQueuePanel({
             data-testid="queue-from"
             value={filters.submittedFrom ?? ''}
             onChange={(e) => set({ submittedFrom: e.target.value || undefined })}
-            className="rounded-lg border px-2 py-1.5 text-sm"
+            className={`${directoryControl} max-w-full`}
           />
         </div>
 
@@ -154,18 +164,26 @@ export function VerificationQueuePanel({
             data-testid="queue-to"
             value={filters.submittedTo ?? ''}
             onChange={(e) => set({ submittedTo: e.target.value || undefined })}
-            className="rounded-lg border px-2 py-1.5 text-sm"
+            className={`${directoryControl} max-w-full`}
           />
         </div>
 
         <button
           type="button"
+          className={directoryButton}
+          onClick={() => set({ search: searchDraft.trim() || undefined })}
+        >
+          {lang === 'ar' ? 'بحث' : 'Search'}
+        </button>
+        <button
+          type="button"
           data-testid="queue-clear"
           onClick={() => {
+            pagination.reset();
             setFilters({});
             setSearchDraft('');
           }}
-          className="self-end rounded-lg border px-3 py-1.5 text-sm font-semibold"
+          className={directoryButton}
         >
           {t.clearFilters}
         </button>
@@ -206,54 +224,65 @@ export function VerificationQueuePanel({
         </p>
       )}
 
-      {items.length > 0 && (
-        <table className="w-full text-sm" data-testid="queue-table">
-          <thead>
-            <tr className="text-start">
-              <th scope="col" className="p-2 text-start">
-                {t.searchLabel}
-              </th>
-              <th scope="col" className="p-2 text-start">
-                {t.filterState}
-              </th>
-              <th scope="col" className="p-2 text-start">
-                {t.policyVersion}
-              </th>
-              <th scope="col" className="p-2 text-start">
-                {t.submitted}
-              </th>
-              <th scope="col" className="p-2 text-start">
-                {t.documentsCount}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr
-                key={item.id}
-                data-testid={`queue-row-${item.id}`}
-                data-selected={item.id === selectedCaseId ? 'true' : 'false'}
-              >
-                <td className="p-2">
-                  <button
-                    type="button"
-                    onClick={() => onOpenCase(item)}
-                    className="font-semibold underline"
-                  >
-                    {item.providerDisplayName ?? item.providerProfileId}
-                  </button>
-                </td>
-                <td className="p-2">{CASE_STATE_LABELS[lang][item.state]}</td>
-                <td className="p-2">{item.policyVersion}</td>
-                <td className="p-2">
-                  {item.submittedAt ? new Date(item.submittedAt).toLocaleDateString(lang) : '—'}
-                </td>
-                <td className="p-2">{item.documentCount}</td>
+      {!query.isError && items.length > 0 && (
+        <div className="overflow-x-auto" role="region" aria-label={t.queueTitle} tabIndex={0}>
+          <table className="w-full text-sm" data-testid="queue-table">
+            <thead>
+              <tr className="text-start">
+                <th scope="col" className="p-2 text-start">
+                  {t.searchLabel}
+                </th>
+                <th scope="col" className="p-2 text-start">
+                  {t.filterState}
+                </th>
+                <th scope="col" className="p-2 text-start">
+                  {t.policyVersion}
+                </th>
+                <th scope="col" className="p-2 text-start">
+                  {t.submitted}
+                </th>
+                <th scope="col" className="p-2 text-start">
+                  {t.documentsCount}
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr
+                  key={item.id}
+                  data-testid={`queue-row-${item.id}`}
+                  data-selected={item.id === selectedCaseId ? 'true' : 'false'}
+                >
+                  <td className="p-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpenCase(item)}
+                      className="min-h-11 font-semibold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                    >
+                      {item.providerDisplayName ?? item.providerProfileId}
+                    </button>
+                  </td>
+                  <td className="p-2">{CASE_STATE_LABELS[lang][item.state]}</td>
+                  <td className="p-2">{item.policyVersion}</td>
+                  <td className="p-2">
+                    {item.submittedAt ? new Date(item.submittedAt).toLocaleDateString(lang) : '—'}
+                  </td>
+                  <td className="p-2">{item.documentCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
+      <DirectoryPagination
+        nextCursor={query.isError ? null : query.data?.nextCursor}
+        onNext={pagination.nextPage}
+        onPrevious={pagination.previousPage}
+        hasPrevious={pagination.hasPrevious}
+        pending={query.isFetching}
+        count={items.length}
+        isAr={lang === 'ar'}
+      />
     </section>
   );
 }

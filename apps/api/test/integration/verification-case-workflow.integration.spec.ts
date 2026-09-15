@@ -6,7 +6,7 @@
 export {};
 
 import { Test } from '@nestjs/testing';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, Reflector } from '@nestjs/core';
 import { CanActivate, ExecutionContext, INestApplication, VersioningType } from '@nestjs/common';
 import request from 'supertest';
 
@@ -245,7 +245,14 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       .useClass(PassGuard)
       .overrideGuard(PermissionsGuard)
       .useValue({
-        canActivate: () => permissions.has('verification:decide'),
+        canActivate: (ctx: ExecutionContext) => {
+          const required =
+            new Reflector().getAllAndOverride<string[]>('iam:permissions', [
+              ctx.getHandler(),
+              ctx.getClass(),
+            ]) ?? [];
+          return required.every((key) => permissions.has(key));
+        },
       })
       .compile();
 
@@ -331,7 +338,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     expect(first.body).toMatchObject({ state: 'SUBMITTED', changed: true });
 
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
     expect((await assign(CASE_ID)).status).toBe(200);
     expect(await stateOf()).toBe('IN_REVIEW');
 
@@ -354,7 +361,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
   it('writes the decision, the audit row, the event and the notification together', async () => {
     await seedCase('SUBMITTED');
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
     await requestAction(CASE_ID, { reasonCode: 'DOCUMENT_MISSING' });
 
@@ -389,7 +396,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
   it('keeps the reviewer note off the notification', async () => {
     await seedCase('SUBMITTED');
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
     await requestAction(CASE_ID, {
       reasonCode: 'OTHER',
@@ -455,7 +462,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     await seedCase('SUBMITTED');
     await prisma.providerProfile.update({ where: { id: PP }, data: { userId: REVIEWER } });
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
     const res = await assign(CASE_ID);
     expect(res.status).toBe(403);
@@ -485,7 +492,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
   it('offers approve now that the atomic transaction exists', async () => {
     await seedCase('SUBMITTED');
     currentUser = { id: REVIEWER };
-    permissions = new Set(['verification:decide']);
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
     const res = await assign(CASE_ID);
     expect(res.body.availableActions).toContain('approve');
@@ -509,7 +516,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     it('lists a live case for a permitted reviewer, with server-computed actions', async () => {
       await seedCase('SUBMITTED');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const res = await queue();
       expect(res.status).toBe(200);
@@ -528,7 +535,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       await seedCase('SUBMITTED');
       await prisma.providerProfile.update({ where: { id: PP }, data: { userId: REVIEWER } });
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const mine = (await queue()).body.items.find((i: { id: string }) => i.id === CASE_ID);
       expect(mine.availableActions).toEqual([]);
@@ -538,7 +545,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     it('excludes terminal cases from the default view', async () => {
       await seedCase('REJECTED');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const ids = (await queue()).body.items.map((i: { id: string }) => i.id);
       expect(ids).not.toContain(CASE_ID);
@@ -550,14 +557,14 @@ d('Verification case workflow (real Postgres, real routes)', () => {
 
     it('refuses an unknown state rather than quietly ignoring the filter', async () => {
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
       expect((await queue('?state=NONSENSE')).status).toBe(400);
     });
 
     it('carries no storage key, filename or hash', async () => {
       await seedCase('SUBMITTED');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const text = JSON.stringify((await queue()).body);
       expect(text).not.toMatch(/storageKey|sha256|\.pdf/);
@@ -566,7 +573,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     it('serves ONE specific case by id, and its audit trail', async () => {
       await seedCase('SUBMITTED');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const detail = await request(http).get(`/v1/admin/verification/cases/${CASE_ID}`);
       expect(detail.status).toBe(200);
@@ -583,7 +590,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
 
     it('answers an unknown case id with 404', async () => {
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
       const res = await request(http).get(`/v1/admin/verification/cases/${P}no-such-case`);
       expect(res.status).toBe(404);
     });
@@ -595,7 +602,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     it('closes the case, records the decision and tells the provider', async () => {
       await seedCase('IN_REVIEW');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const res = await request(http)
         .post(`/v1/admin/verification/cases/${CASE_ID}/reject`)
@@ -619,7 +626,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     it('refuses without a reason', async () => {
       await seedCase('IN_REVIEW');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const res = await request(http)
         .post(`/v1/admin/verification/cases/${CASE_ID}/reject`)
@@ -628,13 +635,63 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       expect(await stateOf()).toBe('IN_REVIEW');
     });
 
+    it('refuses identity approval without current evidence access permission', async () => {
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+      const res = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+        .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+      expect(res.status).toBe(403);
+      expect(await stateOf()).toBe('IN_REVIEW');
+    });
+
+    it('rechecks a document that was quarantined after submission', async () => {
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
+      await prisma.mediaAsset.update({
+        where: { id: `${P}asset` },
+        data: { scanState: 'QUARANTINED' },
+      });
+      const res = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+        .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+      expect(res.status).toBe(409);
+      expect(res.body.error.details.reason).toBe('EVIDENCE_NOT_READY');
+      expect(await stateOf()).toBe('IN_REVIEW');
+      expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
+        0,
+      );
+    });
+
+    it('requires the observed state when renewing a draft scope and preserves its historical snapshot', async () => {
+      await seedCase('DRAFT');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide']);
+      const before = await prisma.verificationCase.findUnique({ where: { id: CASE_ID } });
+      const missing = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/reverify`)
+        .send({ reasonCode: 'OTHER' });
+      expect(missing.status).toBe(400);
+      expect(await stateOf()).toBe('DRAFT');
+      const changed = await request(http)
+        .post(`/v1/admin/verification/cases/${CASE_ID}/reverify`)
+        .send({ reasonCode: 'OTHER', expectedState: 'DRAFT' });
+      expect(changed.status).toBe(200);
+      const after = await prisma.verificationCase.findUnique({ where: { id: CASE_ID } });
+      expect(after.state).toBe('EXPIRED');
+      expect(after.requirementsSnapshot).toEqual(before.requirementsSnapshot);
+      expect(await prisma.verificationDocument.count({ where: { caseId: CASE_ID } })).toBe(1);
+    });
+
     it('approves atomically: case, decision, provider state and grant together', async () => {
       // Until Sprint 9B.7 this asserted the route 404'd, because approval was
       // deliberately unbuilt. It is built now, and what matters is that all of
       // it lands together.
       await seedCase('IN_REVIEW');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const res = await request(http)
         .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
@@ -671,7 +728,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       // second transaction lose. Neither alone is enough.
       await seedCase('IN_REVIEW');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const call = () =>
         request(http)
@@ -690,7 +747,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     it('revocation closes the grant immediately', async () => {
       await seedCase('IN_REVIEW');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       await request(http)
         .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
@@ -725,7 +782,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       // reaches it has a stale tab or a bad script.
       await seedCase('SUBMITTED');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const res = await request(http)
         .post(`/v1/admin/verification/cases/${CASE_ID}/revoke`)
@@ -749,7 +806,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       // teach people to refresh and re-decide, which is worse.
       await seedCase('IN_REVIEW');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const first = await request(http)
         .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
@@ -776,7 +833,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       // case still holding live access.
       await seedCase('IN_REVIEW');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       await request(http)
         .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
@@ -826,7 +883,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       // everything before it has already been staged and must be undone.
       await seedCase('IN_REVIEW');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const outbox = outboxRepo;
       const enqueue = jest
@@ -994,7 +1051,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     it('carries the latest decision as a CODE', async () => {
       await seedCase('IN_REVIEW');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
       await request(http)
         .post(`/v1/admin/verification/cases/${CASE_ID}/request-action`)
         .send({ reasonCode: 'DOCUMENT_ILLEGIBLE', note: 'the scan is blurry, ask again' });
@@ -1015,7 +1072,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       const secret = 'internal note: claimant seems evasive';
       await seedCase('IN_REVIEW');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
       await request(http)
         .post(`/v1/admin/verification/cases/${CASE_ID}/request-action`)
         .send({ reasonCode: 'DOCUMENT_ILLEGIBLE', note: secret });
@@ -1061,7 +1118,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     it('reports no grant as null rather than as a false one', async () => {
       await seedCase('SUBMITTED');
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const res = await request(http).get(`/v1/admin/verification/cases/${CASE_ID}`);
       expect(res.status).toBe(200);
@@ -1081,7 +1138,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
         },
       });
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const res = await request(http).get(`/v1/admin/verification/cases/${CASE_ID}`);
       expect(res.body.workAccess).toMatchObject({ active: true, source: 'VERIFIED_DOCUMENTS' });
@@ -1103,7 +1160,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
         },
       });
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const res = await request(http).get(`/v1/admin/verification/cases/${CASE_ID}`);
       expect(res.body.workAccess.active).toBe(false);
@@ -1125,7 +1182,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
         },
       });
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
 
       const res = await request(http).get(`/v1/admin/verification/cases/${CASE_ID}`);
       expect(res.body.workAccess.active).toBe(false);
@@ -1141,7 +1198,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
         data: { submittedAt: new Date('2026-06-15T12:00:00Z') },
       });
       currentUser = { id: REVIEWER };
-      permissions = new Set(['verification:decide']);
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
     });
 
     const queue = (q: string) => request(http).get(`/v1/admin/verification/cases?${q}`);

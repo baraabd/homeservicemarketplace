@@ -74,4 +74,21 @@ export class RoleRepository {
       include: { permission: true },
     });
   }
+
+  /** Current membership and grants in one read for sensitive authorization. */
+  async listPermissionKeysForUser(userId: string, tx?: PrismaTx): Promise<string[]> {
+    const rows = await this.db(tx).userRole.findMany({
+      where: {
+        userId,
+        user: { deletedAt: null, status: 'ACTIVE', isActive: true },
+        role: { deletedAt: null },
+      },
+      select: {
+        role: {
+          select: { rolePermissions: { select: { permission: { select: { key: true } } } } },
+        },
+      },
+    });
+    return rows.flatMap((row) => row.role.rolePermissions.map((grant) => grant.permission.key));
+  }
 }

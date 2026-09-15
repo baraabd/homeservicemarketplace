@@ -38,6 +38,7 @@ import {
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
 import { AppError } from '../../src/shared/errors/app-error';
+import { PermissionResolverService } from '../../src/modules/iam/authorization/services/permission-resolver.service';
 
 jest.setTimeout(15_000);
 
@@ -58,6 +59,8 @@ const adminUsersService = {
   restore: jest.fn(),
   listRoles: jest.fn(),
 };
+
+let canReadDirectory = true;
 
 let fakeAuthedUser: { id: string; sessionId: string; jti: string; roles: string[] } | null = null;
 
@@ -87,6 +90,12 @@ async function bootApp(): Promise<INestApplication> {
     controllers: [AdminUsersController, AdminRolesController],
     providers: [
       Reflector,
+      {
+        provide: PermissionResolverService,
+        useValue: {
+          resolveFreshForUser: async () => new Set(canReadDirectory ? ['user:read:any'] : []),
+        },
+      },
       { provide: AdminUsersService, useValue: adminUsersService },
       { provide: AppConfigService, useValue: config },
       { provide: APP_FILTER, useFactory: () => new AllExceptionsFilter(config) },
@@ -146,9 +155,22 @@ describe('AdminUsers + AdminRoles (e2e) — Sprint 6.1', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     fakeAuthedUser = null;
+    canReadDirectory = true;
   });
 
   describe('auth gating', () => {
+    it.each(['/v1/admin/users', '/v1/admin/users/u-1'])(
+      'GET %s refuses an admin whose read permission was revoked',
+      async (path) => {
+        fakeAuthedUser = { id: 'admin-1', sessionId: 's1', jti: 'j1', roles: ['admin'] };
+        canReadDirectory = false;
+        const res = await request(app.getHttpServer()).get(path);
+        expect(res.status).toBe(403);
+        expect(adminUsersService.list).not.toHaveBeenCalled();
+        expect(adminUsersService.detail).not.toHaveBeenCalled();
+      },
+    );
+
     it('GET /v1/admin/users → 401 when unauthenticated', async () => {
       const res = await request(app.getHttpServer()).get('/v1/admin/users');
       expect(res.status).toBe(401);

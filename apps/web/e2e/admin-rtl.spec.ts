@@ -88,13 +88,19 @@ async function openAdmin(page: Page, lang: 'en' | 'ar'): Promise<void> {
   await stubApi(page, { me: signedInAdmin() });
   await page.goto('/admin');
   // The shell is up once the operator identity has rendered.
-  await expect(page.getByText('operator@example.com').first()).toBeVisible();
+  await expect(page.getByTestId('admin-sidebar-email')).toHaveText('operator@example.com');
 }
 
 // Targets the section by ID rather than by its translated label, so the same
 // helper works in both directions and a copy change cannot break the suite.
 async function openSection(page: Page, id: 'users' | 'verification'): Promise<void> {
-  await page.getByTestId(`nav-${id}`).click();
+  const menu = page.getByRole('button', { name: /Open navigation|فتح القائمة/ });
+  if (await menu.isVisible()) {
+    await menu.click();
+    await page.getByTestId(`mobile-nav-${id}`).click();
+  } else {
+    await page.getByTestId(`nav-${id}`).click();
+  }
 }
 
 async function openUsersSection(page: Page, lang: 'en' | 'ar'): Promise<void> {

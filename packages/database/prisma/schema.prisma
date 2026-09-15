@@ -1026,6 +1026,9 @@ enum AuditEventType {
   SERVICE_AREA_EXPANSION_TIER_CHANGED
   SERVICE_AREA_EXPANSION_OVERRIDE_SET
   SERVICE_AREA_EXPANSION_OVERRIDE_CLEARED
+  ADMIN_PORTFOLIO_APPROVED
+  ADMIN_PORTFOLIO_REJECTED
+  PORTFOLIO_CONTENT_UPDATED
 }
 
 enum AddressType {
@@ -1407,6 +1410,9 @@ model ProviderOnboardingSubmission {
   /// Verbatim copy of the fields the policy evaluated. JSON because its shape
   /// is versioned by policyVersion, not by the schema.
   snapshot          Json
+  /// Complete, versioned review metadata. Null means this historic submission
+  /// predates complete capture; never reconstruct it from today's profile.
+  reviewSnapshot    Json?
   /// Issues outstanding at submission time. Empty for a valid submission;
   /// populated when an admin force-submits on a provider's behalf.
   issues            Json?
@@ -1418,6 +1424,12 @@ model ProviderOnboardingSubmission {
   decidedByUserId String?
   decision        ProviderOnboardingState?
   decisionNote    String?                  @db.Text
+  /// Provider-facing task corrections; internal reviewer notes stay separate.
+  reviewFeedback  Json?
+  /// Receipt for an exact, revision-bound administrative decision.
+  decisionIdempotencyKey String?
+  decisionRequestHash    String?
+  reviewedRevision       String?
 
   createdAt DateTime @default(now())
 
@@ -2302,6 +2314,8 @@ model ProviderPortfolioItem {
   moderatedByUserId       String?
   moderatedAt             DateTime?
   moderationReason        String?
+  /// Changes only when reviewable content or its decision changes.
+  revision                Int                      @default(1)
   /// Provider-controlled ordering.
   position                Int                      @default(0)
 

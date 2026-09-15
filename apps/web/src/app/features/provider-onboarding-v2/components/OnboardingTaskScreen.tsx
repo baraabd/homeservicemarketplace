@@ -13,6 +13,7 @@ import { useProviderOnboardingHub } from '../../../hooks/provider/useProviderOnb
 import { deriveHubView, isTaskActionable } from '../hub-view-state';
 import { SCREEN_COPY, statusExplanation, taskCopy, type Lang } from '../copy/onboarding-hub-copy';
 import { OnboardingShell } from './OnboardingShell';
+import { ReviewFeedback } from './ReviewFeedback';
 import { ExitBlockedNotice } from './ExitBlockedNotice';
 import { useOnboardingExit } from '../autosave/useOnboardingExit';
 import { EXIT_COPY } from '../copy/exit-copy';
@@ -359,6 +360,12 @@ export function OnboardingTaskScreen() {
           of fields it changes nothing, because they stack from the top either
           way. */}
       <div className="flex flex-1 flex-col gap-[18px]" data-testid={`task-screen-${task.id}`}>
+        <ReviewFeedback
+          feedback={draft.data?.reviewFeedback}
+          taskId={task.id === 'REVIEW_SUBMISSION' ? undefined : task.id}
+          lang={lang}
+          onOpen={(path) => exit.exit(path)}
+        />
         {/* First in the column: it explains why a navigation the provider
             just asked for did not happen, so it must not be below the fold of
             a long form. */}

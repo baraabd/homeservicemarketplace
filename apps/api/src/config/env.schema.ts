@@ -432,6 +432,9 @@ const baseEnvSchema = z.object({
   // adapter throws a clear error at presign time if S3 is selected
   // without a bucket.
   S3_BUCKET: z.string().optional(),
+  // Private portfolio staging: distinct from public media and identity evidence.
+  // Required only when creating portfolio uploads with the S3 driver.
+  S3_PORTFOLIO_BUCKET: z.string().optional(),
   S3_REGION: z.string().default('us-east-1'),
   S3_ENDPOINT: z.string().optional(),
   S3_FORCE_PATH_STYLE: trueish.default(false),

@@ -1,4 +1,5 @@
 import type { ProviderSpecialtyView } from './provider-specialty-state';
+import type { ProviderOnboardingFeedback } from './provider-onboarding-feedback';
 import type { ProviderOnboardingIssue } from '../enums/provider-onboarding-field';
 import type { ProviderOnboardingLifecycleState } from '../enums/provider-onboarding-lifecycle-state';
 import type {
@@ -281,6 +282,8 @@ export interface ProviderOnboardingStepView {
  * Submit button ends up enabled and then 422-ing.
  */
 export interface ProviderOnboardingDraftView {
+  /** Requested corrections on the latest returned submission, until a new submission supersedes it. */
+  reviewFeedback?: ProviderOnboardingFeedback | null;
   /** Where the application is. Says nothing about whether the provider may
    *  work — that is `GET /v1/me/provider/capabilities`. */
   state: ProviderOnboardingLifecycleState;

@@ -219,10 +219,10 @@ describe('every attempt is audited', () => {
   });
 });
 
-describe('an audit failure never changes the access decision', () => {
-  it('still grants when the audit write throws', async () => {
-    // An audit-write failure must not become a way to DENY a legitimate read
-    // — that turns a logging outage into an availability incident.
+describe('durable audit before identity disclosure', () => {
+  it('withholds protected bytes when the audit write throws', async () => {
+    // Admin review requires a durable record before disclosure. This replaces
+    // the prior best-effort audit policy; authorization alone is insufficient.
     const { service } = makeService(doc(), { auditThrows: true });
     await expect(
       service.authorizeRead({
@@ -230,7 +230,7 @@ describe('an audit failure never changes the access decision', () => {
         actorUserId: REVIEWER,
         actorHasEvidenceViewPermission: true,
       }),
-    ).resolves.toMatchObject({ storageKey: expect.any(String) });
+    ).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE', status: 503 });
   });
 
   it('still denies when the audit write throws', async () => {

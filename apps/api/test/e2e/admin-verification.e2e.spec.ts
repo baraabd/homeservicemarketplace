@@ -26,6 +26,7 @@ import { AdminVerificationCaseService } from '../../src/modules/admin/verificati
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
 import { AppError } from '../../src/shared/errors/app-error';
+import { PermissionResolverService } from '../../src/modules/iam/authorization/services/permission-resolver.service';
 
 jest.setTimeout(15_000);
 
@@ -48,6 +49,8 @@ const verificationService = {
   updateReviewNotes: jest.fn(),
   getAuditHistory: jest.fn(),
 };
+
+let canReadDirectory = true;
 
 let fakeAuthedUser: { id: string; sessionId: string; jti: string; roles: string[] } | null = null;
 
@@ -74,6 +77,12 @@ async function bootApp(): Promise<INestApplication> {
     controllers: [AdminVerificationController],
     providers: [
       Reflector,
+      {
+        provide: PermissionResolverService,
+        useValue: {
+          resolveFreshForUser: async () => new Set(canReadDirectory ? ['user:read:any'] : []),
+        },
+      },
       { provide: AdminVerificationService, useValue: verificationService },
       // Sprint 9B — the controller now also resolves the case service, for
       // GET /:providerProfileId/verification. Stubbed to null ("this provider
@@ -140,9 +149,24 @@ describe('AdminVerification (e2e) — /v1/admin/providers/* (Sprint 6.2 refined)
   beforeEach(() => {
     jest.clearAllMocks();
     fakeAuthedUser = null;
+    canReadDirectory = true;
   });
 
   describe('auth gating', () => {
+    it.each([
+      '/v1/admin/providers',
+      '/v1/admin/providers/pp-1',
+      '/v1/admin/providers/pp-1/audit',
+      '/v1/admin/providers/pp-1/verification',
+    ])('GET %s refuses an admin whose read permission was revoked', async (path) => {
+      fakeAuthedUser = { id: 'admin-1', sessionId: 's1', jti: 'j1', roles: ['admin'] };
+      canReadDirectory = false;
+      const res = await request(app.getHttpServer()).get(path);
+      expect(res.status).toBe(403);
+      expect(verificationService.list).not.toHaveBeenCalled();
+      expect(verificationService.detail).not.toHaveBeenCalled();
+    });
+
     it('GET /v1/admin/providers → 401 when unauthenticated', async () => {
       const res = await request(app.getHttpServer()).get('/v1/admin/providers');
       expect(res.status).toBe(401);
@@ -204,6 +228,33 @@ describe('AdminVerification (e2e) — /v1/admin/providers/* (Sprint 6.2 refined)
       expect(verificationService.list).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'PENDING_REVIEW' }),
       );
+    });
+
+    it('accepts the complete directory and bounded search/account/cursor filters', async () => {
+      verificationService.list.mockResolvedValue({ items: [], nextCursor: null });
+      const res = await request(app.getHttpServer())
+        .get('/v1/admin/providers')
+        .query({ status: 'ALL', query: 'Ada', userId: 'u-1', cursor: 'pp-50', limit: 50 });
+      expect(res.status).toBe(200);
+      expect(verificationService.list).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'ALL',
+          query: 'Ada',
+          userId: 'u-1',
+          cursor: 'pp-50',
+          limit: 50,
+        }),
+      );
+    });
+
+    it('rejects an invalid provider status and oversized search', async () => {
+      const invalid = await request(app.getHttpServer()).get('/v1/admin/providers?status=UNKNOWN');
+      expect(invalid.status).toBe(400);
+      const oversized = await request(app.getHttpServer())
+        .get('/v1/admin/providers')
+        .query({ query: 'x'.repeat(201) });
+      expect(oversized.status).toBe(400);
+      expect(verificationService.list).not.toHaveBeenCalled();
     });
 
     it('rejects unknown query param (forbidNonWhitelisted)', async () => {

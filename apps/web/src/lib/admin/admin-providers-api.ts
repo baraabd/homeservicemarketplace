@@ -17,6 +17,8 @@ export async function listAdminProviders(
 ): Promise<ListAdminProvidersResponse> {
   const params: Record<string, string | number> = {};
   if (query.status) params.status = query.status;
+  if (query.query) params.query = query.query;
+  if (query.userId) params.userId = query.userId;
   if (query.limit !== undefined) params.limit = query.limit;
   if (query.cursor) params.cursor = query.cursor;
   const { data } = await api.get<ListAdminProvidersResponse>('/v1/admin/providers', { params });

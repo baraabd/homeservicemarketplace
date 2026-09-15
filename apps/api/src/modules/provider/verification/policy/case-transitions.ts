@@ -83,11 +83,11 @@ export const VERIFICATION_CASE_TRANSITIONS: Readonly<
     outcome: 'REJECTED',
     requiresReason: true,
   },
-  // Ops asks a VERIFIED provider for fresh evidence. Opens a NEW case; this
-  // edge only closes the old one, and never edits the decision that verified
-  // them — they WERE verified on the date they were verified.
+  // A new country/trade scope needs a fresh pinned case even before the old
+  // draft was submitted. Renewal preserves that history without making an
+  // adverse identity judgement or pretending the old snapshot covered it.
   reverify: {
-    from: ['VERIFIED'],
+    from: ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'ACTION_REQUIRED', 'VERIFIED'],
     to: 'EXPIRED',
     actor: 'reviewer',
     outcome: 'REVERIFY_REQUIRED',
