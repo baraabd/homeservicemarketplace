@@ -103,6 +103,214 @@ export const RESPONSIVE_VIEWPORTS = PHASE5_VIEWPORTS.map((v) => ({
 
 export const MAX_DIFF_PIXEL_RATIO = 0.005;
 
+/** The user's September repair brief replaces the static map, hidden schedule,
+ * suggested-only title and unexplained photo requirement on these four states.
+ * The immutable prototype remains captured and measured for review, but these
+ * cells earn revised presentation acceptance, not prototype pixel parity.
+ * There is deliberately no environment switch or artifact-controlled allowlist. */
+export const ONBOARDING_REPAIR_REVISION = 'USER_REQUEST_2026_09_ONBOARDING_REPAIR';
+export const REVISED_PRESENTATION_STATES = Object.freeze([6, 7, 8, 9] as const);
+
+export interface RevisionCheck {
+  readonly key: string;
+  readonly selector: string;
+  readonly texts?: readonly string[];
+  readonly count: number;
+  readonly minWidth: number;
+  readonly minHeight: number;
+}
+
+/** Expected words are owned by acceptance, not imported from component copy. */
+export function revisionChecks(stateId: number, locale: Locale): readonly RevisionCheck[] {
+  const ar = locale === 'ar';
+  const target = (key: string, selector: string, text: string): RevisionCheck => ({
+    key,
+    selector,
+    texts: [text],
+    count: 1,
+    minWidth: 44,
+    minHeight: 44,
+  });
+  if (stateId === 6)
+    return [
+      {
+        key: 'interactive-map',
+        selector: '[data-testid="service-area-map"] .leaflet-container[tabindex="0"]',
+        count: 1,
+        minWidth: 280,
+        minHeight: 240,
+      },
+      {
+        key: 'map-pane',
+        selector: '[data-testid="service-area-map"] .leaflet-map-pane',
+        count: 1,
+        minWidth: 0,
+        minHeight: 0,
+      },
+      target(
+        'device-location',
+        '[data-testid="service-area-locate"]',
+        ar ? 'استخدام موقعي الحالي' : 'Use my current location',
+      ),
+      target(
+        'map-centre',
+        '[data-testid="service-area-use-centre"]',
+        ar ? 'استخدام وسط الخريطة' : 'Use map centre',
+      ),
+      target(
+        'zoom-in',
+        `[data-testid="service-area-map"] button[aria-label="${ar ? 'تكبير الخريطة' : 'Zoom in'}"]`,
+        ar ? 'تكبير الخريطة' : 'Zoom in',
+      ),
+      target(
+        'zoom-out',
+        `[data-testid="service-area-map"] button[aria-label="${ar ? 'تصغير الخريطة' : 'Zoom out'}"]`,
+        ar ? 'تصغير الخريطة' : 'Zoom out',
+      ),
+    ];
+  if (stateId === 7) {
+    const days = ar
+      ? ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+      : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return [
+      {
+        key: 'weekly-table',
+        selector: '[data-testid="availability-week-summary"] table',
+        count: 1,
+        minWidth: 280,
+        minHeight: 280,
+      },
+      ...days.map((day, index) => ({
+        key: `day-${index}`,
+        selector: `[data-testid="availability-summary-day-${index}"]`,
+        texts: [`${day} ${index < 5 ? '09:00–17:00' : ar ? 'غير متاح' : 'Unavailable'}`],
+        count: 1,
+        minWidth: 280,
+        minHeight: 36,
+      })),
+    ];
+  }
+  if (stateId === 8)
+    return [
+      {
+        key: 'stored-title',
+        selector: '[data-testid="preview-title"]',
+        texts: ['Painting professional'],
+        count: 1,
+        minWidth: 40,
+        minHeight: 10,
+      },
+    ];
+  if (stateId === 9)
+    return [
+      {
+        key: 'optional-photos',
+        selector: '[data-testid="portfolio-optional-hint"]',
+        texts: [
+          ar
+            ? 'صور الأعمال اختيارية. أضف أمثلة من أعمالك؛ مراجعة الصور لا تمنع إكمال طلبك.'
+            : 'Work photos are optional. Add examples of your own work; photo review does not stop you completing your application.',
+        ],
+        count: 1,
+        minWidth: 280,
+        minHeight: 20,
+      },
+    ];
+  return [];
+}
+
+type MeasuredRect = { x: number; y: number; width: number; height: number };
+function measuredRect(value: unknown): value is MeasuredRect {
+  if (!value || typeof value !== 'object') return false;
+  const rect = value as Record<string, unknown>;
+  return (
+    ['x', 'y', 'width', 'height'].every(
+      (key) => typeof rect[key] === 'number' && Number.isFinite(rect[key]),
+    ) &&
+    (rect.width as number) >= 0 &&
+    (rect.height as number) >= 0
+  );
+}
+
+/** Same-run DOM observations supplement, never replace, PNG integrity and axe.
+ * Functional interaction/persistence remains a separate real-API requirement. */
+export function revisionProblems(
+  parsed: Record<string, unknown> | null,
+  state: Phase5State,
+  locale: Locale,
+  runId: string | null,
+): string[] {
+  if (!revisionChecks(state.id, locale).length) return [];
+  if (!parsed) return ['revision.json missing or unparseable'];
+  const problems: string[] = [];
+  if (parsed.revision !== ONBOARDING_REPAIR_REVISION)
+    problems.push('unknown presentation revision');
+  if (!runId || parsed.runId !== runId)
+    problems.push('revision belongs to a different or missing run');
+  if (parsed.stateId !== state.id || parsed.locale !== locale || parsed.route !== state.route)
+    problems.push('revision identity disagrees with the canonical cell');
+  const viewport = parsed.viewport as Record<string, unknown> | undefined;
+  if (viewport?.width !== 390 || viewport?.height !== 844)
+    problems.push('revision viewport is not canonical');
+  if (parsed.lang !== locale || parsed.dir !== (locale === 'ar' ? 'rtl' : 'ltr'))
+    problems.push('revision language or direction is incorrect');
+  if (
+    typeof parsed.documentWidth !== 'number' ||
+    !Number.isFinite(parsed.documentWidth) ||
+    parsed.documentWidth < 390 ||
+    parsed.documentWidth > 391
+  )
+    problems.push('revision has horizontal overflow or no width measurement');
+  const shell = parsed.shell;
+  if (
+    !measuredRect(shell) ||
+    Math.abs(shell.x) > 1 ||
+    Math.abs(shell.width - 390) > 1 ||
+    Math.abs(shell.height - 844) > 1
+  )
+    problems.push('revision shell geometry is incorrect');
+  const main = parsed.main;
+  const footer = parsed.footer;
+  if (
+    !measuredRect(main) ||
+    !measuredRect(footer) ||
+    main.height <= 0 ||
+    footer.height <= 0 ||
+    main.y + main.height > footer.y + 1 ||
+    footer.y + footer.height > 845
+  )
+    problems.push('revision footer covers the scrollable content');
+  const elements = Array.isArray(parsed.elements) ? parsed.elements : [];
+  for (const check of revisionChecks(state.id, locale)) {
+    const matches = elements.filter(
+      (item) => item && typeof item === 'object' && item.key === check.key,
+    );
+    const observation = matches.length === 1 ? matches[0] : null;
+    if (
+      !observation ||
+      !Array.isArray(observation.rects) ||
+      observation.rects.length !== check.count ||
+      !Array.isArray(observation.texts) ||
+      observation.texts.length !== check.count
+    ) {
+      problems.push(`revision ${check.key}: missing or duplicate observations`);
+      continue;
+    }
+    if (check.texts && JSON.stringify(observation.texts) !== JSON.stringify(check.texts))
+      problems.push(`revision ${check.key}: incorrect rendered text`);
+    for (const rect of observation.rects) {
+      if (
+        !measuredRect(rect) ||
+        rect.width < check.minWidth ||
+        rect.height < check.minHeight ||
+        (check.key !== 'map-pane' && (rect.x < -1 || rect.x + rect.width > 391))
+      )
+        problems.push(`revision ${check.key}: missing, clipped or undersized geometry`);
+    }
+  }
+  return problems;
+}
+
 /** WCAG tag set every scan must declare it ran. */
 /**
  * The WCAG tag set every scan must declare it ran.
@@ -196,6 +404,8 @@ export interface CanonicalCellEvidence {
   readonly recomputedRatio: number | null;
   /** Every check in the image verifier passed. */
   readonly imageOk: boolean;
+  /** A scoped, validated repair brief replaces parity only for states 6–9. */
+  readonly revisedPresentationAccepted?: boolean;
   readonly problems: readonly string[];
 }
 
@@ -218,7 +428,6 @@ export function canonicalCellEvidence(
   const expected = !image.problems.some((p) => p.includes('expected.png'));
   const actual = !image.problems.some((p) => p.includes('actual.png'));
   const diff = !image.problems.some((p) => p.includes('diff.png'));
-  problems.push(...image.problems);
 
   const metrics = readJson(join(dir, 'metrics.json'));
   let ratio: number | null = null;
@@ -250,6 +459,29 @@ export function canonicalCellEvidence(
     }
   }
 
+  const revised = revisionChecks(state.id, locale).length > 0;
+  const revisionIssues = revised
+    ? revisionProblems(
+        readJson(join(dir, 'revision.json')),
+        state,
+        locale,
+        typeof metrics?.runId === 'string' ? metrics.runId : null,
+      )
+    : [];
+  problems.push(...revisionIssues);
+  const revisedPresentationAccepted = revised && revisionIssues.length === 0;
+  // The old prototype still supplies an honest measured diff. Only its ratio
+  // budget is superseded by the explicit user brief; malformed PNGs, geometry,
+  // forged metrics and a false diff remain fatal. No threshold is widened.
+  const imageProblems = image.problems.filter(
+    (problem) =>
+      !(
+        revisedPresentationAccepted &&
+        /^recomputed diffPixelRatio [0-9.]+ exceeds 0\.005$/.test(problem)
+      ),
+  );
+  problems.push(...imageProblems);
+
   return {
     stateId: state.id,
     locale,
@@ -261,7 +493,8 @@ export function canonicalCellEvidence(
     runId: typeof metrics?.runId === 'string' ? metrics.runId : null,
     diffPixelRatio: ratio,
     recomputedRatio: image.recomputedRatio,
-    imageOk: image.ok,
+    imageOk: imageProblems.length === 0,
+    revisedPresentationAccepted,
     problems,
   };
 }
@@ -283,9 +516,10 @@ export function canonicalCellEvidence(
  * The rule now is the one the evidence design always intended. A cell passes
  * only when the verifier is clean, NOTHING was reported against it, the
  * difference was genuinely RECOMPUTED, and that recomputed difference is
- * within budget. The stored ratio can no longer establish anything on its own;
- * it is only evidence of what the writer claimed, and it is checked against the
- * measurement rather than trusted instead of it.
+ * within budget for the immutable screens. The four explicitly revised states
+ * additionally require the repair's semantic and geometry observations even
+ * when their ratio is zero. The stored ratio can establish nothing on its own;
+ * it is checked against the measurement rather than trusted instead of it.
  */
 export function canonicalCellPasses(e: CanonicalCellEvidence): boolean {
   return (
@@ -299,7 +533,9 @@ export function canonicalCellPasses(e: CanonicalCellEvidence): boolean {
     // RECOMPUTED, not stored. A comparison that could not be performed is not
     // a pass — it is an absence of evidence.
     e.recomputedRatio !== null &&
-    e.recomputedRatio <= MAX_DIFF_PIXEL_RATIO &&
+    (revisionChecks(e.stateId, e.locale).length > 0
+      ? e.revisedPresentationAccepted === true
+      : e.recomputedRatio <= MAX_DIFF_PIXEL_RATIO) &&
     e.diffPixelRatio !== null
   );
 }

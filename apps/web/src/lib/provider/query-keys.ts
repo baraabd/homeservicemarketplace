@@ -7,6 +7,11 @@ import type {
 // context. Mirrors the seekerQueryKeys layout so invalidation patterns
 // stay consistent across the codebase.
 export const providerQueryKeys = {
+  capabilities: {
+    // Preserve the verification screen's existing key so every consumer and
+    // invalidation observes the same server decision.
+    get: () => ['provider', 'verification', 'capabilities'] as const,
+  },
   profile: {
     // Root for all provider-profile queries. Upgrade / update / update-
     // availability mutations invalidate the root so the cache picks up

@@ -393,12 +393,12 @@ describe('OnboardingHubScreen — the shell', () => {
     }
   });
 
-  it('offers a close control that goes back to the provider surface', async () => {
+  it('offers a close control that leaves the focused application', async () => {
     mock.onGet(HUB_URL).reply(200, hub());
     renderHub();
 
     fireEvent.click(await screen.findByTestId('onboarding-v2-close'));
-    await waitFor(() => expect(at()).toBe('/provider'));
+    await waitFor(() => expect(at()).toBe('/select'));
   });
 });
 

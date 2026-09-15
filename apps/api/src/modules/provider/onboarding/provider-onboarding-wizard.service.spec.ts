@@ -21,6 +21,7 @@ import { AppError } from '../../../shared/errors/app-error';
 import { MarketRegistryService } from './market/market-registry.service';
 import { ProviderOnboardingDefaultsService } from './market/onboarding-defaults.service';
 import { ProviderOnboardingWizardService } from './provider-onboarding-wizard.service';
+import { MIN_BIO_LENGTH, MIN_HEADLINE_LENGTH } from './provider-onboarding.policy';
 
 // Sprint 8 — the onboarding wizard.
 //
@@ -391,6 +392,33 @@ function build(
   return { service, providers, drafts, categories, audit, expansion, trx, markets, defaults };
 }
 
+describe('public-profile readiness', () => {
+  it('serves the same minimum lengths that determine task readiness', async () => {
+    const h = build({ profile: makeCompleteProfile({ headline: 'Plumber' }) });
+    const view = await h.service.get('u-1');
+    expect(view.data.minHeadlineLength).toBe(MIN_HEADLINE_LENGTH);
+    expect(view.data.minBioLength).toBe(MIN_BIO_LENGTH);
+    expect(view.missing.some((issue) => issue.field === 'headline')).toBe(false);
+    const hub = await h.service.hub('u-1');
+    expect(hub.tasks.find((task) => task.id === 'PORTFOLIO')?.status).toBe('COMPLETE');
+    const review = await h.service.review('u-1', 'ar');
+    expect(review.canSubmit).toBe(true);
+  });
+
+  it('still reports a missing title beside a long saved bio without requiring photos', async () => {
+    const h = build({
+      profile: makeCompleteProfile({ headline: null, bio: 'x'.repeat(80) }),
+      portfolioItems: [],
+    });
+    const view = await h.service.get('u-1');
+    expect(view.missing).toContainEqual({ field: 'headline', code: 'REQUIRED' });
+    expect(view.missing.some((issue) => issue.field === 'bio')).toBe(false);
+    expect((await h.service.hub('u-1')).tasks.find((task) => task.id === 'PORTFOLIO')?.status).toBe(
+      'AVAILABLE',
+    );
+  });
+});
+
 describe('review corrections and portfolio projection', () => {
   const feedback: ProviderOnboardingFeedback = {
     requestedAt: '2026-09-15T09:00:00.000Z',
@@ -629,6 +657,59 @@ describe('experience projection — explicit numeric years precede the start-dat
 });
 
 describe('review and submit — the enabled market must agree', () => {
+  it('completes work area and submits with a saved enabled country code and no legacy label', async () => {
+    const h = build({
+      profile: makeCompleteProfile({ serviceAreaCountryCode: 'SY', serviceAreaCountry: null }),
+    });
+    const draft = await h.service.get('u-1');
+    expect(draft.data.serviceAreaCountryCode).toBe('SY');
+    expect(draft.data.serviceAreaCountry).toBeNull();
+    expect(draft.steps.find((step) => step.step === 'LOCATION')?.complete).toBe(true);
+    expect(draft.missing.some((issue) => issue.field === 'serviceAreaCountry')).toBe(false);
+    expect((await h.service.hub('u-1')).tasks.find((task) => task.id === 'WORK_AREA')?.status).toBe(
+      'COMPLETE',
+    );
+    expect((await h.service.review('u-1', 'ar')).canSubmit).toBe(true);
+    await h.service.submit('u-1', { version: 3 });
+    expect(h.markets.findEnabled).toHaveBeenCalledWith('SY', h.trx);
+    expect(h.trx.providerOnboardingSubmission.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a missing country actionable when neither code nor legacy label was supplied', async () => {
+    const h = build({
+      profile: makeCompleteProfile({ serviceAreaCountryCode: null, serviceAreaCountry: null }),
+    });
+    expect((await h.service.get('u-1')).missing).toContainEqual({
+      field: 'serviceAreaCountry',
+      code: 'REQUIRED',
+    });
+    expect((await h.service.hub('u-1')).tasks.find((task) => task.id === 'WORK_AREA')?.status).toBe(
+      'AVAILABLE',
+    );
+    expect((await h.service.review('u-1', 'en')).canSubmit).toBe(false);
+    await expect(h.service.submit('u-1', { version: 3 })).rejects.toMatchObject({ status: 422 });
+    expect(h.trx.providerOnboardingSubmission.create).not.toHaveBeenCalled();
+  });
+
+  it('does not let a legacy country label conceal an unsupported canonical code', async () => {
+    const h = build({
+      profile: makeCompleteProfile({ serviceAreaCountryCode: 'XX', serviceAreaCountry: 'Sweden' }),
+    });
+    expect((await h.service.get('u-1')).missing).toContainEqual({
+      field: 'serviceAreaCountry',
+      code: 'OUT_OF_RANGE',
+    });
+    expect((await h.service.hub('u-1')).tasks.find((task) => task.id === 'WORK_AREA')?.status).toBe(
+      'AVAILABLE',
+    );
+    expect((await h.service.review('u-1', 'ar')).canSubmit).toBe(false);
+    await expect(h.service.submit('u-1', { version: 3 })).rejects.toMatchObject({
+      status: 422,
+      details: { reason: 'MARKET_NOT_SUPPORTED' },
+    });
+    expect(h.trx.providerOnboardingSubmission.create).not.toHaveBeenCalled();
+  });
+
   it('routes a withdrawn market back to work area before offering submission', async () => {
     const h = build({ profile: makeCompleteProfile({ serviceAreaCountryCode: 'SE' }) });
     expect((await h.service.review('u-1', 'en')).canSubmit).toBe(true);

@@ -35,6 +35,17 @@ export interface ServiceAreaCopy {
   permissionUnavailable: string;
   enterManually: string;
   clearLocation: string;
+  mapInstructions: string;
+  selectedPoint: string;
+  zoomIn: string;
+  zoomOut: string;
+  useMapCentre: string;
+  mapUnavailable: string;
+  locationSelected: string;
+  cityLookupFailed: string;
+  locationSelectedManually: string;
+  radiusMissing: string;
+  locationServiceHint: string;
 
   // Privacy
   privacyTitle: string;
@@ -115,14 +126,29 @@ export const SERVICE_AREA_COPY: Record<Lang, ServiceAreaCopy> = {
 
     useMyLocation: 'Use my current location',
     locating: 'Finding your location…',
-    locationHelp:
-      'Optional. It only makes the map more accurate for you — you can type everything instead.',
+    locationHelp: 'Optional. Fill the city from your location, or enter it manually.',
     permissionDenied:
-      'Your device did not share a location. That is fine — fill in the city and country below and carry on.',
+      'Location permission was not granted. Enter your city and choose your country manually.',
     permissionUnavailable:
-      'We could not get a location from this device. Fill in the city and country below instead.',
+      'We could not get your location. Enter your city and choose your country manually.',
     enterManually: 'Enter it manually',
     clearLocation: 'Remove the pinned location',
+    mapInstructions:
+      'Move and pinch to zoom. Tap or drag the red pin. Keyboard: use arrow keys, then Use map centre.',
+    selectedPoint: 'Your private starting point',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    useMapCentre: 'Use map centre',
+    mapUnavailable:
+      'Map tiles could not load. You can still enter your city and choose your country.',
+    locationSelected: 'Location selected and city filled in. Check the city before continuing.',
+    cityLookupFailed:
+      'Location selected. We could not find its city name; enter or check the city above.',
+    locationSelectedManually: 'Starting point selected. Check that the city above matches it.',
+    radiusMissing:
+      'Your work radius is not available yet. Choose your country or retry loading the page.',
+    locationServiceHint:
+      'OpenStreetMap supplies the map and looks up your city when you use current location.',
 
     privacyTitle: 'Your exact location stays private',
     privacyBody:
@@ -201,12 +227,24 @@ export const SERVICE_AREA_COPY: Record<Lang, ServiceAreaCopy> = {
 
     useMyLocation: 'استخدام موقعي الحالي',
     locating: 'جارٍ تحديد موقعك…',
-    locationHelp: 'اختياري. يجعل الخريطة أدق لك فقط — يمكنك إدخال كل شيء يدوياً.',
-    permissionDenied: 'لم يشارك جهازك الموقع. لا مشكلة — أدخل المدينة والدولة أدناه وتابع.',
-    permissionUnavailable:
-      'تعذّر الحصول على موقع من هذا الجهاز. أدخل المدينة والدولة أدناه بدلاً من ذلك.',
+    locationHelp: 'اختياري. عبّئ المدينة من موقعك أو أدخلها يدويًا.',
+    permissionDenied: 'لم يُمنح إذن الموقع. أدخل المدينة واختر الدولة يدويًا.',
+    permissionUnavailable: 'تعذّر تحديد موقعك. أدخل المدينة واختر الدولة يدويًا.',
     enterManually: 'إدخال يدوي',
     clearLocation: 'إزالة الموقع المحدد',
+    mapInstructions:
+      'حرّك وكبّر بإصبعين، ثم اضغط أو اسحب الدبوس الأحمر. بلوحة المفاتيح: استخدم الأسهم ثم «استخدام وسط الخريطة».',
+    selectedPoint: 'نقطة انطلاقك الخاصة',
+    zoomIn: 'تكبير الخريطة',
+    zoomOut: 'تصغير الخريطة',
+    useMapCentre: 'استخدام وسط الخريطة',
+    mapUnavailable: 'تعذّر تحميل الخريطة. يمكنك إدخال المدينة واختيار الدولة يدويًا.',
+    locationSelected: 'تم تحديد النقطة وتعبئة المدينة. راجع اسم المدينة قبل المتابعة.',
+    cityLookupFailed: 'تم تحديد النقطة وتعذّر معرفة اسم المدينة. أدخل المدينة أو راجعها أعلاه.',
+    locationSelectedManually: 'تم تحديد نقطة الانطلاق. تأكد من مطابقة المدينة أعلاه لها.',
+    radiusMissing: 'نطاق التنقّل غير متاح بعد. اختر الدولة أو أعد تحميل الصفحة.',
+    locationServiceHint:
+      'توفّر OpenStreetMap الخريطة وتستخدم إحداثيات الجهاز لمعرفة المدينة عند اختيار الموقع الحالي.',
 
     privacyTitle: 'موقعك الدقيق يبقى خاصاً',
     privacyBody: 'لا نعرض عنوانك أو موقعك الدقيق لأي أحد. يرى العملاء منطقة تقريبية فقط.',

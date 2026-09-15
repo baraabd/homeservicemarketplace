@@ -112,8 +112,9 @@ const week = (days: readonly number[], startMinute = 540, endMinute = 1020) =>
 //
 // Sprint 09B.29 Phase 5A — the approved screen is five controls: the day
 // toggles, a From/To pair, Apply, and one checkbox that turns Apply into a
-// clear. The presets, the per-day editor, the week summary and the timezone
-// picker are not on it.
+// clear. The user-requested schedule summary and acknowledgement feedback now
+// follow the controls. Presets, per-day editing and timezone selection remain
+// outside this bulk editor.
 //
 // RECORDED FOR PHASE 5B, because each was a real affordance:
 //
@@ -337,8 +338,8 @@ describe('marking days unavailable', () => {
   });
 
   it('leaves the From/To pair alone, so a day is one tap from coming back', async () => {
-    // This is precisely what the approved label promises: "Disables days
-    // without deleting saved time ranges."
+    // Clearing days removes stored intervals. The visible bulk pair stays so
+    // the provider can deliberately apply it again; the copy says so honestly.
     renderScreen(DRAFT({ data: { availability: week([2]) } }));
 
     fireEvent.click(screen.getByTestId('mark-unavailable').querySelector('input')!);
@@ -551,3 +552,42 @@ function interval(dayOfWeek: number, startMinute: number, endMinute: number) {
 function weekOf(days: number[]) {
   return days.map((d) => interval(d, 540, 1020));
 }
+
+describe('a readable saved weekly schedule', () => {
+  it('shows every interval, including a second period ending at midnight, with accessible Arabic rows', () => {
+    renderScreen(
+      DRAFT({
+        data: {
+          availability: [interval(1, 615, 780), interval(1, 1080, 1440), interval(4, 600, 840)],
+        },
+      }),
+      'ar',
+    );
+    const table = screen.getByRole('table', { name: AVAILABILITY_COPY.ar.summaryLegend });
+    expect(table).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(8);
+    expect(screen.getByRole('rowheader', { name: 'الاثنين' })).toBeInTheDocument();
+    expect(screen.getByTestId('availability-summary-day-1')).toHaveTextContent('10:15–13:00');
+    expect(screen.getByTestId('availability-summary-day-1')).toHaveTextContent('18:00–24:00');
+    expect(screen.getByTestId('availability-summary-day-2')).toHaveTextContent(
+      AVAILABILITY_COPY.ar.unavailable,
+    );
+    expect(screen.getByTestId('availability-summary-day-1').querySelector('bdi')).toHaveAttribute(
+      'dir',
+      'ltr',
+    );
+    expect(screen.getByTestId('bulk-start')).toHaveValue('10:15');
+    expect(mock.history.patch).toHaveLength(0);
+  });
+
+  it('preserves a stored midnight end in the native time control and the next save', async () => {
+    renderScreen(DRAFT({ data: { availability: [interval(1, 1080, 1440)] } }));
+    expect(screen.getByTestId('bulk-start')).toHaveValue('18:00');
+    expect(screen.getByTestId('bulk-end')).toHaveValue('00:00');
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+    expect((await lastPatch()).availability).toEqual([
+      { dayOfWeek: 1, startMinute: 1080, endMinute: 1440 },
+    ]);
+    expect(screen.getByTestId('availability-summary-day-1')).toHaveTextContent('18:00–24:00');
+  });
+});

@@ -252,7 +252,7 @@ function toCandidate(
     bio: profile.bio,
     phoneNumber: profile.phoneNumber,
     serviceAreaCity: profile.serviceAreaCity,
-    serviceAreaCountry: profile.serviceAreaCountry,
+    serviceAreaCountry: profile.serviceAreaCountryCode ?? profile.serviceAreaCountry,
     serviceAreaRadiusKm: profile.serviceAreaRadiusKm,
     serviceCategoryCount: profile.serviceCategories.length,
     emailVerified,

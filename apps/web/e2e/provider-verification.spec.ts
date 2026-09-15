@@ -1,4 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { ProviderCapabilitiesResponse } from '@homeservicemarketplace/contracts';
+
+import {
+  SUSPENDED_CAPABILITIES,
+  WORKING_CAPABILITIES,
+} from '../src/test-support/provider-capability-fixtures';
+import {
+  NO_WORK_ACCESS_CAPABILITIES,
+  SUBMITTED_CAPABILITIES,
+  VERIFICATION_REQUIRED_CAPABILITIES,
+} from './provider-capabilities-fixtures';
 
 import {
   expectContainedInParent,
@@ -145,8 +156,7 @@ const COPY = {
 
 interface Options {
   direct?: boolean;
-  allowed?: string[];
-  primaryReason?: string | null;
+  capabilities?: ProviderCapabilitiesResponse;
   verificationCase?: ReturnType<typeof kase> | { case: null };
   profile?: ReturnType<typeof PROFILE>;
 }
@@ -164,12 +174,7 @@ async function openVerification(
 
     if (url.includes('/auth/me')) return json(PROVIDER_ME);
     if (url.includes('/me/provider/capabilities')) {
-      return json({
-        capabilities: [],
-        allowed: options.allowed ?? [],
-        nextActions: [],
-        primaryReason: options.primaryReason ?? null,
-      });
+      return json(options.capabilities ?? VERIFICATION_REQUIRED_CAPABILITIES);
     }
     if (url.includes('/me/provider/verification/case')) {
       return json(options.verificationCase ?? { case: null });
@@ -180,7 +185,10 @@ async function openVerification(
     }
     return json({ items: [], nextCursor: null });
   });
-  if (options.direct) {
+  // Evidence remains reachable independently of workspace admission. Denied
+  // personas must not be granted marketplace access merely to reach this page.
+  // A working provider's profile-navigation path is covered explicitly below.
+  if (options.direct !== false) {
     await page.goto('/provider/verification');
   } else {
     await page.goto('/provider');
@@ -199,7 +207,7 @@ for (const lang of ['en', 'ar'] as const) {
       await openVerification(page, lang, {
         direct: true,
         profile: PROFILE({ status: 'PENDING_REVIEW', verified: false }),
-        allowed: ['VIEW_OWN_PROFILE', 'MANAGE_VERIFICATION'],
+        capabilities: SUBMITTED_CAPABILITIES,
         verificationCase: kase(),
       });
       await expect(page).toHaveURL(/\/provider\/verification$/);
@@ -228,7 +236,7 @@ for (const lang of ['en', 'ar'] as const) {
     test('the three access axes are visible and legible on a phone', async ({ page }) => {
       await page.setViewportSize({ width: 360, height: 740 });
       await openVerification(page, lang, {
-        allowed: ['SUBMIT_BID'],
+        capabilities: WORKING_CAPABILITIES,
         verificationCase: kase({ state: 'VERIFIED' }),
         profile: PROFILE({ verified: true }),
       });
@@ -250,7 +258,7 @@ for (const lang of ['en', 'ar'] as const) {
       // helped them. It now says what is true — the documents stand, the
       // permission does not.
       await openVerification(page, lang, {
-        allowed: [],
+        capabilities: NO_WORK_ACCESS_CAPABILITIES,
         verificationCase: kase({ state: 'VERIFIED' }),
         profile: PROFILE({ verified: true }),
       });
@@ -274,7 +282,7 @@ for (const lang of ['en', 'ar'] as const) {
       // is where the renewal copy belongs — and the CTA has to be reachable by
       // keyboard like every other primary action on this surface.
       await openVerification(page, lang, {
-        allowed: [],
+        capabilities: VERIFICATION_REQUIRED_CAPABILITIES,
         verificationCase: kase({ state: 'EXPIRED' }),
         profile: PROFILE({ verified: true }),
       });
@@ -318,7 +326,8 @@ for (const lang of ['en', 'ar'] as const) {
 
     test('verified WITH a grant says so', async ({ page }) => {
       await openVerification(page, lang, {
-        allowed: ['SUBMIT_BID'],
+        direct: false,
+        capabilities: WORKING_CAPABILITIES,
         verificationCase: kase({ state: 'VERIFIED' }),
         profile: PROFILE({ verified: true }),
       });
@@ -332,7 +341,7 @@ for (const lang of ['en', 'ar'] as const) {
 
     test('Featured is a separate badge and grants nothing', async ({ page }) => {
       await openVerification(page, lang, {
-        allowed: [],
+        capabilities: VERIFICATION_REQUIRED_CAPABILITIES,
         verificationCase: kase(),
         profile: PROFILE({ topPro: true }),
       });
@@ -350,7 +359,7 @@ for (const lang of ['en', 'ar'] as const) {
       page,
     }) => {
       await openVerification(page, lang, {
-        primaryReason: 'PROVIDER_SUSPENDED',
+        capabilities: SUSPENDED_CAPABILITIES,
         verificationCase: kase({ documents: [doc({ scanState: 'QUARANTINED' })] }),
       });
 
@@ -464,7 +473,7 @@ test.describe('provider verification — uploading on a phone', () => {
   test('a failed upload says so, and the retry succeeds', async ({ page }) => {
     let finalized = 0;
     await openVerification(page, 'en', {
-      allowed: ['COMPLETE_ONBOARDING'],
+      capabilities: VERIFICATION_REQUIRED_CAPABILITIES,
       verificationCase: kase({ state: 'DRAFT' }),
     });
     // Registered AFTER openVerification, so it wins over that helper's
@@ -492,7 +501,7 @@ test.describe('provider verification — uploading on a phone', () => {
     // A control that cannot do anything is worse than absent for someone
     // tabbing through: it is a stop with no outcome.
     await openVerification(page, 'en', {
-      allowed: [],
+      capabilities: VERIFICATION_REQUIRED_CAPABILITIES,
       verificationCase: kase({ state: 'SUBMITTED', submittedAt: '2026-08-02T00:00:00.000Z' }),
     });
 
@@ -512,7 +521,7 @@ test.describe('provider verification — changes requested, then resubmitted', (
     }) => {
       let finalized = 0;
       await openVerification(page, lang, {
-        allowed: [],
+        capabilities: VERIFICATION_REQUIRED_CAPABILITIES,
         verificationCase: kase({
           state: 'ACTION_REQUIRED',
           submittedAt: '2026-08-02T00:00:00.000Z',
@@ -554,7 +563,7 @@ test.describe('provider verification — changes requested, then resubmitted', (
     page,
   }) => {
     await openVerification(page, 'en', {
-      allowed: [],
+      capabilities: VERIFICATION_REQUIRED_CAPABILITIES,
       verificationCase: kase({
         state: 'ACTION_REQUIRED',
         submittedAt: '2026-08-02T00:00:00.000Z',

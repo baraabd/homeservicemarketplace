@@ -1,3 +1,8 @@
+import {
+  WORKING_CAPABILITIES,
+  APPLYING_CAPABILITIES,
+  SUSPENDED_CAPABILITIES,
+} from '../../../test-support/provider-capability-fixtures';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -153,6 +158,16 @@ const ORIGINAL_FETCH = globalThis.fetch;
 
 /** Everything the workspace reads, so a routing assertion fails on ROUTING. */
 function mockWorkspace(status: string) {
+  mock
+    .onGet('/v1/me/provider/capabilities')
+    .reply(
+      200,
+      status === 'DRAFT'
+        ? APPLYING_CAPABILITIES
+        : status === 'SUSPENDED'
+          ? SUSPENDED_CAPABILITIES
+          : WORKING_CAPABILITIES,
+    );
   mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
   mock.onGet('/v1/me/provider/profile').reply(200, { profile: { ...BASE_PROFILE, status } });
   mock.onGet(/\/v1\/me\/notifications/).reply(200, { items: [], nextCursor: null, unreadCount: 0 });

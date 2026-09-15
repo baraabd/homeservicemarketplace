@@ -77,6 +77,7 @@ interface LoadedCase {
     phoneNumber: string | null;
     serviceAreaCity: string | null;
     serviceAreaCountry: string | null;
+    serviceAreaCountryCode?: string | null;
     serviceAreaRadiusKm: number | null;
     acceptedConsentVersion: string | null;
     user?: { emailVerifiedAt?: Date | null } | null;
@@ -984,7 +985,7 @@ export class VerificationCaseWorkflowService {
       bio: p.bio,
       phoneNumber: p.phoneNumber,
       serviceAreaCity: p.serviceAreaCity,
-      serviceAreaCountry: p.serviceAreaCountry,
+      serviceAreaCountry: p.serviceAreaCountryCode ?? p.serviceAreaCountry,
       serviceAreaRadiusKm: p.serviceAreaRadiusKm,
       serviceCategoryCount: p._count?.serviceCategories ?? 0,
       emailVerified: p.user?.emailVerifiedAt != null,

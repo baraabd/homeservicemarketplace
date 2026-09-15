@@ -1,0 +1,55 @@
+.pv-service-area-map {
+  overflow: hidden;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--radius-pv-card);
+  isolation: isolate;
+}
+.pv-service-area-map .leaflet-container {
+  background: var(--pv-surface-sunken);
+  font: inherit;
+}
+.pv-service-area-map .leaflet-control-attribution {
+  max-width: 100%;
+  font-size: 11px;
+}
+.pv-service-area-pin {
+  color: var(--pv-danger);
+  background: transparent;
+  border: 0;
+}
+.pv-service-area-pin svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.2));
+}
+.pv-service-area-controls {
+  position: absolute;
+  z-index: 800;
+  inset-block-start: 12px;
+  inset-inline-end: 12px;
+  display: grid;
+  gap: 8px;
+}
+.pv-service-area-controls button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+.pv-service-area-centre {
+  position: absolute;
+  z-index: 800;
+  inset-block-end: 28px;
+  inset-inline: 12px;
+  display: flex;
+  justify-content: center;
+}
+.pv-service-area-centre button {
+  max-width: 100%;
+  padding-inline: 12px;
+}
+.pv-service-area-map .leaflet-container:focus-visible,
+.pv-service-area-map .leaflet-marker-icon:focus-visible {
+  outline: 2px solid var(--pv-accent);
+  outline-offset: -2px;
+}

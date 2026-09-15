@@ -222,6 +222,43 @@ describe('ProviderCapabilityService — rank 5: onboarding (the DRAFT fix)', () 
     );
   });
 
+  describe.each([
+    { WORK_ACCESS_ENFORCED: false, VERIFICATION_ENFORCED: false },
+    { WORK_ACCESS_ENFORCED: false, VERIFICATION_ENFORCED: true },
+    { WORK_ACCESS_ENFORCED: true, VERIFICATION_ENFORCED: false },
+    { WORK_ACCESS_ENFORCED: true, VERIFICATION_ENFORCED: true },
+  ])('incomplete onboarding is re-evaluated on each request with rollout flags %j', (flags) => {
+    it.each(['DRAFT', 'NOT_STARTED', 'RETURNED'])(
+      'does not reuse a prior work decision for legacy ACTIVE with canonical %s',
+      async (onboardingState) => {
+        const { service, prisma } = makeService(
+          ELIGIBLE,
+          profile({ verificationState: 'VERIFIED' }),
+          { flags, liveGrant: true },
+        );
+        expect((await service.for('u-1')).allowed).toContain(ProviderCapability.SubmitBid);
+        prisma.client.providerProfile.findFirst.mockResolvedValue({
+          id: 'pp-1',
+          ...profile({ status: 'ACTIVE', onboardingState, verificationState: 'VERIFIED' }),
+        });
+        const refreshed = await service.for('u-1');
+        expect(refreshed.primaryReason).toBe(ProviderCapabilityDenialReason.OnboardingIncomplete);
+        expect(refreshed.allowed).toContain(ProviderCapability.CompleteOnboarding);
+        expect(refreshed.allowed).toContain(ProviderCapability.EditOwnProfile);
+        for (const capability of [
+          ProviderCapability.ViewMarketplace,
+          ProviderCapability.SubmitBid,
+          ProviderCapability.ManageBookings,
+          ProviderCapability.ViewEarnings,
+          ProviderCapability.PreviewMarketplace,
+        ]) {
+          expect(refreshed.allowed).not.toContain(capability);
+        }
+        expect(prisma.client.providerProfile.findFirst).toHaveBeenCalledTimes(2);
+      },
+    );
+  });
+
   it('keeps identity completion reachable while a canonical submission awaits both reviews', async () => {
     const { service } = makeService(
       ELIGIBLE,

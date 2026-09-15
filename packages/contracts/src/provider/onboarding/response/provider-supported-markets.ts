@@ -97,10 +97,10 @@ export interface ProviderSupportedMarketsResponse {
   /**
    * Whether the server can turn coordinates into a country right now.
    *
-   * False when no reverse-geocoding vendor is configured, which is the shipped
-   * default. The client shows "Use my location" only when this is true — a
-   * control that cannot work is worse than an absent one — and manual
-   * selection is always available regardless.
+   * False when no country-resolving vendor is configured, the shipped default.
+   * This controls country suggestions only. The optional device pin and city
+   * lookup in V2 are separate conveniences and never choose an enabled market;
+   * country selection remains explicit and validated by the server.
    */
   locationSuggestionAvailable: boolean;
 }
