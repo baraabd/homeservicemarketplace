@@ -32,6 +32,7 @@ beforeEach(() => {
   review = reviewFixture();
   mock = new MockAdapter(api);
   mock.onGet(PATH).reply(() => [200, review]);
+  mock.onGet(`${PATH}/history`).reply(200, { items: [], nextCursor: null });
   mock.onGet('/v1/services/equipment').reply(200, { items: [] });
   mock.onGet('/v1/admin/providers/provider-1/portfolio').reply(200, { items: [] });
 });

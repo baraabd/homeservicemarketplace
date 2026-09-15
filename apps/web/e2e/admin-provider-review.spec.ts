@@ -3,6 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 import type {
   AdminPortfolioListResponse,
   AdminProviderReview,
+  AdminProviderSummary,
+  AdminProviderReviewHistoryResponse,
   ApproveAdminProviderReviewRequest,
   ProviderReviewSnapshot,
   RequestAdminProviderReviewChangesRequest,
@@ -175,7 +177,7 @@ function fixture(): AdminProviderReview {
           serviceCategoryLabelEn: null,
           serviceCategoryLabelAr: null,
           detectedMimeType: 'application/pdf',
-          sizeBytes: 256,
+          sizeBytes: IDENTITY_PDF.byteLength,
           displayFilename: 'Identity document.pdf',
           scanState: 'CLEAN',
           viewable: true,
@@ -237,6 +239,108 @@ const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jf9sAAAAASUVORK5CYII=',
   'base64',
 );
+// A valid one-page PDF exercises the sandboxed renderer as well as download.
+// These are synthetic test bytes, never user identity evidence.
+function identityPdfFixture(): Buffer {
+  const stream = 'BT /F1 16 Tf 24 100 Td (Synthetic identity fixture) Tj ET';
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 180] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+  ];
+  let content = '%PDF-1.4\n';
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(content));
+    content += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(content);
+  content += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  content += offsets
+    .slice(1)
+    .map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`)
+    .join('');
+  content += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(content);
+}
+const IDENTITY_PDF = identityPdfFixture();
+
+function summaryFixture(review: AdminProviderReview): AdminProviderSummary {
+  const accepted = review.provider.providerStatus === 'ACTIVE';
+  return {
+    id: PROFILE,
+    userId: 'provider-owner',
+    displayName: review.provider.displayName,
+    email: review.provider.email,
+    initials: 'AK',
+    status: accepted
+      ? 'ACTIVE'
+      : review.provider.providerStatus === 'REJECTED'
+        ? 'REJECTED'
+        : 'PENDING_REVIEW',
+    ratingAvg: 0,
+    reviewCount: 0,
+    completedJobs: 0,
+    verified: accepted,
+    topPro: false,
+    serviceAreaCity: 'Damascus',
+    serviceAreaCountry: 'SY',
+    reviewNotes: null,
+    submittedForReviewAt: review.submission?.submittedAt ?? null,
+    reviewedAt: review.submission?.decidedAt ?? null,
+    createdAt: STAMP,
+    updatedAt: STAMP,
+    account: { status: 'ACTIVE', isActive: true, deletedAt: null },
+    onboardingState: accepted
+      ? 'ACCEPTED'
+      : review.provider.providerStatus === 'REJECTED'
+        ? 'RETURNED'
+        : 'DOCUMENTS_REQUIRED',
+    verificationState: accepted ? 'VERIFIED' : 'PENDING',
+    standingState: 'GOOD',
+    verificationCase: accepted
+      ? null
+      : { id: 'case-1', state: 'SUBMITTED', submittedAt: STAMP, assignedTo: null },
+    portfolio: { total: 1, pending: 1, approved: 0, rejected: 0 },
+    workAccess: {
+      canWork: review.canWork,
+      hasLiveGrant: accepted,
+      denialReason: accepted ? null : 'AWAITING_REVIEW',
+    },
+    attentionReasons: accepted
+      ? ['PORTFOLIO_REVIEW_REQUIRED']
+      : ['APPLICATION_REVIEW_REQUIRED', 'IDENTITY_IN_REVIEW', 'PORTFOLIO_REVIEW_REQUIRED'],
+    availableActions: accepted && review.permissions.canDecide ? ['suspend'] : [],
+  };
+}
+function historyFixture(review: AdminProviderReview): AdminProviderReviewHistoryResponse {
+  return {
+    items: review.submission
+      ? [
+          {
+            id: 'history-submission-1',
+            kind: 'SUBMITTED',
+            occurredAt: review.submission.submittedAt,
+            actor: { id: 'provider-owner', displayName: review.provider.displayName },
+            submission: {
+              id: review.submission.id,
+              submittedAt: review.submission.submittedAt,
+              policyVersion: review.submission.policyVersion,
+              reviewedRevision: null,
+            },
+            subject: null,
+            contentRevision: null,
+            reason: null,
+            privateNote: null,
+            feedback: null,
+          },
+        ]
+      : [],
+    nextCursor: null,
+  };
+}
 interface HarnessOptions {
   review?: AdminProviderReview;
   denied?: boolean;
@@ -261,6 +365,8 @@ async function open(page: Page, lang: 'en' | 'ar', options: HarnessOptions = {})
     if (path.endsWith('/auth/me')) return json(signedInAdmin());
     if (path === `${ROOT}/review`)
       return options.denied ? json({ error: { code: 'FORBIDDEN' } }, 403) : json(review);
+    if (path === ROOT) return json(summaryFixture(review));
+    if (path === `${ROOT}/review/history`) return json(historyFixture(review));
     if (path === `${ROOT}/review/approve` || path === `${ROOT}/review/request-changes`) {
       const body = route.request().postDataJSON();
       decisions.push(body);
@@ -318,7 +424,7 @@ async function open(page: Page, lang: 'en' | 'ar', options: HarnessOptions = {})
     if (path === '/v1/verification/documents/document-1/content') {
       evidenceReads.push(path);
       return route.fulfill({
-        body: Buffer.from('%PDF-1.4\n% browser fixture\n'),
+        body: IDENTITY_PDF,
         contentType: 'application/pdf',
         headers: {
           'Content-Disposition': 'attachment; filename="Identity document.pdf"',
@@ -333,6 +439,7 @@ async function open(page: Page, lang: 'en' | 'ar', options: HarnessOptions = {})
       return json({
         items: [
           {
+            ...summaryFixture(review),
             id: next ? PROFILE : 'first-provider',
             displayName: next ? SNAPSHOT.profile.displayName : 'First page provider',
             email: 'provider@example.test',
@@ -343,6 +450,8 @@ async function open(page: Page, lang: 'en' | 'ar', options: HarnessOptions = {})
             submittedForReviewAt: STAMP,
           },
         ],
+        total: 2,
+        counts: { all: 2, pendingReview: 2, active: 0, returned: 0, suspended: 0, draft: 0 },
         nextCursor: next ? null : 'page-two',
       });
     }
@@ -459,9 +568,19 @@ test('restricted evidence and pending portfolio bytes are fetched only after an 
   expect(state.portfolioReads).toEqual([]);
   await expect(page.locator('img[src*="verification/"]')).toHaveCount(0);
   const download = page.waitForEvent('download');
-  await page.getByTestId('review-evidence-document-1').click();
+  await page.getByTestId('review-evidence-download-document-1').click();
   expect((await download).suggestedFilename()).toBe('Identity document.pdf');
   expect(state.evidenceReads).toEqual(['/v1/verification/documents/document-1/content']);
+  await page.getByTestId('review-evidence-document-1').click();
+  const identityDialog = page.getByRole('dialog');
+  await expect(identityDialog.getByTestId('identity-evidence-pdf')).toBeVisible();
+  await expect(identityDialog.getByRole('region')).toHaveAttribute('aria-busy', 'false');
+  await identityDialog.getByTestId('identity-evidence-zoom-in').click();
+  await expect(identityDialog.getByRole('group')).toContainText('125%');
+  await expect.poll(() => state.evidenceReads.length).toBe(2);
+  await page.keyboard.press('Escape');
+  await expect(identityDialog).not.toBeVisible();
+  await expect(page.getByTestId('review-evidence-document-1')).toBeFocused();
   await page.getByTestId('review-portfolio-open-portfolio-1').click();
   await expect.poll(() => state.portfolioReads.length).toBe(1);
   await expect(page.getByRole('dialog').getByRole('img')).toBeVisible();

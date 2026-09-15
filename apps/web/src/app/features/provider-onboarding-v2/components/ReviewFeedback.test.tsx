@@ -85,4 +85,15 @@ describe('requested changes in the Provider journey', () => {
     ).toBe('/provider/onboarding/SERVICES_EXPERIENCE#experience');
     expect(Object.keys(REVIEW_FEEDBACK_COPY.en)).toEqual(Object.keys(REVIEW_FEEDBACK_COPY.ar));
   });
+
+  it('shows a named field and opens consent or gallery corrections in the exact existing sub-screen', () => {
+    render(<ReviewFeedback feedback={feedback} lang="ar" />);
+    expect(screen.getByText('نبذة عن المهني')).toBeInTheDocument();
+    expect(
+      feedbackTaskPath({ ...feedback.items[0], taskId: 'REVIEW_SUBMISSION', field: 'consent' }),
+    ).toBe('/provider/onboarding/REVIEW_SUBMISSION#terms');
+    expect(feedbackTaskPath({ ...feedback.items[0], field: 'portfolio' })).toBe(
+      '/provider/onboarding/PORTFOLIO#portfolio',
+    );
+  });
 });

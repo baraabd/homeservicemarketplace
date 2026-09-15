@@ -137,6 +137,9 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
       AdminProviderReviewService,
     } = require('../../src/modules/admin/provider-review/provider-review.service');
     const {
+      AdminProviderReviewHistoryService,
+    } = require('../../src/modules/admin/provider-review/provider-review-history.service');
+    const {
       AdminProviderReviewRepository,
     } = require('../../src/modules/admin/provider-review/provider-review.repository');
     const {
@@ -187,6 +190,7 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
       ],
       providers: [
         AdminProviderReviewService,
+        AdminProviderReviewHistoryService,
         AdminProviderReviewRepository,
         AdminVerificationCaseService,
         AdminCategoryApplicationsService,
@@ -511,16 +515,16 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
         feedback: [
           {
             taskId: 'WORK_AREA',
-            field: 'radiusKm',
+            field: 'serviceAreaCity',
             reasonCode: 'DETAIL_REQUIRED',
-            providerMessage: 'Please confirm the city and service radius.',
+            providerMessage: 'Please confirm the city and service area.',
           },
         ],
       })
       .expect(200);
     expect(response.body.review.submission.feedback.items[0]).toMatchObject({
       taskId: 'WORK_AREA',
-      providerMessage: 'Please confirm the city and service radius.',
+      providerMessage: 'Please confirm the city and service area.',
     });
     expect(JSON.stringify(response.body)).not.toContain('Private investigator note');
     const [profile, submission, kase, grants, notifications] = await persisted();
@@ -531,6 +535,42 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
     expect(notifications).toHaveLength(1);
     expect(JSON.stringify(notifications)).not.toContain('Private investigator note');
     expect((await read()).canWork).toBe(false);
+    const history = await request(http)
+      .get(`/v1/admin/providers/${profileId}/review/history`)
+      .expect(200);
+    expect(history.body.items[0]).toMatchObject({
+      kind: 'CHANGES_REQUESTED',
+      actor: { id: reviewer },
+      submission: { id: submissionId, policyVersion: 'onboarding-v1' },
+      privateNote: 'Private investigator note',
+      feedback: { items: [expect.objectContaining({ field: 'serviceAreaCity' })] },
+    });
+    expect(JSON.stringify(history.body)).not.toMatch(
+      /storageKey|decisionRequestHash|idempotencyKey/,
+    );
+  });
+
+  it('paginates the unified history and denies another profile cursor without exposing audit metadata', async () => {
+    const input = command(await read());
+    await approve(input).expect(200);
+    const first = await request(http)
+      .get(`/v1/admin/providers/${profileId}/review/history?limit=1`)
+      .expect(200);
+    expect(first.body.items).toHaveLength(1);
+    expect(first.body.nextCursor).toBeTruthy();
+    const next = await request(http)
+      .get(`/v1/admin/providers/${profileId}/review/history`)
+      .query({ limit: 1, cursor: first.body.nextCursor })
+      .expect(200);
+    expect(next.body.items).toHaveLength(1);
+    expect(next.body.items[0].id).not.toBe(first.body.items[0].id);
+    expect(new Set([first.body.items[0].kind, next.body.items[0].kind])).toEqual(
+      new Set(['APPROVED', 'IDENTITY_APPROVED']),
+    );
+    await request(http)
+      .get(`/v1/admin/providers/${profileId}/review/history?cursor=foreign-event`)
+      .expect(400);
+    await request(http).get(`/v1/admin/providers/${profileId}/review/history?limit=0`).expect(400);
   });
 
   it.each(['SUBMITTED', 'IN_REVIEW'] as const)(

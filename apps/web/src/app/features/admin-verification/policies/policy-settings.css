@@ -1,0 +1,31 @@
+.ap-settings {
+  max-width: 1120px;
+  margin-inline: auto;
+}
+.ap-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.ap-policy-grid > .ar-card {
+  align-self: start;
+}
+.ap-error {
+  color: var(--ar-danger);
+  font-size: 14px;
+  font-weight: 500;
+}
+.ap-dates {
+  gap: 4px;
+  font-size: 13px;
+}
+.ap-form-scope {
+  padding: 16px;
+  background: var(--ar-sunken);
+  border-radius: 12px;
+}
+@media (max-width: 1199px) {
+  .ap-policy-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

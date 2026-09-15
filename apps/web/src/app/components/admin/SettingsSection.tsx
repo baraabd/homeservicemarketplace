@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Save } from 'lucide-react';
+import { Save, ShieldCheck } from 'lucide-react';
+import { Link } from 'react-router';
 import type {
   AdminSettingFieldSchema,
   AdminSettingsValues,
@@ -101,7 +102,18 @@ export function SettingsSection({ lang }: { lang: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="admin-review ar-stack">
+      <Link to="/admin/settings/verification-policies" className="ar-card ar-settings-link">
+        <ShieldCheck size={24} aria-hidden />
+        <div className="ar-stack">
+          <h2 className="ar-heading">{isAr ? 'سياسات التوثيق' : 'Verification policies'}</h2>
+          <p className="ar-muted">
+            {isAr
+              ? 'إدارة الوثائق المطلوبة حسب البلد ونوع المهني والتخصص. تتطلب صلاحية إدارة السياسات.'
+              : 'Manage required documents by country, provider type and specialty. Policy management permission is required.'}
+          </p>
+        </div>
+      </Link>
       <div className="flex items-center justify-between">
         <h2
           className="text-slate-900 dark:text-white"

@@ -227,6 +227,7 @@ describe('AdminVerification (e2e) — /v1/admin/providers/* (Sprint 6.2 refined)
       await request(app.getHttpServer()).get('/v1/admin/providers?status=PENDING_REVIEW');
       expect(verificationService.list).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'PENDING_REVIEW' }),
+        fakeAuthedUser!.id,
       );
     });
 
@@ -244,6 +245,7 @@ describe('AdminVerification (e2e) — /v1/admin/providers/* (Sprint 6.2 refined)
           cursor: 'pp-50',
           limit: 50,
         }),
+        fakeAuthedUser!.id,
       );
     });
 
@@ -260,6 +262,14 @@ describe('AdminVerification (e2e) — /v1/admin/providers/* (Sprint 6.2 refined)
     it('rejects unknown query param (forbidNonWhitelisted)', async () => {
       const res = await request(app.getHttpServer()).get('/v1/admin/providers?providerId=victim');
       expect(res.status).toBe(400);
+    });
+
+    it('rejects impossible calendar dates instead of moving them into another month', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/admin/providers')
+        .query({ submittedFrom: '2026-02-31' })
+        .expect(400);
+      expect(verificationService.list).not.toHaveBeenCalled();
     });
   });
 

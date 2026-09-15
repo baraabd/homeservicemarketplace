@@ -271,9 +271,9 @@ async function openVerification(page: Page, options: Options = {}): Promise<void
   const menu = page.getByRole('button', { name: /Open navigation|فتح القائمة/ });
   if (await menu.isVisible()) {
     await menu.click();
-    await page.getByTestId('mobile-nav-verification').click();
+    await page.getByTestId('mobile-nav-identity-cases').click();
   } else {
-    await page.getByTestId('nav-verification').click();
+    await page.getByTestId('nav-identity-cases').click();
   }
 }
 
@@ -305,7 +305,9 @@ test.describe('Admin verification — desktop reviewer flows', () => {
     await expect(page.getByTestId('case-policy-version')).toContainText('2026.08-v1');
   });
 
-  test('the two lifecycle axes stay in separate blocks', async ({ page }) => {
+  test('identity actions link to the complete application without mixing account controls', async ({
+    page,
+  }) => {
     // Approving a case judges the documents. Suspending an account judges
     // conduct. A single merged action list would have to pick one verb for two
     // decisions, and a reviewer would eventually make one meaning the other.
@@ -317,7 +319,9 @@ test.describe('Admin verification — desktop reviewer flows', () => {
     );
     // The account axis is a different panel, on the same screen, with its own
     // list of what the server says is legal.
-    await expect(page.getByText('Working Provider')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open full provider profile' })).toBeVisible();
+    await expect(page.getByText('Working Provider')).toHaveCount(0);
+    await expect(page.getByTestId('policy-publish-form')).toHaveCount(0);
   });
 
   test('evidence review reaches the audited route, not the object store', async ({ page }) => {

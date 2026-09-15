@@ -48,7 +48,7 @@ const ALL_CAPABILITIES: readonly ProviderCapability[] = [
 /** The inputs the rules read. Assembled once so a rule cannot smuggle in an
  *  extra query — the service must stay three reads deep (docs/adr/0006, plus
  *  the grant read docs/adr/0013 adds). */
-interface CapabilityContext {
+export interface CapabilityContext {
   accountEligible: boolean;
   hasProfile: boolean;
   onboardingState: string | null;
@@ -79,6 +79,13 @@ export class ProviderCapabilityService {
    *  they do?" are the same answer here — nothing. */
   async for(userId: string): Promise<ProviderCapabilitiesResponse> {
     return this.decide(await this.load(userId));
+  }
+
+  /** Evaluate already-loaded database facts for a batch projection without
+   * per-provider reads. The canonical ordered rules stay in decide(). This is
+   * a server-only projection helper; mutation guards still load fresh facts. */
+  forContext(context: CapabilityContext): ProviderCapabilitiesResponse {
+    return this.decide(context);
   }
 
   /** True when the user holds this capability. The form guards use. */

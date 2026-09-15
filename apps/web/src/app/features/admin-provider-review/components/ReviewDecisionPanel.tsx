@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Check, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react';
 import {
   ADMIN_PROVIDER_REVIEW_TASK_IDS,
+  PROVIDER_REVIEW_CORRECTION_FIELDS,
   type AdminProviderReview,
   type AdminProviderReviewFeedbackInput,
   type AdminProviderReviewMutationResponse,
@@ -11,6 +12,7 @@ import { approveProviderReview, requestProviderReviewChanges, requestStatus } fr
 import { BLOCKER_LABELS, REVIEW_COPY, TASK_LABELS, type ReviewLanguage } from '../copy';
 import { ReviewBadge, ReviewBanner } from './ReviewPrimitives';
 import { ReviewDialog } from './ReviewDialog';
+import { reviewCorrectionFieldLabel } from '../../provider-onboarding-v2/copy/review-correction-fields';
 
 const blankCorrection = (): AdminProviderReviewFeedbackInput => ({
   taskId: 'BASICS_IDENTITY',
@@ -85,6 +87,32 @@ export function ReviewDecisionPanel({
   function updateCorrection(index: number, patch: Partial<AdminProviderReviewFeedbackInput>) {
     setCorrections((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
     setInvalid(false);
+  }
+  function targetItems(item: AdminProviderReviewFeedbackInput) {
+    if (item.field === 'portfolio')
+      return review.current.portfolio.map((row, index) => ({
+        id: row.id,
+        label: row.title || (lang === 'ar' ? `الصورة ${index + 1}` : `Image ${index + 1}`),
+      }));
+    if (item.field === 'specialties')
+      return review.current.services.specialties.map((row) => ({
+        id: row.id,
+        label: lang === 'ar' ? row.labelAr : row.labelEn,
+      }));
+    if (['verificationDocuments', 'identityDocument', 'categoryLicense'].includes(item.field ?? ''))
+      return (review.verification?.documents ?? [])
+        .filter(
+          (row) =>
+            !row.supersededAt &&
+            (item.field !== 'categoryLicense' || row.kind === 'CATEGORY_LICENSE') &&
+            (item.field !== 'identityDocument' ||
+              ['INDIVIDUAL_IDENTITY', 'AUTHORIZED_REPRESENTATIVE_IDENTITY'].includes(row.kind)),
+        )
+        .map((row, index) => ({
+          id: row.id,
+          label: row.displayFilename || `${lang === 'ar' ? 'الوثيقة' : 'Document'} ${index + 1}`,
+        }));
+    return [];
   }
   async function confirm() {
     if (!selection) return;
@@ -266,6 +294,7 @@ export function ReviewDecisionPanel({
                       updateCorrection(index, {
                         taskId: event.target.value as AdminProviderReviewFeedbackInput['taskId'],
                         field: undefined,
+                        itemId: undefined,
                       })
                     }
                   >
@@ -276,7 +305,7 @@ export function ReviewDecisionPanel({
                     ))}
                   </select>
                 </label>
-                {item.taskId === 'BASICS_IDENTITY' && (
+                {
                   <label className="ar-label">
                     {lang === 'ar' ? 'البيانات المطلوب تعديلها' : 'Information to update'}
                     <select
@@ -284,13 +313,40 @@ export function ReviewDecisionPanel({
                       data-testid={`review-correction-field-${index}`}
                       value={item.field ?? ''}
                       onChange={(event) =>
-                        updateCorrection(index, { field: event.target.value || undefined })
+                        updateCorrection(index, {
+                          field: event.target.value || undefined,
+                          itemId: undefined,
+                        })
+                      }
+                    >
+                      <option value="">{reviewCorrectionFieldLabel(undefined, lang)}</option>
+                      {PROVIDER_REVIEW_CORRECTION_FIELDS[item.taskId].map((field) => (
+                        <option key={field} value={field}>
+                          {reviewCorrectionFieldLabel(field, lang)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                }
+                {targetItems(item).length > 0 && (
+                  <label className="ar-label">
+                    {lang === 'ar' ? 'العنصر المقصود' : 'Specific item'}
+                    <select
+                      className="ar-input"
+                      data-testid={`review-correction-item-${index}`}
+                      value={item.itemId ?? ''}
+                      onChange={(event) =>
+                        updateCorrection(index, { itemId: event.target.value || undefined })
                       }
                     >
                       <option value="">
-                        {lang === 'ar' ? 'البيانات الشخصية' : 'Personal details'}
+                        {lang === 'ar' ? 'كل العناصر في هذا الحقل' : 'All items in this field'}
                       </option>
-                      <option value="verificationDocuments">{t.evidence}</option>
+                      {targetItems(item).map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {target.label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 )}

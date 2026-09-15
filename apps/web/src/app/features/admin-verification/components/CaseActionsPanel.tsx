@@ -6,6 +6,7 @@ import type {
 
 import { useLang } from '../../../i18n/LanguageContext';
 import { UI } from '../copy/verification-copy';
+import { verificationReasonLabel } from '../../admin-provider-review/evidence/verification-reason-labels';
 
 // Sprint 9B.12 — the verification-CASE actions.
 //
@@ -247,7 +248,7 @@ export function CaseActionsPanel({
                 <option value="">—</option>
                 {(REASON_CHOICES[chosen] ?? ['OTHER']).map((code) => (
                   <option key={code} value={code}>
-                    {code}
+                    {verificationReasonLabel(code, lang)}
                   </option>
                 ))}
               </select>

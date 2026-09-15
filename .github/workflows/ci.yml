@@ -387,6 +387,14 @@ jobs:
       # The browser is served from 4173 and talks to the API on 4010, so the
       # API has to allow that origin or every request arrives anonymous.
       CORS_ORIGINS: http://127.0.0.1:4173,http://localhost:4173
+      # Disposable development stack only. The real Admin browser journey
+      # uploads evidence and waits for the running worker; it does not call
+      # scanPending or write CLEAN through a fixture. This deterministic
+      # adapter is forbidden by the production boot guard and does not prove
+      # malware-detection quality.
+      EVIDENCE_SCANNER_DRIVER: test
+      EVIDENCE_SCAN_WORKER_ENABLED: 'true'
+      EVIDENCE_SCAN_INTERVAL_MS: '1000'
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v6
@@ -419,6 +427,8 @@ jobs:
       - name: Start the API
         run: |
           node apps/api/dist/main.js > /tmp/api.log 2>&1 &
+          hsm_phase5_api_pid=$!
+          printf '%s\n' "$hsm_phase5_api_pid" > /tmp/hsm-phase5-api.pid
           for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:4010/health/live >/dev/null; then
               echo "API is up"; exit 0
@@ -455,6 +465,67 @@ jobs:
             e2e/provider-onboarding-v2-real-api.spec.ts \
             e2e/provider-onboarding-v2-persistence.spec.ts \
             --project=chromium-desktop --workers=1
+      - name: Restart the job API with verification and work access enforced
+        # Keep the preceding Provider acceptance configuration unchanged. The
+        # Admin acceptance must exercise actual verification/grant enforcement,
+        # whose safe rollout defaults are OFF in the normal environment schema.
+        env:
+          NODE_ENV: development
+          PORT: '4010'
+          VERIFICATION_ENFORCED: 'true'
+          WORK_ACCESS_ENFORCED: 'true'
+        run: |
+          read -r hsm_phase5_api_pid < /tmp/hsm-phase5-api.pid
+          case "$hsm_phase5_api_pid" in
+            ''|*[!0-9]*) echo "::error::Invalid job-owned API pid"; exit 1 ;;
+          esac
+          # Only the process started by this job is eligible for shutdown.
+          # Never kill whichever unrelated process happens to hold a port.
+          kill -TERM "$hsm_phase5_api_pid"
+          hsm_phase5_api_stopped=false
+          for i in $(seq 1 30); do
+            if ! kill -0 "$hsm_phase5_api_pid" 2>/dev/null; then
+              hsm_phase5_api_stopped=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$hsm_phase5_api_stopped" != true ]; then
+            echo "::error::Job-owned API did not stop gracefully"; exit 1
+          fi
+          node apps/api/dist/main.js >> /tmp/api.log 2>&1 &
+          hsm_phase5_api_pid=$!
+          printf '%s\n' "$hsm_phase5_api_pid" > /tmp/hsm-phase5-api.pid
+          for i in $(seq 1 60); do
+            kill -0 "$hsm_phase5_api_pid" 2>/dev/null || { cat /tmp/api.log; exit 1; }
+            if curl -sf http://127.0.0.1:4010/health/live >/dev/null; then
+              echo "Admin acceptance API is up with verification and work access enforced"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Enforced Admin API did not become healthy"; cat /tmp/api.log; exit 1
+      - name: Accept Admin entry, real decisions, policy settings and rendered screens
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/admin-real-api-report
+          VERIFICATION_ENFORCED: 'true'
+          WORK_ACCESS_ENFORCED: 'true'
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/admin-review-workflow.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --output=test-results/admin-real-api
+      - name: Upload real Admin browser evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: admin-review-real-api-evidence
+          path: |
+            apps/web/test-results/admin-real-api/
+            apps/web/test-results/admin-real-api-report/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed

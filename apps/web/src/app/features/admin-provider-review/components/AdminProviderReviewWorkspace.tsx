@@ -14,6 +14,7 @@ import { ReviewIdentity } from './ReviewIdentity';
 import { ReviewCategories } from './ReviewCategories';
 import { ReviewPortfolio } from './ReviewPortfolio';
 import { ReviewDecisionPanel } from './ReviewDecisionPanel';
+import { ReviewAccountActions } from './ReviewAccountActions';
 import '../admin-review.css';
 
 /** Route-owned application review; server actions and capabilities are authoritative. */
@@ -62,6 +63,7 @@ function ReviewWorkspace({
     const response = await query.refetch();
     // Keep a failed refresh in the error surface, never pretend stale facts are current.
     if (response.isError) throw response.error;
+    void qc.invalidateQueries({ queryKey: adminProvidersQueryKeys.detail(providerProfileId) });
     return response.data;
   }
   function decided(response: AdminProviderReviewMutationResponse) {
@@ -231,6 +233,11 @@ function ReviewWorkspace({
                 identity={<ReviewIdentity review={review} lang={lang} onChanged={refresh} />}
                 categories={<ReviewCategories review={review} lang={lang} onChanged={refresh} />}
                 portfolio={<ReviewPortfolio review={review} lang={lang} onChanged={refresh} />}
+              />
+              <ReviewAccountActions
+                providerProfileId={providerProfileId}
+                lang={lang}
+                onChanged={refresh}
               />
             </div>
             <ReviewDecisionPanel

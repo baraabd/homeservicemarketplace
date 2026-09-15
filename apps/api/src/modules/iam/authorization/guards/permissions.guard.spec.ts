@@ -71,6 +71,7 @@ describe('PermissionsGuard', () => {
 
   it.each([
     'verification:decide',
+    'verification:policy:manage',
     'verification:evidence:view',
     'portfolio:review',
     'user:read:any',

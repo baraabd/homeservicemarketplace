@@ -7,11 +7,17 @@ export function feedbackTaskPath(item: ProviderOnboardingFeedbackItem): string {
   }
   const path = `/provider/onboarding/${item.taskId}`;
   if (item.taskId === 'PORTFOLIO' && item.itemId) return `${path}#portfolio`;
+  if (item.taskId === 'PORTFOLIO' && item.field === 'portfolio') return `${path}#portfolio`;
+  if (item.taskId === 'REVIEW_SUBMISSION' && item.field === 'consent') return `${path}#terms`;
   if (
     item.taskId === 'SERVICES_EXPERIENCE' &&
-    ['yearsOfExperience', 'professionSince', 'transportMode', 'transportModes'].includes(
-      item.field ?? '',
-    )
+    [
+      'yearsOfExperience',
+      'professionSince',
+      'transportMode',
+      'transportModes',
+      'equipmentCodes',
+    ].includes(item.field ?? '')
   ) {
     return `${path}#experience`;
   }

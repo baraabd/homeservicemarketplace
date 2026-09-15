@@ -19,6 +19,13 @@ export async function listAdminProviders(
   if (query.status) params.status = query.status;
   if (query.query) params.query = query.query;
   if (query.userId) params.userId = query.userId;
+  if (query.sort) params.sort = query.sort;
+  if (query.assignment) params.assignment = query.assignment;
+  if (query.identityState) params.identityState = query.identityState;
+  if (query.portfolioState) params.portfolioState = query.portfolioState;
+  if (query.country) params.country = query.country;
+  if (query.submittedFrom) params.submittedFrom = query.submittedFrom;
+  if (query.submittedTo) params.submittedTo = query.submittedTo;
   if (query.limit !== undefined) params.limit = query.limit;
   if (query.cursor) params.cursor = query.cursor;
   const { data } = await api.get<ListAdminProvidersResponse>('/v1/admin/providers', { params });

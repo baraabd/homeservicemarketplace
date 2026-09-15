@@ -8,7 +8,7 @@ import { api } from '../../../lib/api';
 import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider';
 import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
-import { AdminDashboard } from './AdminDashboard';
+import { VerificationSection } from './VerificationSection';
 
 // Sprint 6.2 — Admin Pro Verification full workflow.
 //
@@ -77,7 +77,7 @@ function renderAdmin() {
       <AuthProvider client={qc}>
         <LanguageProvider>
           <EcosystemProvider>
-            <AdminDashboard />
+            <VerificationSection />
           </EcosystemProvider>
         </LanguageProvider>
       </AuthProvider>
@@ -100,10 +100,10 @@ afterEach(() => {
 });
 
 function openVerificationTab() {
-  fireEvent.click(screen.getByRole('button', { name: /Pro Verification|توثيق المحترفين/i }));
+  // This retained component is no longer an Admin route; route coverage lives in AdminRoutes.test.tsx.
 }
 
-describe('AdminDashboard — Pro Verification (Sprint 6.2)', () => {
+describe('Retained VerificationSection — lifecycle compatibility', () => {
   it('renders real providers from /v1/admin/providers (no mock)', async () => {
     mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
     mock.onGet('/v1/admin/providers').reply(200, { items: [PROVIDER], nextCursor: null });

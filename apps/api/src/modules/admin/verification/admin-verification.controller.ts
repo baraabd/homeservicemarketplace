@@ -50,8 +50,11 @@ export class AdminVerificationController {
   @Permissions('user:read:any')
   @Get()
   @HttpCode(HttpStatus.OK)
-  list(@Query() query: ListAdminProvidersQueryDto): Promise<ListAdminProvidersResponse> {
-    return this.verification.list(query);
+  list(
+    @Query() query: ListAdminProvidersQueryDto,
+    @CurrentUser() admin: AuthenticatedUser,
+  ): Promise<ListAdminProvidersResponse> {
+    return this.verification.list(query, admin.id);
   }
 
   @UseGuards(PermissionsGuard)

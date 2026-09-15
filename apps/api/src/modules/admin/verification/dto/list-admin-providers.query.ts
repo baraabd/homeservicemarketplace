@@ -1,6 +1,19 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
-import type { ListAdminProvidersQuery } from '@homeservicemarketplace/contracts';
+import {
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  Max,
+  Min,
+} from 'class-validator';
+import type {
+  AdminProviderIdentityState,
+  ListAdminProvidersQuery,
+} from '@homeservicemarketplace/contracts';
 import { ProviderProfileStatus } from '@homeservicemarketplace/database';
 
 export class ListAdminProvidersQueryDto implements ListAdminProvidersQuery {
@@ -17,6 +30,35 @@ export class ListAdminProvidersQueryDto implements ListAdminProvidersQuery {
   @IsString()
   @Length(1, 64)
   userId?: string;
+
+  @IsOptional()
+  @IsIn(['SUBMITTED_OLDEST', 'UPDATED_NEWEST'])
+  sort?: 'SUBMITTED_OLDEST' | 'UPDATED_NEWEST';
+
+  @IsOptional()
+  @IsIn(['ALL', 'UNASSIGNED', 'MINE'])
+  assignment?: 'ALL' | 'UNASSIGNED' | 'MINE';
+
+  @IsOptional()
+  @IsIn(['UNVERIFIED', 'PENDING', 'VERIFIED', 'REJECTED', 'EXPIRED'])
+  identityState?: AdminProviderIdentityState;
+
+  @IsOptional()
+  @IsIn(['PENDING', 'APPROVED', 'REJECTED'])
+  portfolioState?: 'PENDING' | 'APPROVED' | 'REJECTED';
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z]{2}$/)
+  country?: string;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  submittedFrom?: string;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  submittedTo?: string;
 
   @IsOptional()
   @Type(() => Number)

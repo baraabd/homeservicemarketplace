@@ -14,7 +14,9 @@ export function DirectorySearch({
   value,
   onSearch,
   isAr,
+  semantic = false,
 }: {
+  semantic?: boolean;
   value: string;
   onSearch: (value: string) => void;
   isAr: boolean;
@@ -41,12 +43,12 @@ export function DirectorySearch({
           maxLength={200}
           aria-label={label}
           placeholder={label}
-          className={`${directoryControl} w-full ps-10`}
+          className={`${semantic ? 'ar-input' : directoryControl} w-full ps-10`}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
         />
       </div>
-      <button type="submit" className={directoryPrimary}>
+      <button type="submit" className={semantic ? 'ar-button ar-button-primary' : directoryPrimary}>
         {isAr ? 'بحث' : 'Search'}
       </button>
     </form>

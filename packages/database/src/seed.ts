@@ -167,6 +167,11 @@ const PERMISSIONS: PermissionSpec[] = [
   // admin role without touching the controller. Seeded onto `admin` today
   // because there is only one admin role.
   { key: 'admin:access:grant', description: 'Approve or reject admin access requests' },
+  // Independently revocable global-policy capability; does not follow verification:decide.
+  {
+    key: 'verification:policy:manage',
+    description: 'Read, publish and retire verification policies',
+  },
   // Sprint 9B — reading a RESTRICTED identity document is a narrower
   // capability than "is an admin", for the same reason admin:access:grant is.
   //

@@ -12,6 +12,12 @@ import type {
 
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  adminProviderInclude,
+  adminProviderWhere,
+  type AdminProviderDirectoryFilters,
+  type AdminProviderDirectoryRow,
+} from './admin-provider-directory.query';
+import {
   boundingBox,
   isValidCoordinate,
   normaliseCityKey,
@@ -512,48 +518,79 @@ export class ProviderProfileRepository {
     return count;
   }
 
-  // Sprint 6.2: cursor-paginated list for admin verification queue.
-  // Eager-loads the linked user (id + email) so the admin row can
-  // map the profile back to the account.
-  listForAdmin(
-    args: {
+  /** Bounded eager projection: one relation query per kind, never per provider.
+   * Portfolio aggregates are grouped once across this page instead of loading
+   * unbounded image records or issuing one count query for each row. */
+  async listForAdmin(
+    args: AdminProviderDirectoryFilters & {
       status?: ProviderProfileStatus;
-      query?: string;
-      userId?: string;
       take: number;
       cursor?: string;
     },
     tx?: PrismaTx,
-  ): Promise<(ProviderProfile & { user: { id: string; email: string } | null })[]> {
-    return this.db(tx).providerProfile.findMany({
-      where: {
-        deletedAt: null,
-        ...(args.status ? { status: args.status } : {}),
-        ...(args.userId ? { userId: args.userId } : {}),
-        ...(args.query
-          ? {
-              OR: [
-                { displayName: { contains: args.query, mode: 'insensitive' as const } },
-                { user: { is: { email: { contains: args.query, mode: 'insensitive' as const } } } },
-              ],
-            }
-          : {}),
-      },
+  ): Promise<AdminProviderDirectoryRow[]> {
+    const rows = await this.db(tx).providerProfile.findMany({
+      where: { ...adminProviderWhere(args), ...(args.status ? { status: args.status } : {}) },
       take: args.take,
       ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-      include: { user: { select: { id: true, email: true } } },
-    }) as Promise<(ProviderProfile & { user: { id: string; email: string } | null })[]>;
+      orderBy:
+        args.sort === 'SUBMITTED_OLDEST'
+          ? [{ submittedForReviewAt: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }]
+          : [{ updatedAt: 'desc' }, { id: 'desc' }],
+      include: adminProviderInclude(new Date()),
+    });
+    return this.withAdminPortfolioCounts(rows, tx);
   }
 
-  findByIdForAdmin(
-    id: string,
-    tx?: PrismaTx,
-  ): Promise<(ProviderProfile & { user: { id: string; email: string } | null }) | null> {
-    return this.db(tx).providerProfile.findFirst({
+  countForAdmin(args: AdminProviderDirectoryFilters, tx?: PrismaTx) {
+    return this.db(tx).providerProfile.groupBy({
+      by: ['status'],
+      where: adminProviderWhere(args),
+      _count: { _all: true },
+    });
+  }
+
+  async findByIdForAdmin(id: string, tx?: PrismaTx): Promise<AdminProviderDirectoryRow | null> {
+    const row = await this.db(tx).providerProfile.findFirst({
       where: { id, deletedAt: null },
-      include: { user: { select: { id: true, email: true } } },
-    }) as Promise<(ProviderProfile & { user: { id: string; email: string } | null }) | null>;
+      include: adminProviderInclude(new Date()),
+    });
+    return row ? (await this.withAdminPortfolioCounts([row], tx))[0] : null;
+  }
+
+  private async withAdminPortfolioCounts(
+    rows: Omit<AdminProviderDirectoryRow, 'portfolioSummary'>[],
+    tx?: PrismaTx,
+  ): Promise<AdminProviderDirectoryRow[]> {
+    if (rows.length === 0) return [];
+    const counts = await this.db(tx).providerPortfolioItem.groupBy({
+      by: ['providerProfileId', 'moderationState'],
+      where: { providerProfileId: { in: rows.map((row) => row.id) }, deletedAt: null },
+      _count: { _all: true },
+    });
+    const byProvider = new Map<string, AdminProviderDirectoryRow['portfolioSummary']>();
+    for (const count of counts) {
+      const summary = byProvider.get(count.providerProfileId) ?? {
+        total: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+      };
+      summary.total += count._count._all;
+      if (count.moderationState === 'PENDING') summary.pending += count._count._all;
+      if (count.moderationState === 'APPROVED') summary.approved += count._count._all;
+      if (count.moderationState === 'REJECTED') summary.rejected += count._count._all;
+      byProvider.set(count.providerProfileId, summary);
+    }
+    return rows.map((row) => ({
+      ...row,
+      portfolioSummary: byProvider.get(row.id) ?? {
+        total: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+      },
+    }));
   }
 
   upsert(input: UpsertProviderProfileInput, tx?: PrismaTx): Promise<ProviderProfile> {

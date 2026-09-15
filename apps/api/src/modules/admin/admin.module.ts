@@ -19,6 +19,8 @@ import { AdminVerificationCaseCommandsController } from './verification/admin-ve
 import { AdminVerificationQueueService } from './verification/admin-verification-queue.service';
 import { AdminVerificationPolicyController } from './verification/admin-verification-policy.controller';
 import { AdminVerificationPolicyService } from './verification/admin-verification-policy.service';
+import { MarketRegistryService } from '../provider/onboarding/market/market-registry.service';
+import { AdminProviderReviewHistoryService } from './provider-review/provider-review-history.service';
 // Sprint 9B.20 — earned service-area expansion ladders and manual overrides.
 import { AdminServiceAreaPolicyController } from './service-area/admin-service-area-policy.controller';
 import { AdminServiceAreaPolicyService } from './service-area/admin-service-area-policy.service';
@@ -123,6 +125,8 @@ import { PortfolioMediaModule } from '../media/portfolio-media.module';
     AdminVerificationService,
     AdminVerificationCaseService,
     AdminVerificationPolicyService,
+    MarketRegistryService,
+    AdminProviderReviewHistoryService,
     AdminServiceAreaPolicyService,
     // Reads verification_policy_max_documents through the canonical
     // PlatformSettingRepository. Provided here rather than exported from the

@@ -1,4 +1,6 @@
 import { formatReviewDate } from '../format-review-date';
+import { ReviewHistory } from './ReviewHistory';
+import { reviewCorrectionFieldLabel } from '../../provider-onboarding-v2/copy/review-correction-fields';
 import type { ReactNode } from 'react';
 import { useEquipmentCatalog } from '../../../../lib/use-service-categories';
 import type {
@@ -383,19 +385,7 @@ export function ReviewDossier({
             </ReviewField>
             <ReviewField label={t.consentAt}>{date(snapshot?.consent.acceptedAt)}</ReviewField>
           </dl>
-          <div>
-            <h3 className="ar-subheading">{t.history}</h3>
-            {review.submission?.decidedAt ? (
-              <div className="ar-timeline">
-                <div className="ar-timeline-item">
-                  <StatusBadge value={review.submission.decision} lang={lang} />
-                  <p className="ar-muted">{date(review.submission.decidedAt)}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="ar-muted">{t.historyEmpty}</p>
-            )}
-          </div>
+          <ReviewHistory providerId={review.provider.id} lang={lang} />
           {!!review.submission?.feedback?.items.length && (
             <div>
               <h3 className="ar-subheading">{t.previousCorrections}</h3>
@@ -404,6 +394,7 @@ export function ReviewDossier({
                   <li key={item.id} className="ar-list-row">
                     <div>
                       <strong>{TASK_LABELS[lang][item.taskId]}</strong>
+                      {item.field && <p>{reviewCorrectionFieldLabel(item.field, lang)}</p>}
                       <p>{item.providerMessage}</p>
                     </div>
                   </li>

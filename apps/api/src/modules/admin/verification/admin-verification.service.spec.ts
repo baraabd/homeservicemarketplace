@@ -12,6 +12,8 @@ import { SecurityEventsBus } from '../../../shared/security-events/security-even
 import type { AdminAuditService } from '../admin-audit.service';
 import { AdminVerificationService } from './admin-verification.service';
 import type { AppConfigService } from '../../../config/app-config.service';
+import { ProviderCapabilityService } from '../../provider/capability/provider-capability.service';
+import type { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 
 const tx: TransactionRunner = {
   run: <T>(fn: (t: undefined) => Promise<T>) => fn(undefined),
@@ -70,6 +72,9 @@ function makeMocks(
         return Promise.resolve(call === 1 ? profile : reloaded);
       }),
       listForAdmin: jest.fn().mockResolvedValue(profile ? [profile] : []),
+      countForAdmin: jest
+        .fn()
+        .mockResolvedValue(profile ? [{ status: profile.status, _count: { _all: 1 } }] : []),
       updateStatusById: jest.fn().mockResolvedValue(profile),
       // Phase 4: the state-machine edge is now enforced by a status-scoped
       // updateMany, so the write reports how many rows it actually moved.
@@ -107,6 +112,10 @@ function makeService(m: Mocks, enforced = false): AdminVerificationService {
     tx,
     m.securityEvents,
     { get: () => enforced } as unknown as AppConfigService,
+    new ProviderCapabilityService(
+      {} as PrismaService,
+      { get: () => enforced } as unknown as AppConfigService,
+    ),
   );
 }
 

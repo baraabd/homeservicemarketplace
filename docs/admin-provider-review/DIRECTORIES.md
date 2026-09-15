@@ -4,14 +4,16 @@ The approved Admin surfaces use UX/UI Redesign Mode. Read authorization and API 
 
 ## Routes
 
-| Route                                 | Purpose                                                | Default filter            |
-| ------------------------------------- | ------------------------------------------------------ | ------------------------- |
-| `/admin`                              | Existing overview                                      | —                         |
-| `/admin/users`                        | Account directory and user drawer                      | Every non-deleted account |
-| `/admin/providers`                    | Provider profile directory                             | `status=ALL`              |
-| `/admin/reviews`                      | Application review queue                               | `status=PENDING_REVIEW`   |
-| `/admin/providers/:providerProfileId` | Full six-task review workspace                         | Exact provider ID         |
-| `/admin/verification`                 | Existing case queue, account controls and policy panel | Existing behavior         |
+| Route                                   | Purpose                                             | Default filter                            |
+| --------------------------------------- | --------------------------------------------------- | ----------------------------------------- |
+| `/admin`                                | Existing overview                                   | —                                         |
+| `/admin/users`                          | Account directory and user drawer                   | Every non-deleted account                 |
+| `/admin/providers`                      | Provider profile directory                          | `status=ALL`                              |
+| `/admin/reviews`                        | Application review queue                            | `status=PENDING_REVIEW`                   |
+| `/admin/providers/:providerProfileId`   | Full six-task review workspace                      | Exact provider ID                         |
+| `/admin/verification`                   | Redirect to application review (existing bookmarks) | Preserves search                          |
+| `/admin/identity-cases`                 | Specialist identity queue and URL-selected case     | Existing server case filters              |
+| `/admin/settings/verification-policies` | Restricted policy configuration                     | Effective, scheduled and retired versions |
 
 Financials, disputes, settings and audit destinations remain available. `/admin/*` retains `RequireAdmin`. These Admin routes have no new feature flag and are reachable through the normal application shell.
 
@@ -19,11 +21,11 @@ On desktop the navigation is a slate side rail; mobile and tablet use a labeled,
 
 ## API and state ownership
 
-- `GET /v1/admin/providers` accepts `status=ALL`, `query` (display name/email), `userId` (exact linked account), `limit` and `cursor`. Omitting status retains the legacy pending-review default.
+- `GET /v1/admin/providers` accepts `status=ALL`, `query` (display name/email), `userId` (exact linked account), `limit` and `cursor`, plus assignment, identity, portfolio, country, submission-date and sort filters. The summary includes real submission timestamps, canonical effective work capabilities, portfolio counts and named independent states. Counts reflect the entire filtered result, not a page length. Omitting status retains the legacy pending-review default.
 - `GET /v1/admin/users` retains its existing search, role, status and cursor contract.
-- Both full directories keep filters and the current cursor in the URL; the previous-page trail uses native router history state so URLs stay bounded. Reload and browser Back preserve the trail. A copied cursor link without history offers a clearly labeled first-page action. Changing a filter resets pagination. A review link carries a local `returnTo` that restores the directory and its current page. Only `/admin/providers` and `/admin/reviews` return destinations are accepted.
+- Both full directories keep filters and the current cursor in the URL; the previous-page trail uses native router history state so URLs stay bounded. Reload and browser Back preserve the trail. A copied cursor link without history offers a clearly labeled first-page action. Changing a filter resets pagination. A review link carries a local `returnTo` that restores the directory and its current page. Only the explicit provider, review, user and identity-case list destinations are accepted; arbitrary origins and detail/settings routes are rejected.
 - Previous/next controls use server cursors and do not filter a partial result locally. They expose records beyond the first 50 and disable while a request is pending.
-- Embedded legacy verification queues now expose their server pagination through local cursor history. Their filters reset that history.
+- The routed identity queue keeps filters, cursor and selected case in the URL. Opening a case replaces the list with a focused detail surface; Back restores its filters. Policy settings and provider account tables are never mounted below that queue.
 - Provider list/detail/audit/verification metadata and user list/detail require fresh `user:read:any`, in addition to authentication and the existing Admin role boundary. Restricted document bytes still have their separate evidence-view authorization.
 - Account status, roles, Admin access-request status, provider acceptance and effective work permission remain distinct facts. The directory does not derive work permissions from an ACTIVE label.
 

@@ -12,6 +12,7 @@ export function ReviewDialog({
   description,
   children,
   openerRef,
+  className = '',
 }: {
   open: boolean;
   onClose: () => void;
@@ -19,6 +20,7 @@ export function ReviewDialog({
   description: string;
   children: ReactNode;
   openerRef?: RefObject<HTMLButtonElement>;
+  className?: string;
 }) {
   const { lang, dir, darkMode } = useLang();
   return (
@@ -31,7 +33,7 @@ export function ReviewDialog({
       <Dialog.Portal>
         <Dialog.Overlay className="ar-modal-overlay" />
         <Dialog.Content
-          className={`admin-review ar-dialog ar-modal-content${darkMode ? ' dark' : ''}`}
+          className={`admin-review ar-dialog ar-modal-content${darkMode ? ' dark' : ''} ${className}`}
           dir={dir}
           lang={lang}
           onCloseAutoFocus={(event) => {

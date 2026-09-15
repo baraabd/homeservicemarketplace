@@ -131,7 +131,8 @@ export const REVIEW_COPY = {
     rejectService: 'Reject service',
     confirmService: 'Confirm service decision',
     evidence: 'Identity evidence',
-    evidenceHint: 'Restricted documents are opened through an authorized, audited download.',
+    evidenceHint:
+      'Inspect identity documents securely, with access checked and recorded each time.',
     noEvidence: 'No identity verification case has been submitted.',
     evidenceDenied: 'Your account cannot open restricted identity documents.',
     download: 'Download securely',
@@ -294,7 +295,7 @@ export const REVIEW_COPY = {
     rejectService: 'رفض الخدمة',
     confirmService: 'تأكيد قرار الخدمة',
     evidence: 'وثائق الهوية',
-    evidenceHint: 'تُفتح الوثائق الحساسة عبر تنزيل مخوّل ومسجل في سجل التدقيق.',
+    evidenceHint: 'افحص وثائق الهوية بأمان، مع التحقق من صلاحية الوصول وتسجيل الاطلاع في كل مرة.',
     noEvidence: 'لم يُرسل طلب توثيق هوية بعد.',
     evidenceDenied: 'لا يملك حسابك صلاحية فتح وثائق الهوية الحساسة.',
     download: 'تنزيل آمن',
@@ -356,6 +357,8 @@ export const REVIEW_COPY = {
 const STATUS_LABELS: Record<ReviewLanguage, Record<string, string>> = {
   en: {
     ACTIVE: 'Active',
+    REVOKED: 'Work grant revoked',
+    REVERIFY_REQUIRED: 'Verification requested again',
     NORMAL: 'Good standing',
     GOOD: 'Good standing',
     CONTENT_UPDATED: 'Content updated',
@@ -393,6 +396,8 @@ const STATUS_LABELS: Record<ReviewLanguage, Record<string, string>> = {
   },
   ar: {
     ACTIVE: 'نشط',
+    REVOKED: 'سُحبت منحة العمل',
+    REVERIFY_REQUIRED: 'طُلب تجديد التوثيق',
     NORMAL: 'وضع سليم',
     GOOD: 'وضع سليم',
     CONTENT_UPDATED: 'تم تحديث المحتوى',

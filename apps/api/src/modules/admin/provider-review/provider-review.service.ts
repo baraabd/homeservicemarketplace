@@ -22,6 +22,7 @@ import { VerificationCaseWorkflowService } from '../../provider/verification/cas
 import { AdminAuditService } from '../admin-audit.service';
 import { AdminVerificationCaseService } from '../verification/admin-verification-case.service';
 import { AdminProviderReviewRepository } from './provider-review.repository';
+import { validateReviewFeedback } from './provider-review-feedback';
 import {
   canRequestChanges,
   needsEvidenceView,
@@ -191,6 +192,12 @@ export class AdminProviderReviewService {
           const data = await this.repository.load(db, providerProfileId);
           if (data.submission?.id !== input.submissionId) throw conflict('SUBMISSION_SUPERSEDED');
           if (reviewRevision(data) !== input.expectedRevision) throw conflict('STALE_REVIEW');
+          if (action === 'REQUEST_CHANGES') {
+            validateReviewFeedback(
+              (input as RequestAdminProviderReviewChangesRequest).feedback,
+              data,
+            );
+          }
           if (
             action === 'APPROVE' &&
             needsEvidenceView(data) &&

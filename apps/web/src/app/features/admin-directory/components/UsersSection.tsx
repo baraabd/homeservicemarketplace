@@ -1,3 +1,4 @@
+import { statusLabel } from '../../admin-provider-review/copy';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -24,6 +25,16 @@ import {
   directoryControl,
   directoryPrimary,
 } from './DirectoryPrimitives';
+
+const ROLE_LABELS: Record<string, { en: string; ar: string }> = {
+  admin: { en: 'Administrator', ar: 'مسؤول إدارة' },
+  provider: { en: 'Provider', ar: 'مهني' },
+  customer: { en: 'Customer', ar: 'عميل' },
+  seeker: { en: 'Customer', ar: 'عميل' },
+};
+function roleLabel(value: string, isAr: boolean): string {
+  return ROLE_LABELS[value.toLowerCase()]?.[isAr ? 'ar' : 'en'] ?? value;
+}
 
 const STATUS_OPTIONS: ReadonlyArray<AdminUserStatus | 'ALL'> = [
   'ALL',
@@ -113,7 +124,7 @@ export function UsersSection({ lang }: { lang: string }) {
   const items: AdminUserSummary[] = usersQuery.data?.items ?? [];
 
   const L = {
-    title: isAr ? 'إدارة المستخدمين' : 'User Control',
+    title: isAr ? 'إدارة المستخدمين' : 'User directory',
     searchPlaceholder: isAr ? 'ابحث بالبريد أو الاسم' : 'Search by email or name',
     searchAction: isAr ? 'بحث' : 'Search',
     role: isAr ? 'الدور' : 'Role',
@@ -156,7 +167,7 @@ export function UsersSection({ lang }: { lang: string }) {
             <option value="">{L.allRoles}</option>
             {(rolesQuery.data?.items ?? []).map((r) => (
               <option key={r.id} value={r.name}>
-                {r.name}
+                {roleLabel(r.name, isAr)}
               </option>
             ))}
           </select>
@@ -170,7 +181,7 @@ export function UsersSection({ lang }: { lang: string }) {
           >
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
-                {s === 'ALL' ? L.allStatuses : s}
+                {s === 'ALL' ? L.allStatuses : statusLabel(s, isAr ? 'ar' : 'en')}
               </option>
             ))}
           </select>
@@ -243,7 +254,7 @@ export function UsersSection({ lang }: { lang: string }) {
                             data-testid="badge-role"
                             className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold"
                           >
-                            {r}
+                            {roleLabel(r, isAr)}
                           </span>
                         ))}
                       </div>
@@ -253,7 +264,7 @@ export function UsersSection({ lang }: { lang: string }) {
                         data-testid="badge-account-status"
                         className={`px-2 py-1 rounded-full ${statusBadgeClass(u.status)}`}
                       >
-                        {u.status}
+                        {statusLabel(u.status, isAr ? 'ar' : 'en')}
                       </span>
                     </td>
                     <td className="px-4 py-3" data-testid="cell-admin-access">
@@ -388,7 +399,7 @@ function UserDetailDrawer({
                 <span
                   className={`mt-1 inline-block w-fit px-2 py-1 rounded-full ${statusBadgeClass(user.status)}`}
                 >
-                  {user.status}
+                  {statusLabel(user.status, isAr ? 'ar' : 'en')}
                 </span>
               </div>
 
@@ -400,7 +411,7 @@ function UserDetailDrawer({
                       key={r}
                       className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold"
                     >
-                      {r}
+                      {roleLabel(r, isAr)}
                     </span>
                   ))}
                 </div>
