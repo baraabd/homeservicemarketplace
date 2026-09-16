@@ -53,15 +53,28 @@ platform, security, privacy, legal, and data-integrity requirements;
 
 the user's explicit task prompt and acceptance criteria;
 
-task-specific ADRs, contracts, designs, screenshots, and approved references;
+current project UX/UI authority in `.claude/rules/ux-ui-design-policy.md`
+for design scope, reference handling, and visual acceptance;
+
+task-specific ADRs, contracts, designs, screenshots, and approved references
+interpreted under that policy without overriding backend or domain rules;
 
 this file's default delivery-mode rules;
 
 existing implementation conventions.
 
-An explicit, scoped request to redesign UX/UI activates UX/UI Redesign Mode
-for the named surfaces. In that scope, the redesign instructions in the task
-prompt override this file's default UI-preservation rules.
+The user authorizes UX/UI-compatible design improvements within the active
+task's scope. A request to improve a UI, user journey, responsiveness, or
+accessibility is sufficient authority to change the affected design; do not
+require the user to repeat a special permission phrase. Use UX/UI Redesign
+Mode for substantial design work. Modes A and C may include the local UI
+changes needed to fix their scoped usability or accessibility defects.
+
+Read `.claude/rules/ux-ui-design-policy.md` before UI work. Its current design
+authority replaces historical blanket no-redesign and fixed-layout rules in
+older sprint prompts and references. A current explicit reference-matching
+or no-redesign task still controls its named surfaces. This permission is
+not an instruction to redesign the whole application or change product scope.
 
 This authority never overrides:
 
@@ -178,7 +191,8 @@ reuse the design system;
 add new reusable UI primitives only when existing ones cannot express the
 required semantics;
 
-use the task prompt to decide whether a local redesign is part of scope.
+use the task prompt and the UX/UI policy to bound local design improvements;
+do not preserve a known usability defect merely to avoid changing appearance.
 
 If a task mixes modes, state the boundary explicitly. Example: backend policy
 work remains in Integration Mode while the named onboarding routes use UX/UI
@@ -190,9 +204,10 @@ The project is in a combined backend–frontend integration and controlled UX
 modernization phase.
 
 The frontend is substantially built, but it is not automatically the final
-design. Existing screens are authoritative only in Integration and Bug-Fix
-Mode. When an explicit redesign brief exists, the approved brief and its
-acceptance criteria become the visual and interaction target.
+design. Existing screens are a visual baseline, not a requirement to preserve
+known UX defects. In Integration and Bug-Fix Mode, preserve unrelated visuals.
+For scoped design work, the current brief, UX/UI policy, and acceptance
+criteria define the visual and interaction target.
 
 Priority order within a redesign task:
 
@@ -290,8 +305,11 @@ delivered when users cannot reach it.
 3. Define the target before large implementation
 
 Use the task's approved design, reference images, or written brief as the
-target. If the task supplies reference screens, treat them as acceptance
-evidence, not optional inspiration, unless the prompt says otherwise.
+target. For an explicit reference-matching task, the named reference remains
+an acceptance target. For a UX/UI improvement task, existing references are
+starting evidence rather than a blanket design freeze. Record the intended
+changes and acceptance criteria before implementing them; follow the UX/UI
+policy for versioned targets and honest visual comparisons.
 
 Before a large visual rewrite, define:
 
@@ -377,6 +395,8 @@ for:
 
 390px typical mobile;
 
+430px wide mobile;
+
 768px tablet;
 
 1024px small desktop;
@@ -385,8 +405,11 @@ for:
 
 200% zoom where applicable.
 
-Do not force desktop and tablet into a fixed phone-width container unless the
-approved product brief explicitly requires a phone-only PWA presentation.
+Start mobile-first. A focused single-column task may remain centred on
+desktop when that best serves the journey. Neither a universal 480px cap nor
+a full-width or two-column desktop shell is mandatory. Use a readable content
+measure, preserve focused workflows, and document responsive changes under
+the UX/UI policy; do not turn a component task into a full-page redesign.
 
 Use adaptive navigation and layout:
 
@@ -452,9 +475,9 @@ aria-live for meaningful asynchronous feedback;
 
 status communicated by text/icon as well as color;
 
-touch targets of approximately 44×44px;
+touch targets of at least 44×44 CSS px as a project usability requirement;
 
-editable text at a mobile-safe size;
+editable mobile text of at least 16 CSS px as a project usability requirement;
 
 contrast in every supported theme;
 
@@ -989,6 +1012,14 @@ previous green checks do not validate a newer SHA;
 
 do not call a draft or feature complete while required checks are pending.
 
+Run applicable local checks before publishing. When execution is unavailable,
+record the blocked checks and keep the PR draft. Publishing a scoped branch
+to obtain remote CI evidence is allowed; remote checks cannot precede the
+push that triggers them. Do not bypass hooks or required gates. Merge and
+deployment still require explicit authorization and passing required checks
+on the final SHA. For instruction-only changes, validate the documents and
+report runtime checks as not run, not as passed; see the UX/UI policy.
+
 Output Contract
 
 For non-trivial implementation, bug-fix, integration, or redesign work, report:
@@ -1029,7 +1060,8 @@ Forbidden Behaviors
 
 Do not:
 
-redesign UI without an explicit scoped redesign instruction;
+redesign unrelated surfaces, expand the active task without authority, or
+ignore a current explicit no-redesign or reference-matching instruction;
 
 refuse or dilute an explicit scoped redesign by citing the default
 preservation mode;

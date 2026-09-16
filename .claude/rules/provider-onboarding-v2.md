@@ -7,6 +7,7 @@ paths:
   - "apps/api/src/modules/provider/onboarding/**"
   - "packages/contracts/**"
   - "tests/**/provider*onboarding*"
+  - "apps/web/e2e/**"
   - "docs/provider-experience-v2/**"
 ---
 
@@ -14,23 +15,33 @@ paths:
 
 These instructions apply to every Provider Onboarding V2 frontend, backend, contract, test, and document change.
 
-## Approved sources
+## Current authority and sources
 
 Read these files before editing affected code:
 
-1. `docs/provider-experience-v2/reference/provider-onboarding-prototype.html`
-2. `docs/provider-experience-v2/reference/provider-onboarding-user-flow.svg`
+1. `CLAUDE.md` and `.claude/rules/ux-ui-design-policy.md`
+2. The current task brief and its acceptance criteria
 3. `docs/provider-experience-v2/UX_UI_DESIGN_SYSTEM.md`
-4. Current shared contracts and backend onboarding policy
+4. `docs/provider-experience-v2/reference/provider-onboarding-prototype.html`
+5. `docs/provider-experience-v2/reference/provider-onboarding-user-flow.svg`
+6. Current shared contracts and backend onboarding policy
 
-If a reference is missing or sources conflict, stop and report the issue. Never invent a substitute design.
+Apply the current UX/UI policy to design-scope conflicts. Historical sprint
+prompts and prototype dimensions do not veto an authorized improvement.
+Report missing references, but proceed with well-defined work when the brief
+and design system are sufficient. Never invent product policy, backend
+semantics, or evidence, and resolve genuinely blocking ambiguities.
 
-## Non-negotiable UI contract
+## UI quality contract — design changes allowed
 
-- Match the approved prototype; do not redesign it.
+- Scoped UX/UI improvements are explicitly allowed under the shared policy.
+- Match a prototype exactly only when the current task requests reference
+  fidelity; otherwise document the improved target and intentional differences.
 - Design at 390×844 first.
 - At 320–639 px use a full-width single column.
-- At 640 px and above centre the flow at max-width 480 px on a neutral background.
+- The current 640 px breakpoint and 480 px centred measure are a baseline,
+  not immutable limits. Keep forms readable and focused; document and verify
+  any justified width or layout change under the shared UX/UI policy.
 - Never stretch onboarding forms to full desktop width.
 - Never use the old dark decorative phone frame.
 - Hide workspace bottom navigation for DRAFT, RETURNED, and SUBMITTED onboarding.
@@ -65,9 +76,17 @@ If a reference is missing or sources conflict, stop and report the issue. Never 
 
 - Preserve unrelated user changes and stashes.
 - Do not weaken API guards, validation, tests, CI, audit, or security controls.
-- Do not skip or loosen failing tests to obtain green output.
-- Do not change reference design files.
-- Do not commit or push until unit, API, real-browser E2E, accessibility, visual regression, production build, and required CI gates pass.
+- Do not skip or weaken failing tests merely to obtain green output. Scoped
+  assertion/baseline updates for an intentional design change require rationale,
+  retained behavioral coverage, visual evidence, and review of the new target.
+- Preserve historical reference files. Add separately versioned design targets
+  and update affected living design documentation instead of rewriting history.
+- Run applicable local checks before publishing; document unavailable checks
+  and keep the PR draft. A scoped push may trigger remote CI. Never bypass
+  hooks or required gates, and verify required CI on the final SHA before
+  claiming completion or merge readiness.
+- Instruction-only changes use document validation and honest not-run reporting
+  as defined in the shared policy; they do not waive configured CI checks.
 - Never force-push.
 
 ## What the evidence can and cannot see
