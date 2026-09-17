@@ -5,7 +5,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
-const { validateReport, assertNoExceptions, runAudit, parseArgs } = require('./dependency-audit.cjs');
+const {
+  validateReport,
+  assertNoExceptions,
+  runAudit,
+  parseArgs,
+} = require('./dependency-audit.cjs');
 
 const clean = () => ({
   advisories: {},
@@ -33,7 +38,11 @@ for (const severity of ['info', 'low', 'moderate', 'high', 'critical']) {
     assert.throws(() => validate(report), /vulnerabilities remain/);
   });
 }
-for (const [label, raw] of [['empty', ''], ['HTML', '<html>registry unavailable</html>'], ['truncated', '{']]) {
+for (const [label, raw] of [
+  ['empty', ''],
+  ['HTML', '<html>registry unavailable</html>'],
+  ['truncated', '{'],
+]) {
   test(`fails on ${label} output`, () => assert.throws(() => validateReport(raw, 0), /valid JSON/));
 }
 for (const report of [null, [], {}, { error: { code: 'REGISTRY_UNAVAILABLE' } }]) {
@@ -86,7 +95,10 @@ for (const status of [1, 2, null]) {
 test('normal workspace policy is allowed', (t) => assertNoExceptions(fixture(t)));
 test('package.json audit exceptions fail closed', (t) => {
   const root = fixture(t);
-  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ pnpm: { auditConfig: { ignoreCves: ['CVE-test'] } } }));
+  fs.writeFileSync(
+    path.join(root, 'package.json'),
+    JSON.stringify({ pnpm: { auditConfig: { ignoreCves: ['CVE-test'] } } }),
+  );
   assert.throws(() => assertNoExceptions(root), /exceptions are not permitted/);
 });
 for (const [file, content] of [
@@ -103,14 +115,25 @@ for (const production of [false, true]) {
   test(`executes the real audit command policy with production=${production}`, (t) => {
     const root = fixture(t);
     const output = path.join(root, 'reports', 'audit.json');
-    const result = runAudit({ root, output, production, execute: (command, args, options) => {
-      assert.ok(command === 'pnpm' || command === process.execPath);
-      assert.deepEqual(args.slice(-4 - Number(production)), ['audit', '--json', '--audit-level', 'low', ...(production ? ['--prod'] : [])]);
-      assert.equal(options.cwd, root);
-      assert.equal(options.shell, false);
-      assert.ok(options.timeout > 0);
-      return { status: 0, stdout: JSON.stringify(clean()) };
-    } });
+    const result = runAudit({
+      root,
+      output,
+      production,
+      execute: (command, args, options) => {
+        assert.ok(command === 'pnpm' || command === process.execPath);
+        assert.deepEqual(args.slice(-4 - Number(production)), [
+          'audit',
+          '--json',
+          '--audit-level',
+          'low',
+          ...(production ? ['--prod'] : []),
+        ]);
+        assert.equal(options.cwd, root);
+        assert.equal(options.shell, false);
+        assert.ok(options.timeout > 0);
+        return { status: 0, stdout: JSON.stringify(clean()) };
+      },
+    });
     assert.deepEqual(result, clean());
     assert.deepEqual(JSON.parse(fs.readFileSync(output, 'utf8')), clean());
   });
