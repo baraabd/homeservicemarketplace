@@ -1,0 +1,29 @@
+name: Sprint 12C isolated workspace
+on:
+  push:
+    branches: [chore/sprint12c-isolated-workspace]
+    paths: [.github/workflows/sprint12c-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 509a6d30da10c3407fd597444f07460a006953f5
+          persist-credentials: false
+      - name: Export tracked source, excluding Git credentials and environment
+        run: |
+          mkdir -p "$RUNNER_TEMP/sprint12c-source"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/sprint12c-source/source.tar.gz"
+          git rev-parse HEAD > "$RUNNER_TEMP/sprint12c-source/commit.txt"
+          git ls-tree -r HEAD > "$RUNNER_TEMP/sprint12c-source/tree.txt"
+          sha256sum pnpm-lock.yaml > "$RUNNER_TEMP/sprint12c-source/lockfile.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprint12c-source-509a6d3
+          path: ${{ runner.temp }}/sprint12c-source/
+          retention-days: 1
+          if-no-files-found: error
