@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import type { DisputeIntakeBlocker } from '@homeservicemarketplace/contracts';
+import { DISPUTE_ISSUE_CODES, DISPUTE_REQUESTED_OUTCOMES, type DisputeIntakeBlocker } from '@homeservicemarketplace/contracts';
 
 export const DISPUTE_INTAKE_SETTING = 'disputes.self_service.intake';
 export const DISPUTE_INTAKE_EVENT = 'dispute.intake.opened.v1';
@@ -68,4 +68,11 @@ export function intakeRequestHash(input: {
     requestedOutcome: input.requestedOutcome,
     statement: input.statement.trim(),
   })).digest('hex');
+}
+
+/** Domain entry points must enforce contract choices even outside an HTTP controller. */
+export function validIntakeChoices(issueCode: unknown, requestedOutcome: unknown): boolean {
+  return typeof issueCode === 'string' && typeof requestedOutcome === 'string'
+    && DISPUTE_ISSUE_CODES.some((code) => code === issueCode)
+    && DISPUTE_REQUESTED_OUTCOMES.some((code) => code === requestedOutcome);
 }

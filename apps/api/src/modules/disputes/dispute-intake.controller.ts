@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../iam/authentication/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../iam/authentication/guards/jwt-auth.guard';
@@ -6,10 +6,12 @@ import { CsrfGuard } from '../iam/authentication/guards/csrf.guard';
 import type { AuthenticatedUser } from '../iam/authentication/types/authenticated-user';
 import { CreateParticipantDisputeDto, ListParticipantDisputesDto } from './dispute-intake.dto';
 import { DisputeIntakeService } from './dispute-intake.service';
+import { DisputePrivacyInterceptor } from './dispute-privacy.interceptor';
 
 /** Participation is proved by database ownership on every read/write, never a client role. */
 @Controller({ path: 'me/disputes', version: '1' })
 @UseGuards(JwtAuthGuard)
+@UseInterceptors(DisputePrivacyInterceptor)
 export class DisputeIntakeController {
   constructor(private readonly disputes: DisputeIntakeService) {}
 

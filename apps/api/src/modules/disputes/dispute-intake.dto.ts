@@ -1,16 +1,21 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator';
 import {
   DISPUTE_ISSUE_CODES, DISPUTE_REQUESTED_OUTCOMES,
   type CreateParticipantDisputeRequest,
 } from '@homeservicemarketplace/contracts';
 
+// Snapshot the contract choices as named enum members. Neither validation
+// metadata nor a caller can extend the accepted set by mutating an array.
+const issueCodes = Object.freeze(Object.fromEntries(DISPUTE_ISSUE_CODES.map((code) => [code, code])));
+const requestedOutcomes = Object.freeze(Object.fromEntries(DISPUTE_REQUESTED_OUTCOMES.map((code) => [code, code])));
+
 export class CreateParticipantDisputeDto implements CreateParticipantDisputeRequest {
   @IsString() @Length(1, 64) bookingId!: string;
   @IsUUID('4') idempotencyKey!: string;
   @IsString() @Length(1, 130) policyVersion!: string;
-  @IsIn(DISPUTE_ISSUE_CODES) issueCode!: CreateParticipantDisputeRequest['issueCode'];
-  @IsIn(DISPUTE_REQUESTED_OUTCOMES) requestedOutcome!: CreateParticipantDisputeRequest['requestedOutcome'];
+  @IsString() @IsEnum(issueCodes) issueCode!: CreateParticipantDisputeRequest['issueCode'];
+  @IsString() @IsEnum(requestedOutcomes) requestedOutcome!: CreateParticipantDisputeRequest['requestedOutcome'];
   @IsString() @Length(20, 4000) statement!: string;
 }
 export class ListParticipantDisputesDto {

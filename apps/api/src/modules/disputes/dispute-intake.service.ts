@@ -12,7 +12,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { DisputeIntakeRepository, type IntakeBooking } from './dispute-intake.repository';
 import {
   DISPUTE_INTAKE_EVENT, DISPUTE_INTAKE_SETTING, INTAKE_ID_PREFIX,
-  intakeEligibility, intakeIntentId, intakeRequestHash, parseIntakePolicy,
+  intakeEligibility, intakeIntentId, intakeRequestHash, parseIntakePolicy, validIntakeChoices,
 } from './dispute-intake.policy';
 import { intakeReceiptSchema, participantSummary } from './dispute-intake.projection';
 
@@ -109,6 +109,8 @@ export class DisputeIntakeService {
   }
 
   async create(actorUserId: string, input: CreateParticipantDisputeRequest): Promise<CreateParticipantDisputeResponse> {
+    if (!validIntakeChoices(input.issueCode, input.requestedOutcome))
+      throw new AppError('VALIDATION_ERROR', 'Choose a supported issue and requested outcome.', 400);
     const statement = input.statement.trim();
     if (statement.length < 20 || statement.length > 4000)
       throw new AppError('VALIDATION_ERROR', 'The statement must contain 20 to 4000 characters.', 400);

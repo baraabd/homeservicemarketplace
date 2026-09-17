@@ -1,4 +1,4 @@
-import { intakeEligibility, intakeIntentId, intakeRequestHash, parseIntakePolicy } from './dispute-intake.policy';
+import { intakeEligibility, intakeIntentId, intakeRequestHash, parseIntakePolicy, validIntakeChoices } from './dispute-intake.policy';
 const config = { version: 'pilot-v1', enabled: true, pilotUserIds: ['owner'], allowedBookingStates: ['SCHEDULED', 'COMPLETED'], terminalWindowHours: 24 };
 const now = new Date('2026-09-17T12:00:00Z');
 const base = { actorUserId: 'owner', bookingState: 'SCHEDULED', terminalAt: null, now };
@@ -40,4 +40,11 @@ describe('Dispute intake policy — fail closed and versioned', () => {
     for (const key of Object.keys(body) as Array<keyof typeof body>)
       expect(intakeRequestHash({ ...body, [key]: 'different' })).not.toBe(intakeRequestHash(body));
   });
+});
+
+it.each([['APPROVE', 'REVIEW'], ['OTHER', 'PAY_NOW'], [null, 'REVIEW'], ['constructor', 'REVIEW']])('rejects unsupported domain choices %#', (issue, outcome) => {
+  expect(validIntakeChoices(issue, outcome)).toBe(false);
+});
+it('accepts a supported participant choice pair', () => {
+  expect(validIntakeChoices('OTHER', 'REVIEW')).toBe(true);
 });
