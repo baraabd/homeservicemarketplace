@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 
@@ -80,11 +80,25 @@ function renderAdmin() {
   );
 }
 
+/** Assert the KPI's own value; another dashboard section may contain the same number. */
+function kpi(label: string) {
+  const card = screen.getByText(label, { exact: true, selector: 'p' }).parentElement;
+  expect(card).not.toBeNull();
+  return within(card!);
+}
+
 let mock: MockAdapter;
 let qc: QueryClient;
 beforeEach(() => {
   mock = new MockAdapter(api);
   qc = createAuthQueryClient();
+  // Admin home now composes approvals and analytics; their API data is independent.
+  mock.onGet('/v1/admin/providers').reply(200, {
+    items: [],
+    nextCursor: null,
+    total: 0,
+    counts: { all: 30, pendingReview: 0, draft: 3, active: 27, returned: 0, suspended: 0 },
+  });
 });
 afterEach(() => {
   mock.restore();
@@ -102,16 +116,16 @@ describe('AdminDashboard — DashboardOverview (Sprint 6.4)', () => {
 
     renderAdmin();
 
-    // Dashboard tab is the default active section, so the overview
-    // hooks fire on mount. Wait for the lifetime revenue tile.
-    await waitFor(() => expect(screen.getByText('$21,000')).toBeInTheDocument());
-    expect(screen.getByText('$8,400')).toBeInTheDocument();
-    expect(screen.getByText('142')).toBeInTheDocument();
-    expect(screen.getByText('27')).toBeInTheDocument();
-    expect(screen.getByText('19')).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
+    // Scope each assertion to its labelled analytics card. In particular, the
+    // approval guide's second step must never satisfy the open-disputes KPI.
+    await waitFor(() => expect(kpi('Lifetime revenue').getByText('$21,000')).toBeInTheDocument());
+    expect(kpi('Revenue (in range)').getByText('$8,400')).toBeInTheDocument();
+    expect(kpi('Users').getByText('142')).toBeInTheDocument();
+    expect(kpi('Active providers').getByText('27')).toBeInTheDocument();
+    expect(kpi('Bookings completed').getByText('19')).toBeInTheDocument();
+    expect(kpi('Open disputes').getByText('2')).toBeInTheDocument();
     // Fee footnote computed from platformFeeRateBps.
-    expect(screen.getByText(/After 10% platform fee/i)).toBeInTheDocument();
+    expect(kpi('Lifetime revenue').getByText(/After 10% platform fee/i)).toBeInTheDocument();
   });
 
   it('range chip toggle triggers another /overview request with new from/to', async () => {
@@ -141,7 +155,7 @@ describe('AdminDashboard — DashboardOverview (Sprint 6.4)', () => {
     mock.onGet('/v1/admin/analytics/revenue').reply(200, REVENUE);
 
     renderAdmin();
-    await waitFor(() => expect(screen.getByText('$21,000')).toBeInTheDocument());
+    await waitFor(() => expect(kpi('Lifetime revenue').getByText('$21,000')).toBeInTheDocument());
     const dom = document.body.textContent ?? '';
     expect(dom).not.toContain('passwordHash');
     expect(dom).not.toContain('STRIPE_SECRET');

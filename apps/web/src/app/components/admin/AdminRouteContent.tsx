@@ -7,6 +7,7 @@ import { AdminIdentityCasesPage } from '../../features/admin-verification/compon
 import { VerificationPolicyPanel } from '../../features/admin-verification/components/VerificationPolicyPanel';
 import { DisputeSection } from './DisputesSection';
 import { DashboardOverview } from './DashboardOverview';
+import { ApprovalCenter } from '../../features/admin-approvals/ApprovalCenter';
 import { FinancialsSection } from './FinancialsSection';
 import { SettingsSection } from './SettingsSection';
 import { AuditLogsSection } from './AuditLogsSection';
@@ -53,7 +54,12 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
   }
   switch (route.section) {
     case 'dashboard':
-      return <DashboardOverview lang={lang} />;
+      return (
+        <div className="ar-stack">
+          <ApprovalCenter />
+          <DashboardOverview lang={lang} />
+        </div>
+      );
     case 'users':
       return <UsersSection lang={lang} />;
     case 'providers':
