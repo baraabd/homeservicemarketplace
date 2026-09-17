@@ -1,0 +1,11 @@
+.art-overview { padding: 20px; }
+.art-overview > div > p { margin-block-start: 8px; }
+.art-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.art-task { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; padding: 14px; background: var(--ar-bg); border: 1px solid var(--ar-border); border-radius: 14px; color: var(--ar-text); text-decoration: none; overflow-wrap: anywhere; }
+.art-task:hover { border-color: var(--ar-accent); background: var(--ar-accent-fill); }
+.art-task-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; color: var(--ar-accent); font-size: 12px; font-weight: 750; }
+.art-task strong { font-size: 14px; font-weight: 750; }
+.art-summary { flex: 1; font-size: 12px; }
+.art-decision-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+@media (min-width: 768px) { .art-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 359px) { .art-grid { grid-template-columns: minmax(0, 1fr); } }

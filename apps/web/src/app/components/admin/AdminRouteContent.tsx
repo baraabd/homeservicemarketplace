@@ -1,4 +1,7 @@
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
+import { AdminApprovalsOverview } from '../../features/admin-overview/AdminApprovalsOverview';
+import { AdminWorkflowNavigation } from '../../features/admin-overview/AdminWorkflowNavigation';
+import { ADMIN_OVERVIEW_COPY } from '../../features/admin-overview/copy';
 import { useLang } from '../../i18n/LanguageContext';
 import { UsersSection } from '../../features/admin-directory/components/UsersSection';
 import { ProviderDirectory } from '../../features/admin-directory/components/ProviderDirectory';
@@ -13,6 +16,18 @@ import { AuditLogsSection } from './AuditLogsSection';
 import { directoryReturn, type AdminRoute } from './admin-routes';
 
 export function AdminRouteContent({ route }: { route: AdminRoute }) {
+  const { lang } = useLang();
+  return (
+    <>
+      {route.kind !== 'legacy' && route.kind !== 'notFound' && (
+        <AdminWorkflowNavigation lang={lang} section={route.kind === 'provider' ? 'reviews' : route.section} />
+      )}
+      <AdminSectionContent route={route} />
+    </>
+  );
+}
+
+function AdminSectionContent({ route }: { route: AdminRoute }) {
   const { lang } = useLang();
   const location = useLocation();
   const navigate = useNavigate();
@@ -53,7 +68,14 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
   }
   switch (route.section) {
     case 'dashboard':
-      return <DashboardOverview lang={lang} />;
+      return (
+        <div className="admin-review ao-home">
+          <AdminApprovalsOverview lang={lang} />
+          <section className="ao-home-analytics" aria-label={ADMIN_OVERVIEW_COPY[lang].analytics}>
+            <DashboardOverview lang={lang} />
+          </section>
+        </div>
+      );
     case 'users':
       return <UsersSection lang={lang} />;
     case 'providers':

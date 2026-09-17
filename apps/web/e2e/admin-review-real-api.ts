@@ -1,4 +1,4 @@
-import { expect, type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import type {
   AdminProviderReview,
@@ -74,6 +74,29 @@ export async function enterAdmin(page: Page): Promise<void> {
 }
 
 export async function adminNavigation(page: Page, section: string): Promise<void> {
+  if (section === 'reviews' && new URL(page.url()).pathname === '/admin') {
+    // Exercise the new user-visible entry against real HTTP, not a test-only route.
+    const overview = page.getByTestId('admin-approvals-overview');
+    await expect(overview).toBeVisible();
+    await expect(overview.getByTestId('overview-count-pendingReview')).not.toHaveText('—');
+    const accessibility = await new AxeBuilder({ page })
+      .include('[data-testid="admin-approvals-overview"]')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
+    expect(accessibility.violations).toEqual([]);
+    await expectNoHorizontalPageOverflow(page);
+    await page.evaluate(() => document.fonts.ready);
+    await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+    const info = test.info();
+    const path = info.outputPath('admin-home-real-api.png');
+    await page.screenshot({ path, fullPage: true, animations: 'disabled' });
+    await info.attach('admin-home-real-api', { path, contentType: 'image/png' });
+    await info.attach('admin-home-real-api-provenance', {
+      contentType: 'application/json',
+      body: Buffer.from(JSON.stringify({ route: '/admin', viewport: page.viewportSize(), commit: process.env.GITHUB_SHA ?? null, evidence: 'REAL_API_TEST_ENVIRONMENT', transport: 'real HTTP; no route interception' })),
+    });
+    await overview.getByTestId('overview-open-queue').click();
+    return;
+  }
   const desktopLink = page.getByTestId(`nav-${section}`);
   if (await desktopLink.isVisible()) {
     await desktopLink.click();
