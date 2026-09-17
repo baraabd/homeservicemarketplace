@@ -1,4 +1,4 @@
-import type { EntitlementDecision, LedgerEntryContract } from '@hsm/contracts';
+import type { EntitlementDecision, LedgerEntryContract } from '@homeservicemarketplace/contracts';
 
 export class MoneyDomainError extends Error {
   constructor(public readonly code: string, message: string) { super(message); }
@@ -19,12 +19,7 @@ export function calculateQuote(input: { priceMinor: bigint; currency: string; di
   const discountMinor = input.discountMinor ?? 0n;
   assertMinorAmount(discountMinor);
   if (discountMinor > input.priceMinor) throw new MoneyDomainError('DISCOUNT_EXCEEDS_SUBTOTAL', 'Discount cannot exceed subtotal');
-  return Object.freeze({
-    currency: normalizeCurrency(input.currency),
-    subtotalMinor: input.priceMinor,
-    discountMinor,
-    totalMinor: input.priceMinor - discountMinor,
-  });
+  return Object.freeze({ currency: normalizeCurrency(input.currency), subtotalMinor: input.priceMinor, discountMinor, totalMinor: input.priceMinor - discountMinor });
 }
 
 export function assertBalancedLedger(entries: readonly LedgerEntryContract[]): void {
@@ -41,23 +36,13 @@ export function assertBalancedLedger(entries: readonly LedgerEntryContract[]): v
   if (debits !== credits) throw new MoneyDomainError('UNBALANCED_LEDGER', 'Ledger debits and credits must balance');
 }
 
-export function decideEntitlement(input: {
-  key: string;
-  active: boolean;
-  enabled: boolean;
-  limit: number | null;
-  used: number;
-}): EntitlementDecision {
+export function decideEntitlement(input: { key: string; active: boolean; enabled: boolean; limit: number | null; used: number }): EntitlementDecision {
   if (!input.active) return { allowed: false, key: input.key, limit: input.limit, used: input.used, remaining: null, reason: 'NO_ACTIVE_SUBSCRIPTION' };
   if (!input.enabled) return { allowed: false, key: input.key, limit: input.limit, used: input.used, remaining: null, reason: 'NOT_INCLUDED' };
   if (input.limit === null) return { allowed: true, key: input.key, limit: null, used: input.used, remaining: null };
-  if (!Number.isSafeInteger(input.limit) || input.limit < 0 || !Number.isSafeInteger(input.used) || input.used < 0) {
-    throw new MoneyDomainError('INVALID_USAGE', 'Entitlement usage and limit must be non-negative safe integers');
-  }
+  if (!Number.isSafeInteger(input.limit) || input.limit < 0 || !Number.isSafeInteger(input.used) || input.used < 0) throw new MoneyDomainError('INVALID_USAGE', 'Entitlement usage and limit must be non-negative safe integers');
   const remaining = Math.max(0, input.limit - input.used);
-  return input.used < input.limit
-    ? { allowed: true, key: input.key, limit: input.limit, used: input.used, remaining }
-    : { allowed: false, key: input.key, limit: input.limit, used: input.used, remaining: 0, reason: 'LIMIT_REACHED' };
+  return input.used < input.limit ? { allowed: true, key: input.key, limit: input.limit, used: input.used, remaining } : { allowed: false, key: input.key, limit: input.limit, used: input.used, remaining: 0, reason: 'LIMIT_REACHED' };
 }
 
 export function nextSubscriptionEnd(start: Date, interval: 'MONTHLY' | 'ANNUAL'): Date {
