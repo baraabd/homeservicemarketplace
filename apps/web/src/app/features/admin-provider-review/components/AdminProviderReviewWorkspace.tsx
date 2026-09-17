@@ -9,7 +9,8 @@ import { adminProvidersQueryKeys } from '../../../hooks/admin/useAdminProviders'
 import { getProviderReview, requestStatus, reviewQueryKey } from '../api';
 import { REVIEW_COPY, statusLabel } from '../copy';
 import { ReviewBadge, ReviewBanner, StatusBadge } from './ReviewPrimitives';
-import { ReviewDossier, ReviewTaskNavigation } from './ReviewDossier';
+import { ReviewDossier } from './ReviewDossier';
+import { ReviewTaskIndex } from './ReviewTaskIndex';
 import { ReviewIdentity } from './ReviewIdentity';
 import { ReviewCategories } from './ReviewCategories';
 import { ReviewPortfolio } from './ReviewPortfolio';
@@ -231,7 +232,7 @@ function ReviewWorkspace({
                       ? t.sourceHint
                       : t.historicalMissing}
               </ReviewBanner>
-              <ReviewTaskNavigation lang={lang} />
+              <ReviewTaskIndex lang={lang} blockers={review.blockers} />
               <ReviewDossier
                 submittedSource={selectedSource === 'submitted'}
                 review={review}
@@ -252,6 +253,7 @@ function ReviewWorkspace({
               lang={lang}
               onChanged={refresh}
               onDecided={decided}
+              readOnly={query.isError || query.isFetching}
             />
           </div>
         </>
