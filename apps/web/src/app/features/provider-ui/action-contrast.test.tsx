@@ -1,11 +1,20 @@
-import { readFileSync } from 'node:fs';
-import { URL } from 'node:url';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { ProviderButton } from './primitives';
 
-const css = readFileSync(new URL('../../../styles/theme.css', import.meta.url), 'utf8');
+// Vite rewrites static new-URL CSS references into browser asset URLs. Read
+// the source file through Node paths, from either workspace invocation root.
+const themePath = [
+  resolve(process.cwd(), 'src/styles/theme.css'),
+  resolve(process.cwd(), 'apps/web/src/styles/theme.css'),
+].find((path) => existsSync(path));
+if (!themePath) throw new Error('Cannot locate the provider theme source');
+const css = readFileSync(themePath, 'utf8');
+
+afterEach(cleanup);
 
 function token(theme: 'light' | 'dark', name: string): string {
   const selector = theme === 'dark' ? /\.dark\s*\{([\s\S]*?)\n\}/ : /:root\s*\{([\s\S]*?)\n\}/;
