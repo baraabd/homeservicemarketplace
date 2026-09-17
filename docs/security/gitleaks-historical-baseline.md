@@ -187,3 +187,44 @@ be individually reviewed — classified against §2's method, its provenance
 proven, and the outcome recorded in this document — before a fingerprint is
 added. If a finding cannot be proven synthetic, it is treated as a live
 credential: rotate first, then decide about history.
+
+
+## 6. Sprint 12A delta — non-secret request identifiers (2026-09-17)
+
+CI `35242994528`, security job `105277441969`, stopped on exactly two
+`generic-api-key` findings in `dispute-intake.dto.spec.ts`. SARIF artifact
+`10506239201` was retrieved; its ZIP SHA-256 matched GitHub metadata:
+`4434866a0a982171d0619e02272963a1f6a5a1f81b0ebdf798879d5396c5bfb4`.
+
+| Origin commit | Rule | Source line | Classification |
+| --- | --- | --- | --- |
+| `b876db762045bf70ee7d1fb3eea9eb00ac4bbb97` | generic-api-key | 4 | Authored synthetic UUID-v4 DTO idempotency example |
+| `58488e0580e5bbd89612f450aac3f2e56aa6eb1c` | generic-api-key | 8 | The same example after test formatting/expansion |
+
+Both flagged source versions were read at their exact commits. The value was
+introduced during this implementation solely as the valid UUID input to local
+DTO/ValidationPipe tests; those tests neither authenticate with it nor contact
+an external provider. A request idempotency key is not an authorization token.
+The application's real command separately requires authenticated participation
+and CSRF, and derives an actor-bound opaque intent identifier. This literal was
+not obtained from an account, environment, credential store or external service.
+It is therefore an individually reviewed non-secret test fixture, not an
+unresolved credential requiring concealment.
+
+The fixed example is replaced by `randomUUID()` from `node:crypto`, retaining
+UUID-v4 validation and all negative tests. Only the two exact SARIF-derived
+historical fingerprints are appended to `.gitleaksignore`; the original ten
+remain unchanged. No extension/directory/path pattern, rule, tolerance, scan
+range, workflow, or blocking exit status is changed. Future occurrences at any
+other commit or line are not covered by these entries. History is not rewritten.
+
+Review scope differs from the original §2 retrospective: source provenance is
+known because this session authored the example, and both reported historical
+occurrences and the current affected-file fixture were inspected. A complete
+repository/history clone, machine-local environment inspection and a new live
+scanner canary run were **not available in this editing environment** and are
+not claimed. The original 398-commit review and canary figures above remain
+historical evidence, not measurements for Sprint 12A. Final remote CI must run
+the unchanged scanner again before this PR is accepted. Maintain these two
+entries only while their originating commits remain reachable; review/remove
+them using §5's procedure at release review.

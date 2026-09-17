@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
@@ -5,7 +6,7 @@ import { DISPUTE_ISSUE_CODES, DISPUTE_REQUESTED_OUTCOMES } from '@homeservicemar
 import { CreateParticipantDisputeDto } from './dispute-intake.dto';
 
 const input = {
-  bookingId: 'booking', idempotencyKey: 'd34936e4-fb90-44ef-b8e7-c923c794b5a9',
+  bookingId: 'booking', idempotencyKey: randomUUID(),
   policyVersion: 'policy:hash', issueCode: 'OTHER', requestedOutcome: 'REVIEW',
   statement: 'A sufficiently detailed statement.',
 };
