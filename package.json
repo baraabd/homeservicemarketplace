@@ -29,7 +29,10 @@
     "postman:runtime-smoke": "newman run \"postman/FixNow Runtime Smoke Provider Admin.postman_collection.json\" -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/runtime-smoke.html",
     "runtime:provider-loop": "node scripts/runtime/verify-provider-loop.cjs",
     "runtime:verify-500": "node scripts/runtime/verify-runtime-500-elimination.cjs",
-    "runtime:sprint01-security": "node scripts/runtime/verify-sprint01-security.cjs"
+    "runtime:sprint01-security": "node scripts/runtime/verify-sprint01-security.cjs",
+    "security:audit": "node scripts/security/dependency-audit.cjs",
+    "security:audit:prod": "node scripts/security/dependency-audit.cjs --prod",
+    "security:audit:test": "node --test scripts/security/dependency-audit.test.cjs"
   },
   "lint-staged": {
     "*.{js,mjs,cjs,ts,tsx}": [
