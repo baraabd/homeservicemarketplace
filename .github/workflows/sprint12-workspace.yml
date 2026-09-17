@@ -1,0 +1,27 @@
+name: Sprint 12 implementation workspace
+on:
+  push:
+    branches: [feat/sprint12-dispute-intake-foundation]
+    paths: [.github/workflows/sprint12-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  tracked-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Archive tracked source only (no Git credentials or runner environment)
+        run: |
+          mkdir -p "$RUNNER_TEMP/sprint12-source"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/sprint12-source/source.tar.gz"
+          git rev-parse HEAD > "$RUNNER_TEMP/sprint12-source/commit.txt"
+          git ls-tree -r HEAD > "$RUNNER_TEMP/sprint12-source/tree.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprint12-tracked-source
+          path: ${{ runner.temp }}/sprint12-source/
+          retention-days: 1
+          if-no-files-found: error
