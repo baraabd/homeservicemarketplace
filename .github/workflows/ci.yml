@@ -937,43 +937,29 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
 
-      - name: Production dependency audit (ZERO high or critical)
-        # The merge gate. --prod scopes it to what is actually deployed: a
-        # dev-only advisory in vite or eslint never reaches a running artifact,
-        # and blocking merges on those trains everyone to bypass the gate.
-        #
-        # --audit-level high means the job fails on any HIGH or CRITICAL, so
-        # the passing condition is literally "zero high, zero critical in the
-        # shipped tree". Sprint 3 left it at zero; anything above is a
-        # regression, not a backlog item.
-        run: pnpm audit --prod --audit-level high
+      - name: Dependency audit policy regression tests
+        run: pnpm security:audit:test
 
-      - name: Full dependency audit (report only, never blocks)
-        # The dev tree carries ~28 highs across vite, postcss, turbo, tar and
-        # friends. None of them ship, so none of them may block a merge — but
-        # they must not be INVISIBLE either, or the first anyone hears of a
-        # build-time compromise is after it happens. This step reports and
-        # always succeeds; the artifact below is the durable record.
+      - name: Full dependency audit (ZERO findings at every severity)
+        # Tooling and dev dependencies are part of the supply chain too.
+        # Registry failures and missing/filtered reports must fail closed.
         if: always()
-        run: |
-          pnpm audit --json > audit-full.json || true
-          node -e "
-            const a = Object.values(JSON.parse(require('fs').readFileSync('audit-full.json','utf8')).advisories || {});
-            const by = {};
-            a.forEach(x => { by[x.severity] = (by[x.severity] || 0) + 1; });
-            console.log('Full-tree advisories (dev included):', JSON.stringify(by));
-            a.filter(x => ['critical','high'].includes(x.severity))
-             .forEach(x => console.log('  ' + x.severity.toUpperCase(), x.module_name, x.vulnerable_versions, '->', x.patched_versions));
-          "
+        run: pnpm security:audit
 
-      - name: Upload the full audit report
+      - name: Production dependency audit (ZERO findings at every severity)
+        if: always()
+        run: pnpm security:audit:prod
+
+      - name: Upload complete dependency audit evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: dependency-audit
-          path: audit-full.json
+          path: |
+            audit-full.json
+            audit-production.json
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Secret scan
         uses: gitleaks/gitleaks-action@v2
