@@ -98,6 +98,23 @@ export async function recordRepairEvidence(
   expect(dark).toBe(details.theme === 'dark');
   await expectNoHorizontalPageOverflow(page);
   await page.evaluate(() => document.fonts.ready);
+  const mapScreen = new URL(page.url()).pathname.endsWith('/WORK_AREA');
+  if (!mapScreen) {
+    // The weekly table can scroll the day controls out of view, especially in
+    // Arabic. Audit their visible state explicitly before the table capture;
+    // an offscreen control must not escape the contrast acceptance.
+    await page.getByTestId('day-toggles').scrollIntoViewIfNeeded();
+    const days = await new AxeBuilder({ page })
+      .include('[data-testid="day-toggles"]')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+      .analyze();
+    await testInfo.attach(`${name}-day-controls-accessibility.json`, {
+      contentType: 'application/json',
+      body: Buffer.from(JSON.stringify(days.violations)),
+    });
+    expect(days.violations, `${name}: visible day controls`).toEqual([]);
+    await page.getByTestId('availability-week-summary').scrollIntoViewIfNeeded();
+  }
   const accessibility = await new AxeBuilder({ page })
     .include('[data-testid="onboarding-v2-shell"]')
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
@@ -113,7 +130,6 @@ export async function recordRepairEvidence(
   // CSS zoom 2 uses half the layout viewport for the reflow check below.
   const expectedMaximum = details.zoom === 2 ? 960 : 480;
   expect(box!.width).toBeLessThanOrEqual(Math.min(viewport.width, expectedMaximum) + 1);
-  const mapScreen = new URL(page.url()).pathname.endsWith('/WORK_AREA');
   const controls = mapScreen
     ? shell.locator('.pv-service-area-map button, [data-testid="service-area-locate"]')
     : shell.locator('[data-testid="day-toggles"] button, [data-testid="apply-to-selected"]');

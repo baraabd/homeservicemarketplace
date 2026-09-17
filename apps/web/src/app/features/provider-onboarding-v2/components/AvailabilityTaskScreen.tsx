@@ -290,7 +290,7 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
               // otherwise give this `button` a 1.5 ratio and a 500 weight.
               className={`min-h-[44px] min-w-[44px] rounded-pv-control border px-1.5 py-px text-pv-day font-normal leading-normal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent disabled:opacity-60 ${
                 on
-                  ? 'border-pv-accent bg-pv-accent text-white'
+                  ? 'border-pv-accent bg-pv-accent text-white dark:text-pv-bg'
                   : 'border-pv-border-strong bg-pv-surface text-pv-text'
               }`}
             >
