@@ -179,10 +179,19 @@ test('GPS, interactive red pin, applied hours and a short generated title surviv
       );
   await map.getByRole('button', { name: 'Zoom in', exact: true }).click();
   await expect.poll(tileZoom).toBe(14);
+  // New tiles can be created before the button's zoom animation finishes.
+  // Leaflet refuses touchstart while that animation is running. Wait for the
+  // real map pane to settle instead of sleeping or weakening the pinch check.
+  await expect(mapPane).not.toHaveClass(/leaflet-zoom-anim/);
+  await surface.scrollIntoViewIfNeeded();
+  const pinchBox = await surface.boundingBox();
+  expect(pinchBox).not.toBeNull();
+  const pinchX = pinchBox!.x + pinchBox!.width / 2;
+  const pinchY = pinchBox!.y + pinchBox!.height / 2;
   const beforePinch = await tileZoom();
   const fingers = (spread: number) => [
-    { x: centreX - spread, y: centreY, id: 1 },
-    { x: centreX + spread, y: centreY, id: 2 },
+    { x: pinchX - spread, y: pinchY, id: 1 },
+    { x: pinchX + spread, y: pinchY, id: 2 },
   ];
   await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: fingers(20) });
   for (const spread of [30, 40, 55, 70, 90]) {
@@ -287,6 +296,13 @@ async function enterServiceAndBio(
   await page.goto('/provider/onboarding/SERVICES_EXPERIENCE');
   await page.getByTestId(`specialty-choice-${trade!.id}`).click();
   await expect.poll(async () => (await draftOf(account)).data.headline).toBe(expectedTitle);
+  const selected = await draftOf(account);
+  expect(selected.data.primarySpecialtyId).toBe(trade!.id);
+  // Generating a presentation title must not approve the chosen specialty.
+  expect(selected.data.specialties?.find((item) => item.categoryId === trade!.id)?.state).toBe(
+    'PENDING',
+  );
+  expect(selected.data.specialtyLeafIds).not.toContain(trade!.id);
   await page.getByTestId('task-back-to-tasks').click();
   await page.goto('/provider/onboarding/PORTFOLIO');
   await page.getByTestId('bio-input').fill(bio);
@@ -398,7 +414,7 @@ for (const lang of ['en', 'ar'] as const) {
       await seedLanguage(page, lang);
       if (theme === 'dark') await chooseDarkTheme(page, lang);
       else await page.goto('/provider/onboarding');
-      for (const width of [320, 390, 768, 1024, 1440]) {
+      for (const width of [320, 390, 430, 768, 1024, 1440]) {
         await page.setViewportSize({ width, height: width < 640 ? 844 : 1024 });
         await navigateWithinApp(page, '/provider/onboarding/WORK_AREA');
         await expect(

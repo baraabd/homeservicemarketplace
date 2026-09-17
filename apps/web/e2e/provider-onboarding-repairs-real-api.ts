@@ -67,9 +67,14 @@ export async function navigateWithinApp(page: Page, path: string) {
 /** The existing Settings control owns theme; onboarding has no theme toggle. */
 export async function chooseDarkTheme(page: Page, lang: 'en' | 'ar') {
   await page.goto('/home/profile');
-  await page
+  // The profile menu entry has an icon; the location-permission notice has
+  // another Settings button without one. Select the menu, not an arbitrary
+  // first match, and keep strict uniqueness as an acceptance requirement.
+  const settings = page
     .getByRole('button', { name: lang === 'ar' ? 'الإعدادات' : 'Settings', exact: true })
-    .click();
+    .filter({ has: page.locator('svg') });
+  await expect(settings).toHaveCount(1);
+  await settings.click();
   const label = page.getByText(lang === 'ar' ? 'الوضع الليلي' : 'Dark Mode', { exact: true });
   await expect(label).toBeVisible();
   // This older settings button has no accessible name. Locate its actual
