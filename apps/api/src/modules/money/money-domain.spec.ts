@@ -47,8 +47,18 @@ describe('money domain', () => {
     expect(decideEntitlement({ key: 'requests.accept', active: true, enabled: true, limit: null, used: 999 })).toMatchObject({ allowed: true, limit: null });
   });
 
+  it('rejects invalid usage before any entitlement branch can grant or deny', () => {
+    expect(() => decideEntitlement({ key: 'requests.accept', active: false, enabled: true, limit: null, used: -1 })).toThrow('non-negative safe integers');
+    expect(() => decideEntitlement({ key: 'requests.accept', active: true, enabled: true, limit: null, used: Number.MAX_SAFE_INTEGER + 1 })).toThrow('non-negative safe integers');
+    expect(() => decideEntitlement({ key: 'requests.accept', active: true, enabled: false, limit: -1, used: 0 })).toThrow('non-negative safe integers');
+  });
+
   it('uses calendar periods without overflowing end-of-month', () => {
     expect(nextSubscriptionEnd(new Date('2026-01-31T12:00:00Z'), 'MONTHLY').toISOString()).toBe('2026-02-28T12:00:00.000Z');
     expect(nextSubscriptionEnd(new Date('2024-02-29T12:00:00Z'), 'ANNUAL').toISOString()).toBe('2025-02-28T12:00:00.000Z');
+  });
+
+  it('rejects invalid subscription dates instead of propagating Invalid Date', () => {
+    expect(() => nextSubscriptionEnd(new Date('not-a-date'), 'MONTHLY')).toThrow('Subscription start date must be valid');
   });
 });
