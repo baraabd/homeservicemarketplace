@@ -11,12 +11,12 @@ an independent reimplementation or implicit merge of that work.
 
 A fresh audit of the baseline reproduced the previous report:
 
-| Scope | Low | Moderate | High | Critical |
-| --- | ---: | ---: | ---: | ---: |
-| Full dependency tree, before | 6 | 29 | 36 | 1 |
-| Production dependency tree, before | 0 | 2 | 0 | 0 |
-| Full dependency tree, after resolution | 0 | 0 | 0 | 0 |
-| Production dependency tree, after resolution | 0 | 0 | 0 | 0 |
+| Scope                                        | Low | Moderate | High | Critical |
+| -------------------------------------------- | --: | -------: | ---: | -------: |
+| Full dependency tree, before                 |   6 |       29 |   36 |        1 |
+| Production dependency tree, before           |   0 |        2 |    0 |        0 |
+| Full dependency tree, after resolution       |   0 |        0 |    0 |        0 |
+| Production dependency tree, after resolution |   0 |        0 |    0 |        0 |
 
 These are audit metadata counts, not a count of distinct CVEs. The baseline
 contains 70 advisory records affecting 18 package families. Both after reports
@@ -36,27 +36,27 @@ restricted to the vulnerable version ranges of the installed major/minor family;
 no arbitrary global major upgrade or `audit --fix --force` was used. Existing
 `ws` and `multer` overrides are preserved.
 
-| Package family | Baseline installed version(s) | Selected patched version |
-| --- | --- | --- |
-| Vite | 6.3.5 | 6.4.3 |
-| Vitest and its linked mocker/runner packages | 4.1.4 | 4.1.11 |
-| Turbo and platform binaries | 2.8.19 | 2.9.14 |
-| `@babel/core` | 7.29.0 | 7.29.6 |
-| `@humanfs/node` | 0.16.7 | 0.16.8 |
-| `ajv` 8.x | 8.17.1 | 8.18.0 |
-| `baseline-browser-mapping` | 2.10.8 | 2.11.0 |
-| `brace-expansion` 1.x | 1.1.12 | 1.1.18 |
-| `brace-expansion` 5.x | 5.0.4 | 5.0.9 |
-| `browserslist` | 4.28.1 | 4.28.7 |
-| `fast-uri` 3.x | 3.1.0 | 3.1.6 |
-| `js-yaml` 3.x | 3.14.2 | 3.15.2 |
-| `js-yaml` 4.x | 4.1.1 | 4.3.2 |
-| `nanoid` 3.x | 3.3.11 | 3.3.18 |
-| `picomatch` 4.x | 4.0.2 / 4.0.3 | 4.0.4 |
-| `postcss` 8.x | 8.5.8 | 8.5.23 |
-| `qs` 6.x | 6.15.3 | 6.16.0 |
-| `tar` 7.x | 7.5.11 | 7.5.21 |
-| `undici` 7.x | 7.25.0 | 7.29.0 |
+| Package family                               | Baseline installed version(s) | Selected patched version |
+| -------------------------------------------- | ----------------------------- | ------------------------ |
+| Vite                                         | 6.3.5                         | 6.4.3                    |
+| Vitest and its linked mocker/runner packages | 4.1.4                         | 4.1.11                   |
+| Turbo and platform binaries                  | 2.8.19                        | 2.9.14                   |
+| `@babel/core`                                | 7.29.0                        | 7.29.6                   |
+| `@humanfs/node`                              | 0.16.7                        | 0.16.8                   |
+| `ajv` 8.x                                    | 8.17.1                        | 8.18.0                   |
+| `baseline-browser-mapping`                   | 2.10.8                        | 2.11.0                   |
+| `brace-expansion` 1.x                        | 1.1.12                        | 1.1.18                   |
+| `brace-expansion` 5.x                        | 5.0.4                         | 5.0.9                    |
+| `browserslist`                               | 4.28.1                        | 4.28.7                   |
+| `fast-uri` 3.x                               | 3.1.0                         | 3.1.6                    |
+| `js-yaml` 3.x                                | 3.14.2                        | 3.15.2                   |
+| `js-yaml` 4.x                                | 4.1.1                         | 4.3.2                    |
+| `nanoid` 3.x                                 | 3.3.11                        | 3.3.18                   |
+| `picomatch` 4.x                              | 4.0.2 / 4.0.3                 | 4.0.4                    |
+| `postcss` 8.x                                | 8.5.8                         | 8.5.23                   |
+| `qs` 6.x                                     | 6.15.3                        | 6.16.0                   |
+| `tar` 7.x                                    | 7.5.11                        | 7.5.21                   |
+| `undici` 7.x                                 | 7.25.0                        | 7.29.0                   |
 
 Each exact target was verified against its npm registry metadata before
 resolution: name/version, non-deprecated status, integrity, engines, exports,
