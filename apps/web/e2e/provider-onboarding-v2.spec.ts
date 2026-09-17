@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { APPLYING_CAPABILITIES } from '../src/test-support/provider-capability-fixtures';
+
 import {
   expectNoHorizontalPageOverflow,
   expectVisibleFocusIndicator,
@@ -159,6 +161,7 @@ async function stubProvider(
       '/me/provider/onboarding/hub': hub,
       '/me/provider/onboarding/draft': over.draft ?? DRAFT_VIEW,
       '/me/provider/profile': over.profile ?? DRAFT_PROFILE,
+      '/me/provider/capabilities': APPLYING_CAPABILITIES,
     },
   });
 }
@@ -271,10 +274,14 @@ test.describe('onboarding v2 — the full-screen shell', () => {
     await expect(page.getByTestId('provider-bottom-nav')).toHaveCount(0);
   });
 
-  test('the close control returns to the provider surface', async ({ page }) => {
+  test('the close control exits to app selection without opening the workspace', async ({
+    page,
+  }) => {
     await openHub(page);
     await page.getByTestId('onboarding-v2-close').click();
-    await expect(page).toHaveURL(/\/provider\/status$/);
+    await expect(page).toHaveURL(/\/select$/);
+    await expect(page.getByTestId('hub-task-list')).toHaveCount(0);
+    await expect(page.getByTestId('provider-bottom-nav')).toHaveCount(0);
   });
 });
 
@@ -347,6 +354,36 @@ test.describe('onboarding v2 — keyboard', () => {
 });
 
 test.describe('onboarding v2 — resume', () => {
+  for (const entry of ['/provider', '/provider/jobs', '/provider/profile']) {
+    test(`incomplete legacy ACTIVE profile enters onboarding from ${entry} and after reload`, async ({
+      page,
+    }) => {
+      const marketplaceCalls: string[] = [];
+      page.on('request', (request) => {
+        if (/\/v1\/provider\/(available-requests|bids)/.test(request.url())) {
+          marketplaceCalls.push(request.url());
+        }
+      });
+      await seedFlag(page, true);
+      await seedLanguage(page, 'en');
+      await stubProvider(page, HUB, {
+        profile: { profile: { ...DRAFT_PROFILE.profile, status: 'ACTIVE' } },
+      });
+
+      await page.goto(entry);
+      await expect(page).toHaveURL(/\/provider\/onboarding$/);
+      await expect(page.getByTestId('hub-task-list')).toBeVisible();
+      await expect(page.getByTestId('provider-bottom-nav')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /continue onboarding/i })).toHaveCount(0);
+
+      await page.reload();
+      await expect(page.getByTestId('hub-task-list')).toBeVisible();
+      await expect(page).toHaveURL(/\/provider\/onboarding$/);
+      await expect(page.getByTestId('provider-bottom-nav')).toHaveCount(0);
+      expect(marketplaceCalls).toEqual([]);
+    });
+  }
+
   test('the CTA opens the task the server named', async ({ page }) => {
     await openHub(page);
     await page.getByRole('button', { name: 'Start: Basics' }).click();

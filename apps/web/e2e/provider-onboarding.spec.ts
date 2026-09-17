@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { APPLYING_CAPABILITIES } from '../src/test-support/provider-capability-fixtures';
+
 import {
   expectContainedInParent,
   expectLegible,
@@ -273,6 +275,7 @@ async function openWizard(
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
     if (url.includes('/auth/me')) return json(PROVIDER_ME);
+    if (url.includes('/me/provider/capabilities')) return json(APPLYING_CAPABILITIES);
     if (url.includes('/me/provider/profile')) return json(DRAFT_PROFILE);
     if (url.includes('/services/equipment')) return json(EQUIPMENT);
     if (url.endsWith('/v1/services')) return json(CATEGORIES);
@@ -570,6 +573,7 @@ test.describe('Provider onboarding wizard — offline and errors', () => {
         route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
       if (url.includes('/auth/me')) return json(PROVIDER_ME);
+      if (url.includes('/me/provider/capabilities')) return json(APPLYING_CAPABILITIES);
       if (url.includes('/me/provider/profile')) return json(DRAFT_PROFILE);
       if (url.includes('/services/equipment')) return json(EQUIPMENT);
       if (url.endsWith('/v1/services')) return json(CATEGORIES);
@@ -598,6 +602,7 @@ test.describe('Provider onboarding wizard — offline and errors', () => {
         route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
       if (url.includes('/auth/me')) return json(PROVIDER_ME);
+      if (url.includes('/me/provider/capabilities')) return json(APPLYING_CAPABILITIES);
       if (url.includes('/me/provider/profile')) return json(DRAFT_PROFILE);
       if (url.includes('/services/equipment')) return json({ items: [] });
       if (url.endsWith('/v1/services')) return json({ items: [] });

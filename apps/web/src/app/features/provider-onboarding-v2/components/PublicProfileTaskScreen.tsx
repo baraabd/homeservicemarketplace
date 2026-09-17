@@ -3,6 +3,7 @@ import { PortfolioImage } from '../../../components/provider/portfolio/Portfolio
 import { AlertTriangle, Clock, ImagePlus, Paintbrush } from 'lucide-react';
 import {
   PROVIDER_PORTFOLIO_CONTENT_TYPES,
+  TITLE_MAX_LENGTH,
   type ProviderOnboardingDraftView,
 } from '@homeservicemarketplace/contracts';
 
@@ -31,6 +32,7 @@ import {
   ProviderErrorState,
   ProviderSkeleton,
   ProviderTextArea,
+  ProviderTextInput,
 } from '../../provider-ui';
 
 // Sprint 9B.23 — V2 Task 5: the public profile, and the work behind it.
@@ -99,6 +101,21 @@ export function PublicProfileTaskScreen({
 
   const data = view.data;
   const [bio, setBio] = useState(data.bio ?? '');
+  const [headline, setHeadline] = useState(data.headline ?? '');
+  const headlineIssue = view.missing.find((issue) => issue.field === 'headline');
+  // Once opened, keep the recovery input mounted through autosave responses.
+  // Otherwise the first valid response removes the focused field mid-typing.
+  const [repairHeadline, setRepairHeadline] = useState(Boolean(headlineIssue));
+  if (headlineIssue && !repairHeadline) setRepairHeadline(true);
+  const titleError =
+    headline.trim().length === 0
+      ? copy.titleRefusal.EMPTY
+      : data.minHeadlineLength !== undefined && headline.trim().length < data.minHeadlineLength
+        ? copy.titleTooShort(String(data.minHeadlineLength))
+        : undefined;
+  const commitHeadline = (next: string) => {
+    autosave.save({ headline: next.trim() || null });
+  };
 
   /**
    * Never write an empty bio as a value the server must interpret.
@@ -112,8 +129,8 @@ export function PublicProfileTaskScreen({
     autosave.save({ bio: trimmed === '' ? null : trimmed });
   };
 
-  /** What a customer reads first. Server-owned; never edited here. */
-  const publicTitle = data.suggestedTitle?.[lang] ?? data.headline ?? '';
+  /** A saved title is the public fact; a suggestion is only its fallback. */
+  const publicTitle = data.headline ?? data.suggestedTitle?.[lang] ?? '';
 
   /**
    * The preview line, composed from the draft and from nothing else.
@@ -227,6 +244,24 @@ export function PublicProfileTaskScreen({
   if (part === 'profile') {
     return (
       <div className="flex flex-col gap-[18px]" data-testid="public-profile-task">
+        {repairHeadline ? (
+          <ProviderTextInput
+            label={copy.titleLabel}
+            hint={copy.titleRecoveryHint}
+            error={titleError}
+            placeholder={copy.titlePlaceholder}
+            maxLength={TITLE_MAX_LENGTH}
+            value={headline}
+            disabled={!editable}
+            data-testid="headline-recovery-input"
+            data-review-field="headline"
+            onChange={(event) => {
+              setHeadline(event.target.value);
+              commitHeadline(event.target.value);
+            }}
+            onBlur={() => commitHeadline(headline)}
+          />
+        ) : null}
         <ProviderTextArea
           label={copy.bioApprovedLabel}
           hint={copy.bioApprovedHint}
@@ -254,6 +289,14 @@ export function PublicProfileTaskScreen({
           }}
           onBlur={() => commitBio(bio)}
         />
+        {headlineIssue ? (
+          <p
+            className="text-pv-help leading-pv-help text-pv-muted"
+            data-testid="profile-completion-hint"
+          >
+            {copy.completionHint}
+          </p>
+        ) : null}
 
         {/* `.hsm-panel`: what a customer will actually read, composed from what
             the provider has already told the server. Nothing here is a second
@@ -270,7 +313,7 @@ export function PublicProfileTaskScreen({
                 inherits that — the title is emphasis within a quiet block, not
                 a heading in its own right. */}
             <strong className="font-medium" data-testid="preview-title">
-              {publicTitle}
+              <bdi dir="auto">{publicTitle || copy.previewMissingTitle}</bdi>
             </strong>
             {previewLine ? (
               <>
@@ -287,6 +330,12 @@ export function PublicProfileTaskScreen({
   // ── Screen 9: the portfolio ──────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-[18px]" data-testid="portfolio-section">
+      <p
+        className="text-pv-help leading-pv-help text-pv-muted"
+        data-testid="portfolio-optional-hint"
+      >
+        {copy.portfolioOptional}
+      </p>
       {/* `.hsm-upload`, the same surface the photo on Basics uses — with a
           second line here, because this screen can crop and reorder where the
           avatar cannot. One `accept={PROVIDER_PORTFOLIO_CONTENT_TYPES.join(',')}` input with no `capture`, which
@@ -494,14 +543,16 @@ export function PublicProfileTaskScreen({
         </p>
       ) : null}
 
-      <OnboardingAlert
-        tone="waiting"
-        icon={Clock}
-        title={copy.photosCheckingTitle}
-        body={copy.photosCheckingBody}
-        density="compact"
-        data-testid="portfolio-moderation-notice"
-      />
+      {items.some((item) => item.moderationState === 'PENDING') ? (
+        <OnboardingAlert
+          tone="waiting"
+          icon={Clock}
+          title={copy.photosCheckingTitle}
+          body={copy.photosCheckingBody}
+          density="compact"
+          data-testid="portfolio-moderation-notice"
+        />
+      ) : null}
     </div>
   );
 }

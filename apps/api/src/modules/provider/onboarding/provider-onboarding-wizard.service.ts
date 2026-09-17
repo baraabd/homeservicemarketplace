@@ -70,6 +70,7 @@ import {
   moderationIssues,
   providerActionIssues,
   MIN_BIO_LENGTH,
+  MIN_HEADLINE_LENGTH,
   yearsSince,
   type OnboardingCandidate,
 } from './provider-onboarding.policy';
@@ -1423,6 +1424,7 @@ export class ProviderOnboardingWizardService {
       // The policy's own constant, never a duplicate: if the rule changes, the
       // screen that explains it changes with it.
       minBioLength: MIN_BIO_LENGTH,
+      minHeadlineLength: MIN_HEADLINE_LENGTH,
       radiusPolicy: ctx.radiusPolicy,
       // Sprint 9B.20 — the reward card, decided entirely on the server. The
       // client renders what is here and asks no questions of its own: an
@@ -1490,7 +1492,10 @@ export class ProviderOnboardingWizardService {
       bio: p.bio,
       phoneNumber: p.phoneNumber,
       serviceAreaCity: p.serviceAreaCity,
-      serviceAreaCountry: p.serviceAreaCountry,
+      // V2 chooses a registry code and does not write the legacy display name.
+      // Read the same canonical answer that LOCATION and market eligibility
+      // validate, retaining the display-name fallback for legacy profiles.
+      serviceAreaCountry: p.serviceAreaCountryCode ?? p.serviceAreaCountry,
       serviceAreaRadiusKm: p.serviceAreaRadiusKm,
       serviceCategoryCount: p.serviceCategories.length,
       emailVerified: ctx.emailVerified,

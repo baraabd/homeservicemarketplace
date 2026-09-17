@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { WORKING_CAPABILITIES } from '../src/test-support/provider-capability-fixtures';
+
 import {
   expectContainedInParent,
   expectLegible,
@@ -127,6 +129,7 @@ async function openPortfolio(
       route.fulfill({ status: s, contentType: 'application/json', body: JSON.stringify(body) });
 
     if (url.includes('/auth/me')) return json(PROVIDER_ME);
+    if (url.includes('/me/provider/capabilities')) return json(WORKING_CAPABILITIES);
     if (url.includes('/me/provider/portfolio/reorder')) {
       options.onReorder?.(JSON.parse(route.request().postData() ?? '{}').itemIds ?? []);
       return json({ items, remainingSlots: options.remainingSlots ?? 11, maxItems: 12 });

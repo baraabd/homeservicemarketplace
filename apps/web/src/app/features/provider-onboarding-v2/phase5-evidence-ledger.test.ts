@@ -9,6 +9,9 @@ import {
   CANONICAL_VIEWPORT,
   SCREEN_STATES,
   TASK_SCREENS,
+  ONBOARDING_REPAIR_REVISION,
+  REVISED_PRESENTATION_STATES,
+  revisionChecks,
   axeIsClean,
   canonicalCellEvidence,
   canonicalCellPasses,
@@ -250,6 +253,162 @@ describe('the ledger refuses forged VISUAL evidence', () => {
     );
 
     expect(canonicalCellPasses(canonicalCellEvidence(root, STATE_BASICS, 'en'))).toBe(false);
+  });
+});
+
+describe('the scoped user repair requires measured revised presentation evidence', () => {
+  function revisedCell(stateId: number, differingPixels = Math.ceil(CANONICAL_PIXELS * 0.02)) {
+    const state = PHASE5_STATES.find((candidate) => candidate.id === stateId)!;
+    const dir = join(root, state.slug, 'en', '390');
+    mkdirSync(dir, { recursive: true });
+    writeHonestCell(dir, differingPixels, { stateId });
+    const proof = {
+      revision: ONBOARDING_REPAIR_REVISION,
+      stateId,
+      locale: 'en',
+      route: state.route,
+      runId: 'run-honest',
+      viewport: CANONICAL_VIEWPORT,
+      lang: 'en',
+      dir: 'ltr',
+      documentWidth: 390,
+      shell: { x: 0, y: 0, width: 390, height: 844 },
+      main: { x: 0, y: 72, width: 390, height: 660 },
+      footer: { x: 0, y: 732, width: 390, height: 112 },
+      elements: revisionChecks(stateId, 'en').map((check) => ({
+        key: check.key,
+        texts: check.texts ? [...check.texts] : Array(check.count).fill(''),
+        rects: Array.from({ length: check.count }, () => ({
+          x: 16,
+          y: 120,
+          width: Math.max(44, check.minWidth),
+          height: Math.max(44, check.minHeight),
+        })),
+      })),
+    };
+    const write = () => writeFileSync(join(dir, 'revision.json'), JSON.stringify(proof));
+    write();
+    return {
+      state,
+      dir,
+      proof,
+      write,
+      passes: () => canonicalCellPasses(canonicalCellEvidence(root, state, 'en')),
+    };
+  }
+
+  it('pins the revision to exactly the four user-requested states', () => {
+    expect(REVISED_PRESENTATION_STATES).toEqual([6, 7, 8, 9]);
+    expect(
+      PHASE5_STATES.filter((state) => revisionChecks(state.id, 'en').length).map(
+        (state) => state.id,
+      ),
+    ).toEqual([6, 7, 8, 9]);
+  });
+
+  it.each([6, 7, 8, 9])(
+    'accepts honest revised state %i without claiming prototype parity',
+    (id) => {
+      const candidate = revisedCell(id);
+      const evidence = canonicalCellEvidence(root, candidate.state, 'en');
+      expect(evidence.recomputedRatio).toBeGreaterThan(0.005);
+      expect(evidence.revisedPresentationAccepted).toBe(true);
+      expect(evidence.problems).toEqual([]);
+      expect(candidate.passes()).toBe(true);
+    },
+  );
+
+  it.each([6, 7, 8, 9])(
+    'requires revision evidence for state %i even with a zero pixel diff',
+    (id) => {
+      const candidate = revisedCell(id, 0);
+      rmSync(join(candidate.dir, 'revision.json'));
+      expect(candidate.passes()).toBe(false);
+    },
+  );
+
+  it.each(['{}', 'null', '[]', '{'])(
+    'rejects malformed or empty revision evidence: %s',
+    (value) => {
+      const candidate = revisedCell(6);
+      writeFileSync(join(candidate.dir, 'revision.json'), value);
+      expect(candidate.passes()).toBe(false);
+    },
+  );
+
+  it.each([
+    ['runId', 'stale-run'],
+    ['stateId', 7],
+    ['locale', 'ar'],
+    ['route', '/wrong-route'],
+    ['revision', 'arbitrary-exemption'],
+    ['lang', 'ar'],
+    ['dir', 'rtl'],
+    ['documentWidth', 400],
+    ['viewport', { width: 390, height: 845 }],
+  ])('rejects incorrect revision %s', (field, value) => {
+    const candidate = revisedCell(6);
+    Object.assign(candidate.proof, { [field as string]: value });
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it.each([6, 7, 8, 9])('rejects missing required observations for state %i', (id) => {
+    const candidate = revisedCell(id);
+    candidate.proof.elements.pop();
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it('rejects an incomplete week and a plausible but wrong hour', () => {
+    const candidate = revisedCell(7);
+    candidate.proof.elements.find((element) => element.key === 'day-0')!.texts = [
+      'Sunday 02:00–17:00',
+    ];
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it('rejects the suggested title when the stored title should be shown', () => {
+    const candidate = revisedCell(8);
+    candidate.proof.elements[0]!.texts = ['Painter'];
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it('rejects a duplicate observation, a clipped control and a footer overlap', () => {
+    const candidate = revisedCell(6);
+    candidate.proof.elements.push(candidate.proof.elements[0]!);
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+    candidate.proof.elements.pop();
+    candidate.proof.elements[0]!.rects[0]!.x = -20;
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+    candidate.proof.elements[0]!.rects[0]!.x = 16;
+    candidate.proof.footer.y = 700;
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it('retains image integrity checks for revised cells', () => {
+    const candidate = revisedCell(6);
+    writeHonestCell(candidate.dir, Math.ceil(CANONICAL_PIXELS * 0.02), {
+      stateId: 6,
+      diffPixelRatio: 0,
+    });
+    expect(candidate.passes()).toBe(false);
+    writeHonestCell(candidate.dir, Math.ceil(CANONICAL_PIXELS * 0.02), { stateId: 6 });
+    writeFileSync(join(candidate.dir, 'diff.png'), canonicalPng([255, 255, 255]));
+    expect(candidate.passes()).toBe(false);
+    writeHonestCell(candidate.dir, Math.ceil(CANONICAL_PIXELS * 0.02), { stateId: 6 });
+    writeFileSync(join(candidate.dir, 'actual.png'), REAL_PNG);
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it('cannot use a revision artifact to exempt an unrelated screen', () => {
+    const candidate = revisedCell(3);
+    expect(candidate.passes()).toBe(false);
   });
 });
 

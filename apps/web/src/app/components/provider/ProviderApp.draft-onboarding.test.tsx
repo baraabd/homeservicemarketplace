@@ -1,3 +1,4 @@
+import { APPLYING_CAPABILITIES } from '../../../test-support/provider-capability-fixtures';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -151,6 +152,7 @@ function renderProvider() {
 
 /** Answer the calls the shell makes, with a DRAFT profile. */
 function mockDraftProvider() {
+  mock.onGet('/v1/me/provider/capabilities').reply(200, APPLYING_CAPABILITIES);
   mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
   mock.onGet('/v1/me/provider/profile').reply(200, { profile: DRAFT_PROFILE });
   // Marketplace endpoints answer 403 exactly as the server does for a

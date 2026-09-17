@@ -67,6 +67,14 @@ export interface AvailabilityCopy {
 
   // Summary
   summaryLegend: string;
+  summaryDay: string;
+  summaryHours: string;
+  unappliedChanges: string;
+  appliedSaving: string;
+  appliedSaved: string;
+  appliedFailed: string;
+  appliedOffline: string;
+  summaryPending: string;
   summaryTotals: (days: number, hours: string) => string;
   summaryEmpty: string;
   unavailable: string;
@@ -109,10 +117,11 @@ export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
         : `This will change ${count} days you have already set`,
     discardLine: (day, from, to) => `${day}: ${from} becomes ${to}`,
     discardSecondWindow: (day) =>
-      `${day}: a second time range will be removed — this screen can only hold one per day`,
+      `${day}: the extra time ranges will be replaced by the hours selected above`,
     discardConfirm: 'Apply these hours',
     discardCancel: 'Leave them as they are',
-    unavailableHint: 'Disables days without deleting saved time ranges.',
+    unavailableHint:
+      'Applying removes the working hours on the selected days. Other days stay unchanged.',
     heading: 'Working hours',
     intro: 'Tell us when you can take jobs. You can change this any time.',
 
@@ -136,7 +145,15 @@ export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
       count === 1 ? 'Apply to 1 selected day' : `Apply to ${count} selected days`,
     applyDisabledHint: 'Select at least one day.',
 
-    summaryLegend: 'Your week',
+    summaryLegend: 'Your weekly schedule',
+    summaryDay: 'Day',
+    summaryHours: 'Working hours',
+    unappliedChanges: 'Your selection has changed. Apply it to update the schedule below.',
+    appliedSaving: 'Hours applied. Saving your schedule…',
+    appliedSaved: 'Working hours applied and saved.',
+    appliedFailed: 'These working hours have not been saved.',
+    appliedOffline: 'Offline — keep this page open to save your working hours.',
+    summaryPending: 'The schedule below includes changes that are not saved yet.',
     summaryTotals: (days, hours) =>
       `${days === 1 ? '1 day' : `${days} days`} · ${hours} hours a week`,
     summaryEmpty: 'No hours set yet.',
@@ -176,11 +193,10 @@ export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
         ? 'سيغيّر هذا يوماً واحداً سبق أن حددته'
         : `سيغيّر هذا ${count} أيام سبق أن حددتها`,
     discardLine: (day, from, to) => `${day}: ${from} تصبح ${to}`,
-    discardSecondWindow: (day) =>
-      `${day}: ستُحذف فترة زمنية ثانية — هذه الشاشة تعرض فترة واحدة لكل يوم`,
+    discardSecondWindow: (day) => `${day}: ستُستبدل الفترات الإضافية بالساعات التي حددتها أعلاه`,
     discardConfirm: 'طبّق هذه الساعات',
     discardCancel: 'اتركها كما هي',
-    unavailableHint: 'يعطّل الأيام من دون حذف الفترات المحفوظة.',
+    unavailableHint: 'عند التطبيق تُحذف ساعات العمل من الأيام المحددة، وتبقى الأيام الأخرى كما هي.',
     heading: 'ساعات العمل',
     intro: 'أخبرنا متى يمكنك قبول الأعمال. يمكنك تغيير ذلك في أي وقت.',
 
@@ -203,7 +219,15 @@ export const AVAILABILITY_COPY: Record<Lang, AvailabilityCopy> = {
       count === 1 ? 'تطبيق على يوم واحد محدد' : `تطبيق على ${count} أيام محددة`,
     applyDisabledHint: 'اختر يوماً واحداً على الأقل.',
 
-    summaryLegend: 'أسبوعك',
+    summaryLegend: 'جدول ساعاتك الأسبوعي',
+    summaryDay: 'اليوم',
+    summaryHours: 'ساعات العمل',
+    unappliedChanges: 'غيّرت اختيارك. اضغط على تطبيق لتحديث الجدول أدناه.',
+    appliedSaving: 'تم تطبيق الساعات. جارٍ حفظ الجدول…',
+    appliedSaved: 'تم تطبيق ساعات العمل وحفظها.',
+    appliedFailed: 'لم تُحفظ ساعات العمل هذه بعد.',
+    appliedOffline: 'أنت غير متصل. أبقِ الصفحة مفتوحة لحفظ ساعات العمل.',
+    summaryPending: 'يتضمن الجدول أدناه تغييرات لم تُحفظ بعد.',
     summaryTotals: (days, hours) =>
       `${days === 1 ? 'يوم واحد' : `${days} أيام`} · ${hours} ساعة أسبوعياً`,
     summaryEmpty: 'لم تُحدَّد أي ساعات بعد.',

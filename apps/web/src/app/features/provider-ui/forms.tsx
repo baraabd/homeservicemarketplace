@@ -293,7 +293,7 @@ export function ProviderChoiceToggle({
       <span
         aria-hidden="true"
         className={`grid h-5 w-5 place-items-center rounded-sm border-[1.5px] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-pv-accent ${
-          checked ? 'border-pv-accent bg-pv-accent text-white' : 'border-pv-border-strong'
+          checked ? 'border-pv-accent bg-pv-accent text-white dark:text-pv-bg' : 'border-pv-border-strong'
         }`}
       >
         {checked ? <Check size={14} strokeWidth={1.8} /> : null}

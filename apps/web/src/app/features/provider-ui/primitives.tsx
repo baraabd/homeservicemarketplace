@@ -33,15 +33,17 @@ export function ProviderContainer({
 // actions, and under `box-sizing: border-box` a button WITHOUT one is 2px
 // taller inside than a button with one — so omitting it on the primary made
 // its label sit a pixel off the secondary beside it.
+// Dark accent fills are light; white text on them fails normal-text contrast.
+// Reuse the dark background token as the foreground, preserving disabled copy.
 const BUTTON_TONE = {
   primary:
-    'border border-pv-accent bg-pv-accent text-white hover:bg-pv-accent-hover disabled:border-pv-border-strong disabled:bg-pv-border-strong disabled:text-pv-muted',
+    'border border-pv-accent bg-pv-accent text-white dark:text-pv-bg hover:bg-pv-accent-hover disabled:border-pv-border-strong disabled:bg-pv-border-strong disabled:text-pv-muted dark:disabled:text-pv-muted',
   secondary:
     'bg-pv-surface text-pv-text border border-pv-border-strong hover:bg-pv-surface-sunken disabled:text-pv-muted',
   ghost:
     'border border-transparent bg-transparent text-pv-accent hover:bg-pv-accent-subtle disabled:text-pv-muted',
   danger:
-    'border border-pv-danger bg-pv-danger text-white hover:opacity-90 disabled:border-pv-border-strong disabled:bg-pv-border-strong',
+    'border border-pv-danger bg-pv-danger text-white dark:text-pv-bg hover:opacity-90 disabled:border-pv-border-strong disabled:bg-pv-border-strong disabled:text-pv-muted dark:disabled:text-pv-muted',
 } as const;
 
 /**
