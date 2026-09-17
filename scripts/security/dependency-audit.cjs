@@ -21,7 +21,9 @@ function validateReport(text, status) {
   const counts = report.metadata.vulnerabilities;
   if (
     !isObject(counts) ||
-    SEVERITIES.some((severity) => !Number.isSafeInteger(counts[severity]) || counts[severity] < 0) ||
+    SEVERITIES.some(
+      (severity) => !Number.isSafeInteger(counts[severity]) || counts[severity] < 0,
+    ) ||
     Object.keys(counts).some((severity) => !SEVERITIES.includes(severity)) ||
     !Number.isSafeInteger(report.metadata.totalDependencies) ||
     report.metadata.totalDependencies <= 0 ||
@@ -32,7 +34,10 @@ function validateReport(text, status) {
   if (report.muted !== undefined && (!Array.isArray(report.muted) || report.muted.length > 0)) {
     throw new Error('Muted advisories are not allowed by the zero-finding policy.');
   }
-  if (Object.values(counts).some((count) => count !== 0) || Object.keys(report.advisories).length > 0) {
+  if (
+    Object.values(counts).some((count) => count !== 0) ||
+    Object.keys(report.advisories).length > 0
+  ) {
     throw new Error(`Dependency vulnerabilities remain: ${JSON.stringify(counts)}`);
   }
   if (status !== 0) {
@@ -50,8 +55,17 @@ function assertNoExceptions(root) {
   for (const filename of ['pnpm-workspace.yaml', '.npmrc']) {
     const file = path.join(root, filename);
     if (!fs.existsSync(file)) continue;
-    const active = fs.readFileSync(file, 'utf8').split(/\r?\n/).filter((line) => !/^\s*[#;]/.test(line));
-    if (active.some((line) => /^\s*["']?(?:auditConfig|audit-config|ignoreCves|ignoreGhsas|ignoreAdvisories|ignoreUnfixable|ignoreRegistryErrors)["']?\s*[:=]/i.test(line))) {
+    const active = fs
+      .readFileSync(file, 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => !/^\s*[#;]/.test(line));
+    if (
+      active.some((line) =>
+        /^\s*["']?(?:auditConfig|audit-config|ignoreCves|ignoreGhsas|ignoreAdvisories|ignoreUnfixable|ignoreRegistryErrors)["']?\s*[:=]/i.test(
+          line,
+        ),
+      )
+    ) {
       throw new Error(`Audit exclusions are not permitted in ${filename}.`);
     }
   }
@@ -86,10 +100,14 @@ function parseArgs(args) {
   let output;
   for (let i = 0; i < args.length; i += 1) {
     if (args[i] === '--prod') production = true;
-    else if (args[i] === '--output' && args[i + 1] && !args[i + 1].startsWith('--')) output = args[++i];
+    else if (args[i] === '--output' && args[i + 1] && !args[i + 1].startsWith('--'))
+      output = args[++i];
     else throw new Error('Usage: dependency-audit.cjs [--prod] [--output report.json]');
   }
-  return { production, output: output ?? (production ? 'audit-production.json' : 'audit-full.json') };
+  return {
+    production,
+    output: output ?? (production ? 'audit-production.json' : 'audit-full.json'),
+  };
 }
 
 if (require.main === module) {
@@ -97,7 +115,9 @@ if (require.main === module) {
     const options = parseArgs(process.argv.slice(2));
     const root = path.resolve(__dirname, '../..');
     const report = runAudit({ ...options, root, output: path.resolve(root, options.output) });
-    console.log(`${options.production ? 'Production' : 'Full-tree'} audit: ${JSON.stringify(report.metadata.vulnerabilities)}`);
+    console.log(
+      `${options.production ? 'Production' : 'Full-tree'} audit: ${JSON.stringify(report.metadata.vulnerabilities)}`,
+    );
   } catch (error) {
     console.error(error instanceof Error ? error.message : 'Dependency audit failed.');
     process.exitCode = 1;
