@@ -69,9 +69,6 @@ jobs:
                     if-no-files-found: error
 
           '''
-          # The first line already has the intended indentation. Remove the
-          # Python heredoc's extra ten spaces from the remaining YAML lines.
-          replacement = '\n'.join(line[10:] if line.startswith('          ') else line for line in replacement.split('\n'))
           p.write_text(text[:text.index(start)] + replacement + text[text.index(end):])
           PY
       - name: Install audited lockfile and format only changed acceptance files
