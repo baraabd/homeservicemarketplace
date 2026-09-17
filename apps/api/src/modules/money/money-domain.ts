@@ -37,15 +37,18 @@ export function assertBalancedLedger(entries: readonly LedgerEntryContract[]): v
 }
 
 export function decideEntitlement(input: { key: string; active: boolean; enabled: boolean; limit: number | null; used: number }): EntitlementDecision {
+  if (!Number.isSafeInteger(input.used) || input.used < 0 || (input.limit !== null && (!Number.isSafeInteger(input.limit) || input.limit < 0))) {
+    throw new MoneyDomainError('INVALID_USAGE', 'Entitlement usage and limit must be non-negative safe integers');
+  }
   if (!input.active) return { allowed: false, key: input.key, limit: input.limit, used: input.used, remaining: null, reason: 'NO_ACTIVE_SUBSCRIPTION' };
   if (!input.enabled) return { allowed: false, key: input.key, limit: input.limit, used: input.used, remaining: null, reason: 'NOT_INCLUDED' };
   if (input.limit === null) return { allowed: true, key: input.key, limit: null, used: input.used, remaining: null };
-  if (!Number.isSafeInteger(input.limit) || input.limit < 0 || !Number.isSafeInteger(input.used) || input.used < 0) throw new MoneyDomainError('INVALID_USAGE', 'Entitlement usage and limit must be non-negative safe integers');
   const remaining = Math.max(0, input.limit - input.used);
   return input.used < input.limit ? { allowed: true, key: input.key, limit: input.limit, used: input.used, remaining } : { allowed: false, key: input.key, limit: input.limit, used: input.used, remaining: 0, reason: 'LIMIT_REACHED' };
 }
 
 export function nextSubscriptionEnd(start: Date, interval: 'MONTHLY' | 'ANNUAL'): Date {
+  if (!Number.isFinite(start.getTime())) throw new MoneyDomainError('INVALID_DATE', 'Subscription start date must be valid');
   const end = new Date(start.getTime());
   const originalDay = end.getUTCDate();
   end.setUTCDate(1);
