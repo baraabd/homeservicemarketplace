@@ -997,6 +997,8 @@ enum AuditEventType {
   VERIFICATION_EVIDENCE_SCAN_FAILED
   /// WE refused the file: disallowed, malformed, truncated or mislabelled.
   VERIFICATION_EVIDENCE_REJECTED
+  /// Sprint 12B: content-free retention lifecycle audit.
+  VERIFICATION_EVIDENCE_RETENTION
   // Sprint 9B.5 — case workflow. Submission and assignment are not decisions
   // (nobody judged anything), so they are audit events only; requestAction
   // additionally writes a VerificationDecision.
@@ -1956,6 +1958,8 @@ model MediaAsset {
   /// would produce rows claiming a deletion that did not happen.
   deletedAt      DateTime?
   deletionReason String?
+  /// A durable denial fence, committed BEFORE external erasure starts.
+  erasureStartedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1965,6 +1969,7 @@ model MediaAsset {
   pendingCategory      ServiceCategory?        @relation("MediaAssetPendingCategory", fields: [pendingServiceCategoryId], references: [id], onDelete: SetNull)
   verificationDocument VerificationDocument?
   portfolioItems       ProviderPortfolioItem[]
+  retentionJobs        EvidenceRetentionJob[]
 
   /// The retention sweep: what is due for deletion and not yet deleted.
   @@index([deletedAt, retainUntil])
@@ -2332,4 +2337,49 @@ model ProviderPortfolioItem {
   /// The moderation queue.
   @@index([moderationState, createdAt])
   @@index([serviceCategoryId])
+}
+
+
+/// Durable erasure work, separate from the API process and from event delivery.
+/// Never stores object keys, names, document bytes or a free-text error.
+enum EvidenceRetentionStatus {
+  PENDING
+  RUNNING
+  RETRY
+  DEAD
+  COMPLETED
+  CANCELLED
+}
+
+model EvidenceRetentionJob {
+  id                String @id @default(cuid())
+  mediaAssetId      String
+  intentKey         String @unique
+  /// Historical identifiers, not cascading relations. Erasure history must
+  /// survive removal/pseudonymisation of its subject.
+  caseId            String
+  casePolicyVersion String
+  policyVersion     String
+  policySnapshot    Json
+  triggerCode       String
+  basisAt           DateTime
+  dueAt             DateTime
+  status            EvidenceRetentionStatus @default(PENDING)
+  attempts          Int @default(0)
+  maxAttempts       Int
+  nextAttemptAt     DateTime
+  leaseToken        String?
+  leaseUntil        DateTime?
+  /// An authorised operational hold does not make bytes readable again.
+  holdUntil         DateTime?
+  lastErrorCode     String?
+  completedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  mediaAsset        MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+
+  @@index([status, nextAttemptAt])
+  @@index([mediaAssetId, createdAt])
+  @@index([status, leaseUntil])
+  // One non-cancelled job per asset is a partial unique index in the migration.
 }

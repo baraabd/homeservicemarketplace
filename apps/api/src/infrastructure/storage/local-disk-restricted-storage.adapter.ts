@@ -8,6 +8,7 @@ import { AppConfigService } from '../../config/app-config.service';
 import {
   RestrictedObjectStoragePort,
   type RestrictedObjectMetadata,
+  type RestrictedErasureReceipt,
 } from './restricted-object-storage.port';
 import { validateKey } from './local-disk-storage.adapter';
 
@@ -70,10 +71,23 @@ export class LocalDiskRestrictedStorageAdapter extends RestrictedObjectStoragePo
     const abs = this.absolutePathForKey(key);
     try {
       const s = await stat(abs);
-      if (!s.isFile()) return null;
+      if (!s.isFile()) throw new Error('restricted-storage-unavailable');
       return { sizeBytes: s.size };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      // eslint-disable-next-line preserve-caught-error -- Privacy boundary: fs causes contain restricted object paths.
+      throw new Error('restricted-storage-unavailable');
+    }
+  }
+
+  async eraseObject(key: string): Promise<RestrictedErasureReceipt> {
+    if (!key.startsWith('verification/')) throw new Error('restricted-erasure-invalid-namespace');
+    try {
+      await this.deleteObject(key);
+      if (await this.head(key)) throw new Error('restricted-erasure-incomplete');
+      return { scope: 'PRIMARY_OBJECT_AND_VERSIONS', verifiedAbsent: true };
     } catch {
-      return null;
+      throw new Error('restricted-erasure-unconfirmed');
     }
   }
 

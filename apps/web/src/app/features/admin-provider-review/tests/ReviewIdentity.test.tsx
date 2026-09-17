@@ -243,3 +243,31 @@ describe('restricted identity preview', () => {
     expect(document.querySelector('iframe, object, embed')).toBeNull();
   });
 });
+
+describe('server-authored retention availability', () => {
+  it.each([
+    ['en', 'EXPIRED', 'erasure has not been confirmed'],
+    ['ar', 'EXPIRED', 'لم يتأكد المحو بعد'],
+    ['en', 'ERASING', 'Erasure is in progress'],
+    ['ar', 'ERASING', 'المحو قيد التنفيذ'],
+    ['en', 'ERASED', 'The file has been removed from the evidence store'],
+    ['ar', 'ERASED', 'حُذف الملف من مخزن الأدلة'],
+  ] as const)(
+    'explains %s %s without offering a read or claiming an early success',
+    (lang, state, text) => {
+      const review = fixture();
+      review.verification!.documents = [{ ...evidence, retentionState: state, viewable: false }];
+      setup(review, lang);
+      expect(screen.getByTestId('evidence-retention-notice')).toHaveTextContent(text);
+      expect(screen.getByTestId('review-evidence-document-1')).toBeDisabled();
+      expect(screen.getByTestId('review-evidence-download-document-1')).toBeDisabled();
+      expect(mock.history.get).toHaveLength(0);
+      expect(URL.createObjectURL).not.toHaveBeenCalled();
+    },
+  );
+  it('keeps an older server response functional without inventing a retention verdict', () => {
+    setup(fixture());
+    expect(screen.queryByTestId('evidence-retention-notice')).not.toBeInTheDocument();
+    expect(screen.getByTestId('review-evidence-document-1')).toBeEnabled();
+  });
+});

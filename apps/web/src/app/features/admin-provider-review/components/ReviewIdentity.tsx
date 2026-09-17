@@ -1,3 +1,4 @@
+import { EvidenceRetentionNotice } from '../../case-ui/EvidenceRetentionNotice';
 import { formatReviewDate } from '../format-review-date';
 import { useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
@@ -147,6 +148,11 @@ export function ReviewIdentity({
                     <strong>{DOCUMENT_KIND_LABELS[lang][document.kind]}</strong>
                     <p className="ar-muted">{document.displayFilename || t.notProvided}</p>
                     <StatusBadge value={document.scanState} lang={lang} />
+                    <EvidenceRetentionNotice
+                      state={document.retentionState}
+                      lang={lang}
+                      className="ar-muted"
+                    />
                     {document.supersededAt && (
                       <p className="ar-muted">
                         {lang === 'ar' ? 'وثيقة سابقة تم استبدالها' : 'Previous document, replaced'}

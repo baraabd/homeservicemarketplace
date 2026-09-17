@@ -1,0 +1,44 @@
+groups:
+  - name: evidence-retention
+    rules:
+      - alert: EvidenceRetentionUnavailable
+        expr: absent(up{job="evidence-retention"}) or up{job="evidence-retention"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: The evidence retention worker cannot be scraped
+      - alert: EvidenceRetentionSweepStale
+        expr: time() - evidence_retention_last_success_unixtime > 1800
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: No successful retention sweep in thirty minutes
+      - alert: EvidenceRetentionDeadLetter
+        expr: evidence_retention_jobs{state="dead"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Erasure requires an authorized operator review
+      - alert: EvidenceRetentionOverdue
+        expr: evidence_retention_jobs{state="overdue"} > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Evidence has passed its pinned deletion deadline
+      - alert: EvidenceRetentionUnplannable
+        expr: increase(evidence_retention_operations_total{outcome="reviewRequired"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Evidence lacks a trustworthy retention basis
+      - alert: EvidenceRetentionFailure
+        expr: increase(evidence_retention_tick_failures_total[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: A retention sweep or erasure attempt failed

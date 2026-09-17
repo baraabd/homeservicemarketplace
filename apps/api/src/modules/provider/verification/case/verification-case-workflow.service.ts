@@ -91,6 +91,8 @@ interface LoadedCase {
       scanState: string;
       visibility: string;
       deletedAt: Date | null;
+      erasureStartedAt?: Date | null;
+      retainUntil?: Date | null;
       uploadCompletedAt: Date | null;
     } | null;
   }>;
@@ -118,8 +120,28 @@ export class VerificationCaseWorkflowService {
   async submit(
     userId: string,
     input: { caseId: string; expectedState?: VerificationCaseState },
+    transaction?: PrismaTx,
   ): Promise<CaseCommandResult> {
-    const kase = await this.load(input.caseId);
+    if (!transaction) {
+      try {
+        return await this.tx.run((tx) => this.submit(userId, input, tx));
+      } catch (error) {
+        if (
+          error instanceof AppError &&
+          (error.details as { reason?: string } | undefined)?.reason === 'CONCURRENT_UPDATE'
+        ) {
+          // Re-read only after the losing transaction has rolled back.
+          const current = await this.load(input.caseId);
+          if (current?.providerProfile.userId === userId && current.state === 'SUBMITTED')
+            return this.replay(current, 'provider');
+        }
+        throw error;
+      }
+    }
+    // Same lock as the retention worker: readiness cannot be read just before
+    // a deletion fence and committed as SUBMITTED just after it.
+    await transaction.$queryRaw`SELECT "id" FROM "VerificationCase" WHERE "id" = ${input.caseId} FOR UPDATE`;
+    const kase = await this.load(input.caseId, transaction);
 
     // Ownership before anything else, and the refusal is indistinguishable
     // from "no such case": a distinct error here turns the endpoint into a
@@ -137,7 +159,15 @@ export class VerificationCaseWorkflowService {
         serviceCategoryId: d.serviceCategoryId,
         // No asset means the document row outlived its evidence. Treated as
         // not-clean rather than absent, which is the truthful answer.
-        scanState: d.mediaAsset?.scanState ?? 'MISSING',
+        scanState:
+          !d.mediaAsset ||
+          d.supersededAt ||
+          (d.expiresOn && d.expiresOn <= new Date()) ||
+          d.mediaAsset.deletedAt ||
+          d.mediaAsset.erasureStartedAt ||
+          (d.mediaAsset.retainUntil && d.mediaAsset.retainUntil <= new Date())
+            ? 'MISSING'
+            : d.mediaAsset.scanState,
       })),
       onboarding: this.onboardingCandidateOf(kase),
       terms: {
@@ -156,16 +186,19 @@ export class VerificationCaseWorkflowService {
     }
 
     const now = new Date();
-    return this.commit({
-      kase,
-      action: 'submit',
-      actor: 'provider',
-      actorUserId: userId,
-      data: { state: 'SUBMITTED', submittedAt: now },
-      auditType: 'VERIFICATION_CASE_SUBMITTED',
-      auditMetadata: { caseId: kase.id, providerProfileId: kase.providerProfileId },
-      eventType: OutboxEventType.VERIFICATION_CASE_SUBMITTED,
-    });
+    return this.commit(
+      {
+        kase,
+        action: 'submit',
+        actor: 'provider',
+        actorUserId: userId,
+        data: { state: 'SUBMITTED', submittedAt: now },
+        auditType: 'VERIFICATION_CASE_SUBMITTED',
+        auditMetadata: { caseId: kase.id, providerProfileId: kase.providerProfileId },
+        eventType: OutboxEventType.VERIFICATION_CASE_SUBMITTED,
+      },
+      transaction,
+    );
   }
 
   /**
@@ -927,6 +960,8 @@ export class VerificationCaseWorkflowService {
                 scanState: true,
                 visibility: true,
                 deletedAt: true,
+                erasureStartedAt: true,
+                retainUntil: true,
                 uploadCompletedAt: true,
               },
             },
@@ -952,6 +987,8 @@ export class VerificationCaseWorkflowService {
             doc.mediaAsset?.scanState === 'CLEAN' &&
             doc.mediaAsset.visibility === 'RESTRICTED' &&
             doc.mediaAsset.deletedAt === null &&
+            !doc.mediaAsset.erasureStartedAt &&
+            (!doc.mediaAsset.retainUntil || doc.mediaAsset.retainUntil > now) &&
             doc.mediaAsset.uploadCompletedAt !== null,
         ),
       );

@@ -62,6 +62,10 @@ export interface AdminVerificationDocument {
    *  The row survives the file (ADR 0012), so a reviewer can still see WHAT
    *  was shown and when, without the document existing. */
   evidenceDeletedAt: string | null;
+  /** Server-authored availability, independent of the historical malware
+   * verdict. Optional for older clients/servers during the additive rollout.
+   * ERASING is NOT a completed erasure; ERASED covers the evidence store only. */
+  retentionState?: 'ACTIVE' | 'EXPIRED' | 'ERASING' | 'ERASED';
   supersededAt: string | null;
 }
 

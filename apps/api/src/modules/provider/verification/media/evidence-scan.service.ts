@@ -110,6 +110,7 @@ export class EvidenceScanService {
       where: {
         visibility: 'RESTRICTED',
         deletedAt: null,
+        erasureStartedAt: null,
         uploadCompletedAt: { not: null },
         OR: [
           { scanState: 'PENDING' },
@@ -284,7 +285,12 @@ export class EvidenceScanService {
         // Conditional on the state we OBSERVED, so a racing worker's write
         // loses instead of silently overwriting a decision made from a
         // different reading of the file.
-        where: { id: asset.id, scanState: asset.scanState as MediaScanState },
+        where: {
+          id: asset.id,
+          scanState: asset.scanState as MediaScanState,
+          deletedAt: null,
+          erasureStartedAt: null,
+        },
         data: {
           scanState: next as MediaScanState,
           scannedAt: now,

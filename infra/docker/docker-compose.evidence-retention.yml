@@ -1,0 +1,38 @@
+# Standalone, deliberately opt-in. Use a digest of the SAME tested API image.
+# No policy is published or evidence deleted by checking in this manifest.
+services:
+  evidence-retention:
+    profiles: [evidence-retention]
+    image: ${HSM_API_IMAGE:?Provide the reviewed API image digest}
+    command: [node, dist/evidence-retention.worker.js]
+    env_file:
+      - ${EVIDENCE_RETENTION_ENV_FILE:?Provide a restricted worker-only environment file}
+    environment:
+      NODE_ENV: production
+      EVIDENCE_RETENTION_MODE: ${EVIDENCE_RETENTION_MODE:-shadow}
+      EVIDENCE_RETENTION_PORT: '9091'
+      STORAGE_DRIVER: s3
+    expose: ['9091']
+    networks: [private]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp:rw, noexec, nosuid, size=16m]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 180s
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          '-e',
+          "fetch('http://127.0.0.1:9091/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s
+      retries: 3
+networks:
+  private:
+    external: true
+    name: ${HSM_PRIVATE_NETWORK:?Provide the existing private service network}

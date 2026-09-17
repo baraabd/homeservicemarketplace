@@ -680,3 +680,59 @@ test('Arabic dossier adapts to narrow phones and small desktop without losing ac
     });
   }
 });
+
+for (const lang of ['en', 'ar'] as const) {
+  for (const state of ['EXPIRED', 'ERASING', 'ERASED'] as const) {
+    test(`retention availability ${lang} ${state} (server fixture, no storage proof)`, async ({
+      page,
+    }, testInfo) => {
+      const review = fixture();
+      review.verification!.documents = review.verification!.documents.map((document) => ({
+        ...document,
+        retentionState: state,
+        viewable: false,
+        evidenceDeletedAt: state === 'ERASED' ? STAMP : null,
+      }));
+      const harness = await open(page, lang, { review });
+      const panel = page.getByTestId('review-identity');
+      await expect(panel.getByTestId('evidence-retention-notice')).toHaveCount(
+        review.verification!.documents.length,
+      );
+      const phrase = {
+        en: {
+          EXPIRED: 'erasure has not been confirmed',
+          ERASING: 'Erasure is in progress',
+          ERASED: 'The file has been removed from the evidence store',
+        },
+        ar: {
+          EXPIRED: 'لم يتأكد المحو بعد',
+          ERASING: 'المحو قيد التنفيذ',
+          ERASED: 'حُذف الملف من مخزن الأدلة',
+        },
+      }[lang][state];
+      await expect(panel.getByTestId('evidence-retention-notice').first()).toContainText(phrase);
+      for (const document of review.verification!.documents) {
+        await expect(page.getByTestId(`review-evidence-${document.id}`)).toBeDisabled();
+        await expect(page.getByTestId(`review-evidence-download-${document.id}`)).toBeDisabled();
+      }
+      expect(harness.evidenceReads).toHaveLength(0);
+      expect((await htmlLangDir(page)).dir).toBe(lang === 'ar' ? 'rtl' : 'ltr');
+      await expectNoHorizontalPageOverflow(page);
+      const audit = await new AxeBuilder({ page })
+        .include('[data-testid="review-identity"]')
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+        .analyze();
+      expect(audit.violations).toEqual([]);
+      await testInfo.attach(`retention-${lang}-${state}-axe.json`, {
+        body: JSON.stringify(audit),
+        contentType: 'application/json',
+      });
+      const screenshot = testInfo.outputPath(`retention-${lang}-${state}.png`);
+      await panel.screenshot({ path: screenshot, animations: 'disabled' });
+      await testInfo.attach(`retention-${lang}-${state} (UI fixture)`, {
+        path: screenshot,
+        contentType: 'image/png',
+      });
+    });
+  }
+}

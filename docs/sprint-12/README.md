@@ -11,13 +11,13 @@ Existing Admin approvals and the unmerged alternative PR #83 are not redesigned.
 
 ## 1. Discovery and gaps
 
-| Requirement | Actual baseline | This increment / remaining work |
-| --- | --- | --- |
-| HSM-KYC-001 | Versioned verification cases, restricted upload/read, scanner adapter, verification/work-access decisions and expiry exist. | Inventory only; full lifecycle revalidation remains. |
-| HSM-KYC-002 | `EvidenceCleanupService.sweepExpiredPreparations()` removes expired, never-finalized restricted uploads. `EvidenceScanJob` and `VerificationExpiryJob` are registered; cleanup has no corresponding registered job in the inspected verification module. | **Privacy blocker remains.** Finalized evidence retention/erasure, independently deployed worker, deletion verification, derivatives, retries, dead-letter and metrics are not delivered here. |
-| HSM-DISP-001 | Admin CRUD and terminal resolution labels; no participant-safe intake surface. | New authenticated participant booking selector, eligibility, structured intake, durable reference, safe listing and public-event tracking. Evidence and information requests remain. |
-| HSM-DISP-002 | Existing Admin list/detail/events can read the newly opened cases. | Dedicated sourced analysis, assignment, independent authorities, SLA and compound resolution execution remain. |
-| HSM-DISP-003 | No complete independent appeal journey. | Architecture and next increments defined; no appeal endpoint or enabled UI action is claimed. |
+| Requirement  | Actual baseline                                                                                                                                                                                                                                          | This increment / remaining work                                                                                                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HSM-KYC-001  | Versioned verification cases, restricted upload/read, scanner adapter, verification/work-access decisions and expiry exist.                                                                                                                              | Inventory only; full lifecycle revalidation remains.                                                                                                                                           |
+| HSM-KYC-002  | `EvidenceCleanupService.sweepExpiredPreparations()` removes expired, never-finalized restricted uploads. `EvidenceScanJob` and `VerificationExpiryJob` are registered; cleanup has no corresponding registered job in the inspected verification module. | **Privacy blocker remains.** Finalized evidence retention/erasure, independently deployed worker, deletion verification, derivatives, retries, dead-letter and metrics are not delivered here. |
+| HSM-DISP-001 | Admin CRUD and terminal resolution labels; no participant-safe intake surface.                                                                                                                                                                           | New authenticated participant booking selector, eligibility, structured intake, durable reference, safe listing and public-event tracking. Evidence and information requests remain.           |
+| HSM-DISP-002 | Existing Admin list/detail/events can read the newly opened cases.                                                                                                                                                                                       | Dedicated sourced analysis, assignment, independent authorities, SLA and compound resolution execution remain.                                                                                 |
+| HSM-DISP-003 | No complete independent appeal journey.                                                                                                                                                                                                                  | Architecture and next increments defined; no appeal endpoint or enabled UI action is claimed.                                                                                                  |
 
 Inspected owners include:
 
@@ -76,13 +76,13 @@ and participant-facing decision document are still required before public rollou
 
 All routes use the standard authenticated client and application error envelope:
 
-| Method | Route | Meaning |
-| --- | --- | --- |
-| GET | `/v1/me/disputes` | Cursor-paginated participant cases, no legacy/internal dossiers. |
-| GET | `/v1/me/disputes/bookings` | Minimal owned booking choices for either participant. |
-| GET | `/v1/me/disputes/context/:bookingId` | Authoritative eligibility, policy revision, choices, existing case and opening deadline. |
-| GET | `/v1/me/disputes/:id` | Participant-safe state, original author-only statement and public event projection. |
-| POST | `/v1/me/disputes` | Structured intake; requires CSRF and a UUID-v4 idempotency key. |
+| Method | Route                                | Meaning                                                                                  |
+| ------ | ------------------------------------ | ---------------------------------------------------------------------------------------- |
+| GET    | `/v1/me/disputes`                    | Cursor-paginated participant cases, no legacy/internal dossiers.                         |
+| GET    | `/v1/me/disputes/bookings`           | Minimal owned booking choices for either participant.                                    |
+| GET    | `/v1/me/disputes/context/:bookingId` | Authoritative eligibility, policy revision, choices, existing case and opening deadline. |
+| GET    | `/v1/me/disputes/:id`                | Participant-safe state, original author-only statement and public event projection.      |
+| POST   | `/v1/me/disputes`                    | Structured intake; requires CSRF and a UUID-v4 idempotency key.                          |
 
 Contracts live at `packages/contracts/src/disputes/intake.ts`, with explicit
 runtime barrel exports for frontend bundling. DTO validation forbids authority
@@ -193,3 +193,13 @@ All HSM-KYC and HSM-DISP tickets remain open until their complete acceptance
 criteria pass. Intake creation alone does not deliver request-based (non-booking)
 disputes, full evidence lifecycle, full Admin review, flexible remedy execution,
 independent appeals, retention enforcement or production readiness.
+
+## 12B continuation — finalized evidence retention (not sprint closure)
+
+See [ADR-12B](ADR-12B-evidence-retention.md) (PROPOSED) and the
+[operator runbook](retention/RUNBOOK.md). The independent worker, pinned durable
+jobs, scoped storage proof, irreversible access fence, metadata minimization,
+retry/dead-letter, metrics and real-services CI gate are a bounded privacy
+implementation. No production deletion or activation is authorized by this PR.
+The new required CI job and final-head results must be checked before acceptance.
+All broader dispute/appeal and external privacy approval gates remain open.

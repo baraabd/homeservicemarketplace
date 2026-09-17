@@ -31,6 +31,9 @@ export interface EvidenceReadContext {
   scanState: 'PENDING' | 'CLEAN' | 'QUARANTINED' | 'SCAN_FAILED' | 'REJECTED';
   /** Set once the bytes have been destroyed under the retention schedule. */
   evidenceDeletedAt: Date | null;
+  erasureStartedAt?: Date | null;
+  retainUntil?: Date | null;
+  now?: Date;
   /** The case the document hangs off. Used only for the audit trail; a
    *  reviewer's right to read does not depend on assignment (assignment is
    *  workflow, not authorization — ADR 0013 §1), but it IS recorded. */
@@ -49,7 +52,8 @@ export type EvidenceReadDenial =
   /** Sprint 9B.4 — we refused the file itself. Separate from QUARANTINED so
    *  the access log distinguishes "malware" from "malformed". */
   | 'REJECTED'
-  | 'EVIDENCE_DELETED';
+  | 'EVIDENCE_DELETED'
+  | 'EVIDENCE_RETENTION_BLOCKED';
 
 export type EvidenceReadDecision =
   | { allowed: true; as: 'owner' | 'reviewer' }
@@ -110,6 +114,9 @@ export function decideEvidenceRead(ctx: EvidenceReadContext): EvidenceReadDecisi
   //    silently readable.
   if (ctx.evidenceDeletedAt !== null) {
     return { allowed: false, reason: 'EVIDENCE_DELETED' };
+  }
+  if (ctx.erasureStartedAt || (ctx.retainUntil && ctx.retainUntil <= (ctx.now ?? new Date()))) {
+    return { allowed: false, reason: 'EVIDENCE_RETENTION_BLOCKED' };
   }
   if (ctx.scanState === 'QUARANTINED') {
     // Held, not deleted (ADR 0012), and never served — serving a file a

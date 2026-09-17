@@ -33,6 +33,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ProfileModule } from './modules/profile/profile.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { ProviderVerificationModule } from './modules/provider/verification/provider-verification.module';
+import { EvidenceErasedHandler } from './modules/provider/verification/retention/evidence-erased.handler';
 import { EvidenceScannedHandler } from './modules/provider/verification/media/evidence-scanned.handler';
 import { VerificationCaseEventsHandler } from './modules/provider/verification/case/verification-case-events.handler';
 import { RealtimeModule } from './modules/realtime/realtime.module';
@@ -77,6 +78,7 @@ import { ServicesModule } from './modules/services/services.module';
         RequestAvailableDispatchHandler,
         RequestAvailableBatchHandler,
         EvidenceScannedHandler,
+        EvidenceErasedHandler,
         VerificationCaseEventsHandler,
         AdminProviderReviewEventsHandler,
         DisputeIntakeEventsHandler,

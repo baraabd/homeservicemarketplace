@@ -44,7 +44,21 @@ export interface RestrictedObjectMetadata {
  * Keys are always server-generated (see evidence-keys.ts). No method accepts a
  * client-supplied path, and no method returns one.
  */
+export interface RestrictedErasureReceipt {
+  scope: 'PRIMARY_OBJECT_AND_VERSIONS';
+  verifiedAbsent: true;
+}
+
 export abstract class RestrictedObjectStoragePort {
+  close(): void {}
+
+  /** Stronger than DELETE: verify the exact primary object AND its versions
+   * are absent. Replicas, backups and local staging are separate inventories.
+   * A new/custom adapter must explicitly implement this; never fake success. */
+  async eraseObject(_key: string): Promise<RestrictedErasureReceipt> {
+    throw new Error('restricted-erasure-unsupported');
+  }
+
   /**
    * Write an object from a file already staged on local disk.
    *
