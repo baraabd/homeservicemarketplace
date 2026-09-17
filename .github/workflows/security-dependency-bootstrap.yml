@@ -1,0 +1,152 @@
+name: Dependency remediation bootstrap
+
+# Temporary, branch-scoped lockfile generation in the available clean runner.
+# Removed before final acceptance. Never runs on PR input or on develop/main.
+on:
+  push:
+    branches: ['fix/security-full-dependency-audit-20260917']
+    paths: ['.github/workflows/security-dependency-bootstrap.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-dependency-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    if: github.repository == 'baraabd/homeservicemarketplace' && github.ref == 'refs/heads/fix/security-full-dependency-audit-20260917'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '20'
+          package-manager-cache: false
+      - name: Audit baseline, resolve explicit patched versions, regenerate and verify lockfile
+        run: |
+          mkdir -p /tmp/dependency-remediation
+          node --input-type=commonjs <<'NODE'
+          const fs = require('node:fs');
+          const { spawnSync } = require('node:child_process');
+          const evidence = '/tmp/dependency-remediation';
+          function exec(args) {
+            const r = spawnSync('pnpm', args, { encoding: 'utf8', timeout: 300000, maxBuffer: 32 * 1024 * 1024 });
+            if (r.error || r.signal) throw new Error(`pnpm ${args.join(' ')} did not complete: ${r.error || r.signal}`);
+            return r;
+          }
+          function audit(label, prod, requireClean) {
+            const args = ['audit', '--json', '--audit-level', 'low', ...(prod ? ['--prod'] : [])];
+            const r = exec(args);
+            fs.writeFileSync(`${evidence}/${label}.json`, r.stdout);
+            fs.writeFileSync(`${evidence}/${label}.stderr.txt`, r.stderr);
+            const report = JSON.parse(r.stdout);
+            if (report.error || !report.metadata?.vulnerabilities || !report.advisories || ![0, 1].includes(r.status)) {
+              throw new Error(`Invalid or unsuccessful registry audit: ${label}`);
+            }
+            console.log(label, JSON.stringify(report.metadata.vulnerabilities));
+            if (requireClean && (r.status !== 0 || Object.keys(report.advisories).length || Object.values(report.metadata.vulnerabilities).some(n => n !== 0))) {
+              throw new Error(`Remaining vulnerabilities in ${label}; refusing to publish a clean claim`);
+            }
+          }
+          audit('before-full', false, false);
+          audit('before-production', true, false);
+          fs.copyFileSync('pnpm-lock.yaml', `${evidence}/before-pnpm-lock.yaml`);
+          const overrides = {
+            '@babel/core@>=7.0.0 <7.29.6': '7.29.6',
+            '@humanfs/node@>=0.16.0 <0.16.8': '0.16.8',
+            'ajv@>=8.0.0 <8.18.0': '8.18.0',
+            'baseline-browser-mapping@>=2.0.0 <2.11.0': '2.11.0',
+            'brace-expansion@>=1.0.0 <1.1.18': '1.1.18',
+            'brace-expansion@>=5.0.0 <5.0.9': '5.0.9',
+            'browserslist@>=4.0.0 <4.28.7': '4.28.7',
+            'fast-uri@>=3.0.0 <3.1.6': '3.1.6',
+            'js-yaml@>=3.0.0 <3.15.2': '3.15.2',
+            'js-yaml@>=4.0.0 <4.3.2': '4.3.2',
+            'nanoid@>=3.0.0 <3.3.18': '3.3.18',
+            'picomatch@>=4.0.0 <4.0.4': '4.0.4',
+            'postcss@>=8.0.0 <8.5.23': '8.5.23',
+            'qs@>=6.0.0 <6.16.0': '6.16.0',
+            'tar@>=7.0.0 <7.5.21': '7.5.21',
+            'undici@>=7.0.0 <7.29.0': '7.29.0'
+          };
+          const targets = [
+            ['vite', '6.4.3'], ['vitest', '4.1.11'], ['@vitest/mocker', '4.1.11'], ['turbo', '2.9.14'],
+            ...Object.entries(overrides).map(([selector, version]) => [selector.slice(0, selector.lastIndexOf('@')), version])
+          ];
+          const metadata = [];
+          for (const [name, version] of targets) {
+            const r = exec(['view', `${name}@${version}`, '--json']);
+            if (r.status !== 0) throw new Error(`Cannot verify registry version ${name}@${version}: ${r.stderr}`);
+            const pkg = JSON.parse(r.stdout);
+            if (pkg.name !== name || pkg.version !== version || pkg.deprecated || !pkg.dist?.integrity) {
+              throw new Error(`Unexpected, deprecated or unverifiable registry package ${name}@${version}`);
+            }
+            metadata.push({ name, version, engines: pkg.engines, type: pkg.type, main: pkg.main, exports: pkg.exports, dependencies: pkg.dependencies, peerDependencies: pkg.peerDependencies, dist: pkg.dist });
+          }
+          fs.writeFileSync(`${evidence}/verified-registry-targets.json`, JSON.stringify(metadata, null, 2));
+          const root = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const web = JSON.parse(fs.readFileSync('apps/web/package.json', 'utf8'));
+          root.devDependencies.turbo = '2.9.14';
+          root.pnpm.overrides = { ...root.pnpm.overrides, ...overrides };
+          web.devDependencies.vite = '6.4.3';
+          web.devDependencies.vitest = '4.1.11';
+          fs.writeFileSync('package.json', JSON.stringify(root, null, 2) + '\n');
+          fs.writeFileSync('apps/web/package.json', JSON.stringify(web, null, 2) + '\n');
+          const resolve = exec(['install', '--lockfile-only', '--ignore-scripts', '--no-frozen-lockfile']);
+          fs.writeFileSync(`${evidence}/resolution.log`, resolve.stdout + resolve.stderr);
+          if (resolve.status !== 0) throw new Error(`Lockfile resolution failed: ${resolve.stdout}\n${resolve.stderr}`);
+          const frozen = exec(['install', '--lockfile-only', '--ignore-scripts', '--frozen-lockfile']);
+          fs.writeFileSync(`${evidence}/frozen-lockfile.log`, frozen.stdout + frozen.stderr);
+          if (frozen.status !== 0) throw new Error(`Frozen lockfile verification failed: ${frozen.stderr}`);
+          audit('after-full', false, true);
+          audit('after-production', true, true);
+          fs.copyFileSync('pnpm-lock.yaml', `${evidence}/after-pnpm-lock.yaml`);
+          fs.copyFileSync('package.json', `${evidence}/package.json`);
+          fs.copyFileSync('apps/web/package.json', `${evidence}/web-package.json`);
+          NODE
+      - name: Publish only the audited manifests and generated lockfile to the isolated branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          branch='fix/security-full-dependency-audit-20260917'
+          python - <<'PY'
+          import subprocess
+          allowed = {'package.json', 'apps/web/package.json', 'pnpm-lock.yaml'}
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          if not changed or not changed <= allowed:
+              raise SystemExit('Refusing to publish unexpected file set: ' + repr(changed))
+          PY
+          current=$(git ls-remote origin "refs/heads/$branch" | cut -f1)
+          test "$current" = "$EXPECTED_HEAD"
+          git diff --check
+          git diff > /tmp/dependency-remediation/remediation.diff
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- package.json apps/web/package.json pnpm-lock.yaml
+          git commit -m 'fix(security): patch all reported dependency families and regenerate lockfile'
+          authorization=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $authorization" push origin "HEAD:refs/heads/$branch"
+          git rev-parse HEAD > /tmp/dependency-remediation/published-sha.txt
+      - name: Preserve source and evidence for review
+        if: always()
+        run: |
+          mkdir -p /tmp/dependency-remediation
+          git archive --format=tar.gz HEAD > /tmp/dependency-remediation/repository-source.tar.gz
+          git diff > /tmp/dependency-remediation/unpublished.diff
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: security-dependency-remediation
+          path: /tmp/dependency-remediation/
+          retention-days: 14
+          if-no-files-found: error
