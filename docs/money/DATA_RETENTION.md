@@ -1,0 +1,5 @@
+# Financial data retention boundary
+
+Ledger/payment/subscription audit records and restricted receipt bytes have different retention purposes and must not share a single deletion rule. Accounting/audit records preserve minimal financial facts and stable references according to applicable business/legal policy. Receipt images are restricted evidence and should be retained only for the documented review/dispute window, then deleted through the existing verified object-retention mechanism while preserving a non-secret hash/reference where policy permits.
+
+Deletion of a user/provider must not cascade-delete posted ledger history. Display identity may be pseudonymized where required, while accounting references remain internally consistent. Exact retention periods are deployment/legal configuration, not hard-coded guesses in Sprint 13.
