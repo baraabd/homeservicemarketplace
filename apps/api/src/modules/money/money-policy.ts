@@ -1,4 +1,4 @@
-import { MoneyDomainError, assertMinorAmount } from './money-domain';
+import { MoneyDomainError, assertMinorAmount, normalizeCurrency } from './money-domain';
 
 export type CouponPolicy = Readonly<{
   kind: 'PERCENTAGE' | 'FIXED';
@@ -11,15 +11,21 @@ export type CouponPolicy = Readonly<{
 
 export function calculateCouponDiscount(input: { subtotalMinor: bigint; currency: string; coupon: CouponPolicy; now: Date }): bigint {
   assertMinorAmount(input.subtotalMinor);
+  if (!Number.isFinite(input.now.getTime())) throw new MoneyDomainError('INVALID_DATE', 'Coupon evaluation time must be valid');
+  const quoteCurrency = normalizeCurrency(input.currency);
   const { coupon } = input;
   if (!coupon.active) throw new MoneyDomainError('COUPON_INACTIVE', 'Coupon is inactive');
+  if (coupon.startsAt && !Number.isFinite(coupon.startsAt.getTime())) throw new MoneyDomainError('INVALID_COUPON_WINDOW', 'Coupon start date must be valid');
+  if (coupon.endsAt && !Number.isFinite(coupon.endsAt.getTime())) throw new MoneyDomainError('INVALID_COUPON_WINDOW', 'Coupon end date must be valid');
+  if (coupon.startsAt && coupon.endsAt && coupon.endsAt <= coupon.startsAt) throw new MoneyDomainError('INVALID_COUPON_WINDOW', 'Coupon end date must be after start date');
   if (coupon.startsAt && input.now < coupon.startsAt) throw new MoneyDomainError('COUPON_NOT_STARTED', 'Coupon is not active yet');
   if (coupon.endsAt && input.now >= coupon.endsAt) throw new MoneyDomainError('COUPON_EXPIRED', 'Coupon has expired');
+  if (coupon.value <= 0n) throw new MoneyDomainError('INVALID_COUPON_VALUE', 'Coupon value must be positive');
   if (coupon.kind === 'FIXED') {
-    if (coupon.currency !== input.currency) throw new MoneyDomainError('COUPON_CURRENCY_MISMATCH', 'Coupon currency does not match quote currency');
+    if (!coupon.currency || normalizeCurrency(coupon.currency) !== quoteCurrency) throw new MoneyDomainError('COUPON_CURRENCY_MISMATCH', 'Coupon currency does not match quote currency');
     return coupon.value > input.subtotalMinor ? input.subtotalMinor : coupon.value;
   }
-  if (coupon.value <= 0n || coupon.value > 10000n) throw new MoneyDomainError('INVALID_PERCENTAGE', 'Percentage coupon must be between 1 and 10000 basis points');
+  if (coupon.value > 10000n) throw new MoneyDomainError('INVALID_PERCENTAGE', 'Percentage coupon must be between 1 and 10000 basis points');
   return (input.subtotalMinor * coupon.value) / 10000n;
 }
 
