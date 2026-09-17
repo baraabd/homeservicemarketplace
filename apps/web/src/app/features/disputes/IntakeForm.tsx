@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useBeforeUnload, useBlocker, useNavigate } from 'react-router';
+import { Link, useBeforeUnload, useBlocker, useNavigate } from 'react-router';
 import type { DisputeIntakeContext, DisputeIssueCode, DisputeRequestedOutcome } from '@homeservicemarketplace/contracts';
 import { useCreateCase, caseErrorStatus } from './api';
 import { DISPUTE_COPY, type CaseLanguage } from './copy';
@@ -16,6 +16,7 @@ export function IntakeForm({ context, lang, readOnly, refresh }: {
   const [outcome, setOutcome] = useState<DisputeRequestedOutcome | ''>('');
   const [statement, setStatement] = useState('');
   const [invalid, setInvalid] = useState(false);
+  const [existingCaseId, setExistingCaseId] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const confirmed = useRef(false);
   const attempt = useRef<{ signature: string; key: string } | null>(null);
@@ -43,6 +44,10 @@ export function IntakeForm({ context, lang, readOnly, refresh }: {
     sending.current = true;
     try {
       const result = await mutation.mutateAsync({ ...input, idempotencyKey: attempt.current.key });
+      if (!result.created && !result.replayed) {
+        setExistingCaseId(result.dispute.id);
+        return;
+      }
       confirmed.current = true;
       navigate(`/disputes/${encodeURIComponent(result.dispute.id)}`, { replace: true });
     } catch { /* The inline error retains all entered fields and the retry intent. */ }
@@ -63,6 +68,7 @@ export function IntakeForm({ context, lang, readOnly, refresh }: {
             <p className="case-muted">{t.outcomeHint}</p><CaseNotice>{t.evidence}</CaseNotice>
           </>}
           {step === 2 && <><dl className="case-definition"><div><dt>{t.issueTitle}</dt><dd>{issue && t.issues[issue]}</dd></div><div><dt>{t.statement}</dt><dd className="case-statement">{statement}</dd></div><div><dt>{t.outcome}</dt><dd>{outcome && t.outcomes[outcome]}</dd></div></dl><CaseNotice>{t.privacy}</CaseNotice></>}
+          {existingCaseId && <CaseNotice>{t.blocked.ALREADY_OPEN}<p>{t.unsaved}</p><Link className="case-button" to={`/disputes/${encodeURIComponent(existingCaseId)}`}>{t.open}</Link></CaseNotice>}
           {invalid && <CaseNotice alert>{t.invalid}</CaseNotice>}
           {mutation.isError && <CaseNotice alert>{caseErrorStatus(mutation.error) === 409 ? t.conflict : t.submissionFailed}{caseErrorStatus(mutation.error) === 409 && <div><button type="button" className="case-button" onClick={refresh}>{t.refresh}</button></div>}</CaseNotice>}
           {!context.canOpen && context.blocker && <CaseNotice alert>{t.blocked[context.blocker]}</CaseNotice>}

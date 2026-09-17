@@ -135,7 +135,9 @@ dbDescribe('Sprint 12A intake — real PostgreSQL transactions and privacy', () 
   it('uses real terminal events, never updatedAt, to enforce the reporting window', async () => {
     await prisma.booking.update({ where: { id: bookingId }, data: { status: 'COMPLETED' } });
     expect((await service.context(seeker, bookingId)).blocker).toBe('TIMESTAMP_UNAVAILABLE');
-    await prisma.bookingEvent.create({ data: { bookingId, type: 'BOOKING_COMPLETED', createdAt: new Date(Date.now() - 25 * 3_600_000) } });
+    await prisma.bookingEvent.create({ data: { bookingId, type: 'BOOKING_STATUS_CHANGED', metadata: { from: 'IN_PROGRESS', to: 'COMPLETED' }, createdAt: new Date(Date.now() - 25 * 3_600_000) } });
+    // A newer unrelated status event must not extend the completion clock.
+    await prisma.bookingEvent.create({ data: { bookingId, type: 'BOOKING_STATUS_CHANGED', metadata: { from: 'SCHEDULED', to: 'IN_PROGRESS' } } });
     expect((await service.context(seeker, bookingId)).blocker).toBe('WINDOW_ELAPSED');
   });
   it('the database invariant also rejects a competing legacy Admin create', async () => {

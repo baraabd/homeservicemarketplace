@@ -24,7 +24,8 @@ export function useCaseDetail(id: string) {
 }
 export function useCreateCase() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: async (input: CreateParticipantDisputeRequest) =>
+  // A sensitive submission must not silently wait offline and execute after navigation.
+  return useMutation({ networkMode: 'always', retry: false, mutationFn: async (input: CreateParticipantDisputeRequest) =>
     (await api.post<CreateParticipantDisputeResponse>(path, input)).data,
     // Reconcile only after a confirmed server response; no optimistic case/decision.
     onSuccess: () => { void qc.invalidateQueries({ queryKey: disputeKeys.root }); } });

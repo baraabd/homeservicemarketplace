@@ -41,6 +41,7 @@ for (const lang of ['en', 'ar'] as const) {
     await page.goto('/disputes'); await page.getByRole('link', { name: t.newCase, exact: true }).click();
     await page.getByRole('link', { name: t.choose, exact: true }).click();
     await expect(page).toHaveURL(/\/disputes\/new\?bookingId=booking-1$/);
+    await expect(page.getByRole('radio', { name: t.issues.SERVICE_QUALITY, exact: true })).toBeVisible();
     const widths = info.project.name.endsWith('desktop') ? [1024, 1440] : info.project.name.endsWith('tablet') ? [768] : [320, 390, 430];
     for (const theme of ['light', 'dark'] as const) {
       if (theme === 'dark') await page.getByRole('button', { name: t.theme, exact: true }).click();
@@ -95,4 +96,21 @@ test('language changes retain the description and leaving requires a real modal 
   await page.getByRole('link', { name: ar.back, exact: true }).click();
   await page.getByRole('button', { name: ar.leave, exact: true }).click();
   await expect(page).toHaveURL('/disputes');
+});
+
+test('a concurrently opened case does not silently consume a new statement', async ({ page }) => {
+  await prepare(page, 'en'); const t = DISPUTE_COPY.en;
+  await page.route('**/v1/me/disputes', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    return route.fulfill({ json: { dispute: detail, created: false, replayed: false } });
+  });
+  await page.goto('/disputes/new?bookingId=booking-1'); await fill(page, 'en');
+  await page.getByRole('button', { name: t.submit, exact: true }).click();
+  await expect(page.getByText(t.blocked.ALREADY_OPEN, { exact: false })).toBeVisible();
+  await expect(page).toHaveURL(/\/disputes\/new\?/);
+  await expect(page.getByText(detail.statement, { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: t.open, exact: true }).click();
+  await expect(page.getByRole('dialog', { name: t.leaveTitle, exact: true })).toBeVisible();
+  await page.getByRole('button', { name: t.stay, exact: true }).click();
+  await expect(page).toHaveURL(/\/disputes\/new\?/);
 });

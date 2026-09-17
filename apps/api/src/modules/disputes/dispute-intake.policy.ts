@@ -7,7 +7,7 @@ export const DISPUTE_INTAKE_EVENT = 'dispute.intake.opened.v1';
 export const INTAKE_ID_PREFIX = 'di_';
 const bookingStates = ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const;
 
-/** Missing, malformed, or unapproved settings never enable intake. No policy is seeded. */
+/** Missing or malformed settings never enable intake. Approval is a rollout gate, not inferred from this JSON. No policy is seeded. */
 const policySchema = z.object({
   version: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/),
   enabled: z.boolean(),

@@ -45,7 +45,9 @@ export class DisputeIntakeRepository {
     const event = await this.db(tx).bookingEvent.findFirst({
       where: {
         bookingId: booking.id,
-        type: booking.status === 'COMPLETED' ? 'BOOKING_COMPLETED' : 'BOOKING_CANCELLED',
+        ...(booking.status === 'COMPLETED'
+          ? { type: 'BOOKING_STATUS_CHANGED' as const, metadata: { path: ['to'], equals: 'COMPLETED' } }
+          : { type: 'BOOKING_CANCELLED' as const }),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { createdAt: true },
     });
