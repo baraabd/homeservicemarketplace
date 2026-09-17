@@ -31,3 +31,21 @@ it.each([
 ])('refuses unsafe configuration without echoing values %#', (patch) => {
   expect(() => retentionWorkerConfig({ ...base, ...patch })).toThrow(/retention-worker/);
 });
+
+it.each(['production', 'staging'])('requires TLS for custom S3 endpoints in %s', (NODE_ENV) => {
+  const env = {
+    ...base,
+    NODE_ENV,
+    EVIDENCE_RETENTION_MODE: 'shadow',
+    STORAGE_DRIVER: 's3',
+    S3_RESTRICTED_BUCKET: 'restricted-test-only',
+    METRICS_TOKEN: 'synthetic'.repeat(5),
+  };
+  expect(() =>
+    retentionWorkerConfig({ ...env, S3_ENDPOINT: 'http://storage.example.test' }),
+  ).toThrow('retention-worker-storage-tls-required');
+  expect(() =>
+    retentionWorkerConfig({ ...env, S3_ENDPOINT: 'https://storage.example.test' }),
+  ).not.toThrow();
+  expect(() => retentionWorkerConfig(env)).not.toThrow();
+});

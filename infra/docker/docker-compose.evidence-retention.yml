@@ -16,7 +16,7 @@ services:
     networks: [private]
     restart: unless-stopped
     read_only: true
-    tmpfs: [/tmp:rw, noexec, nosuid, size=16m]
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=16m']
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     stop_grace_period: 180s

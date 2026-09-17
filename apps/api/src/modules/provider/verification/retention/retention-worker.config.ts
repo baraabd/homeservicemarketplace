@@ -38,6 +38,13 @@ export function retentionWorkerConfig(env: NodeJS.ProcessEnv) {
       throw new Error('retention-worker-metrics-token-required');
     if (c.STORAGE_DRIVER === 's3' && !c.S3_RESTRICTED_BUCKET)
       throw new Error('retention-worker-dedicated-bucket-required');
+    if (
+      hardened &&
+      c.STORAGE_DRIVER === 's3' &&
+      c.S3_ENDPOINT &&
+      new URL(c.S3_ENDPOINT).protocol !== 'https:'
+    )
+      throw new Error('retention-worker-storage-tls-required');
     if (c.STORAGE_DRIVER === 'local' && !c.RESTRICTED_STORAGE_DIR.startsWith('/'))
       throw new Error('retention-worker-absolute-restricted-root-required');
     if (Boolean(c.S3_ACCESS_KEY_ID) !== Boolean(c.S3_SECRET_ACCESS_KEY))
