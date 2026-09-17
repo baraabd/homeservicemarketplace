@@ -19,8 +19,13 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
   const { lang } = useLang();
   return (
     <>
-      {route.kind !== 'legacy' && route.kind !== 'notFound' && (
-        <AdminWorkflowNavigation lang={lang} section={route.kind === 'provider' ? 'reviews' : route.section} />
+      {(route.kind === 'provider' ||
+        (route.kind === 'section' &&
+          ['dashboard', 'providers', 'reviews', 'identity-cases'].includes(route.section))) && (
+        <AdminWorkflowNavigation
+          lang={lang}
+          section={route.kind === 'provider' ? 'reviews' : route.section}
+        />
       )}
       <AdminSectionContent route={route} />
     </>
