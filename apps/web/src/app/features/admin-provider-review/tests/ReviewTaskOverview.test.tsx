@@ -11,9 +11,12 @@ describe('Review task navigation and snapshot facts', () => {
   it.each(['en', 'ar'] as const)('links to all six existing dossier sections in %s', (lang) => {
     const review = reviewFixture();
     render(<ReviewTaskOverview review={review} snapshot={review.submission!.snapshot} lang={lang} />);
-    for (const task of ADMIN_PROVIDER_REVIEW_TASK_IDS) {
-      expect(screen.getByTestId(`review-task-link-${task}`)).toHaveAttribute('href', `#review-section-${task}`);
-    }
+    const stepNumber = new Intl.NumberFormat(lang, { minimumIntegerDigits: 2, useGrouping: false });
+    ADMIN_PROVIDER_REVIEW_TASK_IDS.forEach((task, index) => {
+      const link = screen.getByTestId(`review-task-link-${task}`);
+      expect(link).toHaveAttribute('href', `#review-section-${task}`);
+      expect(link.querySelector('.art-task-top > span')).toHaveTextContent(stepNumber.format(index + 1));
+    });
     expect(screen.getAllByTestId(/^review-task-link-/)).toHaveLength(6);
   });
   it('does not label unblocked sections as approved or complete', () => {
