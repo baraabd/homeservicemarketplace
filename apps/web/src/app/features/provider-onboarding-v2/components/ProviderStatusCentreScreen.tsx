@@ -2,11 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { BadgeCheck, Clock } from 'lucide-react';
 
-import {
-  getProviderCapabilities,
-  getVerificationCase,
-} from '../../../../lib/provider/provider-verification-api';
+import { getVerificationCase } from '../../../../lib/provider/provider-verification-api';
 import { useProviderProfile } from '../../../hooks/provider/useProviderProfile';
+import { useProviderCapabilities } from '../../../hooks/provider/useProviderCapabilities';
 import { useProviderOnboardingHub } from '../../../hooks/provider/useProviderOnboardingHub';
 import {
   useOnboardingDraft,
@@ -64,7 +62,6 @@ import { OnboardingShell } from './OnboardingShell';
 /** The two approved screens this surface is, chosen by work access. */
 type Screen = 'waiting' | 'active';
 
-const CAPS_KEY = ['provider', 'verification', 'capabilities'] as const;
 const CASE_KEY = ['provider', 'verification', 'case'] as const;
 
 export function ProviderStatusCentreScreen() {
@@ -77,7 +74,7 @@ export function ProviderStatusCentreScreen() {
   const hubQuery = useProviderOnboardingHub();
   // The same key the verification screen uses, so the two share one answer
   // rather than asking the capability service the same question twice.
-  const capsQuery = useQuery({ queryKey: CAPS_KEY, queryFn: getProviderCapabilities });
+  const capsQuery = useProviderCapabilities();
   // G-11 — the verification axis, READ rather than guessed.
   //
   // It used to be projected from `profile.verified` plus whether the
@@ -117,7 +114,7 @@ export function ProviderStatusCentreScreen() {
 
   const profile = profileQuery.data?.profile;
   const hub = hubQuery.data;
-  const allowed = capsQuery.data?.allowed ?? [];
+  const allowed = capsQuery.isError ? [] : (capsQuery.data?.allowed ?? []);
 
   // Work access, and nothing else, decides which screen this is. Not
   // `status === 'ACTIVE'`: the whole point of the capability service is that
@@ -226,7 +223,7 @@ export function ProviderStatusCentreScreen() {
   // ── Loading ───────────────────────────────────────────────────────────────
   if (!settled) {
     return (
-      <OnboardingShell title={copy.waitingTitle} onClose={() => navigate('/provider')}>
+      <OnboardingShell title={copy.waitingTitle} onClose={() => navigate('/select')}>
         <div role="status" aria-live="polite" data-testid="provider-status-loading">
           <span className="sr-only">{copy.waitingTitle}</span>
           <ProviderSkeleton rows={4} />
@@ -314,7 +311,7 @@ export function ProviderStatusCentreScreen() {
       title={copy.waitingTitle}
       subtitle={updated ? copy.waitingSubtitle(updated) : null}
       progress={100}
-      onClose={() => navigate('/provider')}
+      onClose={() => navigate('/select')}
       footer={
         // Secondary, and the reference is right that it is: withdrawing STOPS a
         // review that is already running, and a primary-weight button would

@@ -9,6 +9,12 @@ import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider'
 import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import { ProviderApp } from './ProviderApp';
+import {
+  APPLYING_CAPABILITIES,
+  SUBMITTED_CAPABILITIES,
+  SUSPENDED_CAPABILITIES,
+  WORKING_CAPABILITIES,
+} from '../../../test-support/provider-capability-fixtures';
 
 // Sprint 09B.29 — resolve the code-split screens before any assertion window.
 // See the note in `ProviderApp.routing.test.tsx`: same cause, same fix, and
@@ -23,9 +29,9 @@ await import('./screens/ProviderChatScreen');
 // Sprint 5.1.2 — non-ACTIVE provider state surface.
 //
 // Pin the gating contract:
-//   • status === 'ACTIVE' → live shell renders (LiveJobsScreen mounts).
-//   • status DRAFT/PENDING_REVIEW/SUSPENDED/REJECTED → the live shell is
-//     NOT mounted; ProviderStatusState shows the right copy.
+//   • Server-granted marketplace access → LiveJobsScreen mounts.
+//   • Denied work access → ProviderStatusState shows the relevant status copy.
+//     Legacy status is presentation data, never an authorization decision.
 //
 // The MOCK_ME has both `customer` and `provider` roles so the route
 // guard's role check is not the test under examination — the focus is
@@ -102,6 +108,7 @@ afterEach(() => {
 
 describe('ProviderApp — status gate', () => {
   it('renders the live shell when status is ACTIVE', async () => {
+    mock.onGet('/v1/me/provider/capabilities').reply(200, WORKING_CAPABILITIES);
     mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
     mock
       .onGet('/v1/me/provider/profile')
@@ -118,6 +125,13 @@ describe('ProviderApp — status gate', () => {
   it.each<ProviderProfileStatus>(['DRAFT', 'PENDING_REVIEW', 'SUSPENDED', 'REJECTED'])(
     'renders the status state surface (not the live shell) when status is %s',
     async (status) => {
+      const capabilities =
+        status === 'SUSPENDED'
+          ? SUSPENDED_CAPABILITIES
+          : status === 'PENDING_REVIEW'
+            ? SUBMITTED_CAPABILITIES
+            : APPLYING_CAPABILITIES;
+      mock.onGet('/v1/me/provider/capabilities').reply(200, capabilities);
       mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
       mock.onGet('/v1/me/provider/profile').reply(200, { profile: { ...BASE_PROFILE, status } });
 
@@ -132,6 +146,7 @@ describe('ProviderApp — status gate', () => {
   );
 
   it('shows the pending-review copy for PENDING_REVIEW (no raw enum leak)', async () => {
+    mock.onGet('/v1/me/provider/capabilities').reply(200, SUBMITTED_CAPABILITIES);
     mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
     mock
       .onGet('/v1/me/provider/profile')
@@ -145,6 +160,7 @@ describe('ProviderApp — status gate', () => {
   });
 
   it('shows the suspended copy for SUSPENDED', async () => {
+    mock.onGet('/v1/me/provider/capabilities').reply(200, SUSPENDED_CAPABILITIES);
     mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
     mock
       .onGet('/v1/me/provider/profile')

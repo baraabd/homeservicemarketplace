@@ -1,3 +1,4 @@
+import { APPLYING_CAPABILITIES } from '../../../test-support/provider-capability-fixtures';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
@@ -87,6 +88,7 @@ function renderProvider() {
 }
 
 function mockDraftProvider() {
+  mock.onGet('/v1/me/provider/capabilities').reply(200, APPLYING_CAPABILITIES);
   mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
   mock.onGet('/v1/me/provider/profile').reply(200, { profile: DRAFT_PROFILE });
   mock.onGet(/\/v1\/(me\/)?provider\/(available-requests|jobs|bids|bookings|earnings)/).reply(403, {
@@ -145,9 +147,6 @@ describe('ProviderApp — the V2 onboarding entry point', () => {
     mockDraftProvider();
     renderProvider();
 
-    await waitFor(() => expect(screen.getByTestId('provider-status-draft')).toBeInTheDocument());
-    fireEvent.click(continueCta());
-
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent('/provider/onboarding'),
     );
@@ -162,7 +161,10 @@ describe('ProviderApp — the V2 onboarding entry point', () => {
     mockDraftProvider();
     renderProvider();
 
-    await waitFor(() => expect(screen.getByTestId('provider-status-draft')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent('/provider/onboarding'),
+    );
     expect(screen.queryByText(/pull up to see requests/i)).toBeNull();
+    expect(screen.queryByTestId('provider-bottom-nav')).toBeNull();
   });
 });

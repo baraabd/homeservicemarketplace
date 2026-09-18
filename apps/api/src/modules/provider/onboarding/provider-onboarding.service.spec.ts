@@ -114,6 +114,25 @@ function build(
 
 describe('ProviderOnboardingService', () => {
   describe('getStatus', () => {
+    it('accepts the canonical country code saved by V2 without a legacy display name', async () => {
+      const { service } = build({
+        profile: makeProfile({ serviceAreaCountryCode: 'SE', serviceAreaCountry: null }),
+      });
+      const status = await service.getStatus('u-1');
+      expect(status.complete).toBe(true);
+      expect(status.missing).toEqual([]);
+    });
+
+    it('still requires a country when both current and legacy values are absent', async () => {
+      const { service } = build({
+        profile: makeProfile({ serviceAreaCountryCode: null, serviceAreaCountry: null }),
+      });
+      expect((await service.getStatus('u-1')).missing).toContainEqual({
+        field: 'serviceAreaCountry',
+        code: 'REQUIRED',
+      });
+    });
+
     it('reports a complete DRAFT profile as submittable and editable', async () => {
       const { service } = build();
       const status = await service.getStatus('u-1');

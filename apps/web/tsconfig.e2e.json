@@ -35,7 +35,9 @@
     // Playwright's `expect` and the jest-dom matchers Vitest installs are both
     // ambient. Naming them here is what makes `toHaveScreenshot` and
     // `toBeVisible` real symbols rather than `any`.
-    "types": ["node", "@playwright/test", "@testing-library/jest-dom"],
+    // Component regressions also traverse the application API client, whose
+    // import.meta.env requires Vite's client declarations in this program.
+    "types": ["node", "@playwright/test", "@testing-library/jest-dom", "vite/client"],
     "paths": {
       "@/*": ["./src/*"]
     }

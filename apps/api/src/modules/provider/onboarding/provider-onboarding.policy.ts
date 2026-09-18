@@ -1,4 +1,4 @@
-import type { ProviderOnboardingIssue } from '@homeservicemarketplace/contracts';
+import { TITLE_MIN_LENGTH, type ProviderOnboardingIssue } from '@homeservicemarketplace/contracts';
 
 // Phase 4 — the provider onboarding COMPLETENESS POLICY.
 //
@@ -18,7 +18,10 @@ import type { ProviderOnboardingIssue } from '@homeservicemarketplace/contracts'
 // Minimum useful lengths. A one-character headline technically satisfies
 // "present" while telling a seeker nothing, so PRESENT and USEFUL are checked
 // separately and reported with different codes.
-export const MIN_HEADLINE_LENGTH = 10;
+// Use the professional-title contract's minimum. The legacy ten-character
+// threshold rejected the server's own valid titles (Plumber, Painter, سبّاك)
+// after V2 removed the ordinary title editor, leaving Task 5 impossible to finish.
+export const MIN_HEADLINE_LENGTH = TITLE_MIN_LENGTH;
 export const MIN_BIO_LENGTH = 40;
 export const MIN_DISPLAY_NAME_LENGTH = 2;
 /** Upper bound on claimed experience. Matches the database CHECK constraint;

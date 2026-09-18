@@ -9,6 +9,7 @@ import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider'
 import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import { ProviderApp } from './ProviderApp';
+import { WORKING_CAPABILITIES } from '../../../test-support/provider-capability-fixtures';
 
 // Sprint 09B.29 — resolve the code-split screen BEFORE any assertion window.
 //
@@ -69,6 +70,7 @@ let qc: QueryClient;
 beforeEach(() => {
   mock = new MockAdapter(api);
   qc = createAuthQueryClient();
+  mock.onGet('/v1/me/provider/capabilities').reply(200, WORKING_CAPABILITIES);
 });
 afterEach(() => {
   mock.restore();

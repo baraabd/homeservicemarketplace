@@ -56,7 +56,10 @@ interface CaseRow {
   requirementsSnapshot: unknown;
   assignedToUserId: string | null;
   submittedAt: Date | null;
-  providerProfile: typeof COMPLETE_PROFILE;
+  providerProfile: Omit<typeof COMPLETE_PROFILE, 'serviceAreaCountry'> & {
+    serviceAreaCountry: string | null;
+    serviceAreaCountryCode?: string | null;
+  };
   documents: Array<{
     kind: string;
     serviceCategoryId: string | null;

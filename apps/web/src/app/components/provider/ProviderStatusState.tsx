@@ -159,14 +159,39 @@ export interface ProviderStatusStateProps {
   // delegate to it via this prop. Optional because PENDING / SUSPENDED
   // / REJECTED do not invoke an upgrade.
   onContinueOnboarding?: () => void;
+  /** Legacy ACTIVE is not itself a work-access decision. */
+  workAccessDenied?: boolean;
 }
 
-export function ProviderStatusState({ status, onContinueOnboarding }: ProviderStatusStateProps) {
+export function ProviderStatusState({
+  status,
+  onContinueOnboarding,
+  workAccessDenied = false,
+}: ProviderStatusStateProps) {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const { lang, dir, darkMode } = useLang();
   const localized = lang === 'ar' ? 'ar' : 'en';
   const copy = copyFor(status, localized);
+  if (status === 'ACTIVE' && workAccessDenied) {
+    Object.assign(
+      copy,
+      localized === 'ar'
+        ? {
+            title: 'صلاحية العمل غير مفعّلة',
+            body: 'لا يمكنك استقبال الأعمال حالياً. راجع حالة طلبك أو تواصل مع الدعم.',
+            ctaLabel: 'العودة إلى التطبيقات',
+          }
+        : {
+            title: 'Work access is not active',
+            body: 'You cannot take work right now. Check your application status or contact support.',
+            ctaLabel: 'Back to apps',
+          },
+    );
+    copy.Icon = ShieldAlert;
+    copy.haloBg = 'bg-amber-100';
+    copy.haloText = 'text-amber-700';
+  }
   const Icon = copy.Icon;
 
   const fontFamily = lang === 'ar' ? "'Cairo', 'Inter', sans-serif" : "'Inter', sans-serif";

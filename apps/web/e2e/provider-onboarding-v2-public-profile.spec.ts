@@ -208,11 +208,14 @@ test.describe('Task 5 — the profile a customer will see', () => {
 });
 
 test.describe('Task 5 — the portfolio', () => {
-  test('draws the approved upload surface and the moderation notice', async ({ page }) => {
+  test('draws the optional upload surface without claiming an empty gallery was uploaded', async ({
+    page,
+  }) => {
     await openPortfolio(page);
 
     await expect(page.getByTestId('portfolio-add-photo')).toBeVisible();
-    await expect(page.getByTestId('portfolio-moderation-notice')).toBeVisible();
+    await expect(page.getByTestId('portfolio-optional-hint')).toContainText('optional');
+    await expect(page.getByTestId('portfolio-moderation-notice')).toHaveCount(0);
   });
 
   test('will not upload until the publication wording has been agreed to', async ({ page }) => {
