@@ -125,6 +125,8 @@ export class AdminVerificationCaseService {
                 originalFilename: true,
                 scanState: true,
                 deletedAt: true,
+                erasureStartedAt: true,
+                retainUntil: true,
               },
             },
           },
@@ -166,6 +168,7 @@ export class AdminVerificationCaseService {
 
     if (!row) return null;
 
+    const observedAt = new Date();
     const documents: AdminVerificationDocument[] = row.documents.map((d) => ({
       id: d.id,
       kind: d.kind,
@@ -179,9 +182,20 @@ export class AdminVerificationCaseService {
       // CLEAN and not-yet-deleted. Anything else is not openable, including a
       // scan state that does not exist yet — the comparison is against CLEAN
       // rather than against a list of bad states, so a new state fails closed.
-      viewable: d.mediaAsset?.scanState === 'CLEAN' && d.mediaAsset?.deletedAt === null,
+      viewable:
+        d.mediaAsset?.scanState === 'CLEAN' &&
+        d.mediaAsset?.deletedAt === null &&
+        !d.mediaAsset.erasureStartedAt &&
+        (!d.mediaAsset.retainUntil || d.mediaAsset.retainUntil > observedAt),
       uploadedAt: d.uploadedAt.toISOString(),
       evidenceDeletedAt: d.mediaAsset?.deletedAt?.toISOString() ?? null,
+      retentionState: d.mediaAsset?.deletedAt
+        ? 'ERASED'
+        : d.mediaAsset?.erasureStartedAt
+          ? 'ERASING'
+          : d.mediaAsset?.retainUntil && d.mediaAsset.retainUntil <= observedAt
+            ? 'EXPIRED'
+            : 'ACTIVE',
       supersededAt: d.supersededAt?.toISOString() ?? null,
     }));
 

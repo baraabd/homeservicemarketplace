@@ -18,6 +18,7 @@ import { VerificationCaseWorkflowService } from './case/verification-case-workfl
 import { VerificationExpiryJob } from './expiry/verification-expiry.job';
 import { VerificationExpiryService } from './expiry/verification-expiry.service';
 import { VerificationCaseEventsHandler } from './case/verification-case-events.handler';
+import { EvidenceErasedHandler } from './retention/evidence-erased.handler';
 import { EvidenceScannedHandler } from './media/evidence-scanned.handler';
 import { ClamAvMalwareScanner } from './media/clamav-scanner.adapter';
 import { resolveScannerSelection } from './media/scanner-selection';
@@ -85,6 +86,7 @@ import { Logger } from '@nestjs/common';
     EvidenceCleanupService,
     EvidenceScanService,
     EvidenceScannedHandler,
+    EvidenceErasedHandler,
     // Sprint 9B.5 — the only class allowed to act on the case transition table.
     VerificationCaseWorkflowService,
     VerificationCaseEventsHandler,
@@ -119,6 +121,7 @@ import { Logger } from '@nestjs/common';
     // evidence was never judged and no provider could ever be verified.
     EvidenceScanJob,
     EvidenceScannedHandler,
+    EvidenceErasedHandler,
     // Sprint 9B.5 — the only class allowed to act on the case transition table.
     // Exported so the admin case-commands controller can drive the same
     // implementation the provider side uses; two copies of a transition is how

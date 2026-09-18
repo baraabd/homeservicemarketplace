@@ -3,6 +3,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectVersionsCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -13,6 +14,7 @@ import { AppConfigService } from '../../config/app-config.service';
 import {
   RestrictedObjectStoragePort,
   type RestrictedObjectMetadata,
+  type RestrictedErasureReceipt,
 } from './restricted-object-storage.port';
 import { validateKey } from './local-disk-storage.adapter';
 
@@ -151,6 +153,64 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
       // credentials outage would read as "the provider never uploaded".
       if (isNotFound(err)) return null;
       throw backendFailure();
+    }
+  }
+
+  close(): void {
+    this.client.destroy();
+  }
+
+  async eraseObject(key: string): Promise<RestrictedErasureReceipt> {
+    validateKey(key);
+    if (!key.startsWith('verification/')) throw new Error('restricted-erasure-invalid-namespace');
+    const Bucket = this.bucket();
+    const abortSignal = AbortSignal.timeout(45_000);
+    try {
+      // A current-object 404 is NOT a versioned-bucket erasure receipt.
+      // List permission is mandatory even if versioning currently is disabled.
+      await this.client.send(new DeleteObjectCommand({ Bucket, Key: key }), { abortSignal });
+      for (let batch = 0; batch < 20; batch += 1) {
+        // Start at the same exact prefix after each deletion: no deleted marker
+        // is reused as a cursor. Siblings sharing the prefix are never removed.
+        const found = await this.client.send(
+          new ListObjectVersionsCommand({
+            Bucket,
+            Prefix: key,
+            MaxKeys: 100,
+          }),
+          { abortSignal },
+        );
+        const exact = [...(found.Versions ?? []), ...(found.DeleteMarkers ?? [])].filter(
+          (item) => item.Key === key,
+        );
+        if (exact.length === 0) {
+          // When truncated, absence in the first page cannot certify absence.
+          if (found.IsTruncated) throw new Error('incomplete-version-inventory');
+          try {
+            await this.client.send(new HeadObjectCommand({ Bucket, Key: key }), { abortSignal });
+            throw new Error('object-remains');
+          } catch (error) {
+            if (!isNotFound(error)) throw error;
+          }
+          return { scope: 'PRIMARY_OBJECT_AND_VERSIONS', verifiedAbsent: true };
+        }
+        for (const item of exact) {
+          if (!item.VersionId) throw new Error('missing-version-id');
+          await this.client.send(
+            new DeleteObjectCommand({
+              Bucket,
+              Key: key,
+              VersionId: item.VersionId,
+            }),
+            { abortSignal },
+          );
+        }
+      }
+      throw new Error('version-budget-exhausted');
+    } catch {
+      // Includes AccessDenied, Object Lock and transport timeouts. Never
+      // bypass a legal hold and never print raw storage exception details.
+      throw new Error('restricted-erasure-unconfirmed');
     }
   }
 

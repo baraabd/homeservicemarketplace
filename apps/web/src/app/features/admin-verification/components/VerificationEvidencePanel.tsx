@@ -1,3 +1,4 @@
+import { EvidenceRetentionNotice } from '../../case-ui/EvidenceRetentionNotice';
 import { AlertTriangle, Check, FileText, Lock, ShieldAlert, ShieldCheck, X } from 'lucide-react';
 import type {
   AdminVerificationCase,
@@ -136,7 +137,7 @@ function DocumentRow({
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
           <ScanBadge doc={doc} lang={lang} />
-          {doc.evidenceDeletedAt ? (
+          {doc.evidenceDeletedAt && !doc.retentionState ? (
             <span className="text-slate-400" style={{ fontSize: '10px' }}>
               {copy.evidenceDeleted}
             </span>
@@ -147,6 +148,11 @@ function DocumentRow({
             </span>
           ) : null}
         </div>
+        <EvidenceRetentionNotice
+          state={doc.retentionState}
+          lang={lang}
+          className="text-slate-600 dark:text-slate-300"
+        />
       </div>
 
       {/* `viewable` is computed SERVER-side. The client does not decide from

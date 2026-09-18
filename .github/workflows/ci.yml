@@ -1012,6 +1012,95 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
 
+  # Independent, disposable services. No production credentials or deployment.
+  evidence-retention:
+    name: Evidence retention / real Postgres, S3 versions and ClamAV
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: retention_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/retention_ci
+      RUN_RETENTION_INTEGRATION: '1'
+      RETENTION_TEST_S3_ENDPOINT: http://127.0.0.1:19000
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Start disposable scanner and create temporary storage credentials
+        run: |
+          docker run -d --name retention-clamd -p 127.0.0.1:3310:3310 clamav/clamav:stable
+          python3 - <<'PY'
+          import os, secrets
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              for key in ['RETENTION_TEST_S3_USER', 'RETENTION_TEST_S3_SECRET']:
+                  value = secrets.token_hex(24)
+                  print(f'::add-mask::{value}')
+                  out.write(f'{key}={value}\n')
+          PY
+      - name: Build the upstream security-fixed S3 test service
+        # Test service only, not a production storage recommendation. Upstream
+        # stopped publishing patched images; build the security release rather
+        # than silently testing with the earlier vulnerable image.
+        run: GOBIN="$RUNNER_TEMP/retention-bin" go install github.com/minio/minio@RELEASE.2025-10-15T17-29-55Z
+      - name: Start storage and verify both services actually answer
+        run: |
+          MINIO_ROOT_USER="$RETENTION_TEST_S3_USER" MINIO_ROOT_PASSWORD="$RETENTION_TEST_S3_SECRET" \
+            "$RUNNER_TEMP/retention-bin/minio" server "$RUNNER_TEMP/retention-objects" \
+            --address 127.0.0.1:19000 > "$RUNNER_TEMP/retention-minio.log" 2>&1 &
+          python3 - <<'PY'
+          import socket, time, urllib.request
+          for attempt in range(120):
+              try:
+                  with urllib.request.urlopen('http://127.0.0.1:19000/minio/health/ready', timeout=2) as response:
+                      assert response.status == 200
+                  with socket.create_connection(('127.0.0.1', 3310), timeout=2) as connection:
+                      connection.sendall(b'zPING\0')
+                      assert b'PONG' in connection.recv(100)
+                  break
+              except Exception:
+                  if attempt == 119: raise RuntimeError('retention-test-services-not-ready') from None
+                  time.sleep(3)
+          PY
+      - name: Generate, migrate and build the actual worker
+        run: |
+          echo "DATABASE_URL=$DATABASE_URL" > .env
+          pnpm --filter @homeservicemarketplace/database generate
+          pnpm --filter @homeservicemarketplace/database migrate:deploy
+          pnpm --filter @homeservicemarketplace/database build
+          pnpm --filter @homeservicemarketplace/contracts build
+          pnpm --filter @homeservicemarketplace/api build
+      - name: Verify erasure, recovery, authority fences and independent process
+        run: |
+          pnpm --filter @homeservicemarketplace/api exec jest \
+            --runInBand --testPathPattern=evidence-retention.integration \
+            --json --outputFile=retention-ci-report.json
+      - name: Retain synthetic test evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: retention-real-services-evidence
+          path: apps/api/retention-ci-report.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: Stop scanner
+        if: always()
+        run: docker rm -f retention-clamd || true
+
   # ── single required check ─────────────────────────────────────────────────
   # Branch protection points at THIS job. Adding a gate above automatically
   # tightens the requirement without anyone having to remember to update the
@@ -1025,6 +1114,7 @@ jobs:
       # fails if ANY of install / contracts / database / api / web failed.
       - verify
       - integration-e2e
+      - evidence-retention
       - browser-e2e
       # The approved design is an acceptance criterion, so the check that
       # measures it blocks merges like any other.

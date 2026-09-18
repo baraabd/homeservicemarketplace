@@ -162,6 +162,12 @@ export class EvidenceUploadService {
 
     try {
       const asset = await this.tx.run(async (trx: PrismaTx) => {
+        await trx.$queryRaw`SELECT "id" FROM "VerificationCase" WHERE "id" = ${kase.id} FOR UPDATE`;
+        const current = await trx.verificationCase.findUnique({
+          where: { id: kase.id },
+          select: { state: true },
+        });
+        if (!current || !EVIDENCE_ACCEPTING_STATES.includes(current.state)) throw notFound();
         const created = await trx.mediaAsset.create({
           data: {
             id: assetId,
@@ -475,6 +481,12 @@ export class EvidenceUploadService {
 
     try {
       const document = await this.tx.run(async (trx: PrismaTx) => {
+        await trx.$queryRaw`SELECT "id" FROM "VerificationCase" WHERE "id" = ${asset.verificationCaseId} FOR UPDATE`;
+        const current = await trx.verificationCase.findUnique({
+          where: { id: asset.verificationCaseId! },
+          select: { state: true },
+        });
+        if (!current || !EVIDENCE_ACCEPTING_STATES.includes(current.state)) throw notFound();
         // Supersede an earlier live document in the same slot. The old row
         // stays: what was originally shown is part of the record.
         await trx.verificationDocument.updateMany({
@@ -502,7 +514,7 @@ export class EvidenceUploadService {
         // and the link exists. Scan state stays PENDING: 9B.4's scanner is the
         // only thing allowed to move it, and CLEAN is the only readable state.
         await trx.mediaAsset.update({
-          where: { id: asset.id },
+          where: { id: asset.id, deletedAt: null, erasureStartedAt: null },
           data: { uploadCompletedAt: new Date() },
         });
 
@@ -596,6 +608,7 @@ export class EvidenceUploadService {
         scanState: true,
         createdAt: true,
         deletedAt: true,
+        erasureStartedAt: true,
         uploadCompletedAt: true,
         uploadExpiresAt: true,
         verificationCaseId: true,
@@ -604,7 +617,8 @@ export class EvidenceUploadService {
         verificationCase: { select: { state: true } },
       },
     });
-    if (!asset || !asset.verificationCaseId) throw notFound();
+    if (!asset || !asset.verificationCaseId || asset.deletedAt || asset.erasureStartedAt)
+      throw notFound();
     return asset;
   }
 

@@ -1,4 +1,5 @@
 import { createBrowserRouter, redirect } from 'react-router';
+import { DisputesPage } from './pages/DisputesPage';
 import { Root } from './Root';
 import {
   LoginPage,
@@ -30,6 +31,9 @@ import { RequireAuth, RequireAdmin, GuestOnly } from '../lib/route-guards';
 // /login themed Admin + returnTo=/admin; authenticated non-admins see
 // the AdminAccessRequired surface; admins see the dashboard.
 export const router = createBrowserRouter([
+  // A participant may need help with a past booking even when work access is restricted.
+  // Authentication is required here; current booking ownership is enforced by the API.
+  { Component: RequireAuth, children: [{ path: 'disputes/*', Component: DisputesPage }] },
   // ── Admin (full-width, no phone container, role-gated) ───────────────────
   {
     Component: RequireAdmin,

@@ -15,7 +15,7 @@
 #   * Nothing is added here without an individual security review recorded in
 #     the document above.
 #
-# Each entry below was verified to be a synthetic value that has never existed
+# The original ten entries below were verified to be a synthetic value that has never existed
 # outside a `.spec.ts` / `.test.tsx` file anywhere in the repository's history
 # (`git log --all -S`, 398 commits), and never in any environment or
 # deployment file. None resembles a provider credential.
@@ -40,3 +40,8 @@ f3cce56eb5fc6b97df100ecd748d2b003e6480d1:apps/api/test/e2e/media.e2e.spec.ts:gen
 6d63dc35cfb9a578d01081e3fc0e5c09a8b9e4c9:apps/api/test/e2e/password-reset.e2e.spec.ts:generic-api-key:95
 6d63dc35cfb9a578d01081e3fc0e5c09a8b9e4c9:apps/api/test/integration/password-reset.integration.spec.ts:generic-api-key:132
 6d63dc35cfb9a578d01081e3fc0e5c09a8b9e4c9:apps/web/src/app/pages/AuthPages.test.tsx:generic-api-key:240
+
+# Sprint 12A — two authored DTO UUID fixtures, individually reviewed in §6.
+# Not credentials. Runtime randomUUID() now replaces the fixed request example.
+b876db762045bf70ee7d1fb3eea9eb00ac4bbb97:apps/api/src/modules/disputes/dispute-intake.dto.spec.ts:generic-api-key:4
+58488e0580e5bbd89612f450aac3f2e56aa6eb1c:apps/api/src/modules/disputes/dispute-intake.dto.spec.ts:generic-api-key:8

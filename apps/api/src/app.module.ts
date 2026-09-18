@@ -33,6 +33,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ProfileModule } from './modules/profile/profile.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { ProviderVerificationModule } from './modules/provider/verification/provider-verification.module';
+import { EvidenceErasedHandler } from './modules/provider/verification/retention/evidence-erased.handler';
 import { EvidenceScannedHandler } from './modules/provider/verification/media/evidence-scanned.handler';
 import { VerificationCaseEventsHandler } from './modules/provider/verification/case/verification-case-events.handler';
 import { RealtimeModule } from './modules/realtime/realtime.module';
@@ -42,6 +43,9 @@ import {
   RequestAvailableBatchHandler,
   RequestAvailableDispatchHandler,
 } from './modules/requests/outbox/request-available.handler';
+import { DisputesModule } from './modules/disputes/disputes.module';
+import { DisputeIntakeEventsHandler } from './modules/disputes/dispute-intake.events-handler';
+import { DisputePrivacyMiddleware } from './modules/disputes/dispute-privacy.middleware';
 import { ServicesModule } from './modules/services/services.module';
 
 // Infrastructure & data-foundation bootstrap. Seeker domain modules
@@ -69,13 +73,15 @@ import { ServicesModule } from './modules/services/services.module';
       // ProviderVerificationModule contributes EvidenceScannedHandler. Without
       // it registered here the worker has no consumer for 'evidence.scanned'
       // and DEAD-LETTERS every scan announcement — see OutboxWorker.
-      imports: [RequestOutboxModule, ProviderVerificationModule, RealtimeModule],
+      imports: [RequestOutboxModule, ProviderVerificationModule, RealtimeModule, DisputesModule],
       handlers: [
         RequestAvailableDispatchHandler,
         RequestAvailableBatchHandler,
         EvidenceScannedHandler,
+        EvidenceErasedHandler,
         VerificationCaseEventsHandler,
         AdminProviderReviewEventsHandler,
+        DisputeIntakeEventsHandler,
       ],
     }),
     // Global, transport-agnostic post-commit security notifications
@@ -114,6 +120,7 @@ import { ServicesModule } from './modules/services/services.module';
     RequestsModule,
     BidsModule,
     BookingsModule,
+    DisputesModule,
     NotificationsModule,
     ConversationsModule,
     ProfileModule,
@@ -136,6 +143,7 @@ import { ServicesModule } from './modules/services/services.module';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(RequestIdMiddleware).forRoutes('*');
+    consumer.apply(DisputePrivacyMiddleware).forRoutes('*');
     // Sprint 6 — Deprecation / Sunset / Link headers plus usage telemetry on
     // the legacy provider route families. Bound to '*' and gated internally by
     // the DEPRECATED_ROUTES registry, so adding or retiring a route is a

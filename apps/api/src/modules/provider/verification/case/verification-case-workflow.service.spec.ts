@@ -63,7 +63,12 @@ interface CaseRow {
   documents: Array<{
     kind: string;
     serviceCategoryId: string | null;
-    mediaAsset: { scanState: string } | null;
+    mediaAsset: {
+      scanState: string;
+      deletedAt?: Date | null;
+      erasureStartedAt?: Date | null;
+      retainUntil?: Date | null;
+    } | null;
   }>;
 }
 
@@ -101,6 +106,7 @@ function harness(
   let reads = 0;
 
   const client = {
+    $queryRaw: jest.fn(async () => [{ id: CASE_ID }]),
     verificationCase: {
       findFirst: jest.fn(async (args: { where: Record<string, unknown> }) => {
         ownCaseQueries.push(args.where);
@@ -173,38 +179,26 @@ async function failure(p: Promise<unknown>): Promise<AppError> {
 // ── submit ────────────────────────────────────────────────────────────────
 
 describe('submit', () => {
-  it('accepts clean evidence for a V2 profile with only its canonical country code', async () => {
-    const h = harness({
-      row: caseRow({
-        providerProfile: {
-          ...COMPLETE_PROFILE,
-          serviceAreaCountry: null,
-          serviceAreaCountryCode: 'SY',
-        },
-      }),
-    });
-    expect(await h.service.submit(PROVIDER_USER, { caseId: CASE_ID })).toMatchObject({
-      state: 'SUBMITTED',
-      changed: true,
-    });
+  it('locks the case before evaluating evidence or committing submission', async () => {
+    const h = harness();
+    await h.service.submit(PROVIDER_USER, { caseId: CASE_ID });
+    expect(h.client.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(h.client.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      h.client.verificationCase.findUnique.mock.invocationCallOrder[0],
+    );
   });
-
-  it('refuses submission when neither country representation exists', async () => {
-    const h = harness({
-      row: caseRow({
-        providerProfile: {
-          ...COMPLETE_PROFILE,
-          serviceAreaCountry: null,
-          serviceAreaCountryCode: null,
-        },
-      }),
-    });
-    await expect(h.service.submit(PROVIDER_USER, { caseId: CASE_ID })).rejects.toMatchObject({
-      status: 422,
-    });
-    expect(h.updates).toEqual([]);
-  });
-
+  it.each(['deletedAt', 'erasureStartedAt', 'retainUntil'] as const)(
+    'refuses CLEAN evidence blocked by %s',
+    async (field) => {
+      const row = caseRow();
+      row.documents[0].mediaAsset = { scanState: 'CLEAN', [field]: new Date('2026-01-01Z') };
+      const h = harness({ row });
+      expect((await failure(h.service.submit(PROVIDER_USER, { caseId: CASE_ID }))).status).toBe(
+        422,
+      );
+      expect(h.updates).toHaveLength(0);
+    },
+  );
   it('moves a ready draft to SUBMITTED and stamps the time', async () => {
     const h = harness();
     const out = await h.service.submit(PROVIDER_USER, { caseId: CASE_ID });

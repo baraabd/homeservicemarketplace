@@ -75,6 +75,8 @@ export class EvidenceReadService {
             visibility: true,
             scanState: true,
             deletedAt: true,
+            erasureStartedAt: true,
+            retainUntil: true,
             detectedMimeType: true,
             sizeBytes: true,
             originalFilename: true,
@@ -102,6 +104,8 @@ export class EvidenceReadService {
       visibility: doc.mediaAsset.visibility,
       scanState: doc.mediaAsset.scanState,
       evidenceDeletedAt: doc.mediaAsset.deletedAt,
+      erasureStartedAt: doc.mediaAsset.erasureStartedAt,
+      retainUntil: doc.mediaAsset.retainUntil,
       caseId: doc.caseId,
     });
 
