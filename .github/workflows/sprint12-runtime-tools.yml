@@ -1,0 +1,44 @@
+name: Sprint 12 local runtime tooling
+on:
+  push:
+    branches: [chore/sprint12c-isolated-workspace]
+    paths: [.github/workflows/sprint12-runtime-tools.yml]
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 1311b5ab6c39355c90288f3d1e4002e520745329
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends redis-server
+          ROOT="$RUNNER_TEMP/runtime-tools"
+          mkdir -p "$ROOT/node/bin" "$ROOT/redis" "$ROOT/lib" "$RUNNER_TEMP/runtime-export"
+          cp -L "$(command -v node)" "$ROOT/node/bin/node"
+          PNPM_ROOT="$(dirname "$(dirname "$(readlink -f "$(command -v pnpm)")")")"
+          cp -a "$PNPM_ROOT" "$ROOT/pnpm"
+          cp -L /usr/bin/redis-server "$ROOT/redis/"
+          ldd /usr/bin/redis-server | awk '/=> \/|^\// {for(i=1;i<=NF;i++) if($i ~ /^\//) print $i}' | sort -u > "$RUNNER_TEMP/redis-libs.txt"
+          while IFS= read -r lib; do
+            case "$(basename "$lib")" in libc.so.*|ld-linux*|libpthread.so.*|libm.so.*|libdl.so.*|librt.so.*) continue;; esac
+            cp -L "$lib" "$ROOT/lib/"
+          done < "$RUNNER_TEMP/redis-libs.txt"
+          tar -czf "$RUNNER_TEMP/runtime-export/runtime-tools.tar.gz" -C "$ROOT" .
+          node --version > "$RUNNER_TEMP/runtime-export/versions.txt"
+          pnpm --version >> "$RUNNER_TEMP/runtime-export/versions.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprint12-node20-redis-tooling
+          path: ${{ runner.temp }}/runtime-export/
+          retention-days: 1
+          if-no-files-found: error
