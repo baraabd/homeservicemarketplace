@@ -1,0 +1,56 @@
+name: Sprint 12 recovery workspace
+on:
+  push:
+    branches: [chore/sprint12c-isolated-workspace]
+    paths: [.github/workflows/sprint12-recovery-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 1311b5ab6c39355c90288f3d1e4002e520745329
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - run: pnpm install --frozen-lockfile
+      - name: Export tracked source and frozen dependencies without environment or Git credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/sprint12-recovery"
+          mkdir -p "$OUT"
+          git archive --format=tar.gz HEAD > "$OUT/source.tar.gz"
+          git rev-parse HEAD > "$OUT/commit.txt"
+          git ls-tree -r HEAD > "$OUT/tree.txt"
+          sha256sum pnpm-lock.yaml > "$OUT/lockfile.sha256"
+          find . -name node_modules -type d -prune -print0 | tar --null -T - -czf "$OUT/dependencies.tar.gz"
+      - name: Export PostgreSQL and Redis executables for isolated local tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-16 redis-server
+          ROOT="$RUNNER_TEMP/test-runtime"
+          mkdir -p "$ROOT/postgres" "$ROOT/redis" "$ROOT/lib"
+          cp -a /usr/lib/postgresql/16/bin "$ROOT/postgres/"
+          cp -a /usr/share/postgresql/16 "$ROOT/postgres/share"
+          cp -a /usr/lib/postgresql/16/lib "$ROOT/postgres/"
+          cp /usr/bin/redis-server "$ROOT/redis/"
+          find /usr/lib/postgresql/16/bin /usr/lib/postgresql/16/lib /usr/bin/redis-server -type f -exec ldd {} \; 2>/dev/null | awk '/=> \/|^\// {for(i=1;i<=NF;i++) if($i ~ /^\//) print $i}' | sort -u > "$RUNNER_TEMP/runtime-libs.txt"
+          while IFS= read -r lib; do
+            case "$(basename "$lib")" in libc.so.*|ld-linux*|libpthread.so.*|libm.so.*|libdl.so.*|librt.so.*) continue;; esac
+            cp -L "$lib" "$ROOT/lib/"
+          done < "$RUNNER_TEMP/runtime-libs.txt"
+          tar -czf "$RUNNER_TEMP/sprint12-recovery/test-runtime.tar.gz" -C "$ROOT" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprint12-recovery-1311b5a
+          path: ${{ runner.temp }}/sprint12-recovery/
+          retention-days: 1
+          if-no-files-found: error
