@@ -184,6 +184,8 @@ export interface ProviderOnboardingData {
    * parses.
    */
   minBioLength?: number;
+  /** Readiness minimum for the professional title. Optional for older servers. */
+  minHeadlineLength?: number;
 
   // ── Sprint 9B.19 — service area ─────────────────────────────────────────
 

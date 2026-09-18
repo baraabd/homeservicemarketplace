@@ -1,5 +1,11 @@
 import type { Page, Route } from '@playwright/test';
 
+import {
+  APPLYING_CAPABILITIES,
+  WORKING_CAPABILITIES,
+} from '../src/test-support/provider-capability-fixtures';
+import { SUBMITTED_CAPABILITIES } from './provider-capabilities-fixtures';
+
 import type { Locale } from './phase5-evidence-ledger';
 import type { Phase5State, ServerPrecondition } from './phase5-visual-states';
 
@@ -711,28 +717,13 @@ export async function installPrecondition(
     // would have it report "no work access" for every provider — which looks
     // exactly like a correct answer on three of the four screens that ask.
     if (url.includes('/me/provider/capabilities')) {
-      const active = state.precondition === 'provider-active';
-      const allowed = active
-        ? [
-            'VIEW_OWN_PROFILE',
-            'EDIT_OWN_PROFILE',
-            'VIEW_MARKETPLACE',
-            'SUBMIT_BID',
-            'MANAGE_BOOKINGS',
-            'VIEW_EARNINGS',
-            'MANAGE_VERIFICATION',
-          ]
-        : ['VIEW_OWN_PROFILE', 'EDIT_OWN_PROFILE', 'COMPLETE_ONBOARDING', 'SUBMIT_FOR_REVIEW'];
-      return json(route, {
-        capabilities: allowed.map((capability) => ({
-          capability,
-          allowed: true,
-          reason: null,
-        })),
-        allowed,
-        nextActions: [],
-        primaryReason: active ? null : 'ONBOARDING_INCOMPLETE',
-      });
+      const capabilities =
+        state.precondition === 'provider-active'
+          ? WORKING_CAPABILITIES
+          : state.precondition === 'draft-submitted'
+            ? SUBMITTED_CAPABILITIES
+            : APPLYING_CAPABILITIES;
+      return json(route, capabilities);
     }
 
     if (url.includes('/notifications/unread-count')) return json(route, { count: 0 });

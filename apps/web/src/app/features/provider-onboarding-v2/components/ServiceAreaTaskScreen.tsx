@@ -1,13 +1,26 @@
-import { useEffect, useState } from 'react';
-import { MapPin, Star } from 'lucide-react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { LocateFixed, Star } from 'lucide-react';
 import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
 
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
-import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
+import {
+  useOnboardingAutosave,
+  useOnboardingStepAutosave,
+} from '../autosave/ProviderOnboardingAutosaveProvider';
 import { SERVICE_AREA_COPY, type Lang } from '../copy/service-area-copy';
-import { ProviderErrorState, ProviderSkeleton, ProviderTextInput } from '../../provider-ui';
+import {
+  ProviderButton,
+  ProviderErrorState,
+  ProviderSkeleton,
+  ProviderTextInput,
+} from '../../provider-ui';
 import { marketPrompt, useSupportedMarkets } from '../../../hooks/provider/useSupportedMarkets';
 import { MarketPicker } from './MarketPicker';
+import { reverseGeocodeViaNominatim } from '../../../../lib/reverse-geocode';
+import type { ServiceAreaPoint } from './ServiceAreaMap';
+import { requestServiceAreaPosition } from '../service-area-position';
+
+const ServiceAreaMap = lazy(() => import('./ServiceAreaMap'));
 
 // Sprint 9B.19 — V2 Task 3: where you work.
 //
@@ -39,9 +52,7 @@ interface ServiceAreaTaskScreenProps {
   editable: boolean;
 }
 
-// SUPERSEDED. The device-location button, the country picker, the radius
-// slider and the area preview are not on the approved screen; see the
-// component note above for what happened to the data behind each.
+// User-approved repair: this private editor now supports touch and explicit GPS.
 export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskScreenProps) {
   const copy = SERVICE_AREA_COPY[lang];
   const autosave = useOnboardingStepAutosave('LOCATION');
@@ -52,6 +63,97 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
   const expansion = data.serviceAreaExpansion;
 
   const [city, setCity] = useState(data.serviceAreaCity ?? '');
+  const [point, setPoint] = useState<ServiceAreaPoint | null>(() =>
+    data.serviceAreaLat != null && data.serviceAreaLng != null
+      ? { lat: data.serviceAreaLat, lng: data.serviceAreaLng }
+      : null,
+  );
+  const [locating, setLocating] = useState(false);
+  const [locationMessage, setLocationMessage] = useState('');
+  const request = useRef(0);
+  const lookup = useRef<AbortController | null>(null);
+  const { trackExternalWork } = useOnboardingAutosave();
+
+  useEffect(() => {
+    if (autosave.isDirty) return;
+    setCity(data.serviceAreaCity ?? '');
+    setPoint(
+      data.serviceAreaLat != null && data.serviceAreaLng != null
+        ? { lat: data.serviceAreaLat, lng: data.serviceAreaLng }
+        : null,
+    );
+  }, [data.serviceAreaCity, data.serviceAreaLat, data.serviceAreaLng, autosave.isDirty]);
+  useEffect(
+    () => () => {
+      request.current += 1;
+      lookup.current?.abort();
+    },
+    [],
+  );
+  useEffect(() => {
+    if (!editable) {
+      request.current += 1;
+      lookup.current?.abort();
+      setLocating(false);
+    }
+  }, [editable]);
+
+  const cancelLookup = () => {
+    request.current += 1;
+    lookup.current?.abort();
+    setLocating(false);
+  };
+  const selectPoint = (next: ServiceAreaPoint) => {
+    if (!editable) return;
+    cancelLookup();
+    setPoint(next);
+    autosave.save({ serviceAreaLat: next.lat, serviceAreaLng: next.lng });
+    setLocationMessage(copy.locationSelectedManually);
+  };
+  const locate = () => {
+    if (!editable || locating) return;
+    if (!navigator.geolocation) {
+      setLocationMessage(copy.permissionUnavailable);
+      return;
+    }
+    const id = ++request.current;
+    lookup.current?.abort();
+    const controller = new AbortController();
+    lookup.current = controller;
+    setLocating(true);
+    setLocationMessage(copy.locating);
+    // Tracked work participates in the existing save-and-exit barrier. The
+    // selected pair is queued before the lookup; a vendor outage never loses it.
+    const work = requestServiceAreaPosition(controller.signal)
+      .then(async (position) => {
+        if (id !== request.current) return;
+        const next = { lat: position.coords.latitude, lng: position.coords.longitude };
+        setPoint(next);
+        autosave.save({ serviceAreaLat: next.lat, serviceAreaLng: next.lng });
+        // A vendor that never responds cannot trap Save and continue forever.
+        const timeout = window.setTimeout(() => controller.abort(), 8000);
+        const result = await reverseGeocodeViaNominatim(
+          next.lat,
+          next.lng,
+          lang,
+          controller.signal,
+        ).finally(() => window.clearTimeout(timeout));
+        if (id !== request.current) return;
+        if (result.status === 'ok' && result.city.trim()) {
+          setCity(result.city);
+          autosave.save({ serviceAreaCity: result.city.trim() });
+          setLocationMessage(copy.locationSelected);
+        } else setLocationMessage(copy.cityLookupFailed);
+      })
+      .catch((error: { code?: number }) => {
+        if (id === request.current)
+          setLocationMessage(error.code === 1 ? copy.permissionDenied : copy.permissionUnavailable);
+      })
+      .finally(() => {
+        if (id === request.current) setLocating(false);
+      });
+    trackExternalWork(work);
+  };
 
   /**
    * The radius in force, and where it comes from now.
@@ -125,6 +227,7 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
    * a second gate.
    */
   const chooseMarket = (value: string) => {
+    cancelLookup();
     if (prompt?.kind === 'CONFIRM_TIMEZONE') {
       timezoneAutosave.save({ timezone: value });
       return;
@@ -180,42 +283,79 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
         disabled={!editable}
         autoComplete="address-level2"
         onChange={(event) => {
+          cancelLookup();
           setCity(event.target.value);
-          // Sprint 9B.28 — commit on the keystroke as well as the blur, so
-          // the status cannot claim "Saved" over a city that has not been
-          // sent. Empty is still never written: the field is required and
-          // the server refuses it.
-          const next = event.target.value;
-          if (next.trim() !== '') autosave.save({ serviceAreaCity: next.trim() });
+          autosave.save({ serviceAreaCity: event.target.value.trim() || null });
         }}
         onBlur={() => {
-          if (city.trim() !== '') autosave.save({ serviceAreaCity: city.trim() });
+          autosave.save({ serviceAreaCity: city.trim() || null });
         }}
       />
 
-      {/* ── The area, as a described circle ─────────────────────────────────
-          `.hsm-map`: a 190px band with a ring in the middle carrying the
-          radius. It is deliberately NOT a real map with a pin on the
-          provider's base — that would show them exactly the thing the hint
-          above promises nobody else can see, and would teach them the pin is
-          what gets published. `role="img"` with a name that states the radius
-          is the whole of what it means, so a screen-reader user gets the fact
-          rather than a decorative band. */}
-      <div
-        role="img"
-        aria-label={copy.mapAlt(radiusKm)}
-        data-testid="service-area-map"
-        className="pv-map-surface relative h-[190px] overflow-hidden rounded-pv-card"
-      >
-        <span
-          aria-hidden="true"
-          className="absolute left-1/2 top-1/2 grid h-[122px] w-[122px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-pv-accent bg-pv-accent/12 text-pv-accent-hover"
+      <div className="flex flex-col gap-2">
+        <ProviderButton
+          tone="secondary"
+          shape="onboarding"
+          data-testid="service-area-locate"
+          disabled={!editable || locating}
+          onClick={locate}
         >
-          <MapPin size={16} strokeWidth={1.8} aria-hidden="true" />
-          <strong className="text-pv-body font-medium" data-testid="service-area-radius">
+          <LocateFixed size={18} aria-hidden="true" />
+          {locating ? copy.locating : copy.useMyLocation}
+        </ProviderButton>
+        <p className="text-pv-help text-pv-muted">{copy.locationHelp}</p>
+        <p className="text-pv-help text-pv-muted">{copy.locationServiceHint}</p>
+        <p
+          role="status"
+          data-testid="service-area-location-feedback"
+          className="text-pv-help text-pv-text"
+        >
+          {locationMessage}
+        </p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <p className="text-pv-help text-pv-muted">{copy.mapInstructions}</p>
+        <Suspense fallback={<ProviderSkeleton rows={3} />}>
+          <ServiceAreaMap
+            point={point}
+            radiusKm={radiusKm}
+            lang={lang}
+            editable={editable}
+            onSelect={selectPoint}
+          />
+        </Suspense>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <strong className="text-pv-body text-pv-text" data-testid="service-area-radius">
             {copy.radiusValue(radiusKm)}
           </strong>
-        </span>
+          {point ? (
+            <span data-testid="service-area-point" className="text-pv-help text-pv-muted">
+              {copy.selectedPoint}:{' '}
+              <bdi>
+                {point.lat.toFixed(5)}, {point.lng.toFixed(5)}
+              </bdi>
+            </span>
+          ) : null}
+        </div>
+        <p className="text-pv-help text-pv-muted">{copy.privacyPublic}</p>
+        {point && editable ? (
+          <ProviderButton
+            tone="ghost"
+            onClick={() => {
+              cancelLookup();
+              setPoint(null);
+              setLocationMessage('');
+              autosave.save({ serviceAreaLat: null, serviceAreaLng: null });
+            }}
+          >
+            {copy.clearLocation}
+          </ProviderButton>
+        ) : null}
+        {radiusKm <= 0 ? (
+          <p role="status" className="text-pv-help text-pv-danger">
+            {copy.radiusMissing}
+          </p>
+        ) : null}
       </div>
 
       {/* ── Why the radius is what it is ────────────────────────────────────

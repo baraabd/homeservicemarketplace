@@ -25,13 +25,19 @@ export function ReviewDecisionPanel({
   lang,
   onChanged,
   onDecided,
+  readOnly = false,
 }: {
   review: AdminProviderReview;
   lang: ReviewLanguage;
+  /** A failed/pending dossier refresh must not discard unsent notes or allow decisions. */
+  readOnly?: boolean;
   onChanged: () => Promise<unknown>;
   onDecided: (response: AdminProviderReviewMutationResponse) => void;
 }) {
   const t = REVIEW_COPY[lang];
+  const pausedMessage = lang === 'ar'
+    ? 'القرارات متوقفة حتى نجاح تحديث الملف. النصوص غير المرسلة باقية في هذه الصفحة.'
+    : 'Decisions are paused until the file refresh succeeds. Unsent text remains on this page.';
   const [note, setNote] = useState('');
   const [corrections, setCorrections] = useState<AdminProviderReviewFeedbackInput[]>([
     blankCorrection(),
@@ -115,7 +121,7 @@ export function ReviewDecisionPanel({
     return [];
   }
   async function confirm() {
-    if (!selection) return;
+    if (!selection || readOnly) return;
     if (
       selection.action === 'requestChanges' &&
       corrections.some((item) => !item.providerMessage.trim())
@@ -154,6 +160,11 @@ export function ReviewDecisionPanel({
           <ShieldCheck size={22} aria-hidden className="ar-muted" />
         </div>
         <p className="ar-muted">{t.decisionHint}</p>
+        {readOnly && (
+          <ReviewBanner role="status" tone="warning">
+            {pausedMessage}
+          </ReviewBanner>
+        )}
         {success && (
           <ReviewBanner role="status" tone="success">
             {t.decisionSuccess}
@@ -205,7 +216,7 @@ export function ReviewDecisionPanel({
             type="button"
             data-testid={action === 'approve' ? 'review-approve' : 'review-request-changes'}
             className={`ar-button${action === 'approve' ? ' ar-button-primary' : ''}`}
-            disabled={mutation.isPending || !review.submission}
+            disabled={readOnly || mutation.isPending || !review.submission}
             onClick={(event) => {
               if (!review.submission) return;
               openerRef.current = event.currentTarget;
@@ -259,6 +270,7 @@ export function ReviewDecisionPanel({
         description={selection?.action === 'approve' ? t.confirmApprovalHint : t.confirmChangesHint}
         openerRef={openerRef}
       >
+        {readOnly && <ReviewBanner tone="warning" role="status">{pausedMessage}</ReviewBanner>}
         {selection?.action === 'approve' ? (
           <label className="ar-check">
             <input
@@ -452,7 +464,7 @@ export function ReviewDecisionPanel({
               className="ar-button ar-button-primary"
               type="button"
               data-testid="review-confirm"
-              disabled={mutation.isPending || error === 403}
+              disabled={readOnly || mutation.isPending || error === 403}
               onClick={() => void confirm()}
             >
               {mutation.isPending ? t.saving : t.confirm}

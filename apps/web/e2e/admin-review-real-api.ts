@@ -19,6 +19,7 @@ import {
   type Account,
 } from './real-api';
 import { expectNoHorizontalPageOverflow } from './fixtures';
+import { verifyApprovalHome } from './admin-approval-home-evidence';
 import {
   providerApplicationReview,
   submitVerificationCase,
@@ -71,6 +72,7 @@ export async function enterAdmin(page: Page): Promise<void> {
   });
   await expect(page).toHaveURL(/\/admin(?:\?|$)/);
   await expect(page.locator('#admin-content')).toBeVisible();
+  await verifyApprovalHome(page);
 }
 
 export async function adminNavigation(page: Page, section: string): Promise<void> {

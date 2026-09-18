@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { suggestProfessionalTitle } from '@homeservicemarketplace/contracts';
 import type { PrismaTx } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../../../infrastructure/prisma/prisma.service';
 import { V2_DEFAULT_PROVIDER_TYPE, isBlank } from './onboarding-defaults.policy';
+import { seedPrimarySpecialty } from './primary-specialty-default';
 
 // Sprint 09B.29 Phase 5 (C1) — applying the V2 defaults without a race.
 //
@@ -123,6 +125,7 @@ export const SERVER_OWNED_DRAFT_KEYS: readonly string[] = [
  */
 export interface AppliedDefaults {
   readonly providerType?: typeof V2_DEFAULT_PROVIDER_TYPE;
+  readonly primaryServiceCategoryId?: string;
   readonly headline?: string;
   readonly serviceAreaRadiusKm?: number;
 }
@@ -176,7 +179,21 @@ export class ProviderOnboardingDefaultsService {
     const db = (tx ?? this.prisma.client) as PrismaTx;
 
     const providerType = await this.defaultProviderType(db, providerProfileId);
-    const headline = await this.seedGeneratedHeadline(db, providerProfileId, input.suggestedTitle);
+    // V2 saves the selected set, not a separate primary. A real pending
+    // selection therefore used to leave both primary and headline null.
+    // Resolve the missing presentation default on the server, using the same
+    // transaction and title formatter; no approval or work grant is created.
+    const primary =
+      input.suggestedTitle === null ? await seedPrimarySpecialty(db, providerProfileId) : null;
+    const suggestedTitle = primary
+      ? suggestProfessionalTitle({
+          slug: primary.slug,
+          labelEn: primary.labelEn,
+          labelAr: primary.labelAr,
+          lang: 'en',
+        })
+      : input.suggestedTitle;
+    const headline = await this.seedGeneratedHeadline(db, providerProfileId, suggestedTitle);
     const serviceAreaRadiusKm = await this.deriveRadius(
       db,
       providerProfileId,
@@ -189,6 +206,7 @@ export class ProviderOnboardingDefaultsService {
     // note at the call site.
     return {
       ...(providerType === null ? {} : { providerType }),
+      ...(primary === null ? {} : { primaryServiceCategoryId: primary.id }),
       ...(headline === null ? {} : { headline }),
       ...(serviceAreaRadiusKm === null ? {} : { serviceAreaRadiusKm }),
     };

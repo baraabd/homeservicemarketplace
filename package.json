@@ -29,7 +29,10 @@
     "postman:runtime-smoke": "newman run \"postman/FixNow Runtime Smoke Provider Admin.postman_collection.json\" -e postman/local.postman_environment.json --bail --reporters cli,htmlextra --reporter-htmlextra-export postman/reports/runtime-smoke.html",
     "runtime:provider-loop": "node scripts/runtime/verify-provider-loop.cjs",
     "runtime:verify-500": "node scripts/runtime/verify-runtime-500-elimination.cjs",
-    "runtime:sprint01-security": "node scripts/runtime/verify-sprint01-security.cjs"
+    "runtime:sprint01-security": "node scripts/runtime/verify-sprint01-security.cjs",
+    "security:audit": "node scripts/security/dependency-audit.cjs",
+    "security:audit:prod": "node scripts/security/dependency-audit.cjs --prod",
+    "security:audit:test": "node --test scripts/security/dependency-audit.test.cjs"
   },
   "lint-staged": {
     "*.{js,mjs,cjs,ts,tsx}": [
@@ -54,14 +57,30 @@
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.1",
     "socket.io-client": "^4.7.5",
-    "turbo": "^2.8.19",
+    "turbo": "2.9.14",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.57.0"
   },
   "pnpm": {
     "overrides": {
       "ws@>=8.0.0 <8.21.0": "^8.21.3",
-      "multer@<2.3.0": "^2.3.0"
+      "multer@<2.3.0": "^2.3.0",
+      "@babel/core@>=7.0.0 <7.29.6": "7.29.6",
+      "@humanfs/node@>=0.16.0 <0.16.8": "0.16.8",
+      "ajv@>=8.0.0 <8.18.0": "8.18.0",
+      "baseline-browser-mapping@>=2.0.0 <2.11.0": "2.11.0",
+      "brace-expansion@>=1.0.0 <1.1.18": "1.1.18",
+      "brace-expansion@>=5.0.0 <5.0.9": "5.0.9",
+      "browserslist@>=4.0.0 <4.28.7": "4.28.7",
+      "fast-uri@>=3.0.0 <3.1.6": "3.1.6",
+      "js-yaml@>=3.0.0 <3.15.2": "3.15.2",
+      "js-yaml@>=4.0.0 <4.3.2": "4.3.2",
+      "nanoid@>=3.0.0 <3.3.18": "3.3.18",
+      "picomatch@>=4.0.0 <4.0.4": "4.0.4",
+      "postcss@>=8.0.0 <8.5.23": "8.5.23",
+      "qs@>=6.0.0 <6.16.0": "6.16.0",
+      "tar@>=7.0.0 <7.5.21": "7.5.21",
+      "undici@>=7.0.0 <7.29.0": "7.29.0"
     }
   },
   "volta": {

@@ -183,6 +183,64 @@ describe('the bio', () => {
   });
 });
 
+describe('a missing title has an actionable recovery', () => {
+  it.each(['en', 'ar'] as const)(
+    'names the missing field in %s and persists it through PROFILE',
+    async (lang) => {
+      renderScreen(
+        DRAFT({
+          missing: [{ field: 'headline', code: 'REQUIRED' }],
+          data: {
+            bio: 'A long saved biography with all the requested details already entered.',
+            minHeadlineLength: 2,
+          },
+        }),
+        lang,
+      );
+      const copy = PUBLIC_PROFILE_COPY[lang];
+      const title = await screen.findByRole('textbox', { name: copy.titleLabel });
+      expect(title).toHaveAttribute('data-review-field', 'headline');
+      expect(title).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getByTestId('profile-completion-hint')).toHaveTextContent(copy.completionHint);
+      fireEvent.change(title, { target: { value: lang === 'ar' ? 'سبّاك' : 'Plumber' } });
+      fireEvent.blur(title);
+      await waitFor(() =>
+        expect(
+          mock.history.patch.some(
+            (request) =>
+              JSON.parse(request.data).headline === (lang === 'ar' ? 'سبّاك' : 'Plumber'),
+          ),
+        ).toBe(true),
+      );
+      expect(title).not.toHaveAttribute('aria-invalid');
+    },
+  );
+
+  it('uses the served minimum instead of hiding a still-incomplete title', async () => {
+    renderScreen(
+      DRAFT({
+        missing: [{ field: 'headline', code: 'TOO_SHORT' }],
+        data: { headline: 'x', minHeadlineLength: 2 },
+      }),
+    );
+    expect(await screen.findByText(EN.titleTooShort('2'))).toBeVisible();
+    fireEvent.change(screen.getByTestId('headline-recovery-input'), {
+      target: { value: 'Plumber' },
+    });
+    expect(screen.queryByText(EN.titleTooShort('2'))).toBeNull();
+  });
+
+  it('keeps an existing valid title out of recovery and previews the stored wording', async () => {
+    renderScreen(
+      DRAFT({
+        data: { headline: 'My own trade name', suggestedTitle: { en: 'Plumber', ar: 'سبّاك' } },
+      }),
+    );
+    expect(await screen.findByTestId('preview-title')).toHaveTextContent('My own trade name');
+    expect(screen.queryByTestId('headline-recovery-input')).toBeNull();
+  });
+});
+
 // ── G-07: the bio minimum, said at the input ────────────────────────────────
 //
 // The server has always refused a bio under its minimum, and the provider used
@@ -269,6 +327,13 @@ describe('the customer preview', () => {
 });
 
 describe('the portfolio', () => {
+  it('explains that photos are optional and does not announce uploads when none exist', async () => {
+    renderScreen(DRAFT(), 'en', true, 'portfolio');
+    expect(await screen.findByTestId('portfolio-optional-hint')).toHaveTextContent(
+      EN.portfolioOptional,
+    );
+    expect(screen.queryByTestId('portfolio-moderation-notice')).toBeNull();
+  });
   /**
    * Replace the gallery answer for one test.
    *
@@ -406,11 +471,12 @@ describe('the portfolio', () => {
     expect(second).toHaveAccessibleDescription(EN.reorderHint);
   });
 
-  it('draws the approved upload surface and the moderation notice', async () => {
+  it('draws the upload surface and the moderation notice for actual pending photos', async () => {
+    withGallery(THREE.map((item) => ({ ...item, moderationState: 'PENDING' })));
     renderScreen(DRAFT(), 'en', true, 'portfolio');
 
     expect(await screen.findByTestId('portfolio-add-photo')).toBeInTheDocument();
-    expect(screen.getByTestId('portfolio-moderation-notice')).toHaveTextContent(
+    expect(await screen.findByTestId('portfolio-moderation-notice')).toHaveTextContent(
       EN.photosCheckingTitle,
     );
   });

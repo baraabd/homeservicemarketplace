@@ -10,6 +10,7 @@ import { AdminIdentityCasesPage } from '../../features/admin-verification/compon
 import { VerificationPolicyPanel } from '../../features/admin-verification/components/VerificationPolicyPanel';
 import { DisputeSection } from './DisputesSection';
 import { DashboardOverview } from './DashboardOverview';
+import { ApprovalCenter } from '../../features/admin-approvals/ApprovalCenter';
 import { FinancialsSection } from './FinancialsSection';
 import { SettingsSection } from './SettingsSection';
 import { AuditLogsSection } from './AuditLogsSection';

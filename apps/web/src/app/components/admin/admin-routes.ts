@@ -44,10 +44,11 @@ export function sectionPath(section: AdminSection) {
   return section === 'dashboard' ? '/admin' : `/admin/${section}`;
 }
 
-/** Only known Admin lists can be a dossier's return destination. */
+/** Only the Admin home and known lists can be a dossier's return destination. */
 export function directoryReturn(search: string) {
   const target = new URLSearchParams(search).get('returnTo');
-  return target && /^\/admin\/(providers|reviews|users|identity-cases)(\?[^#]*)?$/.test(target)
+  return target &&
+    (target === '/admin' || /^\/admin\/(providers|reviews|users|identity-cases)(\?[^#]*)?$/.test(target))
     ? target
     : '/admin/reviews';
 }

@@ -4,6 +4,7 @@ import type { ProviderOnboardingDraftView } from '@homeservicemarketplace/contra
 import { useOnboardingDraft } from '../../../hooks/provider/useProviderOnboarding';
 import { useOnboardingStepAutosave } from '../autosave/ProviderOnboardingAutosaveProvider';
 import { AVAILABILITY_COPY, DAY_NAMES, type Lang } from '../copy/availability-copy';
+import { AvailabilityWeekSummary } from './AvailabilityWeekSummary';
 import {
   ProviderButton,
   ProviderErrorState,
@@ -36,8 +37,9 @@ import {
 // dropdowns and ten time fields, and every one of them is a chance to pick the
 // wrong day. Here it is: tap five days, choose two times, press apply.
 //
-// Sprint 09B.29 Phase 5A — rebuilt as the approved screen: day toggles, one
-// From/To pair, Apply, and a checkbox that turns Apply into a clear.
+// The bulk editor keeps one From/To pair and a clear-days option. The
+// user-requested weekly summary below now exposes every applied interval and
+// distinguishes pending changes from an acknowledged server save.
 //
 // WHAT THIS SCREEN IS BUILT AROUND
 //
@@ -103,9 +105,16 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
   const [selectedDays, setSelectedDays] = useState<number[]>(() =>
     [0, 1, 2, 3, 4, 5, 6].filter((day) => isDayAvailable(serverWeek, day)),
   );
-  // Toggling days stages the next Apply; it does not enter the autosave queue.
-  // Keep that selection even if the previous Apply finishes in the meantime.
-  const [hasUnappliedDays, setHasUnappliedDays] = useState(false);
+  // Day/time edits stage the next Apply; they do not enter the autosave queue.
+  // Keep those controls even if the previous Apply finishes in the meantime.
+  const [hasUnappliedChanges, setHasUnappliedChanges] = useState(false);
+
+  const initialWindow = serverWeek.flat()[0];
+  const [bulkStart, setBulkStart] = useState(initialWindow?.startMinute ?? 540);
+  const [bulkEnd, setBulkEnd] = useState(initialWindow?.endMinute ?? 1020);
+  const [hasApplied, setHasApplied] = useState(false);
+  /** Whether Apply clears the chosen days instead of setting their hours. */
+  const [markUnavailable, setMarkUnavailable] = useState(false);
 
   const [lastServerWeek, setLastServerWeek] = useState<Week>(serverWeek);
   if (!autosave.isDirty && serverWeek !== lastServerWeek) {
@@ -113,18 +122,21 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
     // after acknowledgement, even if its object identity has not changed.
     setLastServerWeek(serverWeek);
     setWeek(serverWeek);
-    if (!hasUnappliedDays) setSelectedDays(serverDays);
+    if (!hasUnappliedChanges) {
+      setSelectedDays(serverDays);
+      const firstWindow = serverWeek.flat()[0];
+      if (firstWindow && !markUnavailable) {
+        setBulkStart(firstWindow.startMinute);
+        setBulkEnd(firstWindow.endMinute);
+      }
+    }
   }
 
   // Read, never chosen: the approved screen has no timezone control, so the
   // stored zone is carried with every write and nothing here can change it.
   // See `applySelected` for the recorded Phase 5B gap.
   const timezone = data.timezone ?? resolved.resolved ?? '';
-  const [bulkStart, setBulkStart] = useState(540);
-  const [bulkEnd, setBulkEnd] = useState(1020);
   const [rejected, setRejected] = useState<RejectionCode | null>(null);
-  /** Whether "Apply" clears the chosen days instead of setting them. */
-  const [markUnavailable, setMarkUnavailable] = useState(false);
 
   /**
    * Days a pending Apply would overwrite, awaiting the provider's decision.
@@ -138,10 +150,13 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
    *  so there is no request that carries a partial schedule. */
   const commit = useCallback(
     (next: Week) => {
-      setWeek(next);
       if (!editable) return;
-      setHasUnappliedDays(false);
+      setWeek(next);
+      setHasUnappliedChanges(false);
+      setHasApplied(true);
       autosave.save({ availability: toIntervals(next), timezone: timezone || null });
+      // Apply is an explicit save action; use the existing serial writer now.
+      void autosave.flushAll();
     },
     [autosave, editable, timezone],
   );
@@ -161,7 +176,7 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
   );
 
   const toggleDay = (day: number) => {
-    setHasUnappliedDays(true);
+    setHasUnappliedChanges(true);
     setSelectedDays((current) =>
       current.includes(day) ? current.filter((d) => d !== day) : [...current, day].sort(),
     );
@@ -275,7 +290,7 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
               // otherwise give this `button` a 1.5 ratio and a 500 weight.
               className={`min-h-[44px] min-w-[44px] rounded-pv-control border px-1.5 py-px text-pv-day font-normal leading-normal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent disabled:opacity-60 ${
                 on
-                  ? 'border-pv-accent bg-pv-accent text-white'
+                  ? 'border-pv-accent bg-pv-accent text-white dark:text-pv-bg'
                   : 'border-pv-border-strong bg-pv-surface text-pv-text'
               }`}
             >
@@ -296,15 +311,22 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
           value={formatMinute(bulkStart)}
           disabled={!editable}
           data-testid="bulk-start"
-          onChange={(event) => setBulkStart(minutesOf(event.target.value, bulkStart))}
+          onChange={(event) => {
+            setHasUnappliedChanges(true);
+            setBulkStart(minutesOf(event.target.value, bulkStart));
+          }}
         />
         <ProviderTextInput
           label={copy.toLabel}
           type="time"
-          value={formatMinute(bulkEnd)}
+          value={formatMinute(bulkEnd === 1440 ? 0 : bulkEnd)}
           disabled={!editable}
           data-testid="bulk-end"
-          onChange={(event) => setBulkEnd(minutesOf(event.target.value, bulkEnd))}
+          onChange={(event) => {
+            setHasUnappliedChanges(true);
+            const end = minutesOf(event.target.value, bulkEnd);
+            setBulkEnd(end === 0 ? 1440 : end);
+          }}
         />
       </div>
 
@@ -414,7 +436,10 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
           className="ms-1 me-[3px] mt-0.5 h-5 w-5 flex-shrink-0 accent-pv-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
           checked={markUnavailable}
           disabled={!editable}
-          onChange={(event) => setMarkUnavailable(event.target.checked)}
+          onChange={(event) => {
+            setHasUnappliedChanges(true);
+            setMarkUnavailable(event.target.checked);
+          }}
         />
         <span className="min-w-0">
           <strong className="font-medium text-pv-text">{copy.unavailableLabel}</strong>
@@ -434,6 +459,15 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
           {rejectionMessage(rejected, copy)}
         </p>
       ) : null}
+
+      <AvailabilityWeekSummary
+        week={week}
+        lang={lang}
+        timezoneDisplay={resolved.display}
+        status={autosave.status}
+        hasApplied={hasApplied}
+        hasUnappliedChanges={hasUnappliedChanges}
+      />
     </div>
   );
 }

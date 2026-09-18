@@ -1,0 +1,42 @@
+.ar-review-index { display: flex; flex-direction: column; gap: 12px; }
+.ar-review-index > p { margin: 0; font-size: 13px; }
+.ar-review-index-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.ar-review-index-link {
+  display: flex;
+  gap: 10px;
+  height: 100%;
+  min-height: 44px;
+  padding: 14px;
+  border: 1px solid var(--ar-border);
+  border-radius: 14px;
+  background: var(--ar-bg);
+  color: var(--ar-text);
+  text-decoration: none;
+}
+.ar-review-index-link:hover {
+  border-color: var(--ar-accent);
+  background: var(--ar-sunken);
+}
+.ar-review-index-attention { border-color: var(--ar-accent); }
+.ar-review-index-icon { color: var(--ar-accent); flex-shrink: 0; padding-block-start: 2px; }
+.ar-review-index-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ar-review-index-copy strong { font-size: 14px; font-weight: 750; }
+.ar-review-index-copy > .ar-muted { font-size: 12px; }
+.ar-review-index-state { color: var(--ar-accent); font-size: 12px; font-weight: 700; }
+.ar-review-index-issue { color: var(--ar-danger); font-size: 12px; }
+@media (min-width: 640px) {
+  .ar-review-index-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

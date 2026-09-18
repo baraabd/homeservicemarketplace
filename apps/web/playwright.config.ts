@@ -108,6 +108,7 @@ export default defineConfig({
       : [
           '**/auth-cookies.spec.ts',
           '**/provider-onboarding-v2-real-api.spec.ts',
+          '**/provider-onboarding-repairs.real-api.spec.ts',
           // Admin navigation, decisions, policy settings and visual evidence
           // are accepted against the same running API, never the UI fixture job.
           '**/admin-review-workflow.real-api.spec.ts',

@@ -23,6 +23,8 @@ export interface PublicProfileCopy {
   titleLabel: string;
   titlePlaceholder: string;
   titleTooShort: (min: string) => string;
+  titleRecoveryHint: string;
+  previewMissingTitle: string;
   titleRefusal: Record<string, string>;
 
   // Bio
@@ -70,6 +72,8 @@ export interface PublicProfileCopy {
   bioTooShort: (min: string) => string;
   bioCounter: (used: string, max: string) => string;
   bioCounterOver: string;
+  completionHint: string;
+  portfolioOptional: string;
 
   // Preview
   previewLegend: string;
@@ -121,6 +125,10 @@ export const PUBLIC_PROFILE_COPY: Record<Lang, PublicProfileCopy> = {
     addPhoto: 'Add photo',
     choosePhotoFile: 'Choose a photo file',
     uploadFailed: 'We could not upload that photo. Please try again.',
+    completionHint:
+      'Saved means your changes are stored. This task is complete when its required fields are valid.',
+    portfolioOptional:
+      'Work photos are optional. Add examples of your own work; photo review does not stop you completing your application.',
 
     heading: 'Your public profile',
     intro: 'This is what customers will see. Your contact details are never shown.',
@@ -130,8 +138,11 @@ export const PUBLIC_PROFILE_COPY: Record<Lang, PublicProfileCopy> = {
     titleSuggestionLabel: 'Suggested from your main service',
     titleUse: 'Use this',
     titleLabel: 'Professional title',
-    titlePlaceholder: 'e.g. Certified electrician',
+    titlePlaceholder: 'e.g. Electrician',
     titleTooShort: (min) => `Use at least ${min} characters so customers know what you do.`,
+    titleRecoveryHint:
+      'Your saved professional title is missing or incomplete. Add a short trade name to complete this task.',
+    previewMissingTitle: 'Your professional title will appear here after it is saved.',
     titleRefusal: {
       TOO_SHORT: 'That is too short to tell a customer anything.',
       TOO_LONG: 'That is too long for a title.',
@@ -205,6 +216,10 @@ export const PUBLIC_PROFILE_COPY: Record<Lang, PublicProfileCopy> = {
     addPhoto: 'إضافة صورة',
     choosePhotoFile: 'اختر ملف صورة',
     uploadFailed: 'تعذّر رفع هذه الصورة. يرجى المحاولة مرة أخرى.',
+    completionHint:
+      '«تم الحفظ» يعني أن تغييراتك محفوظة. تكتمل المهمة عندما تستوفي الحقول المطلوبة شروطها.',
+    portfolioOptional:
+      'صور الأعمال اختيارية. أضف أمثلة من أعمالك؛ مراجعة الصور لا تمنع إكمال طلبك.',
 
     heading: 'ملفك العام',
     intro: 'هذا ما سيراه العملاء. لا تُعرض بيانات التواصل الخاصة بك أبداً.',
@@ -214,8 +229,11 @@ export const PUBLIC_PROFILE_COPY: Record<Lang, PublicProfileCopy> = {
     titleSuggestionLabel: 'اقتراح من خدمتك الرئيسية',
     titleUse: 'استخدم هذا',
     titleLabel: 'المسمّى المهني',
-    titlePlaceholder: 'مثال: كهربائي معتمد',
+    titlePlaceholder: 'مثال: كهربائي',
     titleTooShort: (min) => `استخدم ${min} حرفاً على الأقل ليعرف العملاء ما تقدّمه.`,
+    titleRecoveryHint:
+      'المسمّى المهني المحفوظ مفقود أو غير مكتمل. أضف اسم مهنتك لإكمال هذه المهمة.',
+    previewMissingTitle: 'سيظهر مسمّاك المهني هنا بعد حفظه.',
     titleRefusal: {
       TOO_SHORT: 'هذا أقصر من أن يوضّح شيئاً للعميل.',
       TOO_LONG: 'هذا أطول من اللازم لمسمّى مهني.',

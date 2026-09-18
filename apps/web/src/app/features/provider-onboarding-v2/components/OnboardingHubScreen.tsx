@@ -104,7 +104,9 @@ export function OnboardingHubScreen() {
   const data = query.data;
   const screen = SCREEN_COPY[lang][view.state];
   const lifecycle = LIFECYCLE_COPY[lang];
-  const backToProfile = () => navigate('/provider');
+  // /provider resolves back to this hub until onboarding is complete.
+  // Close leaves the focused flow without opening a forbidden workspace.
+  const closeApplication = () => navigate('/select');
   const openTask = (taskId: string) => navigate(`/provider/onboarding/${taskId}`);
 
   // The header's second line. Only the hub itself carries progress — an error
@@ -138,7 +140,7 @@ export function OnboardingHubScreen() {
         // screen, and an empty one is the honest picture of an application
         // nobody can currently read.
         progress={0}
-        onClose={backToProfile}
+        onClose={closeApplication}
         padded={false}
         footer={
           <ProviderButton
@@ -204,11 +206,11 @@ export function OnboardingHubScreen() {
         recovery.retry();
         return;
       }
-      return backToProfile();
+      return navigate('/provider/profile');
     };
 
     return (
-      <OnboardingShell title={title} onClose={backToProfile}>
+      <OnboardingShell title={title} onClose={closeApplication}>
         <div
           className="flex flex-col items-center justify-center gap-3 py-10 text-center"
           data-testid={`hub-state-${view.state}`}
@@ -316,7 +318,7 @@ export function OnboardingHubScreen() {
           title={lifecycle.returnedTitle}
           subtitle={lifecycle.returnedSubtitle}
           progress={draft.data?.percentComplete ?? progress}
-          onClose={backToProfile}
+          onClose={closeApplication}
         >
           <ReviewFeedback
             feedback={data.reviewFeedback}
@@ -338,7 +340,7 @@ export function OnboardingHubScreen() {
         // application is 92% done in the server's terms and five of six in the
         // hub's, and the bar is answering the first question.
         progress={draft.data?.percentComplete ?? progress}
-        onClose={backToProfile}
+        onClose={closeApplication}
         footer={footer}
       >
         <div className="flex flex-col gap-[18px]" data-testid="onboarding-returned">
@@ -399,7 +401,7 @@ export function OnboardingHubScreen() {
       title={title}
       subtitle={subtitle}
       progress={progress}
-      onClose={backToProfile}
+      onClose={closeApplication}
       footer={footer}
     >
       {/* `.hsm-main-tight`: a 12px column, which is what the two hubs use. */}

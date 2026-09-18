@@ -253,6 +253,7 @@ function ReviewWorkspace({
               lang={lang}
               onChanged={refresh}
               onDecided={decided}
+              readOnly={query.isError || query.isFetching}
             />
           </div>
         </>
