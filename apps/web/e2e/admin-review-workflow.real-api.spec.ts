@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { openReviewTask } from './admin-review-tabs';
 import { expect, test } from '@playwright/test';
 import {
   ADMIN_PROVIDER_REVIEW_TASK_IDS,
@@ -49,6 +50,7 @@ test('normal Admin entry reaches the submitted file, and a field correction reac
   await enterAdmin(page);
   const original = await openSubmittedProvider(page, account);
   for (const task of ADMIN_PROVIDER_REVIEW_TASK_IDS) {
+    await openReviewTask(page, task);
     await expect(page.locator(`#review-section-${task}`)).toBeVisible();
   }
 
@@ -261,6 +263,7 @@ test('inspecting and approving a real portfolio image persists its revision with
       response.url() === `${REAL_API}${portfolioPath}/${item.id}/media` &&
       response.request().method() === 'GET',
   );
+  await openReviewTask(page, 'PORTFOLIO');
   await page.getByTestId(`review-portfolio-open-${item.id}`).click();
   expect((await mediaResponse).status()).toBe(200);
   const dialog = page.getByRole('dialog');
@@ -296,6 +299,7 @@ test('inspecting and approving a real portfolio image persists its revision with
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
   await expect(page.getByTestId(`review-portfolio-${item.id}`)).toContainText('مقبول');
+  await openReviewTask(page, 'REVIEW_SUBMISSION');
   await expect(page.getByTestId('review-history')).toContainText('تمت الموافقة على صورة العمل');
 
   const after = await api<AdminPortfolioListResponse>(admin, portfolioPath);
@@ -435,7 +439,7 @@ test.describe('real rendered Admin screens', () => {
             .click();
         await expect(page.locator('html')).toHaveAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
         const traffic = observeAdminTraffic(page);
-        for (const width of [390, 768, 1440]) {
+        for (const width of [320, 390, 430, 768, 1024, 1440]) {
           await page.setViewportSize({ width, height: 1000 });
           const { row, review } = await findSubmittedProvider(page, account, lang);
           await recordAdminEvidence(page, testInfo, `queue-${lang}-${theme}-${width}`, review);
@@ -443,8 +447,11 @@ test.describe('real rendered Admin screens', () => {
           const dossier = page.getByTestId('admin-provider-review-workspace');
           await expect(dossier).toBeVisible();
           await expect(page.getByTestId('review-approve')).toBeVisible();
-          for (const task of ADMIN_PROVIDER_REVIEW_TASK_IDS)
+          for (const task of ADMIN_PROVIDER_REVIEW_TASK_IDS) {
+            await openReviewTask(page, task);
             await expect(page.locator(`#review-section-${task}`)).toBeVisible();
+            await recordAdminEvidence(page, testInfo, `tabs-v1-${lang}-${theme}-${width}-${task}`, review);
+          }
           await expect(page.getByTestId('review-history')).toContainText(
             lang === 'ar' ? 'أُرسل الطلب للمراجعة' : 'Application submitted',
           );
