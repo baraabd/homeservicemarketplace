@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type { ProviderOnboardingHubView } from '@homeservicemarketplace/contracts';
 
 import { seedLanguage } from './fixtures';
+import { readLeafletTileZoom } from '../src/test-support/read-leaflet-tile-zoom';
 import {
   addPortfolioPhoto,
   api,
@@ -167,16 +168,7 @@ test('GPS, interactive red pin, applied hours and a short generated title surviv
   }
   await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await expect.poll(() => mapPane.getAttribute('style')).not.toBe(beforePan);
-  const tileZoom = () =>
-    surface
-      .locator('img.leaflet-tile')
-      .evaluateAll((tiles) =>
-        Math.max(
-          ...tiles.map((tile) =>
-            Number(new URL((tile as HTMLImageElement).src).pathname.split('/')[1]),
-          ),
-        ),
-      );
+  const tileZoom = () => surface.locator('img.leaflet-tile').evaluateAll(readLeafletTileZoom);
   await map.getByRole('button', { name: 'Zoom in', exact: true }).click();
   await expect.poll(tileZoom).toBe(14);
   // New tiles can be created before the button's zoom animation finishes.
@@ -188,7 +180,11 @@ test('GPS, interactive red pin, applied hours and a short generated title surviv
   expect(pinchBox).not.toBeNull();
   const pinchX = pinchBox!.x + pinchBox!.width / 2;
   const pinchY = pinchBox!.y + pinchBox!.height / 2;
-  const beforePinch = await tileZoom();
+  // Capture the exact passing sample. A separate read after a readiness poll
+  // raced tile retirement in CI #224 and permanently captured NaN, although
+  // the trace showed the real pinch reached zoom 16. No sleep or default zero.
+  let beforePinch = Number.NaN;
+  await expect.poll(async () => (beforePinch = await tileZoom())).toBe(14);
   const fingers = (spread: number) => [
     { x: pinchX - spread, y: pinchY, id: 1 },
     { x: pinchX + spread, y: pinchY, id: 2 },
@@ -204,7 +200,12 @@ test('GPS, interactive red pin, applied hours and a short generated title surviv
     );
   }
   await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await expect.poll(tileZoom).toBeGreaterThan(beforePinch);
+  let afterPinch = Number.NaN;
+  await expect.poll(async () => (afterPinch = await tileZoom())).toBeGreaterThan(beforePinch);
+  await testInfo.attach('pinch-zoom-observation.json', {
+    contentType: 'application/json',
+    body: JSON.stringify({ beforePinch, afterPinch, source: 'actual Leaflet tile DOM' }),
+  });
   await session.detach();
   await page.reload();
   await expect(page.getByTestId('service-area-city')).toHaveValue('Aleppo');
