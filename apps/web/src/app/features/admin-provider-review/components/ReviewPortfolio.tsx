@@ -13,6 +13,7 @@ import { reviewQueryKey, requestStatus } from '../api';
 import { REVIEW_COPY, type ReviewLanguage } from '../copy';
 import { ReviewBanner, StatusBadge } from './ReviewPrimitives';
 import { ReviewDialog } from './ReviewDialog';
+import { ReviewMutationNotice } from './ReviewMutationNotice';
 
 const portfolioPath = (id: string) => `/v1/admin/providers/${encodeURIComponent(id)}/portfolio`;
 
@@ -62,10 +63,12 @@ export function ReviewPortfolio({
   review,
   lang,
   onChanged,
+  readOnly = false,
 }: {
   review: AdminProviderReview;
   lang: ReviewLanguage;
   onChanged: () => Promise<unknown>;
+  readOnly?: boolean;
 }) {
   const t = REVIEW_COPY[lang];
   const providerId = review.provider.id;
@@ -83,7 +86,35 @@ export function ReviewPortfolio({
   const [error, setError] = useState<number | null>(null);
   const [invalid, setInvalid] = useState(false);
   const openerRef = useRef<HTMLButtonElement | null>(null);
-  const image = usePrivatePortfolioImage(providerId, selected, openId);
+  const recoveryRef = useRef<HTMLButtonElement | null>(null);
+  const denied = query.isError && [401, 403, 404].includes(requestStatus(query.error) ?? 0);
+  const paused = readOnly || query.isFetching || query.isError;
+  const current = query.data?.items.find((item) => item.id === selected?.id);
+  const selectionCurrent = !!selected && !!current && current.revision === selected.revision;
+  const canModerate = !paused && selectionCurrent && review.permissions.canModeratePortfolio;
+  // A list denial also invalidates an already-open private viewer. Hiding only
+  // the cards leaves the portal, metadata and resident image bytes visible.
+  const image = usePrivatePortfolioImage(providerId, denied ? null : selected, openId);
+  // Reset this component's selection on the authoritative denial transition
+  // before committing children, rather than cascading a second effect render.
+  // Keep transient failures separate: their unsent reason must survive.
+  const [previousDenied, setPreviousDenied] = useState(denied);
+  if (denied !== previousDenied) {
+    setPreviousDenied(denied);
+    if (denied) {
+      setSelected(null);
+      setAction(null);
+      setReason('');
+      setError(null);
+    }
+  }
+  async function refreshPortfolio() {
+    const result = await query.refetch();
+    // TanStack refetch resolves an error result by default; Promise.all alone
+    // does not establish success and must not discard the reviewer's reason.
+    if (result.isError) throw result.error;
+    return result.data;
+  }
   const mutation = useMutation({
     mutationFn: async (body: ReviewAdminPortfolioItemRequest) => {
       if (!selected) throw new Error('No image selected');
@@ -94,7 +125,10 @@ export function ReviewPortfolio({
     },
   });
   async function confirm() {
-    if (!selected || !action) return;
+    if (
+      !selected || !action || !canModerate || !image?.url || mutation.isPending ||
+      !current?.availableActions?.includes(action) || error === 403 || error === 409
+    ) return;
     if (action === 'REJECT' && !reason.trim()) {
       setInvalid(true);
       return;
@@ -109,7 +143,7 @@ export function ReviewPortfolio({
       setAction(null);
       setReason('');
       setError(null);
-      await Promise.all([query.refetch(), onChanged()]);
+      await Promise.all([refreshPortfolio(), onChanged()]);
     } catch (failure) {
       setError(requestStatus(failure) ?? 500);
     }
@@ -129,7 +163,7 @@ export function ReviewPortfolio({
               ? 'ليست لديك صلاحية للاطلاع على صور المعرض.'
               : 'You do not have permission to inspect portfolio images.'
             : t.mediaFailed}
-          <button className="ar-button" type="button" onClick={() => void query.refetch()}>
+          <button ref={recoveryRef} data-testid="review-portfolio-retry" className="ar-button" type="button" onClick={() => void query.refetch()}>
             {t.retry}
           </button>
         </ReviewBanner>
@@ -161,7 +195,9 @@ export function ReviewPortfolio({
                     type="button"
                     className="ar-button"
                     data-testid={`review-portfolio-open-${item.id}`}
+                    disabled={paused}
                     onClick={(event) => {
+                      if (paused) return;
                       openerRef.current = event.currentTarget;
                       setOpenId((value) => value + 1);
                       setSelected(item);
@@ -182,14 +218,20 @@ export function ReviewPortfolio({
           <ReviewBanner>{t.galleryEmpty}</ReviewBanner>
         ))}
       <ReviewDialog
-        open={!!selected}
+        open={!!selected && !denied}
         onClose={() => {
           if (!mutation.isPending) setSelected(null);
         }}
         title={selected?.title || t.openImage}
         description={t.galleryHint}
-        openerRef={openerRef}
+        openerRef={denied ? recoveryRef : openerRef}
       >
+        <ReviewMutationNotice
+          lang={lang}
+          paused={paused}
+          stale={!!selected && (!selectionCurrent ||
+            (!!action && (!review.permissions.canModeratePortfolio || !current?.availableActions?.includes(action))))}
+        />
         {image?.url ? (
           <img
             src={image.url}
@@ -231,10 +273,12 @@ export function ReviewPortfolio({
                   <button
                     type="button"
                     key={choice}
+                    data-testid={`review-portfolio-action-${choice.toLowerCase()}`}
                     className={`ar-button${action === choice ? ' ar-button-primary' : ''}`}
-                    disabled={!image?.url || mutation.isPending || !!error}
+                    disabled={!canModerate || !current?.availableActions?.includes(choice) || !image?.url || mutation.isPending || !!error}
                     aria-pressed={action === choice}
                     onClick={() => {
+                      if (!canModerate || !current?.availableActions?.includes(choice)) return;
                       setAction(choice);
                       setInvalid(false);
                     }}
@@ -272,13 +316,16 @@ export function ReviewPortfolio({
                 {error === 409 ? t.conflict : error === 403 ? t.noActions : t.mutationFailed}
               </ReviewBanner>
             )}
-            {error === 409 ? (
+            {(error === 409 || paused || (!!selected && !selectionCurrent) ||
+              (!!action && !current?.availableActions?.includes(action))) && (
               <button
                 className="ar-button"
                 type="button"
+                data-testid="review-portfolio-reload"
+                disabled={query.isFetching || mutation.isPending}
                 onClick={async () => {
                   try {
-                    await Promise.all([query.refetch(), onChanged()]);
+                    await Promise.all([refreshPortfolio(), onChanged()]);
                     setSelected(null);
                   } catch {
                     /* Keep the inspected revision and reason on failure. */
@@ -287,13 +334,14 @@ export function ReviewPortfolio({
               >
                 {t.refresh}
               </button>
-            ) : (
+            )}
+            {error !== 409 && (
               action && (
                 <button
                   className="ar-button ar-button-primary"
                   type="button"
                   data-testid="review-portfolio-confirm"
-                  disabled={mutation.isPending || !image?.url || error === 403}
+                  disabled={!canModerate || !current?.availableActions?.includes(action) || mutation.isPending || !image?.url || error === 403}
                   onClick={() => void confirm()}
                 >
                   {mutation.isPending ? t.saving : t.confirm}
