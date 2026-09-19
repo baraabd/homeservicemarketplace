@@ -1,0 +1,29 @@
+name: Sprint 12 source recovery
+on:
+  push:
+    branches: [chore/sprint12-recovery-20260919]
+    paths: [.github/workflows/sprint12-source-recovery.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 8eb732c404e104e6e07e5eeea37ca311d3be2978
+          persist-credentials: false
+      - name: Export tracked source only
+        run: |
+          mkdir -p "$RUNNER_TEMP/source"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/source/source.tar.gz"
+          git rev-parse HEAD > "$RUNNER_TEMP/source/commit.txt"
+          git ls-tree -r HEAD > "$RUNNER_TEMP/source/tree.txt"
+          sha256sum pnpm-lock.yaml > "$RUNNER_TEMP/source/lockfile.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprint12-source-8eb732c
+          path: ${{ runner.temp }}/source/
+          retention-days: 1
+          if-no-files-found: error
