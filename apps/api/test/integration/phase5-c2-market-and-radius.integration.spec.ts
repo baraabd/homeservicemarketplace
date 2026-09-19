@@ -418,18 +418,32 @@ d('Phase 5 C2 - enabled markets and radius provenance (real HTTP, real Postgres)
   });
 
   afterAll(async () => {
-    await cleanupFixtures();
-    if (seededRegistry !== undefined) {
-      // Restored exactly, so a suite that runs after this one sees the registry
-      // the seed wrote rather than the one these tests needed.
-      await prisma.platformSetting.update({
-        where: { key: SUPPORTED_MARKETS_SETTING },
-        data: { value: seededRegistry as never },
-      });
+    try {
+      try {
+        await cleanupFixtures();
+      } finally {
+        if (seededRegistry !== undefined) {
+          // Restored exactly, so a suite that runs after this one sees the registry
+          // the seed wrote rather than the one these tests needed.
+          await prisma.platformSetting.update({
+            where: { key: SUPPORTED_MARKETS_SETTING },
+            data: { value: seededRegistry as never },
+          });
+        }
+      }
+    } finally {
+      try {
+        await app?.close();
+      } finally {
+        try {
+          await locks?.release();
+        } finally {
+          currentUser = null;
+          // The PrismaService stub has no destroy hook for this suite client.
+          await prisma?.$disconnect();
+        }
+      }
     }
-    await app?.close();
-    await locks?.release();
-    currentUser = null;
   });
 
   beforeEach(async () => {
@@ -892,6 +906,15 @@ d('Phase 5 C2 - enabled markets and radius provenance (real HTTP, real Postgres)
   // --- the markets read model ----------------------------------------------
 
   describe('GET /markets', () => {
+    it('projects the permitted choices for the multi-zone market without choosing a default', async () => {
+      const res = await getMarkets();
+      expect(res.status).toBe(200);
+      const multi = res.body.markets.find(
+        (market: { countryCode: string }) => market.countryCode === MINE_MULTI,
+      );
+      expect(multi.timezone).toEqual({ kind: 'ASK', allowedIds: MULTI_ZONES });
+    });
+
     it('serves the enabled markets and omits the disabled one', async () => {
       const res = await getMarkets();
       expect(res.status).toBe(200);

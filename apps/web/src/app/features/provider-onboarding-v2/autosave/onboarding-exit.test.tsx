@@ -93,8 +93,6 @@ const DRAFT = (version = 3) => ({
       policyVersion: null,
     },
     resolvedTimezone: { resolved: null, display: null, needsConfirmation: false },
-    availability: [],
-    timezone: null,
     equipment: [],
     transportModes: [],
     primaryServiceCategoryId: null,
@@ -302,34 +300,38 @@ describe('a failed flush keeps the provider on the task', () => {
     expect(notice).toHaveAttribute('role', 'alert');
   });
 
-  it('offers Retry, and the retry completes the exit once the server recovers', async () => {
-    // Re-register from scratch: axios-mock-adapter keeps the handler that
-    // beforeEach installed for this same matcher, and a `replyOnce` added
-    // afterwards never gets reached.
-    mock.resetHandlers();
-    mock.onGet(HUB_URL).reply(200, HUB);
-    mock.onGet(/\/onboarding\/draft$/).reply(200, DRAFT());
-    let attempt = 0;
-    mock.onPatch(PATCH).reply(() => {
-      attempt += 1;
-      return attempt === 1 ? [500, { code: 'INTERNAL_ERROR' }] : [200, DRAFT(4)];
-    });
+  it.each([400, 422, 500])(
+    'an explicit Retry after %s completes the exit once the server recovers',
+    async (status) => {
+      // Re-register from scratch: axios-mock-adapter keeps the handler that
+      // beforeEach installed for this same matcher, and a `replyOnce` added
+      // afterwards never gets reached.
+      mock.resetHandlers();
+      mock.onGet(HUB_URL).reply(200, HUB);
+      mock.onGet(/\/onboarding\/draft$/).reply(200, DRAFT());
+      let attempt = 0;
+      mock.onPatch(PATCH).reply(() => {
+        attempt += 1;
+        return attempt === 1 ? [status, { code: 'SAVE_REJECTED' }] : [200, DRAFT(4)];
+      });
 
-    renderTask('BASICS_IDENTITY');
-    await screen.findByTestId('task-screen-BASICS_IDENTITY');
-    const input = await screen.findByTestId('field-displayName');
-    fireEvent.change(input, { target: { value: 'Retried' } });
-    fireEvent.blur(input);
-    fireEvent.click(screen.getByTestId('onboarding-v2-close'));
+      renderTask('BASICS_IDENTITY');
+      await screen.findByTestId('task-screen-BASICS_IDENTITY');
+      const input = await screen.findByTestId('field-displayName');
+      fireEvent.change(input, { target: { value: 'Retried' } });
+      fireEvent.blur(input);
+      fireEvent.click(screen.getByTestId('onboarding-v2-close'));
 
-    await screen.findByTestId('onboarding-exit-blocked');
-    fireEvent.click(screen.getByTestId('onboarding-exit-retry'));
+      await screen.findByTestId('onboarding-exit-blocked');
+      fireEvent.click(screen.getByTestId('onboarding-exit-retry'));
 
-    await waitFor(() => expect(onHub()).toBe(true));
-    // The value that finally landed is the one the provider typed.
-    const last = patchesFor('IDENTITY').at(-1);
-    expect(last?.data).toContain('Retried');
-  });
+      await waitFor(() => expect(onHub()).toBe(true));
+      // The value that finally landed is the one the provider typed.
+      const last = patchesFor('IDENTITY').at(-1);
+      expect(last?.data).toContain('Retried');
+      expect(attempt).toBe(2);
+    },
+  );
 
   it('a 409 offers Reload, not Retry — retrying would overwrite the other writer', async () => {
     mock.onPatch(PATCH).reply(409, { code: 'CONFLICT', details: { expectedVersion: 9 } });

@@ -154,7 +154,9 @@ export function ReviewTask({ lang, part, onPrimaryCommand }: ReviewTaskProps) {
     }
 
     const current = fresh.data;
-    if (!current || !current.canSubmit) {
+    // Refetch retains cached data on failure unless throwOnError is enabled.
+    // The retained verdict cannot satisfy this required readiness check.
+    if (fresh.isError || !current || !current.canSubmit) {
       release();
       return;
     }
@@ -166,9 +168,18 @@ export function ReviewTask({ lang, part, onPrimaryCommand }: ReviewTaskProps) {
         // the whole reason the conflict line exists, and a latch that never
         // reopened would leave them reading it beside a button that does
         // nothing.
-        onError: (err) => {
-          release();
-          setConflict(isConflict(err));
+        onError: async (err) => {
+          // A market can close between the readiness GET and this command.
+          // Re-read the server blocker so another click cannot repeat the same
+          // refusal without explaining which task now needs attention.
+          try {
+            if ((err as { response?: { status?: number } }).response?.status === 422) {
+              await query.refetch();
+            }
+          } finally {
+            release();
+            setConflict(isConflict(err));
+          }
         },
         onSuccess: release,
       },
@@ -210,12 +221,12 @@ export function ReviewTask({ lang, part, onPrimaryCommand }: ReviewTaskProps) {
       // order and screen readers announce it as unavailable. The reason is
       // rendered on the screen below, so "unavailable" is never the only thing
       // the provider learns.
-      disabled: !canSubmit || !editable || submitPending,
+      disabled: !canSubmit || !editable || submitPending || query.isError,
       pending: submitPending,
       run: () => void submitRef.current(),
     });
     return () => publish(null);
-  }, [publish, submitLabel, canSubmit, editable, submitPending]);
+  }, [publish, submitLabel, canSubmit, editable, submitPending, query.isError]);
 
   if (query.isPending) {
     return (
@@ -255,6 +266,7 @@ export function ReviewTask({ lang, part, onPrimaryCommand }: ReviewTaskProps) {
         conflict={conflict}
         acceptPending={accept.isPending}
         onAcceptTerms={onAcceptTerms}
+        onCompleteNow={(taskId) => navigate(`/provider/onboarding/${taskId}`)}
       />
     );
   }
@@ -479,6 +491,7 @@ function ConsentScreen({
   conflict,
   acceptPending,
   onAcceptTerms,
+  onCompleteNow,
 }: {
   review: ProviderOnboardingReview;
   copy: ReviewCopy;
@@ -486,23 +499,47 @@ function ConsentScreen({
   conflict: boolean;
   acceptPending: boolean;
   onAcceptTerms: () => void;
+  onCompleteNow: (taskId: string) => void;
 }) {
   const accepted = review.terms.accepted;
   const versionId = 'terms-version-line';
+  const blockedReason = review.canSubmit ? null : review.blockedReason;
+  // The profile-ready alert still belongs on the consent-only screen. A
+  // blocker routed to a collecting task replaces it with that task's action.
+  // Read every server BLOCKING item: consent can be the first blocker while
+  // another task, such as a withdrawn market, still needs correction.
+  const taskBlocker = review.canSubmit
+    ? null
+    : [
+        ...review.groups.flatMap((group) => (group.kind === 'BLOCKING' ? group.items : [])),
+        ...(blockedReason ? [blockedReason] : []),
+      ].find((item) => item.taskId && item.taskId !== 'REVIEW_SUBMISSION');
+  const blockedTaskId = editable ? taskBlocker?.taskId : null;
 
   return (
     <div className="grid gap-[18px]" data-testid="terms-section">
       {/* `.hsm-alert-success`. It says what the provider has achieved AND what
           is still somebody else's — that moderation continues after submission
           — so "ready" cannot be read as "approved". */}
-      <OnboardingAlert
-        tone="success"
-        icon={ShieldCheck}
-        title={copy.readyTitle}
-        body={copy.readyBody}
-        density="compact"
-        data-testid="terms-ready"
-      />
+      {taskBlocker ? (
+        <ProviderNotice
+          tone="blocked"
+          title={`${copy.blockedPrefix} ${blockerLine(copy, taskBlocker.field, taskBlocker.code)}`}
+          actionLabel={blockedTaskId ? copy.completeNow : undefined}
+          onAction={blockedTaskId ? () => onCompleteNow(blockedTaskId) : undefined}
+          data-testid="review-blocked-reason"
+          actionTestId={`review-complete-now-${taskBlocker.field ?? taskBlocker.code}`}
+        />
+      ) : (
+        <OnboardingAlert
+          tone="success"
+          icon={ShieldCheck}
+          title={copy.readyTitle}
+          body={copy.readyBody}
+          density="compact"
+          data-testid="terms-ready"
+        />
+      )}
 
       {/* `.hsm-consent`: a real `<label>` wrapping a real checkbox, so the
           whole 358px row is the target and the sentence is the accessible name.
@@ -574,11 +611,7 @@ function ConsentScreen({
         </p>
       </ProviderCard>
 
-      {/* ── Not depicted, and load-bearing ───────────────────────────────
-          The reference shows a submittable application. These two lines are
-          what the provider gets when it is not, and the first of them is the
-          reason a disabled primary action is never a bare greyed-out
-          control. */}
+      {/* A draft-version conflict asks the provider to reread the application. */}
       {conflict ? (
         <p
           className="break-words text-pv-help text-pv-danger"
@@ -589,7 +622,7 @@ function ConsentScreen({
         </p>
       ) : null}
 
-      {!review.canSubmit && review.blockedReason ? (
+      {blockedReason && !taskBlocker ? (
         <p
           className="break-words text-pv-help text-pv-blocked"
           data-testid="review-blocked-reason"
@@ -597,7 +630,7 @@ function ConsentScreen({
           aria-live="polite"
         >
           <span className="font-bold">{copy.blockedPrefix} </span>
-          {blockerLine(copy, review.blockedReason.field, review.blockedReason.code)}
+          {blockerLine(copy, blockedReason.field, blockedReason.code)}
         </p>
       ) : null}
     </div>
@@ -736,8 +769,7 @@ function describeSubmission(
   return `${date} • ${time}`;
 }
 
-/** A 409 means the draft moved under us — the one error the provider can act
- *  on, by rereading. Everything else is left to the global error surface. */
+/** A 409 means the draft moved under us and needs rereading. */
 function isConflict(err: unknown): boolean {
   const status = (err as { response?: { status?: number } } | null)?.response?.status;
   return status === 409;

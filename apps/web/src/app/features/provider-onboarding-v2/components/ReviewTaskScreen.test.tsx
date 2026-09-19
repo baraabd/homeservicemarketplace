@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ProviderOnboardingReview } from '@homeservicemarketplace/contracts';
@@ -168,6 +168,10 @@ interface RenderOptions {
   part?: ReviewPart;
 }
 
+function LocationProbe() {
+  return <span data-testid="review-location">{useLocation().pathname}</span>;
+}
+
 function renderScreen(options: RenderOptions = {}) {
   const { data = review(), draft = DRAFT(), profile, lang = 'en', part = 'review' } = options;
 
@@ -190,6 +194,7 @@ function renderScreen(options: RenderOptions = {}) {
       <QueryClientProvider client={client}>
         <LanguageProvider>
           <ReviewTask lang={lang} part={part} onPrimaryCommand={(c) => published.push(c)} />
+          <LocationProbe />
         </LanguageProvider>
       </QueryClientProvider>
     </MemoryRouter>,
@@ -342,6 +347,68 @@ describe('an application the server is NOT ready to take', () => {
 // ─── Screen 12: consent and submission ──────────────────────────────────────
 
 describe('consent', () => {
+  it('shows the country blocker when consent is first and a withdrawn market also blocks', async () => {
+    const consent = blocker('consent', 'REQUIRED', 'REVIEW_SUBMISSION');
+    const market = blocker('serviceAreaCountry', 'OUT_OF_RANGE', 'WORK_AREA');
+    const { command } = renderScreen({
+      part: 'terms',
+      data: review({
+        canSubmit: false,
+        blockedReason: consent,
+        groups: [{ kind: 'BLOCKING', items: [consent, market] }],
+        terms: { ...review().terms, accepted: false, acceptedVersion: null, acceptedAt: null },
+      }),
+    });
+
+    expect(await screen.findByTestId('review-blocked-reason')).toHaveTextContent(
+      EN.blocker['serviceAreaCountry:OUT_OF_RANGE']!,
+    );
+    expect(screen.queryByTestId('terms-ready')).toBeNull();
+    expect(screen.getByTestId('terms-accept')).not.toBeChecked();
+    expect(screen.getByTestId('terms-accept')).toBeEnabled();
+    await waitFor(() => expect(command()?.disabled).toBe(true));
+    fireEvent.click(screen.getByTestId('review-complete-now-serviceAreaCountry'));
+    expect(screen.getByTestId('review-location')).toHaveTextContent(
+      '/provider/onboarding/WORK_AREA',
+    );
+  });
+
+  it('keeps the profile-ready alert when consent is the only remaining action', async () => {
+    const consent = blocker('consent', 'REQUIRED', 'REVIEW_SUBMISSION');
+    const { command } = renderScreen({
+      part: 'terms',
+      data: review({
+        canSubmit: false,
+        blockedReason: consent,
+        groups: [
+          { kind: 'BLOCKING', items: [consent] },
+          {
+            kind: 'COMPLETE',
+            items: [
+              {
+                id: 'complete:LOCATION',
+                field: null,
+                code: null,
+                step: 'LOCATION',
+                taskId: 'WORK_AREA',
+                count: null,
+              },
+            ],
+          },
+        ],
+        terms: { ...review().terms, accepted: false, acceptedVersion: null, acceptedAt: null },
+      }),
+    });
+
+    expect(await screen.findByTestId('terms-ready')).toHaveTextContent(EN.readyTitle);
+    expect(screen.getByTestId('review-blocked-reason')).toHaveTextContent(
+      EN.blocker['consent:REQUIRED']!,
+    );
+    expect(screen.getByTestId('terms-accept')).not.toBeChecked();
+    expect(screen.queryByTestId('review-complete-now-consent')).toBeNull();
+    await waitFor(() => expect(command()?.disabled).toBe(true));
+  });
+
   it('shows the version the SERVER served, never one the client chose', async () => {
     renderScreen({ part: 'terms', data: review({ terms: { ...review().terms, version: 'v9' } }) });
 
@@ -477,6 +544,70 @@ describe('the submission the chrome draws', () => {
     latest!.run();
 
     expect(await screen.findByTestId('review-conflict')).toHaveTextContent(EN.conflict);
+  });
+
+  it('does not submit cached readiness when the required refresh fails', async () => {
+    const { command } = renderScreen({ part: 'terms' });
+    await waitFor(() => expect(command()?.disabled).toBe(false));
+    mock.onGet(REVIEW_URL).reply(403, { message: 'forbidden' });
+    mock.onPost(/\/onboarding\/submit/).reply(200, {});
+
+    act(() => command()!.run());
+
+    // Query refetch resolves with its previous data even when the new request
+    // failed. Rendering the error proves that refresh settled before checking
+    // that no submit used the retained canSubmit/draftVersion.
+    await screen.findByTestId('review-load-failed');
+    expect(mock.history.post).toHaveLength(0);
+    await waitFor(() => expect(command()?.disabled).toBe(true));
+  });
+
+  it('refreshes a submit refusal into the server country blocker', async () => {
+    const { command } = renderScreen({ part: 'terms' });
+    await waitFor(() => expect(command()?.disabled).toBe(false));
+    const withdrawn = review({
+      canSubmit: false,
+      blockedReason: blocker('serviceAreaCountry', 'OUT_OF_RANGE', 'WORK_AREA'),
+    });
+    mock.onPost(/\/onboarding\/submit/).reply(() => {
+      // The market closes after the pre-submit GET but before the POST.
+      mock.onGet(REVIEW_URL).reply(200, withdrawn);
+      return [422, { error: { details: { reason: 'MARKET_NOT_SUPPORTED' } } }];
+    });
+
+    act(() => command()!.run());
+
+    const blockedReason = await screen.findByTestId('review-blocked-reason');
+    expect(blockedReason).toHaveTextContent(EN.blocker['serviceAreaCountry:OUT_OF_RANGE']!);
+    expect(blockedReason).toHaveAttribute('role', 'status');
+    expect(blockedReason).toHaveAttribute('aria-live', 'polite');
+    expect(screen.queryByTestId('terms-ready')).toBeNull();
+    expect(screen.getByTestId('review-complete-now-serviceAreaCountry')).toBeEnabled();
+    await waitFor(() => expect(command()?.disabled).toBe(true));
+    expect(mock.history.post).toHaveLength(1);
+    fireEvent.click(screen.getByTestId('review-complete-now-serviceAreaCountry'));
+    expect(screen.getByTestId('review-location')).toHaveTextContent(
+      '/provider/onboarding/WORK_AREA',
+    );
+  });
+
+  it('explains an unavailable market in Arabic with an action for its task', async () => {
+    const { command } = renderScreen({
+      part: 'terms',
+      lang: 'ar',
+      data: review({
+        canSubmit: false,
+        blockedReason: blocker('serviceAreaCountry', 'OUT_OF_RANGE', 'WORK_AREA'),
+      }),
+    });
+    expect(await screen.findByTestId('review-blocked-reason')).toHaveTextContent(
+      AR.blocker['serviceAreaCountry:OUT_OF_RANGE']!,
+    );
+    expect(screen.queryByTestId('terms-ready')).toBeNull();
+    expect(screen.getByTestId('review-complete-now-serviceAreaCountry')).toHaveTextContent(
+      AR.completeNow,
+    );
+    await waitFor(() => expect(command()?.disabled).toBe(true));
   });
 });
 

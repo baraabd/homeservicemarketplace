@@ -17,7 +17,7 @@ import {
   MarketLocationResolverPort,
 } from './market-location-resolver.port';
 import { MarketRegistryService } from './market-registry.service';
-import { decideTimezone } from './timezone-precedence.policy';
+import { decideTimezone, marketTimezones } from './timezone-precedence.policy';
 import type { SupportedMarket } from './supported-market';
 
 // Sprint 09B.29 Phase 5 (C2) — the read model behind the market picker.
@@ -96,7 +96,7 @@ export class SupportedMarketsService {
       timezone:
         timezone.kind === 'RESOLVED'
           ? { kind: 'RESOLVED', id: timezone.timezone }
-          : { kind: 'ASK' },
+          : { kind: 'ASK', allowedIds: [...new Set(marketTimezones(market))] },
     };
   }
 
@@ -112,6 +112,8 @@ export class SupportedMarketsService {
   private async numberSetting(key: string): Promise<number> {
     const row = await this.settings.findByKey(key);
     if (typeof row?.value === 'number' && Number.isFinite(row.value)) return row.value;
+    // The same reader the wizard uses, so an absent radius row means the schema
+    // default on both paths, not zero (which the LOCATION write correctly refuses).
     const fallback = settingDefault(key, 0);
     return typeof fallback === 'number' && Number.isFinite(fallback) ? fallback : 0;
   }

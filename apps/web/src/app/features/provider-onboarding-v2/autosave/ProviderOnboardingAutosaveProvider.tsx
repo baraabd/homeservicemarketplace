@@ -110,6 +110,11 @@ const PROFILE_AFFECTING_STEPS = new Set<ProviderOnboardingStep>([
   'PROFILE',
 ]);
 
+interface FlushOptions {
+  /** Only an explicit Retry action may resend an unchanged rejected edit. */
+  retryRejected?: boolean;
+}
+
 interface CoordinatorValue {
   statusOf: (step: ProviderOnboardingStep) => AutosaveStatusKind;
   /**
@@ -124,7 +129,7 @@ interface CoordinatorValue {
   save: (step: ProviderOnboardingStep, patch: StepPatch) => void;
   /** Drain everything, for every step. Resolves only when the queue is empty
    *  and nothing is in flight, or a terminal state has been reached. */
-  flushAll: () => Promise<FlushResult>;
+  flushAll: (options?: FlushOptions) => Promise<FlushResult>;
   /** Anything queued, in flight, or resting in the debounce. */
   isBusy: boolean;
   /** Anything unwritten — what `beforeunload` and the exit guards ask. */
@@ -250,6 +255,10 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
    *  the queue order, and a ref because queueing must not re-render: the whole
    *  point of a debounce is that typing is cheap. */
   const pending = useRef<Map<ProviderOnboardingStep, StepPatch>>(new Map());
+  // A final client-error response is not new work on every navigation or
+  // reconnect. Keep the payload, but release it only after an actual edit or
+  // an explicit retry. Other steps still use the same serial writer.
+  const rejected = useRef<Map<ProviderOnboardingStep, FlushResult>>(new Map());
   const inFlight = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draining = useRef<Promise<FlushResult> | null>(null);
@@ -313,10 +322,17 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
 
   const drain = useCallback(async (): Promise<FlushResult> => {
     while (pending.current.size > 0) {
+      const next = [...pending.current.entries()].find(([step]) => !rejected.current.has(step));
+      if (!next) {
+        syncBusy();
+        return rejected.current.values().next().value ?? OK;
+      }
       if (isOffline()) {
         // HELD, not dropped. Every queued step says so, and the payloads stay
         // in the map for the `online` listener to re-fire.
-        for (const step of pending.current.keys()) setStatus(step, { kind: 'offline' });
+        for (const step of pending.current.keys()) {
+          if (!rejected.current.has(step)) setStatus(step, { kind: 'offline' });
+        }
         return { ok: false, reason: 'offline' };
       }
 
@@ -331,10 +347,7 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
       // Oldest queued step first. Taking it OUT of the map before the await is
       // what lets a fresh edit for the same step queue independently while
       // this one is open.
-      const [step, patch] = pending.current.entries().next().value as [
-        ProviderOnboardingStep,
-        StepPatch,
-      ];
+      const [step, patch] = next;
       pending.current.delete(step);
 
       inFlight.current = true;
@@ -388,21 +401,36 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
         // Put it back so a retry has something to send. Any NEWER edit that
         // landed while this was in flight wins the merge — it is more recent
         // than what just failed.
-        pending.current.set(step, { ...patch, ...(pending.current.get(step) ?? {}) });
+        const retained = { ...patch, ...(pending.current.get(step) ?? {}) };
+        pending.current.set(step, retained);
         const message = String(httpStatus ?? 'network');
+        const result: FlushResult = { ok: false, reason: 'error', message };
+        const requiresAction =
+          httpStatus !== undefined &&
+          httpStatus >= 400 &&
+          httpStatus < 500 &&
+          httpStatus !== 408 &&
+          httpStatus !== 429;
+        if (requiresAction && JSON.stringify(retained) === JSON.stringify(patch)) {
+          rejected.current.set(step, result);
+        }
         setStatus(step, {
           kind: 'error',
           message,
           retry: () => {
+            rejected.current.delete(step);
             void flushAllRef.current();
           },
         });
         inFlight.current = false;
         syncBusy();
+        // A different step, or a correction queued during the rejected
+        // request, can make progress. The rejected revision itself is held.
+        if (requiresAction) continue;
         // STOP. Looping here would hot-loop the network: the payload was
         // deliberately put back, so an immediate re-drain fails it again, and
         // again. Retry is the provider's decision and it is on screen.
-        return { ok: false, reason: 'error', message };
+        return result;
       } finally {
         inFlight.current = false;
       }
@@ -427,79 +455,83 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
    * drain because an edit queued mid-drain must be carried by the same call —
    * that is the case the old `if (inFlight) return;` silently dropped.
    */
-  const flushAll = useCallback(async (): Promise<FlushResult> => {
-    clearTimer();
+  const flushAll = useCallback(
+    async (options?: FlushOptions): Promise<FlushResult> => {
+      clearTimer();
+      if (options?.retryRejected) rejected.current.clear();
 
-    // Sprint 09B.29 Phase 4 — wait for the photo before deciding the draft is
-    // drained.
-    //
-    // `allSettled` rather than `all` because a rejected upload must not throw
-    // out of the drain — but settling is NOT the same as succeeding, and the
-    // first version of this conflated them. It treated a failed upload as done
-    // and returned ok, so the provider walked out of the screen and the photo
-    // was silently gone. Nothing said "Saved", so no false claim was made; it
-    // was worse than that, because nothing said anything at all.
-    //
-    // A failure is therefore RECORDED and reported below as a terminal result,
-    // exactly like a failed text write. The difference is what resolves it:
-    // retrying belongs to the uploader, which owns the file and its own retry
-    // control, so the exit offers an explicit discard instead of a retry it
-    // could not perform.
-    //
-    // Looped because finalize is itself a draft write: settling an upload can
-    // leave the queue non-empty, and the drain below has to see that.
-    while (externalWork.current.size > 0) {
-      const inFlightUploads = [...externalWork.current];
-      // `allSettled` so a rejection does not throw out of the drain. It is not
-      // how a failure is COUNTED — `trackExternalWork` does that at the moment
-      // of rejection, because an upload can fail long before anyone asks to
-      // leave.
-      await Promise.allSettled(inFlightUploads);
-      for (const settledWork of inFlightUploads) externalWork.current.delete(settledWork);
-    }
-    syncBusy();
+      // Sprint 09B.29 Phase 4 — wait for the photo before deciding the draft is
+      // drained.
+      //
+      // `allSettled` rather than `all` because a rejected upload must not throw
+      // out of the drain — but settling is NOT the same as succeeding, and the
+      // first version of this conflated them. It treated a failed upload as done
+      // and returned ok, so the provider walked out of the screen and the photo
+      // was silently gone. Nothing said "Saved", so no false claim was made; it
+      // was worse than that, because nothing said anything at all.
+      //
+      // A failure is therefore RECORDED and reported below as a terminal result,
+      // exactly like a failed text write. The difference is what resolves it:
+      // retrying belongs to the uploader, which owns the file and its own retry
+      // control, so the exit offers an explicit discard instead of a retry it
+      // could not perform.
+      //
+      // Looped because finalize is itself a draft write: settling an upload can
+      // leave the queue non-empty, and the drain below has to see that.
+      while (externalWork.current.size > 0) {
+        const inFlightUploads = [...externalWork.current];
+        // `allSettled` so a rejection does not throw out of the drain. It is not
+        // how a failure is COUNTED — `trackExternalWork` does that at the moment
+        // of rejection, because an upload can fail long before anyone asks to
+        // leave.
+        await Promise.allSettled(inFlightUploads);
+        for (const settledWork of inFlightUploads) externalWork.current.delete(settledWork);
+      }
+      syncBusy();
 
-    // Reported BEFORE the queue drain, so a failed photo is not masked by text
-    // that saved perfectly well. The provider is told the photo failed and is
-    // asked what to do about it.
-    if (failedUploads.current > 0) {
-      return { ok: false, reason: 'upload-failed' };
-    }
+      // Reported BEFORE the queue drain, so a failed photo is not masked by text
+      // that saved perfectly well. The provider is told the photo failed and is
+      // asked what to do about it.
+      if (failedUploads.current > 0) {
+        return { ok: false, reason: 'upload-failed' };
+      }
 
-    for (;;) {
-      if (!draining.current) {
+      for (;;) {
+        if (!draining.current) {
+          if (pending.current.size === 0 && !inFlight.current) {
+            syncBusy();
+            // Nothing queued and nothing open, so navigating loses nothing —
+            // whatever happened LAST time is not a reason to hold the provider
+            // on this screen now.
+            //
+            // This returned `lastResult` and trapped them. A 409 DROPS its patch
+            // (re-sending it would overwrite the other writer), so the queue
+            // empties — and every later flush then replayed the stale conflict
+            // and refused the exit again. The provider could not leave the task
+            // at all except by reloading. The conflict is reported once, by the
+            // drain that produced it, and stays visible in the status chip;
+            // it is not a permanent veto on navigation.
+            return OK;
+          }
+          const run = drain().finally(() => {
+            if (draining.current === run) draining.current = null;
+          });
+          draining.current = run;
+        }
+        const result = await draining.current;
+        lastResult.current = result;
+        if (!result.ok) {
+          syncBusy();
+          return result;
+        }
         if (pending.current.size === 0 && !inFlight.current) {
           syncBusy();
-          // Nothing queued and nothing open, so navigating loses nothing —
-          // whatever happened LAST time is not a reason to hold the provider
-          // on this screen now.
-          //
-          // This returned `lastResult` and trapped them. A 409 DROPS its patch
-          // (re-sending it would overwrite the other writer), so the queue
-          // empties — and every later flush then replayed the stale conflict
-          // and refused the exit again. The provider could not leave the task
-          // at all except by reloading. The conflict is reported once, by the
-          // drain that produced it, and stays visible in the status chip;
-          // it is not a permanent veto on navigation.
-          return OK;
+          return result;
         }
-        const run = drain().finally(() => {
-          if (draining.current === run) draining.current = null;
-        });
-        draining.current = run;
       }
-      const result = await draining.current;
-      lastResult.current = result;
-      if (!result.ok) {
-        syncBusy();
-        return result;
-      }
-      if (pending.current.size === 0 && !inFlight.current) {
-        syncBusy();
-        return result;
-      }
-    }
-  }, [clearTimer, drain, syncBusy]);
+    },
+    [clearTimer, drain, syncBusy],
+  );
 
   // `retry` closures created inside `drain` need the CURRENT flushAll without
   // making `drain` depend on it (which would be a cycle).
@@ -511,7 +543,11 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
    *  an older one — and leaves every other step's queued edit alone. */
   const save = useCallback(
     (step: ProviderOnboardingStep, patch: StepPatch) => {
-      pending.current.set(step, { ...(pending.current.get(step) ?? {}), ...patch });
+      const previous = pending.current.get(step);
+      const next = { ...(previous ?? {}), ...patch };
+      if (rejected.current.has(step) && JSON.stringify(next) === JSON.stringify(previous)) return;
+      pending.current.set(step, next);
+      rejected.current.delete(step);
       // Immediately, and before anything is sent. A `saved` chip from the
       // previous write must not outlive the keystroke that invalidated it.
       setStatus(step, { kind: 'dirty' });
@@ -547,7 +583,9 @@ export function ProviderOnboardingAutosaveProvider({ children }: { children: Rea
       }
     };
     const onOffline = () => {
-      for (const step of pending.current.keys()) setStatus(step, { kind: 'offline' });
+      for (const step of pending.current.keys()) {
+        if (!rejected.current.has(step)) setStatus(step, { kind: 'offline' });
+      }
     };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);

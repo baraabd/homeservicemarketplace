@@ -458,6 +458,111 @@ describe('submit — the transition, and what it must not do', () => {
   });
 });
 
+describe('experience projection — explicit numeric years precede the start-date fallback', () => {
+  // Between seven and eight full years, away from anniversary boundaries.
+  const started = new Date(Date.now() - 2800 * 24 * 60 * 60 * 1000);
+
+  it.each([
+    { name: 'date-only answer', professionSince: started, yearsOfExperience: null, expected: 7 },
+    {
+      name: 'explicit numeric answer alongside a start date',
+      professionSince: started,
+      yearsOfExperience: 3,
+      expected: 3,
+    },
+    { name: 'legacy numeric answer', professionSince: null, yearsOfExperience: 12, expected: 12 },
+    {
+      name: 'unanswered experience',
+      professionSince: null,
+      yearsOfExperience: null,
+      expected: null,
+    },
+  ])(
+    'projects $name without rewriting the stored answers',
+    async ({ professionSince, yearsOfExperience, expected }) => {
+      const profile = makeCompleteProfile({ professionSince, yearsOfExperience });
+      const h = build({ profile });
+
+      const view = await h.service.get('u-1');
+
+      expect(view.data.yearsOfExperience).toBe(expected);
+      expect(view.data.professionSince).toBe(professionSince?.toISOString() ?? null);
+      expect(profile.yearsOfExperience).toBe(yearsOfExperience);
+      expect(h.trx.providerProfile.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('reads back a legacy numeric edit on a date-backed profile', async () => {
+    const profile = makeCompleteProfile({ professionSince: started, yearsOfExperience: null });
+    const h = build({ profile });
+    h.trx.providerProfile.update.mockImplementation(
+      async ({ data }: { data: Partial<ProviderProfileWithCategories> }) =>
+        Object.assign(profile, data),
+    );
+    expect((await h.service.get('u-1')).data.yearsOfExperience).toBe(7);
+
+    const saved = await h.service.patchStep('u-1', 'EXPERIENCE', {
+      version: 3,
+      yearsOfExperience: 3,
+    });
+
+    expect(h.trx.providerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ yearsOfExperience: 3 }) }),
+    );
+    expect(saved.data.yearsOfExperience).toBe(3);
+    const reread = await h.service.get('u-1');
+    expect(reread.data.yearsOfExperience).toBe(3);
+    expect(reread.data.professionSince).toBe(started.toISOString());
+  });
+});
+
+describe('review and submit — the enabled market must agree', () => {
+  it('routes a withdrawn market back to work area before offering submission', async () => {
+    const h = build({ profile: makeCompleteProfile({ serviceAreaCountryCode: 'SE' }) });
+    expect((await h.service.review('u-1', 'en')).canSubmit).toBe(true);
+
+    // The operator withdraws after the provider saved their country. Re-read
+    // the registry instead of trusting that earlier successful LOCATION write.
+    h.markets.findEnabled.mockResolvedValue(null);
+    const review = await h.service.review('u-1', 'en');
+
+    expect(review.canSubmit).toBe(false);
+    expect(review.blockedReason).toMatchObject({
+      field: 'serviceAreaCountry',
+      code: 'OUT_OF_RANGE',
+      step: 'LOCATION',
+      taskId: 'WORK_AREA',
+    });
+    const hub = await h.service.hub('u-1');
+    expect(hub.tasks.find((task) => task.id === 'WORK_AREA')?.status).toBe('AVAILABLE');
+    const draft = await h.service.get('u-1');
+    expect(draft.complete).toBe(false);
+    expect(draft.steps.find((step) => step.step === 'LOCATION')?.complete).toBe(false);
+    expect(draft.missing).toContainEqual({ field: 'serviceAreaCountry', code: 'OUT_OF_RANGE' });
+    await expect(h.service.submit('u-1', { version: 3 })).rejects.toMatchObject({
+      status: 422,
+      details: {
+        reason: 'MARKET_NOT_SUPPORTED',
+        missing: [{ field: 'serviceAreaCountryCode', code: 'MARKET_NOT_SUPPORTED' }],
+      },
+    });
+    expect(h.trx.providerProfile.updateMany).not.toHaveBeenCalled();
+    expect(h.trx.providerOnboardingSubmission.create).not.toHaveBeenCalled();
+  });
+
+  it('still submits when the selected market remains enabled', async () => {
+    const h = build({ profile: makeCompleteProfile({ serviceAreaCountryCode: 'SE' }) });
+    expect((await h.service.review('u-1', 'en')).canSubmit).toBe(true);
+    expect((await h.service.hub('u-1')).tasks.find((task) => task.id === 'WORK_AREA')?.status).toBe(
+      'COMPLETE',
+    );
+    expect((await h.service.get('u-1')).complete).toBe(true);
+    await h.service.submit('u-1', { version: 3 });
+    expect(h.markets.findEnabled).toHaveBeenCalledWith('SE', h.trx);
+    expect(h.trx.providerOnboardingSubmission.create).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('submit — completeness and idempotency', () => {
   it('refuses an incomplete application with 422 and machine-readable codes', async () => {
     const h = build({ profile: makeCompleteProfile({ bio: null }) });
@@ -1753,6 +1858,53 @@ describe('patchStep — LOCATION only accepts markets the operator serves', () =
 // ─────────────────────────────────────────────────────────────────────────────
 describe('patchStep — AVAILABILITY derives the timezone from the market', () => {
   const week = [{ dayOfWeek: 0, startMinute: 540, endMinute: 1020 }];
+
+  const withConfirmedTimezone = () => {
+    const h = build({
+      profile: { ...makeCompleteProfile(), serviceAreaCountryCode: 'CA' },
+      intervals: [],
+      draft: {
+        id: 'd-1',
+        version: 3,
+        policyVersion: 'sprint-08',
+        lastSavedAt: new Date('2026-09-14T00:00:00Z'),
+        data: { timezone: 'America/Toronto' },
+      },
+    });
+    h.markets.findEnabled.mockResolvedValue({
+      countryCode: 'CA',
+      enabled: true,
+      displayNameKey: 'CA',
+      timezones: ['America/Toronto', 'America/Vancouver'],
+    });
+    return h;
+  };
+
+  it('uses a previously confirmed timezone when saving the first working hours', async () => {
+    // A timezone-only PATCH has no intervals to stamp yet; its acknowledged
+    // value lives in draft.data until the first hours are written.
+    const h = withConfirmedTimezone();
+    await expect(
+      h.service.patchStep('u-1', 'AVAILABILITY', { version: 3, availability: week }),
+    ).resolves.toBeDefined();
+    expect(h.drafts.replaceAvailability).toHaveBeenCalledWith(
+      'pp-1',
+      [{ ...week[0], timezone: 'America/Toronto' }],
+      h.trx,
+    );
+  });
+
+  it('does not revive the stored confirmation when a request explicitly clears it', async () => {
+    const h = withConfirmedTimezone();
+    await expect(
+      h.service.patchStep('u-1', 'AVAILABILITY', {
+        version: 3,
+        availability: week,
+        timezone: null,
+      }),
+    ).rejects.toMatchObject({ status: 400, details: { reason: 'TIMEZONE_AMBIGUOUS' } });
+    expect(h.drafts.replaceAvailability).not.toHaveBeenCalled();
+  });
 
   /** A provider with a market and NO stored timezone — the new-provider case
    *  that used to be impossible to save. */

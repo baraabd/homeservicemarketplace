@@ -45,6 +45,7 @@ interface ServiceAreaTaskScreenProps {
 export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskScreenProps) {
   const copy = SERVICE_AREA_COPY[lang];
   const autosave = useOnboardingStepAutosave('LOCATION');
+  const timezoneAutosave = useOnboardingStepAutosave('AVAILABILITY');
 
   const data = view.data;
   const policy = data.radiusPolicy;
@@ -125,7 +126,7 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
    */
   const chooseMarket = (value: string) => {
     if (prompt?.kind === 'CONFIRM_TIMEZONE') {
-      autosave.save({ timezone: value });
+      timezoneAutosave.save({ timezone: value });
       return;
     }
     autosave.save({ serviceAreaCountryCode: value });

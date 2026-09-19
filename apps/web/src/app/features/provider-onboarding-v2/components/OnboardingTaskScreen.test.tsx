@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, Outlet, RouterProvider, useLocation } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -131,6 +131,53 @@ function renderTask(taskId: string, lang: 'en' | 'ar' = 'en') {
 }
 
 describe('OnboardingTaskScreen', () => {
+  it('the work-area save line reports a rejected timezone confirmation', async () => {
+    mock.onGet(HUB_URL).reply(200, {
+      ...HUB,
+      tasks: HUB.tasks.map((task) => ({ ...task, status: 'AVAILABLE' })),
+    });
+    mock.onGet(DRAFT_URL).reply(200, {
+      ...DRAFT,
+      lastSavedAt: '2026-09-14T10:00:00Z',
+      data: {
+        ...DRAFT.data,
+        serviceAreaCountryCode: 'CA',
+        serviceAreaCity: 'Toronto',
+        serviceAreaRadiusKm: 25,
+        radiusPolicy: { suggestedKm: 25, minKm: 1, maxKm: 100, basedOn: 'CAR' },
+      },
+    });
+    mock.onGet('/v1/me/provider/onboarding/markets').reply(200, {
+      selectedCountryCode: 'CA',
+      markets: [
+        {
+          countryCode: 'CA',
+          displayNameKey: 'CA',
+          timezone: { kind: 'ASK', allowedIds: ['America/Toronto', 'America/Vancouver'] },
+        },
+      ],
+    });
+    let release!: (response: [number, object]) => void;
+    mock.onPatch(/\/steps\/AVAILABILITY$/).reply(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderTask('WORK_AREA');
+    fireEvent.change(await screen.findByTestId('market-timezone-select'), {
+      target: { value: 'America/Toronto' },
+    });
+    await waitFor(() => expect(release).toBeDefined());
+    expect(screen.getByTestId('task-save-status')).toHaveAttribute('data-status', 'saving');
+    await act(async () => {
+      release([400, { code: 'VALIDATION_ERROR' }]);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('task-save-status')).toHaveAttribute('data-status', 'error'),
+    );
+  });
+
   it('resumes the task named in the URL', async () => {
     mock.onGet(HUB_URL).reply(200, HUB);
     renderTask('BASICS_IDENTITY');

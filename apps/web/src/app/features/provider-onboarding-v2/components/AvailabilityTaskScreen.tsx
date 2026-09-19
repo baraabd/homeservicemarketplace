@@ -74,8 +74,8 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
   const resolved = data.resolvedTimezone;
 
   // The server's copy is the source of truth for what is SAVED; this mirrors
-  // it for editing. Re-derived when the server's answer changes, so a reload
-  // or a conflict resolution replaces local state rather than merging into it.
+  // it for editing. Only hydrate acknowledged work: an older response may
+  // arrive while a newer complete week is queued or still being saved.
   const serverWeek = useMemo(() => toWeek(data.availability), [data.availability]);
   const [week, setWeek] = useState<Week>(serverWeek);
 
@@ -103,12 +103,17 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
   const [selectedDays, setSelectedDays] = useState<number[]>(() =>
     [0, 1, 2, 3, 4, 5, 6].filter((day) => isDayAvailable(serverWeek, day)),
   );
+  // Toggling days stages the next Apply; it does not enter the autosave queue.
+  // Keep that selection even if the previous Apply finishes in the meantime.
+  const [hasUnappliedDays, setHasUnappliedDays] = useState(false);
 
   const [lastServerWeek, setLastServerWeek] = useState<Week>(serverWeek);
-  if (serverWeek !== lastServerWeek) {
+  if (!autosave.isDirty && serverWeek !== lastServerWeek) {
+    // Do not consume a server copy while dirty: it still needs to hydrate
+    // after acknowledgement, even if its object identity has not changed.
     setLastServerWeek(serverWeek);
     setWeek(serverWeek);
-    setSelectedDays(serverDays);
+    if (!hasUnappliedDays) setSelectedDays(serverDays);
   }
 
   // Read, never chosen: the approved screen has no timezone control, so the
@@ -135,6 +140,7 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
     (next: Week) => {
       setWeek(next);
       if (!editable) return;
+      setHasUnappliedDays(false);
       autosave.save({ availability: toIntervals(next), timezone: timezone || null });
     },
     [autosave, editable, timezone],
@@ -154,10 +160,12 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
     [commit],
   );
 
-  const toggleDay = (day: number) =>
+  const toggleDay = (day: number) => {
+    setHasUnappliedDays(true);
     setSelectedDays((current) =>
       current.includes(day) ? current.filter((d) => d !== day) : [...current, day].sort(),
     );
+  };
 
   /**
    * Apply the window — or the absence of one — to every selected day.

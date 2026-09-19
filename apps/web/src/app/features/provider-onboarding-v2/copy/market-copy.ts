@@ -37,6 +37,8 @@ export interface MarketCopy {
   timezoneTitle: string;
   timezoneBody: string;
   timezoneLabel: string;
+  timezonePlaceholder: string;
+  timezoneUnavailableTitle: string;
 
   /** The registry could not be read. */
   unavailableTitle: string;
@@ -64,6 +66,8 @@ const EN: MarketCopy = {
   timezoneBody:
     'Your country spans more than one timezone, so we cannot work it out on your own behalf. Your working hours are stored in the zone you choose here.',
   timezoneLabel: 'Timezone',
+  timezonePlaceholder: 'Choose a timezone',
+  timezoneUnavailableTitle: 'We could not load the timezones for your country',
 
   unavailableTitle: 'We could not load the list of countries',
   unavailableBody: 'Your answers are safe. Try again, or come back to this task later.',
@@ -89,6 +93,8 @@ const AR: MarketCopy = {
   timezoneBody:
     'تمتد دولتك على أكثر من منطقة زمنية، لذلك لا يمكننا تحديدها نيابة عنك. تُحفظ ساعات عملك حسب المنطقة التي تختارها هنا.',
   timezoneLabel: 'المنطقة الزمنية',
+  timezonePlaceholder: 'اختر منطقة زمنية',
+  timezoneUnavailableTitle: 'تعذّر تحميل المناطق الزمنية لدولتك',
 
   unavailableTitle: 'تعذّر تحميل قائمة الدول',
   unavailableBody: 'إجاباتك محفوظة. حاول مرة أخرى أو عد إلى هذه المهمة لاحقاً.',
