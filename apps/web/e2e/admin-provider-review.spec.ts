@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { ADMIN_PROVIDER_REVIEW_TASK_IDS } from '@homeservicemarketplace/contracts';
 import type {
   AdminPortfolioListResponse,
   AdminProviderReview,
@@ -9,6 +10,7 @@ import type {
   ProviderReviewSnapshot,
   RequestAdminProviderReviewChangesRequest,
 } from '@homeservicemarketplace/contracts';
+import { openReviewTask } from './admin-review-tabs';
 import {
   expectNoHorizontalPageOverflow,
   htmlLangDir,
@@ -475,28 +477,30 @@ for (const lang of ['en', 'ar'] as const) {
           .getByRole('button', { name: lang === 'ar' ? 'الوضع الداكن' : 'Dark theme', exact: true })
           .click();
       expect((await htmlLangDir(page)).dir).toBe(lang === 'ar' ? 'rtl' : 'ltr');
-      for (const name of SECTION_NAMES[lang]) {
-        const section = page.getByRole('region', { name, exact: true });
+      for (const [index, task] of ADMIN_PROVIDER_REVIEW_TASK_IDS.entries()) {
+        await openReviewTask(page, task);
+        const section = page.getByRole('region', { name: SECTION_NAMES[lang][index], exact: true });
         await expect(section).toBeVisible();
         await expect(section.getByRole('heading', { level: 2 })).toBeVisible();
+        await expect(page.getByTestId('review-approve')).toBeEnabled();
+        await expectNoHorizontalPageOverflow(page);
+        const audit = await new AxeBuilder({ page })
+          .include('[data-testid="admin-provider-review-workspace"]')
+          .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+          .analyze();
+        await testInfo.attach(`axe-admin-dossier-${task}.json`, {
+          body: JSON.stringify(audit, null, 2),
+          contentType: 'application/json',
+        });
+        expect(audit.violations).toEqual([]);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        const screenshot = testInfo.outputPath(`admin-tabs-v1-${lang}-${theme}-${task}.png`);
+        await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' });
+        await testInfo.attach(`Admin tabs ${lang} ${theme} ${task} (API fixture)`, {
+          path: screenshot,
+          contentType: 'image/png',
+        });
       }
-      await expect(page.getByTestId('review-approve')).toBeEnabled();
-      await expectNoHorizontalPageOverflow(page);
-      const audit = await new AxeBuilder({ page })
-        .include('[data-testid="admin-provider-review-workspace"]')
-        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
-        .analyze();
-      await testInfo.attach('axe-admin-dossier.json', {
-        body: JSON.stringify(audit, null, 2),
-        contentType: 'application/json',
-      });
-      expect(audit.violations).toEqual([]);
-      const screenshot = testInfo.outputPath(`admin-dossier-${lang}-${theme}.png`);
-      await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' });
-      await testInfo.attach(`Admin dossier ${lang} ${theme} (API fixture)`, {
-        path: screenshot,
-        contentType: 'image/png',
-      });
     });
   }
 
@@ -531,7 +535,57 @@ for (const lang of ['en', 'ar'] as const) {
     });
     expect(state.decisions[0].idempotencyKey.length).toBeGreaterThan(7);
   });
+
+  test(`tabs support keyboard, reload and retained unsent notes without approving (${lang})`, async ({ page }) => {
+    const state = await open(page, lang);
+    const workspace = page.getByTestId('admin-provider-review-workspace');
+    await expect(workspace).toHaveAttribute('data-admin-review-layout', 'tabbed-v1');
+    await page.getByTestId('review-private-note').fill(NOTE);
+    await openReviewTask(page, 'BASICS_IDENTITY');
+    await page.getByTestId('review-tab-BASICS_IDENTITY').focus();
+    await page.keyboard.press(lang === 'ar' ? 'ArrowLeft' : 'ArrowRight');
+    await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toBeFocused();
+    await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('End');
+    await expect(page.getByTestId('review-tab-REVIEW_SUBMISSION')).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(page.getByTestId('review-tab-BASICS_IDENTITY')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('review-panel-BASICS_IDENTITY')).toBeFocused();
+    for (const task of ADMIN_PROVIDER_REVIEW_TASK_IDS) await openReviewTask(page, task);
+    await expect(page.getByTestId('review-private-note')).toHaveValue(NOTE);
+    expect(state.decisions).toHaveLength(0);
+    expect(state.evidenceReads).toHaveLength(0);
+    expect(state.portfolioReads).toHaveLength(0);
+    await openReviewTask(page, 'WORKING_HOURS');
+    await page.getByTestId('review-source-current').click();
+    await expect(page.getByTestId('review-tab-WORKING_HOURS')).toHaveAttribute('aria-selected', 'true');
+    await expect(page).toHaveURL(/reviewTab=WORKING_HOURS/);
+    await page.reload();
+    await expect(page.getByTestId('review-tab-WORKING_HOURS')).toHaveAttribute('aria-selected', 'true');
+    await expect(workspace.getByRole('tabpanel')).toHaveCount(1);
+    await expect(page.getByTestId('review-panel-BASICS_IDENTITY')).toBeHidden();
+  });
 }
+
+test('server blocker links select hidden panels and the decision anchor preserves the selection', async ({ page }) => {
+  const review = fixture();
+  review.availableActions = ['requestChanges'];
+  review.blockers = [{ code: 'CATEGORY_REVIEW_REQUIRED', taskId: 'SERVICES_EXPERIENCE' }];
+  await open(page, 'en', { review });
+  const link = page.locator('#review-decision-panel a[href="#review-section-SERVICES_EXPERIENCE"]');
+  await link.click();
+  await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('review-panel-SERVICES_EXPERIENCE')).toBeFocused();
+  await expect(page).toHaveURL(/reviewTab=SERVICES_EXPERIENCE/);
+  await expect(page.getByTestId('review-approve')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId('review-panel-SERVICES_EXPERIENCE')).toBeVisible();
+  // The mobile shortcut is a normal anchor, not a tab change or an approval command.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('a[href="#review-decision-panel"]').click();
+  await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toHaveAttribute('aria-selected', 'true');
+});
 
 test('a 409 keeps correction instructions and private notes until a refreshed decision is confirmed', async ({
   page,
@@ -563,10 +617,12 @@ test('restricted evidence and pending portfolio bytes are fetched only after an 
   page,
 }) => {
   const state = await open(page, 'en');
+  await openReviewTask(page, 'PORTFOLIO');
   await expect(page.getByTestId('review-portfolio-portfolio-1')).toBeVisible();
   expect(state.evidenceReads).toEqual([]);
   expect(state.portfolioReads).toEqual([]);
   await expect(page.locator('img[src*="verification/"]')).toHaveCount(0);
+  await openReviewTask(page, 'BASICS_IDENTITY');
   const download = page.waitForEvent('download');
   await page.getByTestId('review-evidence-download-document-1').click();
   expect((await download).suggestedFilename()).toBe('Identity document.pdf');
@@ -581,6 +637,7 @@ test('restricted evidence and pending portfolio bytes are fetched only after an 
   await page.keyboard.press('Escape');
   await expect(identityDialog).not.toBeVisible();
   await expect(page.getByTestId('review-evidence-document-1')).toBeFocused();
+  await openReviewTask(page, 'PORTFOLIO');
   await page.getByTestId('review-portfolio-open-portfolio-1').click();
   await expect.poll(() => state.portfolioReads.length).toBe(1);
   await expect(page.getByRole('dialog').getByRole('img')).toBeVisible();
@@ -626,6 +683,8 @@ test('a forbidden dossier exposes neither submitted fields nor controls', async 
   ).toBeVisible();
   await expect(page.getByRole('region', { name: 'Basics & identity', exact: true })).toHaveCount(0);
   await expect(page.getByTestId('review-approve')).toHaveCount(0);
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page.getByRole('tabpanel', { includeHidden: true })).toHaveCount(0);
 });
 
 test('directory pagination, filters and the return route survive opening a provider', async ({
@@ -642,6 +701,9 @@ test('directory pagination, filters and the return route survive opening a provi
     .getByRole('link', { name: `Open profile ${SNAPSHOT.profile.displayName}` })
     .click();
   await expect(page.getByTestId('admin-provider-review-workspace')).toBeVisible();
+  await openReviewTask(page, 'WORKING_HOURS');
+  await page.reload();
+  await expect(page.getByTestId('review-tab-WORKING_HOURS')).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: 'Back to providers', exact: true }).click();
   await expect(directory).toBeVisible();
   const restored = new URL(page.url());
@@ -660,9 +722,18 @@ test('Arabic dossier adapts to narrow phones and small desktop without losing ac
   page,
 }, testInfo) => {
   await open(page, 'ar');
-  for (const width of [320, 390, 1024]) {
+  for (const width of [320, 390, 430, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await expectNoHorizontalPageOverflow(page);
+    for (const task of ADMIN_PROVIDER_REVIEW_TASK_IDS) {
+      const tab = page.getByTestId(`review-tab-${task}`);
+      const box = await tab.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.width).toBeGreaterThanOrEqual(44);
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+      expect(box!.x).toBeGreaterThanOrEqual(-1);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+    }
     const action = page.getByTestId('review-approve');
     await action.scrollIntoViewIfNeeded();
     const box = await action.boundingBox();
@@ -671,7 +742,6 @@ test('Arabic dossier adapts to narrow phones and small desktop without losing ac
     expect(box!.height).toBeGreaterThanOrEqual(44);
     expect(box!.x).toBeGreaterThanOrEqual(-1);
     expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
-    // Capture the normal sticky-header position after verifying the action.
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
       path: testInfo.outputPath(`admin-ar-width-${width}.png`),

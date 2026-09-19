@@ -497,14 +497,27 @@ integration.each(['local', 's3'] as const)(
         child.once('exit', (code) => resolve(code)),
       );
       try {
+        let readyStatus: number | null = null;
         for (let attempt = 0; attempt < 60; attempt += 1) {
-          if ((await db.mediaAsset.findUniqueOrThrow({ where: { id: assetId } })).deletedAt) break;
           if (child.exitCode !== null) throw new Error('independent-worker-exited-before-erasure');
+          if ((await db.mediaAsset.findUniqueOrThrow({ where: { id: assetId } })).deletedAt) {
+            // Erasure commits before tick() finishes repo.counts() and sets healthyAt.
+            // Wait for both observables within the existing bounded startup window;
+            // an initial 503 is correct, not proof that the built worker failed.
+            const ready = await fetch('http://127.0.0.1:19091/health/ready', {
+              signal: AbortSignal.timeout(1000),
+            });
+            readyStatus = ready.status;
+            await ready.text();
+            if (readyStatus === 200) break;
+            expect(readyStatus).toBe(503);
+          }
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
         expect(
           (await db.mediaAsset.findUniqueOrThrow({ where: { id: assetId } })).deletedAt,
         ).not.toBeNull();
+        expect(readyStatus).toBe(200);
         expect((await fetch('http://127.0.0.1:19091/health/ready')).status).toBe(200);
         expect((await fetch('http://127.0.0.1:19091/metrics')).status).toBe(404);
         const metrics = await fetch('http://127.0.0.1:19091/metrics', {

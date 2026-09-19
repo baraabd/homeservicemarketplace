@@ -10,7 +10,8 @@ import { getProviderReview, requestStatus, reviewQueryKey } from '../api';
 import { REVIEW_COPY, statusLabel } from '../copy';
 import { ReviewBadge, ReviewBanner, StatusBadge } from './ReviewPrimitives';
 import { ReviewDossier } from './ReviewDossier';
-import { ReviewTaskIndex } from './ReviewTaskIndex';
+import { ReviewTaskTabs } from './ReviewTaskTabs';
+import { useReviewTaskNavigation } from '../useReviewTaskNavigation';
 import { ReviewIdentity } from './ReviewIdentity';
 import { ReviewCategories } from './ReviewCategories';
 import { ReviewPortfolio } from './ReviewPortfolio';
@@ -46,6 +47,7 @@ function ReviewWorkspace({
   const t = REVIEW_COPY[lang];
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const taskNavigation = useReviewTaskNavigation();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [source, setSource] = useState<'submitted' | 'current'>('submitted');
   const query = useQuery({
@@ -84,6 +86,7 @@ function ReviewWorkspace({
       dir={dir}
       lang={lang}
       data-testid="admin-provider-review-workspace"
+      data-admin-review-layout="tabbed-v1"
     >
       <div className="ar-subheader">
         <button
@@ -232,16 +235,23 @@ function ReviewWorkspace({
                       ? t.sourceHint
                       : t.historicalMissing}
               </ReviewBanner>
-              <ReviewTaskIndex lang={lang} blockers={review.blockers} />
-              <ReviewDossier
-                submittedSource={selectedSource === 'submitted'}
-                review={review}
-                snapshot={snapshot}
+              <ReviewTaskTabs
                 lang={lang}
-                identity={<ReviewIdentity review={review} lang={lang} onChanged={refresh} />}
-                categories={<ReviewCategories review={review} lang={lang} onChanged={refresh} />}
-                portfolio={<ReviewPortfolio review={review} lang={lang} onChanged={refresh} />}
-              />
+                blockers={review.blockers}
+                value={taskNavigation.task}
+                onValueChange={taskNavigation.selectTask}
+                focusLinkedPanel={taskNavigation.focusLinkedPanel}
+              >
+                <ReviewDossier
+                  submittedSource={selectedSource === 'submitted'}
+                  review={review}
+                  snapshot={snapshot}
+                  lang={lang}
+                  identity={<ReviewIdentity review={review} lang={lang} onChanged={refresh} />}
+                  categories={<ReviewCategories review={review} lang={lang} onChanged={refresh} />}
+                  portfolio={<ReviewPortfolio review={review} lang={lang} onChanged={refresh} />}
+                />
+              </ReviewTaskTabs>
               <ReviewAccountActions
                 providerProfileId={providerProfileId}
                 lang={lang}

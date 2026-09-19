@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ReviewTaskPanel } from './ReviewTaskTabs';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { statusLabel, type ReviewLanguage } from '../copy';
 
@@ -84,26 +85,28 @@ export function ReviewSection({
   aside?: ReactNode;
 }) {
   return (
-    <section
-      id={id}
-      data-testid={id}
-      className="ar-card ar-section"
-      aria-labelledby={`${id}-heading`}
-    >
-      <header className="ar-section-header">
-        <div className="ar-section-title">
-          {number ? (
-            <span className="ar-section-number" aria-hidden>
-              {String(number).padStart(2, '0')}
-            </span>
-          ) : null}
-          <h2 id={`${id}-heading`} className="ar-heading">
-            {title}
-          </h2>
-        </div>
-        {aside}
-      </header>
-      {children}
-    </section>
+    <ReviewTaskPanel sectionId={id}>
+      <section
+        id={id}
+        data-testid={id}
+        className="ar-card ar-section"
+        aria-labelledby={`${id}-heading`}
+      >
+        <header className="ar-section-header">
+          <div className="ar-section-title">
+            {number ? (
+              <span className="ar-section-number" aria-hidden>
+                {String(number).padStart(2, '0')}
+              </span>
+            ) : null}
+            <h2 id={`${id}-heading`} className="ar-heading">
+              {title}
+            </h2>
+          </div>
+          {aside}
+        </header>
+        {children}
+      </section>
+    </ReviewTaskPanel>
   );
 }
