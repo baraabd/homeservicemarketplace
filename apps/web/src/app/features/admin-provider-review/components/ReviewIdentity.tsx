@@ -14,6 +14,7 @@ import { REVIEW_COPY, type ReviewLanguage } from '../copy';
 import { requestStatus } from '../api';
 import { ReviewBadge, ReviewBanner, StatusBadge } from './ReviewPrimitives';
 import { ReviewDialog } from './ReviewDialog';
+import { ReviewMutationNotice } from './ReviewMutationNotice';
 import { IdentityEvidenceViewer } from '../evidence/IdentityEvidenceViewer';
 import { IDENTITY_PREVIEW_COPY } from '../evidence/identity-preview-copy';
 import { verificationReasonLabel } from '../evidence/verification-reason-labels';
@@ -38,10 +39,12 @@ export function ReviewIdentity({
   review,
   lang,
   onChanged,
+  readOnly = false,
 }: {
   review: AdminProviderReview;
   lang: ReviewLanguage;
   onChanged: () => Promise<unknown>;
+  readOnly?: boolean;
 }) {
   const t = REVIEW_COPY[lang];
   const actionLabel = (action: VerificationCaseActionCode) =>
@@ -57,6 +60,7 @@ export function ReviewIdentity({
   const previewDocument = kase?.documents.find((document) => document.id === previewId);
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const [chosen, setChosen] = useState<{
+    caseId: string;
     action: VerificationCaseActionCode;
     expectedState: string;
   } | null>(null);
@@ -65,15 +69,21 @@ export function ReviewIdentity({
   const [error, setError] = useState<number | null>(null);
   const [invalid, setInvalid] = useState(false);
   const mutation = useMutation({ mutationFn: runCaseCommand });
+  // Never retarget an open confirmation to a replacement case, even when
+  // both cases happen to have the same state. The server still owns actions.
+  const selectionCurrent = !!chosen && !!kase &&
+    chosen.caseId === kase.id && chosen.expectedState === kase.state &&
+    review.permissions.canDecide && kase.availableActions.includes(chosen.action);
   async function confirm() {
-    if (!chosen || !kase) return;
+    if (
+      !chosen || readOnly || mutation.isPending || !selectionCurrent || error === 403 || error === 409
+    ) return;
     if (chosen.action !== 'assign' && !reason) {
       setInvalid(true);
       return;
     }
     try {
       await mutation.mutateAsync({
-        caseId: kase.id,
         ...chosen,
         reasonCode: reason || undefined,
         note: note.trim() || undefined,
@@ -208,9 +218,11 @@ export function ReviewIdentity({
                     type="button"
                     className="ar-button"
                     data-testid={`review-case-${action}`}
+                    disabled={readOnly || mutation.isPending}
                     onClick={(event) => {
+                      if (readOnly || mutation.isPending) return;
                       openerRef.current = event.currentTarget;
-                      setChosen({ action, expectedState: kase.state });
+                      setChosen({ caseId: kase.id, action, expectedState: kase.state });
                       setReason('');
                       setError(null);
                       setInvalid(false);
@@ -262,6 +274,7 @@ export function ReviewIdentity({
         description={UI[lang].axisNote}
         openerRef={openerRef}
       >
+        <ReviewMutationNotice lang={lang} paused={readOnly} stale={!!chosen && !selectionCurrent} />
         {chosen?.action !== 'assign' && (
           <label className="ar-label">
             {t.caseReason}
@@ -304,10 +317,11 @@ export function ReviewIdentity({
           </ReviewBanner>
         )}
         <div className="ar-actions">
-          {error === 409 ? (
+          {(error === 409 || readOnly || (!!chosen && !selectionCurrent)) && (
             <button
               className="ar-button"
               type="button"
+              disabled={mutation.isPending}
               onClick={async () => {
                 try {
                   await onChanged();
@@ -319,11 +333,13 @@ export function ReviewIdentity({
             >
               {t.refresh}
             </button>
-          ) : (
+          )}
+          {error !== 409 && (
             <button
               className="ar-button ar-button-primary"
               type="button"
-              disabled={mutation.isPending || error === 403}
+              data-testid="review-case-confirm"
+              disabled={readOnly || mutation.isPending || !selectionCurrent || error === 403}
               onClick={() => void confirm()}
             >
               {mutation.isPending ? t.saving : t.confirm}

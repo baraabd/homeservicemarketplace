@@ -57,6 +57,7 @@ function ReviewWorkspace({
     retry: false,
   });
   const review = query.data;
+  const readOnly = query.isError || query.isFetching;
   const loadedProviderId = review?.provider.id;
   useEffect(() => {
     if (loadedProviderId) headingRef.current?.focus({ preventScroll: true });
@@ -247,9 +248,30 @@ function ReviewWorkspace({
                   review={review}
                   snapshot={snapshot}
                   lang={lang}
-                  identity={<ReviewIdentity review={review} lang={lang} onChanged={refresh} />}
-                  categories={<ReviewCategories review={review} lang={lang} onChanged={refresh} />}
-                  portfolio={<ReviewPortfolio review={review} lang={lang} onChanged={refresh} />}
+                  identity={
+                    <ReviewIdentity
+                      review={review}
+                      lang={lang}
+                      onChanged={refresh}
+                      readOnly={readOnly}
+                    />
+                  }
+                  categories={
+                    <ReviewCategories
+                      review={review}
+                      lang={lang}
+                      onChanged={refresh}
+                      readOnly={readOnly}
+                    />
+                  }
+                  portfolio={
+                    <ReviewPortfolio
+                      review={review}
+                      lang={lang}
+                      onChanged={refresh}
+                      readOnly={readOnly}
+                    />
+                  }
                 />
               </ReviewTaskTabs>
               <ReviewAccountActions
@@ -263,7 +285,7 @@ function ReviewWorkspace({
               lang={lang}
               onChanged={refresh}
               onDecided={decided}
-              readOnly={query.isError || query.isFetching}
+              readOnly={readOnly}
             />
           </div>
         </>

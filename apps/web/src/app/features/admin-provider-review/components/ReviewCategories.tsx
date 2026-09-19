@@ -5,21 +5,25 @@ import { reviewProviderCategory, requestStatus } from '../api';
 import { REVIEW_COPY, type ReviewLanguage } from '../copy';
 import { ReviewBanner, StatusBadge } from './ReviewPrimitives';
 import { ReviewDialog } from './ReviewDialog';
+import { ReviewMutationNotice } from './ReviewMutationNotice';
 
 export function ReviewCategories({
   review,
   lang,
   onChanged,
+  readOnly = false,
 }: {
   review: AdminProviderReview;
   lang: ReviewLanguage;
   onChanged: () => Promise<unknown>;
+  readOnly?: boolean;
 }) {
   const t = REVIEW_COPY[lang];
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const [selection, setSelection] = useState<{
     id: string;
     name: string;
+    status: string;
     action: 'APPROVE' | 'REJECT';
   } | null>(null);
   const [error, setError] = useState<number | null>(null);
@@ -29,7 +33,11 @@ export function ReviewCategories({
       await reviewProviderCategory(selection.id, { action: selection.action });
     },
   });
+  const current = review.categoryApplications.find((item) => item.id === selection?.id);
+  const selectionCurrent = !!selection && !!current &&
+    current.status === selection.status && current.availableActions.includes(selection.action);
   async function confirm() {
+    if (readOnly || mutation.isPending || !selectionCurrent || error === 403 || error === 409) return;
     try {
       await mutation.mutateAsync();
       setSelection(null);
@@ -73,10 +81,13 @@ export function ReviewCategories({
                     className={`ar-button${action === 'REJECT' ? ' ar-button-danger' : ''}`}
                     type="button"
                     data-testid={`review-category-${action.toLowerCase()}-${application.id}`}
+                    disabled={readOnly || mutation.isPending}
                     onClick={(event) => {
+                      if (readOnly || mutation.isPending) return;
                       openerRef.current = event.currentTarget;
                       setSelection({
                         id: application.id,
+                        status: application.status,
                         name:
                           lang === 'ar'
                             ? application.serviceCategoryLabelAr
@@ -105,16 +116,18 @@ export function ReviewCategories({
         description={selection?.name ?? t.confirmService}
         openerRef={openerRef}
       >
+        <ReviewMutationNotice lang={lang} paused={readOnly} stale={!!selection && !selectionCurrent} />
         {error && (
           <ReviewBanner role="alert" tone="danger">
             {error === 409 ? t.conflict : error === 403 ? t.noActions : t.mutationFailed}
           </ReviewBanner>
         )}
         <div className="ar-actions">
-          {error === 409 ? (
+          {(error === 409 || readOnly || (!!selection && !selectionCurrent)) && (
             <button
               type="button"
               className="ar-button"
+              disabled={mutation.isPending}
               onClick={async () => {
                 try {
                   await onChanged();
@@ -126,12 +139,13 @@ export function ReviewCategories({
             >
               {t.refresh}
             </button>
-          ) : (
+          )}
+          {error !== 409 && (
             <button
               type="button"
               data-testid="review-category-confirm"
               className="ar-button ar-button-primary"
-              disabled={mutation.isPending || error === 403}
+              disabled={readOnly || mutation.isPending || !selectionCurrent || error === 403}
               onClick={() => void confirm()}
             >
               {mutation.isPending ? t.saving : t.confirmService}
