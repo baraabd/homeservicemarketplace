@@ -95,13 +95,19 @@ export function ReviewPortfolio({
   // A list denial also invalidates an already-open private viewer. Hiding only
   // the cards leaves the portal, metadata and resident image bytes visible.
   const image = usePrivatePortfolioImage(providerId, denied ? null : selected, openId);
-  useEffect(() => {
-    if (!denied) return;
-    setSelected(null);
-    setAction(null);
-    setReason('');
-    setError(null);
-  }, [denied]);
+  // Reset this component's selection on the authoritative denial transition
+  // before committing children, rather than cascading a second effect render.
+  // Keep transient failures separate: their unsent reason must survive.
+  const [previousDenied, setPreviousDenied] = useState(denied);
+  if (denied !== previousDenied) {
+    setPreviousDenied(denied);
+    if (denied) {
+      setSelected(null);
+      setAction(null);
+      setReason('');
+      setError(null);
+    }
+  }
   async function refreshPortfolio() {
     const result = await query.refetch();
     // TanStack refetch resolves an error result by default; Promise.all alone
