@@ -31,6 +31,7 @@ export type NotificationExperience = 'seeker' | 'provider';
 // In-app overlay routers (HomeScreen) read `kind` + `id`; routed
 // surfaces (toast View, ProviderApp) read `deepLink`.
 export type NotificationTarget =
+  | { kind: 'dispute-detail'; disputeId: string; deepLink: string }
   // Seeker overlays. `id` is the resourceId; the overlay router maps
   // it to the appropriate React Query detail.
   | { kind: 'seeker-request-bids'; requestId: string; deepLink: string }
@@ -84,6 +85,13 @@ export function resolveNotificationTarget(
   const resourceId = input.resourceId ?? null;
   const type = (input.type ?? null) as string | null;
   const meta = input.metadata ?? null;
+
+  if (resourceType === 'DISPUTE' && resourceId && /^[a-zA-Z0-9_-]{1,100}$/.test(resourceId))
+    return {
+      kind: 'dispute-detail',
+      disputeId: resourceId,
+      deepLink: `/disputes/${encodeURIComponent(resourceId)}`,
+    };
 
   // BID — the resourceId is the bidId, NEVER the requestId. Use
   // metadata-supplied parent ids for the actual navigation target.

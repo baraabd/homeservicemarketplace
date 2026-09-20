@@ -6,6 +6,7 @@
 // pinned for the chat / reviews slices — taps to those resource types
 // land as a no-op until the corresponding surface ships.
 export const NotificationResourceType = {
+  Dispute: 'DISPUTE',
   Request: 'REQUEST',
   Bid: 'BID',
   Booking: 'BOOKING',

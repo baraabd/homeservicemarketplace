@@ -5,7 +5,7 @@ import type { Request, Response, NextFunction } from 'express';
 @Injectable()
 export class DisputePrivacyMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction): void {
-    if (/^\/v1\/me\/disputes(?:[/?]|$)/.test(req.originalUrl)) {
+    if (/^\/v1\/(?:me\/disputes|admin\/dispute-workspaces)(?:[/?]|$)/.test(req.originalUrl)) {
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Referrer-Policy', 'no-referrer');

@@ -1,0 +1,38 @@
+# Use the digest of the API image that passed the dispute-worker process gate.
+# This is an opt-in private process, not an API cron or automatic activation.
+services:
+  dispute-maintenance:
+    profiles: [dispute-maintenance]
+    image: ${HSM_API_IMAGE:?Provide the reviewed API image digest}
+    command: [node, dist/dispute-maintenance.worker.js]
+    env_file:
+      - ${DISPUTE_WORKER_ENV_FILE:?Provide a restricted worker-only environment file}
+    environment:
+      NODE_ENV: production
+      DISPUTE_WORKER_MODE: ${DISPUTE_WORKER_MODE:-shadow}
+      DISPUTE_WORKER_PORT: '9092'
+      STORAGE_DRIVER: s3
+    expose: ['9092']
+    networks: [private]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=32m']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 180s
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          '-e',
+          "fetch('http://127.0.0.1:9092/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s
+      retries: 3
+networks:
+  private:
+    external: true
+    name: ${HSM_PRIVATE_NETWORK:?Provide the existing private service network}

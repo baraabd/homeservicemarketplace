@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { NotificationResourceType } from '@homeservicemarketplace/contracts';
 import {
   X,
   Bell,
@@ -15,11 +16,8 @@ import { useSwipe } from '../../hooks/useSwipe';
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type NotifType = 'bid' | 'tracking' | 'confirmed' | 'message' | 'payment' | 'promo';
 
-// Logical resource the notification points at. Mirrors the backend's
-// NotificationResourceType enum (REQUEST / BID / BOOKING / CONVERSATION /
-// REVIEW); kept as a string union here so the drawer + ProfileTab stay
-// decoupled from the contracts package.
-export type NotifResourceType = 'REQUEST' | 'BID' | 'BOOKING' | 'CONVERSATION' | 'REVIEW';
+// The backend contract is authoritative; do not maintain a second resource union.
+export type NotifResourceType = NotificationResourceType;
 
 export interface AppNotification {
   id: string;

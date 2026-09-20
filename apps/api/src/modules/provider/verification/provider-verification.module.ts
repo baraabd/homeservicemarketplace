@@ -82,6 +82,7 @@ import { Logger } from '@nestjs/common';
     ProviderVerificationCaseController,
   ],
   exports: [
+    MALWARE_SCANNER_PORT,
     VerificationExpiryService,
     EvidenceCleanupService,
     EvidenceScanService,

@@ -20,6 +20,9 @@ export function resolveAdminRoute(pathname: string) {
   if (path === '/admin/settings/verification-policies') {
     return { kind: 'policies', section: 'settings' } as const;
   }
+  const dispute = matchPath('/admin/disputes/:caseId', path);
+  if (dispute?.params.caseId)
+    return { kind: 'dispute', section: 'disputes', caseId: dispute.params.caseId } as const;
   const provider = matchPath('/admin/providers/:providerProfileId', path);
   if (provider?.params.providerProfileId) {
     return {
@@ -48,7 +51,8 @@ export function sectionPath(section: AdminSection) {
 export function directoryReturn(search: string) {
   const target = new URLSearchParams(search).get('returnTo');
   return target &&
-    (target === '/admin' || /^\/admin\/(providers|reviews|users|identity-cases)(\?[^#]*)?$/.test(target))
+    (target === '/admin' ||
+      /^\/admin\/(providers|reviews|users|identity-cases)(\?[^#]*)?$/.test(target))
     ? target
     : '/admin/reviews';
 }

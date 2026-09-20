@@ -779,13 +779,13 @@ model ServiceRequest {
 }
 
 model Dispute {
-  id           String          @id @default(cuid())
+  id           String            @id @default(cuid())
   bookingId    String
   openedById   String
-  status       DisputeStatus   @default(OPEN)
+  status       DisputeStatus     @default(OPEN)
   // Sprint 6.3 — admin triage priority. Defaults to MEDIUM so existing
   // rows backfill cleanly without a separate UPDATE.
-  priority     DisputePriority @default(MEDIUM)
+  priority     DisputePriority   @default(MEDIUM)
   reason       String
   // Sprint 6.3 — long-form description. The original `reason` is the
   // short headline (kept for back-compat with the open-dispute flow);
@@ -794,13 +794,14 @@ model Dispute {
   resolution   String?
   resolvedAt   DateTime?
   resolvedById String?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
   deletedAt    DateTime?
-  booking      Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  openedBy     User            @relation("DisputeOpenedBy", fields: [openedById], references: [id])
-  resolvedBy   User?           @relation("DisputeResolvedBy", fields: [resolvedById], references: [id])
+  booking      Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  openedBy     User              @relation("DisputeOpenedBy", fields: [openedById], references: [id])
+  resolvedBy   User?             @relation("DisputeResolvedBy", fields: [resolvedById], references: [id])
   events       DisputeEvent[]
+  workspace    DisputeWorkspace?
 
   @@index([bookingId])
   @@index([openedById])
@@ -911,6 +912,8 @@ enum TokenPurpose {
 }
 
 enum AuditEventType {
+  DISPUTE_PRIVATE_RETENTION
+  DISPUTE_EVIDENCE_READ
   USER_REGISTERED
   EMAIL_VERIFIED
   EMAIL_VERIFICATION_RESENT
@@ -1073,6 +1076,7 @@ enum ConversationParticipantRole {
 }
 
 enum NotificationResourceType {
+  DISPUTE
   REQUEST
   BID
   BOOKING
@@ -1163,6 +1167,7 @@ enum ProviderCategoryApplicationStatus {
 }
 
 enum DisputeStatus {
+  RESOLVED
   OPEN
   IN_REVIEW
   RESOLVED_REFUND
@@ -1422,12 +1427,12 @@ model ProviderOnboardingSubmission {
   submittedByUserId String?
 
   /// Decision fields, written once when a reviewer acts.
-  decidedAt       DateTime?
-  decidedByUserId String?
-  decision        ProviderOnboardingState?
-  decisionNote    String?                  @db.Text
+  decidedAt              DateTime?
+  decidedByUserId        String?
+  decision               ProviderOnboardingState?
+  decisionNote           String?                  @db.Text
   /// Provider-facing task corrections; internal reviewer notes stay separate.
-  reviewFeedback  Json?
+  reviewFeedback         Json?
   /// Receipt for an exact, revision-bound administrative decision.
   decisionIdempotencyKey String?
   decisionRequestHash    String?
@@ -1953,11 +1958,11 @@ model MediaAsset {
   // ── retention (ADR 0012) ────────────────────────────────────────────────
   /// When the BYTES become eligible for deletion. Null until the owning case
   /// reaches a terminal state and a window can be computed.
-  retainUntil    DateTime?
+  retainUntil      DateTime?
   /// Set only after the object is confirmed gone from storage. Marking first
   /// would produce rows claiming a deletion that did not happen.
-  deletedAt      DateTime?
-  deletionReason String?
+  deletedAt        DateTime?
+  deletionReason   String?
   /// A durable denial fence, committed BEFORE external erasure starts.
   erasureStartedAt DateTime?
 
@@ -2339,7 +2344,6 @@ model ProviderPortfolioItem {
   @@index([serviceCategoryId])
 }
 
-
 /// Durable erasure work, separate from the API process and from event delivery.
 /// Never stores object keys, names, document bytes or a free-text error.
 enum EvidenceRetentionStatus {
@@ -2352,9 +2356,9 @@ enum EvidenceRetentionStatus {
 }
 
 model EvidenceRetentionJob {
-  id                String @id @default(cuid())
+  id                String                  @id @default(cuid())
   mediaAssetId      String
-  intentKey         String @unique
+  intentKey         String                  @unique
   /// Historical identifiers, not cascading relations. Erasure history must
   /// survive removal/pseudonymisation of its subject.
   caseId            String
@@ -2365,7 +2369,7 @@ model EvidenceRetentionJob {
   basisAt           DateTime
   dueAt             DateTime
   status            EvidenceRetentionStatus @default(PENDING)
-  attempts          Int @default(0)
+  attempts          Int                     @default(0)
   maxAttempts       Int
   nextAttemptAt     DateTime
   leaseToken        String?
@@ -2374,12 +2378,240 @@ model EvidenceRetentionJob {
   holdUntil         DateTime?
   lastErrorCode     String?
   completedAt       DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  mediaAsset        MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  mediaAsset        MediaAsset              @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  // One non-cancelled job per asset is a partial unique index in the migration.
 
   @@index([status, nextAttemptAt])
   @@index([mediaAssetId, createdAt])
   @@index([status, leaseUntil])
-  // One non-cancelled job per asset is a partial unique index in the migration.
+}
+
+// Sprint 12C — authoritative, versioned dispute collaboration. Private prose is
+// encrypted separately from operational facts; no participant API returns rows.
+enum DisputeWorkspaceState {
+  GATHERING
+  PROPOSED
+  DECIDED
+  APPEALED
+  CLOSED
+}
+
+model DisputeWorkspace {
+  privateTextDueAt     DateTime?
+  privateTextHoldUntil DateTime?
+  privateTextErasedAt  DateTime?
+  disputeId            String                      @id
+  state                DisputeWorkspaceState       @default(GATHERING)
+  revision             Int                         @default(0)
+  policyVersion        String
+  policySnapshot       Json
+  seekerUserId         String
+  providerUserId       String
+  assignedToUserId     String?
+  resolutionDueAt      DateTime
+  firstResponseAt      DateTime?
+  closedAt             DateTime?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  dispute              Dispute                     @relation(fields: [disputeId], references: [id], onDelete: Restrict)
+  events               DisputeWorkspaceEvent[]
+  requests             DisputeInformationRequest[]
+  statements           DisputeStatement[]
+  evidence             DisputeEvidence[]
+  proposals            DisputeResolutionProposal[]
+  decisions            DisputeDecisionRecord[]
+  appeals              DisputeAppealRecord[]
+  receipts             DisputeCommandReceipt[]
+
+  @@index([privateTextErasedAt, privateTextDueAt])
+  @@index([state, resolutionDueAt])
+  @@index([assignedToUserId, state])
+}
+
+model DisputePrivateDraft {
+  erasedAt      DateTime?
+  id            String    @id @default(cuid())
+  userId        String
+  bookingId     String
+  version       Int       @default(0)
+  contentCipher String    @db.Text
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([userId, bookingId])
+  @@index([expiresAt])
+}
+
+model DisputeCommandReceipt {
+  id            String           @id
+  disputeId     String
+  actorUserId   String
+  requestDigest String
+  revision      Int
+  result        Json
+  createdAt     DateTime         @default(now())
+  workspace     DisputeWorkspace @relation(fields: [disputeId], references: [disputeId], onDelete: Restrict)
+
+  @@index([disputeId, createdAt])
+}
+
+model DisputeWorkspaceEvent {
+  id            String           @id @default(cuid())
+  disputeId     String
+  revision      Int
+  actorUserId   String?
+  actorRole     String
+  kind          String
+  reasonCode    String
+  policyVersion String
+  facts         Json
+  createdAt     DateTime         @default(now())
+  workspace     DisputeWorkspace @relation(fields: [disputeId], references: [disputeId], onDelete: Restrict)
+
+  @@unique([disputeId, revision])
+  @@index([disputeId, createdAt])
+}
+
+model DisputeInformationRequest {
+  id             String             @id @default(cuid())
+  disputeId      String
+  requestedById  String
+  recipientId    String
+  questionCipher String             @db.Text
+  reasonCode     String
+  dueAt          DateTime
+  status         String             @default("OPEN")
+  answeredAt     DateTime?
+  createdAt      DateTime           @default(now())
+  workspace      DisputeWorkspace   @relation(fields: [disputeId], references: [disputeId], onDelete: Restrict)
+  replies        DisputeStatement[]
+
+  @@index([status, dueAt])
+  @@index([disputeId, recipientId])
+}
+
+model DisputeStatement {
+  id            String                     @id @default(cuid())
+  disputeId     String
+  authorId      String
+  requestId     String?
+  contentCipher String                     @db.Text
+  createdAt     DateTime                   @default(now())
+  erasedAt      DateTime?
+  workspace     DisputeWorkspace           @relation(fields: [disputeId], references: [disputeId], onDelete: Restrict)
+  request       DisputeInformationRequest? @relation(fields: [requestId], references: [id], onDelete: Restrict)
+
+  @@index([disputeId, createdAt])
+}
+
+model DisputeEvidence {
+  id               String           @id
+  disputeId        String
+  authorId         String
+  intentDigest     String           @unique
+  contentDigest    String
+  storageKey       String?          @unique
+  mimeType         String
+  sizeBytes        Int
+  state            String           @default("PREPARED")
+  sourceEvidenceId String?
+  sharedAt         DateTime?
+  sharedById       String?
+  shareReasonCode  String?
+  scannedAt        DateTime?
+  scannerId        String?
+  attempts         Int              @default(0)
+  leaseToken       String?
+  leaseUntil       DateTime?
+  nextAttemptAt    DateTime         @default(now())
+  uploadExpiresAt  DateTime
+  retainUntil      DateTime
+  erasureStartedAt DateTime?
+  erasedAt         DateTime?
+  holdUntil        DateTime?
+  lastErrorCode    String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  workspace        DisputeWorkspace @relation(fields: [disputeId], references: [disputeId], onDelete: Restrict)
+
+  @@index([state, nextAttemptAt])
+  @@index([disputeId, authorId, contentDigest])
+  @@index([erasedAt, retainUntil])
+}
+
+model DisputeResolutionProposal {
+  id            String                     @id @default(cuid())
+  disputeId     String
+  authorId      String
+  contentCipher String                     @db.Text
+  policyVersion String
+  expiresAt     DateTime
+  status        String                     @default("OPEN")
+  createdAt     DateTime                   @default(now())
+  workspace     DisputeWorkspace           @relation(fields: [disputeId], references: [disputeId], onDelete: Restrict)
+  consents      DisputeResolutionConsent[]
+  decisions     DisputeDecisionRecord[]
+
+  @@index([disputeId, status])
+}
+
+model DisputeResolutionConsent {
+  id          String                    @id @default(cuid())
+  proposalId  String
+  userId      String
+  accepted    Boolean
+  fulfilledAt DateTime?
+  createdAt   DateTime                  @default(now())
+  proposal    DisputeResolutionProposal @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+
+  @@unique([proposalId, userId])
+}
+
+model DisputeDecisionRecord {
+  id              String                     @id @default(cuid())
+  disputeId       String
+  decidedById     String
+  proposalId      String?
+  supersedesId    String?
+  rationaleCipher String                     @db.Text
+  reasonCode      String
+  policyVersion   String
+  basisEventIds   String[]
+  evidenceIds     String[]
+  appealUntil     DateTime
+  createdAt       DateTime                   @default(now())
+  workspace       DisputeWorkspace           @relation(fields: [disputeId], references: [disputeId], onDelete: Restrict)
+  proposal        DisputeResolutionProposal? @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  appeals         DisputeAppealRecord[]
+
+  @@index([disputeId, createdAt])
+}
+
+model DisputeAppealRecord {
+  id            String                @id @default(cuid())
+  disputeId     String
+  decisionId    String
+  appellantId   String
+  groundsCipher String                @db.Text
+  status        String                @default("OPEN")
+  reviewerId    String?
+  newDecisionId String?
+  createdAt     DateTime              @default(now())
+  reviewedAt    DateTime?
+  workspace     DisputeWorkspace      @relation(fields: [disputeId], references: [disputeId], onDelete: Restrict)
+  decision      DisputeDecisionRecord @relation(fields: [decisionId], references: [id], onDelete: Restrict)
+
+  @@unique([decisionId, appellantId])
+  @@index([disputeId, status])
+}
+
+/// Self-service channel preference, not authorization or a suppression of case history.
+model DisputeNotificationPreference {
+  userId    String   @id
+  enabled   Boolean  @default(true)
+  language  String   @default("en")
+  updatedAt DateTime @updatedAt
 }

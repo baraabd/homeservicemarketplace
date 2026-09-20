@@ -11,6 +11,7 @@
 // AND a DisputeEvent row scoped to the dispute timeline.
 
 export const DisputeStatusValues = {
+  Resolved: 'RESOLVED',
   Open: 'OPEN',
   InReview: 'IN_REVIEW',
   ResolvedRefund: 'RESOLVED_REFUND',

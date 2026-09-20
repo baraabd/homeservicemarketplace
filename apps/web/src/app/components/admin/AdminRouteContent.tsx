@@ -5,7 +5,8 @@ import { ProviderDirectory } from '../../features/admin-directory/components/Pro
 import { AdminProviderReviewWorkspace } from '../../features/admin-provider-review/components/AdminProviderReviewWorkspace';
 import { AdminIdentityCasesPage } from '../../features/admin-verification/components/AdminIdentityCasesPage';
 import { VerificationPolicyPanel } from '../../features/admin-verification/components/VerificationPolicyPanel';
-import { DisputeSection } from './DisputesSection';
+import { AdminDisputeInbox } from '../../features/disputes/workspace/AdminDisputeInbox';
+import { WorkspacePanel } from '../../features/disputes/workspace/WorkspacePanel';
 import { DashboardOverview } from './DashboardOverview';
 import { ApprovalCenter } from '../../features/admin-approvals/ApprovalCenter';
 import { FinancialsSection } from './FinancialsSection';
@@ -20,6 +21,15 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
   if (route.kind === 'legacy') {
     return <Navigate to={`/admin/reviews${location.search}`} state={location.state} replace />;
   }
+  if (route.kind === 'dispute')
+    return (
+      <div className="ar-stack">
+        <Link className="ar-button" to="/admin/disputes">
+          {lang === 'ar' ? 'العودة إلى النزاعات' : 'Back to disputes'}
+        </Link>
+        <WorkspacePanel key={route.caseId} caseId={route.caseId} admin />
+      </div>
+    );
   if (route.kind === 'provider') {
     return (
       <AdminProviderReviewWorkspace
@@ -71,7 +81,7 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
     case 'financials':
       return <FinancialsSection lang={lang} />;
     case 'disputes':
-      return <DisputeSection lang={lang} />;
+      return <AdminDisputeInbox />;
     case 'settings':
       return <SettingsSection lang={lang} />;
     case 'audit':

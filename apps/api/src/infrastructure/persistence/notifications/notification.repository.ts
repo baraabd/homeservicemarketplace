@@ -95,7 +95,7 @@ export class NotificationRepository {
       userId: args.userId,
       deletedAt: null,
       ...(args.unread === true ? { readAt: null } : {}),
-      ...(args.deepLinkPrefix ? { deepLink: { startsWith: args.deepLinkPrefix } } : {}),
+      ...notificationScope(args.deepLinkPrefix),
     };
     return this.db(tx).notification.findMany({
       where,
@@ -140,7 +140,7 @@ export class NotificationRepository {
         userId,
         deletedAt: null,
         readAt: null,
-        ...(deepLinkPrefix ? { deepLink: { startsWith: deepLinkPrefix } } : {}),
+        ...notificationScope(deepLinkPrefix),
       },
       data: { readAt: new Date() },
     });
@@ -152,7 +152,7 @@ export class NotificationRepository {
         userId,
         deletedAt: null,
         readAt: null,
-        ...(deepLinkPrefix ? { deepLink: { startsWith: deepLinkPrefix } } : {}),
+        ...notificationScope(deepLinkPrefix),
       },
     });
   }
@@ -170,4 +170,11 @@ export class NotificationRepository {
       data: { deletedAt: new Date() },
     });
   }
+}
+
+function notificationScope(prefix?: string): Prisma.NotificationWhereInput {
+  if (!prefix) return {};
+  return prefix === '/home/' || prefix === '/provider/'
+    ? { OR: [{ deepLink: { startsWith: prefix } }, { resourceType: 'DISPUTE' }] }
+    : { deepLink: { startsWith: prefix } };
 }
