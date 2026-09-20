@@ -1,0 +1,170 @@
+{
+  "generatedAt": "2026-09-20T15:40:36.482Z",
+  "provenance": {
+    "branch": "sprint12/closure-20260920",
+    "commit": "65eeff17e80e012327ffafc385e6e5470df0bd8b",
+    "base": "8cad7282f12bfb428f3e85402f0dadc6d69ec72b",
+    "worktreeClean": true,
+    "toolchain": {
+      "node": "v20.18.1",
+      "pnpm": "10.32.1",
+      "lockfile": "frozen"
+    }
+  },
+  "sourceGaps": [
+    {
+      "id": "SPRINT12-47-POINT-LIST",
+      "description": "The 47 subcriteria referenced in docs/sprint-12/README.md:4 are not present in this repository.",
+      "impact": "No Sprint 12 completion denominator can be computed.",
+      "owner": "Product"
+    }
+  ],
+  "gates": [
+    {
+      "id": "web-typecheck",
+      "command": "pnpm --filter @homeservicemarketplace/web typecheck",
+      "exitCode": 0,
+      "status": "PASS"
+    },
+    {
+      "id": "web-typecheck-e2e",
+      "command": "pnpm --filter @homeservicemarketplace/web typecheck:e2e",
+      "exitCode": 0,
+      "status": "PASS"
+    },
+    {
+      "id": "web-lint",
+      "command": "pnpm --filter @homeservicemarketplace/web lint",
+      "exitCode": 0,
+      "status": "PASS",
+      "errors": 0,
+      "warnings": 34,
+      "warningsPreexisting": true
+    },
+    {
+      "id": "web-build",
+      "command": "VITE_API_URL=… pnpm --filter @homeservicemarketplace/web build",
+      "exitCode": 0,
+      "status": "PASS"
+    },
+    {
+      "id": "api-build",
+      "command": "pnpm --filter @homeservicemarketplace/api build",
+      "exitCode": 0,
+      "status": "PASS",
+      "note": "first run rc=2 until prisma generate ran"
+    },
+    {
+      "id": "db-generate",
+      "command": "pnpm --filter @homeservicemarketplace/database generate",
+      "exitCode": 0,
+      "status": "PASS"
+    },
+    {
+      "id": "tabs-unit",
+      "command": "vitest run src/app/features/disputes/tests/admin-workspace-tabs.test.tsx",
+      "exitCode": 0,
+      "status": "PASS",
+      "passed": 12,
+      "failed": 0
+    },
+    {
+      "id": "dispute-admin-regression",
+      "command": "vitest run src/app/features/disputes src/app/features/admin-provider-review src/app/components/admin",
+      "exitCode": 0,
+      "status": "PASS",
+      "passed": 217,
+      "failed": 0,
+      "files": 32
+    },
+    {
+      "id": "browser-visual-matrix",
+      "command": "playwright (not launched)",
+      "status": "BLOCKED",
+      "reason": "0.6 GB of 15.8 GB physical memory free; a prior Playwright run was reaped for memory pressure"
+    },
+    {
+      "id": "api-db-integration",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "ci-dispute-workspace",
+      "status": "BLOCKED",
+      "reason": "requires push authorisation; no prior SHA green badge applies to this commit"
+    },
+    {
+      "id": "ci-evidence-retention",
+      "status": "BLOCKED",
+      "reason": "requires push authorisation"
+    }
+  ],
+  "runtime": {
+    "apiOrigin": "http://127.0.0.1:4022",
+    "webOrigin": "http://127.0.0.1:4190",
+    "database": "hsm_phase2_it @127.0.0.1:59877 (isolated, tmpfs)",
+    "migrations": {
+      "count": 60,
+      "status": "up to date"
+    },
+    "servedBundle": "apps/web/dist/assets/index-_PjgojJC.js",
+    "servedEqualsBuilt": true,
+    "servedBundleSha1": "408773c433e2e196879a3e38c1054431524cadf5",
+    "authorizationProbes": [
+      {
+        "request": "GET /v1/admin/dispute-workspaces",
+        "credential": "none",
+        "status": 401
+      },
+      {
+        "request": "GET /v1/admin/dispute-workspaces/:id",
+        "credential": "none",
+        "status": 401
+      },
+      {
+        "request": "GET /v1/me/disputes/:id/workspace",
+        "credential": "none",
+        "status": 401
+      }
+    ],
+    "internalsLeaked": false,
+    "userPortsTouched": []
+  },
+  "changedFiles": [
+    {
+      "path": "apps/web/src/app/features/disputes/workspace/dispute-task-navigation.ts",
+      "sha256": "51d628e60c4e006706d0698abc2124a0d41c36e36026fc0fe0e8e37ca5e1446f"
+    },
+    {
+      "path": "apps/web/src/app/features/disputes/workspace/WorkspaceTaskTabs.tsx",
+      "sha256": "c4bc38f7f76b9a1b2fee355aa6cea72c5d776ec2163850f0f82d3b9089b484dc"
+    },
+    {
+      "path": "apps/web/src/app/features/disputes/workspace/WorkspaceOverview.tsx",
+      "sha256": "ac573cf8cabe568281558ff1842d6d35dc7ba4444bf7971de2771917e5918cd0"
+    },
+    {
+      "path": "apps/web/src/app/features/disputes/workspace/WorkspaceAppeals.tsx",
+      "sha256": "dece28649bec167b474d070fb9fdff255ebb3b6cafa1993a7dd1a8f9c4dbd1b1"
+    },
+    {
+      "path": "apps/web/src/app/features/disputes/workspace/workspace-task-tabs.css",
+      "sha256": "b7742f3826894ddbdd531b56a27af06a54bec1414fe266f077ca3726051dce98"
+    },
+    {
+      "path": "apps/web/src/app/features/disputes/workspace/WorkspacePanel.tsx",
+      "sha256": "117740e32da297b6bfe94cfea0acebc47b21399da9ce77d7524db81910d21946"
+    },
+    {
+      "path": "apps/web/src/app/features/disputes/workspace/WorkspaceSolutions.tsx",
+      "sha256": "9cc645be82ff64998b7efd930d213eb041ece6dde54690b78505a4118bfe8e0a"
+    },
+    {
+      "path": "apps/web/src/app/features/disputes/workspace/copy.ts",
+      "sha256": "abb21ac26890a8b3840120f2dc315222dce7aee88a370997c6abc30852a5a135"
+    },
+    {
+      "path": "apps/web/src/app/features/disputes/tests/admin-workspace-tabs.test.tsx",
+      "sha256": "5d49d4bbe2fdf299911ee21bb3473e4d70873ad036d79f6cfdc03157c701b7f0"
+    }
+  ]
+}
