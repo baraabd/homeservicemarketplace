@@ -9,6 +9,11 @@ const trueish = z
   );
 
 const baseEnvSchema = z.object({
+  // No default key and no public rollout: private collaboration is explicitly configured.
+  DISPUTE_PRIVATE_ACTIVE_KEY: z.string().default(''),
+  DISPUTE_PRIVATE_KEYS_JSON: z.string().default(''),
+  DISPUTE_WORKER_ENABLED: trueish.default(false),
+  DISPUTE_WORKER_INTERVAL_MS: z.coerce.number().int().min(1000).max(3600000).default(30000),
   NODE_ENV: nodeEnv.default('development'),
   APP_ENV: z.enum(['dev', 'test', 'staging', 'prod']).default('dev'),
 

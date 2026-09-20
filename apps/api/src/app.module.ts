@@ -45,6 +45,7 @@ import {
 } from './modules/requests/outbox/request-available.handler';
 import { DisputesModule } from './modules/disputes/disputes.module';
 import { DisputeIntakeEventsHandler } from './modules/disputes/dispute-intake.events-handler';
+import { WorkspaceEventsHandler } from './modules/disputes/workspace/workspace-events.handler';
 import { DisputePrivacyMiddleware } from './modules/disputes/dispute-privacy.middleware';
 import { ServicesModule } from './modules/services/services.module';
 
@@ -82,6 +83,7 @@ import { ServicesModule } from './modules/services/services.module';
         VerificationCaseEventsHandler,
         AdminProviderReviewEventsHandler,
         DisputeIntakeEventsHandler,
+        WorkspaceEventsHandler,
       ],
     }),
     // Global, transport-agnostic post-commit security notifications

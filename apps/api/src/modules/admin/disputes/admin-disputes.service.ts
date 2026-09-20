@@ -141,6 +141,7 @@ export class AdminDisputesService {
         // (which carries the resolution text) — PATCH is for the
         // OPEN ↔ IN_REVIEW transition only.
         const isTerminal = (s: string) =>
+          s === 'RESOLVED' ||
           s === 'RESOLVED_REFUND' ||
           s === 'RESOLVED_PARTIAL' ||
           s === 'RESOLVED_DENIED' ||

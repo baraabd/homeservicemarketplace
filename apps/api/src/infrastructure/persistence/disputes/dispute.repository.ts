@@ -15,6 +15,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 // either way.
 
 type DisputeStatus =
+  | 'RESOLVED'
   | 'OPEN'
   | 'IN_REVIEW'
   | 'RESOLVED_REFUND'
@@ -56,7 +57,10 @@ export class DisputeRepository {
         findFirst: (args: unknown) => Promise<DisputeRow | null>;
         findMany: (args: unknown) => Promise<DisputeRow[]>;
         create: (args: { data: Partial<DisputeRow> }) => Promise<DisputeRow>;
-        update: (args: { where: { id: string }; data: Partial<DisputeRow> }) => Promise<DisputeRow>;
+        update: (args: {
+          where: { id: string; workspace?: { is: null } };
+          data: Partial<DisputeRow>;
+        }) => Promise<DisputeRow>;
       };
     };
   }
@@ -73,6 +77,7 @@ export class DisputeRepository {
     return this.db(tx).dispute.findMany({
       where: {
         deletedAt: null,
+        workspace: { is: null },
         ...(args.status ? { status: args.status } : {}),
         ...(args.priority ? { priority: args.priority } : {}),
       },
@@ -83,7 +88,9 @@ export class DisputeRepository {
   }
 
   findById(id: string, tx?: PrismaTx): Promise<DisputeRow | null> {
-    return this.db(tx).dispute.findFirst({ where: { id, deletedAt: null } });
+    return this.db(tx).dispute.findFirst({
+      where: { id, deletedAt: null, workspace: { is: null } },
+    });
   }
 
   create(
@@ -113,7 +120,7 @@ export class DisputeRepository {
     if (input.status !== undefined) data.status = input.status;
     if (input.priority !== undefined) data.priority = input.priority;
     if (input.description !== undefined) data.description = input.description;
-    return this.db(tx).dispute.update({ where: { id }, data });
+    return this.db(tx).dispute.update({ where: { id, workspace: { is: null } }, data });
   }
 
   resolve(
@@ -122,7 +129,7 @@ export class DisputeRepository {
     tx?: PrismaTx,
   ): Promise<DisputeRow> {
     return this.db(tx).dispute.update({
-      where: { id },
+      where: { id, workspace: { is: null } },
       data: {
         status: input.status,
         resolution: input.resolution,

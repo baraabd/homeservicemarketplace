@@ -1,25 +1,44 @@
 /** Sprint 12A: participant-safe intake. Administrative DTOs are never reused here. */
 export const DISPUTE_ISSUE_CODES = [
-  'SERVICE_QUALITY', 'MISSED_APPOINTMENT', 'SCOPE_DISAGREEMENT',
-  'PROPERTY_CONCERN', 'COMMUNICATION', 'OTHER',
+  'SERVICE_QUALITY',
+  'MISSED_APPOINTMENT',
+  'SCOPE_DISAGREEMENT',
+  'PROPERTY_CONCERN',
+  'COMMUNICATION',
+  'OTHER',
 ] as const;
 export type DisputeIssueCode = (typeof DISPUTE_ISSUE_CODES)[number];
 
 /** A requested outcome is not a decision, payment instruction, or promise of compensation. */
 export const DISPUTE_REQUESTED_OUTCOMES = [
-  'CLARIFICATION', 'RESCHEDULE', 'REPERFORM', 'PARTIAL_REMEDY', 'CANCELLATION', 'REVIEW',
+  'CLARIFICATION',
+  'RESCHEDULE',
+  'REPERFORM',
+  'PARTIAL_REMEDY',
+  'CANCELLATION',
+  'REVIEW',
 ] as const;
 export type DisputeRequestedOutcome = (typeof DISPUTE_REQUESTED_OUTCOMES)[number];
 export type DisputeParticipantRole = 'SEEKER' | 'PROVIDER';
 export type ParticipantDisputeState = 'SUBMITTED' | 'IN_REVIEW' | 'DECISION_RECORDED' | 'CLOSED';
 export type DisputeIntakeBlocker =
-  | 'NOT_ENABLED' | 'BOOKING_STATE' | 'WINDOW_ELAPSED'
-  | 'TIMESTAMP_UNAVAILABLE' | 'ALREADY_OPEN' | 'LEGACY_REVIEW';
+  | 'NOT_ENABLED'
+  | 'BOOKING_STATE'
+  | 'WINDOW_ELAPSED'
+  | 'TIMESTAMP_UNAVAILABLE'
+  | 'ALREADY_OPEN'
+  | 'LEGACY_REVIEW';
 
 export interface DisputeIntakeContext {
-  booking: { id: string; status: string; serviceLabelEn: string | null; serviceLabelAr: string | null };
+  booking: {
+    id: string;
+    status: string;
+    serviceLabelEn: string | null;
+    serviceLabelAr: string | null;
+  };
   role: DisputeParticipantRole;
   canOpen: boolean;
+  serverDrafts?: boolean;
   blocker: DisputeIntakeBlocker | null;
   existingCaseId: string | null;
   policyVersion: string | null;
@@ -45,12 +64,14 @@ export interface ParticipantDisputeSummary {
   reference: string;
   bookingId: string;
   state: ParticipantDisputeState;
+  workspaceState?: import('./workspace').DisputeWorkspaceState;
   role: DisputeParticipantRole;
   openedByYou: boolean;
   submittedAt: string;
   updatedAt: string;
 }
 export interface ParticipantDisputeDetail extends ParticipantDisputeSummary {
+  workspaceAvailable?: boolean;
   issueCode: DisputeIssueCode | null;
   requestedOutcome: DisputeRequestedOutcome | null;
   /** Visible only to its author in the intake pilot. No automatic counterparty disclosure. */

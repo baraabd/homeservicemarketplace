@@ -500,6 +500,9 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   // `true` when handled in-app (the toast then skips URL navigation).
   const handleNotificationTarget = (target: NotificationTarget): boolean => {
     switch (target.kind) {
+      case 'dispute-detail':
+        navigate(target.deepLink);
+        return true;
       case 'seeker-request-bids': {
         // Open the BidsScreen overlay against the matching lead when
         // we have it in cache — otherwise fall through to the

@@ -1105,6 +1105,91 @@ jobs:
   # Branch protection points at THIS job. Adding a gate above automatically
   # tightens the requirement without anyone having to remember to update the
   # protection rule.
+  dispute-workspace:
+    name: Dispute journey / real HTTP, browser, Postgres and ClamAV
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dispute_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/dispute_ci
+      REDIS_URL: redis://127.0.0.1:6379/13
+      RUN_DB_INTEGRATION: '1'
+      RUN_DISPUTE_BROWSER: '1'
+      DISPUTE_TEST_SCANNER: clamav
+      CLAMAV_HOST: 127.0.0.1
+      CLAMAV_PORT: '3310'
+      DISPUTE_BROWSER_OUTPUT: ${{ github.workspace }}/apps/web/test-results/dispute-real-workspace
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: echo "DATABASE_URL=$DATABASE_URL" > .env
+      - run: pnpm --filter @homeservicemarketplace/database generate
+      - run: pnpm --filter @homeservicemarketplace/database migrate:deploy
+      - run: pnpm --filter @homeservicemarketplace/database build
+      - run: pnpm --filter @homeservicemarketplace/contracts build
+      - name: Install the normal CI Chromium distribution
+        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Start the real malware scanner
+        run: |
+          docker run -d --name dispute-clamd -p 127.0.0.1:3310:3310 clamav/clamav:stable
+          python3 - <<'PYTHON'
+          import socket,time
+          for attempt in range(150):
+              try:
+                  with socket.create_connection(('127.0.0.1',3310),timeout=2) as sock:
+                      sock.sendall(b'zPING\0')
+                      if b'PONG' in sock.recv(128): break
+              except OSError: pass
+              if attempt == 149: raise RuntimeError('dispute-scanner-not-ready')
+              time.sleep(2)
+          PYTHON
+      - name: Verify actual auth, CSRF, persistence, independent appeal and rendered UI
+        run: |
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/dispute-workspace.integration.spec.ts \
+            test/integration/dispute-decision-boundaries.integration.spec.ts \
+            test/integration/dispute-private-lifecycle.integration.spec.ts \
+            test/integration/dispute-workspace-http.integration.spec.ts \
+            test/integration/dispute-workspace-browser.integration.spec.ts \
+            --json --outputFile=dispute-workspace-ci.json
+      - name: Upload evidence without credentials, traces or dependency files
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: dispute-workspace-real-evidence
+          path: |
+            apps/api/dispute-workspace-ci.json
+            apps/web/test-results/dispute-real-workspace/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Stop the dedicated scanner
+        if: always()
+        run: docker rm -f dispute-clamd || true
+
   ci-gate:
     name: CI gate
     runs-on: ubuntu-latest
@@ -1115,6 +1200,7 @@ jobs:
       - verify
       - integration-e2e
       - evidence-retention
+      - dispute-workspace
       - browser-e2e
       # The approved design is an acceptance criterion, so the check that
       # measures it blocks merges like any other.
