@@ -23,25 +23,32 @@ export function WorkspaceOverview({
 }) {
   const t = WORKSPACE_COPY[lang];
   return (
-    <section id="case-overview" className="case-card case-stack cw-section">
+    // `cw-facts` carries the existing dl/dd/group-separator rules. They were
+    // written for the old `<details class="… cw-facts">` wrapper and stopped
+    // applying when this markup moved into its own panel.
+    <section id="case-overview" className="case-card case-stack cw-section cw-facts">
       <h2>{t.facts}</h2>
       <p className="case-muted">{t.sourceHint}</p>
       <dl>
         {view.facts.map((f, i) => (
+          // A `div` inside a `dl` is a definition GROUP, and a group may hold
+          // nothing but `dt` and `dd`. The provenance lines are part of what
+          // the term is defined as — where the fact came from and when it was
+          // recorded — so they belong inside the `dd`, not beside it.
           <div key={`${f.source}-${f.label}-${i}`}>
             <dt>{translatedLabel(t.factsLabels, f.label, t.source)}</dt>
             <dd>
               <bdi dir="auto">{f.value}</bdi>
+              <p className="cw-meta">
+                {t.source}:{' '}
+                <bdi dir="ltr">
+                  {f.source}/{f.id}
+                </bdi>
+              </p>
+              <p className="cw-meta">
+                {t.recorded}: <CaseDate value={f.recordedAt} lang={lang} />
+              </p>
             </dd>
-            <p className="cw-meta">
-              {t.source}:{' '}
-              <bdi dir="ltr">
-                {f.source}/{f.id}
-              </bdi>
-            </p>
-            <p className="cw-meta">
-              {t.recorded}: <CaseDate value={f.recordedAt} lang={lang} />
-            </p>
           </div>
         ))}
       </dl>
