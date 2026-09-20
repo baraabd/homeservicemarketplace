@@ -1,0 +1,30 @@
+name: Export pinned Sprint 12 continuation
+on:
+  push:
+    branches: [chore/sprint12-readable-transfer-20260920]
+    paths: [.github/workflows/sprint12-resume-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 8c93e40557cfaba21bf7957d1856803b4e641f81
+          persist-credentials: false
+      - name: Archive committed source only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '8c93e40557cfaba21bf7957d1856803b4e641f81'
+          mkdir -p "$RUNNER_TEMP/sprint12-resume"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/sprint12-resume/source.tar.gz"
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/sprint12-resume/refs.txt"
+          sha256sum pnpm-lock.yaml > "$RUNNER_TEMP/sprint12-resume/lockfile.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprint12-resume-8c93e40
+          path: ${{ runner.temp }}/sprint12-resume/
+          retention-days: 7
+          if-no-files-found: error

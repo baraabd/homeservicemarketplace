@@ -1,0 +1,70 @@
+name: Materialize validated Sprint 12 continuation
+on:
+  push:
+    branches: [chore/sprint12-readable-transfer-20260920]
+    paths: [.github/workflows/sprint12-resume-materialize.yml]
+permissions:
+  contents: write
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 8c93e40557cfaba21bf7957d1856803b4e641f81
+          persist-credentials: false
+      - name: Check complete patch and publish exact source tree only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,base64,hashlib,lzma,pathlib,subprocess,urllib.request
+          base='8c93e40557cfaba21bf7957d1856803b4e641f81'
+          expected='343268f995bbcd6a23f53bedd8ebbf3db12497a4'
+          allowed={
+            'apps/web/src/app/features/disputes/workspace/CommandField.tsx',
+            'apps/web/src/app/features/disputes/workspace/CommandFields.tsx',
+            'apps/web/src/app/features/disputes/tests/command-fields.test.tsx',
+          }
+          def call(path,data=None):
+            request=urllib.request.Request('https://api.github.com/repos/'+os.environ['REPO']+path,data=None if data is None else json.dumps(data).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+            with urllib.request.urlopen(request,timeout=60) as response: return json.load(response)
+          def git(*args): return subprocess.check_output(['git',*args]).decode().strip()
+          def digest(raw): return hashlib.sha256(raw).hexdigest()
+          assert git('rev-parse','HEAD')==base
+          base_tree=git('rev-parse','HEAD^{tree}')
+          raw=base64.b64decode(call('/git/blobs/0b45512880c0fb034e962de4b78dec8b1dfddc49')['content'])
+          assert digest(raw)=='c9adf3a69eebc18f62fa358588c83526b2d3a5ab9a900bc66e9274fba213689a'
+          patch=lzma.decompress(raw)
+          assert digest(patch)=='e8c3dc4c6f6d0bc92a509f78b04d41c7cf8160e19144adb343813195abecd7b7'
+          subprocess.run(['git','apply','--index','--whitespace=error'],input=patch,check=True)
+          assert git('write-tree')==expected
+          files=git('diff','--cached','--name-only').splitlines()
+          assert set(files)==allowed
+          rows=[]
+          for name in files:
+            mode,sha,stage=git('ls-files','--stage','--',name).split()[:3]
+            assert mode=='100644' and stage=='0'
+            content=pathlib.Path(name).read_bytes()
+            content.decode('utf-8')
+            result=call('/git/blobs',{'encoding':'base64','content':base64.b64encode(content).decode()})
+            assert result['sha']==sha
+            rows.append({'path':name,'mode':mode,'type':'blob','sha':sha})
+          result=call('/git/trees',{'base_tree':base_tree,'tree':rows})
+          assert result['sha']==expected
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'source-receipt'
+          out.mkdir()
+          receipt={'base':base,'tree':expected,'files':rows,'status':'Verified source tree only; no commit, ref, merge, deployment or application test performed'}
+          (out/'receipt.json').write_text(json.dumps(receipt,indent=2))
+          print(json.dumps(receipt))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprint12-resume-source-receipt
+          path: ${{ runner.temp }}/source-receipt/
+          retention-days: 7
+          if-no-files-found: error
