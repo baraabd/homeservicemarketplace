@@ -166,5 +166,108 @@
       "path": "apps/web/src/app/features/disputes/tests/admin-workspace-tabs.test.tsx",
       "sha256": "5d49d4bbe2fdf299911ee21bb3473e4d70873ad036d79f6cfdc03157c701b7f0"
     }
-  ]
+  ],
+  "continuation": {
+    "generatedAt": "2026-09-20T19:14:47.718Z",
+    "commit": "6155a14cf055783790e4677b5321fcf2f47c18d6",
+    "base": "8cad7282f12bfb428f3e85402f0dadc6d69ec72b",
+    "draftPr": 93,
+    "prUrl": "https://github.com/baraabd/homeservicemarketplace/pull/93",
+    "ciRunId": 35531480334,
+    "codeqlRunId": 35531480187,
+    "merged": false,
+    "deployed": false,
+    "gates": [
+      {
+        "id": "web-typecheck",
+        "exitCode": 0,
+        "status": "PASS"
+      },
+      {
+        "id": "web-typecheck-e2e",
+        "exitCode": 0,
+        "status": "PASS"
+      },
+      {
+        "id": "web-lint",
+        "exitCode": 0,
+        "status": "PASS",
+        "errors": 0,
+        "warnings": 34,
+        "warningsPreexisting": true
+      },
+      {
+        "id": "web-build",
+        "exitCode": 0,
+        "status": "PASS"
+      },
+      {
+        "id": "admin-dispute-regression",
+        "exitCode": 0,
+        "status": "PASS",
+        "passed": 251,
+        "failed": 0,
+        "files": 37
+      },
+      {
+        "id": "dispute-tabs",
+        "exitCode": 0,
+        "status": "PASS",
+        "passed": 12,
+        "failed": 0
+      },
+      {
+        "id": "dashboard-and-pagination",
+        "exitCode": 0,
+        "status": "PASS",
+        "passed": 5,
+        "failed": 0,
+        "pageSize": 40,
+        "note": "repository real page size, not an invented 50"
+      },
+      {
+        "id": "local-chromium",
+        "status": "BLOCKED",
+        "reason": "1.1 GB of 15.8 GB free; vmmemWSL 2 GB and Chrome ~1 GB are not this task s processes"
+      },
+      {
+        "id": "ci-browser-visual",
+        "status": "PENDING_CI",
+        "runId": 35531480334
+      },
+      {
+        "id": "human-visual-acceptance",
+        "status": "NOT_RUN",
+        "reason": "requires a person"
+      }
+    ],
+    "productFix": {
+      "file": "apps/web/src/app/features/admin-approvals/ApprovalCenter.tsx",
+      "rootCause": "data?.items.length threw on a truthy response missing items, white-screening the Admin dashboard",
+      "fix": "data?.items?.length"
+    },
+    "sourceGapsUnchanged": ["SPRINT12-47-POINT-LIST"],
+    "changedFiles": [
+      {
+        "path": "apps/web/src/app/features/disputes/workspace/DisputeCenterSummary.tsx",
+        "sha256": "160baf96b32d3368eb670371268a4de1b4669d8cd614f3e17c890efad2d9b027"
+      },
+      {
+        "path": "apps/web/src/app/features/disputes/tests/admin-dashboard-and-pagination.test.tsx",
+        "sha256": "9e1423e9bfa56cae3c02920aef1914f253b4962e2da847f604d1940516d191da"
+      },
+      {
+        "path": "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+        "sha256": "74570d851c0036d94786c9b477fc3f5353d69bd86945b8063af053c284aae2f5"
+      },
+      {
+        "path": "apps/web/src/app/features/admin-approvals/ApprovalCenter.tsx",
+        "sha256": "4cd2f522e401f28f0d59a40633750d9442253f50b3722f6df50d3329765bacb0"
+      },
+      {
+        "path": "apps/web/src/app/features/disputes/workspace/copy.ts",
+        "sha256": "28c0b8c1fac74801dd86cc2d566301c0f3921b8eed55f64fbebc1fa6a0f2d83e"
+      }
+    ]
+  }
 }

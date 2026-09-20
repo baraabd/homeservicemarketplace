@@ -90,3 +90,31 @@ resuming step 1, or `down` (without `-v`) when finished.
 
 Untouched throughout: `docker-api-1` on `:4000`, `hsm-postgres`, `hsm-redis`,
 `hsm-mailpit`, `hsm-mongo`, and the user's `.env`.
+
+---
+
+## 7. Continuation update — 2026-09-20 (unified Admin)
+
+|                   |                                                 |
+| ----------------- | ----------------------------------------------- |
+| HEAD              | `6155a14` (was `7dfadfa`)                       |
+| Remote            | `origin/sprint12/closure-20260920` — **pushed** |
+| Draft PR          | **#93** → `develop`, head `6155a14`             |
+| CI run            | `35531480334` · CodeQL `35531480187`            |
+| Merged / deployed | **No. Neither.**                                |
+
+Added: `DisputeCenterSummary` on the Admin dashboard (four server counts),
+cursor-pagination coverage at the real page size of 40, and a product fix to
+`ApprovalCenter` (`data?.items?.length`) that removed a white-screen path.
+
+Local on this SHA: typecheck 0, typecheck:e2e 0, lint 0 errors / 34 warnings,
+web build 0, **251/251** admin+dispute tests across 37 files.
+
+### Next executable step
+
+1. Read the finished CI jobs on `6155a14` (`admin-review-real-api`,
+   `dispute-workspace`, `browser-e2e`, `phase5-visual`, security scans),
+   download the Playwright/visual artifacts and **inspect the PNGs**.
+2. Human visual + screen-reader acceptance of both Admin surfaces.
+3. Supply the 47-point list, or accept that no completion figure exists.
+4. Decide merge — not authorised, not performed.

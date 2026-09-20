@@ -94,3 +94,54 @@ The responsive and contrast behaviour above is **designed for and reasoned
 about, not measured.** CSS intent is not visual acceptance. Until the matrix in
 `HANDOFF.md` §4 runs and the PNGs are inspected by a human, this surface is
 **design-complete and visually unaccepted.**
+
+---
+
+## 5. Continuation — Admin dashboard dispute summary
+
+Scope added 2026-09-20 (`6155a14`): the `/admin` dashboard. Mode B, same policy.
+
+### The gap
+
+The dashboard opened with the provider approval centre — four metric tiles and
+a live queue — followed by a KPI row whose only dispute signal was a single
+`disputesOpen` total. An Admin could tell at a glance how many provider
+applications were waiting, but had to leave the dashboard to learn whether any
+case was **unassigned**, **past its deadline**, or **waiting on an independent
+appeal**. Those three decide whether somebody has to act today.
+
+The result read as two tools sharing a shell rather than one Admin product.
+
+### The change
+
+`DisputeCenterSummary` places the four server-computed counts beside the
+approval centre, reusing its `.ac-metric` markup, its `approval-center.css` and
+its header/eyebrow/hint rhythm. `overdue` takes the emphasis slot that
+`pendingReview` takes on the provider side, because it is the equivalent
+"act now" signal.
+
+### Honesty rules applied
+
+- **No fabricated numbers.** All four come from `GET /v1/admin/dispute-workspaces`,
+  computed server-side by four `count()` queries over the whole table and scoped
+  to exclude cases the reader is a party to. Nothing counts loaded rows.
+- **Failure is visible.** A failed request renders `countUnavailable`, never a
+  zero, so "no overdue cases" and "we could not ask" cannot be confused. Tested.
+- **No invented deep links.** The queue endpoint accepts `state`, `mine` and
+  `cursor` only. There is no `unassigned` or `overdue` filter parameter, so the
+  tiles link to `/admin/disputes` plainly rather than promising a filter the
+  server does not implement. Filtering stays with the inbox's own control.
+
+### Evidence status
+
+| Check                              | Status                        |
+| ---------------------------------- | ----------------------------- |
+| Four server counts rendered        | **PASS** (route-level test)   |
+| Failure shows "unavailable", not 0 | **PASS**                      |
+| No internals leaked on error       | **PASS**                      |
+| Arabic copy on the dashboard       | **PASS** (jsdom)              |
+| Widths / themes / zoom / axe       | **NOT_RUN** — CI on `6155a14` |
+| Human visual acceptance            | **NOT_RUN**                   |
+
+The dashboard, like the dispute tabs, is **design-complete and visually
+unaccepted.** No screenshot of either surface has been inspected by a person.
