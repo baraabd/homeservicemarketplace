@@ -9,8 +9,10 @@ import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider'
 import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import { AdminDashboard } from './AdminDashboard';
+import { WORKSPACE_COPY } from '../../features/disputes/workspace/copy';
 
-// Sprint 6.3 — Admin Disputes full workflow.
+// Sprint 6.3 compatibility workflow, reached through the explicit legacy disclosure.
+// Sprint 12 has a separate inbox/command contract, tested at its actual route.
 //
 // What these tests pin:
 //  - The Dispute Center tab renders a real, API-driven list (no mock).
@@ -90,6 +92,12 @@ let qc: QueryClient;
 beforeEach(() => {
   mock = new MockAdapter(api);
   qc = createAuthQueryClient();
+  localStorage.clear();
+  mock.onGet('/v1/admin/dispute-workspaces').reply(200, {
+    counts: { all: 0, unassigned: 0, overdue: 0, appeals: 0 },
+    items: [],
+    nextCursor: null,
+  });
 });
 afterEach(() => {
   mock.restore();
@@ -99,17 +107,23 @@ afterEach(() => {
   });
 });
 
-function openDisputesTab() {
+async function openDisputesTab() {
   fireEvent.click(screen.getByRole('button', { name: /Dispute Center|مركز النزاعات/i }));
+  await screen.findByTestId('admin-dispute-inbox');
+  const disclosure = screen.getByText(WORKSPACE_COPY.en.legacy).closest('details');
+  if (!disclosure) throw new Error('Missing legacy compatibility disclosure');
+  // jsdom does not dispatch the native toggle event after a summary click reliably.
+  disclosure.open = true;
+  fireEvent(disclosure, new Event('toggle'));
 }
 
-describe('AdminDashboard — Dispute Center (Sprint 6.3)', () => {
+describe('AdminDashboard — legacy dispute compatibility (Sprint 6.3)', () => {
   it('renders real disputes from /v1/admin/disputes (no mock)', async () => {
     mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
     mock.onGet('/v1/admin/disputes').reply(200, { items: [DISPUTE], nextCursor: null });
 
     renderAdmin();
-    openDisputesTab();
+    await openDisputesTab();
 
     await waitFor(() => expect(screen.getByText('Provider was late')).toBeInTheDocument());
     expect(screen.getAllByText('OPEN').length).toBeGreaterThan(0);
@@ -121,7 +135,7 @@ describe('AdminDashboard — Dispute Center (Sprint 6.3)', () => {
     mock.onGet('/v1/admin/disputes').reply(200, { items: [], nextCursor: null });
 
     renderAdmin();
-    openDisputesTab();
+    await openDisputesTab();
 
     await waitFor(() =>
       expect(
@@ -140,7 +154,7 @@ describe('AdminDashboard — Dispute Center (Sprint 6.3)', () => {
     });
 
     renderAdmin();
-    openDisputesTab();
+    await openDisputesTab();
     await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1));
 
     fireEvent.click(screen.getByRole('tab', { name: 'URGENT' }));
@@ -153,7 +167,7 @@ describe('AdminDashboard — Dispute Center (Sprint 6.3)', () => {
     mock.onGet('/v1/admin/disputes/dp-1').reply(200, DISPUTE_DETAIL);
 
     renderAdmin();
-    openDisputesTab();
+    await openDisputesTab();
 
     await waitFor(() => expect(screen.getByText('Provider was late')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Provider was late').closest('tr')!);
@@ -172,7 +186,7 @@ describe('AdminDashboard — Dispute Center (Sprint 6.3)', () => {
     });
 
     renderAdmin();
-    openDisputesTab();
+    await openDisputesTab();
     await waitFor(() => expect(screen.getByText('Provider was late')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Provider was late').closest('tr')!);
 
@@ -199,7 +213,7 @@ describe('AdminDashboard — Dispute Center (Sprint 6.3)', () => {
     });
 
     renderAdmin();
-    openDisputesTab();
+    await openDisputesTab();
     await waitFor(() => expect(screen.getByText('Provider was late')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Provider was late').closest('tr')!);
 
@@ -220,7 +234,7 @@ describe('AdminDashboard — Dispute Center (Sprint 6.3)', () => {
     mock.onGet('/v1/admin/disputes/dp-1').reply(200, RESOLVED_DISPUTE_DETAIL);
 
     renderAdmin();
-    openDisputesTab();
+    await openDisputesTab();
     await waitFor(() => expect(screen.getByText('Provider was late')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Provider was late').closest('tr')!);
 
@@ -236,7 +250,7 @@ describe('AdminDashboard — Dispute Center (Sprint 6.3)', () => {
     mock.onGet('/v1/admin/disputes').reply(200, { items: [DISPUTE], nextCursor: null });
 
     renderAdmin();
-    openDisputesTab();
+    await openDisputesTab();
     await waitFor(() => expect(screen.getByText('Provider was late')).toBeInTheDocument());
     const dom = document.body.textContent ?? '';
     expect(dom).not.toContain('passwordHash');

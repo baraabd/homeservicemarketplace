@@ -1132,6 +1132,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/13
       RUN_DB_INTEGRATION: '1'
       RUN_DISPUTE_BROWSER: '1'
+      RUN_DISPUTE_WORKER: '1'
       DISPUTE_TEST_SCANNER: clamav
       CLAMAV_HOST: 127.0.0.1
       CLAMAV_PORT: '3310'
@@ -1151,6 +1152,7 @@ jobs:
       - run: pnpm --filter @homeservicemarketplace/database migrate:deploy
       - run: pnpm --filter @homeservicemarketplace/database build
       - run: pnpm --filter @homeservicemarketplace/contracts build
+      - run: pnpm --filter @homeservicemarketplace/api build
       - name: Install the normal CI Chromium distribution
         run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
       - name: Start the real malware scanner
@@ -1170,6 +1172,7 @@ jobs:
       - name: Verify actual auth, CSRF, persistence, independent appeal and rendered UI
         run: |
           pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/dispute-worker-process.integration.spec.ts \
             test/integration/dispute-workspace.integration.spec.ts \
             test/integration/dispute-decision-boundaries.integration.spec.ts \
             test/integration/dispute-private-lifecycle.integration.spec.ts \
