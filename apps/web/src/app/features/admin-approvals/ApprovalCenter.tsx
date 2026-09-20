@@ -1,6 +1,13 @@
 import { Link } from 'react-router';
 import {
-  ArrowLeft, ArrowRight, ClipboardCheck, FileSearch, Inbox, RefreshCw, ShieldCheck, Users,
+  ArrowLeft,
+  ArrowRight,
+  ClipboardCheck,
+  FileSearch,
+  Inbox,
+  RefreshCw,
+  ShieldCheck,
+  Users,
 } from 'lucide-react';
 import type { ListAdminProvidersQuery } from '@homeservicemarketplace/contracts';
 import { useLang } from '../../i18n/LanguageContext';
@@ -27,20 +34,32 @@ export function ApprovalCenter() {
   const Arrow = dir === 'rtl' ? ArrowLeft : ArrowRight;
   const cards = [
     {
-      key: 'pendingReview', label: t.pending, hint: t.pendingHint,
-      to: '/admin/reviews', icon: ClipboardCheck,
+      key: 'pendingReview',
+      label: t.pending,
+      hint: t.pendingHint,
+      to: '/admin/reviews',
+      icon: ClipboardCheck,
     },
     {
-      key: 'draft', label: t.draft, hint: t.draftHint,
-      to: '/admin/providers?status=DRAFT', icon: FileSearch,
+      key: 'draft',
+      label: t.draft,
+      hint: t.draftHint,
+      to: '/admin/providers?status=DRAFT',
+      icon: FileSearch,
     },
     {
-      key: 'active', label: t.active, hint: t.activeHint,
-      to: '/admin/providers?status=ACTIVE', icon: ShieldCheck,
+      key: 'active',
+      label: t.active,
+      hint: t.activeHint,
+      to: '/admin/providers?status=ACTIVE',
+      icon: ShieldCheck,
     },
     {
-      key: 'returned', label: t.returned, hint: t.returnedHint,
-      to: '/admin/reviews?status=REJECTED', icon: RefreshCw,
+      key: 'returned',
+      label: t.returned,
+      hint: t.returnedHint,
+      to: '/admin/reviews?status=REJECTED',
+      icon: RefreshCw,
     },
   ] as const;
   return (
@@ -54,7 +73,9 @@ export function ApprovalCenter() {
       <header className="ac-hero">
         <div className="ac-hero-copy">
           <p className="ar-eyebrow">{t.eyebrow}</p>
-          <h2 id="approval-center-title" className="ar-title">{t.title}</h2>
+          <h2 id="approval-center-title" className="ar-title">
+            {t.title}
+          </h2>
           <p className="ar-muted">{t.description}</p>
         </div>
         <Link className="ar-button ar-button-primary" to="/admin/reviews">
@@ -71,7 +92,8 @@ export function ApprovalCenter() {
             className={`ac-metric${key === 'pendingReview' ? ' ac-metric-primary' : ''}`}
           >
             <div className="ac-metric-heading">
-              <span>{label}</span><Icon size={20} aria-hidden="true" />
+              <span>{label}</span>
+              <Icon size={20} aria-hidden="true" />
             </div>
             <strong data-testid={`approval-count-${key}`}>
               {data?.counts?.[key]?.toLocaleString(lang) ?? t.countUnavailable}
@@ -89,7 +111,9 @@ export function ApprovalCenter() {
         >
           <header className="ac-section-heading">
             <div>
-              <h3 id="approval-queue-title" className="ar-heading">{t.queue}</h3>
+              <h3 id="approval-queue-title" className="ar-heading">
+                {t.queue}
+              </h3>
               <p className="ar-muted">{t.oldest}</p>
             </div>
             <button
@@ -106,7 +130,8 @@ export function ApprovalCenter() {
           </header>
           {query.isPending ? (
             <div className="ac-empty" role="status">
-              <RefreshCw size={28} aria-hidden="true" /><p>{t.loading}</p>
+              <RefreshCw size={28} aria-hidden="true" />
+              <p>{t.loading}</p>
             </div>
           ) : query.isError ? (
             <DirectoryError
@@ -114,10 +139,13 @@ export function ApprovalCenter() {
               onRetry={() => void query.refetch()}
               isAr={lang === 'ar'}
             />
-          ) : !data?.items.length ? (
+          ) : /* A truthy response missing `items` must render the empty state,
+                 not white-screen the whole Admin dashboard. */
+          !data?.items?.length ? (
             <div className="ac-empty" role="status">
               <Inbox size={32} aria-hidden="true" />
-              <h4>{t.empty}</h4><p className="ar-muted">{t.emptyHint}</p>
+              <h4>{t.empty}</h4>
+              <p className="ar-muted">{t.emptyHint}</p>
             </div>
           ) : (
             <ul className="ac-requests">
@@ -128,7 +156,8 @@ export function ApprovalCenter() {
           )}
           <footer className="ac-queue-footer">
             <Link className="ar-button" to="/admin/reviews">
-              {t.viewAll}<Arrow size={17} aria-hidden="true" />
+              {t.viewAll}
+              <Arrow size={17} aria-hidden="true" />
             </Link>
           </footer>
         </section>
@@ -145,22 +174,28 @@ export function ApprovalCenter() {
                   <span className="ac-step-number" aria-hidden="true">
                     {(index + 1).toLocaleString(lang)}
                   </span>
-                  <div><h4>{step.title}</h4><p className="ar-muted">{step.hint}</p></div>
+                  <div>
+                    <h4>{step.title}</h4>
+                    <p className="ar-muted">{step.hint}</p>
+                  </div>
                 </li>
               ))}
             </ol>
             <Link className="ar-button" to="/admin/identity-cases">
-              {t.identityLink}<Arrow size={17} aria-hidden="true" />
+              {t.identityLink}
+              <Arrow size={17} aria-hidden="true" />
             </Link>
           </section>
           <section className="ar-card ac-help">
             <h3 className="ar-heading">{t.missingTitle}</h3>
             <p className="ar-muted">{t.missingHint}</p>
             <Link className="ar-button" to="/admin/providers">
-              <Users size={17} aria-hidden="true" />{t.allProviders}
+              <Users size={17} aria-hidden="true" />
+              {t.allProviders}
             </Link>
             <Link className="ac-text-link" to="/admin/providers?status=DRAFT">
-              {t.draftsLink}<Arrow size={16} aria-hidden="true" />
+              {t.draftsLink}
+              <Arrow size={16} aria-hidden="true" />
             </Link>
           </section>
         </aside>
