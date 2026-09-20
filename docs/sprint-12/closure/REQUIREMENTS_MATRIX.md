@@ -134,19 +134,30 @@ column is this session's 251-test admin run; BROWSER is CI's
 | Assignment / deadlines  | PASS           | NOT_RUN                 | PENDING_CI | NOT_RUN | BLOCKED |
 | Real scanner lifecycle  | PASS           | NOT_RUN                 | PENDING_CI | NOT_RUN | BLOCKED |
 | Retention / privacy     | PARTIAL        | NOT_RUN                 | PENDING_CI | NOT_RUN | BLOCKED |
-| Pagination past page 1  | PASS           | **PASS (real size 40)** | PENDING_CI | NOT_RUN | BLOCKED |
+| Pagination past page 1  | PASS           | **PASS (real size 40)** | PASS (CI)  | NOT_RUN | BLOCKED |
 
 ### 5.3 Unified Admin navigation
 
-| Item                                  | IMPL                | AUTO               | BROWSER    | VISUAL  | PROD    |
-| ------------------------------------- | ------------------- | ------------------ | ---------- | ------- | ------- |
-| One Admin shell, nine sections        | PASS (pre-existing) | PASS               | PENDING_CI | NOT_RUN | BLOCKED |
-| Provider approval centre on dashboard | PASS (pre-existing) | PASS               | PENDING_CI | NOT_RUN | BLOCKED |
-| **Dispute summary on dashboard**      | **PASS (new)**      | **PASS (5 tests)** | PENDING_CI | NOT_RUN | BLOCKED |
-| Server-authoritative counts           | PASS                | PASS               | PENDING_CI | NOT_RUN | BLOCKED |
-| Shared design language                | PASS                | PASS               | PENDING_CI | NOT_RUN | BLOCKED |
-| EN/AR + light/dark                    | PASS                | PASS (jsdom)       | PENDING_CI | NOT_RUN | BLOCKED |
+| Item                                  | IMPL                | AUTO         | BROWSER       | VISUAL  | PROD    |
+| ------------------------------------- | ------------------- | ------------ | ------------- | ------- | ------- |
+| One Admin shell, nine sections        | PASS (pre-existing) | PASS         | PENDING_CI    | NOT_RUN | BLOCKED |
+| Provider approval centre on dashboard | PASS (pre-existing) | PASS         | PENDING_CI    | NOT_RUN | BLOCKED |
+| **Dispute summary on dashboard**      | **REVERTED**        | n/a          | **FAIL (CI)** | NOT_RUN | BLOCKED |
+| Server-authoritative counts           | PASS                | PASS         | PENDING_CI    | NOT_RUN | BLOCKED |
+| Shared design language                | PASS                | PASS         | PENDING_CI    | NOT_RUN | BLOCKED |
+| EN/AR + light/dark                    | PASS                | PASS (jsdom) | PENDING_CI    | NOT_RUN | BLOCKED |
 
 **PENDING_CI** means the job exists and was triggered on this exact SHA; it is
 not a pass. **VISUAL is NOT_RUN everywhere** — no human has inspected this
 surface, and no screenshot may be cited as acceptance until one has.
+
+### 5.4 Correction after CI run `35531696963`
+
+The dashboard dispute summary row above reads **REVERTED / FAIL (CI)** and not
+"done". It failed two independent real-browser guards — horizontal overflow at
+390/768, and a **403 on every normal Admin dashboard load** because the dispute
+queue needs a granular `rolePermission` the browser has no way to know about.
+
+It is withdrawn rather than patched, because making it correct needs a
+server-provided capability, which is a contract change and not a UI fix.
+**Goal C (unified Admin dashboard) is PARTIAL.** See `HANDOFF.md` §8.
