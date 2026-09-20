@@ -1,0 +1,53 @@
+name: Verify Sprint 12 acceptance increment
+on:
+  push:
+    branches: [chore/sprint12-readable-transfer-20260920]
+    paths: [.github/workflows/sprint12-validated-increment1.yml]
+permissions:
+  contents: write
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: e693f42c681c6fcfbc5f935ecfc0561d0404a9e5
+          persist-credentials: false
+      - name: Validate complete source increment and upload exact blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import os,json,base64,hashlib,lzma,pathlib,subprocess,urllib.request
+          def call(path,data=None):
+            req=urllib.request.Request('https://api.github.com/repos/'+os.environ['REPO']+path,data=None if data is None else json.dumps(data).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+            with urllib.request.urlopen(req,timeout=60) as r: return json.load(r)
+          def git(*args): return subprocess.check_output(['git',*args]).decode().strip()
+          raw=base64.b64decode(call('/git/blobs/d4bbf085ee260e7d81f62a1200ea03f329ef7c5e')['content'])
+          assert hashlib.sha256(raw).hexdigest()=='537b5fd443135c262cbb999b330fa62a6362a984a94cc83fd3b56666d6179cb7'
+          patch=lzma.decompress(raw)
+          assert hashlib.sha256(patch).hexdigest()=='002b9f175524afde99665aefc3e390e38e4386dac6ebb4b7ca6fcb13540c60be'
+          subprocess.run(['git','apply','--index','--whitespace=error'],input=patch,check=True)
+          assert git('write-tree')=='a716172a565586e15d1515be4976bbe1966ef4c0'
+          files=git('diff','--cached','--name-only').splitlines()
+          assert len(files)==5
+          rows=[]
+          for name in files:
+            mode,sha,stage=git('ls-files','--stage','--',name).split()[:3]
+            assert mode=='100644' and stage=='0'
+            result=call('/git/blobs',{'encoding':'base64','content':base64.b64encode(pathlib.Path(name).read_bytes()).decode()})
+            assert result['sha']==sha
+            rows.append({'path':name,'mode':mode,'type':'blob','sha':sha})
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'receipt'
+          out.mkdir()
+          (out/'entries.json').write_text(json.dumps(rows,indent=2))
+          print(json.dumps({'tree':git('write-tree'),'files':rows,'status':'exact source only, no ref or deployment updated'}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprint12-increment1-receipt
+          path: ${{ runner.temp }}/receipt/
+          retention-days: 7
+          if-no-files-found: error
