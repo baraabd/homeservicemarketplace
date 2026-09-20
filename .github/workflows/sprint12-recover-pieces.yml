@@ -1,0 +1,52 @@
+name: Recover Sprint 12 source fragments
+on:
+  push:
+    branches: [chore/sprint12-readable-transfer-20260920]
+    paths: [.github/workflows/sprint12-recover-pieces.yml]
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read known source fragments from the authorized repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,base64,hashlib,pathlib,urllib.request,lzma
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'sprint12-source-fragments'
+          root.mkdir()
+          sets={
+            'latest':['b5c4f696c03efce6c90564190cf9d2c4eb64b94a','a88de175ec91d1de38015817bd83d0893273f21b','caaa912753fe4289a744c664a8c42a17445e90b7','549d70d9cd468c57396b5223be485b3c0e227fa2'],
+            'previous':['1df17e978b15604f438495d6c2395cb00dd3ce30','6bda06a0c776f0ce76124c9dc070fbd41111dfbb','6b3f3f03a2ab9ef2a73d1b2b9f38bcdd571da4f1','f77999388942ef106a8b810b244148f290213cfb'],
+            'earlier':['7a0c5f1f98faa66d969e372a28197e82bf059f69','d58812a9b96ba89724aa4be557c80ec3915e363a','20115c7ffbb692fea44bfe651599bf01529af6b9']}
+          report={}
+          for name,shas in sets.items():
+            parts=[]
+            for i,sha in enumerate(shas):
+              req=urllib.request.Request('https://api.github.com/repos/'+os.environ['REPO']+'/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(req,timeout=30) as res: obj=json.load(res)
+              raw=base64.b64decode(obj['content'])
+              assert hashlib.sha1(('blob '+str(len(raw))+'\0').encode()+raw).hexdigest()==sha
+              (root/(name+'-'+str(i)+'.bin')).write_bytes(raw)
+              parts.append(raw)
+            if name!='earlier':
+              dec=lzma.LZMADecompressor()
+              text=dec.decompress(b''.join(parts))
+              assert not dec.eof, 'This is explicitly a partial stream, not a complete archive'
+              (root/(name+'-partial.patch')).write_bytes(text)
+              report[name]={'partial':True,'bytes':len(text),'sha256':hashlib.sha256(text).hexdigest()}
+          (root/'recovery.json').write_text(json.dumps(report,indent=2))
+          print(json.dumps(report))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprint12-existing-source-fragments
+          path: ${{ runner.temp }}/sprint12-source-fragments/
+          retention-days: 1
+          if-no-files-found: error
