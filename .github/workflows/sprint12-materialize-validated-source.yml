@@ -1,0 +1,100 @@
+name: Materialize verified Sprint 12 source
+on:
+  push:
+    branches: [chore/sprint12-readable-transfer-20260920]
+    paths: [.github/workflows/sprint12-materialize-validated-source.yml]
+permissions:
+  contents: write
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 8eb732c404e104e6e07e5eeea37ca311d3be2978
+          persist-credentials: false
+      - name: Reconstruct audited source and upload matching blobs only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,base64,hashlib,pathlib,urllib.request,subprocess,lzma
+          root=pathlib.Path.cwd()
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'sprint12-materialized'
+          out.mkdir()
+          base='8eb732c404e104e6e07e5eeea37ca311d3be2978'
+          def call(path,data=None):
+            req=urllib.request.Request('https://api.github.com/repos/'+os.environ['REPO']+path, data=None if data is None else json.dumps(data).encode(), headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+            with urllib.request.urlopen(req,timeout=60) as response: return json.load(response)
+          def digest(data): return hashlib.sha256(data).hexdigest()
+          def git(*args): return subprocess.check_output(['git',*args]).decode().strip()
+          def blob(sha):
+            obj=call('/git/blobs/'+sha)
+            raw=base64.b64decode(obj['content'])
+            assert hashlib.sha1(('blob '+str(len(raw))+'\0').encode()+raw).hexdigest()==sha
+            return raw
+          def apply(raw): subprocess.run(['git','apply','--index','--whitespace=error'],input=raw,check=True)
+          assert git('rev-parse','HEAD')==base
+          previous=['1df17e978b15604f438495d6c2395cb00dd3ce30','6bda06a0c776f0ce76124c9dc070fbd41111dfbb','6b3f3f03a2ab9ef2a73d1b2b9f38bcdd571da4f1','f77999388942ef106a8b810b244148f290213cfb']
+          decoder=lzma.LZMADecompressor()
+          prefix=decoder.decompress(b''.join(blob(sha) for sha in previous))
+          assert not decoder.eof
+          assert digest(prefix)=='7b3cc84d2cd41284aea0ab22efae81ae8e99290fd0c2f281cad47f6a5cf10f28'
+          chunks=prefix.split(b'diff --git ')
+          complete=b'diff --git '+b'diff --git '.join(chunks[1:-1])
+          apply(complete)
+          assert git('write-tree')=='200628e7b07d6cee03050da37910630aa5021588'
+          dictionary=b''
+          suffixes={'.ts','.tsx','.css','.sql','.prisma','.yml','.md','.json'}
+          for name in sorted(git('ls-files').splitlines()):
+            p=root/name
+            if p.is_file() and p.suffix in suffixes and name!='pnpm-lock.yaml': dictionary+=p.read_bytes()+b'\n'
+          assert digest(dictionary)=='702ee0cd80838fe5b270c1a069c015722e7fcef576bcf9f224c2011e73da7310'
+          dictionary_file=out/'dictionary.bin'
+          dictionary_file.write_bytes(dictionary)
+          parts=['376e491ee777e8dd5e9cd00c1006a0f8b4e5f9a9','ebd208dce4b283c9dac0c0ed64c08b34c8aabe07','eba8a9908035732f40ee648529b3a7ba48d021f9','de7ef829d0c5ceb3fc9c3c68ccc38b889dfdb190','835b5a3116ec135f7d0369953317a174fd1fe878','e63b7fd85e5ba9a29d51fd978de41414165ea1f5']
+          archive=b''.join(blob(sha) for sha in parts)
+          assert len(archive)==43134 and digest(archive)=='552d9b8f113f439565d031c0886bb2ca5ce9321a25f92e9c0d22d4f83354145b'
+          archive_file=out/'supplement.zst'
+          archive_file.write_bytes(archive)
+          patch=subprocess.check_output(['zstd','-d','--long=27','--patch-from='+str(dictionary_file),'-c',str(archive_file)])
+          assert len(patch)==279713 and digest(patch)=='c403438efb3bdd695cd66e281c4e9cedb70b0167d1f6d1beef857023ea7b79c8'
+          apply(patch)
+          assert git('write-tree')=='e9bbacb9185e14663de786d20b3fea9188460162'
+          fixes=blob('d090835196d9bb2987bb35546d60ad21b80620d3')
+          assert digest(fixes)=='c0cd881f338dd89065b7a9c1d64b81f632be4f5aae1908686d06531c08f789cd'
+          apply(fixes)
+          expected='243787600e29995d663473e32c4566f75df241f1'
+          assert git('write-tree')==expected
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          names=git('diff','--cached','--name-only',base).splitlines()
+          assert len(names)==81
+          allowed=('apps/','packages/','docs/sprint-12/','infra/docker/','.github/workflows/ci.yml')
+          entries=[]
+          for name in names:
+            assert name.startswith(allowed) and not name.startswith(('.sprint12','chore/'))
+            line=git('ls-files','--stage','--',name)
+            mode,sha,stage=line.split()[:3]
+            assert mode=='100644' and stage=='0'
+            raw=(root/name).read_bytes()
+            raw.decode('utf-8')
+            result=call('/git/blobs',{'encoding':'base64','content':base64.b64encode(raw).decode()})
+            assert result['sha']==sha
+            entries.append({'path':name,'mode':mode,'type':'blob','sha':sha})
+          (out/'tree-entries.json').write_text(json.dumps(entries,indent=2))
+          (out/'receipt.json').write_text(json.dumps({'base':base,'baseTree':'e1ac8282f202138b0762f90f652d61f9c0819ecf','sourceTree':expected,'files':len(entries),'publication':'Matching blobs uploaded; no branch/ref/merge/deployment changed','validation':'Source hashes and patch applicability; not application tests'},indent=2))
+          print(json.dumps({'sourceTree':expected,'files':len(entries),'status':'verified source blobs uploaded'}))
+          # The transport archive/dictionary are not the deliverable and are excluded.
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprint12-materialized-source-receipt
+          path: |
+            ${{ runner.temp }}/sprint12-materialized/tree-entries.json
+            ${{ runner.temp }}/sprint12-materialized/receipt.json
+          retention-days: 7
+          if-no-files-found: error
