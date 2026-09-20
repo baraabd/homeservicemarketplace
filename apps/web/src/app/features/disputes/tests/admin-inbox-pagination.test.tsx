@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
@@ -10,7 +10,7 @@ import { resolveAdminRoute } from '../../../components/admin/admin-routes';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { WORKSPACE_COPY } from '../workspace/copy';
 
-// Sprint 12 closure — the dashboard's dispute half, and cursor pagination.
+// Sprint 12 closure — cursor pagination in the Admin dispute inbox.
 //
 // PAGE SIZE IS 40, NOT 50.
 //
@@ -78,53 +78,6 @@ function setup(pathname: string) {
     </MemoryRouter>,
   );
 }
-
-describe('Admin dashboard — dispute summary', () => {
-  it('shows the four server counts and routes into the inbox', async () => {
-    mock.onGet(path).reply(200, firstPage);
-    mock.onGet(/.*/).reply(500);
-    setup('/admin');
-
-    const summary = await screen.findByTestId('admin-dispute-summary');
-    // Wait for the server counts to arrive; the tile renders before they do.
-    await waitFor(() =>
-      expect(within(summary).getByTestId('dispute-count-all')).toHaveTextContent('41'),
-    );
-    expect(within(summary).getByTestId('dispute-count-unassigned')).toHaveTextContent('12');
-    expect(within(summary).getByTestId('dispute-count-overdue')).toHaveTextContent('4');
-    expect(within(summary).getByTestId('dispute-count-appeals')).toHaveTextContent('3');
-    expect(
-      within(summary).getByRole('link', { name: WORKSPACE_COPY.en.summaryOpenInbox }),
-    ).toHaveAttribute('href', '/admin/disputes');
-  });
-
-  it('never shows a fabricated zero when the count request fails', async () => {
-    mock.onGet(path).reply(500, { message: 'PrismaClient internal detail' });
-    mock.onGet(/.*/).reply(500);
-    setup('/admin');
-
-    const summary = await screen.findByTestId('admin-dispute-summary');
-    await waitFor(() =>
-      expect(within(summary).getByTestId('dispute-count-all')).toHaveTextContent(
-        WORKSPACE_COPY.en.countUnavailable,
-      ),
-    );
-    // "unavailable" and "zero" must never look the same.
-    expect(within(summary).getByTestId('dispute-count-overdue')).not.toHaveTextContent('0');
-    expect(document.body.textContent).not.toContain('PrismaClient');
-  });
-
-  it('renders Arabic summary copy on the dashboard', async () => {
-    localStorage.setItem('hsm.lang', 'ar');
-    mock.onGet(path).reply(200, firstPage);
-    mock.onGet(/.*/).reply(500);
-    setup('/admin');
-
-    const summary = await screen.findByTestId('admin-dispute-summary');
-    expect(within(summary).getByText(WORKSPACE_COPY.ar.summaryOpenInbox)).toBeInTheDocument();
-    expect(within(summary).getByText(WORKSPACE_COPY.ar.overdue)).toBeInTheDocument();
-  });
-});
 
 describe('Admin dispute inbox — cursor pagination beyond the first page', () => {
   it('loads a second page with tied timestamps without duplicating or dropping a case', async () => {

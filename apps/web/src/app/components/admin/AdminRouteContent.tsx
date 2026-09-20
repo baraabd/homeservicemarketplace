@@ -6,7 +6,6 @@ import { AdminProviderReviewWorkspace } from '../../features/admin-provider-revi
 import { AdminIdentityCasesPage } from '../../features/admin-verification/components/AdminIdentityCasesPage';
 import { VerificationPolicyPanel } from '../../features/admin-verification/components/VerificationPolicyPanel';
 import { AdminDisputeInbox } from '../../features/disputes/workspace/AdminDisputeInbox';
-import { DisputeCenterSummary } from '../../features/disputes/workspace/DisputeCenterSummary';
 import { WorkspacePanel } from '../../features/disputes/workspace/WorkspacePanel';
 import { DashboardOverview } from './DashboardOverview';
 import { ApprovalCenter } from '../../features/admin-approvals/ApprovalCenter';
@@ -68,9 +67,6 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
       return (
         <div className="ar-stack">
           <ApprovalCenter />
-          {/* The two halves of Admin operations sit together: provider
-              applications waiting on a decision, then cases waiting on one. */}
-          <DisputeCenterSummary />
           <DashboardOverview lang={lang} />
         </div>
       );

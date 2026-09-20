@@ -118,3 +118,34 @@ web build 0, **251/251** admin+dispute tests across 37 files.
 2. Human visual + screen-reader acceptance of both Admin surfaces.
 3. Supply the 47-point list, or accept that no completion figure exists.
 4. Decide merge — not authorised, not performed.
+
+---
+
+## 8. Correction after CI on `0ccad07` — Goal C is NOT delivered
+
+CI found three regressions, all mine. Two are fixed; one killed a feature.
+
+**The Admin dashboard dispute summary has been reverted.** It required
+`GET /v1/admin/dispute-workspaces`, which needs a granular `rolePermission` that
+not every Admin holds, so every dashboard load emitted a **403** and broke the
+"normal Admin entry produces no 4xx" guard. It also overflowed the page
+horizontally (14px at 390, 2px at 768) by nesting `.ac-metrics` in an extra
+`.ar-card` and using a class (`.ac-header`) that does not exist.
+
+The overflow was a straightforward mistake. The 403 is not: **there is no
+server-provided capability signal telling the browser whether this Admin may
+read the dispute queue.** `/v1/admin/analytics/overview` carries only
+`disputesOpen`, under a different permission scope.
+
+### The smallest correct next step for Goal C
+
+Add a capability to an Admin endpoint the dashboard already calls — e.g.
+`canReadDisputeQueue: boolean`, resolved from the same `rolePermission` lookup
+`workspace.service.ts` already performs — then render the summary only when it
+is true. That is a contract + API + integration-test slice, not a UI tweak, and
+it must not be faked by having the client guess.
+
+Until then the dashboard keeps its existing single `disputesOpen` KPI and the
+four detailed counts live only in the inbox, which is authorised to ask.
+
+**Goal C (unified Admin dashboard) is therefore PARTIAL, not complete.**
