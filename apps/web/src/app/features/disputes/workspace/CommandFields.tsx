@@ -1,3 +1,4 @@
+import { CommandField } from './CommandField';
 import { Plus, Trash2 } from 'lucide-react';
 import type { DisputeRemedy, DisputeWorkspaceView } from '@homeservicemarketplace/contracts';
 import { DISPUTE_REMEDY_TYPES } from '@homeservicemarketplace/contracts';
@@ -25,46 +26,53 @@ export function RemedyFields({
           key={i}
           aria-label={`${t.description} ${(i + 1).toLocaleString(lang)}`}
         >
-          <label className="case-field">
-            {t.type}
-            <select
-              value={r.type}
-              onChange={(e) => edit(i, { type: e.target.value as DisputeRemedy['type'] })}
-            >
-              {DISPUTE_REMEDY_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {t.remedyTypes[type]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="case-field">
-            {t.description}
-            <textarea
-              value={r.description}
-              minLength={10}
-              maxLength={4000}
-              required
-              onChange={(e) => edit(i, { description: e.target.value })}
-            />
-          </label>
-          <label className="case-field">
-            {t.conditions}
-            <textarea
-              value={r.conditions}
-              maxLength={2000}
-              onChange={(e) => edit(i, { conditions: e.target.value })}
-            />
-          </label>
-          <label className="case-field">
-            {t.date}
-            <input
-              type="datetime-local"
-              value={r.dueAt ?? ''}
-              onChange={(e) => edit(i, { dueAt: e.target.value || null })}
-            />
-            <small>{Intl.DateTimeFormat().resolvedOptions().timeZone}</small>
-          </label>
+          <CommandField label={t.type}>
+            {(control) => (
+              <select
+                {...control}
+                value={r.type}
+                onChange={(e) => edit(i, { type: e.target.value as DisputeRemedy['type'] })}
+              >
+                {DISPUTE_REMEDY_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {t.remedyTypes[type]}
+                  </option>
+                ))}
+              </select>
+            )}
+          </CommandField>
+          <CommandField label={t.description}>
+            {(control) => (
+              <textarea
+                {...control}
+                value={r.description}
+                minLength={10}
+                maxLength={4000}
+                required
+                onChange={(e) => edit(i, { description: e.target.value })}
+              />
+            )}
+          </CommandField>
+          <CommandField label={t.conditions}>
+            {(control) => (
+              <textarea
+                {...control}
+                value={r.conditions}
+                maxLength={2000}
+                onChange={(e) => edit(i, { conditions: e.target.value })}
+              />
+            )}
+          </CommandField>
+          <CommandField label={t.date} hint={Intl.DateTimeFormat().resolvedOptions().timeZone}>
+            {(control) => (
+              <input
+                {...control}
+                type="datetime-local"
+                value={r.dueAt ?? ''}
+                onChange={(e) => edit(i, { dueAt: e.target.value || null })}
+              />
+            )}
+          </CommandField>
           {value.length > 1 && (
             <button
               type="button"
@@ -105,41 +113,51 @@ export function DecisionFields({
     set({ [key]: checked ? [...f[key], id] : f[key].filter((x) => x !== id) });
   return (
     <>
-      <label className="case-field">
-        {t.proposal}
-        <select value={f.proposalId} onChange={(e) => set({ proposalId: e.target.value })}>
-          <option value="">{t.noProposal}</option>
-          {view.proposals
-            .filter((p) => ['OPEN', 'DECIDED'].includes(p.status))
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.summary.slice(0, 100)} — {p.acceptedCount.toLocaleString(lang)}/2
+      <CommandField label={t.proposal} hint={t.noProposalHint}>
+        {(control) => (
+          <select
+            {...control}
+            value={f.proposalId}
+            onChange={(e) => set({ proposalId: e.target.value })}
+          >
+            <option value="">{t.noProposal}</option>
+            {view.proposals
+              .filter((p) => ['OPEN', 'DECIDED'].includes(p.status))
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.summary.slice(0, 100)} — {p.acceptedCount.toLocaleString(lang)}/2
+                </option>
+              ))}
+          </select>
+        )}
+      </CommandField>
+      <CommandField label={t.reason}>
+        {(control) => (
+          <select
+            {...control}
+            value={f.reasonCode}
+            onChange={(e) => set({ reasonCode: e.target.value })}
+          >
+            {Object.entries(t.decisionReasons).map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
               </option>
             ))}
-        </select>
-        <small>{t.noProposalHint}</small>
-      </label>
-      <label className="case-field">
-        {t.reason}
-        <select value={f.reasonCode} onChange={(e) => set({ reasonCode: e.target.value })}>
-          {Object.entries(t.decisionReasons).map(([key, label]) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="case-field">
-        {t.rationale}
-        <textarea
-          required
-          minLength={10}
-          maxLength={4000}
-          value={f.text}
-          onChange={(e) => set({ text: e.target.value })}
-        />
-        <small>{t.rationaleHint}</small>
-      </label>
+          </select>
+        )}
+      </CommandField>
+      <CommandField label={t.rationale} hint={t.rationaleHint}>
+        {(control) => (
+          <textarea
+            {...control}
+            required
+            minLength={10}
+            maxLength={4000}
+            value={f.text}
+            onChange={(e) => set({ text: e.target.value })}
+          />
+        )}
+      </CommandField>
       <fieldset className="cw-fieldset">
         <legend>{t.basis}</legend>
         <p className="cw-meta">{t.basisHint}</p>
@@ -204,36 +222,42 @@ export function SimpleCommandFields({
   return (
     <>
       {a === 'ASSIGN' && (
-        <label className="case-field">
-          {t.chooseReviewer}
-          <select
-            required
-            value={f.reviewerId}
-            onChange={(e) => set({ reviewerId: e.target.value })}
-          >
-            <option value="">{t.chooseReviewer}</option>
-            {view.reviewers.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-          {!view.reviewers.length && <small>{t.noReviewers}</small>}
-        </label>
+        <CommandField
+          label={t.chooseReviewer}
+          hint={view.reviewers.length ? undefined : t.noReviewers}
+        >
+          {(control) => (
+            <select
+              {...control}
+              required
+              value={f.reviewerId}
+              onChange={(e) => set({ reviewerId: e.target.value })}
+            >
+              <option value="">{t.chooseReviewer}</option>
+              {view.reviewers.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </CommandField>
       )}
       {a === 'REQUEST_INFORMATION' && (
-        <label className="case-field">
-          {t.recipient}
-          <select
-            required
-            value={f.recipient}
-            onChange={(e) => set({ recipient: e.target.value as CommandFields['recipient'] })}
-          >
-            <option value="">{t.recipient}</option>
-            <option value="SEEKER">{t.roles.SEEKER}</option>
-            <option value="PROVIDER">{t.roles.PROVIDER}</option>
-          </select>
-        </label>
+        <CommandField label={t.recipient}>
+          {(control) => (
+            <select
+              {...control}
+              required
+              value={f.recipient}
+              onChange={(e) => set({ recipient: e.target.value as CommandFields['recipient'] })}
+            >
+              <option value="">{t.recipient}</option>
+              <option value="SEEKER">{t.roles.SEEKER}</option>
+              <option value="PROVIDER">{t.roles.PROVIDER}</option>
+            </select>
+          )}
+        </CommandField>
       )}
       {request && a === 'RESPOND' && (
         <CaseNotice>
@@ -244,30 +268,38 @@ export function SimpleCommandFields({
         </CaseNotice>
       )}
       {['REQUEST_INFORMATION', 'RESPOND', 'APPEAL'].includes(a) && (
-        <label className="case-field">
-          {a === 'REQUEST_INFORMATION' ? t.question : a === 'APPEAL' ? t.appealGrounds : t.text}
-          <textarea
-            required
-            minLength={10}
-            maxLength={4000}
-            value={f.text}
-            onChange={(e) => set({ text: e.target.value })}
-          />
-          <small>{a === 'APPEAL' ? t.appealHint : t.minText}</small>
-        </label>
-      )}
-      {a === 'PROPOSE' && (
-        <>
-          <label className="case-field">
-            {t.summary}
+        <CommandField
+          label={
+            a === 'REQUEST_INFORMATION' ? t.question : a === 'APPEAL' ? t.appealGrounds : t.text
+          }
+          hint={a === 'APPEAL' ? t.appealHint : t.minText}
+        >
+          {(control) => (
             <textarea
+              {...control}
               required
               minLength={10}
               maxLength={4000}
-              value={f.summary}
-              onChange={(e) => set({ summary: e.target.value })}
+              value={f.text}
+              onChange={(e) => set({ text: e.target.value })}
             />
-          </label>
+          )}
+        </CommandField>
+      )}
+      {a === 'PROPOSE' && (
+        <>
+          <CommandField label={t.summary}>
+            {(control) => (
+              <textarea
+                {...control}
+                required
+                minLength={10}
+                maxLength={4000}
+                value={f.summary}
+                onChange={(e) => set({ summary: e.target.value })}
+              />
+            )}
+          </CommandField>
           <RemedyFields value={f.remedies} onChange={(remedies) => set({ remedies })} lang={lang} />
           <CaseNotice>{t.proposalHint}</CaseNotice>
         </>
@@ -291,29 +323,33 @@ export function SimpleCommandFields({
           </label>
           {!f.releaseHold && (
             <>
-              <label className="case-field">
-                {t.hold}
-                <input
-                  type="datetime-local"
-                  required
-                  value={f.holdUntil}
-                  onChange={(e) => set({ holdUntil: e.target.value })}
-                />
-              </label>
-              <label className="case-field">
-                {t.reason}
-                <select
-                  value={f.reasonCode === 'LEGAL_HOLD' ? 'LEGAL_HOLD' : 'ACTIVE_REVIEW'}
-                  onChange={(e) => set({ reasonCode: e.target.value })}
-                >
-                  <option value="ACTIVE_REVIEW">
-                    {lang === 'ar' ? 'مراجعة جارية' : 'Active review'}
-                  </option>
-                  <option value="LEGAL_HOLD">
-                    {lang === 'ar' ? 'تعليق قانوني معتمد' : 'Authorized legal hold'}
-                  </option>
-                </select>
-              </label>
+              <CommandField label={t.hold}>
+                {(control) => (
+                  <input
+                    {...control}
+                    type="datetime-local"
+                    required
+                    value={f.holdUntil}
+                    onChange={(e) => set({ holdUntil: e.target.value })}
+                  />
+                )}
+              </CommandField>
+              <CommandField label={t.reason}>
+                {(control) => (
+                  <select
+                    {...control}
+                    value={f.reasonCode === 'LEGAL_HOLD' ? 'LEGAL_HOLD' : 'ACTIVE_REVIEW'}
+                    onChange={(e) => set({ reasonCode: e.target.value })}
+                  >
+                    <option value="ACTIVE_REVIEW">
+                      {lang === 'ar' ? 'مراجعة جارية' : 'Active review'}
+                    </option>
+                    <option value="LEGAL_HOLD">
+                      {lang === 'ar' ? 'تعليق قانوني معتمد' : 'Authorized legal hold'}
+                    </option>
+                  </select>
+                )}
+              </CommandField>
             </>
           )}
         </>
