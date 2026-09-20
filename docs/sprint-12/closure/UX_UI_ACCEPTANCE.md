@@ -145,3 +145,29 @@ its header/eyebrow/hint rhythm. `overdue` takes the emphasis slot that
 
 The dashboard, like the dispute tabs, is **design-complete and visually
 unaccepted.** No screenshot of either surface has been inspected by a person.
+
+---
+
+## 6. Accessibility correction — source facts (`816a68c`)
+
+The Overview panel's fact list failed axe `definition-list` (serious) once it
+became visible: the Source and Recorded lines were siblings of `<dd>` inside the
+grouping `<div>`, which invalidates the whole `<dl>`. 79 nodes were reported.
+
+Fixed by moving both lines **inside** the `<dd>` — which is also what they mean.
+No rule suppressed, no `aria-hidden`, no provenance removed. `cw-facts` was
+restored to the section so the existing `dd`/separator rules apply again and the
+rendering is unchanged.
+
+Guarded by `workspace-overview-semantics.test.tsx` (5 cases), proven by mutation.
+
+### Corrected status — Admin dashboard dispute summary
+
+| Item                        | IMPL         | AUTO | BROWSER       | VISUAL  | PROD                             |
+| --------------------------- | ------------ | ---- | ------------- | ------- | -------------------------------- |
+| Dispute summary on `/admin` | **REVERTED** | n/a  | **FAIL (CI)** | NOT_RUN | **BLOCKED BY CAPABILITY DESIGN** |
+
+It is **not** on `/admin` and must not be described as if it were. It needs a
+server-provided granular capability (`canReadDisputeQueue` or equivalent) before
+the dashboard may ask the dispute queue anything; without it every Admin
+dashboard load emits a 403. That is a contract slice, not a UI tweak.

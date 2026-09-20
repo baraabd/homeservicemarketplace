@@ -149,3 +149,26 @@ Until then the dashboard keeps its existing single `disputesOpen` KPI and the
 four detailed counts live only in the inbox, which is authorised to ask.
 
 **Goal C (unified Admin dashboard) is therefore PARTIAL, not complete.**
+
+---
+
+## 9. Continuation — accessibility fix (`816a68c`)
+
+CI `35533734443` on `db9f527`: **15 of 16 jobs green.** The two earlier fixes
+held — Browser E2E and Admin review real-route both passed. Only the dispute
+journey failed, on axe `definition-list` (serious) in the Overview fact list:
+`dl element has direct children that are not allowed: div > p`.
+
+Fixed by moving Source/Recorded inside the `<dd>` and restoring `cw-facts`.
+Guarded by `workspace-overview-semantics.test.tsx`, proven by mutation.
+Dispute suite counts at the time: **31 tests, 30 passed, 1 failed**.
+
+No open-handle warning exists in that run; `--forceExit` was not used.
+
+### Still true, and not to be softened
+
+- The Admin dashboard dispute summary is **REVERTED**, blocked by the missing
+  server capability signal. Goal C stays **PARTIAL**. See §8.
+- **No human has inspected a screenshot.** Visual acceptance is NOT_RUN.
+- The 47-point list remains absent; no completion percentage anywhere.
+- Product / Security / Privacy approvals: not sought, not granted.

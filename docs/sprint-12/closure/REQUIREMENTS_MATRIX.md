@@ -138,14 +138,14 @@ column is this session's 251-test admin run; BROWSER is CI's
 
 ### 5.3 Unified Admin navigation
 
-| Item                                  | IMPL                | AUTO         | BROWSER       | VISUAL  | PROD    |
-| ------------------------------------- | ------------------- | ------------ | ------------- | ------- | ------- |
-| One Admin shell, nine sections        | PASS (pre-existing) | PASS         | PENDING_CI    | NOT_RUN | BLOCKED |
-| Provider approval centre on dashboard | PASS (pre-existing) | PASS         | PENDING_CI    | NOT_RUN | BLOCKED |
-| **Dispute summary on dashboard**      | **REVERTED**        | n/a          | **FAIL (CI)** | NOT_RUN | BLOCKED |
-| Server-authoritative counts           | PASS                | PASS         | PENDING_CI    | NOT_RUN | BLOCKED |
-| Shared design language                | PASS                | PASS         | PENDING_CI    | NOT_RUN | BLOCKED |
-| EN/AR + light/dark                    | PASS                | PASS (jsdom) | PENDING_CI    | NOT_RUN | BLOCKED |
+| Item                                  | IMPL                | AUTO         | BROWSER       | VISUAL  | PROD                         |
+| ------------------------------------- | ------------------- | ------------ | ------------- | ------- | ---------------------------- |
+| One Admin shell, nine sections        | PASS (pre-existing) | PASS         | PENDING_CI    | NOT_RUN | BLOCKED                      |
+| Provider approval centre on dashboard | PASS (pre-existing) | PASS         | PENDING_CI    | NOT_RUN | BLOCKED                      |
+| **Dispute summary on dashboard**      | **REVERTED**        | n/a          | **FAIL (CI)** | NOT_RUN | BLOCKED BY CAPABILITY DESIGN |
+| Server-authoritative counts           | PASS                | PASS         | PENDING_CI    | NOT_RUN | BLOCKED                      |
+| Shared design language                | PASS                | PASS         | PENDING_CI    | NOT_RUN | BLOCKED                      |
+| EN/AR + light/dark                    | PASS                | PASS (jsdom) | PENDING_CI    | NOT_RUN | BLOCKED                      |
 
 **PENDING_CI** means the job exists and was triggered on this exact SHA; it is
 not a pass. **VISUAL is NOT_RUN everywhere** — no human has inspected this
