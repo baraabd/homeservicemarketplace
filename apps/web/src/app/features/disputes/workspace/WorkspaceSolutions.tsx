@@ -153,26 +153,6 @@ export function WorkspaceSolutions({
           </details>
         </article>
       ))}
-      {view.appeals.map((a) => (
-        <article className="cw-box" key={a.id}>
-          <h3>{ACTION_LABELS[lang].APPEAL}</h3>
-          <p className="cw-meta">
-            <CaseDate value={a.createdAt} lang={lang} />
-          </p>
-          {a.grounds && <p className="case-statement">{a.grounds}</p>}
-          <p>{a.status === 'OPEN' ? t.reviewPending : t.newDecision}</p>
-          {a.status === 'OPEN' && view.availableActions.includes('DECIDE_APPEAL') && (
-            <button
-              type="button"
-              className="case-button case-button-primary"
-              disabled={disabled}
-              onClick={() => onAction({ action: 'DECIDE_APPEAL', entityId: a.id })}
-            >
-              {ACTION_LABELS[lang].DECIDE_APPEAL}
-            </button>
-          )}
-        </article>
-      ))}
     </section>
   );
 }

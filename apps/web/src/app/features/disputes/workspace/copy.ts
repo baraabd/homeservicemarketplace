@@ -105,6 +105,13 @@ export const WORKSPACE_COPY = {
     history: 'Event timeline',
     facts: 'Verified source records',
     participants: 'Parties',
+    tabsHint:
+      'Open one section at a time. Reading a section decides nothing: only a recorded command changes the case.',
+    tabsSection: 'Section',
+    tabsOf: 'of',
+    tabsPrevious: 'Previous section',
+    tabsNext: 'Next section',
+    noAppeals: 'No independent review has been requested for this case.',
     source: 'Source',
     recorded: 'Recorded',
     sourceHint:
@@ -345,6 +352,13 @@ export const WORKSPACE_COPY = {
     history: 'سجل الأحداث',
     facts: 'وقائع من السجلات',
     participants: 'أطراف النزاع',
+    tabsHint:
+      'افتح قسماً واحداً في كل مرة. قراءة القسم لا تُقرّر شيئاً؛ لا يتغيّر النزاع إلا بأمر مُسجَّل.',
+    tabsSection: 'القسم',
+    tabsOf: 'من',
+    tabsPrevious: 'القسم السابق',
+    tabsNext: 'القسم التالي',
+    noAppeals: 'لم يُطلب أي مراجعة مستقلة لهذا النزاع.',
     source: 'المصدر',
     recorded: 'سُجّل في',
     sourceHint: 'هذه وقائع مسجلة وليست استنتاجات آلية. قيمة الحجز ليست إثباتاً للدفع.',

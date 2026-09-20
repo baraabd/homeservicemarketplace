@@ -1,15 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import { RefreshCw, ShieldCheck } from 'lucide-react';
 import { useLang } from '../../../i18n/LanguageContext';
 import { CaseBadge, CaseDate, CaseNotice } from '../../case-ui/CasePrimitives';
 import { caseErrorStatus } from '../api';
 import { useWorkspace } from './api';
-import { ACTION_LABELS, WORKSPACE_COPY, WORKSPACE_STATES, translatedLabel } from './copy';
+import { ACTION_LABELS, WORKSPACE_COPY, WORKSPACE_STATES } from './copy';
 import { WorkspaceInformation } from './WorkspaceInformation';
 import { WorkspaceSolutions } from './WorkspaceSolutions';
 import { WorkspaceTimeline } from './WorkspaceTimeline';
 import { WorkspaceEvidence } from './WorkspaceEvidence';
+import { WorkspaceOverview } from './WorkspaceOverview';
+import { WorkspaceAppeals } from './WorkspaceAppeals';
 import { WorkspaceCommandDialog } from './WorkspaceCommandDialog';
+import { WorkspaceTaskPanel, WorkspaceTaskTabs } from './WorkspaceTaskTabs';
+import {
+  disputeTaskFromHash,
+  disputeTaskSearch,
+  selectedDisputeTask,
+  type DisputeWorkspaceTaskId,
+} from './dispute-task-navigation';
 import type { CommandSelection } from './command-model';
 import '../../case-ui/case-ui.css';
 import '../../admin-provider-review/admin-review.css';
@@ -25,6 +35,18 @@ export function WorkspacePanel({ caseId, admin = false }: { caseId: string; admi
   const [selection, setSelection] = useState<CommandSelection | null>(null);
   const [success, setSuccess] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Presentation state lives in the URL so reload, deep links and the browser's
+  // own history keep the reviewer where they were. Selecting a tab REPLACES the
+  // entry: walking six sections must not bury the queue six steps back.
+  const task = selectedDisputeTask(location.search, location.hash);
+  const linkedFromHash = disputeTaskFromHash(location.hash) !== null;
+  const selectTask = (next: DisputeWorkspaceTaskId) =>
+    navigate(
+      { search: disputeTaskSearch(location.search, next), hash: '' },
+      { replace: true, state: location.state, preventScrollReset: true },
+    );
   useEffect(() => {
     if (view?.disputeId) heading.current?.focus({ preventScroll: true });
   }, [view?.disputeId]);
@@ -111,18 +133,23 @@ export function WorkspacePanel({ caseId, admin = false }: { caseId: string; admi
               </li>
             ))}
           </ol>
-          <nav className="cw-nav" aria-label={t.sections}>
-            {[
-              ['information', t.information],
-              ['evidence', t.evidence],
-              ['solutions', t.solutions],
-              ['history', t.history],
-            ].map(([id, label]) => (
-              <a className="case-button" href={`#case-${id}`} key={id}>
-                {label}
-              </a>
-            ))}
-          </nav>
+          {/* The participant journey keeps its anchor row; the Admin workspace
+              replaces it with real tabs below. */}
+          {!admin && (
+            <nav className="cw-nav" aria-label={t.sections}>
+              {[
+                ['information', t.information],
+                ['evidence', t.evidence],
+                ['solutions', t.solutions],
+                ['appeals', t.appeals],
+                ['history', t.history],
+              ].map(([id, label]) => (
+                <a className="case-button" href={`#case-${id}`} key={id}>
+                  {label}
+                </a>
+              ))}
+            </nav>
+          )}
           <div className="cw-body">
             <aside className="cw-side case-stack">
               <section className="case-card case-stack">
@@ -172,41 +199,77 @@ export function WorkspacePanel({ caseId, admin = false }: { caseId: string; admi
               </section>
             </aside>
             <div className="case-stack cw-main">
-              <details className="case-card cw-disclosure cw-facts">
-                <summary>{t.facts}</summary>
-                <div className="case-stack">
-                  <p className="case-muted">{t.sourceHint}</p>
-                  <dl>
-                    {view.facts.map((f, i) => (
-                      <div key={`${f.source}-${f.label}-${i}`}>
-                        <dt>{translatedLabel(t.factsLabels, f.label, t.source)}</dt>
-                        <dd>
-                          <bdi dir="auto">{f.value}</bdi>
-                        </dd>
-                        <p className="cw-meta">
-                          {t.source}:{' '}
-                          <bdi dir="ltr">
-                            {f.source}/{f.id}
-                          </bdi>
-                        </p>
-                        <p className="cw-meta">
-                          {t.recorded}: <CaseDate value={f.recordedAt} lang={lang} />
-                        </p>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-              </details>
-              <WorkspaceInformation view={view} lang={lang} disabled={disabled} onAction={open} />
-              <WorkspaceEvidence
-                view={view}
-                admin={admin}
-                lang={lang}
-                disabled={disabled}
-                onAction={open}
-              />
-              <WorkspaceSolutions view={view} lang={lang} disabled={disabled} onAction={open} />
-              <WorkspaceTimeline view={view} admin={admin} lang={lang} />
+              {admin ? (
+                <WorkspaceTaskTabs
+                  value={task}
+                  onValueChange={selectTask}
+                  lang={lang}
+                  counts={{
+                    overview: view.facts.length,
+                    information: view.requests.length,
+                    evidence: view.evidence.length,
+                    solutions: view.proposals.length + view.decisions.length,
+                    appeals: view.appeals.length,
+                    history: view.events.length,
+                  }}
+                  focusLinkedPanel={linkedFromHash}
+                >
+                  <WorkspaceTaskPanel task="overview">
+                    <WorkspaceOverview view={view} lang={lang} />
+                  </WorkspaceTaskPanel>
+                  <WorkspaceTaskPanel task="information">
+                    <WorkspaceInformation
+                      view={view}
+                      lang={lang}
+                      disabled={disabled}
+                      onAction={open}
+                    />
+                  </WorkspaceTaskPanel>
+                  <WorkspaceTaskPanel task="evidence">
+                    <WorkspaceEvidence
+                      view={view}
+                      admin={admin}
+                      lang={lang}
+                      disabled={disabled}
+                      onAction={open}
+                    />
+                  </WorkspaceTaskPanel>
+                  <WorkspaceTaskPanel task="solutions">
+                    <WorkspaceSolutions
+                      view={view}
+                      lang={lang}
+                      disabled={disabled}
+                      onAction={open}
+                    />
+                  </WorkspaceTaskPanel>
+                  <WorkspaceTaskPanel task="appeals">
+                    <WorkspaceAppeals view={view} lang={lang} disabled={disabled} onAction={open} />
+                  </WorkspaceTaskPanel>
+                  <WorkspaceTaskPanel task="history">
+                    <WorkspaceTimeline view={view} admin={admin} lang={lang} />
+                  </WorkspaceTaskPanel>
+                </WorkspaceTaskTabs>
+              ) : (
+                <>
+                  <WorkspaceOverview view={view} lang={lang} />
+                  <WorkspaceInformation
+                    view={view}
+                    lang={lang}
+                    disabled={disabled}
+                    onAction={open}
+                  />
+                  <WorkspaceEvidence
+                    view={view}
+                    admin={admin}
+                    lang={lang}
+                    disabled={disabled}
+                    onAction={open}
+                  />
+                  <WorkspaceSolutions view={view} lang={lang} disabled={disabled} onAction={open} />
+                  <WorkspaceAppeals view={view} lang={lang} disabled={disabled} onAction={open} />
+                  <WorkspaceTimeline view={view} admin={admin} lang={lang} />
+                </>
+              )}
             </div>
           </div>
           {selection && (
