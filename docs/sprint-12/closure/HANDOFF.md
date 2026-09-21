@@ -172,3 +172,37 @@ No open-handle warning exists in that run; `--forceExit` was not used.
 - **No human has inspected a screenshot.** Visual acceptance is NOT_RUN.
 - The 47-point list remains absent; no completion percentage anywhere.
 - Product / Security / Privacy approvals: not sought, not granted.
+
+---
+
+## 10. Final state — CI fully green
+
+|                    |                                                        |
+| ------------------ | ------------------------------------------------------ |
+| HEAD at full green | `ad5f1f99395b6da75221496b0c9566887da66775`             |
+| CI                 | `35569900436` — **17/17 SUCCESS**, including `CI gate` |
+| CodeQL             | `35569900141` — **SUCCESS**                            |
+| PR #93             | open, **Draft**, base `develop`                        |
+| Merged / deployed  | **No. Neither.**                                       |
+
+Four regressions were found by CI and fixed at their cause, plus one found by
+opening a screenshot:
+
+1. Horizontal overflow on the Admin dashboard (390/768).
+2. A 403 on every Admin dashboard load — feature **withdrawn**, see §8.
+3. Private statement hidden behind a tab — journey drives the real control.
+4. axe `definition-list` (serious) — provenance moved inside the `dd`.
+5. Tab labels broken mid-word at 320–639px, worst in Arabic — one column below
+   640px. **No automated gate caught this one.**
+
+A sixth was found and fixed in the API: closure took two clock reads, so the
+retention deadline drifted from the `closedAt` it is measured from.
+
+### What is still NOT done
+
+- **Human visual acceptance: NOT_RUN.** Dark themes, 430/1024/1440 and 200%
+  zoom were never opened; no screen-reader pass.
+- **Goal C: PARTIAL.** The dashboard dispute summary stays reverted pending a
+  server capability signal (§8).
+- The 47-point list is still absent; no completion percentage is claimed.
+- Product / Security / Privacy approvals: not sought, not granted.

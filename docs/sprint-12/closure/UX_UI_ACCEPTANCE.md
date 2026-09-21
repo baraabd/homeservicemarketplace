@@ -220,3 +220,16 @@ Current permissions reads `Unavailable` before approval.
 Dark-theme frames, 430/1024/1440 in both languages, 200% browser zoom and
 screen-reader review were not opened or performed. **Human visual acceptance
 remains outstanding for every surface.**
+
+### Fix verified — CI run `35569900436` (`ad5f1f9`), all 17 jobs green
+
+Re-downloaded `dispute-workspace-real-evidence` from that run and reopened the
+two frames that showed the defect:
+
+| File                  | Viewport | Lang | Result after fix                                                                                                                                                                                                                     |
+| --------------------- | -------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `reviewer-ar-320.png` | 320      | AR   | **PASS** — "وقائع من السجلات", "المعلومات والردود", "الأدلة الخاصة", "الحلول والقرارات", "الاستئنافات", "سجل الأحداث" each on ONE line. No mid-word breaking. RTL order and count placement correct. One visible panel. No overflow. |
+| `reviewer-en-390.png` | 390      | EN   | **PASS** — "Verified source records", "Information and replies", "Private evidence", "Proposals and decisions", "Appeals", "Event timeline" each on one line, counts 3/1/1/3/1/17, "Section 2 of 6".                                 |
+
+Both frames come from the real route against a real API, Postgres and ClamAV —
+not fixtures.
