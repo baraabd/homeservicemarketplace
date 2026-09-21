@@ -1,0 +1,155 @@
+/* Sprint 12D — versioned Admin dispute layout: semantic tabs, one visible panel.
+   Every colour is an existing case-ui token, so light/dark and any future brand
+   change follow the design system rather than a copy of it. The selected-tab
+   treatment reuses the `.case-steps li[aria-current]` idiom already in use. */
+
+.cw-tabs {
+  min-width: 0;
+  scroll-margin-block-start: var(--admin-header-offset, 100px);
+}
+
+.cw-tabs-header {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.cw-tabs-summary {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cw-tabs-title {
+  margin: 0;
+}
+
+.cw-tab-position {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* One tab per row while narrow, three from 640px.
+   Two columns looked tidier in a mockup and was wrong on a real phone: at 390px
+   a column leaves roughly 90px for the label once the icon, the gap and the
+   count badge are taken out, which is narrower than the word "Information" -
+   so `overflow-wrap: anywhere` did what it was asked and broke words in half.
+   In Arabic that is worse than untidy: "المعلومات والردود" came out as
+   "المعا / ومات / والردو / د", breaking a cursive script mid-word.
+   Full width fits every label on one line, and `.ac-metrics` already collapses
+   to a single column on narrow screens for the same reason. */
+.cw-tab-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.cw-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Project usability requirement: at least 44x44 CSS px. */
+  min-height: 52px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--case-border);
+  border-radius: 12px;
+  background: var(--case-surface);
+  color: var(--case-muted);
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.5;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.cw-tab > svg {
+  flex-shrink: 0;
+}
+
+.cw-tab:hover {
+  background: var(--case-subtle);
+}
+
+/* Selection is carried by weight, border, fill AND the inset underline, so it
+   survives a monochrome or forced-colours rendering. */
+.cw-tab[data-state='active'] {
+  background: var(--case-subtle);
+  color: var(--case-accent);
+  border-color: var(--case-accent);
+  box-shadow: inset 0 -3px 0 var(--case-accent);
+  font-weight: 750;
+}
+
+.cw-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  min-height: 22px;
+  margin-inline-start: auto;
+  border: 1px solid var(--case-border);
+  border-radius: 6px;
+  background: var(--case-subtle);
+  color: var(--case-accent);
+  font-size: 12px;
+}
+
+.cw-tabs-hint {
+  margin: 0;
+  font-size: 13px;
+}
+
+.cw-tab-panel {
+  min-width: 0;
+  scroll-margin-block-start: var(--admin-header-offset, 100px);
+}
+
+.cw-tab-panel[hidden],
+.cw-tab-panel[data-state='inactive'] {
+  display: none;
+}
+
+.cw-tab:focus-visible,
+.cw-tab-panel:focus-visible {
+  outline: 3px solid var(--case-accent);
+  outline-offset: 3px;
+}
+
+.cw-tab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cw-tab-actions > button {
+  flex: 1;
+  min-width: 0;
+}
+
+.cw-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (min-width: 640px) {
+  .cw-tabs-header {
+    padding: 20px;
+  }
+  .cw-tab-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .cw-tab-actions > button {
+    flex: 0 1 auto;
+  }
+}

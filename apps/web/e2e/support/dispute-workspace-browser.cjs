@@ -107,6 +107,16 @@ async function run(data) {
       );
     await expect(p.getByTestId('dispute-workspace')).toBeVisible();
     await expect(p.getByText(privateText, { exact: true })).toHaveCount(0);
+    // Sprint 12D — the Admin workspace is six tabs now, so reviewer-side content
+    // is reached through the real control. Drive the tab; never reveal a hidden
+    // panel with injected styles or a DOM write.
+    async function openAdminTab(page, task) {
+      const trigger = page.getByTestId(`case-tab-${task}`);
+      await trigger.click();
+      await expect(trigger).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByTestId(`case-panel-${task}`)).toBeVisible();
+    }
+    await openAdminTab(a, 'information');
     await expect(a.getByText(privateText, { exact: true })).toBeVisible();
     async function refresh(page) {
       const b = page
@@ -228,6 +238,9 @@ async function run(data) {
       await d.getByRole('combobox').selectOption(data.credentials.independent.id);
     });
     await refresh(i);
+    // The appeal now owns its own tab; the independent reviewer opens it the
+    // way a person would before acting on it.
+    await openAdminTab(i, 'appeals');
     await command(i, 'Decide the appeal', async (d) => {
       await d.getByLabel('Proposed solution', { exact: true }).selectOption({ index: 1 });
       await d.getByLabel('Structured reason', { exact: true }).selectOption('INDEPENDENT_REVIEW');
