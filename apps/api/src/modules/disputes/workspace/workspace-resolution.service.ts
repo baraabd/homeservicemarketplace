@@ -244,13 +244,27 @@ export class WorkspaceResolution {
       )
         throw conflict('FULFILMENT_CONFIRMATION_REQUIRED');
     }
+    // ONE clock read, not two.
+    //
+    // `closedAt` and `privateTextDueAt` were each taken from their own
+    // `new Date()`. Whenever the millisecond ticked between the two calls, the
+    // retention deadline was anchored to a different instant than the closure
+    // it is supposed to be measured from, so the stored gap became the policy
+    // window plus an arbitrary drift.
+    //
+    // The drift was tiny and intermittent, but the property it broke is the one
+    // ADR-12B rests on: a retention basis is PINNED to the event that starts it.
+    // A deadline derived from a second, unrelated clock read is pinned to
+    // nothing. Reading the instant once makes the relationship exact by
+    // construction instead of by timing luck.
+    const closedAt = new Date();
     await tx.disputeWorkspace.update({
       where: { disputeId: w.disputeId },
       data: {
         state: 'CLOSED',
-        closedAt: new Date(),
+        closedAt,
         privateTextDueAt: hoursAfter(
-          new Date(),
+          closedAt,
           24 *
             (frozenPolicy(w.policySnapshot).privateTextRetentionDays ??
               frozenPolicy(w.policySnapshot).evidenceRetentionDays),
