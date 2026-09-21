@@ -29,11 +29,18 @@
   white-space: nowrap;
 }
 
-/* Two columns at 320px so six long Arabic labels never force a horizontal
-   scrollbar; three from 640px where there is room to read them. */
+/* One tab per row while narrow, three from 640px.
+   Two columns looked tidier in a mockup and was wrong on a real phone: at 390px
+   a column leaves roughly 90px for the label once the icon, the gap and the
+   count badge are taken out, which is narrower than the word "Information" -
+   so `overflow-wrap: anywhere` did what it was asked and broke words in half.
+   In Arabic that is worse than untidy: "المعلومات والردود" came out as
+   "المعا / ومات / والردو / د", breaking a cursive script mid-word.
+   Full width fits every label on one line, and `.ac-metrics` already collapses
+   to a single column on narrow screens for the same reason. */
 .cw-tab-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
 }

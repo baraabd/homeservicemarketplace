@@ -171,3 +171,52 @@ It is **not** on `/admin` and must not be described as if it were. It needs a
 server-provided granular capability (`canReadDisputeQueue` or equivalent) before
 the dashboard may ask the dispute queue anything; without it every Admin
 dashboard load emits a 403. That is a contract slice, not a UI tweak.
+
+---
+
+## 7. Screenshots actually inspected — CI run `35567531058` (`3bc9ffb`)
+
+Downloaded `dispute-workspace-real-evidence` (24 PNGs) and
+`admin-review-real-api-evidence` (672 PNGs) from the final green run and opened
+representative frames. This section lists what was **looked at**, not what
+exists on disk.
+
+| File                       | Viewport | Lang | Theme | Surface                               | Result                                                                               |
+| -------------------------- | -------- | ---- | ----- | ------------------------------------- | ------------------------------------------------------------------------------------ |
+| `reviewer-en-390.png`      | 390      | EN   | light | Admin dispute, Information tab        | PASS — 6 tabs, counts 3/1/1/3/1/17, "Section 2 of 6", one visible panel, no overflow |
+| `reviewer-ar-320.png`      | 320      | AR   | light | Admin dispute, Information tab        | **DEFECT FOUND** — correct RTL and no overflow, but tab labels broken mid-word       |
+| `reviewer-ar-768.png`      | 768      | AR   | light | Admin dispute, Information tab        | PASS — 3 columns, every label on one line, RTL order correct                         |
+| `dossier-en-light-390.png` | 390      | EN   | light | Provider review, Submission & consent | PASS — 6 tabs, "Section 6 of 6", one panel                                           |
+
+### The defect, and why it mattered
+
+At 320–639px the tab grid was two columns. Once the icon, gap and count badge
+are removed, a column leaves roughly 90px for the label — narrower than the word
+"Information" — so `overflow-wrap: anywhere` did exactly what it was told and
+split words in half. English degraded to "Informati / on and / replies";
+Arabic degraded much worse, rendering "المعلومات والردود" as
+"المعا / ومات / والردو / د", breaking a cursive script mid-word.
+
+**No automated gate caught this.** Axe passed, and the overflow assertion passed
+because nothing overflowed — the text was legible-ish, just wrong. It was found
+by opening the PNG, which is the entire reason the task requires inspection
+rather than existence checks.
+
+Fixed by collapsing the tab list to one column below 640px, the same thing
+`.ac-metrics` already does on narrow screens. The provider review tabs were left
+alone: their labels are short enough to wrap naturally at two columns, and that
+surface is out of scope.
+
+### Provider review — what the 390px frame confirms
+
+Account (`Active`), Application (`Awaiting review`), Identity verification
+(`Not verified`) and Work access (`Not enabled`) render as four **separate**
+states, not one "approved" boolean; the Submitted-application / Current-profile
+toggle is present; internal notes are labelled reviewer-only; and every entry in
+Current permissions reads `Unavailable` before approval.
+
+### Still NOT_RUN
+
+Dark-theme frames, 430/1024/1440 in both languages, 200% browser zoom and
+screen-reader review were not opened or performed. **Human visual acceptance
+remains outstanding for every surface.**
