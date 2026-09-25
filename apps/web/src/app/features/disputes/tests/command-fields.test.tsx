@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { DISPUTE_REMEDY_TYPES } from '@homeservicemarketplace/contracts';
 import type { DisputeRemedy, DisputeWorkspaceView } from '@homeservicemarketplace/contracts';
 import { DecisionFields, RemedyFields, SimpleCommandFields } from '../workspace/CommandFields';
 import { initialCommandFields, blankRemedy } from '../workspace/command-model';
 import { WORKSPACE_COPY } from '../workspace/copy';
+import { WEB_DISPUTE_REMEDY_TYPES } from '../workspace/remedy-types';
 
 const view: DisputeWorkspaceView = {
   disputeId: 'synthetic-dispute',
@@ -42,6 +44,13 @@ const view: DisputeWorkspaceView = {
   appeals: [],
 };
 afterEach(cleanup);
+
+describe('Dispute remedy runtime boundary', () => {
+  it('keeps the browser-safe remedy choices in sync with the contracts source', () => {
+    expect(WEB_DISPUTE_REMEDY_TYPES).toEqual(DISPUTE_REMEDY_TYPES);
+  });
+});
+
 for (const lang of ['en', 'ar'] as const) {
   const t = WORKSPACE_COPY[lang];
   describe(`Dispute command labels (${lang})`, () => {
