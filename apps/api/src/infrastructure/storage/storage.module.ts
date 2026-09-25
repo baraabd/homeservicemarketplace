@@ -10,6 +10,24 @@ import {
   RestrictedObjectStoragePort,
 } from './restricted-object-storage.port';
 
+export async function selectPublicStorage(
+  config: AppConfigService,
+  local: LocalDiskStorageAdapter,
+): Promise<StoragePort> {
+  if (config.get('STORAGE_DRIVER') !== 's3') return local;
+  const { S3StorageAdapter } = await import('./s3-storage.adapter');
+  return new S3StorageAdapter(config);
+}
+
+export async function selectRestrictedStorage(
+  config: AppConfigService,
+  local: LocalDiskRestrictedStorageAdapter,
+): Promise<RestrictedObjectStoragePort> {
+  if (config.get('STORAGE_DRIVER') !== 's3') return local;
+  const { S3RestrictedStorageAdapter } = await import('./s3-restricted-storage.adapter');
+  return new S3RestrictedStorageAdapter(config);
+}
+
 // Env-gated storage adapter selection. Mirrors the MailModule pattern
 // in apps/api/src/infrastructure/mail/mail.module.ts — the same
 // `StoragePort` token is bound to either backend depending on
@@ -45,26 +63,12 @@ import {
     {
       provide: STORAGE_PORT,
       inject: [AppConfigService, LocalDiskStorageAdapter],
-      useFactory: async (
-        config: AppConfigService,
-        local: LocalDiskStorageAdapter,
-      ): Promise<StoragePort> => {
-        if (config.get('STORAGE_DRIVER') !== 's3') return local;
-        const { S3StorageAdapter } = await import('./s3-storage.adapter');
-        return new S3StorageAdapter(config);
-      },
+      useFactory: selectPublicStorage,
     },
     {
       provide: RESTRICTED_OBJECT_STORAGE,
       inject: [AppConfigService, LocalDiskRestrictedStorageAdapter],
-      useFactory: async (
-        config: AppConfigService,
-        local: LocalDiskRestrictedStorageAdapter,
-      ): Promise<RestrictedObjectStoragePort> => {
-        if (config.get('STORAGE_DRIVER') !== 's3') return local;
-        const { S3RestrictedStorageAdapter } = await import('./s3-restricted-storage.adapter');
-        return new S3RestrictedStorageAdapter(config);
-      },
+      useFactory: selectRestrictedStorage,
     },
   ],
   // Export both the port AND the local adapter so the MediaController
