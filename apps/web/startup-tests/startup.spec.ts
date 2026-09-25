@@ -265,7 +265,9 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
             evidence.push({ label, errors, distRequests, sourceContractRequests, elapsedMs: Date.now() - started });
           } catch (error) {
             await capture(`failure-${label}`);
-            throw new Error(`${label}: ${String(error)}; page errors: ${JSON.stringify(errors)}`);
+            throw new Error(`${label}: ${String(error)}; page errors: ${JSON.stringify(errors)}`, {
+              cause: error,
+            });
           } finally {
             await context.close();
           }
