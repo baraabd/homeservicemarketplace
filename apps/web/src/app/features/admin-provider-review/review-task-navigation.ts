@@ -1,5 +1,5 @@
 import type { AdminProviderReviewTaskId } from '@homeservicemarketplace/contracts';
-import { WEB_WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS } from './runtime-constants';
+import { WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS } from './runtime-constants';
 
 export const REVIEW_TAB_QUERY = 'reviewTab';
 const SECTION_PREFIX = '#review-section-';
