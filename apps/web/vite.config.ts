@@ -39,14 +39,19 @@ export default defineConfig(({ mode, command }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        // The shared contracts package is emitted as CommonJS for Nest, but
+        // browser code must never execute that CommonJS barrel directly.
+        // Resolve the web app to the TypeScript source barrel instead so Vite
+        // handles it as native ESM in BOTH dev and production builds.
+        '@homeservicemarketplace/contracts': path.resolve(
+          __dirname,
+          '../../packages/contracts/src/index.ts',
+        ),
       },
     },
-    // Contracts are a linked workspace package emitted as CommonJS for Nest.
-    // Include its real path when using shared runtime constants in the browser.
-    optimizeDeps: { include: ['@homeservicemarketplace/contracts'] },
-    build: {
-      commonjsOptions: { include: [/node_modules/, /packages\/contracts\/dist/] },
-    },
+    // Do not prebundle the CommonJS package entry. The alias above is the
+    // browser boundary and points at source ESM that Vite transforms directly.
+    optimizeDeps: { exclude: ['@homeservicemarketplace/contracts'] },
     assetsInclude: ['**/*.svg', '**/*.csv'],
   };
 });
