@@ -1,10 +1,10 @@
 import { CommandField } from './CommandField';
 import { Plus, Trash2 } from 'lucide-react';
 import type { DisputeRemedy, DisputeWorkspaceView } from '@homeservicemarketplace/contracts';
-import { DISPUTE_REMEDY_TYPES } from '@homeservicemarketplace/contracts';
 import { CaseDate, CaseNotice } from '../../case-ui/CasePrimitives';
 import { EVENT_LABELS, WORKSPACE_COPY } from './copy';
 import { blankRemedy, type CommandFields, type CommandSelection } from './command-model';
+import { WEB_DISPUTE_REMEDY_TYPES } from './remedy-types';
 export function RemedyFields({
   value,
   onChange,
@@ -33,7 +33,7 @@ export function RemedyFields({
                 value={r.type}
                 onChange={(e) => edit(i, { type: e.target.value as DisputeRemedy['type'] })}
               >
-                {DISPUTE_REMEDY_TYPES.map((type) => (
+                {WEB_DISPUTE_REMEDY_TYPES.map((type) => (
                   <option key={type} value={type}>
                     {t.remedyTypes[type]}
                   </option>
