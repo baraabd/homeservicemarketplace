@@ -31,7 +31,16 @@ export function useReviewTaskNavigation() {
       pathname: location.pathname,
       search: reviewTaskSearch(location.search, next),
       hash: '',
-    }, { replace: true, state: location.state, preventScrollReset: true });
+    }, {
+      replace: true,
+      state: location.state,
+      preventScrollReset: true,
+      // Radix Tabs uses automatic activation: moving focus with arrows/Home/End
+      // immediately changes the active tab. Keep the controlled URL-derived
+      // value in the same turn so a fast follow-up Tab key sees the matching
+      // tabpanel as active/focusable instead of the previous panel.
+      flushSync: true,
+    });
   }
 
   return { task, selectTask, focusLinkedPanel: !!hashTask };
