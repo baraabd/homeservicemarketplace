@@ -23,10 +23,8 @@
     "src/**/*.test.tsx",
     "src/**/__tests__/**",
     "src/test-setup.ts",
-    // Orphan shadcn/ui templates — never imported by the app. Their pinned
-    // recharts / input-otp types are stale. Excluded so the build isn't
-    // blocked by dead code. Safe to delete in a housekeeping pass.
-    "src/app/components/ui/chart.tsx",
+    // The unused input-otp template has a separate type compatibility issue.
+    // chart.tsx is intentionally checked, including the Recharts props contract.
     "src/app/components/ui/input-otp.tsx"
   ]
 }
