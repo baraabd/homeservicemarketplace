@@ -12,8 +12,8 @@ import { ReviewBadge, ReviewBanner } from './ReviewPrimitives';
 import { ReviewDialog } from './ReviewDialog';
 import { reviewCorrectionFieldLabel } from '../../provider-onboarding-v2/copy/review-correction-fields';
 import {
-  WEB_WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS,
-  WEB_WEB_PROVIDER_REVIEW_CORRECTION_FIELDS,
+  WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS,
+  WEB_PROVIDER_REVIEW_CORRECTION_FIELDS,
 } from '../runtime-constants';
 
 const blankCorrection = (): AdminProviderReviewFeedbackInput => ({
