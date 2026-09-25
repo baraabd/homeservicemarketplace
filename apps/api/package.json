@@ -6,7 +6,7 @@
     "dist"
   ],
   "scripts": {
-    "dev": "pnpm build:deps && nest start --watch",
+    "dev": "pnpm build:deps && nest start --watch --config nest-cli.dev.json --path tsconfig.dev.json",
     "build": "pnpm build:deps && nest build",
     "start": "node dist/main",
     "start:prod": "node dist/main",
@@ -14,7 +14,9 @@
     "typecheck": "pnpm build:deps && tsc --noEmit",
     "test": "pnpm build:deps && jest",
     "test:watch": "pnpm build:deps && jest --watch",
-    "build:deps": "pnpm --filter @homeservicemarketplace/database build && pnpm --filter @homeservicemarketplace/contracts build"
+    "build:deps": "pnpm --filter @homeservicemarketplace/database build && pnpm --filter @homeservicemarketplace/contracts build",
+    "dev:fast": "nest start --watch --config nest-cli.dev.json --path tsconfig.dev.json",
+    "dev:clean": "pnpm build:deps && nest start --watch"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.24",
