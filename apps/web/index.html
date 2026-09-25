@@ -7,7 +7,33 @@
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Replaced by React after the application modules load successfully. -->
+      <main
+        style="
+          max-width: 32rem;
+          margin: 20vh auto;
+          padding: 1.5rem;
+          text-align: center;
+          font-family: system-ui, sans-serif;
+        "
+      >
+        <div id="startup-loading" role="status">
+          <p lang="ar" dir="rtl">جارٍ تحميل التطبيق…</p>
+          <p>Loading the application…</p>
+        </div>
+        <div id="startup-error" hidden>
+          <div role="alert">
+            <p lang="ar" dir="rtl">تعذّر بدء التطبيق. أعد تحميل الصفحة للمحاولة مجددًا.</p>
+            <p>The application could not start. Reload the page to try again.</p>
+          </div>
+          <button id="startup-retry" type="button">إعادة المحاولة / Retry</button>
+        </div>
+        <noscript
+          >Please enable JavaScript to use this application. يرجى تفعيل JavaScript.</noscript
+        >
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -4,7 +4,8 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "pnpm build:deps && vite --config vite.config.ts",
+    "dev": "vite --config vite.config.ts --port 5173 --strictPort",
+    "dev:reset": "pnpm dev --force",
     "build": "pnpm build:deps && tsc -b && vite build --config vite.config.ts",
     "preview": "vite preview --config vite.config.ts",
     "lint": "eslint .",
@@ -12,6 +13,7 @@
     "test": "pnpm build:deps && vitest run",
     "build:deps": "pnpm --filter @homeservicemarketplace/contracts build",
     "test:e2e": "playwright test",
+    "test:dev-startup": "playwright test --config playwright.dev.config.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install --with-deps chromium",
     "test:e2e:update-snapshots": "playwright test --update-snapshots",

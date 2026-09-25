@@ -176,12 +176,17 @@ test('commands pin the source config and typechecking emits no shadow config', a
     .toBe('PROVIDER_CONFIRMED_RIGHT_TO_PUBLISH');
 });
 
-test('reproduces the blank screen when Vite auto-discovers an old generated config', async ({ page }, info) => {
+test('reproduces the contracts failure and preserves recovery when an old config is auto-discovered', async ({ page }, info) => {
   await writeFile(path.join(web, 'vite.config.js'), legacyConfig);
   const server = await serve([viteCli, ...cliFlags(5197)], 5197, info, 'legacy-dev');
   const errors: string[] = [];
   const contractRequests: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  // The bootstrap from merged #100 now catches module failures. Inspect the
+  // handled console error as well as unexpected unhandled exceptions.
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
   page.on('request', (request) => {
     if (/packages\/contracts\/dist\//.test(decodeURIComponent(request.url()))) {
       contractRequests.push(request.url());
@@ -191,13 +196,16 @@ test('reproduces the blank screen when Vite auto-discovers an old generated conf
     await stubApi(page);
     await page.goto(server.baseURL);
     await expect.poll(() => errors.some((message) =>
-      /does not provide an export named|exports is not defined/.test(message),
+      /does not provide an export named 'LEGACY_PUBLICATION_ACK_TEXT'/.test(message),
     )).toBe(true);
     expect(contractRequests.length).toBeGreaterThan(0);
-    await expect(page.locator('#root')).toBeEmpty();
-    const screenshot = info.outputPath('before-legacy-blank.png');
+    await expect(page.getByRole('alert')).toContainText('The application could not start');
+    await expect(page.getByRole('alert')).toContainText('تعذّر بدء التطبيق');
+    await expect(page.getByRole('button', { name: 'إعادة المحاولة / Retry' })).toBeVisible();
+    await expect(page.getByTestId('app-card-seeker')).toHaveCount(0);
+    const screenshot = info.outputPath('before-legacy-recovery.png');
     await page.screenshot({ path: screenshot, fullPage: true });
-    await info.attach('before-legacy-blank', { path: screenshot, contentType: 'image/png' });
+    await info.attach('before-legacy-recovery', { path: screenshot, contentType: 'image/png' });
     await info.attach('legacy-errors', {
       body: JSON.stringify({ errors, contractRequests }, null, 2), contentType: 'application/json',
     });
@@ -246,8 +254,9 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
             if (admin) {
               await expect(page.getByTestId('admin-approval-center')).toBeVisible();
             } else {
-              await expect(page.locator('#root')).not.toBeEmpty();
-              await expect(page.locator('#root').locator('button, a, input').first()).toBeVisible();
+              for (const app of ['seeker', 'provider', 'admin']) {
+                await expect(page.getByTestId(`app-card-${app}`)).toBeVisible();
+              }
             }
             await expectNoHorizontalPageOverflow(page);
             await capture(`after-${label}`);
@@ -260,7 +269,8 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
             }
             await page.reload();
             if (admin) await expect(page.getByTestId('admin-review-directory')).toBeVisible();
-            else await expect(page.locator('#root').locator('button, a, input').first()).toBeVisible();
+            else await expect(page.getByTestId('app-card-seeker')).toBeVisible();
+            await expect(page.locator('#startup-error')).toHaveCount(0);
             await expect(page.locator('vite-error-overlay')).toHaveCount(0);
             expect(errors, label).toEqual([]);
             expect(distRequests, label).toEqual([]);
