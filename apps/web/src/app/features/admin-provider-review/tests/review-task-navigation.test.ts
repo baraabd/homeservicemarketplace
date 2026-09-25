@@ -1,11 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { ADMIN_PROVIDER_REVIEW_TASK_IDS } from '@homeservicemarketplace/contracts';
+import {
+  ADMIN_PROVIDER_REVIEW_TASK_IDS,
+  PROVIDER_REVIEW_CORRECTION_FIELDS,
+} from '@homeservicemarketplace/contracts';
 import {
   parseReviewTask,
   reviewTaskFromHash,
   reviewTaskSearch,
   selectedReviewTask,
 } from '../review-task-navigation';
+import {
+  WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS,
+  WEB_PROVIDER_REVIEW_CORRECTION_FIELDS,
+} from '../runtime-constants';
+
+describe('Admin review browser runtime boundary', () => {
+  it('keeps browser-safe review constants in sync with shared contracts', () => {
+    expect(WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS).toEqual(ADMIN_PROVIDER_REVIEW_TASK_IDS);
+    expect(WEB_PROVIDER_REVIEW_CORRECTION_FIELDS).toEqual(PROVIDER_REVIEW_CORRECTION_FIELDS);
+  });
+});
 
 describe('Review tab URL state', () => {
   it.each(ADMIN_PROVIDER_REVIEW_TASK_IDS)('accepts only the canonical task %s', (task) => {
