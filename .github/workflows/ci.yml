@@ -216,6 +216,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install Chromium
         run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Check native Vite development startup and recovery
+        run: pnpm --filter @homeservicemarketplace/web test:dev-startup
       - name: Build the web app
         # Hoisted out of playwright.config.ts's webServer command. It used to run
         # inside the 300s server-startup budget, so a slow cold build and a
