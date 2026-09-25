@@ -6,7 +6,7 @@ import type {
   AdminProviderReviewTaskId,
 } from '@homeservicemarketplace/contracts';
 import { BLOCKER_LABELS, TASK_LABELS, type ReviewLanguage } from '../copy';
-import { WEB_WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS } from '../runtime-constants';
+import { WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS } from '../runtime-constants';
 import './review-task-index.css';
 
 const ICONS = {
