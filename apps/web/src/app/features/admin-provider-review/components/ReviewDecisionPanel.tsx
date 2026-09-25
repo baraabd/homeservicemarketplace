@@ -1,18 +1,20 @@
 import { useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Check, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react';
-import {
-  ADMIN_PROVIDER_REVIEW_TASK_IDS,
-  PROVIDER_REVIEW_CORRECTION_FIELDS,
-  type AdminProviderReview,
-  type AdminProviderReviewFeedbackInput,
-  type AdminProviderReviewMutationResponse,
+import type {
+  AdminProviderReview,
+  AdminProviderReviewFeedbackInput,
+  AdminProviderReviewMutationResponse,
 } from '@homeservicemarketplace/contracts';
 import { approveProviderReview, requestProviderReviewChanges, requestStatus } from '../api';
 import { BLOCKER_LABELS, REVIEW_COPY, TASK_LABELS, type ReviewLanguage } from '../copy';
 import { ReviewBadge, ReviewBanner } from './ReviewPrimitives';
 import { ReviewDialog } from './ReviewDialog';
 import { reviewCorrectionFieldLabel } from '../../provider-onboarding-v2/copy/review-correction-fields';
+import {
+  WEB_WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS,
+  WEB_WEB_PROVIDER_REVIEW_CORRECTION_FIELDS,
+} from '../runtime-constants';
 
 const blankCorrection = (): AdminProviderReviewFeedbackInput => ({
   taskId: 'BASICS_IDENTITY',
@@ -310,7 +312,7 @@ export function ReviewDecisionPanel({
                       })
                     }
                   >
-                    {ADMIN_PROVIDER_REVIEW_TASK_IDS.map((task) => (
+                    {WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS.map((task) => (
                       <option value={task} key={task}>
                         {TASK_LABELS[lang][task]}
                       </option>
@@ -332,7 +334,7 @@ export function ReviewDecisionPanel({
                       }
                     >
                       <option value="">{reviewCorrectionFieldLabel(undefined, lang)}</option>
-                      {PROVIDER_REVIEW_CORRECTION_FIELDS[item.taskId].map((field) => (
+                      {WEB_PROVIDER_REVIEW_CORRECTION_FIELDS[item.taskId].map((field) => (
                         <option key={field} value={field}>
                           {reviewCorrectionFieldLabel(field, lang)}
                         </option>
