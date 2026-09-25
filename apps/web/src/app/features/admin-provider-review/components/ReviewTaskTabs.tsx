@@ -1,13 +1,13 @@
 import { createContext, useContext, useEffect, useId, useRef, type ReactNode } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
-import {
-  ADMIN_PROVIDER_REVIEW_TASK_IDS,
-  type AdminProviderReviewBlocker,
-  type AdminProviderReviewTaskId,
+import type {
+  AdminProviderReviewBlocker,
+  AdminProviderReviewTaskId,
 } from '@homeservicemarketplace/contracts';
 import { BadgeCheck, BriefcaseBusiness, CalendarDays, ClipboardCheck, Images, MapPin } from 'lucide-react';
 import { BLOCKER_LABELS, TASK_LABELS, type ReviewLanguage } from '../copy';
 import { parseReviewTask } from '../review-task-navigation';
+import { WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS } from '../runtime-constants';
 import './review-task-tabs.css';
 
 const ActiveTask = createContext<AdminProviderReviewTaskId | null>(null);
@@ -55,7 +55,7 @@ export function ReviewTaskTabs({
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const sequentialNavigation = useRef(false);
-  const index = ADMIN_PROVIDER_REVIEW_TASK_IDS.indexOf(value);
+  const index = WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS.indexOf(value);
   const issues = blockers.filter((blocker) => blocker.taskId === value);
   useEffect(() => {
     if (!focusLinkedPanel) return;
@@ -77,7 +77,7 @@ export function ReviewTaskTabs({
   }, [value]);
 
   function moveTo(next: number) {
-    const task = ADMIN_PROVIDER_REVIEW_TASK_IDS[next];
+    const task = WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS[next];
     if (!task) return;
     sequentialNavigation.current = true;
     onValueChange(task);
@@ -98,11 +98,11 @@ export function ReviewTaskTabs({
           <div className="ar-subheader">
             <h2 className="ar-heading" id={`${id}-title`}>{t.title}</h2>
             <span className="ar-muted ar-review-tab-position">
-              {t.section} {(index + 1).toLocaleString(lang)} {t.of} {ADMIN_PROVIDER_REVIEW_TASK_IDS.length.toLocaleString(lang)}
+              {t.section} {(index + 1).toLocaleString(lang)} {t.of} {WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS.length.toLocaleString(lang)}
             </span>
           </div>
           <Tabs.List className="ar-review-tab-list" aria-labelledby={`${id}-title`}>
-            {ADMIN_PROVIDER_REVIEW_TASK_IDS.map((task) => {
+            {WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS.map((task) => {
               const Icon = ICONS[task];
               const count = blockers.filter((blocker) => blocker.taskId === task).length;
               return (
@@ -136,7 +136,7 @@ export function ReviewTaskTabs({
         {children}
         <div className="ar-review-tab-actions">
           <button type="button" className="ar-button" disabled={index === 0} onClick={() => moveTo(index - 1)}>{t.previous}</button>
-          <button type="button" className="ar-button" disabled={index === ADMIN_PROVIDER_REVIEW_TASK_IDS.length - 1} onClick={() => moveTo(index + 1)}>{t.next}</button>
+          <button type="button" className="ar-button" disabled={index === WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS.length - 1} onClick={() => moveTo(index + 1)}>{t.next}</button>
         </div>
       </Tabs.Root>
     </ActiveTask.Provider>
