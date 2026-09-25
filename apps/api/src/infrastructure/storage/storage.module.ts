@@ -3,9 +3,7 @@ import { Module } from '@nestjs/common';
 import { AppConfigService } from '../../config/app-config.service';
 import { ConfigModule } from '../../config/config.module';
 import { LocalDiskStorageAdapter } from './local-disk-storage.adapter';
-import { S3StorageAdapter } from './s3-storage.adapter';
 import { LocalDiskRestrictedStorageAdapter } from './local-disk-restricted-storage.adapter';
-import { S3RestrictedStorageAdapter } from './s3-restricted-storage.adapter';
 import { STORAGE_PORT, StoragePort } from './storage.port';
 import {
   RESTRICTED_OBJECT_STORAGE,
@@ -18,10 +16,10 @@ import {
 // STORAGE_DRIVER, so the rest of the codebase imports `StoragePort`
 // and never knows which concrete implementation it has.
 //
-// Both adapter classes are listed in `providers` so DI can construct
-// either one; `useFactory` picks the right instance at module-init
-// time. Listing both also means a future hot-swap (e.g. failover)
-// would be a config change, not a wiring change.
+// S3 adapters are loaded lazily only when STORAGE_DRIVER=s3. This is
+// deliberate: importing the AWS SDK adds a large CommonJS module graph and
+// used to slow every LOCAL development boot even though local storage was
+// selected. Local development must not pay the S3 startup cost.
 //
 // ── Sprint 9B.3 — the RESTRICTED boundary ───────────────────────────────
 //
@@ -43,31 +41,29 @@ import {
   imports: [ConfigModule],
   providers: [
     LocalDiskStorageAdapter,
-    S3StorageAdapter,
     LocalDiskRestrictedStorageAdapter,
-    S3RestrictedStorageAdapter,
     {
       provide: STORAGE_PORT,
-      inject: [AppConfigService, LocalDiskStorageAdapter, S3StorageAdapter],
-      useFactory: (
+      inject: [AppConfigService, LocalDiskStorageAdapter],
+      useFactory: async (
         config: AppConfigService,
         local: LocalDiskStorageAdapter,
-        s3: S3StorageAdapter,
-      ): StoragePort => {
-        const driver = config.get('STORAGE_DRIVER');
-        return driver === 's3' ? s3 : local;
+      ): Promise<StoragePort> => {
+        if (config.get('STORAGE_DRIVER') !== 's3') return local;
+        const { S3StorageAdapter } = await import('./s3-storage.adapter');
+        return new S3StorageAdapter(config);
       },
     },
     {
       provide: RESTRICTED_OBJECT_STORAGE,
-      inject: [AppConfigService, LocalDiskRestrictedStorageAdapter, S3RestrictedStorageAdapter],
-      useFactory: (
+      inject: [AppConfigService, LocalDiskRestrictedStorageAdapter],
+      useFactory: async (
         config: AppConfigService,
         local: LocalDiskRestrictedStorageAdapter,
-        s3: S3RestrictedStorageAdapter,
-      ): RestrictedObjectStoragePort => {
-        const driver = config.get('STORAGE_DRIVER');
-        return driver === 's3' ? s3 : local;
+      ): Promise<RestrictedObjectStoragePort> => {
+        if (config.get('STORAGE_DRIVER') !== 's3') return local;
+        const { S3RestrictedStorageAdapter } = await import('./s3-restricted-storage.adapter');
+        return new S3RestrictedStorageAdapter(config);
       },
     },
   ],
