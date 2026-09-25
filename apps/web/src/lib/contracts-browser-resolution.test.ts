@@ -1,9 +1,11 @@
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, type ViteDevServer } from 'vite';
 
-const APP_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const CWD = process.cwd();
+const APP_ROOT = CWD.endsWith(path.join('apps', 'web'))
+  ? CWD
+  : path.resolve(CWD, 'apps/web');
 const CONTRACTS_SOURCE = path.resolve(APP_ROOT, '../../packages/contracts/src/index.ts');
 
 let server: ViteDevServer | undefined;
