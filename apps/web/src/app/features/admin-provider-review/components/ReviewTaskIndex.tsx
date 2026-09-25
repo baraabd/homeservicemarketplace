@@ -1,12 +1,12 @@
 import {
   BadgeCheck, BriefcaseBusiness, CalendarDays, ClipboardCheck, Images, MapPin,
 } from 'lucide-react';
-import {
-  ADMIN_PROVIDER_REVIEW_TASK_IDS,
-  type AdminProviderReviewBlocker,
-  type AdminProviderReviewTaskId,
+import type {
+  AdminProviderReviewBlocker,
+  AdminProviderReviewTaskId,
 } from '@homeservicemarketplace/contracts';
 import { BLOCKER_LABELS, TASK_LABELS, type ReviewLanguage } from '../copy';
+import { WEB_WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS } from '../runtime-constants';
 import './review-task-index.css';
 
 const ICONS = {
@@ -65,7 +65,7 @@ export function ReviewTaskIndex({ lang, blockers }: {
       <h2 className="ar-heading">{t.title}</h2>
       <p className="ar-muted">{t.hint}</p>
       <ol className="ar-review-index-list">
-        {ADMIN_PROVIDER_REVIEW_TASK_IDS.map((task, index) => {
+        {WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS.map((task, index) => {
           const Icon = ICONS[task];
           const issues = blockers.filter((entry) => entry.taskId === task);
           return (
