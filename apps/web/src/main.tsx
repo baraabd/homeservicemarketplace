@@ -1,11 +1,13 @@
-import { createRoot } from 'react-dom/client';
-import App from './app/App.tsx';
-import './styles/index.css';
-// Leaflet ships its base styles as a sibling asset (zoom controls, the
-// .leaflet-container reset, the attribution prompt). The component-scope
-// import in LocationMap.tsx already pulls it in, but importing it here
-// too means the styles are guaranteed to be in the bundle even if a
-// future code-split lazy-loads LocationMap.
-import 'leaflet/dist/leaflet.css';
-
-createRoot(document.getElementById('root')!).render(<App />);
+// Keep this entry independent of the application module graph. Static imports
+// fail before any code in this file can run; a rejected dynamic import lets us
+// retain the HTML recovery screen instead of leaving an empty root.
+void import('./bootstrap')
+  .then(({ mountApp }) => mountApp())
+  .catch((error: unknown) => {
+    console.error('[startup] Application could not start', error);
+    document.getElementById('startup-loading')?.setAttribute('hidden', '');
+    document.getElementById('startup-error')?.removeAttribute('hidden');
+    document.getElementById('startup-retry')?.addEventListener('click', () => {
+      window.location.reload();
+    });
+  });

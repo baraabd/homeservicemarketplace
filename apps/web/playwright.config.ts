@@ -93,6 +93,8 @@ export default defineConfig({
   // preview built with VITE_PROVIDER_ONBOARDING_V2=true. Both run locally with
   // E2E_REAL_API set — see docs/sprint-09b26/PROVIDER_ONBOARDING_V2_RELEASE.md.
   testIgnore: [
+    // Requires native Vite dev transforms; owned by playwright.dev.config.ts.
+    '**/dev-startup.spec.ts',
     // Platform-specific baselines; see VISUAL_REFERENCE_RUN above.
     ...(VISUAL_REFERENCE_RUN ? [] : ['**/prototype-reference.spec.ts']),
     // Evidence-writing visual gate; see PHASE5_RUN above.
