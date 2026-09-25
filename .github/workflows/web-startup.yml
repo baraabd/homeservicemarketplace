@@ -1,0 +1,53 @@
+name: Web development startup
+
+on:
+  pull_request:
+    branches: ['main', 'develop']
+  push:
+    branches: ['main', 'develop']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  startup:
+    name: Dev browser startup (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_db
+      JWT_ACCESS_SECRET: ci_only_dummy_secret_at_least_32_chars_long
+      VITE_API_URL: https://api.example.test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Build the real CommonJS contracts entry
+        run: pnpm --filter @homeservicemarketplace/contracts build
+      - name: Install Chromium
+        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Reproduce the blank screen, then verify the real dev command
+        run: pnpm --filter @homeservicemarketplace/web test:startup
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: web-startup-${{ matrix.os }}
+          path: |
+            apps/web/test-results/startup/
+            apps/web/test-results/startup-report/
+          retention-days: 14
+          if-no-files-found: error

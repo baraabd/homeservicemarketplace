@@ -44,6 +44,8 @@
   },
   "include": [
     "e2e/**/*.ts",
+    "startup-tests/**/*.ts",
+    "playwright.startup.config.ts",
     "src/app/features/provider-onboarding-v2/phase5-visual-states.test.ts",
     "src/app/features/provider-ui/**/*.ts",
     "src/app/features/provider-ui/**/*.tsx"

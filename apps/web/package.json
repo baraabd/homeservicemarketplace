@@ -4,9 +4,9 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "pnpm build:deps && vite",
-    "build": "pnpm build:deps && tsc -b && vite build",
-    "preview": "vite preview",
+    "dev": "pnpm build:deps && vite --config vite.config.ts",
+    "build": "pnpm build:deps && tsc -b && vite build --config vite.config.ts",
+    "preview": "vite preview --config vite.config.ts",
     "lint": "eslint .",
     "typecheck": "pnpm build:deps && tsc -b",
     "test": "pnpm build:deps && vitest run",
@@ -16,7 +16,8 @@
     "test:e2e:install": "playwright install --with-deps chromium",
     "test:e2e:update-snapshots": "playwright test --update-snapshots",
     "test:ci": "pnpm build:deps && vitest run --reporter=default --reporter=junit --outputFile.junit=vitest-report.xml",
-    "typecheck:e2e": "tsc -p tsconfig.e2e.json --noEmit"
+    "typecheck:e2e": "tsc -p tsconfig.e2e.json --noEmit",
+    "test:startup": "pnpm build:deps && playwright test --config playwright.startup.config.ts"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
