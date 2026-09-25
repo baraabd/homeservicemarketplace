@@ -130,7 +130,10 @@ const cliFlags = (port: number) => [
 ];
 
 test.beforeAll(async () => {
-  scratch = await mkdtemp(path.join(tmpdir(), 'hsm-startup-'));
+  // Windows TEMP can contain an 8.3 alias such as RUNNER~1. Canonicalize
+  // the scratch root so Vite's realpath security checks see the same path.
+  // Keep the filesystem allow-list strict; do not disable it for this test.
+  scratch = await realpath(await mkdtemp(path.join(tmpdir(), 'hsm-startup-')));
   web = path.join(scratch, 'apps/web');
   const contracts = path.join(scratch, 'packages/contracts');
   const filter = (source: string) => {
