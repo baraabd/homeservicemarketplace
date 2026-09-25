@@ -7,7 +7,7 @@ import type {
 import { BadgeCheck, BriefcaseBusiness, CalendarDays, ClipboardCheck, Images, MapPin } from 'lucide-react';
 import { BLOCKER_LABELS, TASK_LABELS, type ReviewLanguage } from '../copy';
 import { parseReviewTask } from '../review-task-navigation';
-import { WEB_WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS } from '../runtime-constants';
+import { WEB_ADMIN_PROVIDER_REVIEW_TASK_IDS } from '../runtime-constants';
 import './review-task-tabs.css';
 
 const ActiveTask = createContext<AdminProviderReviewTaskId | null>(null);
