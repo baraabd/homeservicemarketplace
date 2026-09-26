@@ -1,1 +1,36 @@
+# Accountable repository owner; logical sprint ownership is in
+# docs/production-readiness/PARALLEL_DEVELOPMENT_POLICY.md.
 * @baraabd
+
+# S01: baseline evidence. Do not edit other sprints' acceptance reports.
+/docs/production-readiness/ @baraabd
+# S02: delivery governance; no direct pushes or merges by sprint agents.
+/.github/ @baraabd
+
+# Seeker (S04 / S05).
+/apps/api/src/modules/iam/ @baraabd
+/apps/api/src/modules/requests/ @baraabd
+/apps/api/src/modules/media/ @baraabd
+/apps/web/src/app/components/auth/ @baraabd
+/apps/web/src/app/components/wizard/ @baraabd
+
+# Provider (S06, with Work Area reserved for S07 and Hours for S08).
+/apps/api/src/modules/provider/ @baraabd
+/apps/web/src/app/features/provider-onboarding-v2/ @baraabd
+# Admin review and verification (S09; financials remain out of scope).
+/apps/api/src/modules/admin/ @baraabd
+/apps/web/src/app/features/admin-provider-review/ @baraabd
+/apps/web/src/app/features/admin-verification/ @baraabd
+# Money stays dark. S10 is the sole Wave A migration owner.
+/apps/api/src/modules/money/ @baraabd
+
+# Shared authority files. Coordinate BEFORE editing; last match wins.
+/packages/database/ @baraabd
+/packages/contracts/ @baraabd
+/apps/api/src/app.module.ts @baraabd
+/apps/api/src/config/env.schema.ts @baraabd
+/apps/web/src/app/routes.ts @baraabd
+/.github/workflows/ @baraabd
+/pnpm-lock.yaml @baraabd
+/package.json @baraabd
+/pnpm-workspace.yaml @baraabd

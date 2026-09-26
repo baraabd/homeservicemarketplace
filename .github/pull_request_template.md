@@ -1,24 +1,34 @@
-## Summary
+## Scope and source identity
 
-- What does this PR change?
+- Sprint:
+- Base SHA:
+- Final SHA:
+- Owned paths:
+- Shared files modified:
+- Schema change:
+- Migration:
+- Contract change:
+- Feature flag:
+- Security impact:
 
-## Type of change
+Describe the root cause or capability, the implementation, and why each shared-file edit is necessary. Record the actual branch-start merge base, not a copied plan SHA. Update Final SHA in this PR body after committing; do not create a self-referential commit just to insert its own hash.
 
-- [ ] Chore
-- [ ] Fix
-- [ ] Feature
-- [ ] Refactor
-- [ ] CI/CD
-- [ ] Docs
+## Acceptance evidence
 
-## Checklist
+- Tests:
+- Browser evidence:
+- Known limitations:
+- Rollback:
 
-- [ ] I ran `pnpm lint`
-- [ ] I ran `pnpm typecheck`
-- [ ] I ran relevant tests
-- [ ] I updated docs or env examples if needed
-- [ ] This PR is scoped and not mixing unrelated changes
+Link `docs/production-readiness/<sprint>/` and the CI / CodeQL runs for the final head. Distinguish executed PASS / FAIL / BLOCKED / NOT RUN / NOT APPLICABLE. Test source and mocked responses are not evidence of a real browser, database or storage journey.
 
-## Notes
+## Review checklist
 
-- Anything reviewers should know?
+- [ ] One sprint, one branch, one PR; no unrelated files.
+- [ ] Shared-file owners coordinated; no concurrent migration outside S10.
+- [ ] Latest `develop` integrated safely and affected gates re-run afterwards.
+- [ ] Lint, typecheck, affected tests and production build passed where applicable.
+- [ ] Required real-service, browser, RTL/mobile/accessibility and negative-security evidence is attached.
+- [ ] CI and CodeQL passed on the final SHA; missing/queued/cancelled is not PASS.
+- [ ] No skipped tests, weakened gates, exposed secrets or unintended flag activation.
+- [ ] Remaining risks and rollback are explicit; no merge or deployment performed by this task.
