@@ -1,0 +1,57 @@
+name: Production governance
+
+on:
+  pull_request:
+    branches: ['main', 'develop']
+  push:
+    branches: ['main', 'develop']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance:
+    name: Production governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          # This job uses only Node built-ins; pnpm is intentionally not installed.
+          package-manager-cache: false
+      - name: Test fail-closed governance validation
+        run: node --test .github/scripts/production-governance.test.mjs
+      - name: Validate repository governance files
+        run: node .github/scripts/production-governance.mjs
+      - name: Capture immutable tracked-source provenance
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/production-governance"
+          git rev-parse HEAD > "$RUNNER_TEMP/production-governance/head-sha.txt"
+          git rev-parse 'HEAD^{tree}' > "$RUNNER_TEMP/production-governance/tree-sha.txt"
+          printf '%s\n' "$PR_BASE_SHA" > "$RUNNER_TEMP/production-governance/pr-base-sha.txt"
+          git ls-tree -r --long HEAD > "$RUNNER_TEMP/production-governance/tracked-tree.txt"
+          # git archive reads tracked HEAD, never runner .env, credentials,
+          # node_modules, browser sessions or any untracked runtime files.
+          git archive --format=tar HEAD | gzip -n > "$RUNNER_TEMP/production-governance/source.tar.gz"
+          cd "$RUNNER_TEMP/production-governance"
+          sha256sum source.tar.gz > source.tar.gz.sha256
+      - name: Retain source provenance for independent acceptance
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-governance-source
+          path: ${{ runner.temp }}/production-governance/
+          if-no-files-found: error
+          retention-days: 7
