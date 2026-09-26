@@ -1,5 +1,5 @@
 import { formatReviewDate } from '../format-review-date';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type {
   AdminPortfolioItem,
@@ -14,50 +14,10 @@ import { REVIEW_COPY, type ReviewLanguage } from '../copy';
 import { ReviewBanner, StatusBadge } from './ReviewPrimitives';
 import { ReviewDialog } from './ReviewDialog';
 import { ReviewMutationNotice } from './ReviewMutationNotice';
+import { ReviewEvidenceCorrection } from './ReviewEvidenceCorrection';
+import { usePrivatePortfolioImage } from '../evidence/usePrivatePortfolioImage';
 
 const portfolioPath = (id: string) => `/v1/admin/providers/${encodeURIComponent(id)}/portfolio`;
-
-/** Credentials and image blobs never enter the metadata query cache. */
-function usePrivatePortfolioImage(
-  providerId: string,
-  item: AdminPortfolioItem | null,
-  openId: number,
-) {
-  const [state, setState] = useState<{
-    openId: number;
-    itemId: string;
-    url?: string;
-    failed?: boolean;
-  } | null>(null);
-  useEffect(() => {
-    if (!item) return;
-    const controller = new AbortController();
-    let objectUrl: string | undefined;
-    void api
-      .get<Blob>(`${portfolioPath(providerId)}/${encodeURIComponent(item.id)}/media`, {
-        responseType: 'blob',
-        signal: controller.signal,
-      })
-      .then(({ data }) => {
-        if (controller.signal.aborted) return;
-        // Never render HTML/SVG returned by a proxy failure as active content.
-        if (
-          !['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif'].includes(data.type)
-        )
-          throw new Error('Unsupported image response');
-        objectUrl = URL.createObjectURL(data);
-        setState({ openId, itemId: item.id, url: objectUrl });
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setState({ openId, itemId: item.id, failed: true });
-      });
-    return () => {
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [providerId, item, openId]);
-  return item && state?.itemId === item.id && state.openId === openId ? state : null;
-}
 
 export function ReviewPortfolio({
   review,
@@ -210,6 +170,8 @@ export function ReviewPortfolio({
                     <ZoomIn size={16} aria-hidden />
                     {t.openImage}
                   </button>
+                  <ReviewEvidenceCorrection key={`${providerId}:${review.submission?.id}:${item.id}`} review={review} lang={lang} onChanged={onChanged}
+                    readOnly={paused} kind="portfolio" itemId={item.id} />
                 </div>
               </article>
             ))}
@@ -240,7 +202,10 @@ export function ReviewPortfolio({
           />
         ) : image?.failed ? (
           <ReviewBanner role="alert" tone="danger">
-            {t.mediaFailed}
+            <p>{t.mediaFailed}</p>
+            <button className="ar-button" type="button" data-testid="review-portfolio-media-retry"
+              disabled={paused || mutation.isPending}
+              onClick={() => setOpenId((value) => value + 1)}>{t.retry}</button>
           </ReviewBanner>
         ) : (
           <div className="ar-gallery-image" role="status">
