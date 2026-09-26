@@ -33,4 +33,37 @@ describe('browser contracts resolution', () => {
     expect(resolved?.id).not.toContain('/packages/contracts/dist/');
     expect(resolved?.id).not.toContain('\\packages\\contracts\\dist\\');
   });
+
+  it('seeds cold-start dependencies without scanning the app or disabling runtime discovery', async () => {
+    server = await createServer({
+      root: APP_ROOT,
+      configFile: path.join(APP_ROOT, 'vite.config.ts'),
+      server: { middlewareMode: true },
+    });
+
+    const optimizer = server.config.optimizeDeps;
+    expect(optimizer.entries).toEqual([]);
+    expect(optimizer.noDiscovery).toBe(false);
+    // Plugin-contributed seeds may overlap; membership is the runtime contract.
+    expect(optimizer.include).toEqual(
+      expect.arrayContaining([
+        'react',
+        'react-dom/client',
+        'react/jsx-dev-runtime',
+        'react/jsx-runtime',
+        'react-router',
+        '@tanstack/react-query',
+        'axios',
+        'lucide-react',
+        'motion/react',
+        'recharts',
+        'leaflet',
+        'pdfjs-dist',
+      ]),
+    );
+    expect(optimizer.include).not.toContain('@homeservicemarketplace/contracts');
+    expect(optimizer.exclude).toContain('@homeservicemarketplace/contracts');
+    // Regular dev must be able to reuse a successful optimizer result.
+    expect(optimizer.force).not.toBe(true);
+  });
 });

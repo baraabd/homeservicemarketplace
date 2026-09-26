@@ -49,9 +49,44 @@ export default defineConfig(({ mode, command }) => {
         ),
       },
     },
-    // Do not prebundle the CommonJS package entry. The alias above is the
-    // browser boundary and points at source ESM that Vite transforms directly.
-    optimizeDeps: { exclude: ['@homeservicemarketplace/contracts'] },
+    // Seed the dependencies observed by the real cold-start scanner directly.
+    // Scanning index.html walked the entire eagerly imported app before React
+    // could be served (36.262s in the supplied Windows trace). An empty entries
+    // list removes that up-front source scan, NOT dependency optimization.
+    // Runtime discovery remains enabled for future/new imports not listed here.
+    optimizeDeps: {
+      entries: [],
+      noDiscovery: false,
+      include: [
+        '@radix-ui/react-alert-dialog',
+        '@radix-ui/react-dialog',
+        '@radix-ui/react-label',
+        '@radix-ui/react-progress',
+        '@radix-ui/react-slot',
+        '@radix-ui/react-tabs',
+        '@tanstack/react-query',
+        'axios',
+        'class-variance-authority',
+        'clsx',
+        'leaflet',
+        'lucide-react',
+        'motion/react',
+        'next-themes',
+        'pdfjs-dist',
+        'react',
+        'react-dom/client',
+        'react-leaflet',
+        'react-router',
+        'react/jsx-dev-runtime',
+        'react/jsx-runtime',
+        'recharts',
+        'socket.io-client',
+        'sonner',
+        'tailwind-merge',
+      ],
+      // Preserve the browser ESM source boundary; never optimize the CJS barrel.
+      exclude: ['@homeservicemarketplace/contracts'],
+    },
     assetsInclude: ['**/*.svg', '**/*.csv'],
   };
 });
