@@ -20,6 +20,8 @@ export function calculateCouponDiscount(input: { subtotalMinor: bigint; currency
   if (coupon.startsAt && coupon.endsAt && coupon.endsAt <= coupon.startsAt) throw new MoneyDomainError('INVALID_COUPON_WINDOW', 'Coupon end date must be after start date');
   if (coupon.startsAt && input.now < coupon.startsAt) throw new MoneyDomainError('COUPON_NOT_STARTED', 'Coupon is not active yet');
   if (coupon.endsAt && input.now >= coupon.endsAt) throw new MoneyDomainError('COUPON_EXPIRED', 'Coupon has expired');
+  if (coupon.kind !== 'FIXED' && coupon.kind !== 'PERCENTAGE') throw new MoneyDomainError('INVALID_COUPON_KIND', 'Coupon kind must be FIXED or PERCENTAGE');
+  if (typeof coupon.value !== 'bigint') throw new MoneyDomainError('INVALID_COUPON_VALUE', 'Coupon value must use integer bigint minor units');
   if (coupon.value <= 0n) throw new MoneyDomainError('INVALID_COUPON_VALUE', 'Coupon value must be positive');
   if (coupon.kind === 'FIXED') {
     if (!coupon.currency || normalizeCurrency(coupon.currency) !== quoteCurrency) throw new MoneyDomainError('COUPON_CURRENCY_MISMATCH', 'Coupon currency does not match quote currency');
@@ -37,6 +39,7 @@ const PAYMENT_TRANSITIONS: Readonly<Record<string, readonly string[]>> = {
 };
 
 export function assertPaymentTransition(from: string, to: string): void {
+  if (!Object.hasOwn(PAYMENT_TRANSITIONS, from) || !Object.hasOwn(PAYMENT_TRANSITIONS, to)) throw new MoneyDomainError('INVALID_PAYMENT_TRANSITION', 'Payment intent cannot transition between unrecognized states');
   if (from === to) return;
   if (!PAYMENT_TRANSITIONS[from]?.includes(to)) throw new MoneyDomainError('INVALID_PAYMENT_TRANSITION', `Payment intent cannot transition from ${from} to ${to}`);
 }
@@ -49,6 +52,7 @@ const SUBSCRIPTION_TRANSITIONS: Readonly<Record<string, readonly string[]>> = {
 };
 
 export function assertSubscriptionTransition(from: string, to: string): void {
+  if (!Object.hasOwn(SUBSCRIPTION_TRANSITIONS, from) || !Object.hasOwn(SUBSCRIPTION_TRANSITIONS, to)) throw new MoneyDomainError('INVALID_SUBSCRIPTION_TRANSITION', 'Subscription cannot transition between unrecognized states');
   if (from === to) return;
   if (!SUBSCRIPTION_TRANSITIONS[from]?.includes(to)) throw new MoneyDomainError('INVALID_SUBSCRIPTION_TRANSITION', `Subscription cannot transition from ${from} to ${to}`);
 }
