@@ -1,4 +1,5 @@
-import { RouterProvider } from 'react-router';
+// The DOM export wires ReactDOM.flushSync for synchronous keyboard navigation.
+import { RouterProvider } from 'react-router/dom';
 import { AuthProvider } from '../lib/auth-provider';
 import { router } from './routes';
 
