@@ -27,6 +27,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
+          # This job uses only Node built-ins; pnpm is intentionally not installed.
+          package-manager-cache: false
       - name: Test fail-closed governance validation
         run: node --test .github/scripts/production-governance.test.mjs
       - name: Validate repository governance files
