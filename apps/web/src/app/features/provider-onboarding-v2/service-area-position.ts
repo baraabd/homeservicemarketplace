@@ -20,7 +20,17 @@ export function requestServiceAreaPosition(signal: AbortSignal): Promise<Geoloca
     signal.addEventListener('abort', abort, { once: true });
     try {
       navigator.geolocation.getCurrentPosition(
-        (position) => finish(position),
+        (position) => {
+          // Do not hand non-finite or impossible coordinates to Leaflet or
+          // autosave. A malformed device result must preserve manual entry.
+          const { latitude, longitude } = position.coords;
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+              latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            finish(undefined, { code: 2 });
+            return;
+          }
+          finish(position);
+        },
         (error) => finish(undefined, error),
         { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
       );

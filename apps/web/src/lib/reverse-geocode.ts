@@ -1,3 +1,5 @@
+import { parseGeocodeAddress } from './reverse-geocode-payload';
+
 // Reverse geocoding utility — coordinates → human-readable address.
 //
 // Used by:
@@ -111,40 +113,6 @@ function partial(
 // We pick the most-specific available city-like field so the
 // available-requests filter (which keys on a normalised cityKey) keeps
 // working for rural points without losing precision in dense urban areas.
-interface NominatimAddress {
-  city?: string;
-  town?: string;
-  village?: string;
-  hamlet?: string;
-  municipality?: string;
-  county?: string;
-  state?: string;
-  country?: string;
-  country_code?: string;
-}
-
-interface NominatimReverseResponse {
-  display_name?: string;
-  address?: NominatimAddress;
-  /** Nominatim returns `{ "error": "Unable to geocode" }` for points
-   *  it can't resolve (mid-ocean, Antarctica, etc.) — we treat that
-   *  as `no_match`, not `network`. */
-  error?: string;
-}
-
-function nominatimCity(addr: NominatimAddress): string {
-  return (
-    addr.city ??
-    addr.town ??
-    addr.village ??
-    addr.hamlet ??
-    addr.municipality ??
-    addr.county ??
-    addr.state ??
-    ''
-  );
-}
-
 /** Pure Nominatim reverse-geocoding call. Caller controls the
  *  `Accept-Language` header via the `lang` arg (defaults to Arabic
  *  with English fallback for the RTL market). Never throws — every
@@ -175,33 +143,25 @@ export async function reverseGeocodeViaNominatim(
   let res: Response;
   try {
     res = await fetch(url, { signal, headers });
-  } catch (err) {
-    console.warn('[reverse-geocode/nominatim] fetch failed:', err);
+  } catch {
+    // A fetch error can include the requested precise-location URL.
+    console.warn('[reverse-geocode/nominatim] fetch failed');
     return partial(lat, lng, 'network');
   }
   if (!res.ok) {
     console.warn(`[reverse-geocode/nominatim] HTTP ${res.status}`);
     return partial(lat, lng, 'network');
   }
-  let body: NominatimReverseResponse;
+  let body: unknown;
   try {
-    body = (await res.json()) as NominatimReverseResponse;
-  } catch (err) {
-    console.warn('[reverse-geocode/nominatim] response was not JSON:', err);
+    body = await res.json();
+  } catch {
+    console.warn('[reverse-geocode/nominatim] response was not JSON');
     return partial(lat, lng, 'network');
   }
-  if (body.error || !body.display_name) {
-    return partial(lat, lng, 'no_match');
-  }
-  const addr = body.address ?? {};
-  return {
-    status: 'ok',
-    formattedAddress: body.display_name,
-    city: nominatimCity(addr),
-    country: addr.country ?? '',
-    lat,
-    lng,
-  };
+  const address = parseGeocodeAddress(body);
+  if (!address) return partial(lat, lng, 'no_match');
+  return { status: 'ok', ...address, lat, lng };
 }
 
 /** Public reverse-geocoder. Calls Nominatim with the platform's
