@@ -5,12 +5,14 @@ export class MoneyDomainError extends Error {
 }
 
 export function normalizeCurrency(currency: string): string {
+  if (typeof currency !== 'string') throw new MoneyDomainError('INVALID_CURRENCY', 'Currency must be a three-letter ISO code');
   const value = currency.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(value)) throw new MoneyDomainError('INVALID_CURRENCY', 'Currency must be a three-letter ISO code');
   return value;
 }
 
 export function assertMinorAmount(amountMinor: bigint): void {
+  if (typeof amountMinor !== 'bigint') throw new MoneyDomainError('INVALID_AMOUNT', 'Money amount must use integer bigint minor units');
   if (amountMinor < 0n) throw new MoneyDomainError('INVALID_AMOUNT', 'Money amount cannot be negative');
 }
 
@@ -23,16 +25,24 @@ export function calculateQuote(input: { priceMinor: bigint; currency: string; di
 }
 
 export function assertBalancedLedger(entries: readonly LedgerEntryContract[]): void {
-  if (entries.length < 2) throw new MoneyDomainError('LEDGER_TOO_SMALL', 'A transaction requires at least two entries');
-  const currencies = new Set(entries.map((entry) => normalizeCurrency(entry.currency)));
-  if (currencies.size !== 1) throw new MoneyDomainError('MIXED_CURRENCY_LEDGER', 'A ledger transaction cannot mix currencies');
+  if (!Array.isArray(entries) || entries.length < 2) throw new MoneyDomainError('LEDGER_TOO_SMALL', 'A transaction requires at least two entries');
+  const currencies = new Set<string>();
   let debits = 0n;
   let credits = 0n;
   for (const entry of entries) {
-    if (entry.amountMinor <= 0n) throw new MoneyDomainError('INVALID_LEDGER_AMOUNT', 'Ledger entries must be positive');
+    if (!entry || typeof entry.accountId !== 'string' || !entry.accountId.trim()) {
+      throw new MoneyDomainError('INVALID_LEDGER_ACCOUNT', 'Ledger entries require an account identity');
+    }
+    if (entry.side !== 'DEBIT' && entry.side !== 'CREDIT') {
+      throw new MoneyDomainError('INVALID_LEDGER_SIDE', 'Ledger side must be DEBIT or CREDIT');
+    }
+    assertMinorAmount(entry.amountMinor);
+    if (entry.amountMinor === 0n) throw new MoneyDomainError('INVALID_LEDGER_AMOUNT', 'Ledger entries must be positive');
+    currencies.add(normalizeCurrency(entry.currency));
     if (entry.side === 'DEBIT') debits += entry.amountMinor;
     else credits += entry.amountMinor;
   }
+  if (currencies.size !== 1) throw new MoneyDomainError('MIXED_CURRENCY_LEDGER', 'A ledger transaction cannot mix currencies');
   if (debits !== credits) throw new MoneyDomainError('UNBALANCED_LEDGER', 'Ledger debits and credits must balance');
 }
 
@@ -48,7 +58,8 @@ export function decideEntitlement(input: { key: string; active: boolean; enabled
 }
 
 export function nextSubscriptionEnd(start: Date, interval: 'MONTHLY' | 'ANNUAL'): Date {
-  if (!Number.isFinite(start.getTime())) throw new MoneyDomainError('INVALID_DATE', 'Subscription start date must be valid');
+  if (!(start instanceof Date) || !Number.isFinite(start.getTime())) throw new MoneyDomainError('INVALID_DATE', 'Subscription start date must be valid');
+  if (interval !== 'MONTHLY' && interval !== 'ANNUAL') throw new MoneyDomainError('INVALID_BILLING_INTERVAL', 'Billing interval must be MONTHLY or ANNUAL');
   const end = new Date(start.getTime());
   const originalDay = end.getUTCDate();
   end.setUTCDate(1);
