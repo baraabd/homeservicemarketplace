@@ -33,6 +33,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { type IntendedApp, INTENDED_APP_PATHS, getIntendedApp } from './intended-app';
+import { sanitizeAuthReturnTo } from './auth-return-to';
 
 export type AuthExperienceId = IntendedApp;
 
@@ -181,13 +182,14 @@ function isAuthExperienceId(value: unknown): value is AuthExperienceId {
 export function getExperienceForReturnTo(
   returnTo: string | null | undefined,
 ): AuthExperienceId | null {
-  if (!returnTo || typeof returnTo !== 'string') return null;
-  // Only honour in-app paths — open-redirect rejection happens in
-  // sanitizeReturnTo upstream, but the prefix check here is defensive.
-  if (!returnTo.startsWith('/') || returnTo.startsWith('//')) return null;
-  if (returnTo === '/' || returnTo === '/home' || returnTo.startsWith('/home/')) return 'seeker';
-  if (returnTo === '/provider' || returnTo.startsWith('/provider/')) return 'provider';
-  if (returnTo === '/admin' || returnTo.startsWith('/admin/')) return 'admin';
+  const safe = sanitizeAuthReturnTo(returnTo);
+  if (!safe) return null;
+  // Query strings and anchors must not turn a Provider/Admin deep link into
+  // a Seeker-themed login. Use the same origin/normalization boundary.
+  const pathname = new URL(safe, 'https://hsm.invalid').pathname;
+  if (pathname === '/' || pathname === '/home' || pathname.startsWith('/home/')) return 'seeker';
+  if (pathname === '/provider' || pathname.startsWith('/provider/')) return 'provider';
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) return 'admin';
   return null;
 }
 
@@ -261,9 +263,8 @@ export const SELECT_PATH = '/select';
 // flow lands the user on /admin where RequireAdmin (route guard) does
 // the actual access check.
 export function resolvePostAuthDestination(input: ResolveDestinationInput): string {
-  if (typeof input.returnTo === 'string' && input.returnTo.length > 0) {
-    return input.returnTo;
-  }
+  const returnTo = sanitizeAuthReturnTo(input.returnTo);
+  if (returnTo) return returnTo;
   const intent = isAuthExperienceId(input.intentApp)
     ? input.intentApp
     : getExperienceForIntendedApp();

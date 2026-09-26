@@ -4,6 +4,7 @@ import type { AxiosError } from 'axios';
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import * as authApi from './auth-api';
 import { clearIntendedApp } from './intended-app';
+import { clearAuthSession } from './auth-session-reset';
 import { useNotificationArrivalWatcher } from './realtime/notification-arrival-watcher';
 import { useRealtimeSocket } from './realtime/use-realtime-socket';
 
@@ -78,17 +79,6 @@ function isUnauthorized(err: unknown): boolean {
   return status === 401;
 }
 
-// Drop every cached query that is NOT under the `auth` namespace. Used on
-// session-expired and logout: the user's other data must not survive, but
-// the auth observer has to stay subscribed so the UI can re-render as logged
-// out. Safe to call with any QueryClient.
-function purgeNonAuthQueries(qc: QueryClient): void {
-  qc.getQueryCache()
-    .getAll()
-    .filter((q) => q.queryKey[0] !== 'auth')
-    .forEach((q) => qc.removeQueries({ queryKey: q.queryKey as readonly unknown[] }));
-}
-
 // ─── Inner provider (needs QueryClient in scope) ─────────────────────────────
 function AuthProviderInner({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
@@ -119,8 +109,8 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   // itself — along with its React subscription — so we can't use it here.)
   useEffect(() => {
     const handler = () => {
-      qc.setQueryData(['auth', 'me'], null);
-      purgeNonAuthQueries(qc);
+      // clearAuthSession always clears in finally, even if cancellation fails.
+      void clearAuthSession(qc).catch(() => undefined);
     };
     window.addEventListener('auth:session-expired', handler);
     return () => window.removeEventListener('auth:session-expired', handler);
@@ -244,8 +234,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     // Same approach as session-expired: flip auth/me to null for the observer,
     // then drop all other user-scoped queries. Do NOT use qc.clear() — it
     // destroys the auth observer and strands the UI in its last-rendered state.
-    qc.setQueryData(['auth', 'me'], null);
-    purgeNonAuthQueries(qc);
+    await clearAuthSession(qc);
   }, [qc]);
 
   return (
@@ -267,7 +256,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   );
 }
 
-// ─── Outer provider wraps with QueryClientProvider ───────────────────────────
+// ─── Outer provider wraps with QueryClientProvider ────────────────────────────
 //
 // `client` is an escape hatch for tests — pass a freshly-constructed
 // QueryClient per render and the auth provider is fully isolated. In
