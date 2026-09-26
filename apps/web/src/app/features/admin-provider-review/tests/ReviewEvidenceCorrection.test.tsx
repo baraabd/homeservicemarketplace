@@ -104,7 +104,13 @@ describe('provider-visible evidence correction requests', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
   it('reuses the same idempotency key for an unchanged request after a lost response', async () => {
-    mock.onPost(PATH).replyOnce(500, {}).onPost(PATH).reply(200, { changed: false, review: reviewFixture() });
+    // Remove the default success handler: a replyOnce registered behind it never runs.
+    mock.resetHandlers();
+    let requests = 0;
+    mock.onPost(PATH).reply(() => {
+      requests += 1;
+      return requests === 1 ? [500, {}] : [200, { changed: false, review: reviewFixture() }];
+    });
     render(tree(reviewFixture())); open(); write(); send();
     await screen.findByText('The request could not be confirmed. Your message has been kept; retry when the connection is restored.');
     await waitFor(() => expect(screen.getByTestId('review-evidence-correction-send')).toBeEnabled());
