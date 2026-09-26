@@ -93,6 +93,8 @@ export function validateAvailability(
       !Number.isInteger(value.startMinute) ||
       !Number.isInteger(value.endMinute) ||
       value.startMinute < 0 ||
+      value.startMinute > MINUTES_PER_DAY ||
+      value.endMinute < 0 ||
       value.endMinute > MINUTES_PER_DAY
     ) {
       issues.push({ code: 'MINUTE_OUT_OF_RANGE', index });
@@ -124,14 +126,17 @@ export function validateAvailability(
 
   for (const bucket of byDay.values()) {
     bucket.sort((a, b) => a.value.startMinute - b.value.startMinute || a.index - b.index);
+    // Keep the farthest-reaching earlier interval, not just the adjacent row.
+    // [0, 900), [60, 120), [300, 360) has TWO later collisions with row zero;
+    // comparing only neighbours silently omitted the third row's diagnostic.
+    let covering = bucket[0];
     for (let i = 1; i < bucket.length; i += 1) {
-      const previous = bucket[i - 1];
       const current = bucket[i];
-      // End is EXCLUSIVE: 09:00-12:00 followed by 12:00-15:00 touch and do NOT
-      // overlap, so the comparison is strict.
-      if (current.value.startMinute < previous.value.endMinute) {
-        issues.push({ code: 'OVERLAP', index: current.index, conflictsWith: previous.index });
+      // Exclusive ends allow touching windows without reporting a collision.
+      if (current.value.startMinute < covering.value.endMinute) {
+        issues.push({ code: 'OVERLAP', index: current.index, conflictsWith: covering.index });
       }
+      if (current.value.endMinute > covering.value.endMinute) covering = current;
     }
   }
 
