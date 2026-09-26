@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { FINAL_REAL_API_ROOT, type TaskScreenFile } from './phase5-evidence-ledger';
+import { unobservedRouteFlagEvidence } from './provider-v2-flag-evidence';
 import { phase5RunId } from './phase5-run-id';
 
 // Sprint 09B.29 Phase 5B — the evidence the ledger has always demanded and
@@ -115,7 +116,7 @@ export function writeRouteMarker(input: RouteMarkerInput): void {
     screen: input.screen,
     route: input.route,
     apiOrigin: input.apiOrigin,
-    flagSource: input.flagSource,
+    ...unobservedRouteFlagEvidence(input.flagSource),
     flagValue: true,
     interceptionFree: true,
     mechanisms: input.mechanisms ?? [],
