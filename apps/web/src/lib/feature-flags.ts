@@ -45,14 +45,30 @@ function readOverride(): string | null {
   }
 }
 
-export function isProviderOnboardingV2Enabled(): boolean {
+export interface ProviderOnboardingV2FlagResolution {
+  readonly enabled: boolean;
+  readonly source: 'browser-override' | 'build-env' | 'default-off';
+  readonly key: string;
+}
+
+/** The same resolution drives routing and diagnostics; provenance is not guessed. */
+export function resolveProviderOnboardingV2Flag(): Readonly<ProviderOnboardingV2FlagResolution> {
   if (typeof window !== 'undefined') {
     const override = readOverride();
-    // An explicit override wins in BOTH directions, so a browser can opt out
-    // of a flag that is on for the deployment as well as into one that is off.
-    if (override !== null && override.trim() !== '') return isTruthy(override);
+    if (override !== null && override.trim() !== '') {
+      return Object.freeze({ enabled: isTruthy(override), source: 'browser-override', key: OVERRIDE_KEY });
+    }
   }
-  return isTruthy(import.meta.env.VITE_PROVIDER_ONBOARDING_V2 as string | undefined);
+  const configured = import.meta.env.VITE_PROVIDER_ONBOARDING_V2 as string | undefined;
+  return Object.freeze({
+    enabled: isTruthy(configured),
+    source: configured === undefined ? 'default-off' : 'build-env',
+    key: 'VITE_PROVIDER_ONBOARDING_V2',
+  });
+}
+
+export function isProviderOnboardingV2Enabled(): boolean {
+  return resolveProviderOnboardingV2Flag().enabled;
 }
 
 /** Exported for tests and for a future settings toggle. */
