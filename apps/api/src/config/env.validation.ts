@@ -1,4 +1,5 @@
 import { envSchema, type AppEnv } from './env.schema';
+import { isHardenedRuntime, runtimeSafetyProblems } from './runtime-policy';
 
 // D-1 — the registration abuse budget is a security control, so a permissive
 // value must not be reachable in production by mis-setting an env var. The
@@ -13,9 +14,6 @@ const PRODUCTION_MAX_OTP_VERIFY_THROTTLE_LIMIT = 20;
 /** The coarse per-IP ceiling a hardened environment will boot with. */
 const PRODUCTION_MAX_GLOBAL_THROTTLE_LIMIT = 100;
 
-// Environments where a widened registration budget / non-shared throttle store
-// is acceptable. Anything else (production, staging) is held to the hard cap.
-const RELAXABLE_ENVS = new Set(['development', 'test']);
 
 /**
  * The validated environment, remembered from boot.
@@ -56,8 +54,8 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
   }
 
   const env = parsed.data;
-  const hardened = !RELAXABLE_ENVS.has(env.NODE_ENV);
-  const issues: string[] = [];
+  const hardened = isHardenedRuntime(env);
+  const issues: string[] = runtimeSafetyProblems(env, raw).map((issue) => `  - ${issue}`);
 
   if (hardened && env.AUTH_REGISTER_THROTTLE_LIMIT > PRODUCTION_MAX_REGISTER_THROTTLE_LIMIT) {
     issues.push(

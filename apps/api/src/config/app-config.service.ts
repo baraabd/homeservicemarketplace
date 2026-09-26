@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import type { AppEnv } from './env.schema';
+import { isHardenedRuntime } from './runtime-policy';
 
 @Injectable()
 export class AppConfigService {
@@ -12,7 +13,8 @@ export class AppConfigService {
   }
 
   get isProduction(): boolean {
-    return this.get('NODE_ENV') === 'production';
+    // Historical property name; staging must not bind mock mail/scanners or expose diagnostics.
+    return isHardenedRuntime({ NODE_ENV: this.get('NODE_ENV'), APP_ENV: this.get('APP_ENV') });
   }
 
   get isTest(): boolean {
