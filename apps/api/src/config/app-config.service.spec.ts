@@ -23,17 +23,23 @@ describe('AppConfigService', () => {
   });
 
   describe('isProduction', () => {
-    it('is true only when NODE_ENV === "production"', () => {
+    it('is true when NODE_ENV is production', () => {
       expect(new AppConfigService(mkNestConfig({ NODE_ENV: 'production' })).isProduction).toBe(
         true,
       );
     });
 
-    it('is false for development / test / staging', () => {
-      for (const env of ['development', 'test', 'staging']) {
+    it('is false for development / test', () => {
+      for (const env of ['development', 'test']) {
         expect(new AppConfigService(mkNestConfig({ NODE_ENV: env })).isProduction).toBe(false);
       }
     });
+  });
+
+  it('treats staging and hardened APP_ENV labels as production for security controls', () => {
+    for (const values of [{ NODE_ENV: 'staging' }, { NODE_ENV: 'production', APP_ENV: 'staging' }, { NODE_ENV: 'development', APP_ENV: 'prod' }]) {
+      expect(new AppConfigService(mkNestConfig(values)).isProduction).toBe(true);
+    }
   });
 
   describe('isTest', () => {
