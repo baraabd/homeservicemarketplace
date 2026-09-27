@@ -1,5 +1,7 @@
 # Production gap matrix — S01
 
+> Current R01-R10 baseline (2026-09-27): [R01 acceptance and blockers](r01/ACCEPTANCE.md) and [source-backed register](r01/BASELINE.json). The Wave A / S01-S10 records below are historical, not the current open-PR list or reservation authority.
+
 Audited application baseline: `66e336cb4823802aabacc536584972aa43056d23`. This is an implementation/evidence inventory, not a production-release certificate. Start with this matrix, use [FEATURE_INVENTORY.json](FEATURE_INVENTORY.json) for exact source/test/configuration profiles, and use [RELEASE_BLOCKERS.md](RELEASE_BLOCKERS.md) to assign the next work. No application code is changed by S01.
 
 ## Reading the evidence

@@ -1,5 +1,7 @@
 # Release blockers — pinned S01 baseline
 
+> Current R01-R10 baseline (2026-09-27): [R01 acceptance and blockers](r01/ACCEPTANCE.md) and [source-backed register](r01/BASELINE.json). The Wave A / S01-S10 records below are historical, not the current open-PR list or reservation authority.
+
 Base: `66e336cb4823802aabacc536584972aa43056d23`. The table distinguishes proven code gaps from absent release evidence. None is closed merely by opening a PR.
 
 | ID | Kind / owner | Evidence and consequence | Smallest concrete closure |
