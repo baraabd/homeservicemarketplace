@@ -1,5 +1,17 @@
 import axios from 'axios';
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { authRequestScope, isLocallySignedOut } from './auth-session-boundary';
+import { withAuthCookieLock } from './auth-cookie-lock';
+
+interface RetryableConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+  _authScope?: string;
+}
+function requireCurrentScope(config?: RetryableConfig): void {
+  if (config?._authScope !== undefined && config._authScope !== authRequestScope()) {
+    throw new axios.CanceledError('Authentication changed while the request was in flight');
+  }
+}
 
 // Resolve the API base URL at bundle-init time. Production bundles MUST have
 // VITE_API_URL baked in (vite.config.ts enforces this at build time). Dev
@@ -41,7 +53,12 @@ export function getCsrfToken(): string | undefined {
   return match?.[1];
 }
 
-api.interceptors.request.use((config) => {
+api.interceptors.request.use((config: RetryableConfig) => {
+  config._authScope ??= authRequestScope();
+  requireCurrentScope(config);
+  if (isLocallySignedOut() && ['/v1/auth/me', '/v1/auth/refresh'].includes(config.url ?? '')) {
+    throw new axios.CanceledError('Local logout requires an explicit sign-in');
+  }
   const method = (config.method ?? 'get').toUpperCase();
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
     const csrf = getCsrfToken();
@@ -59,6 +76,8 @@ api.interceptors.request.use((config) => {
 const NO_RETRY_PATHS = new Set([
   '/v1/auth/login',
   '/v1/auth/register',
+  '/v1/auth/verify-otp',
+  '/v1/auth/resend-otp',
   '/v1/auth/refresh',
   '/v1/auth/logout',
   '/v1/auth/logout-all',
@@ -68,16 +87,16 @@ const NO_RETRY_PATHS = new Set([
   '/v1/auth/resend-verification',
 ]);
 
-let refreshPromise: Promise<void> | null = null;
-
-interface RetryableConfig extends InternalAxiosRequestConfig {
-  _retry?: boolean;
-}
+let refreshFlight: { scope: string; promise: Promise<void> } | null = null;
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    requireCurrentScope(response.config as RetryableConfig);
+    return response;
+  },
   async (error: AxiosError) => {
     const config = error.config as RetryableConfig | undefined;
+    requireCurrentScope(config);
     const url = config?.url ?? '';
 
     if (error.response?.status !== 401 || !config || config._retry || NO_RETRY_PATHS.has(url)) {
@@ -100,24 +119,28 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Coalesce concurrent 401s behind one refresh attempt
-    if (!refreshPromise) {
-      refreshPromise = api
-        .post('/v1/auth/refresh')
-        .then(() => undefined)
-        .catch(() => {
-          window.dispatchEvent(new Event('auth:session-expired'));
-          return Promise.reject(error);
-        })
-        .finally(() => {
-          refreshPromise = null;
-        });
+    // Coalesce only within this identity scope. Old refresh results must not
+    // retry a previous account's mutation with a new account's cookies.
+    const scope = authRequestScope();
+    if (!refreshFlight || refreshFlight.scope !== scope) {
+      const promise = withAuthCookieLock(scope, () => api.post('/v1/auth/refresh', undefined, { timeout: 15_000 }).then(() => undefined));
+      refreshFlight = { scope, promise };
     }
-
+    const flight = refreshFlight;
     try {
-      await refreshPromise;
-    } catch {
-      return Promise.reject(error);
+      await flight.promise;
+      requireCurrentScope(config);
+    } catch (refreshError) {
+      requireCurrentScope(config);
+      const status = (refreshError as AxiosError).response?.status;
+      if (status === 401 || status === 403 || status === 400) {
+        window.dispatchEvent(new Event('auth:session-expired'));
+      }
+      // Network/5xx/429 is not proof of revocation. Propagate that error, not
+      // the original 401, so /me preserves its last-known user as degraded.
+      return Promise.reject(refreshError);
+    } finally {
+      if (refreshFlight === flight) refreshFlight = null;
     }
 
     config._retry = true;

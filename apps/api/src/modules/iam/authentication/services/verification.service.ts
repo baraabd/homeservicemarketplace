@@ -4,6 +4,7 @@ import type { PrismaTx, TokenPurpose } from '@homeservicemarketplace/database';
 import { AppConfigService } from '../../../../config/app-config.service';
 import { VerificationTokenRepository } from '../../../../infrastructure/persistence/iam/verification-token.repository';
 import { TokenService } from './token.service';
+import { lockAuthAccount } from '../../../../infrastructure/persistence/iam/auth-account-lock';
 
 export interface IssuedVerificationToken {
   raw: string;
@@ -23,6 +24,7 @@ export class VerificationService {
     purpose: TokenPurpose,
     tx?: PrismaTx,
   ): Promise<IssuedVerificationToken> {
+    if (tx) await lockAuthAccount(tx, userId);
     // Invalidate any outstanding token of the same purpose first — only one
     // live reset / verify link at a time per user.
     await this.repo.invalidateOutstanding(userId, purpose, tx);
@@ -45,9 +47,14 @@ export class VerificationService {
     if (row.usedAt !== null) return null;
     if (row.expiresAt.getTime() <= Date.now()) return null;
 
-    const consumed = await this.repo.consume(hash, tx);
+    if (tx) await lockAuthAccount(tx, row.userId);
+    const consumed = await this.repo.consume(hash, purpose, tx);
     if (!consumed) return null;
     return consumed.userId;
+  }
+
+  revokeOutstandingForUser(userId: string, tx: PrismaTx): Promise<{ count: number }> {
+    return this.repo.invalidateAllForUser(userId, tx);
   }
 
   private computeExpiry(purpose: TokenPurpose): Date {

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { VerificationToken } from '@homeservicemarketplace/database';
 
 import { AppConfigService } from '../../../../config/app-config.service';
@@ -7,7 +8,7 @@ import { OTP_MAX_ATTEMPTS, OTP_MAX_RESENDS, OtpService } from './otp.service';
 // Service-level invariants for OTP issuance, verification, resend, and
 // lock-out. A fake repository backs every test — we're not testing Prisma,
 // we're pinning the domain rules:
-//   - codes are sha256'd at rest
+//   - codes have domain-separated keyed hashes at rest
 //   - consumption is atomic (wrong code never flips usedAt)
 //   - attempts lock the challenge out at OTP_MAX_ATTEMPTS
 //   - resends are rate-limited at OTP_MAX_RESENDS
@@ -58,27 +59,13 @@ function makeRepo() {
     row.usedAt = new Date();
     return row;
   });
-  const incrementAttempt = jest.fn(async (challengeId: string) => {
-    const row = rows.find((r) => r.challengeId === challengeId);
-    if (!row) throw new Error('not found');
+  const recordFailedAttempt = jest.fn(async (challengeId: string, expectedHash: string, max: number) => {
+    const row = rows.find((r) => r.challengeId === challengeId && r.tokenHash === expectedHash &&
+      r.usedAt === null && r.expiresAt.getTime() > Date.now() && r.attemptCount < max);
+    if (!row) return null;
     row.attemptCount += 1;
     return row;
   });
-  const incrementResend = jest.fn(async (challengeId: string) => {
-    const row = rows.find((r) => r.challengeId === challengeId);
-    if (!row) throw new Error('not found');
-    row.resendCount += 1;
-    return row;
-  });
-  const rotateChallenge = jest.fn(
-    async (challengeId: string, data: { tokenHash: string; expiresAt: Date }) => {
-      const row = rows.find((r) => r.challengeId === challengeId);
-      if (!row) throw new Error('not found');
-      row.tokenHash = data.tokenHash;
-      row.expiresAt = data.expiresAt;
-      return row;
-    },
-  );
   const invalidateOutstanding = jest.fn(
     async (userId: string, purpose: VerificationToken['purpose']) => {
       let count = 0;
@@ -92,24 +79,36 @@ function makeRepo() {
     },
   );
 
+  const rotateLiveChallenge = jest.fn(async (challengeId: string, expectedHash: string,
+    data: { tokenHash: string; expiresAt: Date }, limits: { attempts: number; resends: number }) => {
+    const row = rows.find((r) => r.challengeId === challengeId && r.tokenHash === expectedHash &&
+      r.usedAt === null && r.expiresAt.getTime() > Date.now() &&
+      r.attemptCount < limits.attempts && r.resendCount < limits.resends);
+    if (!row) return false;
+    row.tokenHash = data.tokenHash;
+    row.expiresAt = data.expiresAt;
+    row.resendCount += 1;
+    return true;
+  });
+
   const api: Partial<VerificationTokenRepository> = {
     findByChallengeId,
     findByHash,
     create,
     consumeByChallenge,
-    incrementAttempt,
-    incrementResend,
-    rotateChallenge,
+    recordFailedAttempt,
+    rotateLiveChallenge,
     invalidateOutstanding,
   };
   return { repo: api as VerificationTokenRepository, rows: () => rows, reset: () => (rows = []) };
 }
 
-const cfg = { get: () => undefined } as unknown as AppConfigService;
+const secret = randomBytes(48).toString('hex');
+const cfg = { get: (key: string) => key === 'JWT_ACCESS_SECRET' ? secret : undefined } as unknown as AppConfigService;
 
 describe('OtpService', () => {
   describe('issue', () => {
-    it('creates a challenge with a 6-digit code stored only as sha256', async () => {
+    it('creates a challenge with a 6-digit code stored only as a keyed hash', async () => {
       const { repo, rows } = makeRepo();
       const svc = new OtpService(repo, cfg);
 
@@ -121,7 +120,7 @@ describe('OtpService', () => {
       // Plaintext code must not be stored.
       const stored = rows()[0]!;
       expect(stored.tokenHash).not.toBe(out.rawCode);
-      expect(stored.tokenHash).toBe(OtpService.hashForTest(out.rawCode));
+      expect(stored.tokenHash).toBe(OtpService.hashForTest(out.rawCode, out.challengeId, secret));
     });
 
     it('invalidates any outstanding OTP of the same purpose for the user', async () => {
@@ -150,39 +149,24 @@ describe('OtpService', () => {
       const svc = new OtpService(repo, cfg);
       const issued = await svc.issue('u-1', 'LOGIN_OTP');
 
-      await expect(svc.verify(issued.challengeId, '000000')).rejects.toMatchObject({
+      await expect(svc.verify(issued.challengeId, issued.rawCode === '000000' ? '111111' : '000000')).rejects.toMatchObject({
         response: expect.objectContaining({ code: 'AUTH_OTP_INVALID' }),
       });
       expect(rows()[0]!.attemptCount).toBe(1);
       expect(rows()[0]!.usedAt).toBeNull();
     });
 
-    it('bumps the attempt counter EVEN WHEN the caller wraps verify in a tx that rolls back', async () => {
-      // Regression test: AuthenticationService.verifyOtp runs verify inside
-      // its own $transaction. If incrementAttempt were tx-scoped to that
-      // outer tx, the throw would roll the counter back and the 5-strike
-      // lockout would never fire — unthrottled brute-force of the 6-digit
-      // space. The fix does the increment outside the caller's tx.
+    it('returns a transactional rejection using the SAME connection, without pool starvation', async () => {
       const { repo, rows } = makeRepo();
       const svc = new OtpService(repo, cfg);
       const issued = await svc.issue('u-1', 'LOGIN_OTP');
-
-      // Pass an opaque "outer tx" handle. Our fake repo ignores it, but
-      // the contract under test is that verify MUST NOT thread it into
-      // incrementAttempt / rotateChallenge on the miss path. We prove it
-      // by spying on the repo mocks and asserting they were called with
-      // no tx argument.
-      const fakeTx = { $marker: 'outer' } as unknown as Parameters<typeof svc.verify>[2];
-      await expect(svc.verify(issued.challengeId, '000000', fakeTx)).rejects.toMatchObject({
-        response: expect.objectContaining({ code: 'AUTH_OTP_INVALID' }),
+      const fakeTx = { $queryRaw: jest.fn().mockResolvedValue([]) } as unknown as NonNullable<Parameters<typeof svc.verify>[2]>;
+      const wrong = issued.rawCode === '000000' ? '111111' : '000000';
+      await expect(svc.verifyForLogin(issued.challengeId, wrong, fakeTx)).resolves.toMatchObject({
+        rejection: { response: { code: 'AUTH_OTP_INVALID' } },
       });
-
       expect(rows()[0]!.attemptCount).toBe(1);
-      // The read path (findByChallengeId) legitimately uses the outer tx so
-      // reads see concurrent writes within the same transaction. The write
-      // path (incrementAttempt) must NOT — that's the regression surface.
-      const incrementCall = (repo.incrementAttempt as jest.Mock).mock.calls[0];
-      expect(incrementCall?.[1]).toBeUndefined();
+      expect(repo.recordFailedAttempt).toHaveBeenCalledWith(issued.challengeId, rows()[0]!.tokenHash, OTP_MAX_ATTEMPTS, fakeTx);
     });
 
     it('locks the challenge after OTP_MAX_ATTEMPTS consecutive misses (AUTH_OTP_LOCKED)', async () => {
@@ -191,19 +175,19 @@ describe('OtpService', () => {
       const issued = await svc.issue('u-1', 'LOGIN_OTP');
 
       for (let i = 0; i < OTP_MAX_ATTEMPTS - 1; i++) {
-        await svc.verify(issued.challengeId, '000000').catch(() => undefined);
+        await svc.verify(issued.challengeId, issued.rawCode === '000000' ? '111111' : '000000').catch(() => undefined);
       }
       // Final attempt: must surface LOCKED, not INVALID.
-      await expect(svc.verify(issued.challengeId, '000000')).rejects.toMatchObject({
+      await expect(svc.verify(issued.challengeId, issued.rawCode === '000000' ? '111111' : '000000')).rejects.toMatchObject({
         response: expect.objectContaining({ code: 'AUTH_OTP_LOCKED' }),
       });
       // A locked-out challenge MUST NOT accept any code afterwards, even the
-      // originally correct one — the row is rotated to a dead hash.
+      // originally correct one — the persisted attempt ceiling is enforced.
       await expect(svc.verify(issued.challengeId, issued.rawCode)).rejects.toMatchObject({
         response: expect.objectContaining({ code: 'AUTH_OTP_LOCKED' }),
       });
-      // Used/expired state is consistent with "no longer verifiable".
-      expect(rows()[0]!.tokenHash.startsWith('locked:')).toBe(true);
+      // The attempt ceiling is durable, with no second unguarded write.
+      expect(rows()[0]!.attemptCount).toBe(OTP_MAX_ATTEMPTS);
     });
 
     it('rejects a consumed code with AUTH_OTP_INVALID (no replay)', async () => {
@@ -271,4 +255,50 @@ describe('OtpService', () => {
       });
     });
   });
+});
+
+
+describe('R04 OTP hash scope and purpose boundaries', () => {
+  it('identical numeric codes in different challenges do not collide at rest', () => {
+    const one = OtpService.hashForTest('123456', 'challenge-one', secret);
+    const two = OtpService.hashForTest('123456', 'challenge-two', secret);
+    expect(one).toMatch(/^otp-v3:[a-f0-9]{64}$/);
+    expect(one).not.toBe(two);
+  });
+
+  it('accepts an existing unexpired legacy challenge without a data rewrite', async () => {
+    const { repo, rows } = makeRepo();
+    const svc = new OtpService(repo, cfg);
+    const issued = await svc.issue('u-1', 'LOGIN_OTP');
+    rows()[0]!.tokenHash = OtpService.hashForTest(issued.rawCode);
+    await expect(svc.verify(issued.challengeId, issued.rawCode)).resolves.toEqual({
+      userId: 'u-1', purpose: 'LOGIN_OTP',
+    });
+  });
+
+  it('does not accept a link-purpose token through the challenge path', async () => {
+    const { repo, rows } = makeRepo();
+    const svc = new OtpService(repo, cfg);
+    const issued = await svc.issue('u-1', 'LOGIN_OTP');
+    rows()[0]!.purpose = 'PASSWORD_RESET';
+    await expect(svc.verify(issued.challengeId, issued.rawCode)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'AUTH_OTP_INVALID' }),
+    });
+    expect(repo.consumeByChallenge).not.toHaveBeenCalled();
+  });
+});
+
+it('R04 database-only unkeyed guesses do not equal newly issued OTP hashes', () => {
+  const keyed = OtpService.hashForTest('123456', 'challenge', secret);
+  expect(keyed).not.toBe(OtpService.hashForTest('123456', 'challenge'));
+  expect(keyed).not.toBe(OtpService.hashForTest('123456'));
+  expect(keyed).not.toBe(OtpService.hashForTest('123456', 'challenge', randomBytes(48).toString('hex')));
+});
+
+it('R04 infrastructure failures are not converted to committed bad-code verdicts', async () => {
+  const { repo } = makeRepo();
+  const svc = new OtpService(repo, cfg);
+  jest.spyOn(repo, 'findByChallengeId').mockRejectedValue(new Error('Synthetic database outage'));
+  const fakeTx = { $queryRaw: jest.fn() } as unknown as NonNullable<Parameters<typeof svc.verify>[2]>;
+  await expect(svc.verifyForLogin('challenge', '123456', fakeTx)).rejects.toThrow('Synthetic database outage');
 });

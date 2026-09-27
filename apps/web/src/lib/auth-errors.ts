@@ -67,7 +67,9 @@ export function loginErrorMessage(err: unknown): string {
 // OTP-panel copy. Covers verify-otp + resend-otp outcomes. Unknown codes
 // collapse to a generic "try again".
 export function otpErrorMessage(err: unknown, kind: 'verify' | 'resend'): string {
-  const { code } = extractAuthError(err);
+  const { code, status } = extractAuthError(err);
+  if (status === 429) return 'Too many requests. Please wait a moment and try again.';
+  if ((status === null && code === null) || (status !== null && status >= 500)) return 'The server could not confirm this request. Please try again.';
   if (kind === 'verify') {
     switch (code) {
       case 'AUTH_OTP_LOCKED':
@@ -100,4 +102,18 @@ export function resetPasswordErrorMessage(err: unknown): string {
     return 'This reset link is invalid or expired. Request a new one.';
   }
   return 'Something went wrong. Please try again.';
+}
+
+// Registration never renders raw driver/provider messages or exposes existence.
+export function registrationErrorMessage(err: unknown): string {
+  const { code, status } = extractAuthError(err);
+  if (code === 'VALIDATION_ERROR' || status === 400) return 'Please check your account details and try again.';
+  if (status === 429) return 'Too many requests. Please wait before trying again.';
+  return 'Registration could not be confirmed. Please try again.';
+}
+
+export function recoveryRequestErrorMessage(err: unknown): string {
+  const { status } = extractAuthError(err);
+  if (status === 429) return 'Too many requests. Please wait before trying again.';
+  return 'Could not request a reset link. Please try again.';
 }

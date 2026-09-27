@@ -57,7 +57,9 @@ function makeHarness() {
     create: jest.fn(),
     findByTokenHash: jest.fn(),
     findById: jest.fn(),
+    findByIdWithUserStanding: jest.fn().mockResolvedValue({ user: { status: 'ACTIVE', isActive: true, deletedAt: null } }),
     listActiveByUser: jest.fn(),
+    listActiveFamilyIds: jest.fn().mockResolvedValue([{ id: 'sess-new' }]),
     markRevokedIfActive: jest.fn(),
     revokeFamily: jest.fn().mockResolvedValue({ count: 1 }),
     revokeAllForUser: jest.fn().mockResolvedValue({ count: 0 }),
@@ -73,7 +75,7 @@ function makeHarness() {
   const tokens = new TokenService(jwt, makeConfig());
 
   // The tx param is used by the service to call session.update inline.
-  const fakeTx = { session: { update: jest.fn().mockResolvedValue(undefined) } };
+  const fakeTx = { $queryRaw: jest.fn().mockResolvedValue([]), session: { update: jest.fn().mockResolvedValue(undefined) } };
 
   // A transaction double that models ROLLBACK.
   //
@@ -128,6 +130,7 @@ function makeHarness() {
   return { svc, sessions, tokens, tx, audit, securityEvents, fakeTx, committedWrites };
 }
 
+
 describe('SessionService', () => {
   describe('createForLogin', () => {
     it('creates a new family and persists a session row with null parentJti', async () => {
@@ -159,7 +162,7 @@ describe('SessionService', () => {
       const refresh = h.tokens.mintRefreshToken();
       const existing = makeSessionRow({ tokenHash: refresh.hash });
 
-      h.sessions.findByTokenHash.mockResolvedValueOnce(existing);
+      h.sessions.findByTokenHash.mockResolvedValue(existing);
       h.sessions.markRevokedIfActive.mockResolvedValueOnce(1);
       h.sessions.create.mockImplementationOnce(async (input) =>
         makeSessionRow({ ...input, id: 'new-sess' }),
@@ -192,7 +195,7 @@ describe('SessionService', () => {
       const h = makeHarness();
       const refresh = h.tokens.mintRefreshToken();
       const revoked = makeSessionRow({ tokenHash: refresh.hash, revokedAt: new Date() });
-      h.sessions.findByTokenHash.mockResolvedValueOnce(revoked);
+      h.sessions.findByTokenHash.mockResolvedValue(revoked);
 
       await expect(
         h.svc.rotate({
@@ -227,7 +230,7 @@ describe('SessionService', () => {
 
       const refresh = h.tokens.mintRefreshToken();
       const revoked = makeSessionRow({ tokenHash: refresh.hash, revokedAt: new Date() });
-      h.sessions.findByTokenHash.mockResolvedValueOnce(revoked);
+      h.sessions.findByTokenHash.mockResolvedValue(revoked);
 
       await expect(
         h.svc.rotate({
@@ -248,7 +251,7 @@ describe('SessionService', () => {
       const h = makeHarness();
       const refresh = h.tokens.mintRefreshToken();
       const existing = makeSessionRow({ tokenHash: refresh.hash });
-      h.sessions.findByTokenHash.mockResolvedValueOnce(existing);
+      h.sessions.findByTokenHash.mockResolvedValue(existing);
       h.sessions.markRevokedIfActive.mockResolvedValueOnce(0); // lost the race
 
       await expect(
@@ -275,7 +278,7 @@ describe('SessionService', () => {
   describe('rotate — unknown / expired', () => {
     it('unknown refresh token → 401 and no audit entry for replay', async () => {
       const h = makeHarness();
-      h.sessions.findByTokenHash.mockResolvedValueOnce(null);
+      h.sessions.findByTokenHash.mockResolvedValue(null);
       await expect(
         h.svc.rotate({
           presentedRefreshRaw: 'x'.repeat(32),
@@ -294,7 +297,7 @@ describe('SessionService', () => {
         tokenHash: refresh.hash,
         expiresAt: new Date(Date.now() - 1000),
       });
-      h.sessions.findByTokenHash.mockResolvedValueOnce(expired);
+      h.sessions.findByTokenHash.mockResolvedValue(expired);
       await expect(
         h.svc.rotate({
           presentedRefreshRaw: refresh.raw,
@@ -308,6 +311,14 @@ describe('SessionService', () => {
   });
 
   describe('revokeById / revokeAllForUser / peekByRefreshRaw', () => {
+    it('logout revokes the current device lineage including a just-rotated session', async () => {
+      const h = makeHarness();
+      h.sessions.findById.mockResolvedValueOnce(makeSessionRow({ revokedAt: new Date() }));
+      await expect(h.svc.revokeById('sess-1')).resolves.toEqual(['sess-1', 'sess-new']);
+      expect(h.sessions.revokeFamily).toHaveBeenCalledWith('fam-1', expect.anything());
+      expect(h.sessions.revokeAllForUser).not.toHaveBeenCalled();
+    });
+
     it('revokeAllForUser forwards to the repository and returns the count', async () => {
       const h = makeHarness();
       h.sessions.revokeAllForUser.mockResolvedValueOnce({ count: 3 });
@@ -328,7 +339,7 @@ describe('SessionService', () => {
     it('peekByRefreshRaw hashes the raw token before looking up — plaintext never hits the DB', async () => {
       const h = makeHarness();
       const refresh = h.tokens.mintRefreshToken();
-      h.sessions.findByTokenHash.mockResolvedValueOnce(makeSessionRow({ tokenHash: refresh.hash }));
+      h.sessions.findByTokenHash.mockResolvedValue(makeSessionRow({ tokenHash: refresh.hash }));
       await h.svc.peekByRefreshRaw(refresh.raw);
       expect(h.sessions.findByTokenHash).toHaveBeenCalledWith(refresh.hash);
     });

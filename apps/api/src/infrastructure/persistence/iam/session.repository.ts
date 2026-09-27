@@ -87,6 +87,10 @@ export class SessionRepository {
     });
   }
 
+  listActiveFamilyIds(familyId: string, tx: PrismaTx): Promise<Array<{ id: string }>> {
+    return tx.session.findMany({ where: { familyId, revokedAt: null }, select: { id: true } });
+  }
+
   // Atomic rotate: only proceeds if the source row is still non-revoked.
   // Returns the affected row count; caller treats 0 as a replay.
   async markRevokedIfActive(id: string, tx?: PrismaTx): Promise<number> {

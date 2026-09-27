@@ -1,6 +1,8 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import type { ClientKind, Session } from '@homeservicemarketplace/database';
+import { lockAuthAccount } from '../../../../infrastructure/persistence/iam/auth-account-lock';
+import { isInGoodStanding } from '../helpers/account-standing';
+import type { ClientKind, Session, PrismaTx } from '@homeservicemarketplace/database';
 
 import { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
 import { SessionRepository } from '../../../../infrastructure/persistence/iam/session.repository';
@@ -51,9 +53,10 @@ export class SessionService {
     roles: string[];
     device: DeviceMetadata;
     requestId: string | null;
-  }): Promise<IssuedSession> {
+  }, tx?: PrismaTx): Promise<IssuedSession> {
     const familyId = randomBytes(16).toString('base64url');
-    return this.mintAndStore({ ...params, familyId, parentJti: null });
+    const input = { ...params, familyId, parentJti: null };
+    return tx ? this.mintAndStoreWithinTx({ ...input, tx }) : this.mintAndStore(input);
   }
 
   // Refresh rotation: atomically revoke the presented refresh token's session
@@ -89,7 +92,10 @@ export class SessionService {
     const presentedHash = this.tokens.hashRefreshToken(params.presentedRefreshRaw);
 
     const outcome = await this.tx.run<RotateOutcome>(async (trx) => {
-      const row = await this.sessions.findByTokenHash(presentedHash, trx);
+      let row = await this.sessions.findByTokenHash(presentedHash, trx);
+      if (!row) return { kind: 'invalid' };
+      await lockAuthAccount(trx, row.userId);
+      row = await this.sessions.findByTokenHash(presentedHash, trx);
       if (!row) return { kind: 'invalid' };
 
       // Replay: the row exists but is already revoked. Any live sibling in the
@@ -99,6 +105,8 @@ export class SessionService {
       }
 
       if (row.expiresAt.getTime() <= Date.now()) return { kind: 'invalid' };
+      const standing = await this.sessions.findByIdWithUserStanding(row.id, trx);
+      if (!isInGoodStanding(standing?.user)) return { kind: 'invalid' };
 
       // Atomic revoke-if-active closes the concurrent-refresh race: two
       // parallel callers with the same refresh token will have exactly one
@@ -144,6 +152,7 @@ export class SessionService {
       // Second, INDEPENDENT transaction. The one above returned normally, so
       // nothing it wrote is at risk, and this one commits before we throw.
       await this.tx.run(async (trx) => {
+        await lockAuthAccount(trx, outcome.userId);
         await this.sessions.revokeFamily(outcome.familyId, trx);
         await this.audit.record(
           {
@@ -182,14 +191,22 @@ export class SessionService {
     return this.sessions.findByTokenHash(this.tokens.hashRefreshToken(raw));
   }
 
-  // `tx` lets logout revoke the session in the SAME transaction that writes
-  // the LOGOUT audit row, so an operator never sees one without the other
-  // (D-2).
+  // End this device's session lineage, including a refresh that won just
+  // before logout acquired the account lock. Other devices/families remain
+  // valid. Return affected IDs for post-commit socket teardown by the caller.
   async revokeById(
     sessionId: string,
     tx?: Parameters<SessionRepository['revokeById']>[1],
-  ): Promise<void> {
-    await this.sessions.revokeById(sessionId, tx);
+  ): Promise<string[]> {
+    const revoke = async (trx: PrismaTx): Promise<string[]> => {
+      const row = await this.sessions.findById(sessionId, trx);
+      if (!row) return [];
+      await lockAuthAccount(trx, row.userId);
+      const active = await this.sessions.listActiveFamilyIds(row.familyId, trx);
+      await this.sessions.revokeFamily(row.familyId, trx);
+      return [...new Set([sessionId, ...active.map((session) => session.id)])];
+    };
+    return tx ? revoke(tx) : this.tx.run(revoke);
   }
 
   // `tx` lets a caller revoke every session as part of a larger atomic unit
