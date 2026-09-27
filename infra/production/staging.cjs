@@ -50,10 +50,34 @@ function readSecret(file, root = ROOT) {
   const resolved = fs.realpathSync(file);
   const relative = path.relative(fs.realpathSync(root), resolved);
   requireCondition(relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative), 'secretFiles: secrets must resolve outside the repository');
-  const stat = fs.statSync(resolved);
-  requireCondition(stat.isFile() && stat.size > 0 && stat.size <= 262144, 'secretFiles: bounded regular files are required');
-  requireCondition(process.platform === 'win32' || (stat.mode & 0o007) === 0, 'secretFiles: deny all access to other host users');
-  return { resolved, values: parseEnv(fs.readFileSync(resolved, 'utf8')) };
+  // Validate and read ONE open object, never stat(path) followed by read(path).
+  // Windows has no O_NOFOLLOW/O_NONBLOCK; descriptor checks still apply there.
+  const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0);
+  const descriptor = fs.openSync(resolved, flags);
+  try {
+    const before = fs.fstatSync(descriptor, { bigint: true });
+    const limit = 262144;
+    requireCondition(before.isFile() && before.size > 0n && before.size <= BigInt(limit), 'secretFiles: bounded regular files are required');
+    requireCondition(process.platform === 'win32' || (before.mode & 0o007n) === 0n, 'secretFiles: deny all access to other host users');
+    // Bound the read itself: a file growing after fstat must not allocate an
+    // unbounded buffer. Parse and fingerprint the very same verified bytes.
+    const buffer = Buffer.alloc(limit + 1);
+    let size = 0;
+    while (size < buffer.length) {
+      const count = fs.readSync(descriptor, buffer, size, buffer.length - size, size);
+      if (count === 0) break;
+      size += count;
+    }
+    const after = fs.fstatSync(descriptor, { bigint: true });
+    requireCondition(size <= limit && BigInt(size) === before.size &&
+      ['dev', 'ino', 'size', 'mode', 'mtimeNs', 'ctimeNs'].every((key) => before[key] === after[key]),
+    'secretFiles: file changed while reading; revalidate release inputs');
+    const bytes = buffer.subarray(0, size);
+    return { resolved, values: parseEnv(bytes.toString('utf8')),
+      digest: createHash('sha256').update(bytes).digest('hex') };
+  } finally {
+    fs.closeSync(descriptor);
+  }
 }
 function postgresIdentity(value) {
   let url;
@@ -82,11 +106,11 @@ function inspectSecrets(manifest, root = ROOT) {
   requireCondition(appIdentity.user !== migrationIdentity.user, 'database: application and migration identities must differ');
   requireCondition(appIdentity.database === migrationIdentity.database && appIdentity.schema === migrationIdentity.schema, 'database: application and migrator must target the same database and schema');
   return { api: api.resolved, migration: migration.resolved,
-    digests: [api.resolved, migration.resolved].map(secretDigest) };
+    digests: [api.digest, migration.digest] };
 }
 
 function secretDigest(file) {
-  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  return readSecret(file).digest;
 }
 function assertUnchangedSecrets(secrets) {
   requireCondition([secrets.api, secrets.migration].every((file, index) =>
@@ -110,28 +134,43 @@ function execute(args, options) {
   return result.stdout;
 }
 
-async function verifyHttps(manifest, request = fetch) {
+/** Network authority comes from separate, explicit operator CLI arguments,
+ * not from a release file. Never derive defaults for these from the manifest.
+ * This boundary is for a trusted operator process, not a public HTTP service.
+ */
+function approvedDestinations(manifest, supplied) {
+  keys(supplied, ['apiOrigin', 'webOrigin'], 'approved destinations');
+  requireCondition(origin(supplied.apiOrigin) && origin(supplied.webOrigin), 'approved destinations: canonical HTTPS origins are required');
+  requireCondition(manifest.apiOrigin === supplied.apiOrigin && manifest.webOrigin === supplied.webOrigin,
+    'approved destinations: release origins differ from independent operator authorization');
+  return Object.freeze({ apiOrigin: supplied.apiOrigin, webOrigin: supplied.webOrigin });
+}
+
+async function verifyHttps(manifest, supplied, request = fetch) {
+  const approved = approvedDestinations(manifest, supplied);
   requireCondition(process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0', 'HTTPS: certificate verification must not be disabled');
   async function get(url, expectedStatus = 200, headers = {}) {
-    const response = await request(url, { redirect: 'error', signal: AbortSignal.timeout(10000), headers });
+    const response = await request(url, { method: 'GET', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(10000), headers });
     requireCondition(response.status === expectedStatus, 'HTTPS: unexpected response or unavailable service');
     return response;
   }
-  const live = await (await get(`${manifest.apiOrigin}/health/live`)).json();
-  const ready = await (await get(`${manifest.apiOrigin}/health/ready`)).json();
+  // Only independent approved origins and fixed paths/headers reach the
+  // transport. No file bytes, DSN, digest, source SHA or manifest field is sent.
+  const live = await (await get(`${approved.apiOrigin}/health/live`)).json();
+  const ready = await (await get(`${approved.apiOrigin}/health/ready`)).json();
   requireCondition(live.status === 'ok' && ready.ready === true && Array.isArray(ready.dependencies) &&
     ['postgres', 'redis'].every((name) => ready.dependencies.some((dep) => dep.name === name && dep.status === 'up')) &&
     ready.dependencies.every((dep) => dep.status === 'up'), 'HTTPS: live/readiness payloads are not healthy');
-  const build = await (await get(`${manifest.webOrigin}/build-info.json`)).json();
-  requireCondition(build.sourceSha === manifest.sourceSha && build.apiUrl === manifest.apiOrigin && build.onboardingV2 === manifest.onboardingV2, 'HTTPS: the deployed web build identity or build-time flags differ');
-  const unauthenticated = await get(`${manifest.apiOrigin}/v1/auth/me`, 401, { Origin: manifest.webOrigin, 'X-Client-Kind': 'web' });
-  if (manifest.apiOrigin !== manifest.webOrigin) {
-    requireCondition(unauthenticated.headers.get('access-control-allow-origin') === manifest.webOrigin &&
+  const build = await (await get(`${approved.webOrigin}/build-info.json`)).json();
+  requireCondition(build.sourceSha === manifest.sourceSha && build.apiUrl === approved.apiOrigin && build.onboardingV2 === manifest.onboardingV2, 'HTTPS: the deployed web build identity or build-time flags differ');
+  const unauthenticated = await get(`${approved.apiOrigin}/v1/auth/me`, 401, { Origin: approved.webOrigin, 'X-Client-Kind': 'web' });
+  if (approved.apiOrigin !== approved.webOrigin) {
+    requireCondition(unauthenticated.headers.get('access-control-allow-origin') === approved.webOrigin &&
       unauthenticated.headers.get('access-control-allow-credentials') === 'true', 'HTTPS: browser credentialed CORS is not configured correctly');
   }
 }
 
-async function applyRelease(manifest, secrets, { run = execute, verify = verifyHttps } = {}) {
+async function applyRelease(manifest, secrets, { run = execute, verify = verifyHttps, approvedOrigins } = {}) {
   const env = dockerEnvironment(manifest, secrets);
   const docker = (...args) => run(['--context', manifest.dockerContext, ...args], { cwd: ROOT, env });
   const compose = (...args) => docker('compose', '--project-directory', ROOT, '--file', path.join(__dirname, 'docker-compose.staging.yml'), '--project-name', manifest.projectName, ...args);
@@ -159,8 +198,8 @@ async function applyRelease(manifest, secrets, { run = execute, verify = verifyH
   phase('secret-consistency-before-migration', () => assertUnchangedSecrets(secrets));
   phase('migrations', () => compose('run', '--rm', '--no-deps', 'api-migrate'));
   phase('secret-consistency-before-rollout', () => assertUnchangedSecrets(secrets));
-  phase('application-readiness', () => compose('up', '--detach', '--wait', '--wait-timeout', '180', '--no-deps', 'api', 'web'));
-  try { await verify(manifest); phases.push('https-and-build-identity'); }
+  phase('application-readiness', () => compose('up', '--detach', '--wait', '--wait-timeout', '180', '--no-deps', '--force-recreate', 'api', 'web'));
+  try { await verify(manifest, approvedOrigins); phases.push('https-and-build-identity'); }
   catch { throw new Error('staging: HTTPS acceptance failed after application rollout; no automatic rollback was performed'); }
   return { status: 'DEPLOYED_NOT_ACCEPTED', sourceSha: manifest.sourceSha, images: manifest.images, phases,
     remaining: ['real test inbox delivery', 'storage ownership and anonymous-denial tests', 'scanner verdict and worker delivery', 'database grants and restore evidence', 'authenticated browser cookies and journeys'] };
@@ -171,6 +210,7 @@ async function applyRelease(manifest, secrets, { run = execute, verify = verifyH
 // guess that an old timestamp makes an in-flight database migration safe to race.
 async function deploy(manifest, secrets, options = {}) {
   validateManifest(manifest);
+  const approvedOrigins = approvedDestinations(manifest, options.approvedOrigins);
   requireCondition(process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0', 'HTTPS: certificate verification must not be disabled');
   const lockFile = path.join(options.lockDirectory || os.tmpdir(), `${manifest.projectName}.lock`);
   let descriptor;
@@ -179,7 +219,7 @@ async function deploy(manifest, secrets, options = {}) {
   const identity = fs.fstatSync(descriptor);
   try {
     fs.writeFileSync(descriptor, JSON.stringify({ pid: process.pid, sourceSha: manifest.sourceSha }));
-    return await applyRelease(manifest, secrets, options);
+    return await applyRelease(manifest, secrets, { ...options, approvedOrigins });
   } finally {
     fs.closeSync(descriptor);
     try {
@@ -191,17 +231,24 @@ async function deploy(manifest, secrets, options = {}) {
 
 async function main(args = process.argv.slice(2)) {
   const [mode, manifestPath, approval, ...extra] = args;
-  requireCondition((mode === '--check' || mode === '--apply') && manifestPath && extra.length === 0 &&
-    (mode !== '--check' || approval === undefined), 'usage: node staging.cjs --check manifest.json OR --apply manifest.json project@source-sha');
+  requireCondition((mode === '--check' || mode === '--apply') && manifestPath &&
+    (mode !== '--check' || (approval === undefined && extra.length === 0)),
+  'usage: node staging.cjs --check manifest.json OR --apply manifest.json project@source-sha --api-origin https://api-host --web-origin https://web-host');
   let manifest;
   try { manifest = validateManifest(JSON.parse(fs.readFileSync(manifestPath, 'utf8'))); }
   catch { throw new Error('manifest: cannot read a valid release manifest; no deployment started'); }
   if (mode === '--apply') requireCondition(approval === `${manifest.projectName}@${manifest.sourceSha}`, 'approval: explicit project@source-sha authorization is required');
+  let approvedOrigins;
+  if (mode === '--apply') {
+    requireCondition(extra.length === 4 && extra[0] === '--api-origin' && extra[2] === '--web-origin',
+      'approval: independently authorize --api-origin and --web-origin; never copy unreviewed file values');
+    approvedOrigins = approvedDestinations(manifest, { apiOrigin: extra[1], webOrigin: extra[3] });
+  }
   let secrets;
   try { secrets = inspectSecrets(manifest); }
   catch { throw new Error('secrets: external files or runtime/identity constraints failed; values are withheld'); }
   if (mode === '--check') return { status: 'CONFIGURATION_ONLY', sourceSha: manifest.sourceSha, deploymentStarted: false };
-  return deploy(manifest, secrets);
+  return deploy(manifest, secrets, { approvedOrigins });
 }
 if (require.main === module) {
   main().then((report) => console.log(JSON.stringify(report, null, 2))).catch((error) => {
@@ -209,4 +256,4 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
-module.exports = { validateManifest, inspectSecrets, dockerEnvironment, verifyHttps, deploy, main };
+module.exports = { readSecret, approvedDestinations, validateManifest, inspectSecrets, dockerEnvironment, verifyHttps, deploy, main };

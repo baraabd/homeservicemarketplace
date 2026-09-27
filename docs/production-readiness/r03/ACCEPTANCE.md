@@ -37,7 +37,7 @@ service account, infrastructure resource, DNS record or live environment has bee
 
 ## Evidence and limits
 
-Locally executed: 72/72 dependency-free release-control/preflight tests on Linux with
+Historical local evidence before the PR #117 security repair: 72/72 dependency-free release-control/preflight tests on Linux with
 Node 22.16.0, zero failures/skips. These include actual check-only CLI execution without
 Docker in PATH, secret/identity rejection, stale source/flag refusal, ordering failures,
 concurrent deployment exclusion and retained real-environment acceptance blockers.
@@ -78,3 +78,18 @@ After an authorized deployment: use a separately reviewed compatible earlier ima
 manifest; assess any applied migration before rollback. A failed post-deploy HTTPS
 check does not undo an already-applied migration or pretend the previous application
 still runs. Never delete volumes to make a release check green.
+
+
+## PR #117 security-result correction
+
+The earlier successful CodeQL Actions job did not establish a clean security result.
+At `b52fd21d1663cb41d8d708ffb0b1fcd3afbb8978`, the independent GitHub Advanced Security
+check 108629234863 failed with three new alerts: one high and two medium. The repair
+and its focused regression evidence are recorded in `CODEQL_REPAIR.md`. The final-SHA
+collector now also requires the official security-result check and rereads it before
+acceptance; a successful analysis job alone cannot satisfy that condition.
+
+The operator apply interface now requires independent `--api-origin` and `--web-origin`
+authorization, and recreates API/web containers even for unchanged image digests so
+rotated environment files take effect. See the updated `infra/production/STAGING.md`.
+The actual staging, least-privilege and branch-protection blockers above remain open.

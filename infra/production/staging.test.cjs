@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { validateManifest, inspectSecrets, dockerEnvironment, verifyHttps, deploy, main } = require('./staging.cjs');
+const { readSecret, approvedDestinations, validateManifest, inspectSecrets, dockerEnvironment, verifyHttps, deploy, main } = require('./staging.cjs');
 
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hsm-release-test-'));
@@ -27,7 +27,7 @@ function fixture(t) {
 }
 function runner(manifest, { fail, labels, after, endpoint = 'unix:///var/run/docker.sock' } = {}) {
   const calls = [];
-  return { calls, run(args, options) {
+  return { calls, approvedOrigins: { apiOrigin: 'https://api.example.test', webOrigin: 'https://web.example.test' }, run(args, options) {
     calls.push(args);
     assert.equal(options.env.COMPOSE_DISABLE_ENV_FILE, '1');
     assert.equal(options.env.HSM_API_IMAGE, manifest.images.api);
@@ -216,7 +216,7 @@ function probe(manifest, change = () => {}) {
 }
 test('HTTPS probes require healthy dependencies, exact build identity and credentialed CORS', async (t) => {
   const { manifest } = fixture(t);
-  await verifyHttps(manifest, probe(manifest));
+  await verifyHttps(manifest, { apiOrigin: 'https://api.example.test', webOrigin: 'https://web.example.test' }, probe(manifest));
 });
 for (const [name, change] of [
   ['stale bundle', (route, value) => { if (route === '/build-info.json') value.sourceSha = 'b'.repeat(40); }],
@@ -226,14 +226,202 @@ for (const [name, change] of [
   ['unready dependency', (route, value) => { if (route === '/health/ready') value.dependencies[0].status = 'down'; }],
 ]) test(`HTTPS rejects ${name}`, async (t) => {
   const { manifest } = fixture(t);
-  await assert.rejects(verifyHttps(manifest, probe(manifest, change)));
+  await assert.rejects(verifyHttps(manifest, { apiOrigin: 'https://api.example.test', webOrigin: 'https://web.example.test' }, probe(manifest, change)));
 });
 test('CORS failure is not hidden by a legitimate 401 status', async (t) => {
   const { manifest } = fixture(t);
   const normal = probe(manifest);
-  await assert.rejects(verifyHttps(manifest, async (...args) => {
+  await assert.rejects(verifyHttps(manifest, { apiOrigin: 'https://api.example.test', webOrigin: 'https://web.example.test' }, async (...args) => {
     const response = await normal(...args);
     if (response.status === 401) response.headers.set('access-control-allow-origin', '*');
     return response;
   }), /credentialed CORS/);
+});
+
+// PR #117: exercise the object being read, not just the name that was checked.
+test('secret validation, parsing and fingerprinting use one descriptor and identical bytes', (t) => {
+  const { manifest, api, migration } = fixture(t);
+  const open = fs.openSync;
+  const read = fs.readSync;
+  const descriptors = [];
+  const readDescriptors = [];
+  t.mock.method(fs, 'openSync', (...args) => {
+    const fd = open(...args); descriptors.push(fd); return fd;
+  });
+  t.mock.method(fs, 'readSync', (fd, ...args) => {
+    assert.equal(typeof fd, 'number'); readDescriptors.push(fd); return read(fd, ...args);
+  });
+  t.mock.method(fs, 'readFileSync', () => assert.fail('Never reopen a secret path for parsing or hashing'));
+  const secrets = inspectSecrets(manifest);
+  assert.equal(descriptors.length, 2, 'Exactly one open per secret');
+  assert.ok(readDescriptors.every((fd) => descriptors.includes(fd)));
+  const { createHash } = require('node:crypto');
+  assert.deepEqual(secrets.digests, [api, migration].map((text) => createHash('sha256').update(text).digest('hex')));
+});
+
+test('a pathname replacement cannot substitute different bytes after the descriptor check', (t) => {
+  const { manifest, dir, api } = fixture(t);
+  const file = manifest.secretFiles.api;
+  const replacement = path.join(dir, 'replacement.env');
+  fs.writeFileSync(replacement, 'UNTRUSTED=replacement\n', { mode: 0o600 });
+  const fstat = fs.fstatSync;
+  let changed = false;
+  t.mock.method(fs, 'fstatSync', (fd, options) => {
+    const stat = fstat(fd, options);
+    if (!changed) {
+      changed = true;
+      fs.renameSync(file, path.join(dir, 'original.env'));
+      fs.renameSync(replacement, file);
+    }
+    return stat;
+  });
+  // Some file systems update the original inode's ctime on rename; either
+  // reject that change or return the checked inode's original bytes, never
+  // the replacement file. In both cases revalidation will reject a new digest.
+  try {
+    const value = readSecret(file);
+    assert.equal(value.values.UNTRUSTED, undefined);
+    assert.equal(value.values.NODE_ENV, 'production');
+    assert.equal(value.digest, require('node:crypto').createHash('sha256').update(api).digest('hex'));
+  } catch (error) {
+    assert.match(error.message, /file changed while reading/);
+  }
+  assert.equal(changed, true);
+});
+
+test('growth after descriptor validation stays bounded and closes the descriptor on rejection', (t) => {
+  const { manifest } = fixture(t);
+  const fstat = fs.fstatSync;
+  const read = fs.readSync;
+  const close = fs.closeSync;
+  let changed = false;
+  let bytesRequested = 0;
+  let closed = 0;
+  t.mock.method(fs, 'fstatSync', (fd, options) => {
+    const stat = fstat(fd, options);
+    if (!changed) { changed = true; fs.appendFileSync(manifest.secretFiles.api, 'x'.repeat(300000)); }
+    return stat;
+  });
+  t.mock.method(fs, 'readSync', (fd, buffer, offset, length, position) => {
+    bytesRequested += length;
+    return read(fd, buffer, offset, length, position);
+  });
+  t.mock.method(fs, 'closeSync', (fd) => { closed += 1; return close(fd); });
+  assert.throws(() => readSecret(manifest.secretFiles.api), /file changed while reading/);
+  assert.ok(bytesRequested <= 262145);
+  assert.equal(closed, 1);
+});
+
+for (const kind of ['empty', 'oversized', 'directory']) test(`descriptor validation rejects ${kind} before reading`, (t) => {
+  const { manifest, dir } = fixture(t);
+  const file = kind === 'directory' ? dir : manifest.secretFiles.api;
+  if (kind !== 'directory') fs.writeFileSync(file, kind === 'empty' ? '' : 'x'.repeat(262145));
+  t.mock.method(fs, 'readSync', () => assert.fail('Invalid secret must not be read'));
+  assert.throws(() => readSecret(file));
+});
+
+test('an I/O exception still closes the secret descriptor', (t) => {
+  const { manifest } = fixture(t);
+  const close = fs.closeSync;
+  let closed = 0;
+  t.mock.method(fs, 'readSync', () => { throw new Error('synthetic I/O failure'); });
+  t.mock.method(fs, 'closeSync', (fd) => { closed += 1; return close(fd); });
+  assert.throws(() => readSecret(manifest.secretFiles.api), /synthetic I\/O failure/);
+  assert.equal(closed, 1);
+});
+
+const operatorOrigins = () => ({ apiOrigin: 'https://api.example.test', webOrigin: 'https://web.example.test' });
+for (const supplied of [undefined, {}, { apiOrigin: 'https://api.example.test' },
+  { ...operatorOrigins(), apiOrigin: 'http://api.example.test' },
+  { ...operatorOrigins(), apiOrigin: 'https://api.example.test/v1' },
+  { ...operatorOrigins(), webOrigin: 'https://unapproved.example.test' },
+  { ...operatorOrigins(), apiOrigin: 'https://user:password@api.example.test' },
+  { ...operatorOrigins(), webOrigin: 'https://web.example.test?secret=fixture' },
+]) test(`independent network authorization rejects ${JSON.stringify(supplied)}`, async (t) => {
+  const { manifest } = fixture(t);
+  await assert.rejects(verifyHttps(manifest, supplied, async () => assert.fail('No request before independent origin authorization')));
+});
+
+test('approved origins are immutable independent values, not a reference to the manifest', (t) => {
+  const { manifest } = fixture(t);
+  const supplied = operatorOrigins();
+  const approved = approvedDestinations(manifest, supplied);
+  supplied.apiOrigin = 'https://other.example.test';
+  manifest.webOrigin = 'https://unapproved.example.test';
+  assert.equal(approved.apiOrigin, 'https://api.example.test');
+  assert.equal(approved.webOrigin, 'https://web.example.test');
+  assert.equal(Object.isFrozen(approved), true);
+});
+
+test('manifest destination changes fail before Docker or HTTP activity', async (t) => {
+  const { dir, manifest } = fixture(t);
+  const secrets = inspectSecrets(manifest);
+  const fake = runner(manifest);
+  manifest.apiOrigin = 'https://unapproved.example.test';
+  await assert.rejects(deploy(manifest, secrets, { ...fake, lockDirectory: dir }), /independent operator authorization/);
+  assert.equal(fake.calls.length, 0);
+  assert.equal(fs.existsSync(path.join(dir, `${manifest.projectName}.lock`)), false);
+});
+
+test('actual apply CLI refuses missing or mismatched destination approval before Docker', (t) => {
+  const { manifest, manifestPath } = fixture(t);
+  const cli = path.join(__dirname, 'staging.cjs');
+  const prefix = [cli, '--apply', manifestPath, `${manifest.projectName}@${manifest.sourceSha}`];
+  for (const suffix of [[], ['--api-origin', 'https://unapproved.example.test', '--web-origin', 'https://web.example.test']]) {
+    const result = spawnSync(process.execPath, [...prefix, ...suffix], { encoding: 'utf8', env: { ...process.env, PATH: '' } });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /independently authorize|independent operator authorization/);
+    assert.doesNotMatch(result.stderr, /fixture@|Docker step failed/);
+  }
+});
+
+test('only independently authorized origins and fixed paths/headers are sent over HTTP', async (t) => {
+  const { manifest, api, migration } = fixture(t);
+  const transport = probe(manifest);
+  const requests = [];
+  await verifyHttps(manifest, operatorOrigins(), async (url, options) => {
+    requests.push([url, options]);
+    assert.equal(options.method, 'GET');
+    assert.equal(options.credentials, 'omit');
+    assert.equal(options.redirect, 'error');
+    assert.equal(options.body, undefined);
+    return transport(url, options);
+  });
+  assert.deepEqual(requests.map(([url]) => url), [
+    'https://api.example.test/health/live', 'https://api.example.test/health/ready',
+    'https://web.example.test/build-info.json', 'https://api.example.test/v1/auth/me',
+  ]);
+  assert.deepEqual(requests.map(([, options]) => options.headers), [{}, {}, {},
+    { Origin: 'https://web.example.test', 'X-Client-Kind': 'web' }]);
+  const serialized = JSON.stringify(requests);
+  for (const privateValue of [api, migration, manifest.sourceSha, manifest.secretFiles.api, manifest.images.api]) {
+    assert.equal(serialized.includes(privateValue), false);
+  }
+});
+
+test('redirect and transport failures cannot fall back to unapproved destinations', async (t) => {
+  const { manifest } = fixture(t);
+  let calls = 0;
+  await assert.rejects(verifyHttps(manifest, operatorOrigins(), async (_url, options) => {
+    calls += 1;
+    assert.equal(options.redirect, 'error');
+    throw new TypeError('Synthetic redirect refused');
+  }));
+  assert.equal(calls, 1);
+});
+
+test('reapplying unchanged image digests forces process recreation after authorized secret rotation', async (t) => {
+  const { dir, manifest } = fixture(t);
+  const fake = runner(manifest);
+  const options = { ...fake, lockDirectory: dir, verify: async () => {} };
+  const before = inspectSecrets(manifest);
+  await deploy(manifest, before, options);
+  fs.appendFileSync(manifest.secretFiles.api, '# authorized rotation before the next release\n');
+  const after = inspectSecrets(manifest);
+  assert.notEqual(before.digests[0], after.digests[0]);
+  await deploy(manifest, after, options);
+  const rollouts = fake.calls.filter((args) => args.includes('up'));
+  assert.equal(rollouts.length, 2);
+  assert.ok(rollouts.every((args) => args.includes('--force-recreate')));
+  assert.ok(rollouts.every((args) => !args.includes('--renew-anon-volumes')));
 });

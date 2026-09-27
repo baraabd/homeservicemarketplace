@@ -90,13 +90,45 @@ local file constraints **without Docker, image pulls, migrations or deployment**
 CONFIGURATION_ONLY result does not certify the actual built API configuration.
 
 Only after explicit deployment authorization, use `--apply /secure/release.json` with
-the exact `projectName@sourceSha` as the final argument. This is an operator confirmation
+the exact `projectName@sourceSha` and both independent origin arguments shown below.
+This is an operator confirmation
 barrier, not RBAC and not a substitute for protected environments. Keep the checkout
 and operator credentials under trusted control. The launcher checks the existing
 context/network, parses Compose without printing expanded secrets, pulls immutable
 images, validates image labels, runs the actual networkless API preflight, executes
 migrations once, starts API/web with readiness checks and verifies HTTPS health, web
 build identity and unauthenticated CORS. It does not deploy on merge or PR events.
+
+The network destinations must be authorized independently of the release file:
+
+```text
+node infra/production/staging.cjs --apply /secure/release.json hsm-staging-NAME@FULL_SHA --api-origin https://APPROVED_API_HOST --web-origin https://APPROVED_WEB_HOST
+```
+
+The capitalized fields above are placeholders, not a deployable command. Obtain the
+approved origins from the reviewed target configuration, not by automatically copying
+unreviewed manifest values into command arguments. Both explicit origins are mandatory,
+canonical HTTPS origins; paths, credentials, queries and fragments are rejected. They
+must match the release manifest before any Docker call. HTTPS requests use only these
+independent values, fixed paths and fixed headers. No manifest field or secret-file
+content is put into a request destination, body or header; redirects are refused.
+Check-only mode does not need network authorization and still makes no network calls.
+This is an operator-controlled allowlist, not authorization for an untrusted web caller.
+
+Each successful application apply uses `--force-recreate`, including for unchanged image
+digests. File-backed environment secrets are loaded at process startup, so keeping the
+old container after credential rotation would silently keep the old credentials.
+Recreation does not delete volumes, but a single-replica target can have a brief service
+interruption; schedule the separately authorized rollout accordingly.
+
+Secret validation opens each file once and uses the same descriptor for metadata checks
+and bounded reads. Parsing and SHA-256 comparison use the exact same bytes, rather than
+reopening a checked pathname. Revalidation applies the same type/size/permission checks.
+In-place modifications observed during the read are rejected. O_NOFOLLOW and O_NONBLOCK
+are used where supported; Windows relies on descriptor checks and reviewed host ACLs.
+Protect the secret directory and all parent directories from untrusted changes. This
+portable reader does not claim to defend file-backed Docker mounts against an attacker
+who controls the deployment host or concurrent operator credential rotation.
 
 The local project lock refuses overlapping applies and never auto-expires a crashed
 process's lock. Investigate the host, containers and database migration state before
