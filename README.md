@@ -1,16 +1,16 @@
 # Home Services Marketplace
 
-Production-grade home-services marketplace platform (TaskRabbit / Thumbtack class).
+Home-services marketplace platform under active production-readiness review.
 
 This repository is a `pnpm` + Turborepo monorepo containing:
 
-- `apps/api` — NestJS backend (infrastructure baseline only at this stage)
-- `apps/web` — React frontend (separate, not covered here)
+- `apps/api` — NestJS API and application modules
+- `apps/web` — React frontend for Seeker, Provider and Admin
 - `packages/database` — Prisma schema & migrations (PostgreSQL)
-- `packages/contracts`, `packages/ui` — shared scaffolds for later phases
+- `packages/contracts`, `packages/ui` — shared contracts and UI workspace
 - `infra/docker` — Docker Compose for local data-plane services
 
-The current backend state is **infrastructure baseline only**. Authentication, bookings, services and other domain modules are intentionally not wired in; they will be reintroduced under `apps/api/src/modules/<domain>/` in subsequent phases.
+The application contains implemented domain modules; existence is not release certification. See the current [production-readiness records](docs/production-readiness/) for source-specific gates and blockers. The selected infrastructure layout below is historical context, not a complete feature inventory.
 
 ---
 
@@ -18,9 +18,10 @@ The current backend state is **infrastructure baseline only**. Authentication, b
 
 ### Prerequisites
 
-- Node.js **20** — pinned in four places that must agree: `.nvmrc` (20.18.1),
-  the `volta` block in the root `package.json`, `.devcontainer/devcontainer.json`,
-  and the CI runner. `nvm use`, Volta, or the devcontainer each land you on it.
+- Node.js **24.21.0 LTS** — the exact release in `.nvmrc`, engines, Volta,
+  CI and all application/devcontainer Node images. Run `pnpm runtime:check`
+  to detect drift. See [R02 startup and acceptance](docs/production-readiness/r02/ACCEPTANCE.md)
+  before changing runtime versions or clearing generated caches.
 - pnpm **10.32.1** — pinned by `packageManager` in the root `package.json`.
   `corepack enable` is enough; corepack reads that field and activates the
   exact version, so you cannot install against a different resolver than the
@@ -42,15 +43,15 @@ pnpm docker:up:app                   # migrations run, then the API starts
 curl -fsS http://localhost:4000/health/ready
 ```
 
-`pnpm docker:up:app` is self-contained: it applies migrations through a
-separate one-shot job and only then starts the API. To prove the whole stack
-end to end (build, migrate, boot, readiness, media upload, OTP through real
-SMTP) run the same check CI runs:
+`pnpm docker:up:app` applies pending migrations through a separate one-shot
+job before starting the API. Preserve existing environment files and volumes.
+For native API development use the data-plane-only `pnpm docker:up`; do not
+start a second API on the Docker API's occupied port.
 
-```bash
-pnpm smoke:compose                   # ~3 min; tears the stack down afterwards
-API_HOST_PORT=4100 pnpm smoke:compose   # if something already owns port 4000
-```
+**Do not use `pnpm smoke:compose` to troubleshoot a persistent local stack.**
+That CI test intentionally removes test volumes. Its entrypoint now rejects
+normal local and self-hosted execution before installing its cleanup trap.
+Do not fake CI environment variables to bypass this safeguard.
 
 ### 1. Install dependencies
 
@@ -64,7 +65,7 @@ pnpm install
 cp .env.example .env
 ```
 
-Edit `.env` if you need non-default ports. The infrastructure baseline does **not** require any auth/JWT secrets — those are commented out in `.env.example` and will be required only when the auth module is reintroduced.
+Edit `.env` if you need non-default ports. Configure the required auth/JWT values using the current `.env.example` and environment schema. Keep actual secrets outside Git; isolated development values must never be reused for staging or production.
 
 The API validates the entire environment on boot via a strict Zod schema (`apps/api/src/config/env.schema.ts`). Missing or malformed variables cause an immediate, descriptive startup failure — the process never starts in a half-configured state.
 
@@ -132,7 +133,7 @@ The API binds to `http://localhost:4000`.
 | Endpoint            | Purpose                                                               |
 | ------------------- | --------------------------------------------------------------------- |
 | `GET /health/live`  | Liveness probe — `200` whenever the process is running.               |
-| `GET /health/ready` | Readiness probe — `200` only if Postgres, Mongo and Redis are all up. |
+| `GET /health/ready` | Readiness probe — checks the configured dependency set; Mongo is opt-in. |
 | `GET /metrics`      | Prometheus exposition format from the application registry.           |
 
 Quick check:
@@ -149,7 +150,7 @@ curl -s http://localhost:4000/metrics | head -n 20
 pnpm --filter @homeservicemarketplace/api test
 ```
 
-Current unit tests cover env validation and health-service behavior. Business-domain tests will be added per module in later phases.
+Use the current package scripts and CI workflows for unit, integration and browser suites. Real-service tests require their declared database, storage, mail and scanner setup; unit success alone is not production acceptance.
 
 ---
 
@@ -170,9 +171,10 @@ apps/api/src/
     telemetry/           # prom-client registry + /metrics controller
     health/              # /health/live, /health/ready
   types/                 # express Request augmentation (req.id)
-  # Legacy (kept on disk, NOT wired into the infra baseline AppModule):
-  auth/  bookings/  services/  modules/iam/
+  modules/               # application domains; inspect current AppModule wiring
   database/              # deprecated re-export shim → infrastructure/prisma
 ```
 
 See [`docs/infrastructure.md`](docs/infrastructure.md) for deeper notes on safety, security, and architectural decisions.
+
+---

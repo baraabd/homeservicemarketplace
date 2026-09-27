@@ -1,11 +1,16 @@
-node_modules
-.git
-.turbo
-dist
-build
-.next
-coverage
-.env
-.env.local
-.env.production
-.env.staging
+# Never copy host dependencies, generated outputs or secrets into build stages.
+**/node_modules
+**/.git
+**/.turbo
+**/dist
+**/dist-*
+**/build
+**/.next
+**/coverage
+**/.cache
+**/*.tsbuildinfo
+**/.env*
+**/test-results
+**/playwright-report
+**/vite.config.js
+**/vite.config.d.ts

@@ -32,11 +32,31 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24.21.0'
           cache: 'pnpm'
+      - name: Verify exact runtime and safe-start regressions
+        run: |
+          node scripts/runtime/toolchain.cjs
+          node --test scripts/runtime/toolchain.test.cjs scripts/dev/preflight.test.cjs scripts/dev/compose-smoke-context.test.cjs
       - run: pnpm install --frozen-lockfile
+      - name: Assert lockfile remains unchanged
+        run: git diff --exit-code -- pnpm-lock.yaml
       - name: Build the real CommonJS contracts entry
         run: pnpm --filter @homeservicemarketplace/contracts build
+      - name: Compile real API outputs and reproduce missing env.schema recovery
+        run: |
+          pnpm --filter @homeservicemarketplace/database exec prisma generate
+          pnpm --filter @homeservicemarketplace/database build
+          pnpm --filter @homeservicemarketplace/api exec tsc -p tsconfig.dev.json
+          node scripts/dev/api-output-check.cjs verify
+          node scripts/dev/api-output-check.cjs simulate-missing-output
+          pnpm --filter @homeservicemarketplace/api exec tsc -p tsconfig.dev.json
+          node scripts/dev/api-output-check.cjs verify
+      - name: Build production API and web on this operating system
+        run: |
+          pnpm --filter @homeservicemarketplace/api build
+          node scripts/dev/api-output-check.cjs verify
+          pnpm --filter @homeservicemarketplace/web build
       - name: Install Chromium
         run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
       - name: Reproduce the blank screen, then verify the real dev command
