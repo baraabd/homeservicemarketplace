@@ -59,6 +59,12 @@ export function runtimeSafetyProblems(env: AppEnv, raw: Record<string, unknown>)
       issues.push('EVIDENCE_SCAN_WORKER_ENABLED: verification enforcement requires the scan worker');
     }
   }
+  if (Boolean(env.SMTP_USER) !== Boolean(env.SMTP_PASS)) {
+    issues.push('SMTP_USER: provide both SMTP credentials or neither for an authorized relay');
+  }
+  if (hardened && raw.NODE_TLS_REJECT_UNAUTHORIZED === '0') {
+    issues.push('NODE_TLS_REJECT_UNAUTHORIZED: disabling certificate verification is forbidden');
+  }
   if (env.STORAGE_DRIVER === 's3') {
     if (!env.S3_BUCKET?.trim()) issues.push('S3_BUCKET: required when STORAGE_DRIVER=s3');
     if (hardened) {
@@ -85,6 +91,35 @@ export function deploymentReadinessProblems(env: AppEnv): string[] {
   }
   if (!env.SMTP_HOST?.trim()) issues.push('SMTP_HOST: deployment requires an actual mail transport');
   if (env.SMTP_FROM.endsWith('.local')) issues.push('SMTP_FROM: configure a verified deployment sender');
+  if (!env.REDIS_TLS) issues.push('REDIS_TLS: deployment requires encrypted Redis transport');
+  if (!env.REDIS_PASSWORD?.trim()) issues.push('REDIS_PASSWORD: deployment requires authenticated Redis');
+  try {
+    const database = new URL(env.DATABASE_URL);
+    if (!['postgres:', 'postgresql:'].includes(database.protocol) ||
+        database.searchParams.getAll('sslmode').length !== 1 ||
+        database.searchParams.get('sslmode') !== 'require' ||
+        database.searchParams.getAll('sslaccept').length !== 1 ||
+        database.searchParams.get('sslaccept') !== 'strict') {
+      issues.push('DATABASE_URL: deployment requires PostgreSQL TLS with sslmode=require and sslaccept=strict');
+    }
+  } catch {
+    issues.push('DATABASE_URL: deployment requires a valid PostgreSQL connection URL');
+  }
+  for (const key of ['S3_ENDPOINT', 'S3_PUBLIC_BASE_URL'] as const) {
+    const value = env[key];
+    if (!value) continue;
+    try {
+      const url = new URL(value);
+      if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+        issues.push(`${key}: deployment requires HTTPS without credentials, query or fragment`);
+      }
+    } catch {
+      issues.push(`${key}: deployment requires a valid HTTPS URL`);
+    }
+  }
+  if (env.EVIDENCE_SCANNER_DRIVER !== 'clamav' || !env.CLAMAV_HOST?.trim() || !env.EVIDENCE_SCAN_WORKER_ENABLED) {
+    issues.push('EVIDENCE_SCAN_WORKER_ENABLED: deployment requires an active worker and configured ClamAV');
+  }
   if (!env.OUTBOX_WORKER_ENABLED) issues.push('OUTBOX_WORKER_ENABLED: deployment requires event delivery');
   if (env.STORAGE_DRIVER !== 's3') issues.push('STORAGE_DRIVER: the production topology requires durable S3-compatible storage');
   if (/(change.?me|dummy|example|test_test)/iu.test(env.JWT_ACCESS_SECRET) ||

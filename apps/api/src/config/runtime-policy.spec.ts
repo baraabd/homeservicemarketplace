@@ -9,6 +9,8 @@ const base = {
 };
 const deployed = {
   ...base,
+  DATABASE_URL: `${base.DATABASE_URL}?sslmode=require&sslaccept=strict`,
+  REDIS_TLS: true, REDIS_PASSWORD: randomBytes(24).toString('hex'),
   NODE_ENV: 'production', APP_ENV: 'prod',
   FRONTEND_URL: 'https://app.example.test',
   SMTP_HOST: 'smtp.example.test', SMTP_FROM: 'noreply@example.test',
@@ -55,6 +57,12 @@ describe('S03 runtime safety', () => {
     expect(() => validateEnv({ ...deployed, S3_PORTFOLIO_BUCKET: undefined })).toThrow(/S3_RESTRICTED_BUCKET/);
     expect(() => validateEnv({ ...deployed, S3_ACCESS_KEY_ID: 'only-one-half' })).toThrow(/S3_ACCESS_KEY_ID/);
   });
+  it.each([{ SMTP_USER: 'only-user' }, { SMTP_PASS: 'only-password' }])('rejects partial SMTP credentials', (override) => {
+    expect(() => validateEnv({ ...deployed, ...override })).toThrow(/SMTP_USER/);
+  });
+  it('refuses process-wide disabled TLS certificate verification in hardened mode', () => {
+    expect(() => validateEnv({ ...deployed, NODE_TLS_REJECT_UNAUTHORIZED: '0' })).toThrow(/NODE_TLS_REJECT_UNAUTHORIZED/);
+  });
   it('never echoes CORS credential or flag values in its error', () => {
     try {
       validateEnv({ ...deployed, CORS_ORIGINS: 'https://private-user:private-password@example.test' });
@@ -68,12 +76,25 @@ describe('S03 runtime safety', () => {
 });
 
 describe('S03 deployment preflight', () => {
+  const readyToDeploy = {
+    ...deployed, EVIDENCE_SCANNER_DRIVER: 'clamav', CLAMAV_HOST: 'scanner.example.test',
+    EVIDENCE_SCAN_WORKER_ENABLED: true,
+  };
   it('accepts a configured reference topology without enabling verification or money', () => {
-    expect(deploymentReadinessProblems(validateEnv(deployed))).toEqual([]);
-    expect(validateEnv(deployed).VERIFICATION_ENFORCED).toBe(false);
+    expect(deploymentReadinessProblems(validateEnv(readyToDeploy))).toEqual([]);
+    expect(validateEnv(readyToDeploy).VERIFICATION_ENFORCED).toBe(false);
   });
   it.each([
     { STORAGE_DRIVER: 'local' },
+    { EVIDENCE_SCAN_WORKER_ENABLED: false },
+    { DATABASE_URL: `${base.DATABASE_URL}?sslmode=require&sslmode=disable&sslaccept=strict` },
+    { REDIS_TLS: false },
+    { REDIS_PASSWORD: '' },
+    { DATABASE_URL: base.DATABASE_URL },
+    { DATABASE_URL: `${base.DATABASE_URL}?sslmode=require` },
+    { DATABASE_URL: 'not-a-url' },
+    { S3_ENDPOINT: 'http://storage.example.test' },
+    { S3_PUBLIC_BASE_URL: 'https://u:secret@cdn.example.test' },
     { SMTP_HOST: '' },
     { SMTP_FROM: 'noreply@deployment.local' },
     { FRONTEND_URL: 'http://example.test' },
@@ -81,6 +102,6 @@ describe('S03 deployment preflight', () => {
     { JWT_ACCESS_SECRET: 'ci_only_dummy_secret_at_least_32_chars_long' },
     { JWT_ACCESS_SECRET: 'x'.repeat(64) },
   ])('rejects a bootable but not deployable configuration %p', (override) => {
-    expect(deploymentReadinessProblems(validateEnv({ ...deployed, ...override })).length).toBeGreaterThan(0);
+    expect(deploymentReadinessProblems(validateEnv({ ...readyToDeploy, ...override })).length).toBeGreaterThan(0);
   });
 });

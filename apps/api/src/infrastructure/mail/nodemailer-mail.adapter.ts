@@ -25,6 +25,10 @@ export class NodemailerMailAdapter extends MailPort implements OnModuleInit {
       host,
       port,
       secure,
+      // Implicit TLS (465) or mandatory STARTTLS: hardened mail must never
+      // fall back to plaintext when a relay omits the STARTTLS capability.
+      requireTLS: this.config.isProduction && !secure,
+      ...(this.config.isProduction ? { tls: { rejectUnauthorized: true } } : {}),
       ...(user && pass ? { auth: { user, pass } } : {}),
     });
 

@@ -20,7 +20,11 @@ function fixture() {
     jobs: POLICY[index].jobs.map((name) => ({ name, run_id: run.id, run_attempt: 1, status: 'completed', conclusion: 'success' })),
     artifacts: POLICY[index].artifacts.map((name) => ({ id: 100 + index, name, expired: false, size_in_bytes: 100, digest: `sha256:${'c'.repeat(64)}`, workflow_run: { id: run.id, head_sha: headSha }, created_at: '2026-09-27T09:05:00Z', expires_at: '2026-10-04T09:05:00Z' })),
   }]));
-  return { schemaVersion: 1, repository: REPOSITORY, pr, after: structuredClone(pr), comparison: { status: 'ahead', behind_by: 0 }, capturedAt: '2026-09-27T09:59:00Z', complete: true, runs, runsAfter: structuredClone(runs), details };
+  const codeScanning = [{ id: 901, name: 'CodeQL', head_sha: headSha,
+    app: { id: 57789, slug: 'github-advanced-security' }, pull_requests: [{ number: 17 }],
+    status: 'completed', conclusion: 'success', output: { annotations_count: 0 },
+    started_at: '2026-09-27T09:01:00Z', completed_at: '2026-09-27T09:02:00Z' }];
+  return { codeScanning, codeScanningAfter: structuredClone(codeScanning), schemaVersion: 1, repository: REPOSITORY, pr, after: structuredClone(pr), comparison: { status: 'ahead', behind_by: 0 }, capturedAt: '2026-09-27T09:59:00Z', complete: true, runs, runsAfter: structuredClone(runs), details };
 }
 const check = (snapshot) => acceptanceProblems(snapshot, expected);
 
@@ -171,6 +175,7 @@ test('collector retrieves attempt-specific jobs, exhausts evidence and rechecks 
     let body;
     if (route === 'pulls/17') body = value.pr;
     else if (route.startsWith('compare/')) body = value.comparison;
+    else if (route === `commits/${headSha}/check-runs`) body = { total_count: value.codeScanning.length, check_runs: value.codeScanning };
     else if (route === 'actions/runs') body = { total_count: value.runs.length, workflow_runs: value.runs };
     else {
       const match = /^actions\/runs\/(\d+)(.*)$/u.exec(route);
@@ -184,7 +189,40 @@ test('collector retrieves attempt-specific jobs, exhausts evidence and rechecks 
   });
   assert.equal(requests.filter((route) => route === 'actions/runs').length, 2);
   assert.equal(requests.filter((route) => route === 'pulls/17').length, 2);
+  assert.equal(requests.filter((route) => route === `commits/${headSha}/check-runs`).length, 2);
   assert.equal(requests.filter((route) => route.endsWith('/attempts/1/jobs')).length, POLICY.length);
   result.capturedAt = value.capturedAt;
   assert.deepEqual(check(result), []);
+});
+
+
+for (const [name, change] of Object.entries({
+  'missing security result': (s) => { delete s.codeScanning; },
+  'missing result recheck': (s) => { delete s.codeScanningAfter; },
+  'failed result despite successful analysis workflow': (s) => { s.codeScanning[0].conclusion = 'failure'; },
+  'successful result with remaining alert annotations': (s) => { s.codeScanning[0].output.annotations_count = 3; },
+  'missing annotation count': (s) => { delete s.codeScanning[0].output; },
+  'pending security result': (s) => { s.codeScanning[0].status = 'queued'; },
+  'skipped security result': (s) => { s.codeScanning[0].conclusion = 'skipped'; },
+  'wrong result source': (s) => { s.codeScanning[0].head_sha = baseSha; },
+  'wrong result PR': (s) => { s.codeScanning[0].pull_requests = [{ number: 18 }]; },
+  'spoofed check publisher': (s) => { s.codeScanning[0].app.id = 15368; },
+  'spoofed check publisher slug': (s) => { s.codeScanning[0].app.slug = 'github-actions'; },
+  'unknown check ID': (s) => { s.codeScanning[0].id = null; },
+  'malformed check': (s) => { s.codeScanning.push(null); },
+  'result from preceding analysis attempt': (s) => { s.codeScanning[0].completed_at = '2026-09-27T08:59:00Z'; },
+  'future result completion': (s) => { s.codeScanning[0].completed_at = '2026-09-28T00:00:00Z'; },
+  'changed result recheck': (s) => { s.codeScanningAfter[0].conclusion = 'failure'; },
+  'newer queued result hidden behind older success': (s) => { s.codeScanning.push({ ...s.codeScanning[0], id: 902, status: 'queued', conclusion: null }); },
+  'new result published during collection': (s) => { s.codeScanningAfter.push({ ...s.codeScanningAfter[0], id: 902 }); },
+})) test(`security-result acceptance rejects ${name}`, () => {
+  const snapshot = fixture();
+  change(snapshot);
+  assert.ok(check(snapshot).some((error) => /CodeQL/.test(error)));
+});
+
+test('unrelated similarly named checks cannot replace the official security result', () => {
+  const snapshot = fixture();
+  snapshot.codeScanning.push({ ...snapshot.codeScanning[0], id: 999, app: { id: 42, slug: 'unrelated-app' }, conclusion: 'failure' });
+  assert.deepEqual(check(snapshot), []);
 });

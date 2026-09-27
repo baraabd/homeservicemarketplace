@@ -130,6 +130,8 @@ RUN set -eux; \
 # wherever migrations run, pulled on every deploy. The bundle below is the
 # schema, the migrations, and the Prisma CLI, and nothing else.
 FROM node:${NODE_VERSION} AS migrator
+ARG SOURCE_SHA=unknown
+LABEL org.opencontainers.image.revision=${SOURCE_SHA}
 # openssl is what the Prisma engines link against on Alpine.
 RUN apk add --no-cache openssl \
   && addgroup -S migrate \
@@ -149,6 +151,8 @@ CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
 # runner — non-root, production dependencies only, no sources, no toolchain.
 # ---------------------------------------------------------------------------
 FROM node:${NODE_VERSION} AS runner
+ARG SOURCE_SHA=unknown
+LABEL org.opencontainers.image.revision=${SOURCE_SHA}
 ENV NODE_ENV=production \
     NPM_CONFIG_UPDATE_NOTIFIER=false \
     NODE_OPTIONS="--enable-source-maps"
@@ -180,6 +184,8 @@ RUN rm -rf \
       /usr/local/bin/yarnpkg \
   && ! command -v npm
 COPY --from=builder --chown=app:app /out ./
+# Staging uses the guarded command; normal CI boot remains a separate check.
+COPY --chown=app:app infra/production/check-runtime.cjs infra/production/start-api.cjs ./deploy/
 
 # Media upload root for STORAGE_DRIVER=local. Sprint 4.
 #

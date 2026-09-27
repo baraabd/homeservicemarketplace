@@ -8,6 +8,7 @@ export const POLICY = [
   { path: '.github/workflows/codeql.yml', jobs: ['Analyze JavaScript/TypeScript'], artifacts: [] },
   { path: '.github/workflows/production-governance.yml', jobs: ['Production governance'], artifacts: ['production-governance-source'] },
   { path: '.github/workflows/web-startup.yml', jobs: ['Dev browser startup (ubuntu-latest)', 'Dev browser startup (windows-latest)'], artifacts: ['web-startup-ubuntu-latest', 'web-startup-windows-latest'] },
+  { path: '.github/workflows/staging-boundary.yml', jobs: ['Staging release controls (ubuntu-latest)', 'Staging release controls (windows-latest)', 'Staging image boundaries', 'Staging boundary gate'], artifacts: ['staging-controls-ubuntu-latest', 'staging-controls-windows-latest', 'staging-image-boundary'] },
 ];
 export const FIELDS = ['Sprint', 'Base SHA', 'Final SHA', 'Owned paths', 'Shared files modified', 'Schema change', 'Migration', 'Contract change', 'Feature flag', 'Security impact', 'Tests', 'Browser evidence', 'Known limitations', 'Rollback'];
 const SHA = /^[a-f0-9]{40}$/u;
@@ -32,6 +33,44 @@ export function metadataProblems(pr) {
   return errors;
 }
 
+// CodeQL's Actions job can succeed while its separate security-result check
+// fails. Require the result published by GitHub Advanced Security itself.
+function latestCodeScanningCheck(checks) {
+  if (!Array.isArray(checks) || !checks.every(isObject)) return undefined;
+  const official = checks.filter((check) => check.name === 'CodeQL' &&
+    check.app?.id === 57789 && check.app?.slug === 'github-advanced-security');
+  if (official.some((check) => !positiveId(check.id))) return undefined;
+  return official.sort((a, b) => b.id - a.id)[0];
+}
+
+function codeScanningProblems(snapshot, expected) {
+  const check = latestCodeScanningCheck(snapshot.codeScanning);
+  const after = latestCodeScanningCheck(snapshot.codeScanningAfter);
+  if (!check || !after) return ['Missing official CodeQL security-result evidence or final recheck'];
+  const errors = [];
+  for (const value of [check, after]) {
+    if (value.head_sha !== expected.headSha || !Array.isArray(value.pull_requests) ||
+        !value.pull_requests.some((pr) => pr?.number === expected.prNumber)) {
+      errors.push('Wrong CodeQL security-result provenance');
+    }
+    if (value.status !== 'completed' || value.conclusion !== 'success' || value.output?.annotations_count !== 0) {
+      errors.push('CodeQL security result is not successful with zero alert annotations');
+    }
+  }
+  if (['id', 'head_sha', 'status', 'conclusion', 'started_at', 'completed_at'].some((key) => check[key] !== after[key]) ||
+      check.output?.annotations_count !== after.output?.annotations_count) {
+    errors.push('CodeQL security result changed during evidence collection');
+  }
+  const run = Array.isArray(snapshot.runs) ? snapshot.runs.filter((item) =>
+    item?.path === '.github/workflows/codeql.yml').sort((a, b) => b.id - a.id || b.run_attempt - a.run_attempt)[0] : undefined;
+  const completed = timestamp(check.completed_at);
+  if (!(completed >= timestamp(check.started_at)) || !(completed >= timestamp(run?.run_started_at)) ||
+      !(completed <= timestamp(snapshot.capturedAt) + 60_000)) {
+    errors.push('Stale or invalid CodeQL security-result timestamp');
+  }
+  return errors;
+}
+
 /** Only a complete, fresh, live-collected snapshot can support technical acceptance.
  * An offline JSON document is not a signature or a GitHub branch-protection rule.
  */
@@ -52,7 +91,7 @@ export function acceptanceProblems(snapshot, expected) {
   const capturedAt = timestamp(snapshot.capturedAt);
   if (!Number.isFinite(capturedAt) || expected.now - capturedAt > 30 * 60_000 || capturedAt > expected.now + 60_000) errors.push('Stale or invalid capture time');
   if (snapshot.complete !== true) errors.push('Incomplete API pagination');
-  errors.push(...metadataProblems(pr));
+  errors.push(...metadataProblems(pr), ...codeScanningProblems(snapshot, expected));
   if (snapshot.after?.body !== pr.body) errors.push('PR metadata changed during collection');
   if (!Array.isArray(snapshot.runs) || !snapshot.runs.every(isObject)) return [...errors, 'Missing or malformed workflow runs'];
   if (!Array.isArray(snapshot.runsAfter) || !snapshot.runsAfter.every(isObject)) return [...errors, 'Missing final workflow recheck'];
@@ -118,6 +157,7 @@ export async function collectSnapshot(prNumber, token, fetchImpl = fetch) {
   const pr = await request(`pulls/${prNumber}`);
   if (!SHA.test(pr.head?.sha ?? '') || !SHA.test(pr.base?.sha ?? '')) throw new Error('Invalid PR source identity');
   const runs = await allPages(request, `actions/runs?event=pull_request&head_sha=${pr.head.sha}`, 'workflow_runs');
+  const codeScanning = await allPages(request, `commits/${pr.head.sha}/check-runs?check_name=CodeQL&filter=latest`, 'check_runs');
   const details = {};
   for (const policy of POLICY) {
     const run = runs.filter((item) => item.path === policy.path).sort((a, b) => b.id - a.id || b.run_attempt - a.run_attempt)[0];
@@ -129,8 +169,9 @@ export async function collectSnapshot(prNumber, token, fetchImpl = fetch) {
   }
   const comparison = await request(`compare/${pr.base.sha}...${pr.head.sha}`);
   const runsAfter = await allPages(request, `actions/runs?event=pull_request&head_sha=${pr.head.sha}`, 'workflow_runs');
+  const codeScanningAfter = await allPages(request, `commits/${pr.head.sha}/check-runs?check_name=CodeQL&filter=latest`, 'check_runs');
   const after = await request(`pulls/${prNumber}`);
-  return { schemaVersion: 1, repository: REPOSITORY, capturedAt: new Date().toISOString(), complete: true, pr, after, comparison, runs, runsAfter, details };
+  return { schemaVersion: 1, repository: REPOSITORY, capturedAt: new Date().toISOString(), complete: true, pr, after, comparison, runs, runsAfter, details, codeScanning, codeScanningAfter };
 }
 
 async function main() {
