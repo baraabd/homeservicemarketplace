@@ -1,6 +1,7 @@
 import { expect, test, type TestInfo } from '@playwright/test';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { createServer } from 'node:http';
 import {
   access,
   copyFile,
@@ -93,6 +94,7 @@ async function stop(child: ChildProcess): Promise<void> {
 async function serve(args: string[], port: number, info: TestInfo, name: string) {
   let output = '';
   let failure: Error | undefined;
+  const spawnedAt = performance.now();
   const child = spawn(process.execPath, args, {
     cwd: web,
     detached: process.platform !== 'win32',
@@ -118,7 +120,7 @@ async function serve(args: string[], port: number, info: TestInfo, name: string)
         return (await fetch(baseURL, { signal: AbortSignal.timeout(1000) })).ok;
       } catch { return false; }
     }, { timeout: 90_000, message: `Waiting for ${name}` }).toBe(true);
-    return { baseURL, close };
+    return { baseURL, close, spawnedAt };
   } catch (error) {
     await close();
     throw error;
@@ -295,5 +297,90 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
     console.log('FIXED_STARTUP', JSON.stringify(evidence));
   } finally {
     await server.close();
+  }
+});
+
+
+for (const mode of ['dev', 'production-preview'] as const) {
+  test(`${mode} stays interactive when API transport is unavailable`, async ({ page }, info) => {
+    const pnpm = process.env.npm_execpath;
+    expect(pnpm, 'Use pnpm test:startup').toBeTruthy();
+    if (mode === 'production-preview') {
+      // Build the isolated current source, never reuse a developer's old dist.
+      const build = spawnSync(process.execPath, [viteCli, 'build', '--config', 'vite.config.ts'], {
+        cwd: web, encoding: 'utf8', timeout: 120_000,
+        env: { ...process.env, VITE_API_URL: 'https://api.example.test' },
+      });
+      await info.attach('r02-production-build', {
+        body: `${build.stdout}\n${build.stderr}`, contentType: 'text/plain',
+      });
+      expect(build.status, 'Production source must build before preview').toBe(0);
+    }
+    const port = mode === 'dev' ? 5199 : 5200;
+    const args = mode === 'dev'
+      ? [pnpm!, 'run', 'dev', ...cliFlags(port)]
+      : [viteCli, 'preview', '--config', 'vite.config.ts', '--host', '127.0.0.1', '--port', String(port), '--strictPort'];
+    const errors: string[] = [];
+    let failedApiRequests = 0;
+    page.on('pageerror', (error) => errors.push(error.message));
+    await seedLanguage(page, 'en');
+    await page.route('https://api.example.test/**', async (route) => {
+      failedApiRequests += 1;
+      await route.abort('connectionrefused');
+    });
+    const server = await serve(args, port, info, `r02-${mode}`);
+    try {
+      await page.goto(server.baseURL);
+      await expect(page.getByTestId('app-card-seeker')).toBeVisible();
+      await page.getByTestId('app-card-seeker').click();
+      const email = page.locator('input[type="email"]');
+      await expect(email).toBeVisible();
+      await email.fill('startup-check@example.test');
+      await expect(email).toHaveValue('startup-check@example.test');
+      const interactiveMs = performance.now() - server.spawnedAt;
+      await expect(page.locator('#startup-error')).toHaveCount(0);
+      await expect(page.locator('vite-error-overlay')).toHaveCount(0);
+      expect(errors).toEqual([]);
+      expect(failedApiRequests).toBeGreaterThan(0);
+      await info.attach('r02-interactive-readiness', {
+        body: JSON.stringify({
+          mode, node: process.version, platform: process.platform, interactiveMs,
+          start: 'owned server process spawn', end: 'navigation and editable input acknowledged',
+          api: 'controlled browser transport failure; no backend success claimed',
+          failedApiRequests, errors,
+        }, null, 2), contentType: 'application/json',
+      });
+      const screenshot = info.outputPath(`r02-${mode}-interactive.png`);
+      await page.screenshot({ path: screenshot, fullPage: true });
+      await info.attach(`r02-${mode}-interactive`, { path: screenshot, contentType: 'image/png' });
+    } finally { await server.close(); }
+  });
+}
+
+test('occupied web port fails without killing or reusing its existing server', async ({ page }, info) => {
+  const occupied = createServer((_request, response) => response.end('unrelated-listener'));
+  await new Promise<void>((resolve) => occupied.listen(0, '127.0.0.1', resolve));
+  const address = occupied.address();
+  if (!address || typeof address === 'string') throw new Error('Expected a TCP test listener');
+  let output = '';
+  let failure: Error | undefined;
+  const child = spawn(process.execPath, [viteCli, '--config', 'vite.config.ts', ...cliFlags(address.port)], {
+    cwd: web, detached: process.platform !== 'win32',
+    env: { ...process.env, VITE_API_URL: 'https://api.example.test', BROWSER: 'none' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  children.add(child);
+  child.stdout?.on('data', (data) => { output += data.toString(); });
+  child.stderr?.on('data', (data) => { output += data.toString(); });
+  child.on('error', (error) => { failure = error; });
+  try {
+    await expect.poll(() => { if (failure) throw failure; return child.exitCode; }, { timeout: 30_000 }).not.toBeNull();
+    expect(child.exitCode).not.toBe(0);
+    expect(output).toMatch(/port .*already in use/i);
+    expect(await (await page.request.get(`http://127.0.0.1:${address.port}`)).text()).toBe('unrelated-listener');
+    await info.attach('r02-occupied-port', { body: output, contentType: 'text/plain' });
+  } finally {
+    await stop(child);
+    await new Promise<void>((resolve, reject) => occupied.close((error) => error ? reject(error) : resolve()));
   }
 });

@@ -6,6 +6,8 @@
     "dist"
   ],
   "scripts": {
+    "predev": "node ../../scripts/dev/preflight.cjs --api",
+    "predev:fast": "node ../../scripts/dev/preflight.cjs --api",
     "dev": "pnpm build:deps && nest start --watch --config nest-cli.dev.json --path tsconfig.dev.json",
     "build": "pnpm build:deps && nest build",
     "start": "node dist/main",

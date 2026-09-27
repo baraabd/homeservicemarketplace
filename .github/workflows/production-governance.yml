@@ -27,9 +27,11 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24.21.0'
           # This job uses only Node built-ins; pnpm is intentionally not installed.
           package-manager-cache: false
+      - name: Verify exact application runtime
+        run: node scripts/runtime/toolchain.cjs
       - name: Test fail-closed governance validation
         run: node --test .github/scripts/*.test.mjs
       - name: Validate repository governance files

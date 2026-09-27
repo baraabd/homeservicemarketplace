@@ -1,4 +1,4 @@
-ARG NODE_VERSION=20-alpine
+ARG NODE_VERSION=24.21.0-alpine
 
 # ---------------------------------------------------------------------------
 # builder — install, generate, and build the workspace.
@@ -38,7 +38,7 @@ COPY . .
 
 # Scripts intentionally ENABLED. Runs: workspace `prepare` (contracts build),
 # argon2 `install` (node-gyp-build), @prisma/engines `postinstall`.
-RUN pnpm install --frozen-lockfile
+RUN node scripts/runtime/toolchain.cjs && pnpm install --frozen-lockfile
 
 # Prisma client codegen — schema lives in packages/database/prisma.
 RUN pnpm --filter @homeservicemarketplace/database exec prisma generate

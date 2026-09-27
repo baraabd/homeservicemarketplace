@@ -41,7 +41,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '24.21.0'
   # Placeholder values used only to satisfy zod env validation and Prisma's
   # schema loader in jobs that never open a real connection. Any job that DOES
   # need a live service declares its own.
@@ -61,7 +61,7 @@ jobs:
     name: Verify
     uses: ./.github/workflows/reusable-verify.yml
     with:
-      node-version: '20'
+      node-version: '24.21.0'
 
   # ── integration / E2E against REAL services ───────────────────────────────
   # Without these containers the DB- and Redis-gated suites skip themselves,

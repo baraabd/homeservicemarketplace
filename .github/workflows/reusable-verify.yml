@@ -18,10 +18,10 @@ on:
   workflow_call:
     inputs:
       node-version:
-        description: 'Node major version to verify against. Keep in step with .nvmrc, the Volta pin, the devcontainer image, and the Dockerfile base.'
+        description: 'Exact Node release to verify against. Keep in step with .nvmrc, the Volta pin, the devcontainer image, and the Dockerfile base.'
         type: string
         required: false
-        default: '20'
+        default: '24.21.0'
 
 permissions:
   contents: read

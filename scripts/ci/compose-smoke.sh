@@ -15,12 +15,16 @@
 #   7. non-root       the runtime process is not uid 0
 #   8. sizes          report both image sizes
 #
-# Runs identically in CI and on a developer machine. Requires: docker, curl,
-# node. Leaves nothing behind unless KEEP_STACK=1.
+# Restricted to disposable GitHub-hosted CI. Requires: docker, curl, node.
+# Normal local and self-hosted runs are refused before any cleanup is installed.
 #
 # Usage:  bash scripts/ci/compose-smoke.sh
 
 set -euo pipefail
+
+# This script deliberately removes test volumes. Refuse a normal developer
+# environment before the first Compose operation AND before the cleanup trap.
+node scripts/dev/compose-smoke-context.cjs
 
 COMPOSE_FILE="infra/docker/docker-compose.yml"
 # An optional extra -f, so the stack can be run in ISOLATION beside a
