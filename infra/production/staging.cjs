@@ -123,7 +123,7 @@ async function verifyHttps(manifest, request = fetch) {
     ['postgres', 'redis'].every((name) => ready.dependencies.some((dep) => dep.name === name && dep.status === 'up')) &&
     ready.dependencies.every((dep) => dep.status === 'up'), 'HTTPS: live/readiness payloads are not healthy');
   const build = await (await get(`${manifest.webOrigin}/build-info.json`)).json();
-  requireCondition(build.sourceSha === manifest.sourceSha && build.apiUrl === `${manifest.apiOrigin}/v1` && build.onboardingV2 === manifest.onboardingV2, 'HTTPS: the deployed web build identity or build-time flags differ');
+  requireCondition(build.sourceSha === manifest.sourceSha && build.apiUrl === manifest.apiOrigin && build.onboardingV2 === manifest.onboardingV2, 'HTTPS: the deployed web build identity or build-time flags differ');
   const unauthenticated = await get(`${manifest.apiOrigin}/v1/auth/me`, 401, { Origin: manifest.webOrigin, 'X-Client-Kind': 'web' });
   if (manifest.apiOrigin !== manifest.webOrigin) {
     requireCondition(unauthenticated.headers.get('access-control-allow-origin') === manifest.webOrigin &&
@@ -151,7 +151,7 @@ async function applyRelease(manifest, secrets, { run = execute, verify = verifyH
     for (const [kind, image] of Object.entries(manifest.images)) {
       const labels = JSON.parse(docker('image', 'inspect', image, '--format', '{{json .Config.Labels}}'));
       requireCondition(labels?.['org.opencontainers.image.revision'] === manifest.sourceSha, 'image source mismatch');
-      if (kind === 'web') requireCondition(labels?.['io.hsm.web.api-url'] === `${manifest.apiOrigin}/v1`, 'web API origin mismatch');
+      if (kind === 'web') requireCondition(labels?.['io.hsm.web.api-url'] === manifest.apiOrigin, 'web API origin mismatch');
     }
   });
   phase('secret-consistency', () => assertUnchangedSecrets(secrets));

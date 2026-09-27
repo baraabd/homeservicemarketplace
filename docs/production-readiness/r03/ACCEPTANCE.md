@@ -31,17 +31,17 @@ service account, infrastructure resource, DNS record or live environment has bee
   supported. The real loopback test refuses a relay that cannot negotiate STARTTLS.
 - `apps/web/Dockerfile`, `apps/web/nginx.conf`: non-root read-only SPA image, deep-link
   fallback, real missing-asset/API errors, no-store entry/build identity, explicit
-  build-time V2 flag. Public build metadata contains no credentials or user data.
-- `.github/workflows/staging-boundary.yml` and final-SHA acceptance policy: Node release-control tests on Windows/Linux, packaged API preflight in a networkless
+  build-time V2 flag and an origin-only API base (the existing request wrappers add /v1). Public build metadata contains no credentials or user data.
+- `.github/workflows/staging-boundary.yml` and final-SHA acceptance policy: Node release-control tests on Windows/Linux, installed-Axios image base-URL validation, packaged API preflight in a networkless
   container, actual non-root Nginx boot/HTTP checks and all existing regression gates.
 
 ## Evidence and limits
 
-Locally executed: 71/71 dependency-free release-control/preflight tests on Linux with
+Locally executed: 72/72 dependency-free release-control/preflight tests on Linux with
 Node 22.16.0, zero failures/skips. These include actual check-only CLI execution without
 Docker in PATH, secret/identity rejection, stale source/flag refusal, ordering failures,
 concurrent deployment exclusion and retained real-environment acceptance blockers.
-The combined baseline/runtime/governance plus R03 suite also passed 197/197 tests locally.
+The combined baseline/runtime/governance plus R03 suite also passed 198/198 tests locally.
 Orchestration and HTTPS services in those unit tests are synthetic test doubles.
 
 The shell environment has no usable pnpm, Docker or Chromium and cannot resolve

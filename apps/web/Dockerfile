@@ -9,6 +9,7 @@ ARG VITE_API_URL
 ARG VITE_PROVIDER_ONBOARDING_V2=false
 ENV VITE_API_URL=${VITE_API_URL} \
     VITE_PROVIDER_ONBOARDING_V2=${VITE_PROVIDER_ONBOARDING_V2}
+RUN node apps/web/scripts/check-image-build.mjs
 RUN pnpm --filter @homeservicemarketplace/web build
 # Public build identity only, generated alongside this exact static bundle.
 RUN SOURCE_SHA=${SOURCE_SHA} node -e "require('node:fs').writeFileSync('apps/web/dist/build-info.json', JSON.stringify({sourceSha:process.env.SOURCE_SHA,apiUrl:process.env.VITE_API_URL,onboardingV2:process.env.VITE_PROVIDER_ONBOARDING_V2 === 'true'}))"

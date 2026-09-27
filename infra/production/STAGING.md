@@ -60,7 +60,7 @@ Do not rotate credentials concurrently with deployment.
 
 Build the API runner and migrator targets from `apps/api/Dockerfile`, and the web image
 from `apps/web/Dockerfile`, using the **same accepted full source SHA** as SOURCE_SHA.
-For the web build supply VITE_API_URL as the exact HTTPS API origin plus `/v1`, and an
+For the web build supply VITE_API_URL as the exact HTTPS API origin WITHOUT `/v1` (request paths already include that prefix), and an
 explicit approved VITE_PROVIDER_ONBOARDING_V2 value. Publish only to the approved
 registry after reviewing CI/security evidence and applicable authorization. Capture
 all three registry digests and verify their provenance. Digest pinning prevents tag

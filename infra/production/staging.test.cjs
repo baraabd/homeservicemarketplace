@@ -35,7 +35,7 @@ function runner(manifest, { fail, labels, after, endpoint = 'unix:///var/run/doc
     if (fail?.(args)) throw new Error('fixture-secret-must-never-escape');
     after?.(args);
     if (args[2] === 'context') return JSON.stringify(endpoint);
-    if (args[2] === 'image') return JSON.stringify(labels ?? { 'org.opencontainers.image.revision': manifest.sourceSha, 'io.hsm.web.api-url': `${manifest.apiOrigin}/v1` });
+    if (args[2] === 'image') return JSON.stringify(labels ?? { 'org.opencontainers.image.revision': manifest.sourceSha, 'io.hsm.web.api-url': manifest.apiOrigin });
     return '';
   } };
 }
@@ -205,7 +205,7 @@ function probe(manifest, change = () => {}) {
     const reply = {
       '/health/live': { status: 'ok' },
       '/health/ready': { ready: true, dependencies: ['postgres', 'redis'].map((name) => ({ name, status: 'up' })) },
-      '/build-info.json': { sourceSha: manifest.sourceSha, apiUrl: `${manifest.apiOrigin}/v1`, onboardingV2: manifest.onboardingV2 },
+      '/build-info.json': { sourceSha: manifest.sourceSha, apiUrl: manifest.apiOrigin, onboardingV2: manifest.onboardingV2 },
       '/v1/auth/me': { error: 'Unauthorized' },
     }[route];
     assert.ok(reply);
@@ -220,6 +220,7 @@ test('HTTPS probes require healthy dependencies, exact build identity and creden
 });
 for (const [name, change] of [
   ['stale bundle', (route, value) => { if (route === '/build-info.json') value.sourceSha = 'b'.repeat(40); }],
+  ['double API version prefix', (route, value) => { if (route === '/build-info.json') value.apiUrl += '/v1'; }],
   ['wrong feature flag', (route, value) => { if (route === '/build-info.json') value.onboardingV2 = true; }],
   ['missing dependency', (route, value) => { if (route === '/health/ready') value.dependencies = []; }],
   ['unready dependency', (route, value) => { if (route === '/health/ready') value.dependencies[0].status = 'down'; }],

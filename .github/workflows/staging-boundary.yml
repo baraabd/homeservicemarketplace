@@ -73,8 +73,18 @@ jobs:
         run: |
           docker build -f apps/web/Dockerfile -t hsm-web:ci \
             --build-arg SOURCE_SHA="$(git rev-parse HEAD)" \
-            --build-arg VITE_API_URL=https://api.example.test/v1 \
+            --build-arg VITE_API_URL=https://api.example.test \
             --build-arg VITE_PROVIDER_ONBOARDING_V2=false .
+      - name: Reject a version-prefixed web API base with the actual Axios dependency
+        run: |
+          set -euo pipefail
+          if docker build -f apps/web/Dockerfile -t hsm-web:invalid-ci \
+            --build-arg SOURCE_SHA="$(git rev-parse HEAD)" \
+            --build-arg VITE_API_URL=https://api.example.test/v1 . > invalid-web-build.txt 2>&1; then
+            echo 'A version-prefixed API base must not build'
+            exit 1
+          fi
+          grep -q WEB_IMAGE_API_ORIGIN_REQUIRED invalid-web-build.txt
       - name: Boot read-only with no extra capabilities
         run: |
           docker run --detach --name hsm-web-ci --read-only --cap-drop=ALL \
@@ -82,7 +92,7 @@ jobs:
             --tmpfs /tmp:rw,noexec,nosuid,size=32m -p 127.0.0.1:18080:8080 hsm-web:ci
       - name: Verify real HTTP routes, missing assets and source identity
         env:
-          EXPECTED_API_URL: https://api.example.test/v1
+          EXPECTED_API_URL: https://api.example.test
         run: |
           set -euo pipefail
           node infra/production/web-image-smoke.cjs | tee web-image.txt
