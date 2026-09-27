@@ -1,0 +1,118 @@
+name: Staging release boundary
+
+# CI-only synthetic checks. No environment binding, production secrets, image
+# publication, target deployment, DNS mutation or automatic merge.
+on:
+  pull_request:
+    branches: ['main', 'develop']
+  push:
+    branches: ['main', 'develop']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-boundary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controls:
+    name: Staging release controls (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Test fail-closed release controls on the exact runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/runtime/toolchain.cjs
+          node --test infra/production/check-runtime.test.cjs infra/production/staging.test.cjs | tee controls.tap
+          git rev-parse HEAD > source-sha.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: staging-controls-${{ matrix.os }}
+          path: |
+            controls.tap
+            source-sha.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  images:
+    name: Staging image boundaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Build the exact API image and test packaged preflight without a network
+        run: |
+          set -euo pipefail
+          docker build -f apps/api/Dockerfile -t hsm-api:staging-ci \
+            --build-arg SOURCE_SHA="$(git rev-parse HEAD)" .
+          node infra/production/image-preflight-smoke.cjs hsm-api:staging-ci | tee api-image.txt
+      - name: Build the actual web image from this checkout
+        run: |
+          docker build -f apps/web/Dockerfile -t hsm-web:ci \
+            --build-arg SOURCE_SHA="$(git rev-parse HEAD)" \
+            --build-arg VITE_API_URL=https://api.example.test/v1 \
+            --build-arg VITE_PROVIDER_ONBOARDING_V2=false .
+      - name: Boot read-only with no extra capabilities
+        run: |
+          docker run --detach --name hsm-web-ci --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            --tmpfs /tmp:rw,noexec,nosuid,size=32m -p 127.0.0.1:18080:8080 hsm-web:ci
+      - name: Verify real HTTP routes, missing assets and source identity
+        env:
+          EXPECTED_API_URL: https://api.example.test/v1
+        run: |
+          set -euo pipefail
+          node infra/production/web-image-smoke.cjs | tee web-image.txt
+          test "$(docker exec hsm-web-ci id -u)" != 0
+          if docker exec hsm-web-ci touch /usr/share/nginx/html/unexpected; then
+            echo 'The web root must not be writable'
+            exit 1
+          fi
+          git rev-parse HEAD > source-sha.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: staging-image-boundary
+          path: |
+            api-image.txt
+            web-image.txt
+            source-sha.txt
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove only the disposable test container
+        if: always()
+        run: docker rm -f hsm-web-ci || true
+
+  gate:
+    name: Staging boundary gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [controls, images]
+    steps:
+      - name: Require both control platforms and image checks
+        env:
+          CONTROLS: ${{ needs.controls.result }}
+          IMAGES: ${{ needs.images.result }}
+        run: test "$CONTROLS" = success && test "$IMAGES" = success

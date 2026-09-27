@@ -13,6 +13,7 @@ const DECLARATIONS = {
   '.github/workflows/ci.yml': /^  NODE_VERSION: '24\.21\.0'$/mu,
   '.github/workflows/reusable-verify.yml': /^        default: '24\.21\.0'$/mu,
   '.github/workflows/web-startup.yml': /^          node-version: '24\.21\.0'$/mu,
+  '.github/workflows/staging-boundary.yml': /^          node-version: '24\.21\.0'$/mu,
   '.github/workflows/production-governance.yml': /^          node-version: '24\.21\.0'$/mu,
 };
 

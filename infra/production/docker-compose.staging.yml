@@ -1,0 +1,78 @@
+# Operator-selected EXISTING environment only. No cloud, DNS, database,
+# bucket, network or paid resource is provisioned by this application overlay.
+# Invoke through staging.cjs so tags, mixed revisions and unsafe secret paths
+# are rejected before deployment. Never layer this over the local compose file.
+name: ${HSM_STAGING_PROJECT:?Use the validated staging launcher}
+
+x-api: &api
+  image: ${HSM_API_IMAGE:?A digest-pinned image is required}
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+  tmpfs: ['/tmp:rw,noexec,nosuid,size=128m']
+  secrets: [api_env]
+  environment:
+    NODE_ENV: production
+    APP_ENV: staging
+
+services:
+  api-preflight:
+    <<: *api
+    network_mode: none
+    restart: 'no'
+    command: ['node', '--env-file=/run/secrets/api_env', 'deploy/check-runtime.cjs', '/app']
+    healthcheck:
+      disable: true
+
+  api-migrate:
+    image: ${HSM_MIGRATOR_IMAGE:?A digest-pinned image is required}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=128m']
+    secrets: [migration_env]
+    networks: [runtime]
+    restart: 'no'
+    command: ['node', '--env-file=/run/secrets/migration_env', 'node_modules/prisma/build/index.js', 'migrate', 'deploy']
+
+  api:
+    <<: *api
+    command: ['node', '--env-file=/run/secrets/api_env', 'deploy/start-api.cjs', '/app']
+    networks: [runtime]
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${HSM_API_PORT:?Explicit loopback port required}:4000'
+    healthcheck:
+      # Readiness governs rollout; the image retains a distinct liveness probe.
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      start_period: 20s
+      retries: 12
+
+  web:
+    image: ${HSM_WEB_IMAGE:?A digest-pinned image is required}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=32m']
+    networks: [runtime]
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${HSM_WEB_PORT:?Explicit loopback port required}:8080'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:8080/health/live']
+      interval: 5s
+      timeout: 4s
+      retries: 12
+
+secrets:
+  api_env:
+    file: ${HSM_API_ENV_FILE:?Provide an external secret-manager file}
+  migration_env:
+    file: ${HSM_MIGRATION_ENV_FILE:?Provide a separate external migration secret}
+
+networks:
+  runtime:
+    external: true
+    name: ${HSM_RUNTIME_NETWORK:?Provide an existing private runtime network}

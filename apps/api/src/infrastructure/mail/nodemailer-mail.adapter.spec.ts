@@ -20,13 +20,27 @@ function makeConfig(overrides: Record<string, unknown> = {}): AppConfigService {
     SMTP_FROM: 'noreply@test.local',
     ...overrides,
   };
-  return { get: (k: string) => values[k] } as unknown as AppConfigService;
+  return { get: (k: string) => values[k], isProduction: values.hardened === true } as unknown as AppConfigService;
 }
 
 describe('NodemailerMailAdapter', () => {
   beforeEach(() => {
     mockSendMail.mockClear();
     mockedCreateTransport.mockClear();
+  });
+
+  it.each([false, true])('requires verified TLS in hardened mode (implicit=%s)', (secure) => {
+    const adapter = new NodemailerMailAdapter(makeConfig({ hardened: true, SMTP_SECURE: secure }));
+    adapter.onModuleInit();
+    expect(mockedCreateTransport).toHaveBeenCalledWith(expect.objectContaining({
+      secure, requireTLS: !secure, tls: { rejectUnauthorized: true },
+    }));
+  });
+
+  it('retains plaintext SMTP for disposable local mail fixtures only', () => {
+    const adapter = new NodemailerMailAdapter(makeConfig());
+    adapter.onModuleInit();
+    expect(mockedCreateTransport).toHaveBeenCalledWith(expect.objectContaining({ requireTLS: false }));
   });
 
   it('calls transporter.sendMail with correct from/to/subject/text', async () => {
