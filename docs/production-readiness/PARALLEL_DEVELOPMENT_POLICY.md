@@ -1,5 +1,7 @@
 # Parallel development policy — Production Wave A
 
+> Current R01-R10 baseline (2026-09-27): [R01 acceptance and blockers](r01/ACCEPTANCE.md) and [source-backed register](r01/BASELINE.json). The Wave A / S01-S10 records below are historical, not the current open-PR list or reservation authority.
+
 ## Scope
 
 One sprint = one branch = one PR = one acceptance report. The accountable owner is `@baraabd`; sprint labels are logical work reservations, not invented GitHub users or teams. A session works on only its assigned branch. Agents must not push to, merge into, force-push, or delete `develop`.

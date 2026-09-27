@@ -3,6 +3,7 @@ name: Production governance
 on:
   pull_request:
     branches: ['main', 'develop']
+    types: [opened, synchronize, reopened, edited, ready_for_review, converted_to_draft]
   push:
     branches: ['main', 'develop']
   workflow_dispatch:
@@ -30,9 +31,14 @@ jobs:
           # This job uses only Node built-ins; pnpm is intentionally not installed.
           package-manager-cache: false
       - name: Test fail-closed governance validation
-        run: node --test .github/scripts/production-governance.test.mjs
+        run: node --test .github/scripts/*.test.mjs
       - name: Validate repository governance files
         run: node .github/scripts/production-governance.mjs
+      - name: Validate current release baseline and ownership
+        run: node .github/scripts/release-baseline.mjs
+      - name: Bind PR metadata to the actual head
+        if: github.event_name == 'pull_request'
+        run: node .github/scripts/pr-acceptance.mjs metadata "$GITHUB_EVENT_PATH"
       - name: Capture immutable tracked-source provenance
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}

@@ -1,5 +1,7 @@
 # Merge policy — protected develop
 
+> Current R01-R10 baseline (2026-09-27): [R01 acceptance and blockers](r01/ACCEPTANCE.md) and [source-backed register](r01/BASELINE.json). The Wave A / S01-S10 records below are historical, not the current open-PR list or reservation authority.
+
 ## Enforcement is a repository setting, not a Markdown claim
 
 At Wave A inspection, `develop` was at `66e336cb4823802aabacc536584972aa43056d23` and the branch API reported `protected: false`. Reading `/branches/develop/protection` with the active integration returned HTTP 403 (`Resource not accessible by integration`). The integration has no administration-write action. These facts block the protection acceptance criterion; adding CODEOWNERS or this policy does not activate protection.
