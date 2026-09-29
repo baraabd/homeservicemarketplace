@@ -1,9 +1,11 @@
+import { toast } from 'sonner';
 import type { QueryClient } from '@tanstack/react-query';
 import { invalidateAuthRequests } from './auth-session-boundary';
 
 /** Cancel before clearing: an earlier /me response must not restore a session. */
 export async function clearAuthSession(client: QueryClient): Promise<void> {
   invalidateAuthRequests();
+  toast.dismiss();
   try {
     // Cancel every private request, not only /me. In-flight mutation responses
     // are fenced by the API scope; clearing this cache does not undo a server write.

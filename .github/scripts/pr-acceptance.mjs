@@ -9,6 +9,7 @@ export const POLICY = [
   { path: '.github/workflows/production-governance.yml', jobs: ['Production governance'], artifacts: ['production-governance-source'] },
   { path: '.github/workflows/web-startup.yml', jobs: ['Dev browser startup (ubuntu-latest)', 'Dev browser startup (windows-latest)'], artifacts: ['web-startup-ubuntu-latest', 'web-startup-windows-latest'] },
   { path: '.github/workflows/staging-boundary.yml', jobs: ['Staging release controls (ubuntu-latest)', 'Staging release controls (windows-latest)', 'Staging image boundaries', 'Staging boundary gate'], artifacts: ['staging-controls-ubuntu-latest', 'staging-controls-windows-latest', 'staging-image-boundary'] },
+  { path: '.github/workflows/auth-lifecycle.yml', jobs: ['R04 real browser, SMTP and Postgres'], artifacts: ['r04-auth-lifecycle-evidence'] },
 ];
 export const FIELDS = ['Sprint', 'Base SHA', 'Final SHA', 'Owned paths', 'Shared files modified', 'Schema change', 'Migration', 'Contract change', 'Feature flag', 'Security impact', 'Tests', 'Browser evidence', 'Known limitations', 'Rollback'];
 const SHA = /^[a-f0-9]{40}$/u;

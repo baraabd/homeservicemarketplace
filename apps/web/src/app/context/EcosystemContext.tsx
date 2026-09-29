@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useCallback } from 'react';
+import { useIdentityState } from '../../lib/use-identity-state';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 export interface Bid {
@@ -447,10 +448,10 @@ const EcosystemContext = createContext<EcosystemCtx>({
   setShowHourlyRate: () => {},
 });
 
-export function EcosystemProvider({ children }: { children: React.ReactNode }) {
-  const [requests, setRequests] = useState<ServiceRequest[]>(SEED_REQUESTS);
-  const [adminNotifs, setAdminNotifs] = useState<CrossAppNotif[]>(SEED_NOTIFS);
-  const [showHourlyRate, setShowHourlyRate] = useState(true);
+export function EcosystemProvider({ children, identityKey = 'signed-out' }: { children: React.ReactNode; identityKey?: string }) {
+  const [requests, setRequests] = useIdentityState<ServiceRequest[]>(identityKey, SEED_REQUESTS);
+  const [adminNotifs, setAdminNotifs] = useIdentityState<CrossAppNotif[]>(identityKey, SEED_NOTIFS);
+  const [showHourlyRate, setShowHourlyRate] = useIdentityState(identityKey, true);
 
   const postRequest = useCallback(
     (r: Omit<ServiceRequest, 'id' | 'bids' | 'status' | 'postedAt'>) => {
@@ -477,7 +478,7 @@ export function EcosystemProvider({ children }: { children: React.ReactNode }) {
       ]);
       return id;
     },
-    [],
+    [setRequests, setAdminNotifs],
   );
 
   const submitBid = useCallback(
@@ -507,7 +508,7 @@ export function EcosystemProvider({ children }: { children: React.ReactNode }) {
         ...prev,
       ]);
     },
-    [],
+    [setRequests, setAdminNotifs],
   );
 
   const acceptBid = useCallback((requestId: string, bidId: string) => {
@@ -525,17 +526,17 @@ export function EcosystemProvider({ children }: { children: React.ReactNode }) {
           : r,
       ),
     );
-  }, []);
+  }, [setRequests]);
 
   const completeJob = useCallback((requestId: string) => {
     setRequests((prev) =>
       prev.map((r) => (r.id === requestId ? { ...r, status: 'completed' as const } : r)),
     );
-  }, []);
+  }, [setRequests]);
 
   const markAdminRead = useCallback((id: string) => {
     setAdminNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-  }, []);
+  }, [setAdminNotifs]);
 
   return (
     <EcosystemContext.Provider

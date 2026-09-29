@@ -136,8 +136,11 @@ describe('ProviderActivationScreen — screen 0, activation', () => {
 describe('ProviderActivationScreen — screen 1, role synchronization', () => {
   it('shows the sync screen with the "no sign-in needed" reassurance while rotating', async () => {
     mock.onPost(UPGRADE_URL).reply(200, PROFILE);
-    // Rotation hangs, so the in-flight state stays on screen.
-    mock.onPost(REFRESH_URL).reply(() => new Promise(() => {}));
+    // Hold the real cookie-write lock only during this assertion. An unresolved
+    // mock never honours Axios timeout and would strand later tests' lock queue.
+    let finish!: (reply: [number, unknown]) => void;
+    mock.onPost(REFRESH_URL).reply(() => new Promise<[number, unknown]>((resolve) => { finish = resolve; }));
+    mock.onGet(ME_URL).reply(200, me(['seeker', 'provider']));
     renderActivation();
 
     fireEvent.click(screen.getByTestId('activation-cta'));
@@ -151,6 +154,9 @@ describe('ProviderActivationScreen — screen 1, role synchronization', () => {
     expect(screen.getByTestId('onboarding-v2-progress-bar').getAttribute('aria-valuenow')).toBe(
       '5',
     );
+    await waitFor(() => expect(finish).toBeDefined());
+    finish([200, {}]);
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/provider/onboarding'));
   });
 
   it('navigates ONLY after the authoritative session reports the provider role', async () => {
@@ -246,7 +252,9 @@ describe('ProviderActivationScreen — screen 1, role synchronization', () => {
 
   it('announces the synchronization politely for assistive technology', async () => {
     mock.onPost(UPGRADE_URL).reply(200, PROFILE);
-    mock.onPost(REFRESH_URL).reply(() => new Promise(() => {}));
+    let finish!: (reply: [number, unknown]) => void;
+    mock.onPost(REFRESH_URL).reply(() => new Promise<[number, unknown]>((resolve) => { finish = resolve; }));
+    mock.onGet(ME_URL).reply(200, me(['seeker', 'provider']));
     renderActivation();
 
     fireEvent.click(screen.getByTestId('activation-cta'));
@@ -254,5 +262,8 @@ describe('ProviderActivationScreen — screen 1, role synchronization', () => {
 
     const live = document.querySelector('[role="status"][aria-live="polite"]');
     expect(live?.textContent).toBe(ACTIVATION_COPY.en.syncLiveStatus);
+    await waitFor(() => expect(finish).toBeDefined());
+    finish([200, {}]);
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/provider/onboarding'));
   });
 });

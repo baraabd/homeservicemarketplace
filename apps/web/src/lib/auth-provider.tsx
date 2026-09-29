@@ -119,8 +119,18 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
       recordLocalLogout();
       void clearAuthSession(qc).catch(() => undefined);
     };
+    const resetHandler = () => {
+      authIntent.current += 1;
+      setLogoutState('confirmed');
+      clearIntendedApp();
+      void clearAuthSession(qc).catch(() => undefined);
+    };
     window.addEventListener('auth:session-expired', handler);
-    return () => window.removeEventListener('auth:session-expired', handler);
+    window.addEventListener('auth:credentials-reset', resetHandler);
+    return () => {
+      window.removeEventListener('auth:session-expired', handler);
+      window.removeEventListener('auth:credentials-reset', resetHandler);
+    };
   }, [qc]);
 
   useEffect(() => {
