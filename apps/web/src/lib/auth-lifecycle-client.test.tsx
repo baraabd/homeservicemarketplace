@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
 import { api } from './api';
@@ -158,17 +158,12 @@ describe('R04 delayed response and degraded transport boundaries', () => {
 });
 
 it('account-local state drops old async callbacks without remounting a public child', () => {
-  let oldWrite!: (value: string) => void;
-  function Draft({ identity }: { identity: string }) {
-    const [draft, setDraft] = useIdentityState(identity, 'empty');
-    if (identity === 'A') oldWrite = setDraft;
-    return <output>{draft}</output>;
-  }
-  const view = render(<Draft identity="A" />);
+  const view = renderHook(({ identity }) => useIdentityState(identity, 'empty'), { initialProps: { identity: 'A' } });
+  const oldWrite = view.result.current[1];
   act(() => oldWrite('private-A'));
-  expect(screen.getByText('private-A')).toBeTruthy();
-  view.rerender(<Draft identity="B" />);
-  expect(screen.getByText('empty')).toBeTruthy();
+  expect(view.result.current[0]).toBe('private-A');
+  view.rerender({ identity: 'B' });
+  expect(view.result.current[0]).toBe('empty');
   act(() => oldWrite('late-A'));
-  expect(screen.queryByText('late-A')).toBeNull();
+  expect(view.result.current[0]).toBe('empty');
 });

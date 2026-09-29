@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import pg from 'pg';
+import { acceptOfflineLogout, offlineLogoutCheckpoint } from './r04-offline-logout.mjs';
 
 // No developer/live database is an admissible target. These are fixed loopback
 // addresses in the separate, disposable GitHub-hosted acceptance job.
@@ -49,7 +50,7 @@ async function newPage(width = 390, language = 'en') {
 }
 async function call(page, endpoint, body, csrf = true) {
   return page.evaluate(async ({ api, endpoint, body, csrf }) => {
-    const token = document.cookie.match(/(?:^|;\s*)hsm_csrf=([^;]*)/)?.[1];
+    const token = globalThis.document.cookie.match(/(?:^|;\s*)hsm_csrf=([^;]*)/)?.[1];
     const response = await fetch(`${api}${endpoint}`, {
       method: body === undefined ? 'GET' : 'POST', credentials: 'include',
       headers: { 'X-Client-Kind': 'web', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(csrf && token ? { 'X-CSRF-Token': token } : {}) },
@@ -163,7 +164,7 @@ try {
     const refresh = cookies.find((c) => c.name === 'hsm_rt');
     assert.ok(access?.httpOnly && refresh?.httpOnly);
     assert.equal(refresh.path, '/v1/auth/refresh');
-    const visible = await a.page.evaluate(() => document.cookie);
+    const visible = await a.page.evaluate(() => globalThis.document.cookie);
     assert.ok(!visible.includes('hsm_at=') && !visible.includes('hsm_rt='));
     assert.equal((await call(a.page, '/v1/auth/refresh', {}, false)).status, 400);
     assert.equal((await call(a.page, '/v1/auth/logout', {}, false)).status, 403);
@@ -172,23 +173,8 @@ try {
     assert.ok(next && next.value !== refresh.value);
   });
   const peer = await a.context.newPage();
-  await phase('offline-local-logout-clears-two-tabs-and-does-not-auto-restore', async () => {
-    await peer.goto(`${WEB}/home/profile`);
-    await expect(peer).toHaveURL(`${WEB}/home/profile`);
-    await prepareLogout(a.page);
-    await a.context.setOffline(true);
-    await a.page.getByRole('button', { name: 'Sign Out', exact: true }).last().click();
-    await expect(a.page.getByTestId('auth-logout-notice')).toContainText('not confirmed');
-    await expect(peer).toHaveURL(/\/login$/u);
-    await a.context.setOffline(false);
-    await a.page.reload();
-    await expect(a.page).toHaveURL(/\/login$/u);
-    await expect(a.page.getByTestId('auth-logout-notice')).toContainText('not confirmed');
-    const response = a.page.waitForResponse((r) => r.url() === `${API}/v1/auth/logout` && r.request().method() === 'POST');
-    await a.page.getByRole('button', { name: 'Retry server sign-out', exact: true }).click();
-    assert.equal((await response).status(), 204);
-    await expect(a.page.getByTestId('auth-logout-notice')).toHaveCount(0);
-  });
+  await phase('offline-local-logout-clears-two-tabs-and-does-not-auto-restore', () =>
+    acceptOfflineLogout({ ...a, peer, web: WEB, api: API, prepareLogout }));
   await phase('recovery-through-real-mail-revokes-pending-codes-and-every-previous-session', async () => {
     await signIn(a.page, addressA);
     const oldChallenge = await call(a.page, '/v1/auth/login', { email: addressA, password: pwd });
@@ -228,7 +214,7 @@ try {
     await b.page.goto(target);
     await expect(b.page.getByRole('heading', { name: 'Email verified' })).toBeVisible();
     assert.equal((await call(b.page, '/v1/auth/me')).status, 401);
-    const size = await b.page.evaluate(() => ({ width: document.documentElement.clientWidth, content: document.documentElement.scrollWidth }));
+    const size = await b.page.evaluate(() => ({ width: globalThis.document.documentElement.clientWidth, content: globalThis.document.documentElement.scrollWidth }));
     assert.ok(size.content <= size.width + 1, 'No horizontal overflow at 320px');
     await b.page.screenshot({ path: path.join(OUT, 'arabic-link-recovery-320.png'), fullPage: true });
   });
@@ -261,7 +247,7 @@ try {
 } catch (error) {
   // Never upload mailbox content, cookie jars, passwords, OTPs, traces or raw API logs.
   console.error(`FAIL R04 stage: ${stage}; ${error?.name ?? 'Error'}`);
-  await writeFile(path.join(OUT, 'failure.json'), JSON.stringify({ result: 'FAIL', stage, completed: phases.map((p) => p.name) })).catch(() => undefined);
+  await writeFile(path.join(OUT, 'failure.json'), JSON.stringify({ result: 'FAIL', stage, completed: phases.map((p) => p.name), logoutCheckpoint: offlineLogoutCheckpoint(), codeLocation: /r04-[a-z-]+\.mjs:\d+:\d+/u.exec(error?.stack ?? '')?.[0] ?? null })).catch(() => undefined);
   process.exitCode = 1;
 } finally {
   for (const context of contexts) await context.close().catch(() => undefined);
