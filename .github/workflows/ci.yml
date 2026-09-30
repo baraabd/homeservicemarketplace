@@ -1059,6 +1059,8 @@ jobs:
                   print(f'::add-mask::{value}')
                   out.write(f'{key}={value}\n')
           PY
+      - name: Verify MinIO fixture retry policy
+        run: node --test scripts/ci/install-minio-fixture.test.cjs
       - name: Build the upstream security-fixed S3 test service
         # Test service only, not a production storage recommendation. Build the
         # exact upstream security release with its declared Go toolchain and the
