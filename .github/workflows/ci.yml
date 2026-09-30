@@ -1042,6 +1042,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.24.8'
+          cache: true
+          cache-dependency-path: .github/minio-fixture-go.sum
       - run: pnpm install --frozen-lockfile
       - name: Start disposable scanner and create temporary storage credentials
         run: |
@@ -1055,10 +1060,11 @@ jobs:
                   out.write(f'{key}={value}\n')
           PY
       - name: Build the upstream security-fixed S3 test service
-        # Test service only, not a production storage recommendation. Upstream
-        # stopped publishing patched images; build the security release rather
-        # than silently testing with the earlier vulnerable image.
-        run: GOBIN="$RUNNER_TEMP/retention-bin" go install github.com/minio/minio@RELEASE.2025-10-15T17-29-55Z
+        # Test service only, not a production storage recommendation. Build the
+        # exact upstream security release with its declared Go toolchain and the
+        # public Go checksum database. The helper retries only recognized network
+        # transport failures; compilation/checksum failures stop immediately.
+        run: bash scripts/ci/install-minio-fixture.sh "$RUNNER_TEMP/retention-bin"
       - name: Start storage and verify both services actually answer
         run: |
           MINIO_ROOT_USER="$RETENTION_TEST_S3_USER" MINIO_ROOT_PASSWORD="$RETENTION_TEST_S3_SECRET" \
