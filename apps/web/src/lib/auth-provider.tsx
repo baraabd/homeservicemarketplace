@@ -1,10 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import * as authApi from './auth-api';
 import { clearIntendedApp } from './intended-app';
 import { clearAuthSession } from './auth-session-reset';
+import { AUTH_BOUNDARY_KEY, hasUnconfirmedLogout, isLocallySignedOut, recordLocalLogout, recordSessionEnded } from './auth-session-boundary';
 import { useNotificationArrivalWatcher } from './realtime/notification-arrival-watcher';
 import { useRealtimeSocket } from './realtime/use-realtime-socket';
 
@@ -66,6 +67,7 @@ interface AuthContextValue {
   verifyOtp: (challengeId: string, code: string) => Promise<void>;
   resendOtp: (challengeId: string) => Promise<void>;
   logout: () => Promise<void>;
+  logoutState: 'idle' | 'pending' | 'confirmed' | 'unconfirmed';
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -82,6 +84,9 @@ function isUnauthorized(err: unknown): boolean {
 // ─── Inner provider (needs QueryClient in scope) ─────────────────────────────
 function AuthProviderInner({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
+  const logoutFlight = useRef<Promise<void> | null>(null);
+  const authIntent = useRef(0);
+  const [logoutState, setLogoutState] = useState<AuthContextValue['logoutState']>(() => hasUnconfirmedLogout() ? 'unconfirmed' : 'idle');
 
   const {
     data: user,
@@ -89,9 +94,10 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     isError,
   } = useQuery<MeResponse | null>({
     queryKey: ['auth', 'me'],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
+      if (isLocallySignedOut()) return null;
       try {
-        return await authApi.getMe();
+        return await authApi.getMe(signal);
       } catch (err) {
         if (isUnauthorized(err)) return null;
         throw err;
@@ -109,11 +115,44 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   // itself — along with its React subscription — so we can't use it here.)
   useEffect(() => {
     const handler = () => {
-      // clearAuthSession always clears in finally, even if cancellation fails.
+      authIntent.current += 1;
+      // An anonymous /me result is not a failed user-requested logout. Keep
+      // restoration blocked without inventing an unconfirmed sign-out banner.
+      // A genuine pending/failed logout remains conservative until its reply.
+      if (!hasUnconfirmedLogout()) {
+        recordSessionEnded();
+        setLogoutState('idle');
+      }
+      void clearAuthSession(qc).catch(() => undefined);
+    };
+    const resetHandler = () => {
+      authIntent.current += 1;
+      setLogoutState('confirmed');
+      clearIntendedApp();
       void clearAuthSession(qc).catch(() => undefined);
     };
     window.addEventListener('auth:session-expired', handler);
-    return () => window.removeEventListener('auth:session-expired', handler);
+    window.addEventListener('auth:credentials-reset', resetHandler);
+    return () => {
+      window.removeEventListener('auth:session-expired', handler);
+      window.removeEventListener('auth:credentials-reset', resetHandler);
+    };
+  }, [qc]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== AUTH_BOUNDARY_KEY) return;
+      authIntent.current += 1;
+      setLogoutState(hasUnconfirmedLogout() ? 'unconfirmed' : 'idle');
+      void (async () => {
+        await clearAuthSession(qc);
+        // A peer's event never supplies an identity. Only a fresh server /me
+        // may restore it; an older queued event cannot override newer logout.
+        if (!isLocallySignedOut()) await qc.refetchQueries({ queryKey: ['auth', 'me'], exact: true });
+      })().catch(() => undefined);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, [qc]);
 
   // Sprint 7.0 — connect the realtime Socket.IO bridge whenever a user
@@ -193,20 +232,19 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
 
   const verifyOtp = useCallback(
     async (challengeId: string, code: string) => {
+      // A previous logout must finish (or time out) before a new cookie-
+      // issuing call; its delayed response must not clear the new login.
+      await logoutFlight.current;
+      const intent = ++authIntent.current;
       await authApi.verifyOtp(challengeId, code);
-      // Session cookies are now set; re-fetch /me to populate the context.
-      //
-      // refetchQueries (vs invalidateQueries) DEFINITIVELY waits for the
-      // fetch to land in cache before resolving — invalidateQueries only
-      // marks the query stale and starts a refetch in the background.
-      // The SignUpPage / LoginPage `onOtpVerify` callbacks read the user
-      // immediately after this returns to compute the post-auth
-      // destination; without the cache being settled, RequireAuth on
-      // the destination route can briefly see `user === null` and
-      // bounce to /login before the refetch lands. That bounce loses
-      // the intent fallback's strongest signal and lands the user on
-      // the wrong app — the residual routing-test flake we saw.
-      await qc.refetchQueries({ queryKey: ['auth', 'me'] });
+      if (intent !== authIntent.current) throw new Error('The sign-in attempt was cancelled');
+      await clearAuthSession(qc);
+      if (intent !== authIntent.current) throw new Error('The sign-in attempt was cancelled');
+      setLogoutState('idle');
+      await qc.refetchQueries({ queryKey: ['auth', 'me'], exact: true }, { throwOnError: true });
+      if (!qc.getQueryData<MeResponse | null>(['auth', 'me'])) {
+        throw new Error('The session could not be confirmed. Please sign in again.');
+      }
     },
     [qc],
   );
@@ -216,25 +254,28 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   }, []);
 
   const doLogout = useCallback(async () => {
-    try {
-      await authApi.logout();
-    } catch {
-      // Server may be down or session already expired — clear anyway
-    }
-    // Sprint 7.x — centralise the intended-app cleanup here so EVERY
-    // logout site (provider shell, settings page, admin shell) drops
-    // the per-tab intent in one place. Previously this lived inside
-    // ProviderApp.tsx + LoginPage/SignUpPage's onOtpVerify; the
-    // in-onOtpVerify clear caused a render race where GuestOnly
-    // re-rendered post-refetch with intent already cleared, fell
-    // through to role-inference, and sent customer-only users to
-    // /home instead of /provider. Moving the clear to logout is the
-    // canonical "consumption" point for the intent.
+    if (logoutFlight.current) return logoutFlight.current;
+    const intent = ++authIntent.current;
+    recordLocalLogout();
     clearIntendedApp();
-    // Same approach as session-expired: flip auth/me to null for the observer,
-    // then drop all other user-scoped queries. Do NOT use qc.clear() — it
-    // destroys the auth observer and strands the UI in its last-rendered state.
-    await clearAuthSession(qc);
+    setLogoutState('pending');
+    const operation = (async () => {
+      // Hide private state first, even if the server never responds.
+      await clearAuthSession(qc);
+      try {
+        await authApi.logout();
+        if (intent === authIntent.current) {
+          recordSessionEnded();
+          setLogoutState('confirmed');
+        }
+      } catch {
+        // Local logout is not a claim that a server session was revoked.
+        if (intent === authIntent.current) setLogoutState('unconfirmed');
+      }
+    })();
+    logoutFlight.current = operation;
+    try { await operation; }
+    finally { if (logoutFlight.current === operation) logoutFlight.current = null; }
   }, [qc]);
 
   return (
@@ -249,6 +290,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
         verifyOtp,
         resendOtp,
         logout: doLogout,
+        logoutState,
       }}
     >
       {children}

@@ -109,6 +109,12 @@ export function NotificationDrawer({
   return (
     /* Full overlay */
     <div
+      // Translation and pointer-events do not remove an offscreen drawer from
+      // the accessibility tree or keyboard order. Keep its exit animation,
+      // but disable every hidden control (including the duplicate Settings).
+      aria-hidden={!isOpen}
+      {...(isOpen ? {} : { inert: '' })}
+      data-testid="notification-drawer"
       className={`absolute inset-0 z-50 transition-all duration-300 ${
         isOpen ? 'pointer-events-auto' : 'pointer-events-none'
       }`}

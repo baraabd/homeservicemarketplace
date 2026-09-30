@@ -28,15 +28,21 @@ export class VerificationTokenRepository {
     return this.db(tx).verificationToken.findUnique({ where: { tokenHash } });
   }
 
-  // Atomic consume: mark the token used only if it has not been used yet.
-  // Returns the row if the mark succeeded, null otherwise (replay / already used).
-  async consume(tokenHash: string, tx?: PrismaTx): Promise<VerificationToken | null> {
-    const result = await this.db(tx).verificationToken.updateMany({
-      where: { tokenHash, usedAt: null },
-      data: { usedAt: new Date() },
+  // Use the database clock at the conditional write, not a timestamp captured
+  // before waiting for another transaction. Purpose and single-use are atomic.
+  async consume(tokenHash: string, purpose: TokenPurpose, tx?: PrismaTx): Promise<VerificationToken | null> {
+    const rows = await this.db(tx).$queryRaw<VerificationToken[]>`
+      UPDATE "VerificationToken" SET "usedAt" = clock_timestamp()
+      WHERE "tokenHash" = ${tokenHash} AND "purpose"::text = ${purpose}
+        AND "usedAt" IS NULL AND "expiresAt" > clock_timestamp()
+      RETURNING *`;
+    return rows[0] ?? null;
+  }
+
+  invalidateAllForUser(userId: string, tx: PrismaTx): Promise<{ count: number }> {
+    return tx.verificationToken.updateMany({
+      where: { userId, usedAt: null }, data: { usedAt: new Date() },
     });
-    if (result.count === 0) return null;
-    return this.findByHash(tokenHash, tx);
   }
 
   // Invalidate any outstanding tokens of a purpose for a user. Used when
@@ -58,50 +64,55 @@ export class VerificationTokenRepository {
     return this.db(tx).verificationToken.findUnique({ where: { challengeId } });
   }
 
-  // Atomic "did the attempt match the expected hash?" check. Only flips
-  // usedAt when the supplied hash matches AND the row is still live. Also
-  // increments attemptCount regardless — the caller inspects the return
-  // value to decide if this was a hit or a miss and whether to lock out
-  // the challenge.
   async consumeByChallenge(
     challengeId: string,
     tokenHash: string,
     tx?: PrismaTx,
+    maxAttempts = 5,
   ): Promise<VerificationToken | null> {
-    const result = await this.db(tx).verificationToken.updateMany({
-      where: { challengeId, tokenHash, usedAt: null },
-      data: { usedAt: new Date() },
-    });
-    if (result.count === 0) return null;
-    return this.findByChallengeId(challengeId, tx);
+    const rows = await this.db(tx).$queryRaw<VerificationToken[]>`
+      UPDATE "VerificationToken" SET "usedAt" = clock_timestamp()
+      WHERE "challengeId" = ${challengeId} AND "tokenHash" = ${tokenHash}
+        AND "usedAt" IS NULL AND "expiresAt" > clock_timestamp()
+        AND "attemptCount" < ${maxAttempts}
+        AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP')
+      RETURNING *`;
+    return rows[0] ?? null;
   }
 
-  incrementAttempt(challengeId: string, tx?: PrismaTx): Promise<VerificationToken> {
-    return this.db(tx).verificationToken.update({
-      where: { challengeId },
-      data: { attemptCount: { increment: 1 } },
-    });
+  // Callers with an interactive transaction must return a rejection verdict
+  // and commit it before throwing. No extra pool connection is acquired while
+  // holding the account lock; stale misses cannot change replaced challenges.
+  async recordFailedAttempt(
+    challengeId: string, expectedHash: string, maxAttempts: number, tx?: PrismaTx,
+  ): Promise<VerificationToken | null> {
+    const rows = await this.db(tx).$queryRaw<VerificationToken[]>`
+      UPDATE "VerificationToken" SET "attemptCount" = "attemptCount" + 1
+      WHERE "challengeId" = ${challengeId} AND "tokenHash" = ${expectedHash}
+        AND "usedAt" IS NULL AND "expiresAt" > clock_timestamp()
+        AND "attemptCount" < ${maxAttempts}
+        AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP')
+      RETURNING *`;
+    return rows[0] ?? null;
   }
 
-  incrementResend(challengeId: string, tx?: PrismaTx): Promise<VerificationToken> {
-    return this.db(tx).verificationToken.update({
-      where: { challengeId },
-      data: { resendCount: { increment: 1 } },
-    });
-  }
-
-  // Rotate: replace the tokenHash + expiresAt for an existing challenge in
-  // place, so the challengeId the client already holds stays valid while
-  // the underlying code changes. Also invalidates any earlier outstanding
-  // OTP tokens for the user+purpose to guarantee only one live code.
-  rotateChallenge(
+  // One conditional write owns both rotation and its persistent resend limit.
+  async rotateLiveChallenge(
     challengeId: string,
+    expectedHash: string,
     data: { tokenHash: string; expiresAt: Date },
+    limits: { attempts: number; resends: number },
     tx?: PrismaTx,
-  ): Promise<VerificationToken> {
-    return this.db(tx).verificationToken.update({
-      where: { challengeId },
-      data: { tokenHash: data.tokenHash, expiresAt: data.expiresAt },
-    });
+  ): Promise<boolean> {
+    const rows = await this.db(tx).$queryRaw<Array<{ id: string }>>`
+      UPDATE "VerificationToken"
+      SET "tokenHash" = ${data.tokenHash}, "expiresAt" = ${data.expiresAt},
+          "resendCount" = "resendCount" + 1
+      WHERE "challengeId" = ${challengeId} AND "tokenHash" = ${expectedHash}
+        AND "usedAt" IS NULL AND "expiresAt" > clock_timestamp()
+        AND "attemptCount" < ${limits.attempts} AND "resendCount" < ${limits.resends}
+        AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP')
+      RETURNING "id"`;
+    return rows.length === 1;
   }
 }

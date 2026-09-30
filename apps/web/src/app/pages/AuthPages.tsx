@@ -3,29 +3,14 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { CheckCircle2, Eye, EyeOff, Lock, Mail, RefreshCcw, XCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-provider';
 import * as authApi from '../../lib/auth-api';
-import { resetPasswordErrorMessage } from '../../lib/auth-errors';
+import { recoveryRequestErrorMessage, resetPasswordErrorMessage } from '../../lib/auth-errors';
+import { sanitizeAuthReturnTo } from '../../lib/auth-return-to';
+import { useLang } from '../i18n/LanguageContext';
 import { getIntendedApp } from '../../lib/intended-app';
 import { resolveAuthExperience, resolvePostAuthDestination } from '../../lib/auth-experience';
 import { LoginScreen, SignUpScreen, ForgotPasswordScreen } from '../components/auth/AuthScreens';
 import { Button } from '../components/ds/Button';
 import { TextField } from '../components/ds/TextField';
-
-// Only in-app paths are honoured as returnTo. Reject absolute URLs and
-// protocol-relative strings to prevent open-redirect via the login page.
-// Returning null lets the caller fall back through the wider precedence
-// chain (intent → role inference) implemented in
-// `resolvePostAuthDestination`. This is what keeps
-// "click Provider → log in → land on Provider" working even when
-// intermediate auth navigations (Sign up button, Forgot password,
-// Reset password completion) drop react-router state.
-function sanitizeReturnTo(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  if (typeof raw !== 'string') return null;
-  if (!raw.startsWith('/') || raw.startsWith('//')) return null;
-  // /login itself is not a valid post-auth destination.
-  if (raw === '/login') return null;
-  return raw;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN PAGE  /login
@@ -53,7 +38,7 @@ export function LoginPage() {
     app?: 'seeker' | 'provider' | 'admin';
   } | null;
   const justRegistered = state?.registered;
-  const returnTo = sanitizeReturnTo(state?.returnTo);
+  const returnTo = sanitizeAuthReturnTo(state?.returnTo);
 
   const { verifyOtp, resendOtp } = useAuth();
 
@@ -101,13 +86,14 @@ export function LoginPage() {
       onOtpResend={async (challengeId: string) => {
         await resendOtp(challengeId);
       }}
+      onRecoverVerification={(email) => navigate('/check-email', { state: { app: experience.id, returnTo, email } })}
       onSignUp={() =>
         // Forward the resolved experience explicitly so the Sign-up
         // screen keeps the SAME theme — react-router state is otherwise
         // dropped through this navigation.
-        navigate('/signup', { state: { app: experience.id } })
+        navigate('/signup', { state: { app: experience.id, returnTo } })
       }
-      onForgotPassword={() => navigate('/forgot-password', { state: { app: experience.id } })}
+      onForgotPassword={() => navigate('/forgot-password', { state: { app: experience.id, returnTo } })}
       banner={justRegistered ? 'Your account is ready. Sign in to continue.' : undefined}
     />
   );
@@ -123,14 +109,16 @@ export function SignUpPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { register: doRegister, verifyOtp, resendOtp, user } = useAuth();
-  const state = location.state as { app?: 'seeker' | 'provider' | 'admin' } | null;
+  const state = location.state as { app?: 'seeker' | 'provider' | 'admin'; returnTo?: string } | null;
 
-  const experience = resolveAuthExperience({ explicit: state?.app });
+  const returnTo = sanitizeAuthReturnTo(state?.returnTo);
+  const experience = resolveAuthExperience({ explicit: state?.app, returnTo });
 
   return (
     <SignUpScreen
       experience={experience}
-      onBack={() => navigate('/login', { state: { app: experience.id } })}
+      onRecoverVerification={(email) => navigate('/check-email', { state: { app: experience.id, returnTo, email } })}
+      onBack={() => navigate('/login', { state: { app: experience.id, returnTo } })}
       onCredentialsSubmit={async (data: { name: string; email: string; password: string }) => {
         const [firstName, ...rest] = data.name.trim().split(' ');
         const lastName = rest.join(' ') || firstName;
@@ -165,6 +153,7 @@ export function SignUpPage() {
         // through to customer role inference, and sent the user to
         // /home instead of the intended /provider.
         const dest = resolvePostAuthDestination({
+          returnTo,
           intentApp: getIntendedApp(),
           experienceId: experience.id,
           userRoles: user?.roles ?? null,
@@ -187,12 +176,13 @@ export function SignUpPage() {
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const state = location.state as { app?: 'seeker' | 'provider' | 'admin' } | null;
-  const experience = resolveAuthExperience({ explicit: state?.app });
+  const state = location.state as { app?: 'seeker' | 'provider' | 'admin'; returnTo?: string } | null;
+  const returnTo = sanitizeAuthReturnTo(state?.returnTo);
+  const experience = resolveAuthExperience({ explicit: state?.app, returnTo });
   return (
     <ForgotPasswordScreen
       experience={experience}
-      onBack={() => navigate('/login', { state: { app: experience.id } })}
+      onBack={() => navigate('/login', { state: { app: experience.id, returnTo } })}
       onSubmit={async (email) => {
         await authApi.forgotPassword(email);
       }}
@@ -209,90 +199,57 @@ export function ForgotPasswordPage() {
 export function CheckEmailPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const state = location.state as { email?: string; app?: 'seeker' | 'provider' | 'admin' } | null;
-  const email = state?.email ?? '';
-  const experience = resolveAuthExperience({ explicit: state?.app });
+  const { lang } = useLang();
+  const state = location.state as { email?: string; app?: 'seeker' | 'provider' | 'admin'; returnTo?: string } | null;
+  const [email, setEmail] = useState(state?.email ?? '');
+  const returnTo = sanitizeAuthReturnTo(state?.returnTo);
+  const experience = resolveAuthExperience({ explicit: state?.app, returnTo });
   const [isResending, setIsResending] = useState(false);
-  const [resendStatus, setResendStatus] = useState<'idle' | 'sent' | 'error'>('idle');
-
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sent'>('idle');
+  const [error, setError] = useState<string>();
+  const flight = useRef(false);
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email.trim());
   const onResend = useCallback(async () => {
-    if (!email) {
-      setResendStatus('error');
-      return;
-    }
+    if (flight.current || !validEmail) return;
+    flight.current = true;
     setIsResending(true);
+    setError(undefined);
+    setResendStatus('idle');
     try {
-      await authApi.resendVerification(email);
+      await authApi.resendVerification(email.trim());
       setResendStatus('sent');
-    } catch {
-      setResendStatus('error');
+    } catch (cause) {
+      setError(lang === 'ar' ? 'تعذر تأكيد الطلب. انتظر قليلاً ثم حاول مجدداً.' : recoveryRequestErrorMessage(cause));
     } finally {
+      flight.current = false;
       setIsResending(false);
     }
-  }, [email]);
-
+  }, [email, validEmail, lang]);
   return (
     <div className="flex flex-col bg-white" style={{ minHeight: '100svh' }}>
       <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-        <div
-          data-testid={`auth-page-${experience.id}`}
-          className={`w-24 h-24 rounded-full ${experience.classes.iconChipBg} flex items-center justify-center mb-6`}
-        >
+        <div data-testid={`auth-page-${experience.id}`} className={`w-24 h-24 rounded-full ${experience.classes.iconChipBg} flex items-center justify-center mb-6`}>
           <Mail size={44} className={experience.classes.iconChipText} />
         </div>
         <h1 className="text-slate-900 mb-2" style={{ fontSize: '24px', fontWeight: 800 }}>
-          Check your email
+          {lang === 'ar' ? 'التحقق من البريد الإلكتروني' : 'Check your email'}
         </h1>
-        <p className="text-slate-500 max-w-sm mb-1" style={{ fontSize: '14px', lineHeight: '1.6' }}>
-          We sent a verification link
-          {email ? (
-            <>
-              {' '}
-              to{' '}
-              <span className="text-slate-900" style={{ fontWeight: 700 }}>
-                {email}
-              </span>
-              .
-            </>
-          ) : (
-            '.'
-          )}{' '}
-          Click the link in the email to activate your account, then sign in.
+        <p className="text-slate-500 max-w-sm mb-6" style={{ fontSize: '14px', lineHeight: '1.6' }}>
+          {lang === 'ar' ? 'أدخل بريدك لطلب رابط تحقق جديد. استخدم الرابط لتفعيل حسابك ثم سجّل الدخول.' : 'Enter your email to request a new verification link. Use the link to activate your account, then sign in.'}
         </p>
-        <p className="text-slate-400 mb-6" style={{ fontSize: '12px' }}>
-          The link expires in 24 hours. Didn't get it? Check spam, or resend below.
-        </p>
-
         <div className="w-full max-w-sm flex flex-col gap-3">
-          <Button
-            variant="primary"
-            tone={experience.id}
-            fullWidth
-            onClick={() => navigate('/login', { state: { app: experience.id } })}
-            leadingIcon={<CheckCircle2 size={16} />}
-          >
-            Back to sign in
+          <TextField label={lang === 'ar' ? 'البريد الإلكتروني' : 'Email address'} type="email" autoComplete="email" value={email}
+            onChange={(value) => { setEmail(value); setResendStatus('idle'); }} onEnter={() => { void onResend(); }} disabled={isResending} />
+          <Button variant="primary" tone={experience.id} fullWidth state={isResending ? 'loading' : !validEmail ? 'disabled' : 'default'} onClick={() => { void onResend(); }} leadingIcon={<RefreshCcw size={16} />}>
+            {lang === 'ar' ? 'طلب رابط تحقق' : 'Resend verification email'}
           </Button>
-          <Button
-            variant="text"
-            tone={experience.id}
-            fullWidth
-            state={isResending ? 'loading' : !email ? 'disabled' : 'default'}
-            onClick={onResend}
-            leadingIcon={<RefreshCcw size={16} />}
-          >
-            {isResending ? 'Resending…' : 'Resend verification email'}
+          {resendStatus === 'sent' && <p role="status" className="text-green-700" style={{ fontSize: '13px' }}>
+            {lang === 'ar' ? 'تم استلام الطلب. إذا كان الحساب مؤهلاً فستصلك تعليمات التحقق. تحقق أيضاً من البريد غير المرغوب فيه.' : 'Request received. If the account is eligible, check your inbox and spam folder for verification instructions.'}
+          </p>}
+          {error && <p role="alert" className="text-red-600" style={{ fontSize: '13px' }}>{error}</p>}
+          <Button variant="text" tone={experience.id} fullWidth onClick={() => navigate('/login', { state: { app: experience.id, returnTo } })}>
+            {lang === 'ar' ? 'العودة لتسجيل الدخول' : 'Back to sign in'}
           </Button>
-          {resendStatus === 'sent' && (
-            <p className="text-green-600" style={{ fontSize: '12px' }}>
-              If an account exists for that email, a new link has been sent.
-            </p>
-          )}
-          {resendStatus === 'error' && (
-            <p className="text-red-500" style={{ fontSize: '12px' }}>
-              Couldn't resend right now. Please try again shortly.
-            </p>
-          )}
         </div>
       </div>
     </div>
@@ -311,34 +268,31 @@ export function VerifyEmailPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const state = location.state as { app?: 'seeker' | 'provider' | 'admin' } | null;
+  const state = location.state as { app?: 'seeker' | 'provider' | 'admin'; returnTo?: string } | null;
   const token = params.get('token');
-  const firedRef = useRef(false);
+  const attemptRef = useRef<{ token: string; retry: number; promise: Promise<void> } | null>(null);
+  const [retry, setRetry] = useState(0);
   const [status, setStatus] = useState<VerifyState>(token ? 'verifying' : 'missing');
   // Verification links arrive cold (the user clicks an email link in
   // a fresh tab) so there's no react-router state — we resolve from
   // sessionStorage intent + the explicit state override.
-  const experience = resolveAuthExperience({ explicit: state?.app });
+  const returnTo = sanitizeAuthReturnTo(state?.returnTo);
+  const experience = resolveAuthExperience({ explicit: state?.app, returnTo });
 
   useEffect(() => {
-    if (firedRef.current) return;
-    firedRef.current = true;
-    if (!token) {
-      setStatus('missing');
-      return;
+    if (!token) { setStatus('missing'); return; }
+    let active = true;
+    setStatus('verifying');
+    if (attemptRef.current?.token !== token || attemptRef.current.retry !== retry) {
+      attemptRef.current = { token, retry, promise: authApi.verifyEmail(token) };
     }
-    authApi
-      .verifyEmail(token)
-      .then(() => setStatus('success'))
-      .catch((err: unknown) => {
-        const axiosStatus = (err as { response?: { status?: number } } | undefined)?.response
-          ?.status;
-        // 400 is what the backend returns for invalid / already-consumed /
-        // expired tokens (it never distinguishes, to avoid probing).
-        if (axiosStatus === 400) setStatus('invalid');
-        else setStatus('error');
-      });
-  }, [token]);
+    void attemptRef.current.promise.then(() => { if (active) setStatus('success'); }).catch((err: unknown) => {
+      if (!active) return;
+      const code = (err as { response?: { status?: number } } | undefined)?.response?.status;
+      setStatus(code === 400 || code === 403 ? 'invalid' : 'error');
+    });
+    return () => { active = false; };
+  }, [token, retry]);
 
   return (
     <div
@@ -372,7 +326,7 @@ export function VerifyEmailPage() {
           <Button
             variant="primary"
             tone={experience.id}
-            onClick={() => navigate('/login', { state: { app: experience.id } })}
+            onClick={() => navigate('/login', { state: { app: experience.id, returnTo } })}
             leadingIcon={<CheckCircle2 size={16} />}
           >
             Go to sign in
@@ -400,17 +354,18 @@ export function VerifyEmailPage() {
                 : "We couldn't reach the server. Please try again in a moment."}
           </p>
           <div className="flex flex-col gap-2 w-full max-w-xs">
+            {status === 'error' && <Button variant="primary" tone={experience.id} onClick={() => setRetry((value) => value + 1)}>Try verification again</Button>}
             <Button
               variant="primary"
               tone={experience.id}
-              onClick={() => navigate('/login', { state: { app: experience.id } })}
+              onClick={() => navigate('/login', { state: { app: experience.id, returnTo } })}
             >
               Back to sign in
             </Button>
             <Button
               variant="text"
               tone={experience.id}
-              onClick={() => navigate('/check-email', { state: { app: experience.id } })}
+              onClick={() => navigate('/check-email', { state: { app: experience.id, returnTo } })}
             >
               Resend verification
             </Button>
@@ -428,11 +383,12 @@ export function ResetPasswordPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const state = location.state as { app?: 'seeker' | 'provider' | 'admin' } | null;
+  const state = location.state as { app?: 'seeker' | 'provider' | 'admin'; returnTo?: string } | null;
   const token = useMemo(() => params.get('token') ?? '', [params]);
   // Password-reset links arrive cold from email — we lean on the same
   // explicit-state + intent fallback that VerifyEmailPage uses.
-  const experience = resolveAuthExperience({ explicit: state?.app });
+  const returnTo = sanitizeAuthReturnTo(state?.returnTo);
+  const experience = resolveAuthExperience({ explicit: state?.app, returnTo });
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -490,7 +446,7 @@ export function ResetPasswordPage() {
         <Button
           variant="primary"
           tone={experience.id}
-          onClick={() => navigate('/login', { state: { app: experience.id } })}
+          onClick={() => navigate('/login', { state: { app: experience.id, returnTo } })}
         >
           Go to sign in
         </Button>
@@ -521,6 +477,7 @@ export function ResetPasswordPage() {
 
         <div className="flex flex-col gap-4">
           <TextField
+            autoComplete="new-password"
             label="New password"
             type={showPw ? 'text' : 'password'}
             value={password}
@@ -538,6 +495,8 @@ export function ResetPasswordPage() {
             }
           />
           <TextField
+            autoComplete="new-password"
+            onEnter={() => { void onSubmit(); }}
             label="Confirm password"
             type={showPw ? 'text' : 'password'}
             value={confirm}
@@ -546,7 +505,7 @@ export function ResetPasswordPage() {
           />
 
           {error && (
-            <p className="text-red-500 text-center" style={{ fontSize: '13px' }}>
+            <p role="alert" className="text-red-500 text-center" style={{ fontSize: '13px' }}>
               {error}
             </p>
           )}
@@ -560,11 +519,12 @@ export function ResetPasswordPage() {
           >
             {isLoading ? 'Updating…' : 'Update password'}
           </Button>
+          {(!token || error) && <Button variant="text" tone={experience.id} fullWidth onClick={() => navigate('/forgot-password', { state: { app: experience.id, returnTo } })}>Request a new reset link</Button>}
           <Button
             variant="text"
             tone={experience.id}
             fullWidth
-            onClick={() => navigate('/login', { state: { app: experience.id } })}
+            onClick={() => navigate('/login', { state: { app: experience.id, returnTo } })}
           >
             Back to sign in
           </Button>

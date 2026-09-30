@@ -6,6 +6,9 @@ import { Snackbar } from './components/ds/Snackbar';
 import { Toaster } from './components/ui/sonner';
 import { LanguageProvider, useLang } from './i18n/LanguageContext';
 import { EcosystemProvider } from './context/EcosystemContext';
+import { useAuth } from '../lib/auth-provider';
+import { useIdentityState } from '../lib/use-identity-state';
+import { AuthSessionNotice } from './components/auth/AuthSessionNotice';
 import { setRealtimeLang } from '../lib/realtime/realtime-i18n';
 import { setRealtimeNavigator } from '../lib/realtime/realtime-navigator';
 import { setRealtimeExperience } from '../lib/realtime/realtime-experience';
@@ -32,9 +35,8 @@ function RootInner() {
 
   const [isOffline, setIsOffline] = useState(false);
   const [offlineSnack, setOfflineSnack] = useState(false);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [selectedSvc, setSelectedSvc] = useState('General');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const [wizard, setWizard] = useIdentityState<{ open: boolean; service: string; categoryId: string | null }>(user?.id ?? 'signed-out', { open: false, service: 'General', categoryId: null });
 
   const location = useLocation();
   const navigation = useNavigation();
@@ -93,9 +95,7 @@ function RootInner() {
   }, [navigate]);
 
   const openWizard = (service: string, categoryId: string | null = null) => {
-    setSelectedSvc(service);
-    setSelectedCategoryId(categoryId);
-    setWizardOpen(true);
+    setWizard({ service, categoryId, open: true });
   };
   const toggleOffline = () => {
     const next = !isOffline;
@@ -128,6 +128,7 @@ function RootInner() {
   if (isProvider) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900" style={{ fontFamily }} dir={dir}>
+        <AuthSessionNotice />
         <Outlet context={ctx} />
         <Toaster
           position="top-center"
@@ -143,6 +144,7 @@ function RootInner() {
   if (isSelect) {
     return (
       <>
+        <AuthSessionNotice />
         <Outlet context={ctx} />
         <Toaster
           position="top-center"
@@ -194,15 +196,17 @@ function RootInner() {
             className="flex-1 flex flex-col transition-opacity duration-150"
             style={{ opacity: isLoading ? 0.5 : 1 }}
           >
-            <Outlet context={ctx} />
+            <AuthSessionNotice />
+        <Outlet context={ctx} />
           </div>
 
           {isHome && (
             <JobWizardModal
-              service={selectedSvc}
-              categoryId={selectedCategoryId}
-              isOpen={wizardOpen}
-              onClose={() => setWizardOpen(false)}
+              key={user?.id ?? 'signed-out'}
+              service={wizard.service}
+              categoryId={wizard.categoryId}
+              isOpen={wizard.open && !!user}
+              onClose={() => setWizard((value) => ({ ...value, open: false }))}
               isOffline={isOffline}
             />
           )}
@@ -247,9 +251,10 @@ function RootInner() {
 
 // ─── Public Root ─────────────────────────────────────────────────────────────
 export function Root() {
+  const { user } = useAuth();
   return (
     <LanguageProvider>
-      <EcosystemProvider>
+      <EcosystemProvider identityKey={user?.id ?? 'signed-out'}>
         <RootInner />
       </EcosystemProvider>
     </LanguageProvider>

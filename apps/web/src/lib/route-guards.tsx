@@ -32,6 +32,8 @@ function ForwardingOutlet() {
   return <Outlet context={parentCtx} />;
 }
 
+// Private route trees remount on identity change so component-local drafts
+// and media previews cannot remain mounted for a different account.
 // ─── RequireAuth ─────────────────────────────────────────────────────────────
 // Wraps routes that need authentication. Behavior:
 //   - isLoading (no cached user yet) → spinner.
@@ -39,7 +41,7 @@ function ForwardingOutlet() {
 //     UI can surface a banner without forcing a logout round-trip.
 //   - !isAuthenticated → redirect to /login preserving the intended URL.
 export function RequireAuth() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
 
   if (isLoading) return <AuthLoadingScreen />;
@@ -47,7 +49,7 @@ export function RequireAuth() {
     const returnTo = fullTarget(location.pathname, location.search, location.hash);
     return <Navigate to="/login" state={{ returnTo }} replace />;
   }
-  return <ForwardingOutlet />;
+  return <ForwardingOutlet key={user?.id} />;
 }
 
 // ─── GuestOnly ───────────────────────────────────────────────────────────────
@@ -104,5 +106,5 @@ export function RequireAdmin() {
   if (!roles.includes('admin')) {
     return <AdminAccessRequired />;
   }
-  return <ForwardingOutlet />;
+  return <ForwardingOutlet key={user?.id} />;
 }

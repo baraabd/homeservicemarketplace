@@ -1,5 +1,7 @@
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import { api } from './api';
+import { authRequestScope, recordSessionEnded, recordVerifiedLogin } from './auth-session-boundary';
+import { withAuthCookieLock } from './auth-cookie-lock';
 
 // ─── Auth API functions ──────────────────────────────────────────────────────
 // Every function is a thin typed wrapper around the Axios client.
@@ -33,24 +35,29 @@ export async function login(data: LoginInput): Promise<OtpChallengeResponse> {
 }
 
 export async function verifyOtp(challengeId: string, code: string): Promise<void> {
-  await api.post('/v1/auth/verify-otp', { challengeId, code });
+  await withAuthCookieLock(authRequestScope(), async () => {
+    await api.post('/v1/auth/verify-otp', { challengeId, code }, { timeout: 15_000 });
+    // Publish before releasing the lock: a peer's queued old request must be
+    // cancelled rather than issued with this new account's cookies.
+    recordVerifiedLogin();
+  });
 }
 
 export async function resendOtp(challengeId: string): Promise<void> {
   await api.post('/v1/auth/resend-otp', { challengeId });
 }
 
-export async function getMe(): Promise<MeResponse> {
-  const { data } = await api.get<MeResponse>('/v1/auth/me');
+export async function getMe(signal?: AbortSignal): Promise<MeResponse> {
+  const { data } = await api.get<MeResponse>('/v1/auth/me', { signal });
   return data;
 }
 
 export async function logout(): Promise<void> {
-  await api.post('/v1/auth/logout');
+  await withAuthCookieLock(authRequestScope(), () => api.post('/v1/auth/logout', undefined, { timeout: 10_000 }).then(() => undefined));
 }
 
 export async function refresh(): Promise<void> {
-  await api.post('/v1/auth/refresh');
+  await withAuthCookieLock(authRequestScope(), () => api.post('/v1/auth/refresh', undefined, { timeout: 15_000 }).then(() => undefined));
 }
 
 export async function forgotPassword(email: string): Promise<void> {
@@ -58,7 +65,11 @@ export async function forgotPassword(email: string): Promise<void> {
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
-  await api.post('/v1/auth/reset-password', { token, newPassword });
+  await withAuthCookieLock(authRequestScope(), async () => {
+    await api.post('/v1/auth/reset-password', { token, newPassword }, { timeout: 15_000 });
+    recordSessionEnded();
+    window.dispatchEvent(new Event('auth:credentials-reset'));
+  });
 }
 
 export async function verifyEmail(token: string): Promise<void> {

@@ -1,0 +1,119 @@
+name: Authentication lifecycle acceptance
+
+on:
+  pull_request:
+    branches: ['main', 'develop']
+  push:
+    branches: ['main', 'develop']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auth-lifecycle-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    name: R04 real browser, SMTP and Postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: r04_auth_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      mailpit:
+        image: axllent/mailpit:v1.31.1
+        ports: ['1025:1025', '8025:8025']
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/r04_auth_ci
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      SMTP_HOST: localhost
+      SMTP_PORT: '1025'
+      SMTP_FROM: noreply@example.test
+      FRONTEND_URL: http://127.0.0.1:4173
+      CORS_ORIGINS: http://127.0.0.1:4173
+      COOKIE_SECURE: 'false'
+      COOKIE_SAMESITE: lax
+      AUTH_REQUIRE_EMAIL_VERIFICATION: 'true'
+      # Disposable shared-IP fixture budget. Account counters and the production
+      # ceilings remain enforced; no production configuration is changed.
+      AUTH_REGISTER_THROTTLE_LIMIT: '40'
+      AUTH_OTP_VERIFY_THROTTLE_LIMIT: '80'
+      GLOBAL_THROTTLE_LIMIT: '2000'
+      R04_ACCEPTANCE_SCOPE: isolated-ci
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          cache: pnpm
+      - name: Generate ephemeral authentication secret
+        run: |
+          secret="$(openssl rand -hex 48)"
+          echo "::add-mask::$secret"
+          echo "JWT_ACCESS_SECRET=$secret" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - name: Build database and apply existing migrations to disposable database
+        run: |
+          set -euo pipefail
+          printf 'DATABASE_URL=%s\n' "$DATABASE_URL" > .env
+          pnpm --filter @homeservicemarketplace/database generate
+          pnpm --filter @homeservicemarketplace/database migrate:deploy
+          pnpm --filter @homeservicemarketplace/database build
+          pnpm --filter @homeservicemarketplace/database seed
+      - name: Exercise real transaction, expiry, counter and revocation regressions
+        env:
+          RUN_DB_INTEGRATION: '1'
+        run: pnpm --filter @homeservicemarketplace/api exec jest test/integration/r04-auth-lifecycle.integration.spec.ts --runInBand
+      - name: Build actual API and production browser bundle
+        env:
+          VITE_API_URL: http://127.0.0.1:4010
+          VITE_PROVIDER_ONBOARDING_V2: 'true'
+        run: |
+          pnpm --filter @homeservicemarketplace/api build
+          pnpm --filter @homeservicemarketplace/web build
+      - name: Install browser
+        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Start isolated real API and built SPA
+        run: |
+          set -euo pipefail
+          NODE_ENV=development PORT=4010 node apps/api/dist/main.js > /tmp/r04-api.log 2>&1 &
+          pnpm --filter @homeservicemarketplace/web exec vite preview --host 127.0.0.1 --port 4173 --strictPort > /tmp/r04-web.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4010/health/ready >/dev/null && curl -sf http://127.0.0.1:4173/login >/dev/null && curl -sf http://127.0.0.1:8025/api/v1/messages >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'Isolated acceptance services did not become ready'
+          exit 1
+      - name: Drive real UI and mail flows without API mocks
+        run: node apps/web/scripts/r04-auth-acceptance.mjs
+      - name: Retain sanitized source-bound acceptance only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r04-auth-lifecycle-evidence
+          path: r04-auth-evidence/
+          if-no-files-found: warn
+          retention-days: 7

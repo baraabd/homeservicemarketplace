@@ -6,6 +6,7 @@ const NODE_VERSION = '24.21.0';
 const PNPM_VERSION = '10.32.1';
 const ROOT = path.resolve(__dirname, '../..');
 const DECLARATIONS = {
+  '.github/workflows/auth-lifecycle.yml': /^          node-version: '24\.21\.0'$/mu,
   '.nvmrc': /^24\.21\.0\s*$/u,
   'apps/api/Dockerfile': /^ARG NODE_VERSION=24\.21\.0-alpine$/mu,
   'apps/web/Dockerfile': /^FROM node:24\.21\.0-alpine AS builder$/mu,

@@ -22,7 +22,7 @@ import { useSwipe } from '../../hooks/useSwipe';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { COUNTRY_DIAL_CODES, dialForCountry } from '../../../lib/country-dial-codes';
 import { useGeoBootstrap } from '../../../lib/geo-bootstrap';
-import { loginErrorMessage, otpErrorMessage } from '../../../lib/auth-errors';
+import { loginErrorMessage, otpErrorMessage, registrationErrorMessage, recoveryRequestErrorMessage } from '../../../lib/auth-errors';
 import {
   type AuthExperience,
   AUTH_EXPERIENCES,
@@ -73,6 +73,8 @@ interface EmailOtpPanelProps {
   isResending?: boolean;
   verifyError?: string;
   resendNotice?: string;
+  onRestart?: () => void;
+  restartLabel?: string;
   // Experience-aware theming (Sprint 5.1.1). Defaults to seeker so any
   // call site that hasn't been threaded yet keeps the historical orange
   // identity exactly. Layout / spacing / typography are unchanged.
@@ -88,10 +90,13 @@ export function EmailOtpPanel({
   isResending,
   verifyError,
   resendNotice,
+  onRestart,
+  restartLabel,
   experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
 }: EmailOtpPanelProps) {
+  const { lang } = useLang();
   const [code, setCode] = useState('');
-  const canSubmit = code.length === codeLength && !isVerifying;
+  const canSubmit = code.length === codeLength && !isVerifying && !isResending;
   // Ref so any tap/click on the visual boxes can programmatically focus the
   // visually-hidden <input>. Without this, mobile users literally cannot
   // bring up the numeric keyboard (the input is sr-only — offscreen), and
@@ -108,10 +113,10 @@ export function EmailOtpPanel({
       </div>
       <div>
         <h3 className="text-slate-900" style={{ fontSize: '18px', fontWeight: 800 }}>
-          Verify your email
+          {lang === 'ar' ? 'تحقق من بريدك الإلكتروني' : 'Verify your email'}
         </h3>
         <p className="text-slate-400 mt-1" style={{ fontSize: '13px' }}>
-          Enter the {codeLength}-digit code we sent
+          {lang === 'ar' ? `أدخل رمز التحقق المكوّن من ${codeLength} أرقام من بريدك الإلكتروني` : `Enter the ${codeLength}-digit code from your email`}
           {email ? (
             <>
               {' '}
@@ -133,7 +138,9 @@ export function EmailOtpPanel({
           signals "this is a text field" to users. Individual boxes pick up
           the click via event bubbling. */}
       <div
-        className="flex gap-3 mt-2 cursor-text"
+        className="grid gap-2 mt-2 w-full max-w-[348px] cursor-text"
+        style={{ gridTemplateColumns: `repeat(${codeLength}, minmax(0, 1fr))` }}
+        dir="ltr"
         onClick={focusInput}
         onTouchStart={focusInput}
         role="group"
@@ -143,7 +150,7 @@ export function EmailOtpPanel({
           <div
             key={i}
             data-testid={`otp-box-${i}`}
-            className={`w-12 h-14 rounded-2xl border-2 flex items-center justify-center transition-all ${
+            className={`min-w-0 h-14 rounded-2xl border-2 flex items-center justify-center transition-all ${
               code.length > i
                 ? `${experience.classes.accentBorder} ${experience.classes.softBg}`
                 : 'border-slate-200 bg-slate-50'
@@ -168,13 +175,17 @@ export function EmailOtpPanel({
         maxLength={codeLength}
         value={code}
         onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, codeLength))}
+        onKeyDown={(event) => { if (event.key === 'Enter' && canSubmit) { event.preventDefault(); void onVerify(code); } }}
+        disabled={isVerifying || isResending}
+        aria-invalid={!!verifyError}
+        aria-describedby={verifyError ? 'otp-verification-error' : undefined}
         aria-label={`${codeLength}-digit verification code`}
         className="sr-only"
         autoFocus
       />
 
       {verifyError && (
-        <p className="text-red-500" style={{ fontSize: '13px' }}>
+        <p id="otp-verification-error" role="alert" className="text-red-500" style={{ fontSize: '13px' }}>
           {verifyError}
         </p>
       )}
@@ -189,20 +200,23 @@ export function EmailOtpPanel({
         }}
         leadingIcon={<CheckCircle2 size={16} />}
       >
-        {isVerifying ? 'Verifying…' : 'Confirm'}
+        {lang === 'ar' ? (isVerifying ? 'جارٍ التحقق…' : 'تأكيد') : (isVerifying ? 'Verifying…' : 'Confirm')}
       </Button>
 
       <button
         type="button"
         onClick={() => void onResend()}
-        disabled={isResending}
+        disabled={isResending || isVerifying}
         className={`${experience.classes.accentText} active:opacity-70 disabled:opacity-50`}
         style={{ fontSize: '13px', fontWeight: 600 }}
       >
-        {isResending ? 'Sending…' : 'Resend code'}
+        {lang === 'ar' ? (isResending ? 'جارٍ الطلب…' : 'إعادة طلب الرمز') : (isResending ? 'Sending…' : 'Resend code')}
       </button>
+      {onRestart && <button type="button" onClick={onRestart} disabled={isVerifying || isResending} className="text-slate-700 underline disabled:opacity-50" style={{ fontSize: '13px' }}>
+        {restartLabel ?? (lang === 'ar' ? 'بدء تسجيل الدخول مجدداً' : 'Start sign-in again')}
+      </button>}
       {resendNotice && (
-        <p className="text-slate-500" style={{ fontSize: '12px' }}>
+        <p role="status" className="text-slate-500" style={{ fontSize: '12px' }}>
           {resendNotice}
         </p>
       )}
@@ -296,6 +310,7 @@ interface LoginProps {
   onOtpResend: (challengeId: string) => Promise<void>;
   onSignUp: () => void;
   onForgotPassword: () => void;
+  onRecoverVerification?: (email: string) => void;
   banner?: string;
   // Sprint 5.1.1: experience-aware theming. Defaults to seeker so any
   // call site that hasn't been threaded yet keeps the historical orange
@@ -309,10 +324,11 @@ export function LoginScreen({
   onOtpResend,
   onSignUp,
   onForgotPassword,
+  onRecoverVerification,
   banner,
   experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
 }: LoginProps) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -324,12 +340,15 @@ export function LoginScreen({
   const [isResending, setIsResending] = useState(false);
   const [otpError, setOtpError] = useState<string | undefined>();
   const [resendNotice, setResendNotice] = useState<string | undefined>();
+  const requestFlight = useRef(false);
 
   const handleLogin = async () => {
+    if (requestFlight.current) return;
     if (!email || !password) {
       setEmailError(t('emailAddress') + ' / ' + t('password'));
       return;
     }
+    requestFlight.current = true;
     setEmailError(undefined);
     setIsLoading(true);
     try {
@@ -341,12 +360,14 @@ export function LoginScreen({
       // framework text like "Unauthorized Exception" onto the login form.
       setEmailError(loginErrorMessage(err));
     } finally {
+      requestFlight.current = false;
       setIsLoading(false);
     }
   };
 
   const handleOtpVerify = async (code: string) => {
-    if (!challenge) return;
+    if (!challenge || requestFlight.current) return;
+    requestFlight.current = true;
     setIsVerifying(true);
     setOtpError(undefined);
     try {
@@ -356,21 +377,24 @@ export function LoginScreen({
     } catch (err: unknown) {
       setOtpError(otpErrorMessage(err, 'verify'));
     } finally {
+      requestFlight.current = false;
       setIsVerifying(false);
     }
   };
 
   const handleOtpResend = async () => {
-    if (!challenge) return;
+    if (!challenge || requestFlight.current) return;
+    requestFlight.current = true;
     setIsResending(true);
     setResendNotice(undefined);
     setOtpError(undefined);
     try {
       await onOtpResend(challenge.challengeId);
-      setResendNotice('A new code has been sent.');
+      setResendNotice(lang === 'ar' ? 'تم استلام الطلب. تحقق من بريدك واستخدم أحدث رمز يصلك.' : 'Request received. Check your inbox and use the most recent code.');
     } catch (err: unknown) {
       setOtpError(otpErrorMessage(err, 'resend'));
     } finally {
+      requestFlight.current = false;
       setIsResending(false);
     }
   };
@@ -430,6 +454,9 @@ export function LoginScreen({
 
       {/* ── Card ── */}
       <div className="flex-1 bg-white rounded-t-3xl -mt-6 px-6 pt-8 pb-6">
+        {emailError && onRecoverVerification && <button type="button" className="text-slate-700 underline mb-3" onClick={() => onRecoverVerification(email.trim())}>
+          {lang === 'ar' ? 'طلب رابط للتحقق من البريد' : 'Request email verification'}
+        </button>}
         {banner && (
           <div className="mb-4 rounded-xl bg-green-50 border border-green-200 px-4 py-3">
             <p className="text-green-800" style={{ fontSize: '13px', fontWeight: 500 }}>
@@ -455,12 +482,14 @@ export function LoginScreen({
             verifyError={otpError}
             resendNotice={resendNotice}
             experience={experience}
+            onRestart={() => { setChallenge(null); setPassword(''); setOtpError(undefined); setResendNotice(undefined); }}
           />
         ) : (
           <div className="flex flex-col gap-4">
             <TextField
               label={t('emailAddress')}
               type="email"
+              autoComplete="email"
               value={email}
               onChange={setEmail}
               error={emailError}
@@ -470,6 +499,8 @@ export function LoginScreen({
             <TextField
               label={t('password')}
               type={showPw ? 'text' : 'password'}
+              autoComplete="current-password"
+              onEnter={() => { void handleLogin(); }}
               value={password}
               onChange={setPassword}
               leadingIcon={<Lock size={16} />}
@@ -541,6 +572,7 @@ export function LoginScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 interface SignUpProps {
   onBack: () => void;
+  onRecoverVerification?: (email: string) => void;
   // Parent POSTs the credentials, receives the OTP challenge, and returns
   // it so this screen can drive Step 3. Session issuance happens via the
   // OTP callbacks below, NOT here.
@@ -558,12 +590,13 @@ interface SignUpProps {
 
 export function SignUpScreen({
   onBack,
+  onRecoverVerification,
   onCredentialsSubmit,
   onOtpVerify,
   onOtpResend,
   experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
 }: SignUpProps) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const geo = useGeoBootstrap();
   const dialEntry = dialForCountry(geo.countryCode);
 
@@ -584,6 +617,7 @@ export function SignUpScreen({
   const [isResending, setIsResending] = useState(false);
   const [otpError, setOtpError] = useState<string | undefined>();
   const [resendNotice, setResendNotice] = useState<string | undefined>();
+  const requestFlight = useRef(false);
 
   // If the geo fallback resolves AFTER mount (rare; `useGeoBootstrap`
   // resolves synchronously on initial render), keep the dial code in sync
@@ -593,18 +627,19 @@ export function SignUpScreen({
     if (dialEntry.dialCode !== dialCode) setDialCode(dialEntry.dialCode);
   }, [dialEntry.dialCode, dialCode, dialCodeTouched]);
 
-  // Phone is onboarding UI state ONLY — not POSTed. See the PR notes.
-  // The step-1 gate still requires a local number so the UX feels complete.
-  const canStep1 =
-    name.trim().length > 2 && /^[0-9 ()-]{6,}$/.test(localNumber) && dialCode.startsWith('+');
+  // Registration persists names/email/password only. Do not require a phone
+  // number that the current account contract does not accept or save.
+  const canStep1 = name.trim().length > 2;
   const canStep2 = email.includes('@') && password.length >= 12 && agreed;
 
   const goNext = async () => {
+    if (requestFlight.current) return;
     if (step === 1) {
       setStep(2);
       return;
     }
     if (step === 2) {
+      requestFlight.current = true;
       setIsLoading(true);
       setSignUpError(undefined);
       try {
@@ -612,11 +647,9 @@ export function SignUpScreen({
         setChallenge(issued);
         setStep(3);
       } catch (err: unknown) {
-        const msg =
-          (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
-            ?.message ?? 'Registration failed';
-        setSignUpError(msg);
+        setSignUpError(lang === 'ar' ? 'تعذر تأكيد التسجيل. تحقق من البيانات وحاول مجدداً.' : registrationErrorMessage(err));
       } finally {
+        requestFlight.current = false;
         setIsLoading(false);
       }
       return;
@@ -626,44 +659,34 @@ export function SignUpScreen({
   };
 
   const handleOtpVerify = async (code: string) => {
-    if (!challenge) return;
+    if (!challenge || requestFlight.current) return;
+    requestFlight.current = true;
     setIsVerifying(true);
     setOtpError(undefined);
     try {
       await onOtpVerify(challenge.challengeId, code);
       // Parent takes over (navigation to /home / returnTo).
     } catch (err: unknown) {
-      const errCode = (err as { response?: { data?: { error?: { code?: string } } } })?.response
-        ?.data?.error?.code;
-      setOtpError(
-        errCode === 'AUTH_OTP_LOCKED'
-          ? 'Too many attempts. Please restart sign-up to get a new code.'
-          : errCode === 'AUTH_OTP_EXPIRED'
-            ? 'This code has expired. Please request a new one.'
-            : 'Incorrect code. Please try again.',
-      );
+      setOtpError(otpErrorMessage(err, 'verify'));
     } finally {
+      requestFlight.current = false;
       setIsVerifying(false);
     }
   };
 
   const handleOtpResend = async () => {
-    if (!challenge) return;
+    if (!challenge || requestFlight.current) return;
+    requestFlight.current = true;
     setIsResending(true);
     setResendNotice(undefined);
     setOtpError(undefined);
     try {
       await onOtpResend(challenge.challengeId);
-      setResendNotice('A new code has been sent.');
+      setResendNotice(lang === 'ar' ? 'تم استلام الطلب. تحقق من بريدك واستخدم أحدث رمز يصلك.' : 'Request received. Check your inbox and use the most recent code.');
     } catch (err: unknown) {
-      const errCode = (err as { response?: { data?: { error?: { code?: string } } } })?.response
-        ?.data?.error?.code;
-      setOtpError(
-        errCode === 'AUTH_OTP_RESEND_EXCEEDED'
-          ? 'Resend limit reached. Please restart sign-up.'
-          : 'Could not resend the code. Please try again.',
-      );
+      setOtpError(otpErrorMessage(err, 'resend'));
     } finally {
+      requestFlight.current = false;
       setIsResending(false);
     }
   };
@@ -774,6 +797,7 @@ export function SignUpScreen({
                   <div className="relative">
                     <select
                       data-testid="dial-code-select"
+                      aria-label={lang === 'ar' ? 'رمز الاتصال بالدولة' : 'Country calling code'}
                       value={dialCode}
                       onChange={(e) => {
                         setDialCode(e.target.value);
@@ -791,12 +815,13 @@ export function SignUpScreen({
                   </div>
                   <div className="flex-1">
                     <TextField
-                      label=""
+                      label={t('phoneNumber')}
+                      autoComplete="tel-national"
                       type="tel"
                       value={localNumber}
                       onChange={setLocalNumber}
                       leadingIcon={<Phone size={16} />}
-                      hint={t('phoneHint')}
+                      hint={lang === 'ar' ? 'اختياري، لا يُحفظ في خطوة التسجيل.' : 'Optional; not saved during registration.'}
                     />
                   </div>
                 </div>
@@ -836,6 +861,7 @@ export function SignUpScreen({
               <TextField
                 label={t('emailAddress')}
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={setEmail}
                 leadingIcon={<Mail size={16} />}
@@ -844,6 +870,7 @@ export function SignUpScreen({
                 <TextField
                   label={t('password')}
                   type={showPw ? 'text' : 'password'}
+                autoComplete="new-password"
                   value={password}
                   onChange={setPassword}
                   leadingIcon={<Lock size={16} />}
@@ -913,6 +940,8 @@ export function SignUpScreen({
               verifyError={otpError}
               resendNotice={resendNotice}
               experience={experience}
+              onRestart={() => onRecoverVerification ? onRecoverVerification(email.trim()) : onBack()}
+              restartLabel={lang === 'ar' ? 'طلب رابط تحقق بدلاً من الرمز' : 'Use a verification link instead'}
             />
           )}
 
@@ -924,7 +953,7 @@ export function SignUpScreen({
         {step !== 3 && (
           <div className="bg-white border-t border-slate-100 px-6 py-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
             {signUpError && (
-              <p className="text-red-500 text-center mb-2" style={{ fontSize: '13px' }}>
+              <p role="alert" className="text-red-500 text-center mb-2" style={{ fontSize: '13px' }}>
                 {signUpError}
               </p>
             )}
@@ -977,25 +1006,25 @@ export function ForgotPasswordScreen({
   onSubmit,
   experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
 }: ForgotPwProps) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
+  const requestFlight = useRef(false);
   const handleSend = async () => {
-    if (!email) return;
+    if (!email || requestFlight.current) return;
+    requestFlight.current = true;
     setIsLoading(true);
     setError(undefined);
     try {
       await onSubmit(email.trim());
       setSubmitted(true);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
-          ?.message ?? 'Could not request a reset link. Please try again.';
-      setError(msg);
+      setError(lang === 'ar' ? 'تعذر تأكيد الطلب. حاول مجدداً بعد قليل.' : recoveryRequestErrorMessage(err));
     } finally {
+      requestFlight.current = false;
       setIsLoading(false);
     }
   };
@@ -1025,7 +1054,7 @@ export function ForgotPasswordScreen({
                 className="text-slate-400 mb-2 max-w-[260px]"
                 style={{ fontSize: '14px', lineHeight: '1.6' }}
               >
-                {t('sentResetTo')}
+                {lang === 'ar' ? 'تم استلام الطلب. إذا كان الحساب مؤهلاً فستصلك تعليمات الاستعادة.' : 'Request received. If the account is eligible, check your inbox for recovery instructions.'}
               </p>
               <div
                 className={`inline-flex items-center gap-2 ${experience.classes.softBg} border ${experience.classes.softBorder} rounded-2xl px-4 py-2 mb-8`}
@@ -1082,6 +1111,8 @@ export function ForgotPasswordScreen({
                 <TextField
                   label={t('emailAddress')}
                   type="email"
+                  autoComplete="email"
+                  onEnter={() => { void handleSend(); }}
                   value={email}
                   onChange={setEmail}
                   leadingIcon={<Mail size={16} />}
@@ -1099,7 +1130,7 @@ export function ForgotPasswordScreen({
                 </Button>
 
                 {error && (
-                  <p className="text-red-500 text-center" style={{ fontSize: '13px' }}>
+                  <p role="alert" className="text-red-500 text-center" style={{ fontSize: '13px' }}>
                     {error}
                   </p>
                 )}

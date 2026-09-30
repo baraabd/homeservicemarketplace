@@ -1,8 +1,10 @@
-import { useState, useRef, useLayoutEffect, ReactNode } from 'react';
+import { useState, useRef, useId, useLayoutEffect, ReactNode } from 'react';
 
 export interface TextFieldProps {
   label: string;
   type?: string;
+  autoComplete?: string;
+  onEnter?: () => void;
   error?: string;
   hint?: string;
   value?: string;
@@ -37,6 +39,8 @@ export interface TextFieldProps {
 export function TextField({
   label,
   type = 'text',
+  autoComplete,
+  onEnter,
   error,
   hint,
   value: controlledValue,
@@ -52,6 +56,8 @@ export function TextField({
   minRows = 3,
   maxRows = 10,
 }: TextFieldProps) {
+  const inputId = useId();
+  const helperId = `${inputId}-helper`;
   const [localValue, setLocalValue] = useState(defaultValue);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -146,6 +152,7 @@ export function TextField({
 
         {/* Floating label */}
         <label
+          htmlFor={inputId}
           className={[
             'absolute pointer-events-none select-none transition-all duration-200',
             labelColor,
@@ -170,6 +177,10 @@ export function TextField({
         {multiline ? (
           <textarea
             ref={textareaRef}
+            id={inputId}
+            autoComplete={autoComplete}
+            aria-invalid={!!error}
+            aria-describedby={error || hint ? helperId : undefined}
             value={value}
             placeholder={floated ? placeholder : undefined}
             onChange={handleTextareaChange}
@@ -194,7 +205,17 @@ export function TextField({
         ) : (
           <input
             ref={inputRef}
+            id={inputId}
+            autoComplete={autoComplete}
+            aria-invalid={!!error}
+            aria-describedby={error || hint ? helperId : undefined}
             type={type}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing && onEnter) {
+                event.preventDefault();
+                onEnter();
+              }
+            }}
             value={value}
             placeholder={floated ? placeholder : undefined}
             onChange={handleInputChange}
@@ -234,6 +255,8 @@ export function TextField({
       {/* ── Helper / Error text ── */}
       {(error || hint) && (
         <p
+          id={helperId}
+          role={error ? 'alert' : undefined}
           className={[
             'flex items-start gap-1.5 mt-1.5 px-1',
             error ? 'text-red-500' : 'text-slate-400',
