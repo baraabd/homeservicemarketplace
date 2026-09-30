@@ -1,0 +1,51 @@
+name: R04 security lock preparation
+
+# Artifact authoring only on this helper branch. No push-back, merge, deploy,
+# privileged token, environment secrets or successful acceptance claim.
+on:
+  push:
+    branches: ['work/r04-security-lock-refresh']
+permissions:
+  contents: read
+jobs:
+  prepare:
+    name: Generate reviewed security lock candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        with:
+          version: '10.32.1'
+          run_install: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Prepare narrowly scoped manifest changes
+        run: node scripts/security/prepare-r04-lock.cjs
+      - name: Generate lockfile with the real pinned resolver
+        run: |
+          set -euo pipefail
+          # No code/install acceptance is inferred from lockfile authoring.
+          # Normal final-head frozen install and lifecycle hooks remain required.
+          pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+          git diff --check
+          mkdir -p "$RUNNER_TEMP/r04-lock/apps/api"
+          cp package.json pnpm-lock.yaml "$RUNNER_TEMP/r04-lock/"
+          cp apps/api/package.json "$RUNNER_TEMP/r04-lock/apps/api/"
+          git rev-parse HEAD > "$RUNNER_TEMP/r04-lock/source-sha.txt"
+          git rev-parse 'HEAD^' > "$RUNNER_TEMP/r04-lock/base-sha.txt"
+          git diff -- package.json apps/api/package.json pnpm-lock.yaml > "$RUNNER_TEMP/r04-lock/candidate.patch"
+          cd "$RUNNER_TEMP/r04-lock"
+          sha256sum package.json apps/api/package.json pnpm-lock.yaml > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r04-security-lock-candidate
+          path: ${{ runner.temp }}/r04-lock/
+          if-no-files-found: error
+          retention-days: 7
