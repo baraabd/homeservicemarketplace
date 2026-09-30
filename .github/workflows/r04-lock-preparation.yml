@@ -1,7 +1,7 @@
 name: R04 security lock preparation
 
-# Artifact authoring only on this helper branch. No push-back, merge, deploy,
-# privileged token, environment secrets or successful acceptance claim.
+# This isolated helper only stores a reviewed lockfile as an unreferenced blob.
+# It never changes a branch, opens/merges a PR, deploys or claims acceptance.
 on:
   push:
     branches: ['work/r04-security-lock-refresh']
@@ -12,11 +12,13 @@ jobs:
     name: Generate reviewed security lock candidate
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
@@ -27,22 +29,37 @@ jobs:
           node-version: '24.21.0'
           package-manager-cache: false
       - name: Prepare narrowly scoped manifest changes
-        run: node scripts/security/prepare-r04-lock.cjs
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'HEAD~2')" = c9c92621d1bd66e0f524f3fc2f9655f8360d6a51
+          # Run the exact original preparation script with its reviewed parent
+          # expectation against the original helper tree, not new product code.
+          git show 'HEAD^:scripts/security/prepare-r04-lock.cjs' > "$RUNNER_TEMP/prepare.cjs"
+          git checkout --detach HEAD^
+          node "$RUNNER_TEMP/prepare.cjs"
       - name: Generate lockfile with the real pinned resolver
         run: |
           set -euo pipefail
-          # No code/install acceptance is inferred from lockfile authoring.
-          # Normal final-head frozen install and lifecycle hooks remain required.
           pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
           git diff --check
+          test "$(git hash-object pnpm-lock.yaml)" = 5114e1b533a7c663336636e165db7adfa4e56d41
           mkdir -p "$RUNNER_TEMP/r04-lock/apps/api"
           cp package.json pnpm-lock.yaml "$RUNNER_TEMP/r04-lock/"
           cp apps/api/package.json "$RUNNER_TEMP/r04-lock/apps/api/"
           git rev-parse HEAD > "$RUNNER_TEMP/r04-lock/source-sha.txt"
           git rev-parse 'HEAD^' > "$RUNNER_TEMP/r04-lock/base-sha.txt"
-          git diff -- package.json apps/api/package.json pnpm-lock.yaml > "$RUNNER_TEMP/r04-lock/candidate.patch"
+          git diff --text -- package.json apps/api/package.json pnpm-lock.yaml > "$RUNNER_TEMP/r04-lock/candidate.patch"
           cd "$RUNNER_TEMP/r04-lock"
           sha256sum package.json apps/api/package.json pnpm-lock.yaml > SHA256SUMS
+      - name: Store only the reviewed lockfile blob without changing any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node -e "const fs=require('node:fs'); fs.writeFileSync(process.env.RUNNER_TEMP+'/lock-blob.json',JSON.stringify({encoding:'utf-8',content:fs.readFileSync('pnpm-lock.yaml','utf8')}));"
+          gh api --method POST repos/baraabd/homeservicemarketplace/git/blobs \
+            --input "$RUNNER_TEMP/lock-blob.json" --jq '.sha' > "$RUNNER_TEMP/r04-lock/lock-blob-sha.txt"
+          test "$(cat "$RUNNER_TEMP/r04-lock/lock-blob-sha.txt")" = 5114e1b533a7c663336636e165db7adfa4e56d41
       - uses: actions/upload-artifact@v4
         with:
           name: r04-security-lock-candidate
