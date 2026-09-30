@@ -1,0 +1,39 @@
+name: Gate0 lockfile refresh
+
+on:
+  push:
+    branches: ['fix/gate0-ci-recovery']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gate0-lockfile-refresh-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          cache: pnpm
+      - name: Regenerate lockfile from the changed manifests
+        run: pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+      - name: Prove manifests were not rewritten
+        run: git diff --exit-code -- package.json apps/api/package.json
+      - name: Retain regenerated lockfile
+        uses: actions/upload-artifact@v6
+        with:
+          name: gate0-regenerated-lockfile
+          path: pnpm-lock.yaml
+          if-no-files-found: error
+          retention-days: 1
