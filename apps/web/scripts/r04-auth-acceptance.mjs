@@ -207,8 +207,12 @@ try {
     const result = await call(b.page, '/v1/auth/register', { email: address, password: pwd, firstName: 'R04', lastName: 'Recovery' });
     assert.equal(result.status, 202); await ownUser(address); await code(address);
     await b.page.goto(`${WEB}/check-email`);
+    await expect(b.page.getByTestId('auth-logout-notice')).toHaveCount(0);
     await b.page.getByLabel('البريد الإلكتروني', { exact: true }).fill(address);
+    const resend = b.page.waitForResponse((r) => r.url() === `${API}/v1/auth/resend-verification` && r.request().method() === 'POST');
     await b.page.getByRole('button', { name: 'طلب رابط تحقق', exact: true }).click();
+    assert.equal((await resend).status(), 202, 'Verification request HTTP status');
+    await expect(b.page.getByRole('status')).toHaveCount(1);
     await expect(b.page.getByRole('status')).toContainText('تم استلام الطلب');
     const target = await link(address, 'verify-email');
     await b.page.goto(target);

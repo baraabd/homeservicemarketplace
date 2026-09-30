@@ -38,5 +38,9 @@ export async function acceptOfflineLogout({ context, page, peer, web, api, prepa
   assert.equal((await response).status(), 204, 'The real server must acknowledge logout');
   step('confirmed-notice-cleared');
   await expect(page.getByTestId('auth-logout-notice')).toHaveCount(0);
+  step('confirmed-logout-survives-reload');
+  await page.reload();
+  await expect(page).toHaveURL(/\/login$/u);
+  await expect(page.getByTestId('auth-logout-notice')).toHaveCount(0);
   step('complete');
 }

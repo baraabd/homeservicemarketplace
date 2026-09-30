@@ -5,7 +5,7 @@ import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/c
 import * as authApi from './auth-api';
 import { clearIntendedApp } from './intended-app';
 import { clearAuthSession } from './auth-session-reset';
-import { AUTH_BOUNDARY_KEY, isLocallySignedOut, recordLocalLogout } from './auth-session-boundary';
+import { AUTH_BOUNDARY_KEY, hasUnconfirmedLogout, isLocallySignedOut, recordLocalLogout, recordSessionEnded } from './auth-session-boundary';
 import { useNotificationArrivalWatcher } from './realtime/notification-arrival-watcher';
 import { useRealtimeSocket } from './realtime/use-realtime-socket';
 
@@ -86,7 +86,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const logoutFlight = useRef<Promise<void> | null>(null);
   const authIntent = useRef(0);
-  const [logoutState, setLogoutState] = useState<AuthContextValue['logoutState']>(() => isLocallySignedOut() ? 'unconfirmed' : 'idle');
+  const [logoutState, setLogoutState] = useState<AuthContextValue['logoutState']>(() => hasUnconfirmedLogout() ? 'unconfirmed' : 'idle');
 
   const {
     data: user,
@@ -116,7 +116,13 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handler = () => {
       authIntent.current += 1;
-      recordLocalLogout();
+      // An anonymous /me result is not a failed user-requested logout. Keep
+      // restoration blocked without inventing an unconfirmed sign-out banner.
+      // A genuine pending/failed logout remains conservative until its reply.
+      if (!hasUnconfirmedLogout()) {
+        recordSessionEnded();
+        setLogoutState('idle');
+      }
       void clearAuthSession(qc).catch(() => undefined);
     };
     const resetHandler = () => {
@@ -137,7 +143,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     const onStorage = (event: StorageEvent) => {
       if (event.key !== AUTH_BOUNDARY_KEY) return;
       authIntent.current += 1;
-      setLogoutState(isLocallySignedOut() ? 'unconfirmed' : 'idle');
+      setLogoutState(hasUnconfirmedLogout() ? 'unconfirmed' : 'idle');
       void (async () => {
         await clearAuthSession(qc);
         // A peer's event never supplies an identity. Only a fresh server /me
@@ -258,7 +264,10 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
       await clearAuthSession(qc);
       try {
         await authApi.logout();
-        if (intent === authIntent.current) setLogoutState('confirmed');
+        if (intent === authIntent.current) {
+          recordSessionEnded();
+          setLogoutState('confirmed');
+        }
       } catch {
         // Local logout is not a claim that a server session was revoked.
         if (intent === authIntent.current) setLogoutState('unconfirmed');

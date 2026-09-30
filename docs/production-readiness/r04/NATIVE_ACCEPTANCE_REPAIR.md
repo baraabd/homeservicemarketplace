@@ -44,3 +44,39 @@ historical; do not copy its partial successes as final-head acceptance.
 R01 effective branch protection and R03 live staging/inbox/TLS acceptance remain
 independent blockers. Mailpit is a real isolated SMTP inbox, not proof of external
 deliverability. R05-R10 and the separate carwash F009 issue are not changed here.
+
+## Follow-up: persist the reason for local session blocking
+
+The first repair was uploaded as `d1d05d83e2e6de74e60061b0e60fdae04480bacd`.
+Its native web lint, types, unit suite and build passed. Its separate lifecycle
+run 36697622790 passed all 12 real PostgreSQL regression tests and five browser/
+SMTP phases, including two-tab offline logout, reconnect/retry acknowledgement,
+and password-reset revocation. The next phase failed at cold Arabic verification
+recovery (`r04-auth-acceptance.mjs:212:46`); later phases did not run.
+
+A guest's initial 401 wrote the same signed-out marker used for a failed explicit
+logout. After navigation/remount this incorrectly displayed the global unconfirmed
+logout notice beside the verification acknowledgement. Likewise, successful logout
+cleared the in-memory notice but retained the persistent unconfirmed state.
+
+The boundary now distinguishes restoration blocking from an unconfirmed explicit
+logout. Anonymous/expired sessions and server-acknowledged logout/reset remain
+blocked from automatic restoration but do not invent a failed-sign-out notice.
+Old markers or invalid confirmation values remain conservative. Actual offline/
+failed logout still persists the warning and supports retry; no server-revocation
+claim is made on a failed request. The hint never grants an identity or permission.
+
+Nine added Vitest cases cover marker compatibility, storage-write failure, cold
+guest remount, confirmed logout remount, peer-tab confirmation and password-reset
+remount. The real browser journey retains the failed-logout reload check, adds a
+confirmed-logout reload check, and verifies that cold recovery has no false banner,
+receives HTTP 202 and has exactly one acknowledgement. No arbitrary duplicate
+selection, timeout increase, test skip or API-response mock was added.
+
+Local built-in regression execution still passes 239/239 on Node 22.16.0, with no
+failures/skips. The four changed/new TypeScript files and both browser scripts
+passed syntax checks; governance, ownership, declaration and whitespace checks
+passed. New Vitest cases and full lifecycle acceptance remain unverified until
+the next exact-head hosted execution; the five prior successes are not transferred
+to the new source. No IAM, database schema, dependency pin or deployment change is
+introduced by this follow-up.

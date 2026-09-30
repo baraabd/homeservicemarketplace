@@ -1,6 +1,6 @@
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import { api } from './api';
-import { authRequestScope, recordLocalLogout, recordVerifiedLogin } from './auth-session-boundary';
+import { authRequestScope, recordSessionEnded, recordVerifiedLogin } from './auth-session-boundary';
 import { withAuthCookieLock } from './auth-cookie-lock';
 
 // ─── Auth API functions ──────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ export async function forgotPassword(email: string): Promise<void> {
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
   await withAuthCookieLock(authRequestScope(), async () => {
     await api.post('/v1/auth/reset-password', { token, newPassword }, { timeout: 15_000 });
-    recordLocalLogout();
+    recordSessionEnded();
     window.dispatchEvent(new Event('auth:credentials-reset'));
   });
 }
