@@ -252,7 +252,11 @@ describe('Login → OTP → authenticated', () => {
       expect(posts).toHaveLength(1);
       expect(JSON.parse(posts[0]!.data)).toEqual({ challengeId: 'chal-login-xyz' });
     });
-    await waitFor(() => expect(screen.getByText(/A new code has been sent/i)).toBeInTheDocument());
+    // Acknowledgement is not proof of external mailbox delivery. Preserve the
+    // non-enumerating request notice and the exact resend endpoint assertions.
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(
+      'Request received. Check your inbox and use the most recent code.',
+    ));
   });
 });
 

@@ -10,7 +10,13 @@ export async function acceptOfflineLogout({ context, page, peer, web, api, prepa
   step('peer-authenticated');
   await peer.goto(`${web}/home/profile`);
   // A route existing in the address bar does not prove its /me query finished.
+  // Hidden drawers must not create a second accessible Settings control.
+  await expect(peer.getByRole('button', { name: 'Settings', exact: true })).toHaveCount(1);
   await expect(peer.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(peer.getByTestId('notification-drawer')).toHaveAttribute('inert', '');
+  const hiddenSettings = peer.getByTestId('notification-drawer').getByText('Settings', { exact: true });
+  await hiddenSettings.evaluate((button) => button.focus());
+  await expect(hiddenSettings).not.toBeFocused();
   step('open-confirmation');
   await prepareLogout(page);
   await expect(page.getByText('Are you sure you want to sign out?', { exact: true })).toBeVisible();
