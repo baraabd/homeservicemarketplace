@@ -3,7 +3,6 @@ import { motion } from 'motion/react';
 import {
   ChevronLeft,
   ChevronRight,
-  Camera,
   User,
   Phone,
   Mail,
@@ -120,7 +119,6 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [avatarHue, setAvatarHue] = useState(0); // cycle through gradient colors
 
   const profile = profileQuery.data?.profile ?? null;
   // In Seeker context the provider profile data is irrelevant — even
@@ -129,6 +127,11 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   const providerProfile = isProviderContext ? (providerProfileQuery.data?.profile ?? null) : null;
   const email = profile?.email ?? '';
   const initials = profile?.initials ?? '';
+  // The seeker profile contract currently exposes avatarUrl as read-only.
+  // R05 removes the old local-only colour cycler rather than pretending a
+  // photo changed when no server mutation exists. Provider context may have
+  // a more specific avatar; otherwise the seeker profile is authoritative.
+  const avatarUrl = providerProfile?.avatarUrl ?? profile?.avatarUrl ?? null;
 
   const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
 
@@ -365,16 +368,8 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
     }
   };
 
-  const AVATARS = [
-    'from-amber-500 to-orange-600',
-    'from-blue-500 to-indigo-600',
-    'from-green-500 to-emerald-600',
-    'from-purple-500 to-pink-600',
-  ];
-
   const L = {
     title: lang === 'ar' ? 'تعديل الملف' : 'Edit Profile',
-    photo: lang === 'ar' ? 'تغيير الصورة' : 'Change Photo',
     name: lang === 'ar' ? 'الاسم الكامل' : 'Full Name',
     phone: lang === 'ar' ? 'رقم الجوال' : 'Phone Number',
     email: lang === 'ar' ? 'البريد الإلكتروني' : 'Email Address',
@@ -438,30 +433,26 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-4 py-5" style={{ scrollbarWidth: 'none' }}>
-        {/* Avatar editor */}
+        {/* Avatar authority: render what the server persisted. There is no
+            seeker avatar mutation contract in R05, so no fake editor is exposed. */}
         <div className="flex flex-col items-center mb-8">
-          <div className="relative">
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt=""
+              data-testid="profile-avatar-image"
+              className="w-24 h-24 rounded-3xl object-cover shadow-lg"
+            />
+          ) : (
             <div
-              className={`w-24 h-24 rounded-3xl bg-gradient-to-br ${AVATARS[avatarHue % AVATARS.length]} flex items-center justify-center shadow-lg`}
+              data-testid="profile-avatar-fallback"
+              className="w-24 h-24 rounded-3xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg"
             >
               <span className="text-white" style={{ fontSize: '28px', fontWeight: 800 }}>
                 {initials}
               </span>
             </div>
-            <button
-              onClick={() => setAvatarHue((h) => h + 1)}
-              className={`absolute -bottom-2 -end-2 w-9 h-9 rounded-xl ${accent.fabBg} flex items-center justify-center shadow-md active:scale-90 transition-all border-2 border-white`}
-            >
-              <Camera size={14} className="text-white" />
-            </button>
-          </div>
-          <button
-            onClick={() => setAvatarHue((h) => h + 1)}
-            className={`mt-3 ${accent.textLink} active:opacity-70`}
-            style={{ fontSize: '13px', fontWeight: 600 }}
-          >
-            {L.photo}
-          </button>
+          )}
         </div>
 
         {/* Form */}

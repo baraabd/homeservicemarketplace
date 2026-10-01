@@ -192,11 +192,16 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
     if (!newLabel.trim() || !newFull.trim()) return;
     setFormError(null);
     const split = splitFullAddress(newFull);
+    // R05: the map pin is durable data, not a preview-only decoration.
+    // When coordinates exist they travel in the same address mutation as
+    // the text fields. A text-only/manual address keeps the optional pair
+    // absent rather than manufacturing a coordinate.
+    const coordinates = pinCoords ? { lat: pinCoords.lat, lng: pinCoords.lng } : {};
     if (editId) {
       updateMut.mutate(
         {
           addressId: editId,
-          input: { label: newLabel.trim(), ...split },
+          input: { label: newLabel.trim(), ...split, ...coordinates },
         },
         {
           onSuccess: () => closeForm(),
@@ -205,7 +210,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
       );
     } else {
       createMut.mutate(
-        { label: newLabel.trim(), type: 'CUSTOM', ...split },
+        { label: newLabel.trim(), type: 'CUSTOM', ...split, ...coordinates },
         {
           onSuccess: () => closeForm(),
           onError: () => setFormError(L.saveFailed),
@@ -218,6 +223,11 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
     setEditId(a.id);
     setNewLabel(a.label);
     setNewFull(formatAddress(a));
+    // Rehydrate the persisted pin so an unrelated label/text edit cannot
+    // silently discard coordinates the server already owns.
+    setPinCoords(
+      a.lat !== null && a.lng !== null ? { lat: a.lat, lng: a.lng } : null,
+    );
     setFormError(null);
     setShowForm(true);
   };
@@ -279,6 +289,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
               setEditId(null);
               setNewLabel('');
               setNewFull('');
+              setPinCoords(null);
               setFormError(null);
               setShowForm(true);
             }}
@@ -356,6 +367,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                 setEditId(null);
                 setNewLabel('');
                 setNewFull('');
+                setPinCoords(null);
                 setFormError(null);
                 setShowForm(true);
               }}
