@@ -1,8 +1,18 @@
 # R05 — Seeker profile, addresses and service catalog durability
 
-Status: IMPLEMENTATION CANDIDATE. Exact-final-SHA CI and real-service acceptance are
-required before closure. Base develop SHA:
-`56294c05442f064424bfc74d2caa566a768861da`.
+Status: **COMPLETE** for the R05 functional scope. The implementation was merged
+through PR #120 and the browser-discovered cold-login return-target defect was
+repaired through PR #121. The final recovery head passed the complete required
+CI suite before merge. This closes R05 itself; repository protection, hosted
+production infrastructure, live-money enablement and later feature sprints remain
+separate release gates.
+
+Implementation PR: https://github.com/baraabd/homeservicemarketplace/pull/120
+
+Recovery PR: https://github.com/baraabd/homeservicemarketplace/pull/121
+
+Merged develop SHA containing both changes:
+`24361c5cc71917d555d79024c485d3540fd41515`.
 
 R05 does not add admin capability, does not alter authentication/CSRF authority and
 does not invent a seeker-avatar upload contract. It repairs only source-backed gaps.
@@ -57,21 +67,55 @@ gradient. Because no seeker avatar mutation contract exists, R05 removes the fal
 success affordance. A persisted `avatarUrl` renders read-only; otherwise the persisted
 initials render as fallback.
 
+The real-service R05 journey later exposed a cold-login navigation race after OTP.
+PR #121 introduced one shared, sanitized return-target resolver used by the login page
+and authenticated guest guard, preserving valid same-origin `returnTo` targets without
+turning navigation state into authorization.
+
 ## Acceptance evidence
 
-Source tests added by R05:
+The exact recovery head
+`04d976243f6a22aabd13a9a40b24c2de188a7cfb` completed the required hosted
+acceptance before merge:
 
-- real PostgreSQL concurrency, ownership, Unicode profile, immutable request/booking
-  snapshots, active/retired catalog and custom Arabic-service persistence;
-- route-level Arabic custom-service length validation;
-- web regressions for address-coordinate payloads and read-only avatar authority;
-- Chromium against the real built SPA + real API + Postgres + Redis + Mailpit, including
-  profile/address reload, fresh login, direct DB reads, historical snapshot and catalog
-  retirement.
+- CI run 36858186860: **PASS**, including install/lockfile, contracts, database,
+  API, Web, Browser E2E, visual/responsive/accessibility, real PostgreSQL/Redis,
+  Admin real-route persistence, authentication cookie contract, dispute journey,
+  Compose smoke, dependency/secret/container scans, Docker production boot,
+  S3/ClamAV retention and Phase 5 real-route persistence.
+- CodeQL run 36858186662: **PASS**.
+- Authentication lifecycle acceptance run 36858186443: **PASS**.
+- Web development startup run 36858186522: **PASS**.
+- Staging release boundary run 36858186495: **PASS**.
+- Production governance run 36860216999: **PASS**.
 
-Final workflow/run IDs and the final source SHA are recorded in PR #120 after GitHub
-finishes the exact-head gates. Pending, failed, cancelled or skipped required evidence
-is non-PASS.
+R05 source tests prove:
+
+- real PostgreSQL default-address concurrency and two-user ownership;
+- Unicode/Arabic profile persistence;
+- immutable request/booking address snapshots;
+- active/retired catalog behavior and custom Arabic-service persistence;
+- address-coordinate payload persistence and rehydration;
+- real built SPA + API + Postgres + Redis + Mailpit persistence across reload and
+  fresh login, including direct database reads;
+- the corrected post-OTP cold-login return path.
+
+No successful API-response mock is counted as persistence evidence.
+
+## Scope boundary after closure
+
+R05 does **not** close the confirmed request-media ownership gap. Request attachments
+remain the first functional blocker for R06: request presign still lacks an owned
+`MediaAsset` reservation and request creation still accepts the supplied `mediaUrls`
+array without transaction-bound claim authority.
+
+R05 also does not implement ratings/reviews, support-agent persistence, booking call or
+tracking capabilities, payout/withdrawal authority, or the Provider V2 cutover. Those
+items are assigned to the functional-completion roadmap rather than being hidden inside
+R05.
+
+The historical `docs/production-readiness/r01/BASELINE.json` remains unchanged because
+it is a dated audit snapshot, not a mutable current-status registry.
 
 ## Rollback
 
