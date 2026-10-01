@@ -77,6 +77,7 @@ export default defineConfig(({ mode, command }) => {
         'react-dom/client',
         'react-leaflet',
         'react-router',
+        'react-router/dom',
         'react/jsx-dev-runtime',
         'react/jsx-runtime',
         'recharts',
