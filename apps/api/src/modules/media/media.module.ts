@@ -8,6 +8,7 @@ import { MediaController } from './media.controller';
 import { PortfolioMediaModule } from './portfolio-media.module';
 import { PublicMediaCleanupService } from './public-media-cleanup.service';
 import { PublicMediaCleanupJob } from './public-media-cleanup.job';
+import { RequestMediaModule } from './request-media.module';
 
 // MediaController depends on JwtAuthGuard / CsrfGuard from
 // AuthenticationModule (presigned-url endpoint is auth-gated) and on
@@ -29,6 +30,7 @@ import { PublicMediaCleanupJob } from './public-media-cleanup.job';
     PrismaModule,
     PublicMediaLedgerModule,
     PortfolioMediaModule,
+    RequestMediaModule,
   ],
   controllers: [MediaController],
   providers: [PublicMediaCleanupService, PublicMediaCleanupJob],

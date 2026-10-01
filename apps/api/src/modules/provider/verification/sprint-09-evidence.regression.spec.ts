@@ -44,7 +44,7 @@ describe('Sprint 9 regression — the verification evidence model does not exist
   });
 
   it('defines a generic MediaAsset so evidence is not stored as a bare URL', () => {
-    // Today request media is a string in ServiceRequest.mediaUrls[]. A URL
+    // Before R06, request media was a string in ServiceRequest.mediaUrls[]. A URL
     // cannot carry a scan state, a hash, a retention date, or a visibility —
     // and without those, "restricted" has no representation.
     expect(MODELS.has('MediaAsset')).toBe(true);

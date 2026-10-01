@@ -50,12 +50,15 @@ suite('R05 seeker durability invariants (real Postgres)', () => {
   }
 
   beforeAll(async () => {
-    db = require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
+    db =
+      require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
     prisma = db.prisma;
     const prismaSvc = { client: prisma };
 
     const { TransactionRunner } = require('../../src/infrastructure/prisma/transaction.runner');
-    const { AddressRepository } = require('../../src/infrastructure/persistence/addresses/address.repository');
+    const {
+      AddressRepository,
+    } = require('../../src/infrastructure/persistence/addresses/address.repository');
     const { UserRepository } = require('../../src/infrastructure/persistence/iam/user.repository');
     const {
       UserProfileRepository,
@@ -70,13 +73,16 @@ suite('R05 seeker durability invariants (real Postgres)', () => {
       ServiceRequestEventRepository,
     } = require('../../src/infrastructure/persistence/requests/service-request-event.repository');
     const { OutboxRepository } = require('../../src/infrastructure/outbox/outbox.repository');
-    const { BookingRepository } = require('../../src/infrastructure/persistence/bookings/booking.repository');
+    const {
+      BookingRepository,
+    } = require('../../src/infrastructure/persistence/bookings/booking.repository');
     const {
       BookingEventRepository,
     } = require('../../src/infrastructure/persistence/bookings/booking-event.repository');
     const { AddressesService } = require('../../src/modules/addresses/addresses.service');
     const { ProfileService } = require('../../src/modules/profile/profile.service');
     const { RequestsService } = require('../../src/modules/requests/requests.service');
+    const { RequestMediaService } = require('../../src/modules/media/request-media.service');
     const { BookingsService } = require('../../src/modules/bookings/bookings.service');
     const { ServicesService } = require('../../src/modules/services/services.service');
 
@@ -96,6 +102,20 @@ suite('R05 seeker durability invariants (real Postgres)', () => {
       categoryRepo,
       tx,
       new OutboxRepository(prismaSvc),
+      // R06 — these cases attach no media, so storage is never reached; a
+      // throwing port keeps that true rather than assumed.
+      new RequestMediaService(
+        prismaSvc,
+        { get: () => 'r05-integration-secret-of-at-least-32-chars' },
+        new Proxy(
+          {},
+          {
+            get: () => () => {
+              throw new Error('R05 cases must not touch attachment storage');
+            },
+          },
+        ),
+      ),
     );
     bookings = new BookingsService(
       new BookingRepository(prismaSvc),
@@ -110,9 +130,11 @@ suite('R05 seeker durability invariants (real Postgres)', () => {
   afterEach(async () => {
     const requestIds = [...createdRequestIds];
     if (requestIds.length > 0) {
-      await prisma.outboxHandlerRun.deleteMany({
-        where: { event: { aggregateId: { in: requestIds }, aggregateType: 'ServiceRequest' } },
-      }).catch(() => undefined);
+      await prisma.outboxHandlerRun
+        .deleteMany({
+          where: { event: { aggregateId: { in: requestIds }, aggregateType: 'ServiceRequest' } },
+        })
+        .catch(() => undefined);
       await prisma.outboxEvent.deleteMany({
         where: { aggregateId: { in: requestIds }, aggregateType: 'ServiceRequest' },
       });
@@ -256,7 +278,7 @@ suite('R05 seeker durability invariants (real Postgres)', () => {
       categoryId: cat.id,
       customServiceText: null,
       description: 'Historical snapshot fixture',
-      mediaUrls: [],
+      mediaAssetIds: [],
       scheduleType: db.ScheduleType.ASAP,
       scheduledAt: null,
       addressId: address.id,
@@ -316,7 +338,9 @@ suite('R05 seeker durability invariants (real Postgres)', () => {
 
     const stored = await prisma.serviceRequest.findUniqueOrThrow({ where: { id: request.id } });
     expect(stored.addressSnapshot).toMatchObject(expected);
-    expect((await prisma.address.findUniqueOrThrow({ where: { id: address.id } })).deletedAt).not.toBeNull();
+    expect(
+      (await prisma.address.findUniqueOrThrow({ where: { id: address.id } })).deletedAt,
+    ).not.toBeNull();
   });
 
   it('hides retired categories from new selection while preserving historical request labels', async () => {
@@ -337,7 +361,7 @@ suite('R05 seeker durability invariants (real Postgres)', () => {
       categoryId: cat.id,
       customServiceText: null,
       description: null,
-      mediaUrls: [],
+      mediaAssetIds: [],
       scheduleType: db.ScheduleType.ASAP,
       scheduledAt: null,
       addressId: address.id,
@@ -354,7 +378,7 @@ suite('R05 seeker durability invariants (real Postgres)', () => {
         categoryId: cat.id,
         customServiceText: null,
         description: null,
-        mediaUrls: [],
+        mediaAssetIds: [],
         scheduleType: db.ScheduleType.ASAP,
         scheduledAt: null,
         addressId: address.id,
@@ -374,7 +398,7 @@ suite('R05 seeker durability invariants (real Postgres)', () => {
       categoryId: null,
       customServiceText: custom,
       description: null,
-      mediaUrls: [],
+      mediaAssetIds: [],
       scheduleType: db.ScheduleType.ASAP,
       scheduledAt: null,
       addressId: address.id,

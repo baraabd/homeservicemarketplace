@@ -757,6 +757,7 @@ model ServiceRequest {
   bookings          Booking[]
   conversations     Conversation[]
   events            ServiceRequestEvent[]
+  mediaAssets       MediaAsset[]
   address           Address?              @relation(fields: [addressId], references: [id])
   category          ServiceCategory?      @relation(fields: [categoryId], references: [id])
   seeker            User                  @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
@@ -1955,6 +1956,26 @@ model MediaAsset {
   /// already in flight.
   uploadExpiresAt DateTime?
 
+  // ── R06 — service-request attachments ───────────────────────────────────
+  /// What a PUBLIC reservation was issued for. NULL for avatar and portfolio
+  /// reservations, which predate this column and have their own claim paths.
+  /// Set at presign and never changed, so a request can only claim an asset
+  /// that was reserved as a request attachment.
+  purpose                   MediaAssetPurpose?
+  /// The one request this asset is attached to. A single nullable column, so
+  /// "an asset belongs to at most one request" is structural rather than a
+  /// rule the application has to remember.
+  ///
+  /// SetNull rather than Cascade: deleting a request must not delete the
+  /// record of bytes that still exist in the bucket. The cleanup sweep retires
+  /// them; requestClaimedAt stays set, so the asset can never be reused.
+  serviceRequestId          String?
+  /// When the claim committed. Written in the same transaction that creates
+  /// the request. Never cleared: a non-null value means "already used".
+  requestClaimedAt          DateTime?
+  /// Display order within the request, as the seeker selected the files.
+  requestAttachmentPosition Int?
+
   // ── retention (ADR 0012) ────────────────────────────────────────────────
   /// When the BYTES become eligible for deletion. Null until the owning case
   /// reaches a terminal state and a window can be computed.
@@ -1975,6 +1996,7 @@ model MediaAsset {
   verificationDocument VerificationDocument?
   portfolioItems       ProviderPortfolioItem[]
   retentionJobs        EvidenceRetentionJob[]
+  serviceRequest       ServiceRequest?         @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)
 
   /// The retention sweep: what is due for deletion and not yet deleted.
   @@index([deletedAt, retainUntil])
@@ -1983,6 +2005,15 @@ model MediaAsset {
   @@index([ownerUserId, visibility])
   /// The cleanup sweep: prepared uploads that expired without being finalized.
   @@index([verificationCaseId, uploadCompletedAt])
+  /// R06 — one asset per (request, position); also the request -> assets read.
+  @@unique([serviceRequestId, requestAttachmentPosition])
+  /// R06 — the sweep for request attachments that were never claimed.
+  @@index([purpose, serviceRequestId, uploadExpiresAt])
+}
+
+/// R06 — the purpose a public upload reservation was issued for.
+enum MediaAssetPurpose {
+  REQUEST_ATTACHMENT
 }
 
 // Sprint 9B.3 — one more PARTIAL unique index that Prisma cannot express, so

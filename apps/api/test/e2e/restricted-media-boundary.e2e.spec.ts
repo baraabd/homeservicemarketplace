@@ -8,6 +8,7 @@ import express from 'express';
 jest.setTimeout(30_000);
 
 import { MediaController } from '../../src/modules/media/media.controller';
+import { RequestMediaService } from '../../src/modules/media/request-media.service';
 import { PublicMediaLedgerService } from '../../src/modules/media/public-media-ledger.service';
 import { LocalDiskStorageAdapter } from '../../src/infrastructure/storage/local-disk-storage.adapter';
 import { STORAGE_PORT } from '../../src/infrastructure/storage/storage.port';
@@ -81,6 +82,19 @@ async function bootApp(): Promise<INestApplication> {
       // so the ledger is a throwing stub: if a read path ever starts touching
       // it, that is a behaviour change and these tests will say so rather than
       // quietly passing against a permissive double.
+      // R06 — same reasoning as the ledger stub below: this suite drives the
+      // read boundary only, so the attachment authority must never be reached.
+      {
+        provide: RequestMediaService,
+        useValue: {
+          reserve: () => {
+            throw new Error('the restricted-media read boundary must not reserve');
+          },
+          finalize: () => {
+            throw new Error('the restricted-media read boundary must not finalize');
+          },
+        },
+      },
       {
         provide: PublicMediaLedgerService,
         useValue: {

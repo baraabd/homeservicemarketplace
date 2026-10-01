@@ -4,6 +4,7 @@ import { mkdir, open, rm, stat, writeFile } from 'node:fs/promises';
 import { join, normalize, sep } from 'node:path';
 import type { Readable } from 'node:stream';
 import { isPortfolioStorageKey } from './portfolio-storage-policy';
+import { isRequestAttachmentKey } from './request-attachment-storage-policy';
 
 import { AppConfigService } from '../../config/app-config.service';
 import { PresignUploadInput, PresignedUpload, StoragePort } from './storage.port';
@@ -126,7 +127,11 @@ export class LocalDiskStorageAdapter extends StoragePort {
     await mkdir(dirname(abs), { recursive: true });
     // A signed PUT is reusable until expiry. Exclusive creation prevents a
     // replay replacing bytes after they were attached or approved.
-    await writeFile(abs, args.body, { flag: isPortfolioStorageKey(args.key) ? 'wx' : 'w' });
+    // R06 — request attachments are write-once, like portfolio media. The
+    // signed URL outlives finalization, so without this a client could replace
+    // the bytes after they were verified.
+    const writeOnce = isPortfolioStorageKey(args.key) || isRequestAttachmentKey(args.key);
+    await writeFile(abs, args.body, { flag: writeOnce ? 'wx' : 'w' });
     this.log.log({ msg: 'storage.local.write', key: args.key, bytes: args.body.byteLength });
   }
 

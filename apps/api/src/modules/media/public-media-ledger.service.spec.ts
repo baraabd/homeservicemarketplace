@@ -21,6 +21,7 @@ type Row = {
   storageKey: string;
   ownerUserId: string;
   visibility: 'PUBLIC' | 'RESTRICTED';
+  purpose: 'REQUEST_ATTACHMENT' | null;
   declaredMimeType: string;
   sizeBytes: number;
   uploadCompletedAt: Date | null;
@@ -38,6 +39,7 @@ function row(over: Partial<Row> = {}): Row {
     storageKey: 'avatars/refA/one.jpg',
     ownerUserId: 'user-a',
     visibility: 'PUBLIC',
+    purpose: null,
     declaredMimeType: 'image/jpeg',
     sizeBytes: 1024,
     uploadCompletedAt: null,
@@ -344,5 +346,37 @@ describe('PublicMediaLedgerService — retire', () => {
     await expect(
       h.service.retire({ userId: 'user-a', storageKey: 'nope.jpg', reason: 'X' }, NOW),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('PublicMediaLedgerService — R06 request attachments are out of reach', () => {
+  // Avatar and portfolio finalization claim by storage key and owner. A request
+  // attachment has its own finalize and claim path, and must not be claimable
+  // or retirable through this one even by its own owner.
+  it('does not claim a request-attachment reservation', async () => {
+    const h = harness([
+      row({ storageKey: 'requests/refA/one.jpg', purpose: 'REQUEST_ATTACHMENT' }),
+    ]);
+    const claimed = await h.service.claim(
+      { userId: 'user-a', storageKey: 'requests/refA/one.jpg' },
+      NOW,
+    );
+    expect(claimed).toBeNull();
+    expect(h.rows[0].uploadCompletedAt).toBeNull();
+  });
+
+  it('does not retire a request attachment', async () => {
+    const h = harness([
+      row({
+        storageKey: 'requests/refA/one.jpg',
+        purpose: 'REQUEST_ATTACHMENT',
+        uploadCompletedAt: NOW,
+      }),
+    ]);
+    await h.service.retire(
+      { userId: 'user-a', storageKey: 'requests/refA/one.jpg', reason: 'X' },
+      NOW,
+    );
+    expect(h.rows[0].retainUntil).toBeNull();
   });
 });

@@ -13,6 +13,7 @@ import type { Readable } from 'node:stream';
 import { AppConfigService } from '../../config/app-config.service';
 import { PresignUploadInput, PresignedUpload, StoragePort } from './storage.port';
 import { isStagedPortfolioKey } from './portfolio-storage-policy';
+import { isRequestAttachmentKey } from './request-attachment-storage-policy';
 
 // Production storage backend. Used when STORAGE_DRIVER=s3 (set via
 // .env in production / preview deploys). Hits S3-compatible storage
@@ -80,7 +81,11 @@ export class S3StorageAdapter extends StoragePort {
       Key: input.key,
       ContentType: input.contentType,
       ContentLength: input.sizeBytes,
-      ...(isStagedPortfolioKey(input.key) ? { IfNoneMatch: '*' } : {}),
+      // R06 — request attachments are write-once as well: the signed URL
+      // outlives finalization, so an overwrite after verification must fail.
+      ...(isStagedPortfolioKey(input.key) || isRequestAttachmentKey(input.key)
+        ? { IfNoneMatch: '*' }
+        : {}),
     });
     const uploadUrl = await getSignedUrl(this.client, cmd, { expiresIn: PRESIGN_TTL_SECONDS });
     const fileUrl = this.publicUrlForKey(input.key);

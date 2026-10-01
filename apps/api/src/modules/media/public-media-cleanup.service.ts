@@ -93,12 +93,22 @@ export class PublicMediaCleanupService {
         visibility: 'PUBLIC',
         // Never re-examine something already recorded as gone.
         deletedAt: null,
+        // R06 — an asset attached to a request is out of reach of every
+        // branch below, whatever else is true of the row.
+        serviceRequestId: null,
         OR: [
           { retainUntil: { not: null, lte: now } },
           { uploadCompletedAt: null, uploadExpiresAt: { not: null, lte: abandonedCutoff } },
+          // R06 — a request attachment that was finalized but never
+          // attached, or whose request has since been deleted.
+          {
+            purpose: 'REQUEST_ATTACHMENT',
+            uploadCompletedAt: { not: null },
+            uploadExpiresAt: { not: null, lte: abandonedCutoff },
+          },
         ],
       },
-      select: { id: true, storageKey: true },
+      select: { id: true, storageKey: true, purpose: true, retainUntil: true },
       orderBy: { createdAt: 'asc' },
       take: options.limit,
     });
@@ -111,6 +121,24 @@ export class PublicMediaCleanupService {
     };
 
     for (const asset of candidates) {
+      // R06 — FENCE FIRST for an unclaimed request attachment.
+      //
+      // A finalized attachment can still be claimed by a request that is
+      // committing right now. Deleting its bytes first could leave a request
+      // pointing at nothing. The fence is one conditional UPDATE: either it
+      // marks the row retired, after which the claim (which requires
+      // `retainUntil IS NULL`) can no longer match, or the claim got there
+      // first and this matches nothing.
+      if (asset.purpose === 'REQUEST_ATTACHMENT' && asset.retainUntil === null) {
+        const fenced = await this.prisma.client.mediaAsset.updateMany({
+          where: { id: asset.id, serviceRequestId: null, retainUntil: null, deletedAt: null },
+          data: { retainUntil: now, deletionReason: 'REQUEST_ATTACHMENT_UNCLAIMED' },
+        });
+        if (fenced.count !== 1) {
+          result.raced += 1;
+          continue;
+        }
+      }
       try {
         // 1. The bytes. Idempotent, so a second worker doing the same thing at
         //    the same time is not a conflict.

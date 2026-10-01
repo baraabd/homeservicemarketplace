@@ -497,6 +497,29 @@ jobs:
             apps/web/test-results/r05-seeker-real-api-report/
           retention-days: 14
           if-no-files-found: warn
+      - name: Accept R06 request media authority through the real browser and API
+        # The wizard uploads real bytes to the real signed-upload route, the API
+        # verifies what was stored, and the spec reads Postgres directly. It
+        # also drives the refusal cases against the real HTTP stack.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r06-request-media-real-api-report
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r06-request-media.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --output=test-results/r06-request-media-real-api
+      - name: Upload R06 request media real-service evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r06-request-media-real-api-evidence
+          path: |
+            apps/web/test-results/r06-request-media-real-api/
+            apps/web/test-results/r06-request-media-real-api-report/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed

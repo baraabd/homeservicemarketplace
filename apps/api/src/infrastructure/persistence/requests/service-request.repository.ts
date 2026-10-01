@@ -36,10 +36,9 @@ export interface CreateServiceRequestInput {
   categoryId: string | null;
   customServiceText: string | null;
   description: string | null;
-  /** Sprint 7.x — pre-uploaded media URLs forwarded verbatim from the
-   *  seeker's create-request payload. Empty array when the seeker
-   *  attached no media; the column has `@default([])` so omitting it
-   *  is also safe. */
+  /** R06 — public URLs of the assets being claimed, derived by the server
+   *  from MediaAsset rows. Never client input. Empty when the seeker
+   *  attached no media. */
   mediaUrls?: string[];
   scheduleType: ScheduleType;
   scheduledAt: Date | null;
