@@ -4,7 +4,7 @@ import { CheckCircle2, Eye, EyeOff, Lock, Mail, RefreshCcw, XCircle, Loader2 } f
 import { useAuth } from '../../lib/auth-provider';
 import * as authApi from '../../lib/auth-api';
 import { recoveryRequestErrorMessage, resetPasswordErrorMessage } from '../../lib/auth-errors';
-import { sanitizeAuthReturnTo } from '../../lib/auth-return-to';
+import { sanitizeAuthReturnTo, selectAuthReturnTo } from '../../lib/auth-return-to';
 import { useLang } from '../i18n/LanguageContext';
 import { getIntendedApp } from '../../lib/intended-app';
 import { resolveAuthExperience, resolvePostAuthDestination } from '../../lib/auth-experience';
@@ -27,6 +27,7 @@ import { TextField } from '../components/ds/TextField';
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { login, user } = useAuth();
   const state = location.state as {
     registered?: boolean;
@@ -38,7 +39,11 @@ export function LoginPage() {
     app?: 'seeker' | 'provider' | 'admin';
   } | null;
   const justRegistered = state?.registered;
-  const returnTo = sanitizeAuthReturnTo(state?.returnTo);
+  // Internal navigation carries returnTo in router state. A cold/direct login
+  // URL cannot, so accept the sanitized query parameter as the fallback.
+  // GuestOnly uses the same resolver so its authenticated rerender cannot win
+  // the OTP navigation race and drop a valid deep link.
+  const returnTo = selectAuthReturnTo(state?.returnTo, searchParams.get('returnTo'));
 
   const { verifyOtp, resendOtp } = useAuth();
 

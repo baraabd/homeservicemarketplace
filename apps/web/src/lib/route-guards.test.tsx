@@ -161,6 +161,35 @@ describe('GuestOnly forwards outlet context', () => {
     await waitFor(() => expect(screen.getByTestId('consumer')).toBeInTheDocument());
     expect(screen.getByTestId('marker').textContent).toBe('guest-branch');
   });
+
+  it('preserves a sanitized returnTo query when auth resolves before LoginPage navigation', async () => {
+    // This reproduces the R05 real-browser failure: a cold URL has query
+    // state only. As soon as /me becomes authenticated, GuestOnly can rerender
+    // before LoginPage's own post-OTP navigate() callback runs. The guard must
+    // therefore honor the same sanitized query target instead of falling back
+    // to /home.
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+
+    render(
+      <AuthProvider client={qc}>
+        <MemoryRouter initialEntries={['/login?returnTo=%2Fhome%2Fprofile']}>
+          <Routes>
+            <Route element={<GuestOnly />}>
+              <Route path="/login" element={<div data-testid="login-route">login</div>} />
+            </Route>
+            <Route path="/home" element={<div data-testid="home-destination">home</div>} />
+            <Route
+              path="/home/profile"
+              element={<div data-testid="profile-destination">profile</div>}
+            />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('profile-destination')).toBeInTheDocument());
+    expect(screen.queryByTestId('home-destination')).not.toBeInTheDocument();
+  });
 });
 
 describe('Login → OTP → /home does not crash on context', () => {
