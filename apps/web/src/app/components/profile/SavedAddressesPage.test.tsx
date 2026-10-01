@@ -262,4 +262,40 @@ describe('SavedAddressesPage', () => {
     fireEvent.click(screen.getByText('Set as default'));
     await waitFor(() => expect(promotedUrl).toBe('/v1/me/addresses/addr-work/default'));
   });
+  it('preserves persisted coordinates on a label-only edit', async () => {
+    const pinned = {
+      ...ADDR_HOME,
+      id: 'addr-pinned',
+      label: 'Pinned home',
+      lat: 36.2021,
+      lng: 37.1343,
+    };
+    mock.onGet('/v1/me/addresses').replyOnce(200, { items: [pinned] });
+
+    let patchedBody: Record<string, unknown> | null = null;
+    mock.onPatch('/v1/me/addresses/addr-pinned').reply((config) => {
+      patchedBody = JSON.parse(config.data as string);
+      return [200, { ...pinned, label: 'Pinned home updated' }];
+    });
+    mock.onGet('/v1/me/addresses').reply(200, {
+      items: [{ ...pinned, label: 'Pinned home updated' }],
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Pinned home')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Edit'));
+    fireEvent.change(screen.getByPlaceholderText('Label (e.g. Home)'), {
+      target: { value: 'Pinned home updated' },
+    });
+    fireEvent.click(screen.getByText('Save Address'));
+
+    await waitFor(() => expect(patchedBody).not.toBeNull());
+    expect(patchedBody).toMatchObject({
+      label: 'Pinned home updated',
+      lat: 36.2021,
+      lng: 37.1343,
+    });
+  });
+
 });
