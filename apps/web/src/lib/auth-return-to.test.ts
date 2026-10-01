@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { sanitizeAuthReturnTo } from './auth-return-to';
+import { sanitizeAuthReturnTo, selectAuthReturnTo } from './auth-return-to';
 import { getExperienceForReturnTo, resolvePostAuthDestination } from './auth-experience';
 import { clearIntendedApp } from './intended-app';
 
@@ -25,6 +25,18 @@ describe('S04 shared post-auth return boundary', () => {
     expect(resolvePostAuthDestination({ returnTo: raw, userRoles: ['customer'] })).toBe(raw);
   });
 
+
+  it('uses a sanitized query target for a cold direct login', () => {
+    expect(selectAuthReturnTo(undefined, '/home/profile?tab=details#top')).toBe(
+      '/home/profile?tab=details#top',
+    );
+  });
+
+  it('prefers valid router state and safely falls back when state is absent or invalid', () => {
+    expect(selectAuthReturnTo('/provider/jobs', '/home/profile')).toBe('/provider/jobs');
+    expect(selectAuthReturnTo('//evil.example', '/home/profile')).toBe('/home/profile');
+    expect(selectAuthReturnTo(undefined, 'https://evil.example/home')).toBeNull();
+  });
   it('falls through to the intended app rather than trusting a hostile target', () => {
     expect(resolvePostAuthDestination({ returnTo: '//other.example', intentApp: 'provider' })).toBe('/provider');
   });

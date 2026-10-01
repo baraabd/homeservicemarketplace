@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation, useOutletContext } from 'react-router';
 import { useAuth } from './auth-provider';
 import { getIntendedApp } from './intended-app';
 import { resolvePostAuthDestination } from './auth-experience';
+import { selectAuthReturnTo } from './auth-return-to';
 import { AdminAccessRequired } from '../app/components/admin/AdminAccessRequired';
 
 // ─── Loading spinner ─────────────────────────────────────────────────────────
@@ -65,8 +66,12 @@ export function GuestOnly() {
 
   if (isLoading) return <AuthLoadingScreen />;
   if (isAuthenticated) {
-    const returnToRaw = (location.state as { returnTo?: string } | null)?.returnTo;
-    const returnTo = returnToRaw && returnToRaw !== '/login' ? returnToRaw : null;
+    const stateReturnTo = (location.state as { returnTo?: string } | null)?.returnTo;
+    const queryReturnTo = new URLSearchParams(location.search).get('returnTo');
+    // A direct /login?returnTo=... has no router state. Resolve both channels
+    // through the same local-origin sanitizer so this guard and LoginPage make
+    // the same decision during the post-OTP authenticated rerender.
+    const returnTo = selectAuthReturnTo(stateReturnTo, queryReturnTo);
     const dest = resolvePostAuthDestination({
       returnTo,
       intentApp: getIntendedApp(),

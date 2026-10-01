@@ -29,3 +29,16 @@ export function sanitizeAuthReturnTo(raw: unknown): string | null {
     return null;
   }
 }
+
+
+/**
+ * Resolve the post-auth deep link from the two supported transport channels.
+ *
+ * React Router state is preferred when it contains a valid target. A direct
+ * browser entry cannot carry router state, so the visible ?returnTo= query is
+ * the safe fallback. Both inputs pass through the same local-origin boundary;
+ * neither is an authorization fact.
+ */
+export function selectAuthReturnTo(stateRaw: unknown, queryRaw: unknown): string | null {
+  return sanitizeAuthReturnTo(stateRaw) ?? sanitizeAuthReturnTo(queryRaw);
+}
