@@ -89,7 +89,9 @@ async function put(uploadUrl: string, body: Buffer, contentType = 'image/png'): 
   const response = await fetch(target, {
     method: 'PUT',
     headers: { 'content-type': contentType },
-    body,
+    // Copied into a plain ArrayBuffer-backed view: that is what `fetch`
+    // accepts as a body, and a Buffer slice may sit on a shared pool.
+    body: new Uint8Array(body),
   });
   return response.status;
 }
