@@ -110,7 +110,13 @@ test.describe('R05 seeker durability — real browser, API and Postgres', () => 
 
     await page.goto(`${BASE_URL}/home/profile`);
     await page.getByRole('button', { name: 'Saved Addresses', exact: true }).click();
-    await expect(page.getByText('Saved Addresses', { exact: true })).toBeVisible();
+    // The underlying Profile menu intentionally remains mounted during the
+    // animated sub-page overlay and contains the same "Saved Addresses" copy.
+    // Address the heading element itself so strict mode verifies the opened
+    // screen instead of matching both the menu button and the page title.
+    await expect(
+      page.locator('p').filter({ hasText: /^Saved Addresses$/ }),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Add Address', exact: true }).first().click();
     await page.getByPlaceholder('Label (e.g. Home)').fill('R05 Home');
     await page.getByPlaceholder('Full address').fill('10 Old Street, Aleppo, Syria');
