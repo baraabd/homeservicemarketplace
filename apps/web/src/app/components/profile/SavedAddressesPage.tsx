@@ -192,11 +192,17 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
     if (!newLabel.trim() || !newFull.trim()) return;
     setFormError(null);
     const split = splitFullAddress(newFull);
+    // R05 — coordinates are part of the saved-address contract, not just map
+    // decoration. A captured/dragged pin must survive the write. Explicit null
+    // clears a stale pin when the user manually replaces the address text.
+    const coords = pinCoords
+      ? { lat: pinCoords.lat, lng: pinCoords.lng }
+      : { lat: null, lng: null };
     if (editId) {
       updateMut.mutate(
         {
           addressId: editId,
-          input: { label: newLabel.trim(), ...split },
+          input: { label: newLabel.trim(), ...split, ...coords },
         },
         {
           onSuccess: () => closeForm(),
@@ -205,7 +211,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
       );
     } else {
       createMut.mutate(
-        { label: newLabel.trim(), type: 'CUSTOM', ...split },
+        { label: newLabel.trim(), type: 'CUSTOM', ...split, ...coords },
         {
           onSuccess: () => closeForm(),
           onError: () => setFormError(L.saveFailed),
@@ -218,6 +224,10 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
     setEditId(a.id);
     setNewLabel(a.label);
     setNewFull(formatAddress(a));
+    // Seed the persisted pin so a label-only edit cannot silently erase it.
+    setPinCoords(
+      typeof a.lat === 'number' && typeof a.lng === 'number' ? { lat: a.lat, lng: a.lng } : null,
+    );
     setFormError(null);
     setShowForm(true);
   };
@@ -279,6 +289,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
               setEditId(null);
               setNewLabel('');
               setNewFull('');
+              setPinCoords(null);
               setFormError(null);
               setShowForm(true);
             }}
@@ -356,6 +367,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                 setEditId(null);
                 setNewLabel('');
                 setNewFull('');
+                setPinCoords(null);
                 setFormError(null);
                 setShowForm(true);
               }}
@@ -530,7 +542,12 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
                 />
                 <input
                   value={newFull}
-                  onChange={(e) => setNewFull(e.target.value)}
+                  onChange={(e) => {
+                    setNewFull(e.target.value);
+                    // The text now describes a different location. Keeping the
+                    // previous coordinates would create a contradictory record.
+                    setPinCoords(null);
+                  }}
                   placeholder={L.addressPlh}
                   className="w-full bg-slate-100 dark:bg-slate-700 rounded-2xl px-4 py-3 text-slate-700 dark:text-slate-200 placeholder-slate-400 outline-none focus:ring-2 focus:ring-amber-300 transition-all"
                   style={{ fontSize: '14px' }}
