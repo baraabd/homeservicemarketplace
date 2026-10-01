@@ -61,6 +61,7 @@ const ADDR_WORK = {
 };
 
 describe('SavedAddressesPage', () => {
+  // R05 durability regression coverage.
   it('loads addresses from /v1/me/addresses (no SEED data)', async () => {
     mock.onGet('/v1/me/addresses').reply(200, { items: [ADDR_HOME, ADDR_WORK] });
     renderPage();
