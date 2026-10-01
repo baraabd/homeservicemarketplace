@@ -102,6 +102,32 @@ describe('EditProfilePage — loads from API', () => {
     expect(screen.getByDisplayValue('Palo Alto')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Pioneer of computing.')).toBeInTheDocument();
   });
+
+  it('renders the persisted avatar URL and exposes no fake Change Photo control', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    mock.onGet('/v1/me/profile').reply(200, {
+      profile: { ...MOCK_PROFILE, avatarUrl: 'https://cdn.example.test/avatars/ada.png' },
+    });
+
+    renderEdit();
+    const image = await screen.findByTestId('profile-avatar-image');
+    expect(image).toHaveAttribute('src', 'https://cdn.example.test/avatars/ada.png');
+    expect(screen.queryByRole('button', { name: /change photo|تغيير الصورة/i })).toBeNull();
+  });
+
+  it('falls back to persisted initials when the profile has no avatar URL', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    mock.onGet('/v1/me/profile').reply(200, { profile: MOCK_PROFILE });
+
+    renderEdit();
+    // The fallback shell mounts before the profile request resolves. Wait for
+    // the server-projected initials instead of treating the initial empty shell
+    // as the final rendered state.
+    await waitFor(() =>
+      expect(screen.getByTestId('profile-avatar-fallback')).toHaveTextContent('AL'),
+    );
+    expect(screen.queryByText(/change photo|تغيير الصورة/i)).toBeNull();
+  });
 });
 
 describe('EditProfilePage — Save Changes persists', () => {

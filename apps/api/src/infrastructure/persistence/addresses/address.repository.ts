@@ -38,6 +38,20 @@ export class AddressRepository {
     return tx ?? this.prisma.client;
   }
 
+  /**
+   * Serialize every mutation that can change the user's default-address set.
+   *
+   * A transaction alone is not enough here: under PostgreSQL READ COMMITTED,
+   * two "first address" transactions can both observe count=0, and two
+   * concurrent promotions can interleave clear/promote writes. Locking the
+   * owning User row gives all default-affecting operations one stable lock key
+   * without table locks. The partial unique index added by R05 remains the
+   * final database backstop.
+   */
+  async lockDefaultMutation(userId: string, tx: PrismaTx): Promise<void> {
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+  }
+
   listForUser(userId: string, tx?: PrismaTx): Promise<Address[]> {
     return this.db(tx).address.findMany({
       where: { userId, deletedAt: null },

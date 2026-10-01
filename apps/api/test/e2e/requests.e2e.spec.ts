@@ -222,6 +222,65 @@ describe('RequestsController (e2e)', () => {
       expect(requestsService.create).not.toHaveBeenCalled();
     });
 
+    it('accepts long Arabic custom service text within the contract and rejects overlong input', async () => {
+      fakeAuthedUser = { id: 'user-1', sessionId: 's', jti: 'j', roles: ['customer'] };
+      requestsService.create.mockResolvedValue({
+        id: 'req-arabic',
+        status: 'OPEN_FOR_BIDS',
+        category: null,
+        customServiceText: 'خدمة منزلية خاصة',
+        description: null,
+        scheduleType: 'ASAP',
+        scheduledAt: null,
+        addressSnapshot: {
+          label: null,
+          line1: 'شارع الاختبار',
+          city: 'حلب',
+          country: 'سوريا',
+          lat: null,
+          lng: null,
+        },
+        mediaUrls: [],
+        createdAt: '2026-10-01T00:00:00.000Z',
+        updatedAt: '2026-10-01T00:00:00.000Z',
+        activeBookingId: null,
+        activeBookingStatus: null,
+        activeBookingUpdatedAt: null,
+      });
+
+      const valid = 'خدمة عربية '.repeat(15).trim();
+      expect(valid.length).toBeLessThanOrEqual(200);
+      const ok = await request(app.getHttpServer())
+        .post('/v1/me/requests')
+        .set('Cookie', 'hsm_csrf=tok')
+        .set('X-CSRF-Token', 'tok')
+        .send({
+          customServiceText: valid,
+          scheduleType: 'ASAP',
+          manualAddress: { line1: 'شارع الاختبار', city: 'حلب', country: 'سوريا' },
+        });
+      expect(ok.status).toBe(201);
+      expect(requestsService.create).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ customServiceText: valid }),
+      );
+
+      jest.clearAllMocks();
+      const tooLong = 'خ'.repeat(201);
+      const bad = await request(app.getHttpServer())
+        .post('/v1/me/requests')
+        .set('Cookie', 'hsm_csrf=tok')
+        .set('X-CSRF-Token', 'tok')
+        .send({
+          customServiceText: tooLong,
+          scheduleType: 'ASAP',
+          manualAddress: { line1: 'شارع الاختبار', city: 'حلب', country: 'سوريا' },
+        });
+      expect(bad.status).toBe(400);
+      expect(bad.body?.error?.code).toBe('VALIDATION_ERROR');
+      expect(requestsService.create).not.toHaveBeenCalled();
+    });
+
     it('forwards the authenticated user id (NOT any client-sent id) on a valid create', async () => {
       requestsService.create.mockResolvedValue({
         id: 'req-new',

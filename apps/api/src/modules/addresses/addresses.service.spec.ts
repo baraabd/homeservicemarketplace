@@ -34,6 +34,7 @@ function makeRow(overrides: Partial<Address> = {}): Address {
 }
 
 interface MockRepo {
+  lockDefaultMutation: jest.Mock;
   listForUser: jest.Mock;
   findOwned: jest.Mock;
   findCurrentDefault: jest.Mock;
@@ -47,6 +48,7 @@ interface MockRepo {
 
 function makeRepo(overrides: Partial<MockRepo> = {}): MockRepo {
   return {
+    lockDefaultMutation: jest.fn().mockResolvedValue(undefined),
     listForUser: jest.fn().mockResolvedValue([]),
     findOwned: jest.fn().mockResolvedValue(null),
     findCurrentDefault: jest.fn().mockResolvedValue(null),
@@ -120,6 +122,7 @@ describe('AddressesService', () => {
       const passed = repo.create.mock.calls[0]?.[0];
       // userId must be the session id even if the input never carried one.
       expect(passed.userId).toBe('user-from-session');
+      expect(repo.lockDefaultMutation).toHaveBeenCalledWith('user-from-session', undefined);
       // Not the user's first address and isDefault not requested → not promoted.
       expect(passed.isDefault).toBe(false);
       expect(repo.clearDefaultExcept).not.toHaveBeenCalled();
@@ -137,6 +140,7 @@ describe('AddressesService', () => {
         city: 'Riyadh',
         country: 'SA',
       });
+      expect(repo.lockDefaultMutation).toHaveBeenCalledWith('user-1', undefined);
       expect(repo.create.mock.calls[0]?.[0].isDefault).toBe(true);
       // Demotion sweep happens before insert so the new default is the
       // sole row carrying the flag at commit time.
@@ -209,6 +213,7 @@ describe('AddressesService', () => {
         }),
       });
       await makeService(repo).setDefault('user-1', 'addr-1');
+      expect(repo.lockDefaultMutation).toHaveBeenCalledWith('user-1', undefined);
       // Order must be clear-then-promote — flipping it would leave a
       // brief window where two rows are simultaneously default.
       expect(order).toEqual(['clear', 'promote']);
@@ -234,6 +239,7 @@ describe('AddressesService', () => {
         softDeleteOwned: jest.fn().mockResolvedValue({ count: 1 }),
       });
       await makeService(repo).remove('user-1', 'addr-1');
+      expect(repo.lockDefaultMutation).toHaveBeenCalledWith('user-1', undefined);
       expect(repo.softDeleteOwned).toHaveBeenCalledWith('addr-1', 'user-1', undefined);
     });
 

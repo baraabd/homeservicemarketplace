@@ -60,6 +60,17 @@ const ADDR_WORK = {
   isDefault: false,
 };
 
+const ADDR_GEO = {
+  ...ADDR_WORK,
+  id: 'addr-geo',
+  label: 'Pinned office',
+  line1: 'Citadel Road',
+  city: 'Aleppo',
+  country: 'Syria',
+  lat: 36.1999,
+  lng: 37.162,
+};
+
 describe('SavedAddressesPage', () => {
   it('loads addresses from /v1/me/addresses (no SEED data)', async () => {
     mock.onGet('/v1/me/addresses').reply(200, { items: [ADDR_HOME, ADDR_WORK] });
@@ -195,6 +206,28 @@ describe('SavedAddressesPage', () => {
     });
     expect(patchedUrl).toBe('/v1/me/addresses/addr-home');
     expect(patchedBody).toMatchObject({ label: 'Home (renamed)' });
+  });
+
+  it('edit flow preserves persisted map coordinates in the PATCH payload', async () => {
+    mock.onGet('/v1/me/addresses').replyOnce(200, { items: [ADDR_GEO] });
+    let patchedBody: Record<string, unknown> | null = null;
+    mock.onPatch('/v1/me/addresses/addr-geo').reply((config) => {
+      patchedBody = JSON.parse(config.data as string);
+      return [200, ADDR_GEO];
+    });
+    mock.onGet('/v1/me/addresses').reply(200, { items: [ADDR_GEO] });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Pinned office')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Edit'));
+    fireEvent.click(screen.getByText('Save Address'));
+
+    await waitFor(() => expect(patchedBody).not.toBeNull());
+    expect(patchedBody).toMatchObject({
+      label: 'Pinned office',
+      lat: 36.1999,
+      lng: 37.162,
+    });
   });
 
   it('delete flow: DELETEs the address and refreshes the list', async () => {

@@ -26,11 +26,12 @@ export class AddressesService {
   }
 
   // Create a new address. When the row is the user's first, or the
-  // payload sets `isDefault: true`, the create + demote-previous-default
-  // happens inside a single transaction so the at-most-one-default
-  // invariant is preserved even under concurrent writes.
+  // payload sets `isDefault: true`, the owning User row is locked before
+  // count/demotion/insert. The lock serializes concurrent first-address and
+  // explicit-default writes; the R05 partial unique index is the DB backstop.
   async create(userId: string, input: Omit<CreateAddressInput, 'userId'>): Promise<AddressSummary> {
     const created = await this.tx.run(async (tx) => {
+      await this.addresses.lockDefaultMutation(userId, tx);
       const existingCount = await this.addresses.countForUser(userId, tx);
       // First-ever address is always default — the UX expectation is
       // "you've added your first address, of course it's your default".
@@ -71,6 +72,7 @@ export class AddressesService {
   // transaction; if the row is gone or not owned, returns NOT_FOUND.
   async setDefault(userId: string, addressId: string): Promise<AddressSummary> {
     const promoted = await this.tx.run(async (tx) => {
+      await this.addresses.lockDefaultMutation(userId, tx);
       const owned = await this.addresses.findOwned(addressId, userId, tx);
       if (!owned) {
         throw new AppError('NOT_FOUND', 'Address not found.', 404);
@@ -101,6 +103,7 @@ export class AddressesService {
   // is nothing to promote).
   async remove(userId: string, addressId: string): Promise<void> {
     await this.tx.run(async (tx) => {
+      await this.addresses.lockDefaultMutation(userId, tx);
       const owned = await this.addresses.findOwned(addressId, userId, tx);
       if (!owned) {
         throw new AppError('NOT_FOUND', 'Address not found.', 404);
