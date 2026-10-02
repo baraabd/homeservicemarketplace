@@ -81,6 +81,7 @@ function makeRequest(overrides: Partial<ServiceRequest> = {}): ServiceRequestWit
     categoryId: 'cat-1',
     customServiceText: null,
     description: null,
+    idempotencyKey: null,
     mediaUrls: [],
     status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
     scheduleType: 'ASAP',
@@ -109,6 +110,7 @@ interface Mocks {
   requests: {
     listForSeeker: jest.Mock;
     findOwned: jest.Mock;
+    findByIdempotencyKey: jest.Mock;
     create: jest.Mock;
     updateOwned: jest.Mock;
     setStatusOwned: jest.Mock;
@@ -129,6 +131,7 @@ function makeMocks(over: Partial<Mocks> = {}): Mocks {
     requests: {
       listForSeeker: jest.fn().mockResolvedValue([]),
       findOwned: jest.fn().mockResolvedValue(null),
+      findByIdempotencyKey: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue(makeRequest()),
       updateOwned: jest.fn().mockResolvedValue({ count: 0 }),
       setStatusOwned: jest.fn().mockResolvedValue({ count: 0 }),
@@ -296,6 +299,62 @@ describe('RequestsService', () => {
           addressId: 'addr-1',
         }),
       ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    });
+
+    it('rejects a LATER request scheduled in the past', async () => {
+      const m = makeMocks();
+      await expect(
+        makeService(m).create('user-1', {
+          categoryId: 'cat-1',
+          scheduleType: 'LATER',
+          scheduledAt: new Date(Date.now() - 60_000).toISOString(),
+          addressId: 'addr-1',
+        }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+      expect(m.requests.create).not.toHaveBeenCalled();
+    });
+
+    it('accepts a LATER request scheduled in the future', async () => {
+      const m = makeMocks();
+      await makeService(m).create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'LATER',
+        scheduledAt: new Date(Date.now() + 60_000).toISOString(),
+        addressId: 'addr-1',
+      });
+      expect(m.requests.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns the existing request for a repeated idempotency key', async () => {
+      const replay = makeRequest({ id: 'req-replayed', idempotencyKey: 'idem-key-1234567890' });
+      const m = makeMocks();
+      m.requests.findByIdempotencyKey.mockResolvedValue(replay);
+
+      const out = await makeService(m).create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'ASAP',
+        addressId: 'addr-1',
+        idempotencyKey: 'idem-key-1234567890',
+      });
+
+      expect(out.id).toBe('req-replayed');
+      expect(m.requests.create).not.toHaveBeenCalled();
+      expect(m.events.create).not.toHaveBeenCalled();
+      expect(m.outbox.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('passes a new idempotency key into the request insert', async () => {
+      const m = makeMocks();
+      await makeService(m).create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'ASAP',
+        addressId: 'addr-1',
+        idempotencyKey: 'idem-key-1234567890',
+      });
+      expect(m.requests.create).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: 'idem-key-1234567890' }),
+        TX_SENTINEL,
+      );
     });
 
     it('rejects scheduledAt when scheduleType is ASAP', async () => {

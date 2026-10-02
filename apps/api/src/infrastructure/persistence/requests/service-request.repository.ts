@@ -360,10 +360,13 @@ export class ServiceRequestRepository {
   // R07 — serialize bid submission against request lifecycle transitions.
   // PostgreSQL holds this row lock until the surrounding transaction commits.
   async lockForLifecycle(requestId: string, tx: PrismaTx): Promise<boolean> {
-    const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-      'SELECT "id" FROM "ServiceRequest" WHERE "id" = $1 AND "deletedAt" IS NULL FOR UPDATE',
-      requestId,
-    );
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "ServiceRequest"
+      WHERE "id" = ${requestId}
+        AND "deletedAt" IS NULL
+      FOR UPDATE
+    `;
     return rows.length === 1;
   }
 

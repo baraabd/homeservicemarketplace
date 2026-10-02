@@ -38,8 +38,9 @@ function makeProfile(over: Partial<ProviderProfile> = {}): ProviderProfile {
     bio: null,
     headline: null,
     phoneNumber: null,
-    serviceAreaCity: null,
-    serviceAreaCountry: null,
+    serviceAreaCity: 'Riyadh',
+    serviceAreaCountry: 'SA',
+    serviceAreaCityKey: 'riyadh',
     serviceAreaLat: null,
     serviceAreaLng: null,
     serviceAreaRadiusKm: null,
@@ -107,6 +108,7 @@ function makeMocks(
   over: {
     profile?: ProviderProfile | null;
     request?: ServiceRequestWithCategory | null;
+    visibleRequest?: ServiceRequestWithCategory | null;
     existingActiveBid?: Bid | null;
     createdBid?: Bid;
     ownedBid?: Bid | null;
@@ -117,9 +119,27 @@ function makeMocks(
   const request = over.request === undefined ? makeRequest() : over.request;
   const ownedBid = over.ownedBid;
   const setStatusCount = over.setStatusCount ?? 1;
+  const profileWithCategories = profile
+    ? ({
+        ...profile,
+        serviceCategories: [
+          {
+            providerProfileId: profile.id,
+            serviceCategoryId: 'cat-1',
+            createdAt: new Date('2026-04-30T00:00:00Z'),
+            serviceCategory: { id: 'cat-1' },
+          },
+        ],
+        categoryApplications: [],
+      } as unknown)
+    : null;
+  const defaultVisible =
+    request && request.status === ('OPEN_FOR_BIDS' as ServiceRequestStatus) ? request : null;
+  const visibleRequest = over.visibleRequest === undefined ? defaultVisible : over.visibleRequest;
   return {
     providers: {
       findByUserId: jest.fn().mockResolvedValue(profile),
+      findByUserIdWithCategories: jest.fn().mockResolvedValue(profileWithCategories),
     } as unknown as ProviderProfileRepository,
     bids: {
       findActiveBidForRequest: jest.fn().mockResolvedValue(over.existingActiveBid ?? null),
@@ -130,6 +150,19 @@ function makeMocks(
     } as unknown as BidRepository,
     requests: {
       findById: jest.fn().mockResolvedValue(request),
+      lockForLifecycle: jest.fn().mockResolvedValue(request !== null),
+      findAvailableForProvider: jest
+        .fn()
+        .mockImplementation(
+          (_requestId: string, args: { excludeSeekerUserId: string | null }) =>
+            Promise.resolve(
+              visibleRequest &&
+                (!args.excludeSeekerUserId ||
+                  visibleRequest.seekerUserId !== args.excludeSeekerUserId)
+                ? visibleRequest
+                : null,
+            ),
+        ),
     } as unknown as ServiceRequestRepository,
     events: {
       create: jest.fn().mockResolvedValue(undefined),
@@ -205,7 +238,7 @@ describe('ProviderBidsService.submit', () => {
     ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
   });
 
-  it('returns 409 if the request is no longer OPEN_FOR_BIDS', async () => {
+  it('returns 404 if the request is no longer visible because it is not OPEN_FOR_BIDS', async () => {
     const mocks = makeMocks({
       request: makeRequest({ status: 'BID_ACCEPTED' as ServiceRequestStatus }),
     });
@@ -215,10 +248,10 @@ describe('ProviderBidsService.submit', () => {
         amount: 100,
         pricingType: 'HOURLY',
       }),
-    ).rejects.toMatchObject({ status: 409, code: 'CONFLICT' });
+    ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
   });
 
-  it('rejects bidding on the provider own request with VALIDATION_ERROR', async () => {
+  it('hides the provider own request from bid submission', async () => {
     const mocks = makeMocks({
       request: makeRequest({ seekerUserId: 'user-provider-1' }),
     });
@@ -228,7 +261,35 @@ describe('ProviderBidsService.submit', () => {
         amount: 100,
         pricingType: 'HOURLY',
       }),
-    ).rejects.toMatchObject({ status: 400, code: 'VALIDATION_ERROR' });
+    ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
+  });
+
+  it('refuses a request that the provider eligibility predicate hides', async () => {
+    const mocks = makeMocks({ visibleRequest: null });
+    await expect(
+      makeService(mocks).submit('user-provider-1', {
+        requestId: 'req-1',
+        amount: 100,
+        pricingType: 'HOURLY',
+      }),
+    ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
+    expect(mocks.bids.createForProvider).not.toHaveBeenCalled();
+  });
+
+  it('takes the lifecycle row lock before evaluating request visibility', async () => {
+    const mocks = makeMocks();
+    await makeService(mocks).submit('user-provider-1', {
+      requestId: 'req-1',
+      amount: 100,
+      pricingType: 'HOURLY',
+    });
+    expect(mocks.requests.lockForLifecycle).toHaveBeenCalledWith('req-1', undefined);
+    expect(mocks.requests.findAvailableForProvider).toHaveBeenCalled();
+    expect(
+      (mocks.requests.lockForLifecycle as jest.Mock).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      (mocks.requests.findAvailableForProvider as jest.Mock).mock.invocationCallOrder[0],
+    );
   });
 
   it('rejects a duplicate active bid (one-active-bid invariant)', async () => {
