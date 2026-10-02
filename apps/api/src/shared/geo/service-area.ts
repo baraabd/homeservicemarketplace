@@ -105,11 +105,18 @@ export function normaliseCityKey(city: string | null | undefined): string | null
 
 // ─── distance ──────────────────────────────────────────────────────────────
 
-/** Great-circle distance in km between two points, rounded to 0.1 km.
+/** Great-circle distance in km between two points, NOT rounded.
  *
- *  Returns null when either end is not a valid coordinate — the wire must be
- *  able to say "unknown" distinctly from "zero". */
-export function haversineKm(
+ *  R09 — this is the value every matching decision compares against the
+ *  radius. The rounded `haversineKm` below is for display only.
+ *
+ *  Deciding on the rounded value made the circle up to 0.05 km larger than the
+ *  bounding box the feed query selects with, so the announcement (decided in
+ *  memory) reached a provider 10.04 km away from a request that the feed, the
+ *  detail and the bid (decided through the box) then refused to show them.
+ *
+ *  Returns null when either end is not a valid coordinate. */
+export function exactDistanceKm(
   from: { lat: number | null; lng: number | null },
   to: { lat: number | null; lng: number | null },
 ): number | null {
@@ -125,7 +132,19 @@ export function haversineKm(
   // atan2 rather than asin: numerically stable for antipodal points, where the
   // asin form loses precision as `a` approaches 1.
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(EARTH_RADIUS_KM * c * 10) / 10;
+  return EARTH_RADIUS_KM * c;
+}
+
+/** Great-circle distance in km between two points, rounded to 0.1 km.
+ *
+ *  For DISPLAY. Returns null when either end is not a valid coordinate — the
+ *  wire must be able to say "unknown" distinctly from "zero". */
+export function haversineKm(
+  from: { lat: number | null; lng: number | null },
+  to: { lat: number | null; lng: number | null },
+): number | null {
+  const exact = exactDistanceKm(from, to);
+  return exact == null ? null : Math.round(exact * 10) / 10;
 }
 
 // ─── bounding box ──────────────────────────────────────────────────────────
@@ -236,10 +255,12 @@ export function boundingBox(centre: Coordinates, radiusKm: number): BoundingBox 
  *  behaviour table in ADR 0003. Both must agree; `service-area.spec.ts`
  *  asserts they do against the same fixtures. */
 export function matchServiceArea(area: ServiceArea, location: RequestLocation): ServiceAreaMatch {
-  const distanceKm = haversineKm(
+  const exactKm = exactDistanceKm(
     { lat: area.lat, lng: area.lng },
     { lat: location.lat, lng: location.lng },
   );
+  // Reported rounded; decided exact. See `exactDistanceKm`.
+  const distanceKm = exactKm == null ? null : Math.round(exactKm * 10) / 10;
 
   const providerGeocoded = isValidCoordinate(area.lat, area.lng) && isValidRadiusKm(area.radiusKm);
   const requestGeocoded = isValidCoordinate(location.lat, location.lng);
@@ -249,7 +270,7 @@ export function matchServiceArea(area: ServiceArea, location: RequestLocation): 
   // reason this sprint exists.
   if (providerGeocoded && requestGeocoded) {
     return {
-      matches: distanceKm != null && distanceKm <= clampRadiusKm(area.radiusKm!),
+      matches: exactKm != null && exactKm <= clampRadiusKm(area.radiusKm!),
       strategy: 'radius',
       distanceKm,
     };

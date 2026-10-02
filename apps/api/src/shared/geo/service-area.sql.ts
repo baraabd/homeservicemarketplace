@@ -23,7 +23,7 @@ import type { Prisma } from '@homeservicemarketplace/database';
 import {
   boundingBox,
   clampRadiusKm,
-  haversineKm,
+  exactDistanceKm,
   usesRadiusMatching,
   type ServiceArea,
 } from './service-area';
@@ -95,7 +95,8 @@ export function filterByExactRadius<T>(
   if (!usesRadiusMatching(area)) return rows;
   const radius = clampRadiusKm(area.radiusKm!);
   return rows.filter((row) => {
-    const distance = haversineKm({ lat: area.lat, lng: area.lng }, project(row));
+    // The unrounded distance: the same value `matchServiceArea` decides on.
+    const distance = exactDistanceKm({ lat: area.lat, lng: area.lng }, project(row));
     // Ungeocoded row → it came in through the city-fallback arm. Keep it.
     if (distance == null) return true;
     return distance <= radius;
