@@ -124,6 +124,7 @@ function makeRequest(overrides: Partial<ServiceRequest> = {}): ServiceRequestWit
     categoryId: null,
     customServiceText: null,
     description: null,
+    idempotencyKey: null,
     mediaUrls: [],
     status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
     scheduleType: 'ASAP',

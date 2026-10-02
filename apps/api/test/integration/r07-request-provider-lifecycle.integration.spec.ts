@@ -20,6 +20,7 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
   let requestRepo: any;
   let txRunner: any;
   let batchHandler: any;
+  let notificationCreateMany: jest.Mock;
 
   const P = fixturePrefix('r07-lifecycle');
   const SEEKER = `${P}seeker`;
@@ -188,9 +189,10 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
       { publish: async () => undefined },
     );
 
+    notificationCreateMany = jest.fn().mockResolvedValue(0);
     batchHandler = new RequestAvailableBatchHandler(
-      { createMany: jest.fn().mockResolvedValue(0) },
-      { publishNotification: jest.fn() },
+      { createMany: notificationCreateMany },
+      { publishFor: jest.fn() },
       requestRepo,
     );
 
@@ -422,7 +424,7 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
     );
 
     expect(result.stats.written).toBe(0);
-    expect(batchHandler.notifications?.createMany).not.toHaveBeenCalled?.();
+    expect(notificationCreateMany).not.toHaveBeenCalled();
   });
 
   it('keeps request media visible on provider booking detail after acceptance', async () => {

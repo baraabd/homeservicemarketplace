@@ -159,9 +159,10 @@ export class RequestsService {
       // created either — which is the correct coupling, because a request no
       // provider is told about is not a request.
       //
-      // The payload is a SNAPSHOT. The worker must not re-read the row: by
-      // then it may be cancelled or edited, and fanning out its current state
-      // would announce something that never happened.
+      // The payload is a SNAPSHOT for recipient matching: later edits must not
+      // retroactively change who matched at creation time. R07 adds a separate
+      // live-status gate in the delivery handlers, so a delayed worker still
+      // suppresses a request that has since been cancelled or accepted.
       await this.outbox.enqueue(
         {
           aggregateType: 'ServiceRequest',
