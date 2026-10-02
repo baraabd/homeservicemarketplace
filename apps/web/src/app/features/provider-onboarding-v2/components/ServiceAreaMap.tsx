@@ -12,12 +12,32 @@ export interface ServiceAreaPoint {
   lng: number;
 }
 
+/** The envelope of the provider's market, as the server describes it. */
+export interface ServiceAreaBounds {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
 interface Props {
   point: ServiceAreaPoint | null;
   radiusKm: number;
   editable: boolean;
   lang: Lang;
-  onSelect: (point: ServiceAreaPoint) => void;
+  /**
+   * R09 — where to open the map while no point is chosen.
+   *
+   * Without it the map opened on the whole world at zoom 2, where one tap is
+   * hundreds of kilometres wide: a provider who had just chosen Syria and
+   * tapped the middle of the map stored a starting point in the Sahara, and
+   * matching was then computed from it. The envelope comes from the server;
+   * the client holds no geography of its own.
+   */
+  bounds?: ServiceAreaBounds | null;
+  /** Returns false when the point was not accepted, so a dragged pin can be
+   *  put back where the server still has it. */
+  onSelect: (point: ServiceAreaPoint) => boolean;
 }
 
 // The world centre is only a viewport, never a suggested or persisted home.
@@ -29,7 +49,7 @@ const pin = L.divIcon({
   iconAnchor: [22, 48],
 });
 
-function MapInteraction({ point, radiusKm, editable, lang, onSelect }: Props) {
+function MapInteraction({ point, radiusKm, editable, lang, bounds, onSelect }: Props) {
   const copy = SERVICE_AREA_COPY[lang];
   const map = useMap();
   const lat = point?.lat;
@@ -55,6 +75,24 @@ function MapInteraction({ point, radiusKm, editable, lang, onSelect }: Props) {
     if (lat !== undefined && lng !== undefined)
       map.setView([lat, lng], Math.max(map.getZoom(), 13), { animate: false });
   }, [map, lat, lng]); // Coordinate changes include GPS and server hydration.
+  const south = bounds?.south;
+  const west = bounds?.west;
+  const north = bounds?.north;
+  const east = bounds?.east;
+  const hasPoint = lat !== undefined && lng !== undefined;
+  useEffect(() => {
+    // Only a viewport. Nothing is selected or saved by showing the market.
+    if (hasPoint) return;
+    if (south === undefined || west === undefined || north === undefined || east === undefined)
+      return;
+    map.fitBounds(
+      [
+        [south, west],
+        [north, east],
+      ],
+      { animate: false },
+    );
+  }, [map, hasPoint, south, west, north, east]);
   return (
     <>
       {point ? (
@@ -74,8 +112,12 @@ function MapInteraction({ point, radiusKm, editable, lang, onSelect }: Props) {
             eventHandlers={{
               dragend: (event) => {
                 if (!editable) return;
-                const next = (event.target as L.Marker).getLatLng().wrap();
-                onSelect({ lat: next.lat, lng: next.lng });
+                const marker = event.target as L.Marker;
+                const next = marker.getLatLng().wrap();
+                // A refused drop goes back to the point that is still stored.
+                if (!onSelect({ lat: next.lat, lng: next.lng })) {
+                  marker.setLatLng([point.lat, point.lng]);
+                }
               },
             }}
           />

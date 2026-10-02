@@ -44,6 +44,7 @@ export interface ServiceAreaCopy {
   locationSelected: string;
   cityLookupFailed: string;
   locationSelectedManually: string;
+  pointOutsideMarket: string;
   radiusMissing: string;
   locationServiceHint: string;
 
@@ -145,6 +146,8 @@ export const SERVICE_AREA_COPY: Record<Lang, ServiceAreaCopy> = {
     cityLookupFailed:
       'Location selected. We could not find its city name; enter or check the city above.',
     locationSelectedManually: 'Starting point selected. Check that the city above matches it.',
+    pointOutsideMarket:
+      'That point is outside the country you selected, so it was not saved. Choose a point inside it.',
     radiusMissing:
       'Your work radius is not available yet. Choose your country or retry loading the page.',
     locationServiceHint:
@@ -242,6 +245,7 @@ export const SERVICE_AREA_COPY: Record<Lang, ServiceAreaCopy> = {
     locationSelected: 'تم تحديد النقطة وتعبئة المدينة. راجع اسم المدينة قبل المتابعة.',
     cityLookupFailed: 'تم تحديد النقطة وتعذّر معرفة اسم المدينة. أدخل المدينة أو راجعها أعلاه.',
     locationSelectedManually: 'تم تحديد نقطة الانطلاق. تأكد من مطابقة المدينة أعلاه لها.',
+    pointOutsideMarket: 'هذه النقطة خارج الدولة التي اخترتها، لذلك لم تُحفظ. اختر نقطة داخلها.',
     radiusMissing: 'نطاق التنقّل غير متاح بعد. اختر الدولة أو أعد تحميل الصفحة.',
     locationServiceHint:
       'توفّر OpenStreetMap الخريطة وتستخدم إحداثيات الجهاز لمعرفة المدينة عند اختيار الموقع الحالي.',
