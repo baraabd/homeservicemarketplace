@@ -153,7 +153,7 @@
       "owner": "baraabd",
       "status": "IN_PROGRESS",
       "dependencies": ["R03", "R04"],
-      "finding": "Implemented on feat/r06-request-media-authority, pending merge: request presign now writes an owner/purpose MediaAsset reservation, a finalize step verifies the stored object, and RequestsService.create claims verified assets inside its transaction. URLs are no longer accepted. See docs/production-readiness/r06/IMPLEMENTATION.md.",
+      "finding": "Merged through PR #124 (develop 60f5707): request presign writes an owner/purpose MediaAsset reservation, finalize verifies the stored object, and RequestsService.create claims verified assets inside its transaction. See docs/production-readiness/r06/IMPLEMENTATION.md. Hosted storage remains a separate gate.",
       "action": "Implement owner/purpose reservations, received-byte validation, immutable finalized assets and atomic claim with request creation; coordinate the schema/contracts reservation.",
       "requiredEvidence": "Real Postgres/storage: foreign and external URLs, partial upload, expired signature, overwrite after scanning, concurrent claim, rollback and orphan cleanup that preserves valid attachments.",
       "source": [
@@ -173,9 +173,9 @@
     {
       "id": "R07",
       "owner": "baraabd",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "dependencies": ["R05", "R06"],
-      "finding": "Request creation already writes its row, event and outbox within the unit of work. End-to-end attachment integrity and matching-provider delivery remain unaccepted.",
+      "finding": "Implemented on feat/r07-request-provider-lifecycle, pending merge: past schedules refused, idempotent creation by submission key, bid submission bound to the feed/detail visibility rule, request-row locking for bid/accept/cancel/reopen, and no announcement of a request closed before delivery. See docs/production-readiness/r07/IMPLEMENTATION.md.",
       "action": "Preserve existing transaction/outbox semantics and supported edit/cancel/reopen contract; implement only demonstrated recovery and duplicate-submission gaps.",
       "requiredEvidence": "Real seeker-to-matching-provider journey, wrong-provider denial, repeated submit, past time, cancellation race and worker crash after commit, with consistent DB and relogin UI.",
       "source": [
@@ -185,8 +185,11 @@
       ],
       "tests": [
         "apps/api/src/modules/requests/requests.service.spec.ts",
+        "apps/api/src/modules/provider/bids/provider-bids.service.spec.ts",
+        "apps/api/test/integration/r07-request-provider-lifecycle.integration.spec.ts",
+        "apps/api/test/integration/r07-marketplace-races.integration.spec.ts",
         "apps/api/test/integration/outbox.integration.spec.ts",
-        "apps/api/test/integration/provider-journey.integration.spec.ts"
+        "apps/web/e2e/r07-request-provider-lifecycle.real-api.spec.ts"
       ]
     },
     {
@@ -250,12 +253,12 @@
     {
       "path": "packages/database/prisma/schema.prisma",
       "role": "migrations",
-      "serialOrder": ["R06"]
+      "serialOrder": ["R06", "R07"]
     },
     {
       "path": "packages/database/prisma/migrations",
       "role": "migrations",
-      "serialOrder": ["R06"]
+      "serialOrder": ["R06", "R07"]
     },
     {
       "path": "packages/contracts",

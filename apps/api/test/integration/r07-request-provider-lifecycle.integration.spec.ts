@@ -136,7 +136,9 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
     } = require('../../src/infrastructure/persistence/bookings/booking-event.repository');
     const { OutboxRepository } = require('../../src/infrastructure/outbox/outbox.repository');
     const { RequestsService } = require('../../src/modules/requests/requests.service');
-    const { ProviderBidsService } = require('../../src/modules/provider/bids/provider-bids.service');
+    const {
+      ProviderBidsService,
+    } = require('../../src/modules/provider/bids/provider-bids.service');
     const {
       ProviderBookingsService,
     } = require('../../src/modules/provider/bookings/provider-bookings.service');
@@ -331,7 +333,8 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
       pricingType: 'FIXED',
       note: 'Eligible provider bid',
     });
-    expect(accepted.bid.requestId).toBe(created.id);
+    // MyBidSummary nests the request; there is no flat `requestId` on it.
+    expect(accepted.bid.request.id).toBe(created.id);
 
     await expect(
       providerBids.submit(INELIGIBLE_USER, {
@@ -349,10 +352,7 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
   });
 
   it('makes a bid wait behind a lifecycle lock and refuse after cancellation commits', async () => {
-    const created = await requests.create(
-      SEEKER,
-      categorizedRequest(`${P}idem-race-1234567890`),
-    );
+    const created = await requests.create(SEEKER, categorizedRequest(`${P}idem-race-1234567890`));
 
     let release!: () => void;
     const hold = new Promise<void>((resolve) => {
@@ -388,16 +388,13 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
 
     await expect(bidAttempt).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
     expect(await prisma.bid.count({ where: { requestId: created.id } })).toBe(0);
-    expect(
-      (await prisma.serviceRequest.findUnique({ where: { id: created.id } })).status,
-    ).toBe('CANCELLED');
+    expect((await prisma.serviceRequest.findUnique({ where: { id: created.id } })).status).toBe(
+      'CANCELLED',
+    );
   });
 
   it('suppresses a stale request.available batch after the request is closed', async () => {
-    const created = await requests.create(
-      SEEKER,
-      categorizedRequest(`${P}idem-fanout-1234567890`),
-    );
+    const created = await requests.create(SEEKER, categorizedRequest(`${P}idem-fanout-1234567890`));
     await prisma.serviceRequest.update({
       where: { id: created.id },
       data: { status: 'CANCELLED' },
@@ -432,10 +429,7 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
       SEEKER,
       categorizedRequest(`${P}idem-booking-media-1234567890`),
     );
-    const media = [
-      'https://media.example/r07/one.jpg',
-      'https://media.example/r07/two.jpg',
-    ];
+    const media = ['https://media.example/r07/one.jpg', 'https://media.example/r07/two.jpg'];
     await prisma.serviceRequest.update({
       where: { id: created.id },
       data: { mediaUrls: media, status: 'BID_ACCEPTED' },

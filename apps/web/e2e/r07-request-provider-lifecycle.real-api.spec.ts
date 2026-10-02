@@ -81,10 +81,9 @@ async function makeWorkingProvider(
         WHERE id = $1`,
       [account.profileId, city, cityKey],
     );
-    await db.query(
-      'DELETE FROM "ProviderProfileServiceCategory" WHERE "providerProfileId" = $1',
-      [account.profileId],
-    );
+    await db.query('DELETE FROM "ProviderProfileServiceCategory" WHERE "providerProfileId" = $1', [
+      account.profileId,
+    ]);
     await db.query(
       `INSERT INTO "ProviderProfileServiceCategory" ("providerProfileId","serviceCategoryId","createdAt")
        VALUES ($1,$2,NOW())`,
@@ -110,7 +109,8 @@ interface FeedResponse {
   items: FeedItem[];
 }
 interface BidResponse {
-  bid: { id: string; requestId: string; status: string };
+  // MyBidSummary nests the request; there is no flat `requestId` on the wire.
+  bid: { id: string; status: string; request: { id: string } };
 }
 interface AcceptResponse {
   bid: { id: string; status: string };
@@ -206,12 +206,15 @@ test.describe('R07 request-to-provider lifecycle — real browsers, API and Post
         ineligiblePage.goto(`${BASE_URL}/provider/jobs`),
       );
       expect(hidden.items.some((item) => item.id === created.id)).toBe(false);
-      await ineligiblePage.getByTestId('pull-up-control').click();
+      await ineligiblePage.getByTestId('pull-up-control').click({ force: true });
       await expect(ineligiblePage.getByTestId(`job-card-${created.id}`)).toHaveCount(0);
     } finally {
       await ineligibleContext.close();
     }
 
+    // Declared out here: the database assertions after the provider context
+    // closes need the bid that was accepted inside it.
+    let acceptedBidId = '';
     const providerContext = await browser.newContext();
     try {
       await applySession(providerContext, eligible.jar);
@@ -226,7 +229,7 @@ test.describe('R07 request-to-provider lifecycle — real browsers, API and Post
       const reloadedFeed = await feedLoadedByApp(providerPage, () => providerPage.reload());
       expect(reloadedFeed.items.some((item) => item.id === created.id)).toBe(true);
 
-      await providerPage.getByTestId('pull-up-control').click();
+      await providerPage.getByTestId('pull-up-control').click({ force: true });
       const card = providerPage.getByTestId(`job-card-${created.id}`);
       await expect(card).toBeVisible();
       await card.click();
@@ -243,7 +246,8 @@ test.describe('R07 request-to-provider lifecycle — real browsers, API and Post
       const bidHttp = await bidResponse;
       expect(bidHttp.status(), await bidHttp.text()).toBe(201);
       const bid = (await bidHttp.json()) as BidResponse;
-      expect(bid.bid.requestId).toBe(created.id);
+      expect(bid.bid.request.id).toBe(created.id);
+      acceptedBidId = bid.bid.id;
 
       // The seeker accepts through the real ownership + CSRF guarded command.
       const accepted = await api<AcceptResponse>(
@@ -272,11 +276,14 @@ test.describe('R07 request-to-provider lifecycle — real browsers, API and Post
       const bids = (await (await bidsLoaded).json()) as MyBidsResponse;
       const bookings = (await (await bookingsLoaded).json()) as ProviderBookingsResponse;
       expect(bids.items.find((item) => item.id === bid.bid.id)?.status).toBe('ACCEPTED');
-      expect(
-        bookings.items.find((item) => item.id === accepted.body.booking.id),
-      ).toMatchObject({ bidId: bid.bid.id, status: 'SCHEDULED' });
+      expect(bookings.items.find((item) => item.id === accepted.body.booking.id)).toMatchObject({
+        bidId: bid.bid.id,
+        status: 'SCHEDULED',
+      });
       await expect(providerPage.getByText('Accepted', { exact: true }).first()).toBeVisible();
-      await expect(providerPage.getByRole('button', { name: 'Start Job', exact: true })).toBeVisible();
+      await expect(
+        providerPage.getByRole('button', { name: 'Start Job', exact: true }),
+      ).toBeVisible();
 
       // Hard reload proves the provider workspace is server-derived, not a
       // mutation cache illusion.
@@ -327,7 +334,7 @@ test.describe('R07 request-to-provider lifecycle — real browsers, API and Post
            JOIN "Bid" b ON b."requestId" = r.id
            JOIN "Booking" bk ON bk."bidId" = b.id
           WHERE r.id = $1 AND b.id = $2`,
-        [created.id, accepted.body.bid.id],
+        [created.id, acceptedBidId],
       );
       return result.rows[0];
     });

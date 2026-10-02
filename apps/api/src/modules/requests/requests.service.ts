@@ -91,6 +91,7 @@ export class RequestsService {
     this.assertHasService(input.categoryId, input.customServiceText);
     this.assertHasLocation(input.addressId, input.manualAddress);
     this.assertScheduledAtMatchesType(input.scheduleType, input.scheduledAt ?? null);
+    this.assertNotInThePast(input.scheduledAt ?? null);
 
     // R07 — fast replay path. A response can be lost after the original
     // transaction commits; return that same request instead of duplicating it.
@@ -102,89 +103,93 @@ export class RequestsService {
     let created: ServiceRequestWithCategory;
     try {
       created = await this.tx.run(async (tx) => {
-      const categoryId = await this.resolveCategory(input.categoryId ?? null, tx);
-      const { addressId, snapshot } = await this.resolveAddress(seekerUserId, input, tx);
+        const categoryId = await this.resolveCategory(input.categoryId ?? null, tx);
+        const { addressId, snapshot } = await this.resolveAddress(seekerUserId, input, tx);
 
-      // R06 — resolve the attachments from MediaAsset rows the seeker owns.
-      // Anything unknown, foreign, unfinished, expired or already attached
-      // throws here and the request is never created.
-      const mediaAssetIds = input.mediaAssetIds ?? [];
-      const attachments = await this.requestMedia.resolveClaimable(tx, seekerUserId, mediaAssetIds);
-
-      const row = await this.requests.create(
-        {
+        // R06 — resolve the attachments from MediaAsset rows the seeker owns.
+        // Anything unknown, foreign, unfinished, expired or already attached
+        // throws here and the request is never created.
+        const mediaAssetIds = input.mediaAssetIds ?? [];
+        const attachments = await this.requestMedia.resolveClaimable(
+          tx,
           seekerUserId,
-          categoryId,
-          customServiceText: input.customServiceText ?? null,
-          description: input.description ?? null,
-          idempotencyKey: input.idempotencyKey ?? null,
-          // R06 — a server-derived projection of the claimed assets, kept so
-          // every existing reader of `mediaUrls` is unchanged. No value here
-          // originates from the request body.
-          mediaUrls: attachments.map((attachment) => attachment.fileUrl),
-          scheduleType: input.scheduleType,
-          scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
-          addressId,
-          addressSnapshot: snapshot as unknown as Prisma.InputJsonValue,
-        },
-        tx,
-      );
-      // R06 — THE CLAIM. Same transaction as the insert above, so a failure
-      // anywhere below rolls the claim back with the request, and a lost
-      // race for an asset rolls the request back with the claim.
-      await this.requestMedia.claim(tx, {
-        userId: seekerUserId,
-        requestId: row.id,
-        assetIds: mediaAssetIds,
-      });
-      await this.events.create(
-        {
-          requestId: row.id,
-          actorUserId: seekerUserId,
-          type: ServiceRequestEventType.REQUEST_CREATED,
-        },
-        tx,
-      );
+          mediaAssetIds,
+        );
 
-      // Sprint 6 — fan-out is now an OUTBOX EVENT written in THIS transaction.
-      //
-      // It replaced a post-commit loop that resolved every matching provider
-      // and wrote their notifications inline, logging and swallowing each
-      // failure. That was at-most-once delivery with no record: a crash
-      // between the commit above and the loop below lost the fan-out
-      // entirely, and nothing anywhere knew it should have happened.
-      //
-      // Writing the event here means the request and the obligation to
-      // announce it commit together. If this insert fails, the request is not
-      // created either — which is the correct coupling, because a request no
-      // provider is told about is not a request.
-      //
-      // The payload is a SNAPSHOT for recipient matching: later edits must not
-      // retroactively change who matched at creation time. R07 adds a separate
-      // live-status gate in the delivery handlers, so a delayed worker still
-      // suppresses a request that has since been cancelled or accepted.
-      await this.outbox.enqueue(
-        {
-          aggregateType: 'ServiceRequest',
-          aggregateId: row.id,
-          eventType: OutboxEventType.REQUEST_AVAILABLE,
-          payload: {
-            requestId: row.id,
+        const row = await this.requests.create(
+          {
             seekerUserId,
-            categoryId: row.categoryId,
-            categoryLabel: row.category?.labelEn ?? 'service',
-            city: snapshot.city ?? null,
-            cityKey: normaliseGeoCityKey(snapshot.cityKey ?? snapshot.city ?? null),
-            lat: row.locationLat,
-            lng: row.locationLng,
+            categoryId,
+            customServiceText: input.customServiceText ?? null,
+            description: input.description ?? null,
+            idempotencyKey: input.idempotencyKey ?? null,
+            // R06 — a server-derived projection of the claimed assets, kept so
+            // every existing reader of `mediaUrls` is unchanged. No value here
+            // originates from the request body.
+            mediaUrls: attachments.map((attachment) => attachment.fileUrl),
+            scheduleType: input.scheduleType,
+            scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
+            addressId,
+            addressSnapshot: snapshot as unknown as Prisma.InputJsonValue,
           },
-          // The request id is created fresh in this transaction, so this key
-          // cannot collide — it exists so a future retry-the-whole-mutation
-          // path cannot double-announce.
-          dedupeKey: `request-available:${row.id}`,
-        },
-        tx,
-      );
+          tx,
+        );
+        // R06 — THE CLAIM. Same transaction as the insert above, so a failure
+        // anywhere below rolls the claim back with the request, and a lost
+        // race for an asset rolls the request back with the claim.
+        await this.requestMedia.claim(tx, {
+          userId: seekerUserId,
+          requestId: row.id,
+          assetIds: mediaAssetIds,
+        });
+        await this.events.create(
+          {
+            requestId: row.id,
+            actorUserId: seekerUserId,
+            type: ServiceRequestEventType.REQUEST_CREATED,
+          },
+          tx,
+        );
+
+        // Sprint 6 — fan-out is now an OUTBOX EVENT written in THIS transaction.
+        //
+        // It replaced a post-commit loop that resolved every matching provider
+        // and wrote their notifications inline, logging and swallowing each
+        // failure. That was at-most-once delivery with no record: a crash
+        // between the commit above and the loop below lost the fan-out
+        // entirely, and nothing anywhere knew it should have happened.
+        //
+        // Writing the event here means the request and the obligation to
+        // announce it commit together. If this insert fails, the request is not
+        // created either — which is the correct coupling, because a request no
+        // provider is told about is not a request.
+        //
+        // The payload is a SNAPSHOT for recipient matching: later edits must not
+        // retroactively change who matched at creation time. R07 adds a separate
+        // live-status gate in the delivery handlers, so a delayed worker still
+        // suppresses a request that has since been cancelled or accepted.
+        await this.outbox.enqueue(
+          {
+            aggregateType: 'ServiceRequest',
+            aggregateId: row.id,
+            eventType: OutboxEventType.REQUEST_AVAILABLE,
+            payload: {
+              requestId: row.id,
+              seekerUserId,
+              categoryId: row.categoryId,
+              categoryLabel: row.category?.labelEn ?? 'service',
+              city: snapshot.city ?? null,
+              cityKey: normaliseGeoCityKey(snapshot.cityKey ?? snapshot.city ?? null),
+              lat: row.locationLat,
+              lng: row.locationLng,
+            },
+            // The request id is created fresh in this transaction, so this key
+            // cannot collide — it exists so a future retry-the-whole-mutation
+            // path cannot double-announce.
+            dedupeKey: `request-available:${row.id}`,
+          },
+          tx,
+        );
 
         return row;
       });
@@ -228,6 +233,9 @@ export class RequestsService {
         true,
       );
     }
+    // R07 — only when the seeker is CHANGING the time. An unrelated edit to a
+    // request whose time has already passed must still be possible.
+    if (input.scheduledAt !== undefined) this.assertNotInThePast(input.scheduledAt);
 
     const updated = await this.tx.run(async (tx) => {
       const existing = await this.requests.findOwned(requestId, seekerUserId, tx);
@@ -459,6 +467,27 @@ export class RequestsService {
     }
   }
 
+  /**
+   * R07 — a request cannot be scheduled for a moment that has already gone.
+   *
+   * Kept apart from the type check on purpose. `update` re-runs the type
+   * check against the MERGED row, so a past-time rule living there refused
+   * every edit — even to the description — of a request whose time had
+   * simply passed. This runs only where the seeker is setting the time.
+   */
+  private assertNotInThePast(scheduledAt: string | null): void {
+    if (!scheduledAt) return;
+    const at = Date.parse(scheduledAt);
+    if (!Number.isFinite(at) || at <= Date.now()) {
+      throw new AppError(
+        'VALIDATION_ERROR',
+        'scheduledAt must be in the future when scheduleType is LATER.',
+        400,
+        { reason: 'SCHEDULE_IN_PAST' },
+      );
+    }
+  }
+
   private assertScheduledAtMatchesType(
     scheduleType: ScheduleType,
     scheduledAt: string | null,
@@ -469,13 +498,6 @@ export class RequestsService {
         throw new AppError(
           'VALIDATION_ERROR',
           'scheduledAt is required when scheduleType is LATER.',
-          400,
-        );
-      }
-      if (scheduledAt && new Date(scheduledAt).getTime() <= Date.now()) {
-        throw new AppError(
-          'VALIDATION_ERROR',
-          'scheduledAt must be in the future when scheduleType is LATER.',
           400,
         );
       }
@@ -627,7 +649,8 @@ function toSummary(row: ServiceRequestWithCategory): ServiceRequestSummary {
 // R07 — narrow P2002 classifier: never reinterpret an unrelated uniqueness
 // violation as a successful replay.
 function isRequestIdempotencyConflict(error: unknown): boolean {
-  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') return false;
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002')
+    return false;
   const target = (error.meta as { target?: string | string[] } | undefined)?.target;
   const columns = Array.isArray(target) ? target : typeof target === 'string' ? [target] : [];
   return columns.includes('seekerUserId') && columns.includes('idempotencyKey');

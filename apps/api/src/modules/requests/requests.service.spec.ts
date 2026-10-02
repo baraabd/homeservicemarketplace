@@ -836,3 +836,62 @@ describe('RequestsService — create with attachments (R06)', () => {
     expect(m.requests.create.mock.calls[0][0].mediaUrls).toEqual([]);
   });
 });
+
+describe('RequestsService — R07 past-schedule rule applies only where the time is set', () => {
+  const base = { categoryId: 'cat-1', addressId: 'addr-1' };
+  const later = (ms: number) => ({
+    ...base,
+    scheduleType: 'LATER' as const,
+    scheduledAt: new Date(Date.now() + ms).toISOString(),
+  });
+
+  it('refuses a past schedule on create, with a machine-readable reason', async () => {
+    const m = makeMocks();
+    await expect(makeService(m).create('user-1', later(-3_600_000))).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      status: 400,
+      details: { reason: 'SCHEDULE_IN_PAST' },
+    });
+    expect(m.requests.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts a future schedule', async () => {
+    const m = makeMocks();
+    await expect(makeService(m).create('user-1', later(3_600_000))).resolves.toBeDefined();
+  });
+
+  it('refuses an unparseable schedule', async () => {
+    const m = makeMocks();
+    await expect(
+      makeService(m).create('user-1', { ...base, scheduleType: 'LATER', scheduledAt: 'soon' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
+  it('still allows an unrelated edit to a request whose time has passed', async () => {
+    // The rule used to live in the shared type check, which update re-runs
+    // against the merged row: every edit of such a request was refused.
+    const stale = makeRequest({
+      scheduleType: 'LATER',
+      scheduledAt: new Date(Date.now() - 86_400_000),
+    });
+    const m = makeMocks();
+    m.requests.findOwned.mockResolvedValue(stale);
+    m.requests.updateOwned.mockResolvedValue({ count: 1 });
+
+    await expect(
+      makeService(m).update('user-1', 'req-1', { description: 'now with detail' }),
+    ).resolves.toBeDefined();
+    expect(m.requests.updateOwned).toHaveBeenCalled();
+  });
+
+  it('refuses moving a request to a past time', async () => {
+    const m = makeMocks();
+    m.requests.findOwned.mockResolvedValue(makeRequest());
+    await expect(
+      makeService(m).update('user-1', 'req-1', {
+        scheduledAt: new Date(Date.now() - 3_600_000).toISOString(),
+      }),
+    ).rejects.toMatchObject({ details: { reason: 'SCHEDULE_IN_PAST' } });
+    expect(m.requests.updateOwned).not.toHaveBeenCalled();
+  });
+});
