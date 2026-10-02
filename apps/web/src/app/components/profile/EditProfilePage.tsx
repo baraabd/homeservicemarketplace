@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   ChevronLeft,
@@ -107,6 +107,18 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
   const [bio, setBio] = useState('');
+  // Which fields the person has changed since the form last followed the
+  // server. See the seeding effect below.
+  const edited = useRef({ name: false, phone: false, city: false, bio: false });
+  // The values on screen right now, readable from a save that started earlier.
+  const current = useRef({ name, phone, city, bio });
+  current.current = { name, phone, city, bio };
+  // The `updatedAt` of the newest save this form has had acknowledged.
+  const acknowledgedAt = useRef(0);
+  // Whose profile the form was last seeded for.
+  const seededFor = useRef<string | null>(null);
+  // Bumped after a successful save so the form follows the server again.
+  const [seedGeneration, setSeedGeneration] = useState(0);
   // Provider service-area coordinates. Either both numbers or both
   // null — partial state would confuse the backend's pin/distance
   // logic. Seeded from the provider profile on mount; rewritten by
@@ -147,22 +159,57 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   // For most users they're the same, but the provider value wins
   // when both exist so the skills/city the user set inside the
   // provider edit flow show up correctly here.
+  //
+  // A FIELD THE PERSON HAS EDITED IS NOT RE-SEEDED.
+  //
+  // `updatedAt` also changes without a save from this form: a background
+  // refetch can land after the fields were typed, carrying a newer stamp
+  // (registration and email verification both touch the row). Re-seeding
+  // every field then replaced the typed name, phone and city with the stored
+  // ones, and Save sent the OLD values back and reported success. Only fields
+  // still showing what the server sent follow the server; an edited field
+  // keeps its edit until a save succeeds, after which the server is followed
+  // again.
+  //
+  // THREE ORDERINGS THIS HAS TO SURVIVE, each pinned by a test:
+  //
+  //   refetch lands after typing   the edited fields are skipped below.
+  //   save acknowledged            only fields still holding the value that
+  //                                was SUBMITTED stop being edits (see
+  //                                handleSave); something typed while the save
+  //                                was in flight is still an edit.
+  //   an older answer lands late   a profile older than the newest save this
+  //                                form has had acknowledged is ignored, so it
+  //                                cannot put the previous values back.
   useEffect(() => {
     if (!profile) return;
-    setName(profile.displayName);
-    setPhone(profile.phoneNumber ?? '');
-    setCity(providerProfile?.serviceAreaCity ?? profile.city ?? '');
-    setBio(bio || (profile.bio ?? ''));
-    // Service-area coordinates only exist on the provider side. When
-    // the user is in Seeker context we deliberately leave them null
-    // even if the dual-role user has provider lat/lng on file —
-    // the Seeker form has no UI for them.
-    if (isProviderContext && providerProfile) {
-      setServiceAreaLat(providerProfile.serviceAreaLat);
-      setServiceAreaLng(providerProfile.serviceAreaLng);
+    // Another account's edits are not this account's edits.
+    if (seededFor.current !== profile.email) {
+      seededFor.current = profile.email;
+      edited.current = { name: false, phone: false, city: false, bio: false };
+      acknowledgedAt.current = 0;
+    }
+    const stamp = Date.parse(profile.updatedAt);
+    if (Number.isFinite(stamp) && stamp < acknowledgedAt.current) return;
+
+    const touched = edited.current;
+    if (!touched.name) setName(profile.displayName);
+    if (!touched.phone) setPhone(profile.phoneNumber ?? '');
+    if (!touched.bio) setBio(profile.bio ?? '');
+    if (!touched.city) {
+      setCity(providerProfile?.serviceAreaCity ?? profile.city ?? '');
+      // Service-area coordinates only exist on the provider side. When
+      // the user is in Seeker context we deliberately leave them null
+      // even if the dual-role user has provider lat/lng on file —
+      // the Seeker form has no UI for them. They travel with the city: a
+      // re-seed must not swap the pin under a city the person just typed.
+      if (isProviderContext && providerProfile) {
+        setServiceAreaLat(providerProfile.serviceAreaLat);
+        setServiceAreaLng(providerProfile.serviceAreaLng);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.updatedAt, providerProfile?.updatedAt]);
+  }, [profile?.updatedAt, providerProfile?.updatedAt, seedGeneration]);
 
   // Seed the skills selection from the provider profile when it lands.
   //
@@ -204,6 +251,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   // provider feed's distance ranking. Re-clicking Detect-My-Location
   // re-captures coords for the new city.
   const handleCityChange = (next: string): void => {
+    edited.current.city = true;
     setCity(next);
     if (serviceAreaLat !== null || serviceAreaLng !== null) {
       setServiceAreaLat(null);
@@ -242,6 +290,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
       // Both `ok` and `partial` carry real lat/lng — capture them so
       // the backend pin is populated even when reverse-geocoding
       // couldn't resolve a city name.
+      edited.current.city = true;
       setServiceAreaLat(outcome.lat);
       setServiceAreaLng(outcome.lng);
       if (outcome.status === 'ok' && outcome.city) {
@@ -279,6 +328,8 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
     const trimmedPhone = phone.trim();
     const trimmedCity = city.trim();
     const trimmedBio = bio.trim();
+    // Exactly what was on screen when this save began.
+    const submitted = { name, phone, city, bio };
 
     try {
       const seekerSave = updateMut.mutateAsync({
@@ -329,7 +380,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
             })
           : Promise.resolve(null);
 
-      await Promise.all([seekerSave, providerSave]);
+      const [seekerAck] = await Promise.all([seekerSave, providerSave]);
 
       // Applications go out after the profile save resolves, and one at a
       // time. Firing them in parallel with the PATCH would mean a rejected
@@ -339,6 +390,18 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
         await applyCategoryMut.mutateAsync({ categoryId });
       }
 
+      // Saved. A field still holding the value that was submitted is no
+      // longer an edit, so it follows the server again, including anything
+      // the server normalised. A field changed WHILE the save was in flight
+      // was not part of this save and stays an edit.
+      const acknowledged = Date.parse(seekerAck.profile.updatedAt);
+      if (Number.isFinite(acknowledged)) {
+        acknowledgedAt.current = Math.max(acknowledgedAt.current, acknowledged);
+      }
+      for (const field of ['name', 'phone', 'city', 'bio'] as const) {
+        if (current.current[field] === submitted[field]) edited.current[field] = false;
+      }
+      setSeedGeneration((generation) => generation + 1);
       setSaved(true);
       // Brief visual confirmation, then return to the default state
       // so the user can continue editing if they want.
@@ -460,14 +523,20 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
           <TextField
             label={L.name}
             value={name}
-            onChange={setName}
+            onChange={(next) => {
+              edited.current.name = true;
+              setName(next);
+            }}
             leadingIcon={<User size={16} />}
           />
           <TextField
             label={L.phone}
             type="tel"
             value={phone}
-            onChange={setPhone}
+            onChange={(next) => {
+              edited.current.phone = true;
+              setPhone(next);
+            }}
             leadingIcon={<Phone size={16} />}
           />
           <div className="relative">
@@ -603,7 +672,10 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
             </p>
             <textarea
               value={bio}
-              onChange={(e) => setBio(e.target.value)}
+              onChange={(e) => {
+                edited.current.bio = true;
+                setBio(e.target.value);
+              }}
               placeholder={L.bioHint}
               rows={3}
               maxLength={500}
