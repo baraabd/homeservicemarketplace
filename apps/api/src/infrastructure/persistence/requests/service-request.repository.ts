@@ -36,6 +36,7 @@ export interface CreateServiceRequestInput {
   categoryId: string | null;
   customServiceText: string | null;
   description: string | null;
+  idempotencyKey?: string | null;
   /** R06 — public URLs of the assets being claimed, derived by the server
    *  from MediaAsset rows. Never client input. Empty when the seeker
    *  attached no media. */
@@ -342,6 +343,33 @@ export class ServiceRequestRepository {
     }) as Promise<ServiceRequestWithCategory | null>;
   }
 
+  // R07 — replay lookup. Route a hit through findOwned so a late retry
+  // returns the same seeker projection as a normal read.
+  async findByIdempotencyKey(
+    seekerUserId: string,
+    idempotencyKey: string,
+    tx?: PrismaTx,
+  ): Promise<ServiceRequestWithCategory | null> {
+    const hit = await this.db(tx).serviceRequest.findFirst({
+      where: { seekerUserId, idempotencyKey, deletedAt: null },
+      select: { id: true },
+    });
+    return hit ? this.findOwned(hit.id, seekerUserId, tx) : null;
+  }
+
+  // R07 — serialize bid submission against request lifecycle transitions.
+  // PostgreSQL holds this row lock until the surrounding transaction commits.
+  async lockForLifecycle(requestId: string, tx: PrismaTx): Promise<boolean> {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "ServiceRequest"
+      WHERE "id" = ${requestId}
+        AND "deletedAt" IS NULL
+      FOR UPDATE
+    `;
+    return rows.length === 1;
+  }
+
   // Plain non-ownership-scoped finder. Used on the provider side
   // where the caller is NOT the seeker (submit-bid). Soft-deleted
   // rows are still filtered out. Callers must enforce their own
@@ -360,6 +388,7 @@ export class ServiceRequestRepository {
         categoryId: input.categoryId,
         customServiceText: input.customServiceText,
         description: input.description,
+        idempotencyKey: input.idempotencyKey ?? null,
         // Empty array when the seeker attached nothing — same shape
         // the column's default produces, but explicit so a future
         // schema change doesn't silently flip the wire behaviour.

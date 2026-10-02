@@ -81,6 +81,7 @@ function makeBookingRow(
       customServiceText: null,
       description: 'Leaky kitchen sink',
       mediaUrls: [],
+      idempotencyKey: null,
       // Sprint 6 — promoted location columns.
       locationCityKey: null,
       locationLat: null,
@@ -227,12 +228,15 @@ describe('ProviderBookingsService', () => {
   });
 
   describe('detail', () => {
-    it('returns the eager-loaded detail when owned', async () => {
-      const mocks = makeMocks({ ownedRow: makeBookingRow('SCHEDULED') });
+    it('returns the eager-loaded detail including the original request media', async () => {
+      const row = makeBookingRow('SCHEDULED');
+      row.request.mediaUrls = ['https://media.example/request-photo.jpg'];
+      const mocks = makeMocks({ ownedRow: row });
       const out = await makeService(mocks).detail('user-provider-1', 'bk-1');
       expect(out.id).toBe('bk-1');
       expect(out.seeker.firstName).toBe('Ahmed');
       expect(out.addressSnapshot.line1).toBe('7 Main St');
+      expect(out.requestMediaUrls).toEqual(['https://media.example/request-photo.jpg']);
     });
 
     it('returns 404 if the booking is not owned by the provider', async () => {

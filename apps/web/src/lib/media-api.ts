@@ -70,7 +70,10 @@ export async function uploadFileToPresignedUrl(
   try {
     response = await fetch(uploadUrl, {
       method: 'PUT',
-      headers: { 'Content-Type': file.type },
+      // R06 write-once request uploads are presigned with If-None-Match: *.
+      // The browser must send every signed header or S3 rejects the PUT with
+      // SignatureDoesNotMatch. Local storage accepts the same defensive header.
+      headers: { 'Content-Type': file.type, 'If-None-Match': '*' },
       body: file,
       signal,
       credentials: 'omit',

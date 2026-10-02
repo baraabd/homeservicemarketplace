@@ -102,6 +102,17 @@ export class BidsService {
   // with no event row, or two accepted bids.
   async accept(seekerUserId: string, requestId: string, bidId: string): Promise<AcceptBidResponse> {
     const result = await this.tx.run(async (tx) => {
+      // R07 — take the lifecycle lock before reading anything.
+      //
+      // Bid submission takes this lock, but acceptance did not, and its
+      // steps run in an order that lets a concurrent bid slip through:
+      // siblings are rejected (step 3) BEFORE the request row is flipped
+      // (step 4). A bid inserted in between is not seen by step 3 and is
+      // committed before step 4, leaving a PENDING bid on a booked request.
+      // Locking here makes that bid either commit first (and be rejected
+      // below) or wait and then find the request closed.
+      await this.requests.lockForLifecycle(requestId, tx);
+
       // 1a. Request must exist + be owned + still OPEN_FOR_BIDS.
       const request = await this.requests.findOwned(requestId, seekerUserId, tx);
       if (!request) {

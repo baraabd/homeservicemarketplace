@@ -43,6 +43,7 @@ d(
     let cleanup: any;
     let feed: any;
     let seekerBookings: any;
+    let providerBookings: any;
 
     const P = fixturePrefix('r06-request-media');
     const SEEKER = `${P}seeker`;
@@ -212,6 +213,9 @@ d(
         AvailableRequestsService,
       } = require('../../src/modules/provider/available-requests/available-requests.service');
       const { BookingsService } = require('../../src/modules/bookings/bookings.service');
+      const {
+        ProviderBookingsService,
+      } = require('../../src/modules/provider/bookings/provider-bookings.service');
 
       storage = new LocalDiskStorageAdapter(config);
       media = new RequestMediaService(prismaSvc, config, storage);
@@ -229,6 +233,14 @@ d(
         {},
         new TransactionRunner(prismaSvc),
         {},
+      );
+      providerBookings = new ProviderBookingsService(
+        new ProviderProfileRepository(prismaSvc),
+        new BookingRepository(prismaSvc),
+        new BookingEventRepository(prismaSvc),
+        { createForUser: async () => undefined },
+        new TransactionRunner(prismaSvc),
+        { publishFor: () => undefined },
       );
 
       const build = (outbox: unknown) =>
@@ -402,9 +414,11 @@ d(
         },
       });
       expect((await seekerBookings.detail(SEEKER, booking.id)).requestMediaUrls).toEqual(expected);
-      // The PROVIDER booking detail has never projected request media (it is
-      // not in ProviderBookingDetail), so there is nothing for R06 to preserve
-      // there. Recorded as a finding in docs/production-readiness/r06.
+      // R07 closes the last continuity gap: the same evidence remains visible
+      // to the provider after bid acceptance turns the request into a booking.
+      expect((await providerBookings.detail(PROVIDER_USER, booking.id)).requestMediaUrls).toEqual(
+        expected,
+      );
 
       // And the URLs resolve to the stored objects.
       expect(objectExists(one.key)).toBe(true);

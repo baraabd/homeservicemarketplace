@@ -30,6 +30,9 @@ export interface CreateServiceRequestRequest {
   categoryId?: string | null;
   customServiceText?: string | null;
   description?: string | null;
+  /** R07 — stable replay key for one logical create attempt. Optional during
+   *  rolling deploys; updated clients keep the same value across retries. */
+  idempotencyKey?: string;
   /** R06 — attachments, by server-issued asset id.
    *
    *  Each id is the `assetId` returned by `POST /v1/media/presigned-url`

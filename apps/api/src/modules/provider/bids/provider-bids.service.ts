@@ -11,7 +11,6 @@ import {
   NotificationResourceType,
   NotificationType,
   ServiceRequestEventType,
-  ServiceRequestStatus,
 } from '@homeservicemarketplace/database';
 import type { Bid } from '@homeservicemarketplace/database';
 
@@ -22,6 +21,10 @@ import { ServiceRequestEventRepository } from '../../../infrastructure/persisten
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
 import { NotificationsService } from '../../notifications/notifications.service';
+import {
+  constrainsAnything,
+  toServiceArea,
+} from '../available-requests/available-requests.service';
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -51,25 +54,28 @@ export class ProviderBidsService {
   // ─── submit ──────────────────────────────────────────────────────────────────
   async submit(providerUserId: string, input: SubmitBidRequest): Promise<SubmitBidResponse> {
     const result = await this.tx.run(async (tx) => {
-      const profile = await this.providers.findByUserId(providerUserId, tx);
+      const profile = await this.providers.findByUserIdWithCategories(providerUserId, tx);
       if (!profile) {
-        // Defensive: ProviderActiveGuard already proved a profile
-        // exists. A concurrent soft-delete is the only path here.
         throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
       }
 
-      const request = await this.requests.findById(input.requestId, tx);
-      if (!request) {
+      // R07 — lock first, then authorize against the SAME category + service
+      // area predicate as provider request detail. A guessed id cannot bypass
+      // feed visibility, and cancel/accept cannot race the bid insert.
+      if (!(await this.requests.lockForLifecycle(input.requestId, tx))) {
         throw new AppError('NOT_FOUND', 'Request not found.', 404);
       }
-      if (request.status !== ServiceRequestStatus.OPEN_FOR_BIDS) {
-        throw new AppError('CONFLICT', 'This request is no longer accepting bids.', 409);
+      const categoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
+      const serviceArea = toServiceArea(profile, null);
+      if (categoryIds.length === 0 || !constrainsAnything(serviceArea)) {
+        throw new AppError('NOT_FOUND', 'Request not found.', 404);
       }
-      if (request.seekerUserId === providerUserId) {
-        // A provider should not be able to bid on their own request,
-        // even if they happen to also be a seeker on the same account.
-        throw new AppError('VALIDATION_ERROR', 'You cannot bid on your own request.', 400);
-      }
+      const request = await this.requests.findAvailableForProvider(
+        input.requestId,
+        { excludeSeekerUserId: profile.userId ?? null, categoryIds, serviceArea },
+        tx,
+      );
+      if (!request) throw new AppError('NOT_FOUND', 'Request not found.', 404);
 
       // One-active-bid invariant. Withdrawn bids do not count — the
       // provider may resubmit a fresh PENDING bid after withdrawing.

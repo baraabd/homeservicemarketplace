@@ -45,3 +45,13 @@ f3cce56eb5fc6b97df100ecd748d2b003e6480d1:apps/api/test/e2e/media.e2e.spec.ts:gen
 # Not credentials. Runtime randomUUID() now replaces the fixed request example.
 b876db762045bf70ee7d1fb3eea9eb00ac4bbb97:apps/api/src/modules/disputes/dispute-intake.dto.spec.ts:generic-api-key:4
 58488e0580e5bbd89612f450aac3f2e56aa6eb1c:apps/api/src/modules/disputes/dispute-intake.dto.spec.ts:generic-api-key:8
+
+# R07 — five test placeholders, individually reviewed in §7. Not credentials.
+# Four are one fixed idempotency-key example in a unit spec; one is a dummy
+# signing secret fed to a mock config in an integration spec. Both sources now
+# use generated values (randomUUID() / makeTestSecret()).
+7c7a11861f85cf1168db7a0d217594f3388bbc44:apps/api/src/modules/requests/requests.service.spec.ts:generic-api-key:329
+7c7a11861f85cf1168db7a0d217594f3388bbc44:apps/api/src/modules/requests/requests.service.spec.ts:generic-api-key:337
+7c7a11861f85cf1168db7a0d217594f3388bbc44:apps/api/src/modules/requests/requests.service.spec.ts:generic-api-key:352
+7c7a11861f85cf1168db7a0d217594f3388bbc44:apps/api/src/modules/requests/requests.service.spec.ts:generic-api-key:355
+8968db809d5a89e1b4e44ac07e8a79c5f435144f:apps/api/test/integration/r07-marketplace-races.integration.spec.ts:generic-api-key:212

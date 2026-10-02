@@ -343,5 +343,6 @@ function toDetail(row: BookingWithProviderRelations): ProviderBookingDetail {
   return {
     ...toSummary(row),
     description: row.request.description,
+    requestMediaUrls: row.request.mediaUrls ?? [],
   };
 }

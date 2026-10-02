@@ -18,6 +18,11 @@ import { RequestsService } from './requests.service';
 import type { RequestMediaService } from '../media/request-media.service';
 import { OutboxRepository } from '../../infrastructure/outbox/outbox.repository';
 import type { PrismaTx } from '@homeservicemarketplace/database';
+import { randomUUID } from 'node:crypto';
+
+// R07 — a generated value, not a literal: a fixed placeholder key here was
+// reported by the secret scanner as a generic API key.
+const REPLAY_KEY = randomUUID();
 
 // In-memory tx that just calls the supplied callback with `undefined`
 // — no real Prisma transaction is required for these unit tests
@@ -81,6 +86,7 @@ function makeRequest(overrides: Partial<ServiceRequest> = {}): ServiceRequestWit
     categoryId: 'cat-1',
     customServiceText: null,
     description: null,
+    idempotencyKey: null,
     mediaUrls: [],
     status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
     scheduleType: 'ASAP',
@@ -109,6 +115,7 @@ interface Mocks {
   requests: {
     listForSeeker: jest.Mock;
     findOwned: jest.Mock;
+    findByIdempotencyKey: jest.Mock;
     create: jest.Mock;
     updateOwned: jest.Mock;
     setStatusOwned: jest.Mock;
@@ -129,6 +136,7 @@ function makeMocks(over: Partial<Mocks> = {}): Mocks {
     requests: {
       listForSeeker: jest.fn().mockResolvedValue([]),
       findOwned: jest.fn().mockResolvedValue(null),
+      findByIdempotencyKey: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue(makeRequest()),
       updateOwned: jest.fn().mockResolvedValue({ count: 0 }),
       setStatusOwned: jest.fn().mockResolvedValue({ count: 0 }),
@@ -296,6 +304,87 @@ describe('RequestsService', () => {
           addressId: 'addr-1',
         }),
       ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    });
+
+    it('rejects a LATER request scheduled in the past', async () => {
+      const m = makeMocks();
+      await expect(
+        makeService(m).create('user-1', {
+          categoryId: 'cat-1',
+          scheduleType: 'LATER',
+          scheduledAt: new Date(Date.now() - 60_000).toISOString(),
+          addressId: 'addr-1',
+        }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+      expect(m.requests.create).not.toHaveBeenCalled();
+    });
+
+    it('accepts a LATER request scheduled in the future', async () => {
+      const m = makeMocks();
+      await makeService(m).create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'LATER',
+        scheduledAt: new Date(Date.now() + 60_000).toISOString(),
+        addressId: 'addr-1',
+      });
+      expect(m.requests.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns the existing request for a repeated idempotency key', async () => {
+      const replay = makeRequest({ id: 'req-replayed', idempotencyKey: REPLAY_KEY });
+      const m = makeMocks();
+      m.requests.findByIdempotencyKey.mockResolvedValue(replay);
+
+      const out = await makeService(m).create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'ASAP',
+        addressId: 'addr-1',
+        idempotencyKey: REPLAY_KEY,
+      });
+
+      expect(out.id).toBe('req-replayed');
+      expect(m.requests.create).not.toHaveBeenCalled();
+      expect(m.events.create).not.toHaveBeenCalled();
+      expect(m.outbox.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('returns an existing LATER request even when its scheduled time has passed before retry', async () => {
+      const scheduledAt = new Date(Date.now() - 60_000).toISOString();
+      const replay = makeRequest({
+        id: 'req-replayed-later',
+        idempotencyKey: REPLAY_KEY,
+        scheduleType: 'LATER',
+        scheduledAt: new Date(scheduledAt),
+      });
+      const m = makeMocks();
+      m.requests.findByIdempotencyKey.mockResolvedValue(replay);
+
+      const out = await makeService(m).create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'LATER',
+        scheduledAt,
+        addressId: 'addr-1',
+        idempotencyKey: REPLAY_KEY,
+      });
+
+      expect(out.id).toBe('req-replayed-later');
+      expect(m.requests.create).not.toHaveBeenCalled();
+      expect(m.events.create).not.toHaveBeenCalled();
+      expect(m.outbox.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('passes a new idempotency key into the request insert', async () => {
+      const m = makeMocks();
+      await makeService(m).create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'ASAP',
+        addressId: 'addr-1',
+        idempotencyKey: REPLAY_KEY,
+      });
+      expect(m.requests.create).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: REPLAY_KEY }),
+        TX_SENTINEL,
+      );
     });
 
     it('rejects scheduledAt when scheduleType is ASAP', async () => {
@@ -775,5 +864,64 @@ describe('RequestsService — create with attachments (R06)', () => {
     await makeService(m).create('user-1', body);
     expect(m.requestMedia.resolveClaimable).toHaveBeenCalledWith(TX_SENTINEL, 'user-1', []);
     expect(m.requests.create.mock.calls[0][0].mediaUrls).toEqual([]);
+  });
+});
+
+describe('RequestsService — R07 past-schedule rule applies only where the time is set', () => {
+  const base = { categoryId: 'cat-1', addressId: 'addr-1' };
+  const later = (ms: number) => ({
+    ...base,
+    scheduleType: 'LATER' as const,
+    scheduledAt: new Date(Date.now() + ms).toISOString(),
+  });
+
+  it('refuses a past schedule on create, with a machine-readable reason', async () => {
+    const m = makeMocks();
+    await expect(makeService(m).create('user-1', later(-3_600_000))).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      status: 400,
+      details: { reason: 'SCHEDULE_IN_PAST' },
+    });
+    expect(m.requests.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts a future schedule', async () => {
+    const m = makeMocks();
+    await expect(makeService(m).create('user-1', later(3_600_000))).resolves.toBeDefined();
+  });
+
+  it('refuses an unparseable schedule', async () => {
+    const m = makeMocks();
+    await expect(
+      makeService(m).create('user-1', { ...base, scheduleType: 'LATER', scheduledAt: 'soon' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
+  it('still allows an unrelated edit to a request whose time has passed', async () => {
+    // The rule used to live in the shared type check, which update re-runs
+    // against the merged row: every edit of such a request was refused.
+    const stale = makeRequest({
+      scheduleType: 'LATER',
+      scheduledAt: new Date(Date.now() - 86_400_000),
+    });
+    const m = makeMocks();
+    m.requests.findOwned.mockResolvedValue(stale);
+    m.requests.updateOwned.mockResolvedValue({ count: 1 });
+
+    await expect(
+      makeService(m).update('user-1', 'req-1', { description: 'now with detail' }),
+    ).resolves.toBeDefined();
+    expect(m.requests.updateOwned).toHaveBeenCalled();
+  });
+
+  it('refuses moving a request to a past time', async () => {
+    const m = makeMocks();
+    m.requests.findOwned.mockResolvedValue(makeRequest());
+    await expect(
+      makeService(m).update('user-1', 'req-1', {
+        scheduledAt: new Date(Date.now() - 3_600_000).toISOString(),
+      }),
+    ).rejects.toMatchObject({ details: { reason: 'SCHEDULE_IN_PAST' } });
+    expect(m.requests.updateOwned).not.toHaveBeenCalled();
   });
 });

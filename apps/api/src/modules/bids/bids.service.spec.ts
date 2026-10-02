@@ -124,6 +124,7 @@ function makeRequest(overrides: Partial<ServiceRequest> = {}): ServiceRequestWit
     categoryId: null,
     customServiceText: null,
     description: null,
+    idempotencyKey: null,
     mediaUrls: [],
     status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
     scheduleType: 'ASAP',
@@ -148,7 +149,7 @@ interface Mocks {
     setStatusIf: jest.Mock;
     rejectSiblings: jest.Mock;
   };
-  requests: { findOwned: jest.Mock; setStatusOwned: jest.Mock };
+  requests: { findOwned: jest.Mock; setStatusOwned: jest.Mock; lockForLifecycle: jest.Mock };
   bookings: { create: jest.Mock; findByBidId: jest.Mock };
   events: { create: jest.Mock };
   bookingEvents: { create: jest.Mock };
@@ -175,6 +176,7 @@ function makeMocks(over: MocksOverride = {}): Mocks {
     requests: {
       findOwned: jest.fn().mockResolvedValue(makeRequest()),
       setStatusOwned: jest.fn().mockResolvedValue({ count: 1 }),
+      lockForLifecycle: jest.fn().mockResolvedValue(true),
       ...(over.requests ?? {}),
     },
     bookings: {
@@ -367,6 +369,13 @@ describe('BidsService', () => {
         },
       });
       const out = await makeService(m).accept('user-1', 'req-1', 'bid-1');
+      // R07 — the lifecycle lock is taken before the request is read and
+      // before siblings are rejected: a bid submitted concurrently must either
+      // be visible to that rejection or wait for it.
+      expect(m.requests.lockForLifecycle).toHaveBeenCalledWith('req-1', undefined);
+      const lock = m.requests.lockForLifecycle.mock.invocationCallOrder[0];
+      expect(lock).toBeLessThan(m.requests.findOwned.mock.invocationCallOrder[0]);
+      expect(lock).toBeLessThan(m.bids.rejectSiblings.mock.invocationCallOrder[0]);
       // Bid flip ordering pinned: setStatusIf called with the
       // PENDING → ACCEPTED transition.
       expect(m.bids.setStatusIf).toHaveBeenCalledWith('bid-1', 'PENDING', 'ACCEPTED', undefined);

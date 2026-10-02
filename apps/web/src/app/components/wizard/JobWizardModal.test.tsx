@@ -1167,3 +1167,35 @@ describe('JobWizardModal — Phase 7 media upload', () => {
     expect(postedBody.mediaAssetIds).toEqual([]); // explicit empty array
   });
 });
+
+// R07 — the submission key makes a retried post safe.
+describe('JobWizardModal — R07 submission key', () => {
+  const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  it('sends a UUID key and resends the SAME key when the seeker retries a failed post', async () => {
+    mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
+    const keys: unknown[] = [];
+    mock.onPost('/v1/me/requests').reply((cfg) => {
+      keys.push((JSON.parse(cfg.data as string) as Record<string, unknown>).idempotencyKey);
+      // The first attempt reaches the server but its answer is lost.
+      return keys.length === 1 ? [500, {}] : [200, { id: 'req-retried', status: 'PENDING' }];
+    });
+
+    renderWizard();
+    await advanceToStep2();
+    await awaitDefaultAddressFilled();
+    fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
+    await waitFor(() => expect(keys).toHaveLength(1));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /confirm job/i })).not.toBeDisabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
+    await waitFor(() => expect(keys).toHaveLength(2));
+
+    expect(keys[0]).toMatch(UUID_V4);
+    // Same submission, same key: the server returns the first request rather
+    // than creating a second one.
+    expect(keys[1]).toBe(keys[0]);
+  });
+});

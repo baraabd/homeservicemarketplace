@@ -41,6 +41,14 @@ export class CreateServiceRequestDto implements CreateServiceRequestRequest {
   @Length(1, 2000)
   description?: string | null;
 
+  // R07 — opaque, client-generated replay key. Kept intentionally generic
+  // (rather than UUID-only) so native clients may use their own collision-safe
+  // format. Bounds prevent accidental payload abuse.
+  @IsOptional()
+  @IsString()
+  @Length(16, 128)
+  idempotencyKey?: string;
+
   // R06 — attachments are referenced by server-issued asset id. Ownership,
   // completeness and single use are decided from the MediaAsset rows inside
   // the creation transaction, not from anything in this body.
