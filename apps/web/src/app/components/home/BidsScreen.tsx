@@ -406,6 +406,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                         rating={bid.provider?.ratingAvg ?? 0}
                         reviewCount={bid.provider?.reviewCount ?? 0}
                         jobCount={bid.provider?.completedJobs ?? 0}
+                        lang={lang === 'ar' ? 'ar' : 'en'}
                         price={bid.amount}
                         unit={bid.pricingType === 'HOURLY' ? '/hr' : '/job'}
                         tags={[]}
@@ -475,9 +476,14 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                             </div>
                           </td>
                           <td className="text-center py-2 px-2">
-                            <span className="text-amber-600 font-bold">
-                              {(bid.provider?.ratingAvg ?? 0).toFixed(1)}
-                            </span>
+                            {/* No reviews is not a rating of zero. */}
+                            {(bid.provider?.reviewCount ?? 0) > 0 ? (
+                              <span className="text-amber-600 font-bold">
+                                {(bid.provider?.ratingAvg ?? 0).toFixed(1)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
                           </td>
                           {showHourlyRate && (
                             <td className="text-center py-2 px-2">

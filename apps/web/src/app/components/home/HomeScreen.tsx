@@ -1345,7 +1345,9 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
       </div>
 
       {/* ══ CONTENT AREA — overlays live here so BottomNav stays visible ═══ */}
-      <div className="flex-1 relative overflow-hidden">
+      {/* Clipped, not scrollable: the panels parked off screen in here must
+          never be scrolled into view by a focus move (R11). */}
+      <div className="flex-1 relative overflow-clip">
         <AnimatePresence mode="wait">
           {tabLoading ? (
             <motion.div

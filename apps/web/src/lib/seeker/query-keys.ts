@@ -38,6 +38,9 @@ export const seekerQueryKeys = {
     list: (filter?: { status?: string }) => ['seeker', 'bookings', 'list', filter ?? {}] as const,
     detail: (id: string) => ['seeker', 'bookings', 'detail', id] as const,
     timeline: (id: string) => ['seeker', 'bookings', 'timeline', id] as const,
+    // R11 — the seeker's review of one booking. Under the bookings root, so
+    // sign-out and booking invalidation cover it without being told.
+    review: (id: string) => ['seeker', 'bookings', 'review', id] as const,
   },
   conversations: {
     // Root for all chat queries. Send-message and mark-read mutations
