@@ -540,6 +540,32 @@ jobs:
             apps/web/test-results/r07-request-provider-lifecycle-report/
           retention-days: 14
           if-no-files-found: warn
+      - name: Accept R08 provider V2 all-field authority through the build-flagged bundle
+        # Every provider-settable V2 onboarding field: UI write, server
+        # acknowledgement, navigation, reload, fresh-browser login and a direct
+        # PostgreSQL read; plus stale-tab, offline, lost-response, session-loss,
+        # isolation and limit negatives. The spec asserts that the browser flag
+        # override is absent, so V2 is on because of the build above and only
+        # because of it.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r08-provider-v2-all-field-authority-report
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r08-provider-v2-all-field-authority.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --output=test-results/r08-provider-v2-all-field-authority
+      - name: Upload R08 all-field authority real-service evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r08-provider-v2-all-field-authority-evidence
+          path: |
+            apps/web/test-results/r08-provider-v2-all-field-authority/
+            apps/web/test-results/r08-provider-v2-all-field-authority-report/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed
