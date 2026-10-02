@@ -18,6 +18,11 @@ import { RequestsService } from './requests.service';
 import type { RequestMediaService } from '../media/request-media.service';
 import { OutboxRepository } from '../../infrastructure/outbox/outbox.repository';
 import type { PrismaTx } from '@homeservicemarketplace/database';
+import { randomUUID } from 'node:crypto';
+
+// R07 — a generated value, not a literal: a fixed placeholder key here was
+// reported by the secret scanner as a generic API key.
+const REPLAY_KEY = randomUUID();
 
 // In-memory tx that just calls the supplied callback with `undefined`
 // — no real Prisma transaction is required for these unit tests
@@ -326,7 +331,7 @@ describe('RequestsService', () => {
     });
 
     it('returns the existing request for a repeated idempotency key', async () => {
-      const replay = makeRequest({ id: 'req-replayed', idempotencyKey: 'idem-key-1234567890' });
+      const replay = makeRequest({ id: 'req-replayed', idempotencyKey: REPLAY_KEY });
       const m = makeMocks();
       m.requests.findByIdempotencyKey.mockResolvedValue(replay);
 
@@ -334,7 +339,7 @@ describe('RequestsService', () => {
         categoryId: 'cat-1',
         scheduleType: 'ASAP',
         addressId: 'addr-1',
-        idempotencyKey: 'idem-key-1234567890',
+        idempotencyKey: REPLAY_KEY,
       });
 
       expect(out.id).toBe('req-replayed');
@@ -349,10 +354,10 @@ describe('RequestsService', () => {
         categoryId: 'cat-1',
         scheduleType: 'ASAP',
         addressId: 'addr-1',
-        idempotencyKey: 'idem-key-1234567890',
+        idempotencyKey: REPLAY_KEY,
       });
       expect(m.requests.create).toHaveBeenCalledWith(
-        expect.objectContaining({ idempotencyKey: 'idem-key-1234567890' }),
+        expect.objectContaining({ idempotencyKey: REPLAY_KEY }),
         TX_SENTINEL,
       );
     });

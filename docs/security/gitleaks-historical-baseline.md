@@ -188,7 +188,6 @@ proven, and the outcome recorded in this document — before a fingerprint is
 added. If a finding cannot be proven synthetic, it is treated as a live
 credential: rotate first, then decide about history.
 
-
 ## 6. Sprint 12A delta — non-secret request identifiers (2026-09-17)
 
 CI `35242994528`, security job `105277441969`, stopped on exactly two
@@ -196,10 +195,10 @@ CI `35242994528`, security job `105277441969`, stopped on exactly two
 `10506239201` was retrieved; its ZIP SHA-256 matched GitHub metadata:
 `4434866a0a982171d0619e02272963a1f6a5a1f81b0ebdf798879d5396c5bfb4`.
 
-| Origin commit | Rule | Source line | Classification |
-| --- | --- | --- | --- |
-| `b876db762045bf70ee7d1fb3eea9eb00ac4bbb97` | generic-api-key | 4 | Authored synthetic UUID-v4 DTO idempotency example |
-| `58488e0580e5bbd89612f450aac3f2e56aa6eb1c` | generic-api-key | 8 | The same example after test formatting/expansion |
+| Origin commit                              | Rule            | Source line | Classification                                     |
+| ------------------------------------------ | --------------- | ----------- | -------------------------------------------------- |
+| `b876db762045bf70ee7d1fb3eea9eb00ac4bbb97` | generic-api-key | 4           | Authored synthetic UUID-v4 DTO idempotency example |
+| `58488e0580e5bbd89612f450aac3f2e56aa6eb1c` | generic-api-key | 8           | The same example after test formatting/expansion   |
 
 Both flagged source versions were read at their exact commits. The value was
 introduced during this implementation solely as the valid UUID input to local
@@ -228,3 +227,41 @@ historical evidence, not measurements for Sprint 12A. Final remote CI must run
 the unchanged scanner again before this PR is accepted. Maintain these two
 entries only while their originating commits remain reachable; review/remove
 them using §5's procedure at release review.
+
+## 7. R07 delta — test placeholders (2026-10-02)
+
+CI run `36977816747`, security job `110746741744`, on PR #125 head
+`8968db809d5a89e1b4e44ac07e8a79c5f435144f`, stopped on exactly five
+`generic-api-key` findings. The fingerprints below are copied from that job's
+log.
+
+| Origin commit                              | File                                                                  | Line               | Classification                                                                      |
+| ------------------------------------------ | --------------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------- |
+| `7c7a11861f85cf1168db7a0d217594f3388bbc44` | `apps/api/src/modules/requests/requests.service.spec.ts`              | 329, 337, 352, 355 | One fixed request idempotency-key example, repeated four times in a unit spec       |
+| `8968db809d5a89e1b4e44ac07e8a79c5f435144f` | `apps/api/test/integration/r07-marketplace-races.integration.spec.ts` | 212                | A dummy signing secret passed to a mock configuration object in an integration spec |
+
+Both values were read at their reporting commits. The idempotency-key example
+is a readable placeholder string used only as an argument to mocked repository
+calls; an idempotency key is not an authorization token, and the real command
+additionally requires an authenticated session and CSRF. The signing-secret
+placeholder is a readable sentence-like string given to a hand-built config
+object so that an opaque storage-key reference can be derived inside the test;
+it signs nothing that leaves the test process.
+
+Provenance was checked with `git log --all -S<value>` for each value. Each
+appears only in the commits listed above (plus one unpushed local commit that
+is not part of any published branch), and only in `.spec.ts` files. Neither
+appears in any environment, deployment, workflow or source file, and neither
+resembles a provider credential.
+
+The sources are fixed in the same change: the unit spec now uses
+`randomUUID()` from `node:crypto`, and the integration spec uses
+`makeTestSecret()`. Only the five exact fingerprints are appended to
+`.gitleaksignore`; the existing twelve are unchanged. No path pattern, rule,
+tolerance, scan range, workflow or blocking exit status is changed. A finding
+at any other commit or line still fails CI. History is not rewritten.
+
+Not done, and not claimed: a new scanner canary run was not performed for this
+delta. The unchanged scanner must pass on the final PR head before the PR is
+accepted. Maintain these five entries only while their originating commits
+remain reachable, and review them with §5's procedure at release review.

@@ -9,6 +9,7 @@ export {};
 import { randomUUID } from 'node:crypto';
 
 import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { makeTestSecret } from '../support/test-secrets';
 
 // R07 — races, crash recovery and the whole request -> booking path, against
 // real Postgres, the real services and the real outbox worker and handlers.
@@ -209,7 +210,7 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
       },
     );
     const settings: Record<string, unknown> = {
-      JWT_ACCESS_SECRET: 'r07-integration-secret-of-at-least-32-chars',
+      JWT_ACCESS_SECRET: makeTestSecret('r07-marketplace-races'),
       OUTBOX_WORKER_ENABLED: false,
       OUTBOX_BATCH_SIZE: 50,
       OUTBOX_POLL_INTERVAL_MS: 1_000,
