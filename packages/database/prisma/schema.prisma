@@ -312,11 +312,66 @@ model Booking {
   seeker        User            @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
   conversations Conversation[]
   disputes      Dispute[]
+  review        BookingReview?
 
+  // R11 — the target of BookingReview's composite foreign key. A review
+  // repeats the booking's seeker and provider so reputation can be computed
+  // without a join; referencing all three columns makes PostgreSQL, not the
+  // service, guarantee that the repeated ids are the booking's own.
+  @@unique([id, seekerUserId, providerId])
   @@index([deletedAt])
   @@index([providerId, status])
   @@index([requestId])
   @@index([seekerUserId, status])
+}
+
+/// R11 — a seeker's review of the provider of ONE completed booking.
+///
+/// docs/production-readiness/r11/REVIEW_POLICY.md
+///
+/// One row per booking, enforced by the unique index on `bookingId`: a second
+/// submission cannot exist, whatever the service or the screen does. A review
+/// is final. It is never edited or deleted; an administrator may HIDE it, which
+/// stops it counting and keeps the row.
+///
+/// `ProviderProfile.ratingAvg` and `reviewCount` are recomputed from the
+/// PUBLISHED rows of this table inside the transaction that changes one.
+model BookingReview {
+  id               String             @id @default(cuid())
+  bookingId        String             @unique
+  /// The author. Always the booking's seeker (composite foreign key below).
+  seekerUserId     String
+  /// The reviewed provider profile. Always the booking's provider.
+  providerId       String
+  /// 1 to 5, whole stars. Bounded by a CHECK constraint.
+  rating           Int
+  /// Optional. Trimmed; empty is stored as NULL. Bounded by a CHECK constraint.
+  comment          String?
+  state            BookingReviewState @default(PUBLISHED)
+  hiddenAt         DateTime?
+  /// The administrator who last hid it. The audit trail is the full history.
+  hiddenByUserId   String?
+  moderationReason String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  /// RESTRICT, deliberately: a reviewed booking cannot be removed underneath
+  /// its review, and the cascades above Booking (user, provider, request, bid)
+  /// therefore cannot silently erase review history either.
+  booking Booking @relation(fields: [bookingId, seekerUserId, providerId], references: [id, seekerUserId, providerId], onDelete: Restrict)
+
+  // Required by Prisma for the one-to-one composite relation above. The rule
+  // that matters, one review per booking, is the unique index on bookingId.
+  @@unique([bookingId, seekerUserId, providerId])
+  @@index([providerId, state])
+  @@index([seekerUserId, createdAt])
+}
+
+enum BookingReviewState {
+  /// Counts toward the provider's rating.
+  PUBLISHED
+  /// Hidden by an administrator. Kept, and not counted.
+  HIDDEN
 }
 
 model ConversationParticipant {
@@ -730,7 +785,7 @@ model ServiceRequest {
   // lifetime of a single submit attempt; old clients may omit it. The composite
   // unique below makes concurrent/retried creates collapse per seeker while
   // preserving unlimited legacy NULL rows.
-  idempotencyKey     String?
+  idempotencyKey    String?
   // Sprint 7.x — seeker-uploaded photos of the issue (e.g. broken pipe,
   // leaky faucet). Stored as a Postgres `text[]` so the JSON wire shape
   // stays a flat string array. Empty by default; existing rows backfill
@@ -767,11 +822,11 @@ model ServiceRequest {
   category          ServiceCategory?      @relation(fields: [categoryId], references: [id])
   seeker            User                  @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
 
+  @@unique([seekerUserId, idempotencyKey])
   @@index([categoryId])
   @@index([createdAt])
   @@index([seekerUserId, deletedAt])
   @@index([seekerUserId, status])
-  @@unique([seekerUserId, idempotencyKey])
   @@index([status])
   // Sprint 6 — the two access paths of the provider feed.
   //
@@ -1041,6 +1096,10 @@ enum AuditEventType {
   ADMIN_PORTFOLIO_APPROVED
   ADMIN_PORTFOLIO_REJECTED
   PORTFOLIO_CONTENT_UPDATED
+  /// R11 — customer reviews of completed bookings.
+  BOOKING_REVIEW_SUBMITTED
+  ADMIN_REVIEW_HIDDEN
+  ADMIN_REVIEW_RESTORED
 }
 
 enum AddressType {
@@ -2004,6 +2063,8 @@ model MediaAsset {
   retentionJobs        EvidenceRetentionJob[]
   serviceRequest       ServiceRequest?         @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)
 
+  /// R06 — one asset per (request, position); also the request -> assets read.
+  @@unique([serviceRequestId, requestAttachmentPosition])
   /// The retention sweep: what is due for deletion and not yet deleted.
   @@index([deletedAt, retainUntil])
   /// The scan worker queue.
@@ -2011,8 +2072,6 @@ model MediaAsset {
   @@index([ownerUserId, visibility])
   /// The cleanup sweep: prepared uploads that expired without being finalized.
   @@index([verificationCaseId, uploadCompletedAt])
-  /// R06 — one asset per (request, position); also the request -> assets read.
-  @@unique([serviceRequestId, requestAttachmentPosition])
   /// R06 — the sweep for request attachments that were never claimed.
   @@index([purpose, serviceRequestId, uploadExpiresAt])
 }

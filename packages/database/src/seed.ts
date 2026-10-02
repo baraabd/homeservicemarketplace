@@ -37,9 +37,11 @@ interface ProviderProfileSpec {
   id: string;
   displayName: string;
   initials: string;
-  ratingAvg: number;
-  reviewCount: number;
-  completedJobs: number;
+  // R11 — no ratingAvg, reviewCount or completedJobs here. Those columns are
+  // derived from real reviews and real completed bookings, and a seed that
+  // wrote them would put an unearned reputation in front of seekers and into
+  // the earned service-area tier, and would overwrite earned numbers on every
+  // run. A seeded provider starts, honestly, with no reviews.
   verified: boolean;
   topPro: boolean;
   // Phase 6 Step 3 — onboarding fields the available-requests filter
@@ -81,9 +83,6 @@ const PROVIDER_PROFILES: ProviderProfileSpec[] = [
     id: 'pp-omar',
     displayName: 'Omar Al-Khalid',
     initials: 'OK',
-    ratingAvg: 4.9,
-    reviewCount: 312,
-    completedJobs: 540,
     verified: true,
     topPro: true,
     serviceAreaCity: 'Riyadh',
@@ -94,9 +93,6 @@ const PROVIDER_PROFILES: ProviderProfileSpec[] = [
     id: 'pp-khalid',
     displayName: 'Khalid Hassan',
     initials: 'KH',
-    ratingAvg: 4.7,
-    reviewCount: 156,
-    completedJobs: 220,
     verified: true,
     topPro: false,
     serviceAreaCity: 'Riyadh',
@@ -107,9 +103,6 @@ const PROVIDER_PROFILES: ProviderProfileSpec[] = [
     id: 'pp-ali',
     displayName: 'Ali Al-Rashid',
     initials: 'AR',
-    ratingAvg: 4.6,
-    reviewCount: 89,
-    completedJobs: 180,
     verified: true,
     topPro: false,
     serviceAreaCity: 'Aleppo',
@@ -120,9 +113,6 @@ const PROVIDER_PROFILES: ProviderProfileSpec[] = [
     id: 'pp-mohammed',
     displayName: 'Mohammed Al-Zahra',
     initials: 'MZ',
-    ratingAvg: 4.8,
-    reviewCount: 67,
-    completedJobs: 145,
     verified: false,
     topPro: false,
     serviceAreaCity: 'Aleppo',
@@ -133,9 +123,6 @@ const PROVIDER_PROFILES: ProviderProfileSpec[] = [
     id: 'pp-hassan',
     displayName: 'Hassan Mustafa',
     initials: 'HM',
-    ratingAvg: 4.5,
-    reviewCount: 42,
-    completedJobs: 78,
     verified: false,
     topPro: false,
     serviceAreaCity: 'Gothenburg',
@@ -153,6 +140,8 @@ const SYSTEM_ROLES: RoleSpec[] = [
 const PERMISSIONS: PermissionSpec[] = [
   { key: 'portfolio:read', description: 'Read provider portfolio submissions for review' },
   { key: 'portfolio:review', description: 'Approve or reject provider portfolio publication' },
+  { key: 'reviews:read', description: 'Read customer reviews of bookings for moderation' },
+  { key: 'reviews:moderate', description: 'Hide or restore a customer review' },
   { key: 'user:read:self', description: 'Read own user profile' },
   { key: 'user:write:self', description: 'Update own user profile' },
   { key: 'user:read:any', description: 'Read any user profile (admin)' },
@@ -269,9 +258,6 @@ async function upsertProviderProfiles(tx: Prisma.TransactionClient): Promise<voi
       update: {
         displayName: spec.displayName,
         initials: spec.initials,
-        ratingAvg: spec.ratingAvg,
-        reviewCount: spec.reviewCount,
-        completedJobs: spec.completedJobs,
         verified: spec.verified,
         topPro: spec.topPro,
         // Phase 6 Step 3 — overwrite city/country on every seed run so
@@ -296,9 +282,6 @@ async function upsertProviderProfiles(tx: Prisma.TransactionClient): Promise<voi
         id: spec.id,
         displayName: spec.displayName,
         initials: spec.initials,
-        ratingAvg: spec.ratingAvg,
-        reviewCount: spec.reviewCount,
-        completedJobs: spec.completedJobs,
         verified: spec.verified,
         topPro: spec.topPro,
         serviceAreaCity: spec.serviceAreaCity,
