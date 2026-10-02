@@ -310,6 +310,39 @@ describe('OnboardingTaskScreen', () => {
     }
   });
 
+  // ── R08: a task waiting on US is still the provider's to see and revise ──
+  //
+  // Found by the R08 all-field real-service journey: saving a specialty and a
+  // year of experience leaves only our approval outstanding, the server
+  // reports the task WAITING, and the form was removed from under the provider
+  // before they could choose how they travel.
+  const WAITING_HUB = {
+    ...HUB,
+    tasks: [{ ...HUB.tasks[0], status: 'WAITING' }, HUB.tasks[1]],
+  };
+
+  it('keeps the fields of a WAITING task while the application is still editable', async () => {
+    mock.onGet(HUB_URL).reply(200, WAITING_HUB);
+    mock.onGet(DRAFT_URL).reply(200, DRAFT);
+    renderTask('BASICS_IDENTITY');
+
+    await screen.findByTestId('task-screen-BASICS_IDENTITY');
+    expect(await screen.findByTestId('basics-task')).toBeInTheDocument();
+    // The reason it is waiting is still said, above the fields.
+    expect(screen.getByTestId('task-screen-blocked')).toBeInTheDocument();
+  });
+
+  it('shows only the explanation for a WAITING task once the application is submitted', async () => {
+    mock.onGet(HUB_URL).reply(200, WAITING_HUB);
+    mock.onGet(DRAFT_URL).reply(200, { ...DRAFT, state: 'SUBMITTED', editable: false });
+    renderTask('BASICS_IDENTITY');
+
+    await screen.findByTestId('task-screen-BASICS_IDENTITY');
+    expect(await screen.findByTestId('task-screen-blocked')).toBeInTheDocument();
+    await waitFor(() => expect(mock.history.get.some((r) => r.url === DRAFT_URL)).toBe(true));
+    expect(screen.queryByTestId('basics-task')).not.toBeInTheDocument();
+  });
+
   it('renders Arabic with an RTL direction', async () => {
     mock.onGet(HUB_URL).reply(200, HUB);
     renderTask('BASICS_IDENTITY', 'ar');

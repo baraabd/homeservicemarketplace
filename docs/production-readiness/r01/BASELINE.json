@@ -195,9 +195,9 @@
     {
       "id": "R08",
       "owner": "baraabd",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "dependencies": ["R04", "R05"],
-      "finding": "V2 code and sampled durability tests exist; every required field and the deployed bundle flag without browser overrides have not been accepted.",
+      "finding": "Implemented on feat/r08-provider-v2-all-field-authority, pending merge: every provider-settable V2 field is proved through UI write, server acknowledgement, navigation, reload, fresh login and PostgreSQL on the build-flagged bundle with no browser override; a task waiting on platform approval no longer loses its form while the application is still editable. See docs/production-readiness/r08/FIELD_AUTHORITY_MATRIX.md and docs/production-readiness/r08/IMPLEMENTATION.md.",
       "action": "Create an all-field authority/lifecycle matrix; repair demonstrated hydration/acknowledgement/version defects and run the actual build-time flag path.",
       "requiredEvidence": "Each required field: write, server acknowledgement, navigation, reload, relogin, DB read; stale/offline/two-tab/session-loss negatives; no work authorization inferred from registration.",
       "source": [
@@ -208,7 +208,9 @@
       "tests": [
         "apps/api/test/integration/phase4-persistence-durability.integration.spec.ts",
         "apps/web/e2e/provider-onboarding-v2-real-api.spec.ts",
-        "apps/web/e2e/provider-onboarding-repairs.real-api.spec.ts"
+        "apps/web/e2e/provider-onboarding-repairs.real-api.spec.ts",
+        "apps/web/e2e/r08-provider-v2-all-field-authority.real-api.spec.ts",
+        "apps/web/src/app/features/provider-onboarding-v2/components/OnboardingTaskScreen.test.tsx"
       ]
     },
     {

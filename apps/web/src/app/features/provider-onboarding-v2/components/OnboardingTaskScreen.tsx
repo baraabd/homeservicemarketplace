@@ -238,8 +238,21 @@ export function OnboardingTaskScreen() {
    * question and still the server's: each body reads the draft's own
    * `editable`, which is false once the application is in, and renders
    * read-only then. This only decides whether the body is drawn.
+   *
+   * R08 — the same holds for a task that is WAITING while the application is
+   * still the provider's. Choosing a specialty and a year of experience leaves
+   * only our approval outstanding, so the server reports SERVICES_EXPERIENCE
+   * as WAITING the moment the year is acknowledged. Dropping the body then
+   * removed the form from under the provider mid-task: the transport choices
+   * on the same screen became unreachable, and a reload showed none of the
+   * answers already saved. The explanation is still drawn above the body, and
+   * a SUBMITTED application (WAITING with `editable` false) keeps its
+   * explanation-only screen.
    */
-  const showsBody = actionable || task.status === 'COMPLETE';
+  const showsBody =
+    actionable ||
+    task.status === 'COMPLETE' ||
+    (task.status === 'WAITING' && draft.data?.editable === true);
   const experienceFormUnavailable =
     screenKey === 'experience' &&
     showsBody &&
