@@ -216,19 +216,27 @@
     {
       "id": "R09",
       "owner": "baraabd",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "dependencies": ["R07", "R08"],
-      "finding": "Coordinate validation, supported-market and map work exists. Actual provider policy, device gestures and representative query-plan acceptance are not certified.",
+      "finding": "Implemented on feat/r09-work-area-geo-authority, pending merge: a starting point is stored only as a whole pair and only inside the provider's market envelope on both write routes, a change of market clears a point the new market does not contain, matching is decided on the unrounded distance so the announcement agrees with the feed, detail and bid, and the map opens on the chosen market. See docs/production-readiness/r09/GEO_AUTHORITY_MATRIX.md and docs/production-readiness/r09/IMPLEMENTATION.md.",
       "action": "Use the existing geographic model; validate provider policy, consent-free manual fallback, market boundaries, DB persistence and matching-query plans.",
       "requiredEvidence": "Mobile touch, keyboard, denied permission, provider outage, low accuracy/out-of-market coordinates, saved radius boundaries and realistic query plans; no live GPS added.",
       "source": [
         "apps/api/src/modules/provider/onboarding/service-area/radius-policy.ts",
         "apps/api/src/modules/provider/onboarding/market/supported-markets.service.ts",
+        "apps/api/src/modules/provider/onboarding/service-area/work-area-point.policy.ts",
+        "apps/api/src/shared/geo/service-area.ts",
         "scripts/perf/geo-query-plan.mjs"
       ],
       "tests": [
         "apps/api/src/modules/provider/onboarding/service-area/radius-policy.spec.ts",
-        "apps/web/src/app/features/provider-onboarding-v2/service-area-position.production.test.ts"
+        "apps/api/src/modules/provider/onboarding/service-area/work-area-point.policy.spec.ts",
+        "apps/api/src/shared/geo/service-area.spec.ts",
+        "apps/api/test/integration/r09-geo-authority.integration.spec.ts",
+        "apps/api/test/integration/r09-geo-matching.integration.spec.ts",
+        "apps/web/src/app/features/provider-onboarding-v2/service-area-position.production.test.ts",
+        "apps/web/src/app/features/provider-onboarding-v2/components/ServiceAreaTaskScreen.market-bounds.test.tsx",
+        "apps/web/e2e/r09-work-area-geo-authority.real-api.spec.ts"
       ]
     },
     {
@@ -265,7 +273,7 @@
     {
       "path": "packages/contracts",
       "role": "contracts",
-      "serialOrder": ["R06", "R07", "R08"]
+      "serialOrder": ["R06", "R07", "R08", "R09"]
     },
     {
       "path": "apps/api/src/config/env.schema.ts",

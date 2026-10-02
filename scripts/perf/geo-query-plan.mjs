@@ -10,7 +10,13 @@
 // comparison is legible: you can read exactly what changed.
 //
 // Usage:
-//   node scripts/perf/geo-query-plan.mjs [--rows 50000] [--runs 30] [--keep]
+//   node scripts/perf/geo-query-plan.mjs [--rows 50000] [--runs 30] [--keep] [--check]
+//
+// R09 — `--check` turns the report into a gate: the two production predicates
+// must be served by the indexes that exist for them, on a table large enough
+// that the planner has a real choice. It asserts WHICH index a plan uses and
+// that the table is not scanned, never a duration: timings depend on the
+// machine, a plan does not.
 //
 // Requires DATABASE_URL (or the local Compose default). Seeds into a
 // dedicated schema and drops it afterwards unless --keep, so it never touches
@@ -29,6 +35,7 @@ const flag = (name, fallback) => {
 const ROWS = flag('rows', 50_000);
 const RUNS = flag('runs', 30);
 const KEEP = args.includes('--keep');
+const CHECK = args.includes('--check');
 
 const SCHEMA = 'perf_sprint06';
 
@@ -188,16 +195,26 @@ async function main() {
     ORDER BY "createdAt" DESC, "id" DESC
     LIMIT 26`; // over-fetched by 4/pi, as the repository does
 
+  // [label, sql, indexes the plan must use]. None for the BEFORE query, which
+  // exists to show what the promoted columns replaced.
   const cases = [
-    ['BEFORE  json-path city equality', before],
-    ['AFTER   promoted-column city equality', afterCity],
-    ['AFTER   bounding box + city fallback', afterRadius],
+    ['BEFORE  json-path city equality', before, []],
+    ['AFTER   promoted-column city equality', afterCity, ['sr_city_idx']],
+    ['AFTER   bounding box + city fallback', afterRadius, ['sr_geo_idx', 'sr_city_idx']],
   ];
 
   const results = [];
-  for (const [label, sql] of cases) {
+  const failures = [];
+  for (const [label, sql, mustUse] of cases) {
     console.log(`\n${'='.repeat(78)}\n${label}\n${'='.repeat(78)}`);
-    console.log(await explain(sql));
+    const plan = await explain(sql);
+    console.log(plan);
+    for (const index of mustUse) {
+      if (!plan.includes(index)) failures.push(`${label}: the plan does not use ${index}`);
+    }
+    if (mustUse.length > 0 && plan.includes('Seq Scan on "ServiceRequest"')) {
+      failures.push(`${label}: the plan scans the whole table`);
+    }
     const t = await timeIt(label, sql);
     results.push(t);
     console.log(
@@ -218,6 +235,21 @@ async function main() {
   const [b, c] = results;
   if (b && c && c.p50 > 0) {
     console.log(`\nCity-equality path: ${(b.p50 / c.p50).toFixed(1)}x faster at p50`);
+  }
+
+  if (CHECK) {
+    if (ROWS < 10_000) {
+      failures.push(
+        `--check needs a representative table; ${ROWS} rows is too few to mean anything`,
+      );
+    }
+    console.log(`\n${'='.repeat(78)}\nPLAN CHECK\n${'='.repeat(78)}`);
+    if (failures.length === 0) {
+      console.log('PASS  both production predicates are served by their indexes.');
+    } else {
+      for (const failure of failures) console.error(`FAIL  ${failure}`);
+      process.exitCode = 1;
+    }
   }
 
   if (!KEEP) {
