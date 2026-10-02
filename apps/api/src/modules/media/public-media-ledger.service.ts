@@ -126,6 +126,8 @@ export class PublicMediaLedgerService {
         storageKey: input.storageKey,
         ownerUserId: input.userId,
         visibility: 'PUBLIC',
+        // R06 — request attachments have their own finalize and claim path.
+        purpose: null,
         uploadCompletedAt: null,
         deletedAt: null,
       },
@@ -159,6 +161,8 @@ export class PublicMediaLedgerService {
         storageKey: input.storageKey,
         ownerUserId: input.userId,
         visibility: 'PUBLIC',
+        // R06 — a request attachment is never retired through this path.
+        purpose: null,
         deletedAt: null,
       },
       data: { retainUntil: now, deletionReason: input.reason },

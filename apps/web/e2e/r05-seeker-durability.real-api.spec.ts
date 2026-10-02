@@ -3,15 +3,7 @@ import { Client } from 'pg';
 import { expect, test, type BrowserContext } from '@playwright/test';
 
 import { seedLanguage } from './fixtures';
-import {
-  api,
-  loginViaUi,
-  newJar,
-  otpFor,
-  REAL_API,
-  type Account,
-  type Jar,
-} from './real-api';
+import { api, loginViaUi, newJar, otpFor, REAL_API, type Account, type Jar } from './real-api';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:4173';
 async function registerSeeker(): Promise<Account> {
@@ -82,13 +74,12 @@ test.describe('R05 seeker durability — real browser, API and Postgres', () => 
     await fullName.fill('براء اختبار R05');
     await page.getByLabel('Phone Number').fill('+963 944 000 000');
     await page.getByLabel('City').fill('حلب');
-    await page.getByPlaceholder('Write a short bio…').fill(
-      'ملف عميل حقيقي محفوظ من Chromium عبر API وقاعدة PostgreSQL.',
-    );
+    await page
+      .getByPlaceholder('Write a short bio…')
+      .fill('ملف عميل حقيقي محفوظ من Chromium عبر API وقاعدة PostgreSQL.');
     const profileResponse = page.waitForResponse(
       (response) =>
-        response.url() === `${REAL_API}/v1/me/profile` &&
-        response.request().method() === 'PATCH',
+        response.url() === `${REAL_API}/v1/me/profile` && response.request().method() === 'PATCH',
     );
     await page.getByRole('button', { name: 'Save Changes' }).click();
     expect((await profileResponse).status()).toBe(200);
@@ -114,16 +105,13 @@ test.describe('R05 seeker durability — real browser, API and Postgres', () => 
     // animated sub-page overlay and contains the same "Saved Addresses" copy.
     // Address the heading element itself so strict mode verifies the opened
     // screen instead of matching both the menu button and the page title.
-    await expect(
-      page.locator('p').filter({ hasText: /^Saved Addresses$/ }),
-    ).toBeVisible();
+    await expect(page.locator('p').filter({ hasText: /^Saved Addresses$/ })).toBeVisible();
     await page.getByRole('button', { name: 'Add Address', exact: true }).first().click();
     await page.getByPlaceholder('Label (e.g. Home)').fill('R05 Home');
     await page.getByPlaceholder('Full address').fill('10 Old Street, Aleppo, Syria');
     const addressCreate = page.waitForResponse(
       (response) =>
-        response.url() === `${REAL_API}/v1/me/addresses` &&
-        response.request().method() === 'POST',
+        response.url() === `${REAL_API}/v1/me/addresses` && response.request().method() === 'POST',
     );
     await page.getByRole('button', { name: 'Save Address', exact: true }).click();
     expect((await addressCreate).status()).toBeLessThan(300);
@@ -177,7 +165,7 @@ test.describe('R05 seeker durability — real browser, API and Postgres', () => 
         categoryId: null,
         customServiceText,
         description: 'R05 historical snapshot proof',
-        mediaUrls: [],
+        mediaAssetIds: [],
         scheduleType: 'ASAP',
         scheduledAt: null,
         addressId: address!.id,
@@ -286,7 +274,7 @@ test.describe('R05 seeker durability — real browser, API and Postgres', () => 
           categoryId,
           customServiceText: null,
           description: null,
-          mediaUrls: [],
+          mediaAssetIds: [],
           scheduleType: 'ASAP',
           scheduledAt: null,
           addressId: addresses.body.id,
@@ -324,7 +312,9 @@ test.describe('R05 seeker durability — real browser, API and Postgres', () => 
       });
     } finally {
       if (categoryId) {
-        await client.query('DELETE FROM "ServiceCategory" WHERE "id" = $1', [categoryId]).catch(() => undefined);
+        await client
+          .query('DELETE FROM "ServiceCategory" WHERE "id" = $1', [categoryId])
+          .catch(() => undefined);
       }
       await client.end();
     }

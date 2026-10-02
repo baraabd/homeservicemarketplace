@@ -53,6 +53,12 @@ import {
 import { PortfolioMediaService } from './portfolio-media.service';
 import { servePortfolioMedia } from './serve-portfolio-media';
 import { assertPublishableContentType } from '../provider/portfolio/portfolio-policy';
+import { FinalizeRequestAttachmentsDto } from './dto/finalize-request-attachments.dto';
+import {
+  FinalizedRequestAttachment,
+  PresignedRequestAttachment,
+  RequestMediaService,
+} from './request-media.service';
 
 // Sprint 7.x — media upload pipeline.
 //
@@ -74,8 +80,9 @@ import { assertPublishableContentType } from '../provider/portfolio/portfolio-po
 //     hit S3 directly and never reach this route.)
 //
 //   GET  /v1/media/files/:key  (public)
-//     Public read of the uploaded blob. ServiceRequest.mediaUrls[]
-//     stores fileUrl values that resolve here for the local backend.
+//     Public read of the uploaded blob. ServiceRequest.mediaUrls[] is a
+//     server-written projection of claimed MediaAsset rows (R06); its
+//     values resolve here for the local backend.
 //     S3 URLs resolve to S3 directly. Both backends produce URLs the
 //     provider's UI can drop into an <img> tag without any extra
 //     header / token handshake.
@@ -94,6 +101,7 @@ export class MediaController {
     private readonly config: AppConfigService,
     private readonly ledger: PublicMediaLedgerService,
     private readonly portfolioMedia: PortfolioMediaService,
+    private readonly requestMedia: RequestMediaService,
   ) {}
 
   // ─── Presign batch ───────────────────────────────────────────────────────
@@ -104,11 +112,10 @@ export class MediaController {
   async presignUpload(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: PresignUploadRequestDto,
-  ): Promise<{ items: PresignedUpload[] }> {
+  ): Promise<{ items: Array<PresignedUpload | PresignedRequestAttachment> }> {
     // Synthesise a server-side key per item. We never use the
     // caller's filename — the extension is derived from the
-    // validated contentType. Path layout: `requests/<userId>/<uuid>.<ext>`
-    // so a future cleanup job can scope by user.
+    // validated contentType.
     const items = await Promise.all(
       body.items.map(async (item) => {
         const ext = extensionForContentType(item.contentType as ContentType);
@@ -125,9 +132,9 @@ export class MediaController {
         // and a raw user id in that URL publishes an internal identifier that
         // correlates the provider across every other surface.
         //
-        // Request media keeps the existing layout — those URLs are shown only
-        // to the seeker and the bidding providers, and changing the scheme
-        // would orphan every URL already stored in ServiceRequest.mediaUrls[].
+        // Request media is reserved by RequestMediaService (R06), which mints
+        // its key under an opaque owner ref too. URLs already stored on older
+        // requests keep resolving: only newly minted keys use the new layout.
         if (body.purpose === 'portfolio') {
           try {
             assertPublishableContentType(item.contentType);
@@ -204,9 +211,10 @@ export class MediaController {
             sizeBytes: item.sizeBytes,
           });
         }
-        const key = `requests/${user.id}/${randomUUID()}.${ext}`;
-        return this.storage.presignUpload({
-          key,
+        // R06 — request attachments are reserved like every other public
+        // upload. The response carries the asset id; request creation
+        // accepts asset ids only and never a URL.
+        return this.requestMedia.reserve(user.id, {
           contentType: item.contentType as ContentType,
           sizeBytes: item.sizeBytes,
         });
@@ -214,6 +222,22 @@ export class MediaController {
     );
     this.log.log({ msg: 'media.presigned', userId: user.id, count: items.length });
     return { items };
+  }
+
+  // ─── Request attachment finalize (R06) ──────────────────────────────────
+  //
+  // Called after the browser PUTs the bytes. The server reads each stored
+  // object back and verifies it against its reservation. Only a finalized
+  // asset can be claimed by `POST /v1/me/requests`.
+
+  @UseGuards(JwtAuthGuard, CsrfGuard)
+  @Post('request-attachments/finalize')
+  @HttpCode(HttpStatus.OK)
+  async finalizeRequestAttachments(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: FinalizeRequestAttachmentsDto,
+  ): Promise<{ items: FinalizedRequestAttachment[] }> {
+    return { items: await this.requestMedia.finalize(user.id, body.assetIds) };
   }
 
   // ─── Local-disk PUT acceptor ────────────────────────────────────────────

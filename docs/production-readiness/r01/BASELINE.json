@@ -70,21 +70,14 @@
       "finding": "The baseline is green, but develop reports protected=false, no rulesets were returned, and the integration cannot read administration endpoints. Existing governance validates repository files only.",
       "action": "Implement final-head evidence rejection, maintain this registry, and obtain administrator-authorized protection read-back before closing R01.",
       "requiredEvidence": "Final-head CI, CodeQL and governance tests plus actual enforced protection settings; no draft, missing, pending or expired evidence.",
-      "source": [
-        ".github/scripts/production-governance.mjs",
-        ".github/CODEOWNERS"
-      ],
-      "tests": [
-        ".github/scripts/production-governance.test.mjs"
-      ]
+      "source": [".github/scripts/production-governance.mjs", ".github/CODEOWNERS"],
+      "tests": [".github/scripts/production-governance.test.mjs"]
     },
     {
       "id": "R02",
       "owner": "baraabd",
       "status": "BLOCKED",
-      "dependencies": [
-        "R01"
-      ],
+      "dependencies": ["R01"],
       "finding": "Node is pinned to 20.18.1 locally but floating 20 in CI/Docker. Clean-start repairs exist and must be retained.",
       "action": "Pin a currently supported exact Node release across engines, Volta, nvm, CI, Docker and devcontainer; preserve bootstrap and explicit Vite config.",
       "requiredEvidence": "Clean frozen install, dev/build/production on Windows and Linux; image boot, occupied-port and stale-Vite failures; measured interactive UI readiness.",
@@ -104,10 +97,7 @@
       "id": "R03",
       "owner": "baraabd",
       "status": "BLOCKED",
-      "dependencies": [
-        "R01",
-        "R02"
-      ],
+      "dependencies": ["R01", "R02"],
       "finding": "Merged S03 adds hardened configuration and a preflight, but no named hosted environment, TLS origin, secret manager, real SMTP or bucket policy has been accepted.",
       "action": "Connect the existing preflight to an explicitly authorized deployment; obtain environment/resource inputs without selecting a vendor, country, paid resource or DNS change.",
       "requiredEvidence": "Actual designated staging evidence for SMTP inbox delivery, storage allow/deny, scanner, TLS, cookies/CORS, liveness/readiness and application/migration identities.",
@@ -125,10 +115,7 @@
       "id": "R04",
       "owner": "baraabd",
       "status": "BLOCKED",
-      "dependencies": [
-        "R02",
-        "R03"
-      ],
+      "dependencies": ["R02", "R03"],
       "finding": "Authentication and stale-session/returnTo repairs exist. Full hosted UI signup, real inbox verification/recovery and account-switch privacy certification remain missing.",
       "action": "Retain current session-race protections; execute and close missing signup/recovery/logout/refresh/CSRF/account-switch cases against the accepted environment.",
       "requiredEvidence": "Real UI and test inbox; expired and replayed tokens, late responses, multi-tab changes, offline logout distinction and no prior-account cache leakage.",
@@ -147,9 +134,7 @@
       "id": "R05",
       "owner": "baraabd",
       "status": "BLOCKED",
-      "dependencies": [
-        "R04"
-      ],
+      "dependencies": ["R04"],
       "finding": "Profile, address and catalog APIs and ownership tests exist; field-by-field UI persistence and historical address immutability are not certified.",
       "action": "Trace each field/action through its existing contract and persistence; prove address ownership, default changes, deletion and historical request/booking snapshots.",
       "requiredEvidence": "Two-user authorization tests; retained booking address after profile edits; long Arabic input, retired/custom categories and reload/relogin persistence.",
@@ -166,21 +151,22 @@
     {
       "id": "R06",
       "owner": "baraabd",
-      "status": "BLOCKED",
-      "dependencies": [
-        "R03",
-        "R04"
-      ],
-      "finding": "Confirmed server gap: request presign returns no MediaAsset reservation, while RequestsService.create stores input.mediaUrls directly. Client upload hardening does not establish ownership.",
+      "status": "IN_PROGRESS",
+      "dependencies": ["R03", "R04"],
+      "finding": "Implemented on feat/r06-request-media-authority, pending merge: request presign now writes an owner/purpose MediaAsset reservation, a finalize step verifies the stored object, and RequestsService.create claims verified assets inside its transaction. URLs are no longer accepted. See docs/production-readiness/r06/IMPLEMENTATION.md.",
       "action": "Implement owner/purpose reservations, received-byte validation, immutable finalized assets and atomic claim with request creation; coordinate the schema/contracts reservation.",
       "requiredEvidence": "Real Postgres/storage: foreign and external URLs, partial upload, expired signature, overwrite after scanning, concurrent claim, rollback and orphan cleanup that preserves valid attachments.",
       "source": [
         "apps/api/src/modules/media/media.controller.ts",
         "apps/api/src/modules/requests/requests.service.ts",
-        "packages/database/prisma/schema.prisma"
+        "packages/database/prisma/schema.prisma",
+        "apps/api/src/modules/media/request-media.service.ts"
       ],
       "tests": [
         "apps/api/src/modules/requests/requests.service.spec.ts",
+        "apps/api/src/modules/media/request-media.service.spec.ts",
+        "apps/api/test/integration/r06-request-media.integration.spec.ts",
+        "apps/web/e2e/r06-request-media.real-api.spec.ts",
         "apps/web/src/lib/request-media/upload-policy.test.ts"
       ]
     },
@@ -188,10 +174,7 @@
       "id": "R07",
       "owner": "baraabd",
       "status": "BLOCKED",
-      "dependencies": [
-        "R05",
-        "R06"
-      ],
+      "dependencies": ["R05", "R06"],
       "finding": "Request creation already writes its row, event and outbox within the unit of work. End-to-end attachment integrity and matching-provider delivery remain unaccepted.",
       "action": "Preserve existing transaction/outbox semantics and supported edit/cancel/reopen contract; implement only demonstrated recovery and duplicate-submission gaps.",
       "requiredEvidence": "Real seeker-to-matching-provider journey, wrong-provider denial, repeated submit, past time, cancellation race and worker crash after commit, with consistent DB and relogin UI.",
@@ -210,10 +193,7 @@
       "id": "R08",
       "owner": "baraabd",
       "status": "BLOCKED",
-      "dependencies": [
-        "R04",
-        "R05"
-      ],
+      "dependencies": ["R04", "R05"],
       "finding": "V2 code and sampled durability tests exist; every required field and the deployed bundle flag without browser overrides have not been accepted.",
       "action": "Create an all-field authority/lifecycle matrix; repair demonstrated hydration/acknowledgement/version defects and run the actual build-time flag path.",
       "requiredEvidence": "Each required field: write, server acknowledgement, navigation, reload, relogin, DB read; stale/offline/two-tab/session-loss negatives; no work authorization inferred from registration.",
@@ -232,10 +212,7 @@
       "id": "R09",
       "owner": "baraabd",
       "status": "BLOCKED",
-      "dependencies": [
-        "R07",
-        "R08"
-      ],
+      "dependencies": ["R07", "R08"],
       "finding": "Coordinate validation, supported-market and map work exists. Actual provider policy, device gestures and representative query-plan acceptance are not certified.",
       "action": "Use the existing geographic model; validate provider policy, consent-free manual fallback, market boundaries, DB persistence and matching-query plans.",
       "requiredEvidence": "Mobile touch, keyboard, denied permission, provider outage, low accuracy/out-of-market coordinates, saved radius boundaries and realistic query plans; no live GPS added.",
@@ -253,9 +230,7 @@
       "id": "R10",
       "owner": "baraabd",
       "status": "BLOCKED",
-      "dependencies": [
-        "R08"
-      ],
+      "dependencies": ["R08"],
       "finding": "Weekly replacement/version and schedule normalization exist. Full persisted schedule summary, concurrent-writer and actual-appointment DST acceptance remain outstanding.",
       "action": "Preserve versioned weekly replacement, adjacent-interval semantics and explicit timezone behavior; do not silently reinterpret stored hours or invent defaults.",
       "requiredEvidence": "Overlap/adjacency/empty week/timezone/two-writer tests plus relogin DB equality; document actual appointment DST policy separately from weekly opening hours.",
@@ -275,79 +250,52 @@
     {
       "path": "packages/database/prisma/schema.prisma",
       "role": "migrations",
-      "serialOrder": [
-        "R06"
-      ]
+      "serialOrder": ["R06"]
     },
     {
       "path": "packages/database/prisma/migrations",
       "role": "migrations",
-      "serialOrder": [
-        "R06"
-      ]
+      "serialOrder": ["R06"]
     },
     {
       "path": "packages/contracts",
       "role": "contracts",
-      "serialOrder": [
-        "R06",
-        "R07",
-        "R08"
-      ]
+      "serialOrder": ["R06", "R07", "R08"]
     },
     {
       "path": "apps/api/src/config/env.schema.ts",
       "role": "operations",
-      "serialOrder": [
-        "R03",
-        "R04",
-        "R06"
-      ]
+      "serialOrder": ["R03", "R04", "R06"]
     },
     {
       "path": "apps/api/src/app.module.ts",
       "role": "integration",
-      "serialOrder": [
-        "R03",
-        "R06"
-      ]
+      "serialOrder": ["R03", "R06"]
     },
     {
       "path": "apps/web/src/app/routes.ts",
       "role": "integration",
-      "serialOrder": [
-        "R08"
-      ]
+      "serialOrder": ["R08"]
     },
     {
       "path": ".github/workflows/production-governance.yml",
       "role": "integration",
-      "serialOrder": [
-        "R01",
-        "R02"
-      ]
+      "serialOrder": ["R01", "R02"]
     },
     {
       "path": ".github/workflows/ci.yml",
       "role": "integration",
-      "serialOrder": [
-        "R02",
-        "R03"
-      ]
+      "serialOrder": ["R02", "R03"]
     },
     {
       "path": "pnpm-lock.yaml",
       "role": "integration",
-      "serialOrder": [
-        "R02"
-      ]
+      "serialOrder": ["R02"]
     },
     {
       "path": "package.json",
       "role": "integration",
-      "serialOrder": [
-        "R02"
-      ]
+      "serialOrder": ["R02"]
     }
   ],
   "reservationPolicy": "Serial order is not simultaneous ownership. Record exact shared paths, handoff and coordinating PR before the next author edits. No direct develop writes, automatic merges or protection changes. CODEOWNERS and this file are not enforced GitHub locks.",

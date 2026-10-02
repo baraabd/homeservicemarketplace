@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
 import { RequestsController } from './requests.controller';
 import { RequestsService } from './requests.service';
+import { RequestMediaModule } from '../media/request-media.module';
 
 // Service-request module (Sprint 1, slice 3). The repositories are
 // provided globally by PersistenceModule and TransactionRunner by
@@ -15,7 +16,7 @@ import { RequestsService } from './requests.service';
 // side lives in ./outbox (RequestOutboxModule), wired to the worker by
 // AppModule. OutboxRepository comes from the @Global OutboxModule.
 @Module({
-  imports: [AuthenticationModule],
+  imports: [AuthenticationModule, RequestMediaModule],
   controllers: [RequestsController],
   providers: [RequestsService],
   exports: [RequestsService],

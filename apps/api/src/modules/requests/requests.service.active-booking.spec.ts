@@ -133,6 +133,7 @@ function makeService(rows: ServiceRequestWithCategory[]) {
     // OutboxRepository instead of the provider repo / notifications /
     // realtime trio it used to drive inline.
     { enqueue: jest.fn().mockResolvedValue(null) } as unknown as OutboxRepository,
+    { resolveClaimable: jest.fn().mockResolvedValue([]), claim: jest.fn() } as never,
   );
 }
 

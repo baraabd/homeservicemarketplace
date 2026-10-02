@@ -15,6 +15,7 @@ import type { ServiceRequestEventRepository } from '../../infrastructure/persist
 import type { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
 import { RequestsService } from './requests.service';
+import type { RequestMediaService } from '../media/request-media.service';
 import { OutboxRepository } from '../../infrastructure/outbox/outbox.repository';
 import type { PrismaTx } from '@homeservicemarketplace/database';
 
@@ -119,6 +120,8 @@ interface Mocks {
   // The recipient resolution, notification writes, and realtime publishes
   // moved to RequestAvailable*Handler and are tested there.
   outbox: { enqueue: jest.Mock };
+  // R06 — the attachment authority, called inside the creation transaction.
+  requestMedia: { resolveClaimable: jest.Mock; claim: jest.Mock };
 }
 
 function makeMocks(over: Partial<Mocks> = {}): Mocks {
@@ -148,6 +151,11 @@ function makeMocks(over: Partial<Mocks> = {}): Mocks {
       enqueue: jest.fn().mockResolvedValue({ id: 'outbox-1' }),
       ...(over.outbox ?? {}),
     },
+    requestMedia: {
+      resolveClaimable: jest.fn().mockResolvedValue([]),
+      claim: jest.fn().mockResolvedValue(undefined),
+      ...(over.requestMedia ?? {}),
+    },
   };
 }
 
@@ -161,6 +169,7 @@ function makeService(m: Mocks) {
     // Sprint 6 — the service enqueues an outbox event instead of resolving
     // recipients and writing notifications inline.
     m.outbox as unknown as OutboxRepository,
+    m.requestMedia as unknown as RequestMediaService,
   );
 }
 
@@ -678,5 +687,93 @@ describe('RequestsService', () => {
         } as never),
       ).rejects.toThrow(/outbox down/);
     });
+  });
+});
+
+describe('RequestsService — create with attachments (R06)', () => {
+  const body = {
+    categoryId: 'cat-1',
+    scheduleType: 'ASAP' as const,
+    addressId: 'addr-1',
+  };
+
+  it('derives mediaUrls from the claimed assets, never from the body', async () => {
+    const m = makeMocks({
+      requestMedia: {
+        resolveClaimable: jest.fn().mockResolvedValue([
+          { id: 'asset-b', fileUrl: 'https://media.test/requests/ref/b.jpg' },
+          { id: 'asset-a', fileUrl: 'https://media.test/requests/ref/a.jpg' },
+        ]),
+        claim: jest.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    await makeService(m).create('user-1', { ...body, mediaAssetIds: ['asset-b', 'asset-a'] });
+
+    expect(m.requestMedia.resolveClaimable).toHaveBeenCalledWith(TX_SENTINEL, 'user-1', [
+      'asset-b',
+      'asset-a',
+    ]);
+    expect(m.requests.create.mock.calls[0][0].mediaUrls).toEqual([
+      'https://media.test/requests/ref/b.jpg',
+      'https://media.test/requests/ref/a.jpg',
+    ]);
+  });
+
+  it('claims with the seeker from the session and the new request id, in the same transaction', async () => {
+    const m = makeMocks();
+    await makeService(m).create('user-1', { ...body, mediaAssetIds: ['asset-a'] });
+
+    expect(m.requestMedia.claim).toHaveBeenCalledWith(TX_SENTINEL, {
+      userId: 'user-1',
+      requestId: 'req-1',
+      assetIds: ['asset-a'],
+    });
+    // Insert, then claim, then the event and the announcement.
+    const order = [
+      m.requests.create.mock.invocationCallOrder[0],
+      m.requestMedia.claim.mock.invocationCallOrder[0],
+      m.events.create.mock.invocationCallOrder[0],
+      m.outbox.enqueue.mock.invocationCallOrder[0],
+    ];
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('creates nothing when an attachment cannot be resolved', async () => {
+    const refusal = Object.assign(new Error('unavailable'), { code: 'CONFLICT', status: 409 });
+    const m = makeMocks({
+      requestMedia: { resolveClaimable: jest.fn().mockRejectedValue(refusal), claim: jest.fn() },
+    });
+
+    await expect(
+      makeService(m).create('user-1', { ...body, mediaAssetIds: ['someone-elses'] }),
+    ).rejects.toBe(refusal);
+    expect(m.requests.create).not.toHaveBeenCalled();
+    expect(m.outbox.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('announces nothing when the claim loses a race', async () => {
+    const refusal = Object.assign(new Error('lost'), { code: 'CONFLICT', status: 409 });
+    const m = makeMocks({
+      requestMedia: {
+        resolveClaimable: jest.fn().mockResolvedValue([{ id: 'asset-a', fileUrl: 'u' }]),
+        claim: jest.fn().mockRejectedValue(refusal),
+      },
+    });
+
+    await expect(
+      makeService(m).create('user-1', { ...body, mediaAssetIds: ['asset-a'] }),
+    ).rejects.toBe(refusal);
+    // The throw leaves the transaction callback, which is what rolls the insert
+    // back. Real rollback is proved in the R06 integration suite.
+    expect(m.events.create).not.toHaveBeenCalled();
+    expect(m.outbox.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('a request without media claims nothing and stores an empty list', async () => {
+    const m = makeMocks();
+    await makeService(m).create('user-1', body);
+    expect(m.requestMedia.resolveClaimable).toHaveBeenCalledWith(TX_SENTINEL, 'user-1', []);
+    expect(m.requests.create.mock.calls[0][0].mediaUrls).toEqual([]);
   });
 });

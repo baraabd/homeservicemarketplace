@@ -370,6 +370,10 @@ export function JobWizardModal({
   const handleFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
     if (!list || list.length === 0) return;
+    // Snapshot NOW. The FileList is live: resetting the input below empties
+    // it, and React may run the updater after that reset when other state
+    // updates are pending, which silently dropped the selected files.
+    const selected = Array.from(list);
     setUploads((prev) => {
       const remaining = Math.max(0, MAX_MEDIA_ITEMS - prev.length);
       if (remaining === 0) {
@@ -383,14 +387,14 @@ export function JobWizardModal({
       // Truncate to the remaining slots and warn when the picked batch
       // would have exceeded the cap, so the user understands why not
       // every selected file appeared.
-      if (list.length > remaining) {
+      if (selected.length > remaining) {
         toast.warning(
           lang === 'ar'
             ? `الحد الأقصى ${MAX_MEDIA_ITEMS} ملفات.`
             : `You can attach up to ${MAX_MEDIA_ITEMS} files.`,
         );
       }
-      const picked = Array.from(list).slice(0, remaining).map(makeMediaItem);
+      const picked = selected.slice(0, remaining).map(makeMediaItem);
       return [...prev, ...picked];
     });
     // Reset the input so picking the same file twice still triggers
@@ -617,16 +621,18 @@ export function JobWizardModal({
     // the request. Pipeline:
     //   1. POST /v1/media/presigned-url with one entry per File
     //   2. PUT each File in parallel to its returned uploadUrl
-    //   3. Pass the resulting fileUrls into createServiceRequest
-    //      as `mediaUrls`
+    //   3. POST /v1/media/request-attachments/finalize so the server
+    //      verifies what was stored
+    //   4. Pass the confirmed asset ids into createServiceRequest as
+    //      `mediaAssetIds` (R06: the API accepts ids, never URLs)
     // If ANY upload fails the whole submit aborts — we'd rather
     // show "couldn't upload, please try again" than persist a job
     // with half its photos.
-    let mediaUrls: string[] = [];
+    let mediaAssetIds: string[] = [];
     if (uploads.length > 0) {
       setIsUploading(true);
       try {
-        mediaUrls = await uploadAll(uploads.map((m) => m.file));
+        mediaAssetIds = await uploadAll(uploads.map((m) => m.file));
       } catch (err) {
         const status =
           (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
@@ -676,7 +682,7 @@ export function JobWizardModal({
         description: notes.trim().length > 0 ? notes.trim() : null,
         // Empty array when the seeker attached nothing — explicit so
         // the backend's `?? []` fallback never matters.
-        mediaUrls,
+        mediaAssetIds,
         scheduleType: schedule === 'asap' ? 'ASAP' : 'LATER',
         scheduledAt,
         addressId: useDefaultId ? defaultAddress!.id : null,

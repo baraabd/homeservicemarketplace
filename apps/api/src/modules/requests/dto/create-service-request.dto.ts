@@ -1,20 +1,22 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayUnique,
   IsArray,
   IsDateString,
   IsEnum,
   IsObject,
   IsOptional,
   IsString,
-  IsUrl,
   Length,
+  Matches,
   ValidateNested,
 } from 'class-validator';
 import type { CreateServiceRequestRequest } from '@homeservicemarketplace/contracts';
 import { ScheduleType } from '@homeservicemarketplace/database';
 
 import { MAX_FILES_PER_REQUEST } from '../../../infrastructure/storage/content-type';
+import { MEDIA_ASSET_ID_PATTERN } from '../../media/dto/finalize-request-attachments.dto';
 import { ManualAddressDto } from './manual-address.dto';
 
 // Bounds chosen to fit a useful service-request brief while staying
@@ -39,22 +41,26 @@ export class CreateServiceRequestDto implements CreateServiceRequestRequest {
   @Length(1, 2000)
   description?: string | null;
 
-  // Sprint 7.x — pre-uploaded media URLs. Defence-in-depth alongside
-  // the storage-port whitelist: the wire here only accepts up to
-  // MAX_FILES_PER_REQUEST URLs, each one a real-looking URL string.
-  // require_tld:false so localhost URLs work in dev (LocalDiskStorage
-  // adapter returns http://localhost:4000/v1/media/files/... in
-  // dev shells). The fileUrls themselves come from a server-issued
-  // presign response; a hostile client substituting an attacker-
-  // controlled URL is the realistic risk here, but the provider's
-  // available-requests feed renders these as <img src> on the seeker's
-  // dime — accepted as wire shape and revisited if the threat model
-  // tightens.
+  // R06 — attachments are referenced by server-issued asset id. Ownership,
+  // completeness and single use are decided from the MediaAsset rows inside
+  // the creation transaction, not from anything in this body.
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(MAX_FILES_PER_REQUEST)
-  @IsUrl({ require_tld: false }, { each: true })
-  mediaUrls?: string[];
+  @ArrayUnique()
+  @IsString({ each: true })
+  @Matches(MEDIA_ASSET_ID_PATTERN, { each: true })
+  mediaAssetIds?: string[];
+
+  // R06 — ROLLOUT COMPATIBILITY ONLY. Web bundles built before R06 send this
+  // field on every request, as an empty list when nothing was attached. An
+  // EMPTY list is therefore tolerated, and ignored, so a cached old bundle can
+  // still post a request without media. Any element at all is a 400: a URL is
+  // never accepted, stored or resolved. The service does not read this field.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(0)
+  mediaUrls?: [];
 
   @IsEnum(ScheduleType)
   scheduleType!: ScheduleType;

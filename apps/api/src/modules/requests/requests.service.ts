@@ -25,6 +25,7 @@ import { AppError } from '../../shared/errors/app-error';
 import type { ServiceRequestWithCategory } from '../../infrastructure/persistence/requests/service-request.repository';
 import { OutboxRepository } from '../../infrastructure/outbox/outbox.repository';
 import { OutboxEventType } from '../../infrastructure/outbox/outbox.tokens';
+import { RequestMediaService } from '../media/request-media.service';
 import { normaliseCityKey as normaliseGeoCityKey } from '../../shared/geo/service-area';
 
 // Default page size when the query carries no explicit limit. Matches
@@ -47,6 +48,9 @@ export class RequestsService {
     // owed. NotificationsService / RealtimeEventsPublisher / the provider
     // repository moved to the handler with the work.
     private readonly outbox: OutboxRepository,
+    // R06 — the attachment authority. Request creation claims assets through
+    // it inside the same transaction that inserts the request.
+    private readonly requestMedia: RequestMediaService,
   ) {}
 
   // ─── list ──────────────────────────────────────────────────────────────────
@@ -92,16 +96,22 @@ export class RequestsService {
       const categoryId = await this.resolveCategory(input.categoryId ?? null, tx);
       const { addressId, snapshot } = await this.resolveAddress(seekerUserId, input, tx);
 
+      // R06 — resolve the attachments from MediaAsset rows the seeker owns.
+      // Anything unknown, foreign, unfinished, expired or already attached
+      // throws here and the request is never created.
+      const mediaAssetIds = input.mediaAssetIds ?? [];
+      const attachments = await this.requestMedia.resolveClaimable(tx, seekerUserId, mediaAssetIds);
+
       const row = await this.requests.create(
         {
           seekerUserId,
           categoryId,
           customServiceText: input.customServiceText ?? null,
           description: input.description ?? null,
-          // Sprint 7.x — pre-uploaded media URLs forwarded verbatim.
-          // The DTO already capped the array length + URL shape; no
-          // extra service-side validation needed here.
-          mediaUrls: input.mediaUrls ?? [],
+          // R06 — a server-derived projection of the claimed assets, kept so
+          // every existing reader of `mediaUrls` is unchanged. No value here
+          // originates from the request body.
+          mediaUrls: attachments.map((attachment) => attachment.fileUrl),
           scheduleType: input.scheduleType,
           scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
           addressId,
@@ -109,6 +119,14 @@ export class RequestsService {
         },
         tx,
       );
+      // R06 — THE CLAIM. Same transaction as the insert above, so a failure
+      // anywhere below rolls the claim back with the request, and a lost
+      // race for an asset rolls the request back with the claim.
+      await this.requestMedia.claim(tx, {
+        userId: seekerUserId,
+        requestId: row.id,
+        assetIds: mediaAssetIds,
+      });
       await this.events.create(
         {
           requestId: row.id,

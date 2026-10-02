@@ -25,6 +25,8 @@ type Asset = {
   uploadCompletedAt: Date | null;
   uploadExpiresAt: Date | null;
   createdAt: Date;
+  purpose: 'REQUEST_ATTACHMENT' | null;
+  serviceRequestId: string | null;
 };
 
 const NOW = new Date('2026-09-09T12:00:00.000Z');
@@ -41,6 +43,8 @@ function asset(over: Partial<Asset> = {}): Asset {
     uploadCompletedAt: new Date('2026-09-01T00:00:00.000Z'),
     uploadExpiresAt: null,
     createdAt: new Date('2026-09-01T00:00:00.000Z'),
+    purpose: null,
+    serviceRequestId: null,
     ...over,
   };
 }
@@ -70,11 +74,17 @@ function harness(rows: Asset[], storage?: { deleteObject?: jest.Mock }) {
     const abandonedCutoff = or?.[1]?.uploadExpiresAt?.lte;
     const wantsVisibility = 'visibility' in where ? where.visibility : undefined;
     const wantsUndeleted = 'deletedAt' in where && where.deletedAt === null;
+    // R06 — read from the `where`, like everything else here.
+    const wantsUnattached = 'serviceRequestId' in where && where.serviceRequestId === null;
+    const unclaimedBranch = (where.OR as Array<Record<string, unknown>> | undefined)?.[2] as
+      | { purpose?: string; uploadExpiresAt?: { lte?: Date } }
+      | undefined;
 
     return rows
       .filter((r) => {
         if (wantsVisibility !== undefined && r.visibility !== wantsVisibility) return false;
         if (wantsUndeleted && r.deletedAt !== null) return false;
+        if (wantsUnattached && r.serviceRequestId !== null) return false;
         if (!or) return true;
         const retired = now !== undefined && r.retainUntil !== null && r.retainUntil <= now;
         const abandoned =
@@ -82,7 +92,15 @@ function harness(rows: Asset[], storage?: { deleteObject?: jest.Mock }) {
           r.uploadCompletedAt === null &&
           r.uploadExpiresAt !== null &&
           r.uploadExpiresAt <= abandonedCutoff;
-        return retired || abandoned;
+        const unclaimedCutoff = unclaimedBranch?.uploadExpiresAt?.lte;
+        const unclaimed =
+          unclaimedBranch !== undefined &&
+          unclaimedCutoff !== undefined &&
+          r.purpose === unclaimedBranch.purpose &&
+          r.uploadCompletedAt !== null &&
+          r.uploadExpiresAt !== null &&
+          r.uploadExpiresAt <= unclaimedCutoff;
+        return retired || abandoned || unclaimed;
       })
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .slice(0, take ?? rows.length);
@@ -92,12 +110,30 @@ function harness(rows: Asset[], storage?: { deleteObject?: jest.Mock }) {
     client: {
       mediaAsset: {
         findMany: jest.fn(async (args: { where: Record<string, unknown>; take?: number }) =>
-          eligible(args.where, args.take).map((r) => ({ id: r.id, storageKey: r.storageKey })),
+          eligible(args.where, args.take).map((r) => ({
+            id: r.id,
+            storageKey: r.storageKey,
+            purpose: r.purpose,
+            retainUntil: r.retainUntil,
+          })),
         ),
         updateMany: jest.fn(
-          async (args: { where: { id: string; deletedAt?: null }; data: { deletedAt: Date } }) => {
+          async (args: {
+            where: { id: string; deletedAt?: null; serviceRequestId?: null; retainUntil?: null };
+            data: { deletedAt: Date; retainUntil?: Date };
+          }) => {
             const row = rows.find((r) => r.id === args.where.id);
             if (!row) return { count: 0 };
+            // R06 — the fence. Each condition is honoured only if asked for.
+            if (args.data.retainUntil !== undefined) {
+              if ('serviceRequestId' in args.where && row.serviceRequestId !== null) {
+                return { count: 0 };
+              }
+              if ('retainUntil' in args.where && row.retainUntil !== null) return { count: 0 };
+              if ('deletedAt' in args.where && row.deletedAt !== null) return { count: 0 };
+              row.retainUntil = args.data.retainUntil;
+              return { count: 1 };
+            }
             // The conditional claim is honoured ONLY if the service asked for
             // it. If the service stops sending `deletedAt: null`, this fake
             // stops enforcing it and the concurrency test fails — which is the
@@ -299,5 +335,68 @@ describe('PublicMediaCleanupService — order, honesty and retry', () => {
     const result = await sweep(h);
     expect(result).toMatchObject({ examined: 2, deleted: 1, failed: 1 });
     expect(h.claimed).toEqual(['second']);
+  });
+});
+
+describe('PublicMediaCleanupService — R06 request attachments', () => {
+  const requestAsset = (over: Partial<Asset> = {}) =>
+    asset({
+      storageKey: 'requests/ref/one.jpg',
+      purpose: 'REQUEST_ATTACHMENT',
+      uploadExpiresAt: ago(GRACE_MS + 60_000),
+      ...over,
+    });
+
+  it('NEVER sweeps an attachment claimed by a request, even when it looks retired', async () => {
+    // Belt and braces: nothing sets retainUntil on a claimed asset, but if a
+    // future path did, the request link alone must still keep the bytes.
+    const h = harness([
+      requestAsset({ id: 'claimed', serviceRequestId: 'req-1' }),
+      requestAsset({ id: 'claimed-retired', serviceRequestId: 'req-2', retainUntil: ago(1000) }),
+    ]);
+    const result = await sweep(h);
+
+    expect(h.deleteObject).not.toHaveBeenCalled();
+    expect(result.examined).toBe(0);
+  });
+
+  it('sweeps a finalized attachment nobody attached, after the grace period', async () => {
+    const h = harness([requestAsset({ id: 'unclaimed' })]);
+    const result = await sweep(h);
+
+    expect(h.deleteObject).toHaveBeenCalledWith('requests/ref/one.jpg');
+    expect(result).toMatchObject({ examined: 1, deleted: 1, raced: 0, failed: 0 });
+    // Fenced before the bytes went: the row can no longer be claimed.
+    expect(h.rows[0].retainUntil).toEqual(NOW);
+  });
+
+  it('leaves a finalized attachment alone inside the grace period', async () => {
+    const h = harness([requestAsset({ id: 'fresh', uploadExpiresAt: ago(60_000) })]);
+    const result = await sweep(h);
+
+    expect(h.deleteObject).not.toHaveBeenCalled();
+    expect(result.examined).toBe(0);
+  });
+
+  it('does not delete the bytes when a request claims the asset first', async () => {
+    const h = harness([requestAsset({ id: 'contested' })]);
+    // The claim commits between the candidate read and the fence.
+    h.prisma.client.mediaAsset.findMany.mockImplementationOnce(async () => {
+      const candidates = [
+        {
+          id: 'contested',
+          storageKey: 'requests/ref/one.jpg',
+          purpose: 'REQUEST_ATTACHMENT' as const,
+          retainUntil: null,
+        },
+      ];
+      h.rows[0].serviceRequestId = 'req-winner';
+      return candidates;
+    });
+    const result = await sweep(h);
+
+    expect(h.deleteObject).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ examined: 1, deleted: 0, raced: 1 });
+    expect(h.rows[0].deletedAt).toBeNull();
   });
 });

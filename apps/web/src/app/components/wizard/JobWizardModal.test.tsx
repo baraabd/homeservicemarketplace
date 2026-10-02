@@ -979,7 +979,8 @@ describe('JobWizardModal — Phase 3 native media upload', () => {
 // Pipeline:
 //   pick files in step 1 → step 2 (location + time) → Confirm Job →
 //   POST /v1/media/presigned-url → PUT each file via native fetch →
-//   POST /v1/me/requests with mediaUrls[].
+//   POST /v1/media/request-attachments/finalize →
+//   POST /v1/me/requests with mediaAssetIds[] (R06: ids, never URLs).
 //
 // We stub URL.createObjectURL + revoke + global.fetch so the PUTs
 // resolve without actually leaving the test process. axios-mock-
@@ -1008,7 +1009,7 @@ describe('JobWizardModal — Phase 7 media upload', () => {
     return new File([blob], name, { type: 'image/png' });
   }
 
-  it('pre-uploads media before posting and forwards mediaUrls into the request', async () => {
+  it('pre-uploads, finalizes, and forwards confirmed asset ids into the request', async () => {
     mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
     let presignBody: { items: Array<{ contentType: string; sizeBytes: number }> } = { items: [] };
     mock.onPost('/v1/media/presigned-url').reply((cfg) => {
@@ -1017,9 +1018,25 @@ describe('JobWizardModal — Phase 7 media upload', () => {
         200,
         {
           items: presignBody.items.map((_it, i) => ({
+            assetId: `asset${String(i).padStart(20, '0')}`,
             uploadUrl: `https://upload.example/u${i}`,
             fileUrl: `https://cdn.example/f${i}.png`,
             expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          })),
+        },
+      ];
+    });
+
+    // The server confirms what it verified; the wizard publishes only those.
+    let finalizeBody: { assetIds: string[] } = { assetIds: [] };
+    mock.onPost('/v1/media/request-attachments/finalize').reply((cfg) => {
+      finalizeBody = JSON.parse(cfg.data as string) as typeof finalizeBody;
+      return [
+        200,
+        {
+          items: finalizeBody.assetIds.map((assetId) => ({
+            assetId,
+            fileUrl: `https://cdn.example/${assetId}`,
           })),
         },
       ];
@@ -1058,19 +1075,41 @@ describe('JobWizardModal — Phase 7 media upload', () => {
       { contentType: 'image/png', sizeBytes: 4, filename: 'b.png' },
     ]);
     expect(putUrls).toEqual(['https://upload.example/u0', 'https://upload.example/u1']);
-    expect(postedBody.mediaUrls).toEqual([
-      'https://cdn.example/f0.png',
-      'https://cdn.example/f1.png',
+    expect(finalizeBody.assetIds).toEqual([
+      'asset00000000000000000000',
+      'asset00000000000000000001',
     ]);
+    expect(postedBody.mediaAssetIds).toEqual([
+      'asset00000000000000000000',
+      'asset00000000000000000001',
+    ]);
+    // No URL of any kind is sent to request creation.
+    expect(postedBody).not.toHaveProperty('mediaUrls');
+    expect(JSON.stringify(postedBody)).not.toContain('https://');
   });
 
   it('aborts the post and surfaces a friendly error when ANY upload PUT fails', async () => {
     mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
     mock.onPost('/v1/media/presigned-url').reply(200, {
       items: [
-        { uploadUrl: 'https://upload.example/ok', fileUrl: 'f0', expiresAt: '2030-01-01' },
-        { uploadUrl: 'https://upload.example/bad', fileUrl: 'f1', expiresAt: '2030-01-01' },
+        {
+          assetId: 'asset00000000000000000000',
+          uploadUrl: 'https://upload.example/ok',
+          fileUrl: 'https://cdn.example/f0.png',
+          expiresAt: '2099-01-01T00:00:00.000Z',
+        },
+        {
+          assetId: 'asset00000000000000000001',
+          uploadUrl: 'https://upload.example/bad',
+          fileUrl: 'https://cdn.example/f1.png',
+          expiresAt: '2099-01-01T00:00:00.000Z',
+        },
       ],
+    });
+    let finalizeCalled = 0;
+    mock.onPost('/v1/media/request-attachments/finalize').reply(() => {
+      finalizeCalled += 1;
+      return [200, { items: [] }];
     });
     // First PUT succeeds, second fails.
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -1101,6 +1140,8 @@ describe('JobWizardModal — Phase 7 media upload', () => {
     // The create-request endpoint MUST NOT have been hit — we'd
     // rather not persist a job with partial media.
     expect(postCalled).toBe(0);
+    // Nor is the server asked to confirm a batch that did not fully upload.
+    expect(finalizeCalled).toBe(0);
   });
 
   it('skips the upload pipeline when no files were attached', async () => {
@@ -1123,6 +1164,6 @@ describe('JobWizardModal — Phase 7 media upload', () => {
 
     await waitFor(() => expect(postedBody.scheduleType).toBe('ASAP'));
     expect(presignCalled).toBe(0); // presign skipped — empty list
-    expect(postedBody.mediaUrls).toEqual([]); // explicit empty array
+    expect(postedBody.mediaAssetIds).toEqual([]); // explicit empty array
   });
 });

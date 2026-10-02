@@ -30,13 +30,19 @@ export interface CreateServiceRequestRequest {
   categoryId?: string | null;
   customServiceText?: string | null;
   description?: string | null;
-  /** Sprint 7.x — pre-uploaded media references. Each entry is a
-   *  fileUrl returned by `POST /v1/media/presigned-url` after the
-   *  browser PUTs the binary to its uploadUrl. The backend stores
-   *  the array verbatim on `ServiceRequest.mediaUrls` for the
-   *  provider's available-requests feed to render. Cap is
-   *  `MAX_REQUEST_MEDIA_ITEMS` (shared constant). */
-  mediaUrls?: string[];
+  /** R06 — attachments, by server-issued asset id.
+   *
+   *  Each id is the `assetId` returned by `POST /v1/media/presigned-url`
+   *  for an upload that was then verified by
+   *  `POST /v1/media/request-attachments/finalize`. The server attaches the
+   *  assets inside the request-creation transaction and derives
+   *  `ServiceRequest.mediaUrls` from them. URLs are not accepted on this
+   *  wire. Cap is `MAX_REQUEST_MEDIA_ITEMS` (shared constant). */
+  mediaAssetIds?: string[];
+  /** @deprecated R06 rollout compatibility only. Clients built before R06
+   *  always sent this field; the server tolerates an EMPTY list and ignores
+   *  it. Any element is rejected. New clients must not send it. */
+  mediaUrls?: [];
   scheduleType: ScheduleType;
   scheduledAt?: string | null;
   addressId?: string | null;

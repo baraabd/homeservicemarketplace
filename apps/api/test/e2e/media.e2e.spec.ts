@@ -21,6 +21,7 @@ import {
 import { APP_FILTER, Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -30,9 +31,14 @@ import { AppConfigService } from '../../src/config/app-config.service';
 import { AllExceptionsFilter } from '../../src/infrastructure/http/all-exceptions.filter';
 import { LocalDiskStorageAdapter } from '../../src/infrastructure/storage/local-disk-storage.adapter';
 import { S3StorageAdapter } from '../../src/infrastructure/storage/s3-storage.adapter';
-import { STORAGE_PORT } from '../../src/infrastructure/storage/storage.port';
+import { STORAGE_PORT, type StoragePort } from '../../src/infrastructure/storage/storage.port';
+import {
+  type ContentType,
+  extensionForContentType,
+} from '../../src/infrastructure/storage/content-type';
 import { MediaController } from '../../src/modules/media/media.controller';
 import { PublicMediaLedgerService } from '../../src/modules/media/public-media-ledger.service';
+import { RequestMediaService } from '../../src/modules/media/request-media.service';
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
 import { makeTestSecret } from '../support/test-secrets';
@@ -78,6 +84,30 @@ const fakeLedger = {
   retire: jest.fn(async () => undefined),
 };
 
+// R06 — request attachments are reserved by RequestMediaService. With no
+// database here it is a recorder that still asks the REAL storage port for the
+// upload URL, so the PUT and GET round-trips below exercise the real adapter.
+// Its own rules are proved in request-media.service.spec.ts and, against real
+// Postgres and real files, in the R06 integration suite.
+const requestReservations: Array<{ userId: string; assetId: string; key: string }> = [];
+const finalizeCalls: Array<{ userId: string; assetIds: string[] }> = [];
+let requestMediaStorage: StoragePort | null = null;
+const fakeRequestMedia = {
+  reserve: jest.fn(
+    async (userId: string, input: { contentType: ContentType; sizeBytes: number }) => {
+      const assetId = `asset${String(requestReservations.length + 1).padStart(20, '0')}`;
+      const key = `requests/${'a'.repeat(24)}/${randomUUID()}.${extensionForContentType(input.contentType)}`;
+      requestReservations.push({ userId, assetId, key });
+      const upload = await requestMediaStorage!.presignUpload({ key, ...input });
+      return { ...upload, assetId };
+    },
+  ),
+  finalize: jest.fn(async (userId: string, assetIds: string[]) => {
+    finalizeCalls.push({ userId, assetIds });
+    return assetIds.map((assetId) => ({ assetId, fileUrl: `http://files.test/${assetId}` }));
+  }),
+};
+
 let fakeAuthedUser: { id: string; sessionId: string; jti: string; roles: string[] } | null = null;
 
 class FakeJwtAuthGuard {
@@ -120,6 +150,7 @@ async function bootApp(): Promise<INestApplication> {
         useFactory: (local: LocalDiskStorageAdapter) => local,
       },
       { provide: PublicMediaLedgerService, useValue: fakeLedger },
+      { provide: RequestMediaService, useValue: fakeRequestMedia },
       { provide: APP_FILTER, useFactory: () => new AllExceptionsFilter(config) },
     ],
   })
@@ -131,6 +162,7 @@ async function bootApp(): Promise<INestApplication> {
     .overrideGuard(CsrfGuard)
     .useClass(FakeCsrfGuard)
     .compile();
+  requestMediaStorage = moduleRef.get<StoragePort>(STORAGE_PORT);
 
   // bodyParser: false disables Nest's default JSON body parser so we
   // can wire two independently:
@@ -191,10 +223,10 @@ describe('Media upload pipeline (e2e) — Sprint 7.x', () => {
       expect(res.body.items).toHaveLength(2);
       for (const item of res.body.items) {
         expect(item.uploadUrl).toMatch(
-          /\/v1\/media\/uploads\/requests\/u-1\/[0-9a-f-]{36}\.(jpg|mp4)/,
+          /\/v1\/media\/uploads\/requests\/[0-9a-f]{24}\/[0-9a-f-]{36}\.(jpg|mp4)/,
         );
         expect(item.fileUrl).toMatch(
-          /\/v1\/media\/files\/requests\/u-1\/[0-9a-f-]{36}\.(jpg|mp4)$/,
+          /\/v1\/media\/files\/requests\/[0-9a-f]{24}\/[0-9a-f-]{36}\.(jpg|mp4)$/,
         );
         expect(new Date(item.expiresAt).toString()).not.toBe('Invalid Date');
       }
@@ -261,19 +293,22 @@ describe('Media upload pipeline (e2e) — Sprint 7.x', () => {
       expect(res.body.items).toBeUndefined();
     });
 
-    it('does NOT reserve request media, whose lifecycle is not the public sweep', async () => {
+    it('reserves request media through the request-attachment authority (R06)', async () => {
       fakeAuthedUser = { id: 'u-5', sessionId: 's', jti: 'j', roles: ['customer'] };
+      requestReservations.length = 0;
       const res = await request(app.getHttpServer())
         .post('/v1/media/presigned-url')
         .send({ items: [{ contentType: 'image/jpeg', sizeBytes: 1024 }] });
 
       expect(res.status).toBe(200);
-      // Deliberate, and asserted so it cannot drift silently. Request media is
-      // attached as a bare URL in ServiceRequest.mediaUrls[] — nothing ever
-      // claims a MediaAsset row for it — so a reservation here would age into
-      // an 'abandoned' candidate and the sweep would delete LIVE request
-      // photos. Its orphan lifecycle is a separate piece of work, recorded in
-      // SPRINT_09B29_VERIFICATION.md §4.3.
+      // This used to assert the opposite: request media was a bare URL that
+      // nothing owned. Every item now has a reservation, and the response
+      // carries its asset id — the only thing request creation accepts.
+      expect(requestReservations).toHaveLength(1);
+      expect(requestReservations[0].userId).toBe('u-5');
+      expect(res.body.items[0].assetId).toBe(requestReservations[0].assetId);
+      // It does NOT go through the avatar/portfolio ledger, whose claim path
+      // has different rules.
       expect(reservations).toEqual([]);
     });
 
@@ -314,14 +349,55 @@ describe('Media upload pipeline (e2e) — Sprint 7.x', () => {
       }
     });
 
-    it('keeps request media on its existing layout', async () => {
-      // Changing that scheme would orphan every URL already stored in
-      // ServiceRequest.mediaUrls[].
+    it('keeps request media in the requests/ namespace without the raw user id', async () => {
+      // The key is minted by the attachment authority. Older URLs stored on
+      // existing requests still resolve; new keys no longer publish a user id.
       fakeAuthedUser = { id: 'u-1', sessionId: 's', jti: 'j', roles: ['customer'] };
       const res = await request(app.getHttpServer())
         .post('/v1/media/presigned-url')
         .send({ items: [{ contentType: 'image/jpeg', sizeBytes: 1024 }] });
-      expect(res.body.items[0].fileUrl).toContain('/requests/u-1/');
+      expect(res.body.items[0].fileUrl).toContain('/requests/');
+      expect(res.body.items[0].fileUrl).not.toContain('u-1');
+    });
+
+    it('finalize requires a session and passes the SESSION user, not a body field', async () => {
+      fakeAuthedUser = null;
+      const anonymous = await request(app.getHttpServer())
+        .post('/v1/media/request-attachments/finalize')
+        .send({ assetIds: ['asset00000000000000000001'] });
+      expect(anonymous.status).toBe(401);
+
+      fakeAuthedUser = { id: 'u-7', sessionId: 's', jti: 'j', roles: ['customer'] };
+      finalizeCalls.length = 0;
+      const res = await request(app.getHttpServer())
+        .post('/v1/media/request-attachments/finalize')
+        .send({ assetIds: ['asset00000000000000000001'] });
+      expect(res.status).toBe(200);
+      expect(finalizeCalls).toEqual([{ userId: 'u-7', assetIds: ['asset00000000000000000001'] }]);
+      expect(res.body.items[0].assetId).toBe('asset00000000000000000001');
+    });
+
+    it('finalize refuses keys, URLs, duplicates and oversized batches at the edge', async () => {
+      fakeAuthedUser = { id: 'u-7', sessionId: 's', jti: 'j', roles: ['customer'] };
+      finalizeCalls.length = 0;
+      const id = 'asset00000000000000000001';
+      const bodies = [
+        {},
+        { assetIds: [] },
+        { assetIds: [id, id] },
+        { assetIds: ['https://evil.example/x.jpg'] },
+        { assetIds: ['../../requests/other/1.jpg'] },
+        { assetIds: [id], userId: 'u-1' },
+        { assetIds: [id], storageKey: 'requests/x/y.jpg' },
+        { assetIds: Array.from({ length: 50 }, (_, i) => `asset${String(i).padStart(20, '0')}`) },
+      ];
+      for (const body of bodies) {
+        const res = await request(app.getHttpServer())
+          .post('/v1/media/request-attachments/finalize')
+          .send(body);
+        expect(res.status).toBe(400);
+      }
+      expect(finalizeCalls).toEqual([]);
     });
 
     it('rejects content types outside the whitelist with VALIDATION_ERROR', async () => {
@@ -374,9 +450,9 @@ describe('Media upload pipeline (e2e) — Sprint 7.x', () => {
           items: [{ contentType: 'image/jpeg', sizeBytes: 1, filename: '../../etc/passwd' }],
         });
       expect(res.status).toBe(200);
-      // The synthesised key MUST stay under requests/<userId>/.
+      // The synthesised key MUST stay under requests/<opaque owner ref>/.
       expect(res.body.items[0].fileUrl).toMatch(
-        /\/v1\/media\/files\/requests\/u-1\/[0-9a-f-]{36}\.jpg$/,
+        /\/v1\/media\/files\/requests\/[0-9a-f]{24}\/[0-9a-f-]{36}\.jpg$/,
       );
       expect(res.body.items[0].fileUrl).not.toContain('..');
       expect(res.body.items[0].fileUrl).not.toContain('passwd');
