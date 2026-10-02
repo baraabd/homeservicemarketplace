@@ -1,5 +1,9 @@
 import { parseSupportedMarkets, type SupportedMarket } from './supported-market';
-import { decideTimezone, persistableTimezone } from './timezone-precedence.policy';
+import {
+  decideTimezone,
+  persistableTimezone,
+  reportableTimezone,
+} from './timezone-precedence.policy';
 
 // Sprint 09B.29 Phase 5 (C3) — the timezone precedence, one case per rule.
 //
@@ -204,6 +208,59 @@ describe('DST and non-DST markets both behave', () => {
       const zone = persistableTimezone(decideTimezone({ market }));
       expect(zone).not.toBeNull();
       expect(() => at(zone as string, '2026-03-01T12:00:00Z')).not.toThrow();
+    }
+  });
+});
+
+// R10 — the zone a stored schedule may be SAID to be in.
+//
+// Rows carry the zone they were saved in. When the provider's market no longer
+// contains that zone, reporting it tells every reader the wrong hours, and a
+// client that echoes it back is refused for a value the server gave it.
+describe('reportableTimezone', () => {
+  const single = {
+    countryCode: 'SE',
+    enabled: true,
+    displayNameKey: 'market.SE',
+    defaultTimezone: 'Europe/Stockholm',
+  };
+  const multi = {
+    countryCode: 'CA',
+    enabled: true,
+    displayNameKey: 'market.CA',
+    timezones: ['America/Toronto', 'America/Vancouver'],
+  };
+  const undescribed = { countryCode: 'IS', enabled: true, displayNameKey: 'market.IS' };
+
+  it('reports a zone the market contains', () => {
+    expect(reportableTimezone('Europe/Stockholm', single)).toBe('Europe/Stockholm');
+    expect(reportableTimezone('America/Vancouver', multi)).toBe('America/Vancouver');
+  });
+
+  it('reports NONE for a zone the market excludes, single-zone or multi-zone', () => {
+    expect(reportableTimezone('Asia/Damascus', single)).toBeNull();
+    expect(reportableTimezone('Europe/Stockholm', multi)).toBeNull();
+  });
+
+  it('lets the stored zone stand when nothing can judge it', () => {
+    expect(reportableTimezone('Europe/Stockholm', undescribed)).toBe('Europe/Stockholm');
+    expect(reportableTimezone('Europe/Stockholm', null)).toBe('Europe/Stockholm');
+    expect(reportableTimezone('Europe/Stockholm', undefined)).toBe('Europe/Stockholm');
+  });
+
+  it('reports none when nothing valid is stored', () => {
+    for (const stored of [null, undefined, '', 'Mars/Olympus_Mons']) {
+      expect(reportableTimezone(stored, single)).toBeNull();
+    }
+  });
+
+  it('agrees with the write path: a zone it reports is one the precedence keeps', () => {
+    for (const market of [single, multi, undescribed, null]) {
+      for (const zone of ['Europe/Stockholm', 'America/Toronto', 'Asia/Damascus']) {
+        const reported = reportableTimezone(zone, market);
+        const decision = decideTimezone({ existingTimezone: zone, market });
+        expect([zone, reported !== null]).toEqual([zone, decision.kind === 'KEEP']);
+      }
     }
   });
 });

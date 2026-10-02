@@ -35,7 +35,11 @@ import {
 } from '../../../infrastructure/persistence/provider/provider-onboarding-draft.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { MarketRegistryService } from './market/market-registry.service';
-import { checkTimezoneAgainstMarket, decideTimezone } from './market/timezone-precedence.policy';
+import {
+  checkTimezoneAgainstMarket,
+  decideTimezone,
+  reportableTimezone,
+} from './market/timezone-precedence.policy';
 import {
   ProviderOnboardingDefaultsService,
   SERVER_OWNED_DRAFT_KEYS,
@@ -701,14 +705,15 @@ export class ProviderOnboardingWizardService {
         // R09 — the starting point, judged against the market this write
         // leaves the provider in. Refused BEFORE anything is committed, like
         // the market check above: `profileData` is only staged so far.
+        const marketChanged =
+          body.serviceAreaCountryCode !== undefined &&
+          (body.serviceAreaCountryCode ? body.serviceAreaCountryCode.toUpperCase() : null) !==
+            (p.serviceAreaCountryCode ?? null);
         const point = resolveWorkAreaPoint({
           stored: { lat: p.serviceAreaLat ?? null, lng: p.serviceAreaLng ?? null },
           requested: { lat: body.serviceAreaLat, lng: body.serviceAreaLng },
           market,
-          marketChanged:
-            body.serviceAreaCountryCode !== undefined &&
-            (body.serviceAreaCountryCode ? body.serviceAreaCountryCode.toUpperCase() : null) !==
-              (p.serviceAreaCountryCode ?? null),
+          marketChanged,
         });
         if (!point.ok) {
           throw new AppError('VALIDATION_ERROR', WORK_AREA_POINT_MESSAGE[point.code], 400, {
@@ -726,6 +731,9 @@ export class ProviderOnboardingWizardService {
             providerProfileId: p.id,
             reason: 'MARKET_CHANGED',
           });
+        }
+        if (marketChanged) {
+          await this.realignScheduleZone(ctx, market, scratch, trx);
         }
         if (body.serviceAreaRadiusKm !== undefined) {
           // Sprint 9B.19 — bounded by POLICY, not by the DTO's numbers.
@@ -1344,6 +1352,74 @@ export class ProviderOnboardingWizardService {
     });
   }
 
+  /** The zone the stored schedule is in, as far as the current market allows
+   *  it to be said. Null when the market excludes the stored zone. */
+  private scheduleZone(ctx: OnboardingContext): string | null {
+    const scratch = ctx.scratch ?? {};
+    const stored =
+      ctx.relations.availabilityIntervals[0]?.timezone ??
+      (typeof scratch.timezone === 'string' ? scratch.timezone : null);
+    return reportableTimezone(stored, ctx.market);
+  }
+
+  /**
+   * Bring the stored schedule's zone along when the provider changes market.
+   *
+   * R10. Weekly hours are local wall-clock minutes, so a change of market
+   * changes WHICH wall clock they are read against and nothing else: no minute
+   * moves. Before this the rows kept the zone of the market the provider had
+   * left until their next working-hours write, and that write was refused,
+   * because the screen sends back the zone the server reported and the server
+   * no longer accepted it.
+   *
+   *   the new market contains the stored zone   nothing to do
+   *   it has ONE zone                           every row is restamped to it
+   *   it has several, or none can be decided    the provider must say which;
+   *                                             the zone is reported as none
+   *                                             and the hours wait, unchanged
+   *
+   * In the same transaction as the market change, so the country and the zone
+   * the hours are read in commit together or not at all.
+   */
+  private async realignScheduleZone(
+    ctx: OnboardingContext,
+    market: Awaited<ReturnType<MarketRegistryService['findEnabled']>>,
+    scratch: Record<string, unknown>,
+    trx: PrismaTx,
+  ): Promise<void> {
+    const rows = ctx.relations.availabilityIntervals;
+    const stored =
+      rows[0]?.timezone ?? (typeof scratch.timezone === 'string' ? scratch.timezone : null);
+    if (stored === null) return;
+
+    const decision = decideTimezone({ existingTimezone: stored, market });
+    if (decision.kind === 'KEEP') return;
+
+    if (decision.kind === 'RESOLVED') {
+      if (rows.length > 0) {
+        await this.drafts.replaceAvailability(
+          ctx.profile.id,
+          rows.map((i) => ({
+            dayOfWeek: i.dayOfWeek,
+            startMinute: i.startMinute,
+            endMinute: i.endMinute,
+            timezone: decision.timezone,
+          })),
+          trx,
+        );
+      }
+      scratch.timezone = decision.timezone;
+    } else {
+      // Nothing is restamped: there is no zone to restamp to.
+      scratch.timezone = null;
+    }
+    this.logger.log({
+      msg: 'provider.schedule.zone_realigned',
+      providerProfileId: ctx.profile.id,
+      outcome: decision.kind === 'RESOLVED' ? 'RESTAMPED' : 'AWAITING_CONFIRMATION',
+    });
+  }
+
   /** Every projection uses the same completeness and live-market decisions. */
   private async projectedIssues(ctx: OnboardingContext): Promise<ProviderOnboardingIssue[]> {
     const issues = evaluateOnboarding(this.toCandidate(ctx));
@@ -1498,9 +1574,9 @@ export class ProviderOnboardingWizardService {
         endMinute: i.endMinute,
         timezone: i.timezone,
       })),
-      timezone:
-        ctx.relations.availabilityIntervals[0]?.timezone ??
-        (typeof scratch.timezone === 'string' ? scratch.timezone : null),
+      // R10 — only a zone the provider's CURRENT market contains is reported.
+      // See `reportableTimezone`.
+      timezone: this.scheduleZone(ctx),
 
       headline: p.headline ?? null,
       bio: p.bio ?? null,
@@ -1558,7 +1634,13 @@ export class ProviderOnboardingWizardService {
       // verification channel exists and this line supplies the answer.
       //
       // Follow-up: docs/sprint-09b13/PROVIDER_JOURNEY.md §"Phone verification".
-      availabilityIntervalCount: ctx.relations.availabilityIntervals.length,
+      // R10 — hours whose zone the current market does not contain are not
+      // yet usable working hours: nobody can say when they are. They count
+      // again once the zone is confirmed.
+      availabilityIntervalCount:
+        ctx.relations.availabilityIntervals.length > 0 && this.scheduleZone(ctx) === null
+          ? 0
+          : ctx.relations.availabilityIntervals.length,
       yearsOfExperience: p.yearsOfExperience ?? null,
       professionSince: p.professionSince ?? null,
       acceptedConsentVersion: p.acceptedConsentVersion ?? null,
@@ -1621,6 +1703,12 @@ export class ProviderOnboardingWizardService {
       profile,
       relations,
       scratch,
+      // A registry that cannot be read must not take the whole application
+      // down with it: the stored zone is then reported as it is.
+      // No country, no question for the registry.
+      market: profile.serviceAreaCountryCode
+        ? await this.markets.findEnabled(profile.serviceAreaCountryCode, tx).catch(() => null)
+        : null,
       emailVerified: user?.emailVerifiedAt != null,
       // The shared profile include already narrows this to LIVE pending rows
       // (PENDING and not superseded), so there is nothing further to filter —
@@ -1902,6 +1990,10 @@ interface OnboardingContext {
   profile: ProviderProfileWithCategories;
   relations: ProviderOnboardingRelations;
   scratch: Record<string, unknown>;
+  /** The provider's current market, or null when they have none, it is not
+   *  enabled, or the registry could not be read. Used only to decide which
+   *  zone a stored schedule may be reported in. */
+  market: Awaited<ReturnType<MarketRegistryService['findEnabled']>>;
   emailVerified: boolean;
   pendingApplicationCategoryIds: string[];
   /** Newest first. Only the wizard reads these — see buildContext. */
