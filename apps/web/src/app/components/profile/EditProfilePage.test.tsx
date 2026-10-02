@@ -244,6 +244,291 @@ describe('EditProfilePage — Save Changes persists', () => {
 });
 
 // Phase 6 Step 2 — provider-only skills picker + dual-save flow.
+// A late answer from the server must not overwrite what the person typed.
+//
+// The form re-seeds when the profile's `updatedAt` changes. A background
+// refetch that lands AFTER the fields were edited carried a newer `updatedAt`
+// (registration and email verification both touch the row), re-seeded the
+// name, phone and city with the stored values, and Save then sent the old
+// values back with a 200. The R05 real-browser acceptance failed on exactly
+// this, about one run in five.
+describe('EditProfilePage — a late refetch does not overwrite edits', () => {
+  it('keeps the typed name, phone and city, and saves them', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    let served = { ...MOCK_PROFILE, phoneNumber: '+1 555 0000', city: 'London' };
+    mock.onGet('/v1/me/profile').reply(() => [200, { profile: served }]);
+    let postedBody: Record<string, unknown> = {};
+    mock.onPatch('/v1/me/profile').reply((config) => {
+      postedBody = JSON.parse(config.data as string) as Record<string, unknown>;
+      return [200, { profile: { ...served, displayName: 'Grace Hopper' } }];
+    });
+
+    renderEdit();
+    await waitFor(() => expect(screen.getByDisplayValue('Ada Lovelace')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByDisplayValue('Ada Lovelace'), {
+      target: { value: 'Grace Hopper' },
+    });
+    fireEvent.change(screen.getByDisplayValue('+1 555 0000'), {
+      target: { value: '+1 555 0100' },
+    });
+    fireEvent.change(screen.getByDisplayValue('London'), { target: { value: 'Palo Alto' } });
+
+    // The server answers again, with the same stored values and a newer stamp.
+    served = { ...served, updatedAt: '2026-05-01T00:00:00.000Z' };
+    await qc.invalidateQueries();
+    await waitFor(() =>
+      expect(mock.history.get.filter((r) => r.url === '/v1/me/profile').length).toBeGreaterThan(1),
+    );
+    // Let the refetched data reach the component.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(screen.getByDisplayValue('Grace Hopper')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('+1 555 0100')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Palo Alto')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /save changes|حفظ التغييرات/i }));
+    await waitFor(() => expect(postedBody.firstName).toBe('Grace'));
+    expect(postedBody).toMatchObject({
+      lastName: 'Hopper',
+      phoneNumber: '+1 555 0100',
+      city: 'Palo Alto',
+    });
+  });
+
+  it('still takes a newer server value for a field the person has not touched', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    let served = { ...MOCK_PROFILE, city: 'London' };
+    mock.onGet('/v1/me/profile').reply(() => [200, { profile: served }]);
+
+    renderEdit();
+    await waitFor(() => expect(screen.getByDisplayValue('Ada Lovelace')).toBeInTheDocument());
+    fireEvent.change(screen.getByDisplayValue('Ada Lovelace'), {
+      target: { value: 'Grace Hopper' },
+    });
+
+    served = { ...served, city: 'Cambridge', updatedAt: '2026-05-01T00:00:00.000Z' };
+    await qc.invalidateQueries();
+
+    // The untouched city follows the server; the edited name does not.
+    await waitFor(() => expect(screen.getByDisplayValue('Cambridge')).toBeInTheDocument());
+    expect(screen.getByDisplayValue('Grace Hopper')).toBeInTheDocument();
+  });
+
+  it('follows the server again after a successful save', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    let served = { ...MOCK_PROFILE };
+    mock.onGet('/v1/me/profile').reply(() => [200, { profile: served }]);
+    mock.onPatch('/v1/me/profile').reply(() => {
+      // The server normalises what it stores.
+      served = {
+        ...served,
+        displayName: 'Grace B. Hopper',
+        updatedAt: '2026-05-02T00:00:00.000Z',
+      };
+      return [200, { profile: served }];
+    });
+
+    renderEdit();
+    await waitFor(() => expect(screen.getByDisplayValue('Ada Lovelace')).toBeInTheDocument());
+    fireEvent.change(screen.getByDisplayValue('Ada Lovelace'), {
+      target: { value: 'Grace Hopper' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save changes|حفظ التغييرات/i }));
+
+    // Once saved, the field shows what the server holds, not what was typed.
+    await waitFor(() => expect(screen.getByDisplayValue('Grace B. Hopper')).toBeInTheDocument());
+  });
+});
+
+// Every ordering of "the person edits" against "the server answers", driven
+// explicitly rather than hoped for: each test decides when a response lands.
+describe('EditProfilePage — form state belongs to the person until a save is acknowledged', () => {
+  const STORED = {
+    ...MOCK_PROFILE,
+    phoneNumber: '+1 555 0000',
+    city: 'London',
+    bio: 'Analyst.',
+  };
+  const T2 = '2026-05-02T00:00:00.000Z';
+  const T3 = '2026-05-03T00:00:00.000Z';
+  const saveButton = () => screen.getByRole('button', { name: /save changes|حفظ التغييرات/i });
+  const nameField = () => screen.getByLabelText(/full name|الاسم الكامل/i) as HTMLInputElement;
+  const phoneField = () =>
+    (screen.getAllByRole('textbox') as HTMLInputElement[]).find((i) => i.type === 'tel')!;
+  const savedBanner = () => screen.queryByText(/Saved successfully|تم الحفظ بنجاح/);
+
+  /** A response the test releases when it chooses. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+
+  async function open(profile: typeof STORED = STORED) {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    renderEdit();
+    await waitFor(() => expect(screen.getByDisplayValue(profile.displayName)).toBeInTheDocument());
+  }
+
+  it('C — a field cleared on purpose stays cleared, and is saved as null', async () => {
+    let served = STORED;
+    mock.onGet('/v1/me/profile').reply(() => [200, { profile: served }]);
+    let body: Record<string, unknown> = {};
+    mock.onPatch('/v1/me/profile').reply((config) => {
+      body = JSON.parse(config.data as string) as Record<string, unknown>;
+      return [200, { profile: { ...served, phoneNumber: null, bio: null, updatedAt: T3 } }];
+    });
+    await open();
+
+    fireEvent.change(phoneField(), { target: { value: '' } });
+    fireEvent.change(screen.getByDisplayValue('Analyst.'), { target: { value: '' } });
+
+    // A refetch lands carrying the stored, non-empty values.
+    served = { ...served, updatedAt: T2 };
+    await qc.invalidateQueries();
+    await settle();
+
+    // Empty is an answer, not a gap to fill from the server.
+    expect(phoneField().value).toBe('');
+    expect(screen.queryByDisplayValue('Analyst.')).toBeNull();
+
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(body.firstName).toBe('Ada'));
+    expect(body).toMatchObject({ phoneNumber: null, bio: null, city: 'London' });
+  });
+
+  it('D — a save acknowledged while the cached GET is still old does not put the old value back', async () => {
+    let gets = 0;
+    const refetch = deferred<[number, unknown]>();
+    mock.onGet('/v1/me/profile').reply(() => {
+      gets += 1;
+      // The first load answers; the refetch after the save is held back.
+      return gets === 1 ? [200, { profile: STORED }] : refetch.promise;
+    });
+    const acknowledged = { ...STORED, displayName: 'Grace Hopper', updatedAt: T2 };
+    mock.onPatch('/v1/me/profile').reply(200, { profile: acknowledged });
+    await open();
+
+    fireEvent.change(nameField(), { target: { value: 'Grace Hopper' } });
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(savedBanner()).toBeInTheDocument());
+
+    // The refetch has not returned. The form shows the acknowledged value.
+    await settle();
+    expect(gets).toBeGreaterThan(1);
+    expect(nameField().value).toBe('Grace Hopper');
+
+    refetch.resolve([200, { profile: acknowledged }]);
+    await settle();
+    expect(nameField().value).toBe('Grace Hopper');
+  });
+
+  it('E — an answer older than the acknowledged save cannot restore stale values', async () => {
+    mock.onGet('/v1/me/profile').reply(200, { profile: STORED });
+    const acknowledged = { ...STORED, displayName: 'Grace Hopper', updatedAt: T3 };
+    mock.onPatch('/v1/me/profile').reply(200, { profile: acknowledged });
+    await open();
+
+    fireEvent.change(nameField(), { target: { value: 'Grace Hopper' } });
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(savedBanner()).toBeInTheDocument());
+
+    // A read that began before the save arrives after it, with the name the
+    // row held then and a stamp older than the acknowledged one.
+    qc.setQueryData(['seeker', 'profile', 'get'], { profile: { ...STORED, updatedAt: T2 } });
+    await settle();
+    expect(nameField().value).toBe('Grace Hopper');
+  });
+
+  it('F — something typed while a save is in flight survives that save completing', async () => {
+    let served = STORED;
+    mock.onGet('/v1/me/profile').reply(() => [200, { profile: served }]);
+    const patches: Array<Record<string, unknown>> = [];
+    const firstSave = deferred<[number, unknown]>();
+    mock.onPatch('/v1/me/profile').reply((config) => {
+      patches.push(JSON.parse(config.data as string) as Record<string, unknown>);
+      if (patches.length === 1) return firstSave.promise;
+      return [200, { profile: { ...served, displayName: 'Grace B. Hopper', updatedAt: T3 } }];
+    });
+    await open();
+
+    fireEvent.change(nameField(), { target: { value: 'Grace Hopper' } });
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(patches).toHaveLength(1));
+
+    // The inputs are not disabled during a save, so the person keeps typing.
+    fireEvent.change(nameField(), { target: { value: 'Grace B. Hopper' } });
+    fireEvent.change(phoneField(), { target: { value: '+1 555 0100' } });
+
+    served = { ...STORED, displayName: 'Grace Hopper', updatedAt: T2 };
+    firstSave.resolve([200, { profile: served }]);
+    await waitFor(() => expect(savedBanner()).toBeInTheDocument());
+    await settle();
+
+    // The first save acknowledged "Grace Hopper". What is on screen is newer.
+    expect(nameField().value).toBe('Grace B. Hopper');
+    expect(phoneField().value).toBe('+1 555 0100');
+
+    // ...and it is what the next save sends. The button shows its success
+    // label for a moment before it offers Save again.
+    await waitFor(() => expect(saveButton()).toBeInTheDocument(), { timeout: 4_000 });
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(patches).toHaveLength(2));
+    expect(patches[0]).toMatchObject({ firstName: 'Grace', lastName: 'Hopper' });
+    expect(patches[1]).toMatchObject({
+      firstName: 'Grace',
+      lastName: 'B. Hopper',
+      phoneNumber: '+1 555 0100',
+    });
+  });
+
+  it('G — a failed save keeps the edit, shows no success, and a later refetch still cannot overwrite it', async () => {
+    let served = STORED;
+    mock.onGet('/v1/me/profile').reply(() => [200, { profile: served }]);
+    mock.onPatch('/v1/me/profile').reply(500, { error: { code: 'INTERNAL_ERROR' } });
+    await open();
+
+    fireEvent.change(nameField(), { target: { value: 'Grace Hopper' } });
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(savedBanner()).toBeNull();
+    expect(nameField().value).toBe('Grace Hopper');
+
+    served = { ...served, updatedAt: T2 };
+    await qc.invalidateQueries();
+    await settle();
+    expect(nameField().value).toBe('Grace Hopper');
+  });
+
+  it('H — one account’s unsaved edits are not carried into another account’s form', async () => {
+    mock.onGet('/v1/me/profile').reply(200, { profile: STORED });
+    await open();
+    fireEvent.change(nameField(), { target: { value: 'Unsaved Edit' } });
+    fireEvent.change(phoneField(), { target: { value: '+1 555 9999' } });
+
+    // The same mounted form is handed a different person's profile.
+    qc.setQueryData(['seeker', 'profile', 'get'], {
+      profile: {
+        ...MOCK_PROFILE,
+        email: 'grace@example.com',
+        displayName: 'Grace Hopper',
+        phoneNumber: null,
+        // Older than anything the first account saw: identity, not time,
+        // decides that this is a fresh form.
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+
+    await waitFor(() => expect(nameField().value).toBe('Grace Hopper'));
+    expect(phoneField().value).toBe('');
+    expect(screen.queryByDisplayValue('Unsaved Edit')).toBeNull();
+  });
+});
+
 describe('EditProfilePage — provider skills + serviceAreaCity', () => {
   const PROVIDER_ME = {
     id: 'u-prov-1',
@@ -500,5 +785,74 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
     await waitFor(() => expect(seekerBody).not.toBeNull());
     // The provider PATCH must NEVER fire from the Seeker context.
     expect(providerHits).toBe(0);
+  });
+
+  // ── I: the provider half of the form follows the same ownership rule ─────
+
+  it('a late provider refetch does not swap the city or the pin under a typed city', async () => {
+    mock.onGet('/v1/auth/me').reply(200, PROVIDER_ME);
+    mock.onGet('/v1/me/profile').reply(200, {
+      profile: { ...MOCK_PROFILE, displayName: 'Omar Al-Khalid', city: 'Riyadh' },
+    });
+    let providerRow = PROVIDER_PROFILE_ROW.profile;
+    mock.onGet('/v1/me/provider/profile').reply(() => [200, { profile: providerRow }]);
+    mock.onGet('/v1/services').reply(200, { items: SERVICES });
+    mock.onPatch('/v1/me/profile').reply(200, { profile: MOCK_PROFILE });
+    let providerBody: Record<string, unknown> | null = null;
+    mock.onPatch('/v1/me/provider/profile').reply((cfg) => {
+      providerBody = JSON.parse(cfg.data as string) as Record<string, unknown>;
+      return [200, PROVIDER_PROFILE_ROW];
+    });
+
+    renderEdit('provider');
+    await waitFor(() => expect(screen.getByDisplayValue('Riyadh')).toBeInTheDocument());
+    fireEvent.change(screen.getByDisplayValue('Riyadh'), { target: { value: 'Jeddah' } });
+
+    // The provider profile answers again: the stored city, and a stored pin.
+    providerRow = {
+      ...providerRow,
+      serviceAreaLat: 24.7 as unknown as null,
+      serviceAreaLng: 46.7 as unknown as null,
+      updatedAt: '2026-05-01T00:00:00.000Z',
+    };
+    await qc.invalidateQueries();
+    await waitFor(() =>
+      expect(
+        mock.history.get.filter((r) => r.url === '/v1/me/provider/profile').length,
+      ).toBeGreaterThan(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(screen.getByDisplayValue('Jeddah')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /save changes|حفظ التغييرات/i }));
+    await waitFor(() => expect(providerBody).not.toBeNull());
+    expect(providerBody).toMatchObject({ serviceAreaCity: 'Jeddah' });
+    // The Riyadh pin did not ride along with the typed Jeddah.
+    expect(providerBody).not.toHaveProperty('serviceAreaLat');
+    expect(providerBody).not.toHaveProperty('serviceAreaLng');
+  });
+
+  it('does not report the form saved when the provider half fails, and keeps the edits', async () => {
+    mockProviderRoute();
+    mock.onPatch('/v1/me/profile').reply(200, {
+      profile: {
+        ...MOCK_PROFILE,
+        displayName: 'Omar Al-Khalid',
+        city: 'Jeddah',
+        updatedAt: '2026-05-02T00:00:00.000Z',
+      },
+    });
+    mock.onPatch('/v1/me/provider/profile').reply(500, { error: { code: 'INTERNAL_ERROR' } });
+
+    renderEdit('provider');
+    await waitFor(() => expect(screen.getByDisplayValue('Riyadh')).toBeInTheDocument());
+    fireEvent.change(screen.getByDisplayValue('Riyadh'), { target: { value: 'Jeddah' } });
+    fireEvent.click(screen.getByRole('button', { name: /save changes|حفظ التغييرات/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    // One request succeeded and one failed: that is not "saved".
+    expect(screen.queryByText(/Saved successfully|تم الحفظ بنجاح/)).toBeNull();
+    // The provider city is the one that failed; the edit is still on screen.
+    expect(screen.getByDisplayValue('Jeddah')).toBeInTheDocument();
   });
 });

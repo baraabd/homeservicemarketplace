@@ -6,6 +6,13 @@ import { seedLanguage } from './fixtures';
 import { api, loginViaUi, newJar, otpFor, REAL_API, type Account, type Jar } from './real-api';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:4173';
+
+// These tests put real session cookies into the browser. A Playwright trace or
+// video would carry them into the uploaded evidence, so neither is recorded;
+// the failure screenshot, the page snapshot and the sanitized save timeline
+// attached below remain.
+test.use({ trace: 'off', video: 'off' });
+
 async function registerSeeker(): Promise<Account> {
   const jar = newJar();
   const email = `r05-${Date.now()}-${Math.floor(Math.random() * 1e6)}@itest.local`;
@@ -71,19 +78,71 @@ test.describe('R05 seeker durability — real browser, API and Postgres', () => 
     const fullName = page.getByLabel('Full Name');
     await expect(fullName).toBeVisible();
 
-    await fullName.fill('براء اختبار R05');
-    await page.getByLabel('Phone Number').fill('+963 944 000 000');
-    await page.getByLabel('City').fill('حلب');
-    await page
-      .getByPlaceholder('Write a short bio…')
-      .fill('ملف عميل حقيقي محفوظ من Chromium عبر API وقاعدة PostgreSQL.');
+    // What the person means to save. Synthetic values.
+    const intended = {
+      firstName: 'براء',
+      lastName: 'اختبار R05',
+      phoneNumber: '+963 944 000 000',
+      city: 'حلب',
+      bio: 'ملف عميل حقيقي محفوظ من Chromium عبر API وقاعدة PostgreSQL.',
+    };
+
+    // The order in which the editor's reads and its write happened. Observed,
+    // never altered: nothing here intercepts or answers a request. It carries
+    // methods, statuses and per-field booleans only — no cookie, token or body.
+    const startedAt = Date.now();
+    const timeline: Array<Record<string, unknown>> = [];
+    const mark = (event: string, extra: Record<string, unknown> = {}) =>
+      timeline.push({ atMs: Date.now() - startedAt, event, ...extra });
+    const isProfileCall = (url: string) => url === `${REAL_API}/v1/me/profile`;
+    page.on('request', (request) => {
+      if (!isProfileCall(request.url())) return;
+      if (request.method() !== 'PATCH') return void mark('request', { method: request.method() });
+      const sent = (request.postDataJSON() ?? {}) as Record<string, unknown>;
+      mark('request', {
+        method: 'PATCH',
+        sentIntended: Object.fromEntries(
+          Object.entries(intended).map(([field, value]) => [field, sent[field] === value]),
+        ),
+      });
+    });
+    page.on('response', (response) => {
+      if (isProfileCall(response.url())) {
+        mark('response', { method: response.request().method(), status: response.status() });
+      }
+    });
+
+    await fullName.fill(`${intended.firstName} ${intended.lastName}`);
+    await page.getByLabel('Phone Number').fill(intended.phoneNumber);
+    await page.getByLabel('City').fill(intended.city);
+    await page.getByPlaceholder('Write a short bio…').fill(intended.bio);
+    mark('fields-filled');
     const profileResponse = page.waitForResponse(
       (response) =>
         response.url() === `${REAL_API}/v1/me/profile` && response.request().method() === 'PATCH',
     );
     await page.getByRole('button', { name: 'Save Changes' }).click();
-    expect((await profileResponse).status()).toBe(200);
-    await expect(page.getByText(/Saved successfully/)).toBeVisible();
+    mark('save-pressed');
+    try {
+      const saved = await profileResponse;
+      // A 200 alone proves nothing: the editor once sent the STORED values
+      // back and was told 200. What was sent must be what was typed...
+      expect(saved.request().postDataJSON()).toMatchObject(intended);
+      expect(saved.status()).toBe(200);
+      // ...and what the server acknowledged must be that too.
+      expect(((await saved.json()) as { profile: Record<string, unknown> }).profile).toMatchObject({
+        displayName: `${intended.firstName} ${intended.lastName}`,
+        phoneNumber: intended.phoneNumber,
+        city: intended.city,
+        bio: intended.bio,
+      });
+      await expect(page.getByText(/Saved successfully/)).toBeVisible();
+    } finally {
+      await testInfo.attach('profile-save-timeline.json', {
+        body: JSON.stringify(timeline, null, 2),
+        contentType: 'application/json',
+      });
+    }
 
     await page.reload();
     // Reload intentionally returns to the profile surface, not an open editor.

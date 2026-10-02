@@ -34,7 +34,16 @@ export function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation<UpdateProfileResponse, Error, UpdateProfileRequest>({
     mutationFn: (input) => updateProfile(input),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      // The acknowledgement IS the canonical profile, so the cache takes it
+      // before the refetch is even asked for. Without this the cache still
+      // held the pre-save profile until the refetch returned, and a form
+      // re-reading it in that window put the old values back on screen. This
+      // is the server's own response, not a client guess, and it mirrors what
+      // the provider profile mutation already does.
+      qc.setQueryData<GetProfileResponse>(seekerQueryKeys.profile.get(), {
+        profile: res.profile,
+      });
       qc.invalidateQueries({ queryKey: seekerQueryKeys.profile.root });
       qc.invalidateQueries({ queryKey: ['auth', 'me'] });
     },
