@@ -366,6 +366,55 @@ describe('states the API cannot persist are unreachable', () => {
     expect(mock.history.patch).toHaveLength(0);
   });
 
+  // R10 — refuse first, ask second. Found by the real-browser journey: with
+  // hours already on a selected day, an inverted range reached the "replace
+  // your hours?" question, and was refused only after the provider agreed.
+  it('refuses an invalid range over existing hours without first asking to replace them', async () => {
+    renderScreen(
+      DRAFT({
+        data: {
+          availability: [
+            { id: 'a', dayOfWeek: 5, startMinute: 540, endMinute: 1020, timezone: 'Asia/Damascus' },
+          ],
+        },
+      }),
+    );
+    await screen.findByTestId('availability-summary-day-5');
+
+    // Friday is already selected. A shift past midnight, as one window.
+    fireEvent.change(screen.getByTestId('bulk-start'), { target: { value: '22:00' } });
+    fireEvent.change(screen.getByTestId('bulk-end'), { target: { value: '02:00' } });
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+
+    expect(await screen.findByTestId('availability-rejected')).toHaveTextContent(
+      EN.rejectedInvalidRange,
+    );
+    // No question about replacing hours that are not going to be replaced.
+    expect(screen.queryByTestId('apply-discards')).not.toBeInTheDocument();
+    expect(mock.history.patch).toHaveLength(0);
+  });
+
+  it('still asks before replacing existing hours with a VALID different window', async () => {
+    renderScreen(
+      DRAFT({
+        data: {
+          availability: [
+            { id: 'a', dayOfWeek: 5, startMinute: 540, endMinute: 1020, timezone: 'Asia/Damascus' },
+          ],
+        },
+      }),
+    );
+    await screen.findByTestId('availability-summary-day-5');
+
+    fireEvent.change(screen.getByTestId('bulk-start'), { target: { value: '10:00' } });
+    fireEvent.change(screen.getByTestId('bulk-end'), { target: { value: '12:00' } });
+    fireEvent.click(screen.getByTestId('apply-to-selected'));
+
+    expect(await screen.findByTestId('apply-discards')).toBeInTheDocument();
+    expect(screen.queryByTestId('availability-rejected')).not.toBeInTheDocument();
+    expect(mock.history.patch).toHaveLength(0);
+  });
+
   it('uses a native time input, so no custom listbox has to re-implement one', () => {
     renderScreen();
     expect(screen.getByTestId('bulk-start')).toHaveAttribute('type', 'time');

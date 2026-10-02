@@ -660,6 +660,13 @@ describe('review and submit — the enabled market must agree', () => {
   it('completes work area and submits with a saved enabled country code and no legacy label', async () => {
     const h = build({
       profile: makeCompleteProfile({ serviceAreaCountryCode: 'SY', serviceAreaCountry: null }),
+      // R10 — hours in a zone of the same market. The default fixture's
+      // Europe/Stockholm week in a Syrian market is the inconsistent state
+      // R10 stops counting as working hours, and is not what this test is
+      // about.
+      intervals: [
+        { id: 'iv-1', dayOfWeek: 1, startMinute: 540, endMinute: 1020, timezone: 'Asia/Damascus' },
+      ],
     });
     const draft = await h.service.get('u-1');
     expect(draft.data.serviceAreaCountryCode).toBe('SY');

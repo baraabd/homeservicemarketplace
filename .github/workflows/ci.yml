@@ -624,6 +624,34 @@ jobs:
         # database. Asserts which index each production predicate uses and
         # that the table is not scanned; it asserts no duration.
         run: node scripts/perf/geo-query-plan.mjs --rows 50000 --runs 5 --check
+      - name: Accept R10 working-hours schedule durability through the build-flagged bundle
+        # The week set on the real screen, validated and replaced in one
+        # transaction by the real API, read from PostgreSQL, and read back
+        # after navigation, a hard reload and a fresh login: an empty week,
+        # midnight ends, split and touching windows, a change of market, a
+        # stale tab, a lost reply, offline, a lost session, isolation, Arabic
+        # by touch at three mobile widths, and the keyboard. The spec records
+        # no trace or video.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r10-working-hours-report
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r10-working-hours-schedule-durability.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --retries=0 \
+            --output=test-results/r10-working-hours
+      - name: Upload R10 working-hours real-service evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r10-working-hours-evidence
+          path: |
+            apps/web/test-results/r10-working-hours/
+            apps/web/test-results/r10-working-hours-report/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed

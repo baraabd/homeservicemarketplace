@@ -92,6 +92,27 @@ export function checkTimezoneAgainstMarket(
   return allowed.includes(timezone) ? { kind: 'COMPATIBLE' } : { kind: 'NOT_IN_MARKET', allowed };
 }
 
+/**
+ * The zone a stored schedule may be SAID to be in, for this market.
+ *
+ * R10. A schedule's rows carry the zone they were saved in. When the provider
+ * moves to a market that zone does not belong to, the rows cannot simply be
+ * believed any more: reporting "Europe/Helsinki" for a provider whose market
+ * is now Brazil tells every reader the wrong hours, and a client that sends
+ * the reported zone back is refused for a value the SERVER gave it.
+ *
+ * So a stored zone the market excludes is reported as none. An undescribed
+ * market, or no market, cannot judge and the stored zone stands — the same
+ * asymmetry `checkTimezoneAgainstMarket` documents.
+ */
+export function reportableTimezone(
+  stored: string | null | undefined,
+  market: SupportedMarket | null | undefined,
+): string | null {
+  if (!isValidTimezone(stored)) return null;
+  return checkTimezoneAgainstMarket(stored, market).kind === 'NOT_IN_MARKET' ? null : stored;
+}
+
 export function decideTimezone(input: TimezoneInput): TimezoneDecision {
   // 1. An explicit, still-valid provider timezone is never overwritten —
   //    unless the market it belonged to is no longer the provider's.
