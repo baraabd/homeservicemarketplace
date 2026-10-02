@@ -47,6 +47,10 @@ import { buildReview } from './review/onboarding-review-resolver';
 import { readProviderReviewSnapshot } from './review/provider-review-snapshot';
 import { readOnboardingFeedback } from './review/provider-onboarding-feedback';
 import { referencesRestrictedMedia } from './avatar/avatar-policy';
+import {
+  resolveWorkAreaPoint,
+  WORK_AREA_POINT_MESSAGE,
+} from './service-area/work-area-point.policy';
 import { checkRadius, resolveRadiusPolicy, type RadiusPolicy } from './service-area/radius-policy';
 import {
   ProviderServiceAreaExpansionService,
@@ -661,8 +665,9 @@ export class ProviderOnboardingWizardService {
           ? null
           : (body.serviceAreaCountryCode ?? p.serviceAreaCountryCode ?? null);
 
+        const market =
+          effectiveCountry != null ? await this.markets.findEnabled(effectiveCountry, trx) : null;
         if (effectiveCountry != null) {
-          const market = await this.markets.findEnabled(effectiveCountry, trx);
           if (!market) {
             throw new AppError(
               'VALIDATION_ERROR',
@@ -693,8 +698,35 @@ export class ProviderOnboardingWizardService {
             ? body.serviceAreaCountryCode.toUpperCase()
             : null;
         }
-        if (body.serviceAreaLat !== undefined) profileData.serviceAreaLat = body.serviceAreaLat;
-        if (body.serviceAreaLng !== undefined) profileData.serviceAreaLng = body.serviceAreaLng;
+        // R09 — the starting point, judged against the market this write
+        // leaves the provider in. Refused BEFORE anything is committed, like
+        // the market check above: `profileData` is only staged so far.
+        const point = resolveWorkAreaPoint({
+          stored: { lat: p.serviceAreaLat ?? null, lng: p.serviceAreaLng ?? null },
+          requested: { lat: body.serviceAreaLat, lng: body.serviceAreaLng },
+          market,
+          marketChanged:
+            body.serviceAreaCountryCode !== undefined &&
+            (body.serviceAreaCountryCode ? body.serviceAreaCountryCode.toUpperCase() : null) !==
+              (p.serviceAreaCountryCode ?? null),
+        });
+        if (!point.ok) {
+          throw new AppError('VALIDATION_ERROR', WORK_AREA_POINT_MESSAGE[point.code], 400, {
+            reason: point.code,
+          });
+        }
+        if (point.write) {
+          profileData.serviceAreaLat = point.lat;
+          profileData.serviceAreaLng = point.lng;
+        }
+        if (point.invalidated) {
+          // No coordinates in the log line, by policy (location-privacy.spec).
+          this.logger.log({
+            msg: 'provider.work_area.point_invalidated',
+            providerProfileId: p.id,
+            reason: 'MARKET_CHANGED',
+          });
+        }
         if (body.serviceAreaRadiusKm !== undefined) {
           // Sprint 9B.19 — bounded by POLICY, not by the DTO's numbers.
           //

@@ -138,6 +138,8 @@ interface Mocks {
     removeServiceCategories: jest.Mock;
   };
   categories: { findById: jest.Mock };
+  markets: { findEnabled: jest.Mock };
+  settings: { findByKey: jest.Mock };
   audit: { record: jest.Mock };
 }
 
@@ -171,6 +173,10 @@ function makeMocks(over: MocksOverride = {}): Mocks {
       ...(over.categories ?? {}),
     },
     audit: { record: jest.fn().mockResolvedValue(undefined), ...(over.audit ?? {}) },
+    // R09 — no market by default, so a point cannot be judged; the operator's
+    // schema defaults bound the radius.
+    markets: { findEnabled: jest.fn().mockResolvedValue(null), ...(over.markets ?? {}) },
+    settings: { findByKey: jest.fn().mockResolvedValue(null), ...(over.settings ?? {}) },
   };
 }
 
@@ -182,6 +188,8 @@ function makeService(m: Mocks) {
     m.categories as unknown as ServiceCategoryRepository,
     makeTx(),
     m.audit as unknown as AuditService,
+    m.markets as never,
+    m.settings as never,
   );
 }
 
@@ -613,5 +621,114 @@ describe('ProviderService', () => {
         makeService(noProfileAvailability).updateAvailability('u', { availability: 'ONLINE' }),
       ).rejects.toBeInstanceOf(AppError),
     ]);
+  });
+
+  // ── R09: this route obeys the same work-area rules as onboarding ─────────
+  //
+  // It writes the columns matching reads. Before R09 it accepted half a point,
+  // a point outside the provider's market and a radius past the operator's
+  // ceiling, for an approved provider whose feed is computed from them.
+  describe('update — work-area authority (R09)', () => {
+    const SY = {
+      countryCode: 'SY',
+      bounds: { south: 32.3, west: 35.6, north: 37.4, east: 42.4 },
+    };
+    const inSyria = (over: Partial<ProviderProfile> = {}) =>
+      makeMocks({
+        providers: {
+          findByUserIdWithCategories: jest
+            .fn()
+            .mockResolvedValue(
+              makeProviderWithCategories({ serviceAreaCountryCode: 'SY', ...over } as never),
+            ),
+        },
+        markets: { findEnabled: jest.fn().mockResolvedValue(SY) },
+      });
+    const refusal = (reason: string) =>
+      expect.objectContaining({ status: 400, details: expect.objectContaining({ reason }) });
+
+    it('REFUSES half a point and writes nothing', async () => {
+      const m = inSyria();
+      await expect(makeService(m).update('user-1', { serviceAreaLat: 36.2 })).rejects.toEqual(
+        refusal('COORDINATES_INCOMPLETE'),
+      );
+      expect(m.providers.updateById).not.toHaveBeenCalled();
+    });
+
+    it('REFUSES a point outside the provider market and writes nothing', async () => {
+      const m = inSyria();
+      await expect(
+        makeService(m).update('user-1', { serviceAreaLat: 16.02, serviceAreaLng: 7.03 }),
+      ).rejects.toEqual(refusal('POINT_OUTSIDE_MARKET'));
+      expect(m.providers.updateById).not.toHaveBeenCalled();
+    });
+
+    it('accepts a point inside the provider market', async () => {
+      const m = inSyria();
+      await makeService(m).update('user-1', { serviceAreaLat: 36.2, serviceAreaLng: 37.16 });
+      expect(m.providers.updateById).toHaveBeenCalledWith(
+        'pp-1',
+        expect.objectContaining({ serviceAreaLat: 36.2, serviceAreaLng: 37.16 }),
+        undefined,
+      );
+    });
+
+    it('does not invent a centroid that lies outside the provider market', async () => {
+      const m = inSyria();
+      // Riyadh is in the centroid table and is not in Syria.
+      await makeService(m).update('user-1', { serviceAreaCity: 'Riyadh' });
+      const written = m.providers.updateById.mock.calls[0][1];
+      expect(written.serviceAreaCity).toBe('Riyadh');
+      expect(written.serviceAreaLat).toBeUndefined();
+      expect(written.serviceAreaLng).toBeUndefined();
+    });
+
+    it('cannot judge a point when the market is undescribed, and accepts it', async () => {
+      const m = makeMocks({
+        markets: { findEnabled: jest.fn().mockResolvedValue({ countryCode: 'SY' }) },
+      });
+      await makeService(m).update('user-1', { serviceAreaLat: 16.02, serviceAreaLng: 7.03 });
+      expect(m.providers.updateById).toHaveBeenCalled();
+    });
+
+    it.each([
+      [1, true],
+      [100, true],
+      [101, false],
+      [500, false],
+    ])('bounds the radius by the operator policy: %s km accepted=%s', async (km, accepted) => {
+      const m = inSyria();
+      const attempt = makeService(m).update('user-1', { serviceAreaRadiusKm: km });
+      if (accepted) {
+        await attempt;
+        expect(m.providers.updateById).toHaveBeenCalledWith(
+          'pp-1',
+          expect.objectContaining({ serviceAreaRadiusKm: km }),
+          undefined,
+        );
+      } else {
+        await expect(attempt).rejects.toEqual(refusal('ABOVE_MAX'));
+        expect(m.providers.updateById).not.toHaveBeenCalled();
+      }
+    });
+
+    it('reads the radius bounds from the operator settings, not from a constant', async () => {
+      const m = inSyria();
+      m.settings.findByKey.mockImplementation(async (key: string) =>
+        key === 'provider_service_radius_min_km'
+          ? { value: 5 }
+          : key === 'provider_service_radius_max_km'
+            ? { value: 40 }
+            : null,
+      );
+      await expect(makeService(m).update('user-1', { serviceAreaRadiusKm: 4 })).rejects.toEqual(
+        refusal('BELOW_MIN'),
+      );
+      await expect(makeService(m).update('user-1', { serviceAreaRadiusKm: 41 })).rejects.toEqual(
+        refusal('ABOVE_MAX'),
+      );
+      await makeService(m).update('user-1', { serviceAreaRadiusKm: 40 });
+      expect(m.providers.updateById).toHaveBeenCalledTimes(1);
+    });
   });
 });

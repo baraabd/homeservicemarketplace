@@ -71,6 +71,32 @@ export interface SupportedMarket {
    * than pretending a check happened.
    */
   readonly timezones?: readonly string[];
+  /**
+   * The geographic envelope of the market, in decimal degrees.
+   *
+   * R09. Optional, and it answers the question the country code cannot: is a
+   * POINT in this market? Until now a provider could choose Syria and then
+   * place their starting point anywhere on the planet; matching is decided by
+   * that point, so their application said one place and their feed another.
+   *
+   * A coarse rectangle, deliberately. It is not a border: it contains the
+   * country and some of its neighbours' edges. Its job is to refuse a point
+   * that is plainly somewhere else, not to adjudicate a frontier.
+   *
+   * Absent means the operator has not described where this market is. The
+   * server then cannot judge a point and does not pretend to — exactly as
+   * with `timezones` above.
+   */
+  readonly bounds?: MarketBounds;
+}
+
+/** A latitude/longitude rectangle. `west` < `east`: a market spanning the
+ *  antimeridian cannot be described and is refused by the parser. */
+export interface MarketBounds {
+  readonly south: number;
+  readonly west: number;
+  readonly north: number;
+  readonly east: number;
 }
 
 /** Why a stored registry was refused. Codes rather than sentences: these reach
@@ -86,7 +112,8 @@ export type MarketRegistryErrorCode =
   | 'INVALID_ENABLED'
   | 'INVALID_DISPLAY_NAME_KEY'
   | 'INVALID_TIMEZONE'
-  | 'INVALID_TIMEZONE_LIST';
+  | 'INVALID_TIMEZONE_LIST'
+  | 'INVALID_BOUNDS';
 
 export class MarketRegistryError extends Error {
   constructor(
@@ -141,6 +168,36 @@ export function isValidCountryCode(value: unknown): value is string {
  * never fall back to an invented country. There is no default market anywhere
  * in this module.
  */
+function isValidBounds(value: unknown): value is MarketBounds {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const b = value as Record<string, unknown>;
+  const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+  if (!finite(b.south) || !finite(b.west) || !finite(b.north) || !finite(b.east)) return false;
+  return (
+    b.south >= -90 &&
+    b.north <= 90 &&
+    b.south < b.north &&
+    b.west >= -180 &&
+    b.east <= 180 &&
+    b.west < b.east
+  );
+}
+
+/**
+ * Is this point inside the market?
+ *
+ * `null` when the market declares no bounds: the server cannot judge, and a
+ * caller must not read that as either answer. The edges are inside.
+ */
+export function marketContainsPoint(
+  market: Pick<SupportedMarket, 'bounds'>,
+  point: { lat: number; lng: number },
+): boolean | null {
+  const b = market.bounds;
+  if (!b) return null;
+  return point.lat >= b.south && point.lat <= b.north && point.lng >= b.west && point.lng <= b.east;
+}
+
 export function parseSupportedMarkets(raw: unknown): SupportedMarket[] {
   if (!Array.isArray(raw)) {
     throw new MarketRegistryError(
@@ -219,6 +276,13 @@ export function parseSupportedMarkets(raw: unknown): SupportedMarket[] {
       }
     }
 
+    if (e.bounds !== undefined && !isValidBounds(e.bounds)) {
+      throw new MarketRegistryError(
+        'INVALID_BOUNDS',
+        `market ${e.countryCode} has bounds that are not { south, west, north, east } in degrees with south < north and west < east`,
+      );
+    }
+
     return Object.freeze({
       countryCode: e.countryCode,
       enabled: e.enabled,
@@ -227,6 +291,16 @@ export function parseSupportedMarkets(raw: unknown): SupportedMarket[] {
       ...(e.timezones === undefined
         ? {}
         : { timezones: Object.freeze([...(e.timezones as string[])]) }),
+      ...(e.bounds === undefined
+        ? {}
+        : {
+            bounds: Object.freeze({
+              south: (e.bounds as MarketBounds).south,
+              west: (e.bounds as MarketBounds).west,
+              north: (e.bounds as MarketBounds).north,
+              east: (e.bounds as MarketBounds).east,
+            }),
+          }),
     });
   });
 

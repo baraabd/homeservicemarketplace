@@ -73,6 +73,17 @@ export interface SupportedMarketView {
          */
         allowedIds?: readonly string[];
       };
+  /**
+   * The market's geographic envelope in decimal degrees, when the operator has
+   * described one.
+   *
+   * R09. Sent so the work-area map can open on the market the provider chose
+   * and explain a refused point. A starting point outside it is refused by
+   * the server on every write; this is an explanation, not a rule the client
+   * owns. Absent when the operator has not described the market, in which
+   * case no point can be judged.
+   */
+  bounds?: { south: number; west: number; north: number; east: number };
 }
 
 /** `GET /v1/me/provider/onboarding/markets`. */

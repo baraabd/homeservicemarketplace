@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ADMIN_SETTINGS_SCHEMA } from '@homeservicemarketplace/contracts';
 import type {
   GetProviderProfileResponse,
   UpdateProviderAvailabilityRequest,
@@ -10,6 +11,7 @@ import type {
 import type {
   ProviderAvailability,
   ProviderProfileStatus,
+  PrismaTx,
   User,
 } from '@homeservicemarketplace/database';
 
@@ -17,7 +19,19 @@ import { ServiceCategoryRepository } from '../../infrastructure/persistence/serv
 import { RoleRepository } from '../../infrastructure/persistence/iam/role.repository';
 import { UserRepository } from '../../infrastructure/persistence/iam/user.repository';
 import { ProviderProfileRepository } from '../../infrastructure/persistence/bids/provider-profile.repository';
+import { PlatformSettingRepository } from '../../infrastructure/persistence/settings/platform-setting.repository';
 import { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
+import { MarketRegistryService } from './onboarding/market/market-registry.service';
+import { marketContainsPoint } from './onboarding/market/supported-market';
+import {
+  checkRadius,
+  RADIUS_MAX_SETTING,
+  RADIUS_MIN_SETTING,
+} from './onboarding/service-area/radius-policy';
+import {
+  resolveWorkAreaPoint,
+  WORK_AREA_POINT_MESSAGE,
+} from './onboarding/service-area/work-area-point.policy';
 import { AppError } from '../../shared/errors/app-error';
 import { AuditService } from '../iam/audit/audit.service';
 import { toProviderProfileSummary as toSummary } from './provider-profile.mapper';
@@ -98,6 +112,8 @@ export class ProviderService {
     // Sprint 2 — a skill leaving a profile is a change to what the provider is
     // matched for, so it is recorded like every other change to standing.
     private readonly audit: AuditService,
+    private readonly markets: MarketRegistryService,
+    private readonly settings: PlatformSettingRepository,
   ) {}
 
   // ─── upgrade ───────────────────────────────────────────────────────────────
@@ -239,11 +255,66 @@ export class ProviderService {
         profile.serviceAreaLat === null || profile.serviceAreaLng === null;
       let resolvedLat: number | null | undefined = input.serviceAreaLat;
       let resolvedLng: number | null | undefined = input.serviceAreaLng;
+      // R09 — this route writes the same columns matching reads, so it obeys
+      // the same rules as the onboarding step. Before R09 it applied none of
+      // them: an approved provider editing their profile could store half a
+      // point, a point outside their market, or a radius beyond the operator's
+      // ceiling, and the feed would be computed from it.
+      //
+      // The market is the stored one: this route cannot change it. A market
+      // the operator has withdrawn or never described cannot judge a point.
+      const market = profile.serviceAreaCountryCode
+        ? await this.markets.findEnabled(profile.serviceAreaCountryCode, tx)
+        : null;
+
       if (incomingCity && incomingCity.length > 0 && omittedLatLng && profileMissingLatLng) {
         const centroid = lookupCityCentroid(incomingCity);
-        if (centroid) {
+        // A convenience default must never place a provider outside their own
+        // market. When it would, no point is invented at all.
+        const inMarket =
+          centroid === null ||
+          market === null ||
+          marketContainsPoint(market, { lat: centroid[0], lng: centroid[1] }) !== false;
+        if (centroid && inMarket) {
           resolvedLat = centroid[0];
           resolvedLng = centroid[1];
+        }
+      }
+
+      const point = resolveWorkAreaPoint({
+        stored: { lat: profile.serviceAreaLat ?? null, lng: profile.serviceAreaLng ?? null },
+        requested: { lat: resolvedLat, lng: resolvedLng },
+        market,
+        marketChanged: false,
+      });
+      if (!point.ok) {
+        throw new AppError('VALIDATION_ERROR', WORK_AREA_POINT_MESSAGE[point.code], 400, {
+          reason: point.code,
+        });
+      }
+      if (point.write) {
+        resolvedLat = point.lat;
+        resolvedLng = point.lng;
+      }
+
+      if (typeof input.serviceAreaRadiusKm === 'number') {
+        // The operator's standard bounds. The earned ceiling the onboarding
+        // step can add on top is not consulted here, so this route is never
+        // the more permissive of the two.
+        const policy = {
+          minKm: await this.numberSetting(RADIUS_MIN_SETTING, tx),
+          maxKm: await this.numberSetting(RADIUS_MAX_SETTING, tx),
+        };
+        const verdict = checkRadius(input.serviceAreaRadiusKm, policy);
+        if (!verdict.ok) {
+          throw new AppError(
+            'VALIDATION_ERROR',
+            verdict.code === 'ABOVE_MAX'
+              ? `A service radius cannot be larger than ${policy.maxKm} km.`
+              : `A service radius cannot be smaller than ${policy.minKm} km.`,
+            400,
+            { reason: verdict.code },
+          );
         }
       }
 
@@ -283,6 +354,13 @@ export class ProviderService {
     });
 
     return { profile: toSummary(result) };
+  }
+
+  private async numberSetting(key: string, tx?: PrismaTx): Promise<number> {
+    const row = await this.settings.findByKey(key, tx);
+    if (typeof row?.value === 'number' && Number.isFinite(row.value)) return row.value;
+    const fallback = ADMIN_SETTINGS_SCHEMA.find((field) => field.key === key)?.default;
+    return typeof fallback === 'number' ? fallback : 0;
   }
 
   // ─── update availability ───────────────────────────────────────────────────

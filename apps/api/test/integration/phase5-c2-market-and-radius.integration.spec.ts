@@ -941,12 +941,17 @@ d('Phase 5 C2 - enabled markets and radius provenance (real HTTP, real Postgres)
         'selectedCountryCode',
       ]);
       for (const market of res.body.markets) {
-        expect(Object.keys(market).sort()).toEqual([
-          'countryCode',
-          'displayNameKey',
-          'radius',
-          'timezone',
-        ]);
+        // R09 added `bounds`, deliberately: the market's coarse geographic
+        // envelope, so the work-area map opens on the market. It is the same
+        // for every provider and describes a country, not a person. It is
+        // present only for a market the operator has described.
+        const keys = Object.keys(market)
+          .filter((key) => key !== 'bounds')
+          .sort();
+        expect(keys).toEqual(['countryCode', 'displayNameKey', 'radius', 'timezone']);
+        if ('bounds' in market) {
+          expect(Object.keys(market.bounds).sort()).toEqual(['east', 'north', 'south', 'west']);
+        }
       }
       // Belt and braces: the registry's own field names must not appear
       // anywhere in the response, however the projection is later reshaped.
