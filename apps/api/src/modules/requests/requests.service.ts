@@ -91,14 +91,17 @@ export class RequestsService {
     this.assertHasService(input.categoryId, input.customServiceText);
     this.assertHasLocation(input.addressId, input.manualAddress);
     this.assertScheduledAtMatchesType(input.scheduleType, input.scheduledAt ?? null);
-    this.assertNotInThePast(input.scheduledAt ?? null);
 
     // R07 — fast replay path. A response can be lost after the original
-    // transaction commits; return that same request instead of duplicating it.
+    // transaction commits and the scheduled time may pass before the retry.
+    // Resolve an existing idempotent write before time-dependent validation,
+    // otherwise a successful request could be reported as failed on replay.
     if (input.idempotencyKey) {
       const replay = await this.requests.findByIdempotencyKey(seekerUserId, input.idempotencyKey);
       if (replay) return toSummary(replay);
     }
+
+    this.assertNotInThePast(input.scheduledAt ?? null);
 
     let created: ServiceRequestWithCategory;
     try {
