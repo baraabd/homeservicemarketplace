@@ -73,6 +73,11 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
   const request = useRef(0);
   const lookup = useRef<AbortController | null>(null);
   const { trackExternalWork } = useOnboardingAutosave();
+  const marketsQuery = useSupportedMarkets();
+  // The envelope of the market the SERVER has on record for this provider.
+  const marketBounds =
+    marketsQuery.data?.markets?.find((m) => m.countryCode === data.serviceAreaCountryCode)
+      ?.bounds ?? null;
 
   useEffect(() => {
     if (autosave.isDirty) return;
@@ -103,12 +108,33 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
     lookup.current?.abort();
     setLocating(false);
   };
-  const selectPoint = (next: ServiceAreaPoint) => {
-    if (!editable) return;
+  /**
+   * R09 — is this point in the market the provider chose?
+   *
+   * Asked of the SERVER's description of the market, never of a client
+   * constant, and only to explain: the write is judged again on the server
+   * (POINT_OUTSIDE_MARKET). Answering here first means a point the server
+   * would refuse is never queued, so it cannot sit in the autosave queue and
+   * be re-sent with every later edit of this step.
+   */
+  const outsideMarket = (next: ServiceAreaPoint) =>
+    marketBounds != null &&
+    (next.lat < marketBounds.south ||
+      next.lat > marketBounds.north ||
+      next.lng < marketBounds.west ||
+      next.lng > marketBounds.east);
+
+  const selectPoint = (next: ServiceAreaPoint): boolean => {
+    if (!editable) return false;
     cancelLookup();
+    if (outsideMarket(next)) {
+      setLocationMessage(copy.pointOutsideMarket);
+      return false;
+    }
     setPoint(next);
     autosave.save({ serviceAreaLat: next.lat, serviceAreaLng: next.lng });
     setLocationMessage(copy.locationSelectedManually);
+    return true;
   };
   const locate = () => {
     if (!editable || locating) return;
@@ -128,6 +154,12 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
       .then(async (position) => {
         if (id !== request.current) return;
         const next = { lat: position.coords.latitude, lng: position.coords.longitude };
+        if (outsideMarket(next)) {
+          // The device is somewhere else. Nothing is stored and nothing the
+          // provider already entered is changed.
+          setLocationMessage(copy.pointOutsideMarket);
+          return;
+        }
         setPoint(next);
         autosave.save({ serviceAreaLat: next.lat, serviceAreaLng: next.lng });
         // A vendor that never responds cannot trap Save and continue forever.
@@ -212,7 +244,6 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
   // does not pin a timezone. In the settled case this renders nothing and the
   // approved screen is untouched, which is why the canonical cell for state 6
   // is unchanged.
-  const marketsQuery = useSupportedMarkets();
   const prompt = marketsQuery.isError
     ? ({ kind: 'UNAVAILABLE' } as const)
     : marketPrompt(marketsQuery.data, view);
@@ -321,6 +352,7 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
             radiusKm={radiusKm}
             lang={lang}
             editable={editable}
+            bounds={marketBounds}
             onSelect={selectPoint}
           />
         </Suspense>
@@ -341,6 +373,7 @@ export function ServiceAreaTaskScreen({ view, lang, editable }: ServiceAreaTaskS
         {point && editable ? (
           <ProviderButton
             tone="ghost"
+            data-testid="service-area-remove-point"
             onClick={() => {
               cancelLookup();
               setPoint(null);

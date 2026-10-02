@@ -97,6 +97,10 @@ export class SupportedMarketsService {
         timezone.kind === 'RESOLVED'
           ? { kind: 'RESOLVED', id: timezone.timezone }
           : { kind: 'ASK', allowedIds: [...new Set(marketTimezones(market))] },
+      // R09 — where the market is, so the map can open on it instead of on
+      // the whole world. An explanation for the screen; the write is still
+      // judged on the server.
+      ...(market.bounds ? { bounds: { ...market.bounds } } : {}),
     };
   }
 

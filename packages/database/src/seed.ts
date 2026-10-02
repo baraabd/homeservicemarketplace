@@ -870,18 +870,22 @@ async function upsertDevSupportedMarkets(tx: Prisma.TransactionClient): Promise<
           enabled: true,
           displayNameKey: 'market.SY',
           defaultTimezone: 'Asia/Damascus',
+          // R09 — a coarse envelope, not a border. See supported-market.ts.
+          bounds: { south: 32.3, west: 35.6, north: 37.4, east: 42.4 },
         },
         {
           countryCode: 'SE',
           enabled: true,
           displayNameKey: 'market.SE',
           defaultTimezone: 'Europe/Stockholm',
+          bounds: { south: 55.2, west: 10.9, north: 69.1, east: 24.2 },
         },
         {
           countryCode: 'SA',
           enabled: true,
           displayNameKey: 'market.SA',
           defaultTimezone: 'Asia/Riyadh',
+          bounds: { south: 16.3, west: 34.4, north: 32.2, east: 55.7 },
         },
         {
           // Sprint 09B.29 Phase 5 (C3) — a genuinely MULTI-zone market.

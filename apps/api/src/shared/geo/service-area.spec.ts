@@ -1,6 +1,7 @@
 import {
   boundingBox,
   clampRadiusKm,
+  exactDistanceKm,
   haversineKm,
   isValidCoordinate,
   isValidRadiusKm,
@@ -357,5 +358,43 @@ describe('usesRadiusMatching', () => {
     expect(usesRadiusMatching(area())).toBe(true);
     expect(usesRadiusMatching(area({ radiusKm: 0 }))).toBe(false);
     expect(usesRadiusMatching(area({ lat: null }))).toBe(false);
+  });
+});
+
+// R09 — the decision is made on the unrounded distance.
+//
+// Deciding on the value rounded to 0.1 km made the in-memory circle up to
+// 0.05 km larger than the bounding box the feed query selects with. Fan-out is
+// decided in memory and the feed through the box, so a provider 10.04 km from
+// a request was announced a job that the feed, the detail and the bid refused.
+describe('the rounding band at the edge of the radius', () => {
+  const centre = { lat: 36.2, lng: 37.16 };
+  const kmPerDegree = (2 * Math.PI * 6371) / 360;
+  const north = (km: number) => ({ lat: centre.lat + km / kmPerDegree, lng: centre.lng });
+  const provider = { ...centre, radiusKm: 10, cityKey: 'aleppo' };
+  const sqlSelects = (point: { lat: number; lng: number }) => {
+    const box = boundingBox(centre, provider.radiusKm);
+    const inBox =
+      point.lat >= box.minLat &&
+      point.lat <= box.maxLat &&
+      box.lngRanges.some((r) => point.lng >= r.minLng && point.lng <= r.maxLng);
+    return inBox && filterByExactRadius(provider, [point], (p) => p).length === 1;
+  };
+
+  it.each([
+    [9.99, true],
+    [10.01, false],
+    [10.04, false],
+    [10.06, false],
+  ])('a request %s km away: both paths answer %s', (km, visible) => {
+    const point = north(km);
+    expect(matchServiceArea(provider, { ...point, cityKey: 'aleppo' }).matches).toBe(visible);
+    expect(sqlSelects(point)).toBe(visible);
+  });
+
+  it('still REPORTS the distance rounded to 0.1 km', () => {
+    expect(haversineKm(centre, north(10.04))).toBe(10);
+    expect(exactDistanceKm(centre, north(10.04))).toBeGreaterThan(10);
+    expect(matchServiceArea(provider, { ...north(9.99), cityKey: null }).distanceKm).toBe(10);
   });
 });

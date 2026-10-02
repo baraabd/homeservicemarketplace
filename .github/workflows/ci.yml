@@ -566,6 +566,37 @@ jobs:
             apps/web/test-results/r08-provider-v2-all-field-authority-report/
           retention-days: 14
           if-no-files-found: warn
+      - name: Accept R09 work-area and marketplace geo authority through the build-flagged bundle
+        # The work area written on the real screen, refused or stored by the
+        # real API, read from PostgreSQL, and then read by the marketplace:
+        # permission denial, a point outside the market, keyboard, touch at
+        # three mobile widths in Arabic, a stale tab, a lost reply, isolation,
+        # and feed/detail/bid agreement at the radius. Synthetic coordinates
+        # only. The spec records no trace or video.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r09-work-area-geo-authority-report
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r09-work-area-geo-authority.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --output=test-results/r09-work-area-geo-authority
+      - name: Upload R09 geo authority real-service evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r09-work-area-geo-authority-evidence
+          path: |
+            apps/web/test-results/r09-work-area-geo-authority/
+            apps/web/test-results/r09-work-area-geo-authority-report/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Check the marketplace geo query plans on a representative table
+        # R09. 50,000 synthetic requests in a throwaway schema of this job's
+        # database. Asserts which index each production predicate uses and
+        # that the table is not scanned; it asserts no duration.
+        run: node scripts/perf/geo-query-plan.mjs --rows 50000 --runs 5 --check
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed
