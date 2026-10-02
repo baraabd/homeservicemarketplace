@@ -242,20 +242,26 @@
     {
       "id": "R10",
       "owner": "baraabd",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "dependencies": ["R08"],
-      "finding": "Weekly replacement/version and schedule normalization exist. Full persisted schedule summary, concurrent-writer and actual-appointment DST acceptance remain outstanding.",
+      "finding": "Implemented on feat/r10-working-hours-schedule-durability, pending merge: the weekly schedule is proved through validation, one-transaction replacement, concurrent writers, reload, fresh login and PostgreSQL; a change of market now carries the stored hours into a zone of the new market instead of leaving a zone the next save was refused for; the editor refuses an invalid range before asking to replace hours. No appointment or DST conversion exists in the repository; that is recorded in docs/production-readiness/r10/APPOINTMENT_DST_POLICY.md. See also SCHEDULE_AUTHORITY_MATRIX.md and IMPLEMENTATION.md there.",
       "action": "Preserve versioned weekly replacement, adjacent-interval semantics and explicit timezone behavior; do not silently reinterpret stored hours or invent defaults.",
       "requiredEvidence": "Overlap/adjacency/empty week/timezone/two-writer tests plus relogin DB equality; document actual appointment DST policy separately from weekly opening hours.",
       "source": [
         "apps/api/src/modules/provider/onboarding/availability-intervals.ts",
         "apps/web/src/app/features/provider-onboarding-v2/availability/weekly-schedule.ts",
-        "apps/api/src/modules/provider/onboarding/provider-onboarding-wizard.service.ts"
+        "apps/api/src/modules/provider/onboarding/provider-onboarding-wizard.service.ts",
+        "apps/api/src/modules/provider/onboarding/market/timezone-precedence.policy.ts",
+        "apps/web/src/app/features/provider-onboarding-v2/components/AvailabilityTaskScreen.tsx"
       ],
       "tests": [
         "apps/api/src/modules/provider/onboarding/availability-production.spec.ts",
+        "apps/api/src/modules/provider/onboarding/market/timezone-precedence.policy.spec.ts",
         "apps/web/src/app/features/provider-onboarding-v2/availability/weekly-schedule.test.ts",
-        "apps/api/test/integration/availability-schedule.integration.spec.ts"
+        "apps/web/src/app/features/provider-onboarding-v2/components/AvailabilityTaskScreen.ordering.test.tsx",
+        "apps/api/test/integration/availability-schedule.integration.spec.ts",
+        "apps/api/test/integration/r10-working-hours-durability.integration.spec.ts",
+        "apps/web/e2e/r10-working-hours-schedule-durability.real-api.spec.ts"
       ]
     }
   ],
