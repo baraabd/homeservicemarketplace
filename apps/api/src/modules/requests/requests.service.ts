@@ -92,7 +92,16 @@ export class RequestsService {
     this.assertHasLocation(input.addressId, input.manualAddress);
     this.assertScheduledAtMatchesType(input.scheduleType, input.scheduledAt ?? null);
 
-    const created = await this.tx.run(async (tx) => {
+    // R07 — fast replay path. A response can be lost after the original
+    // transaction commits; return that same request instead of duplicating it.
+    if (input.idempotencyKey) {
+      const replay = await this.requests.findByIdempotencyKey(seekerUserId, input.idempotencyKey);
+      if (replay) return toSummary(replay);
+    }
+
+    let created: ServiceRequestWithCategory;
+    try {
+      created = await this.tx.run(async (tx) => {
       const categoryId = await this.resolveCategory(input.categoryId ?? null, tx);
       const { addressId, snapshot } = await this.resolveAddress(seekerUserId, input, tx);
 
@@ -108,6 +117,7 @@ export class RequestsService {
           categoryId,
           customServiceText: input.customServiceText ?? null,
           description: input.description ?? null,
+          idempotencyKey: input.idempotencyKey ?? null,
           // R06 — a server-derived projection of the claimed assets, kept so
           // every existing reader of `mediaUrls` is unchanged. No value here
           // originates from the request body.
@@ -175,8 +185,17 @@ export class RequestsService {
         tx,
       );
 
-      return row;
-    });
+        return row;
+      });
+    } catch (error) {
+      // R07 — the unique index arbitrates concurrent replays. The losing
+      // transaction waits for the winner, then re-fetches it on P2002.
+      if (input.idempotencyKey && isRequestIdempotencyConflict(error)) {
+        const replay = await this.requests.findByIdempotencyKey(seekerUserId, input.idempotencyKey);
+        if (replay) return toSummary(replay);
+      }
+      throw error;
+    }
 
     return toSummary(created);
   }
@@ -452,6 +471,13 @@ export class RequestsService {
           400,
         );
       }
+      if (scheduledAt && new Date(scheduledAt).getTime() <= Date.now()) {
+        throw new AppError(
+          'VALIDATION_ERROR',
+          'scheduledAt must be in the future when scheduleType is LATER.',
+          400,
+        );
+      }
     } else if (scheduleType === ScheduleType.ASAP && scheduledAt) {
       throw new AppError(
         'VALIDATION_ERROR',
@@ -595,4 +621,13 @@ function toSummary(row: ServiceRequestWithCategory): ServiceRequestSummary {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+// R07 — narrow P2002 classifier: never reinterpret an unrelated uniqueness
+// violation as a successful replay.
+function isRequestIdempotencyConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') return false;
+  const target = (error.meta as { target?: string | string[] } | undefined)?.target;
+  const columns = Array.isArray(target) ? target : typeof target === 'string' ? [target] : [];
+  return columns.includes('seekerUserId') && columns.includes('idempotencyKey');
 }

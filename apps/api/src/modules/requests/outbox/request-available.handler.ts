@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   NotificationResourceType,
   NotificationType,
+  ServiceRequestStatus,
   type OutboxEvent,
   type Prisma,
   type PrismaTx,
@@ -15,6 +16,7 @@ import type {
 import { OutboxEventType } from '../../../infrastructure/outbox/outbox.tokens';
 import { OutboxRepository } from '../../../infrastructure/outbox/outbox.repository';
 import { NotificationRepository } from '../../../infrastructure/persistence/notifications/notification.repository';
+import { ServiceRequestRepository } from '../../../infrastructure/persistence/requests/service-request.repository';
 import { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import { matchServiceArea, type RequestLocation } from '../../../shared/geo/service-area';
 import { RealtimeEventsPublisher } from '../../realtime/realtime-events.publisher';
@@ -22,10 +24,9 @@ import { RealtimeEventsPublisher } from '../../realtime/realtime-events.publishe
 /** Payload of `request.available`, written by RequestsService inside the
  *  request-creation transaction.
  *
- *  Self-contained on purpose. A handler that re-read the ServiceRequest row
- *  would see whatever it looks like NOW — possibly cancelled, edited, or
- *  deleted — and fan out a notification describing a state that never
- *  triggered it. The event describes what happened, not what is. */
+ *  Matching fields are a creation snapshot, but R07 also checks the live row
+ *  before delivery. A delayed worker therefore never advertises a request that
+ *  has already been cancelled or accepted. */
 export interface RequestAvailablePayload {
   requestId: string;
   seekerUserId: string;
@@ -81,10 +82,16 @@ export class RequestAvailableDispatchHandler implements OutboxHandler {
     private readonly providers: ProviderProfileRepository,
     private readonly outbox: OutboxRepository,
     private readonly config: AppConfigService,
+    private readonly requests: ServiceRequestRepository,
   ) {}
 
   async handle(event: OutboxEvent, tx: PrismaTx): Promise<OutboxHandlerResult> {
     const payload = event.payload as unknown as RequestAvailablePayload;
+    const live = await this.requests.findById(payload.requestId, tx);
+    if (!live || live.status !== ServiceRequestStatus.OPEN_FOR_BIDS) {
+      this.log.log({ msg: 'request.fanout.skipped_not_open', requestId: payload.requestId });
+      return { stats: { scanned: 0, matched: 0, batches: 0 } };
+    }
     const location: RequestLocation = {
       lat: payload.lat,
       lng: payload.lng,
@@ -195,10 +202,19 @@ export class RequestAvailableBatchHandler implements OutboxHandler {
   constructor(
     private readonly notifications: NotificationRepository,
     private readonly realtime: RealtimeEventsPublisher,
+    private readonly requests: ServiceRequestRepository,
   ) {}
 
   async handle(event: OutboxEvent, tx: PrismaTx): Promise<OutboxHandlerResult> {
     const payload = event.payload as unknown as RequestAvailableBatchPayload;
+    if (!(await this.requests.lockForLifecycle(payload.requestId, tx))) {
+      return { stats: { recipients: payload.recipientUserIds.length, written: 0, skipped: 1 } };
+    }
+    const live = await this.requests.findById(payload.requestId, tx);
+    if (!live || live.status !== ServiceRequestStatus.OPEN_FOR_BIDS) {
+      return { stats: { recipients: payload.recipientUserIds.length, written: 0, skipped: 1 } };
+    }
+
     const deepLink = `/provider/requests/${payload.requestId}`;
     // Deliberately narrow: no seeker identity, no address line, no
     // coordinates. This lands in a notification row that many providers can

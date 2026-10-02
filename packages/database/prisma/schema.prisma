@@ -726,6 +726,11 @@ model ServiceRequest {
   categoryId        String?
   customServiceText String?
   description       String?
+  // R07 — optional client replay key. New clients send one stable key for the
+  // lifetime of a single submit attempt; old clients may omit it. The composite
+  // unique below makes concurrent/retried creates collapse per seeker while
+  // preserving unlimited legacy NULL rows.
+  idempotencyKey     String?
   // Sprint 7.x — seeker-uploaded photos of the issue (e.g. broken pipe,
   // leaky faucet). Stored as a Postgres `text[]` so the JSON wire shape
   // stays a flat string array. Empty by default; existing rows backfill
@@ -766,6 +771,7 @@ model ServiceRequest {
   @@index([createdAt])
   @@index([seekerUserId, deletedAt])
   @@index([seekerUserId, status])
+  @@unique([seekerUserId, idempotencyKey])
   @@index([status])
   // Sprint 6 — the two access paths of the provider feed.
   //

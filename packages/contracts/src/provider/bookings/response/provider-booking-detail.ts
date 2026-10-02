@@ -6,4 +6,6 @@ import type { ProviderBookingSummary } from './provider-booking-summary';
 // list consumers.
 export type ProviderBookingDetail = ProviderBookingSummary & {
   description: string | null;
+  // R07 — preserve seeker-provided evidence after bid acceptance.
+  requestMediaUrls: string[];
 };

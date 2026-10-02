@@ -307,6 +307,8 @@ export function JobWizardModal({
   // OR when the modal closes / unmounts so we never leak memory.
   const [uploads, setUploads] = useState<MediaItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // R07 — one logical submit keeps one replay key across HTTP retries.
+  const createIdempotencyKeyRef = useRef<string | null>(null);
   const [postError, setPostError] = useState<string | null>(null);
   // Phase 7 — covers the entire two-stage upload flow (presign +
   // parallel PUTs) so the submit button stays in the loading state
@@ -675,8 +677,15 @@ export function JobWizardModal({
     const lat = geo.status === 'success' ? geo.lat : null;
     const lng = geo.status === 'success' ? geo.lng : null;
 
+    if (!createIdempotencyKeyRef.current) {
+      createIdempotencyKeyRef.current =
+        globalThis.crypto?.randomUUID?.() ??
+        'req-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '-' + Math.random().toString(36).slice(2);
+    }
+
     createMut.mutate(
       {
+        idempotencyKey: createIdempotencyKeyRef.current,
         categoryId: categoryId ?? null,
         customServiceText: categoryId ? null : service,
         description: notes.trim().length > 0 ? notes.trim() : null,
@@ -726,6 +735,7 @@ export function JobWizardModal({
     setAddress('');
     setGeocoded(null);
     setPostError(null);
+    createIdempotencyKeyRef.current = null;
     onClose();
   };
 
