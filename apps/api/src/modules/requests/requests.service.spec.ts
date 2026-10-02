@@ -348,6 +348,31 @@ describe('RequestsService', () => {
       expect(m.outbox.enqueue).not.toHaveBeenCalled();
     });
 
+    it('returns an existing LATER request even when its scheduled time has passed before retry', async () => {
+      const scheduledAt = new Date(Date.now() - 60_000).toISOString();
+      const replay = makeRequest({
+        id: 'req-replayed-later',
+        idempotencyKey: REPLAY_KEY,
+        scheduleType: 'LATER',
+        scheduledAt: new Date(scheduledAt),
+      });
+      const m = makeMocks();
+      m.requests.findByIdempotencyKey.mockResolvedValue(replay);
+
+      const out = await makeService(m).create('user-1', {
+        categoryId: 'cat-1',
+        scheduleType: 'LATER',
+        scheduledAt,
+        addressId: 'addr-1',
+        idempotencyKey: REPLAY_KEY,
+      });
+
+      expect(out.id).toBe('req-replayed-later');
+      expect(m.requests.create).not.toHaveBeenCalled();
+      expect(m.events.create).not.toHaveBeenCalled();
+      expect(m.outbox.enqueue).not.toHaveBeenCalled();
+    });
+
     it('passes a new idempotency key into the request insert', async () => {
       const m = makeMocks();
       await makeService(m).create('user-1', {
