@@ -31,6 +31,10 @@ describe('S05 request upload orchestration', () => {
       'https://storage.example.test/put',
       expect.objectContaining({
         method: 'PUT',
+        headers: {
+          'Content-Type': selected.type,
+          'If-None-Match': '*',
+        },
         body: selected,
         credentials: 'omit',
         redirect: 'error',
