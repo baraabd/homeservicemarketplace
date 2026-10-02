@@ -225,13 +225,25 @@ export function AvailabilityTaskScreen({ view, lang, editable }: AvailabilityTas
     // Nothing to lose is the ordinary case — a uniform week — and it applies
     // immediately, so the common path costs no extra tap.
     const window = { startMinute: bulkStart, endMinute: bulkEnd };
+    // R10 — refuse first, ask second. Hours the model refuses (an end before
+    // the start, a shift past midnight) used to reach the question below when
+    // a selected day already had different hours: the provider was asked
+    // whether to REPLACE their hours with a range that was then refused the
+    // moment they agreed. A refused window replaces nothing, so there is
+    // nothing to ask about.
+    const change = applyToDays(EMPTY_WEEK, selectedDays, window);
+    if (change.rejected) {
+      setPendingDiscards(null);
+      applyChange(change);
+      return;
+    }
     const discards = discardedByApply(week, selectedDays, window);
     if (discards.length > 0) {
       setRejected(null);
       setPendingDiscards(discards);
       return;
     }
-    applyChange(applyToDays(EMPTY_WEEK, selectedDays, window));
+    applyChange(change);
   };
 
   /** The provider said yes to the replacement they were shown. */
@@ -516,5 +528,17 @@ export function AvailabilityTask({ lang }: { lang: Lang }) {
     return <ProviderErrorState title={copy.heading} testId="availability-load-failed" />;
   }
 
-  return <AvailabilityTaskScreen view={view} lang={lang} editable={view.editable} />;
+  // R10 — keyed by the draft's identity. The screen holds choices that have
+  // not been applied yet (selected days, the From and To times). They belong
+  // to the application they were made on: handed a different draft, the screen
+  // starts again from that draft rather than carrying one provider's unapplied
+  // selection into another's form.
+  return (
+    <AvailabilityTaskScreen
+      key={view.draftId ?? 'draft'}
+      view={view}
+      lang={lang}
+      editable={view.editable}
+    />
+  );
 }
