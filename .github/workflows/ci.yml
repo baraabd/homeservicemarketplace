@@ -652,6 +652,35 @@ jobs:
             apps/web/test-results/r10-working-hours-report/
           retention-days: 14
           if-no-files-found: warn
+      - name: Accept R11 reviews and reputation through the build-flagged bundle
+        # A real booking taken from request to completion through the real
+        # endpoints, reviewed on the real job screen, read from PostgreSQL and
+        # read back after navigation, a hard reload and a fresh login: refusal
+        # before completion, one review per booking, a safe repeat, a refused
+        # change, strangers and the provider refused, no session and no CSRF
+        # token refused, the exact mean, hide and restore, a lost reply,
+        # offline, a lost session, and Arabic by keyboard at three mobile
+        # widths. The spec records no trace or video.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r11-reviews-reputation-report
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r11-reviews-reputation.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --retries=0 \
+            --output=test-results/r11-reviews-reputation
+      - name: Upload R11 reviews and reputation real-service evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r11-reviews-reputation-evidence
+          path: |
+            apps/web/test-results/r11-reviews-reputation/
+            apps/web/test-results/r11-reviews-reputation-report/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed
