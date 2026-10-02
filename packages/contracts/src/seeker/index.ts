@@ -23,6 +23,7 @@ export * from './requests';
 export * from './addresses';
 export * from './bids';
 export * from './bookings';
+export * from './reviews';
 export * from './notifications';
 export * from './chat';
 export * from './profile';
