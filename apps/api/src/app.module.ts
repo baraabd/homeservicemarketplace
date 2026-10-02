@@ -26,6 +26,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { AdminProviderReviewEventsHandler } from './modules/admin/provider-review/provider-review.events-handler';
 import { BidsModule } from './modules/bids/bids.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { IamModule } from './modules/iam/iam.module';
 import { MediaModule } from './modules/media/media.module';
@@ -122,6 +123,8 @@ import { ServicesModule } from './modules/services/services.module';
     RequestsModule,
     BidsModule,
     BookingsModule,
+    // R11 — customer reviews of completed bookings, and their moderation.
+    ReviewsModule,
     DisputesModule,
     NotificationsModule,
     ConversationsModule,

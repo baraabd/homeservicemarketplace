@@ -218,6 +218,36 @@ export class BookingRepository {
     });
   }
 
+  /**
+   * R11 — recompute the provider's completed-jobs count from their bookings.
+   *
+   * `ProviderProfile.completedJobs` is shown to seekers and read by the earned
+   * service-area tier, and until R11 nothing wrote it. It is now whatever the
+   * provider's COMPLETED bookings say, recomputed in the transaction that
+   * completes one.
+   *
+   * The provider row is locked first, in a statement of its own: two bookings
+   * of one provider completing at the same moment then run one after the
+   * other, and the second count includes the first booking. Without the lock
+   * each would count only its own and the later write would lose one.
+   */
+  async recomputeCompletedJobsForProvider(providerId: string, tx: PrismaTx): Promise<void> {
+    await tx.$queryRaw`
+      SELECT "id" FROM "ProviderProfile" WHERE "id" = ${providerId} FOR UPDATE
+    `;
+    await tx.$executeRaw`
+      UPDATE "ProviderProfile" p
+         SET "completedJobs" = (
+           SELECT count(*)::int
+             FROM "Booking" b
+            WHERE b."providerId" = ${providerId}
+              AND b."status" = 'COMPLETED'
+              AND b."deletedAt" IS NULL
+         )
+       WHERE p."id" = ${providerId}
+    `;
+  }
+
   // Aggregate earnings query used by the wallet read model
   // (Sprint 5 slice 5.6). Single round-trip — three groupBys
   // executed in parallel inside the same Prisma client. All amounts

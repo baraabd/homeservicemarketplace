@@ -7,6 +7,10 @@ import { AuditEventRepository } from '../../../infrastructure/persistence/iam/au
 // error payloads, no request bodies, no token material. Keep this list small
 // and reviewed.
 const ALLOWED_METADATA_KEYS = new Set<string>([
+  // R11 — customer reviews. Identifiers only: which review, of which booking.
+  // Deliberately NOT the rating or the comment.
+  'reviewId',
+  'bookingId',
   'sessionId',
   'familyId',
   'jti',
