@@ -126,67 +126,20 @@ jobs:
           }
           NODE
 
-      - name: Publish an immutable validated commit object without moving a ref
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Stage validated candidate source for transfer
         shell: bash
         run: |
           set -euo pipefail
-          python3 <<'PY'
-          import base64, json, os, pathlib, urllib.request
+          mkdir -p "$RUNNER_TEMP/baseline-candidate/.github/workflows" "$RUNNER_TEMP/baseline-candidate/apps/api"
+          cp apps/api/package.json "$RUNNER_TEMP/baseline-candidate/apps/api/package.json"
+          cp pnpm-lock.yaml "$RUNNER_TEMP/baseline-candidate/pnpm-lock.yaml"
+          cp .github/workflows/ci.yml "$RUNNER_TEMP/baseline-candidate/.github/workflows/ci.yml"
+          printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/baseline-candidate/parent.txt"
 
-          repo = 'baraabd/homeservicemarketplace'
-          parent = os.environ['GITHUB_SHA']
-          files = [
-              'apps/api/package.json',
-              'pnpm-lock.yaml',
-              '.github/workflows/ci.yml',
-          ]
-
-          def call(route, data=None):
-              req = urllib.request.Request(
-                  'https://api.github.com/repos/' + repo + route,
-                  data=None if data is None else json.dumps(data).encode(),
-                  headers={
-                      'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-                      'Accept': 'application/vnd.github+json',
-                      'Content-Type': 'application/json',
-                      'X-GitHub-Api-Version': '2022-11-28',
-                  },
-              )
-              with urllib.request.urlopen(req, timeout=60) as response:
-                  return json.load(response)
-
-          parent_commit = call('/git/commits/' + parent)
-          tree = []
-          for name in files:
-              raw = pathlib.Path(name).read_bytes()
-              blob = call('/git/blobs', {
-                  'content': base64.b64encode(raw).decode(),
-                  'encoding': 'base64',
-              })
-              tree.append({'path': name, 'mode': '100644', 'type': 'blob', 'sha': blob['sha']})
-
-          tree.extend([
-              {'path': '.github/workflows/security-jest30-candidate.yml', 'mode': '100644', 'type': 'blob', 'sha': None},
-              {'path': '.github/workflows/baseline-recovery-bootstrap.yml', 'mode': '100644', 'type': 'blob', 'sha': None},
-          ])
-          created_tree = call('/git/trees', {'base_tree': parent_commit['tree']['sha'], 'tree': tree})
-          commit = call('/git/commits', {
-              'message': 'fix(ci): restore zero-finding dependency security baseline',
-              'tree': created_tree['sha'],
-              'parents': [parent],
-          })
-          print('VALIDATED_BASELINE_COMMIT=' + commit['sha'])
-          pathlib.Path(os.environ['RUNNER_TEMP'], 'baseline-recovery', 'validated-commit.txt').write_text(
-              commit['sha'] + '\n'
-          )
-          PY
-
-      - name: Upload validated commit identity
+      - name: Upload validated candidate source
         uses: actions/upload-artifact@v6
         with:
-          name: validated-baseline-commit
-          path: ${{ runner.temp }}/baseline-recovery/validated-commit.txt
+          name: validated-baseline-source
+          path: ${{ runner.temp }}/baseline-candidate/
           if-no-files-found: error
           retention-days: 7
