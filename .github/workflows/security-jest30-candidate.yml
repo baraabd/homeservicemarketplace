@@ -92,6 +92,7 @@ jobs:
       - name: Build and verify the API with the upgraded runner
         env:
           DATABASE_URL: postgresql://127.0.0.1:5432/hsm_generation_only
+          JWT_ACCESS_SECRET: ci_only_dummy_secret_at_least_32_chars_long
         shell: bash
         run: |
           set -euo pipefail
