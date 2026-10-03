@@ -1,0 +1,274 @@
+name: Validate Jest 30 dependency recovery candidate
+
+on:
+  push:
+    branches: ['work/security-jest30-lock-recovery']
+    paths: ['.github/workflows/security-jest30-candidate.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-jest30-candidate
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'baraabd/homeservicemarketplace'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 083bf5c53b8a4bb989a9b3a9d3f861d093dd8a21
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+          run_install: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Install the unchanged baseline and record test discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/jest30-candidate"
+          pnpm install --frozen-lockfile
+          pnpm --filter @homeservicemarketplace/api exec jest --listTests --json > "$RUNNER_TEMP/jest30-candidate/baseline-tests.json"
+      - name: Upgrade the real test runner and its types, not the audit policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @homeservicemarketplace/api add --save-dev --save-exact jest@30.5.2 @types/jest@30.0.0 ts-jest@29.4.9
+          node <<'NODE'
+          const fs = require('node:fs');
+          const file = '.github/workflows/ci.yml';
+          const before = fs.readFileSync(file, 'utf8');
+          const oldFlag = '--testPathPattern=evidence-retention.integration';
+          if (before.split(oldFlag).length !== 2) throw new Error('Expected exactly one legacy Jest flag');
+          fs.writeFileSync(file, before.replace(oldFlag, '--testPathPatterns=evidence-retention.integration'));
+          NODE
+          pnpm install --frozen-lockfile
+          git add apps/api/package.json pnpm-lock.yaml .github/workflows/ci.yml
+          pnpm exec lint-staged
+          git diff --cached --check
+      - name: Prove unchanged test discovery and removal of the vulnerable chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @homeservicemarketplace/api exec jest --version
+          pnpm --filter @homeservicemarketplace/api exec jest --listTests --json > "$RUNNER_TEMP/jest30-candidate/candidate-tests.json"
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const assert = require('node:assert/strict');
+          const out = path.join(process.env.RUNNER_TEMP, 'jest30-candidate');
+          const readTests = (file) => {
+            const values = JSON.parse(fs.readFileSync(path.join(out, file), 'utf8'));
+            assert(Array.isArray(values) && values.length > 0 && values.every(v => typeof v === 'string'));
+            return values.map(v => path.relative(process.cwd(), v).replaceAll('\\', '/')).sort();
+          };
+          const before = readTests('baseline-tests.json');
+          const after = readTests('candidate-tests.json');
+          assert.deepEqual(after, before, 'Jest upgrade must discover exactly the same test files');
+          const lock = fs.readFileSync('pnpm-lock.yaml', 'utf8');
+          assert(!/^\s{2}(?:braces|micromatch)@/m.test(lock), 'Vulnerable dependency chain remains in the lockfile');
+          assert(!/^\s+(?:braces|micromatch):/m.test(lock), 'Vulnerable dependency edge remains');
+          const summary = {baseline: '083bf5c53b8a4bb989a9b3a9d3f861d093dd8a21', testFiles: before.length, discovery: 'identical', bracesAndMicromatch: 'absent', jest: '30.5.2', typesJest: '30.0.0', tsJest: '29.4.9'};
+          fs.writeFileSync(path.join(out, 'discovery.json'), JSON.stringify(summary, null, 2) + '\n');
+          console.log(JSON.stringify(summary));
+          NODE
+          pnpm --recursive why braces
+          pnpm --recursive why micromatch
+      - name: Keep zero-finding full and production audit policy unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm security:audit:test
+          pnpm security:audit
+          pnpm security:audit:prod
+      - name: Build and verify the API with the upgraded runner
+        env:
+          DATABASE_URL: postgresql://127.0.0.1:5432/hsm_generation_only
+          JWT_ACCESS_SECRET: ci_only_dummy_secret_at_least_32_chars_long
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @homeservicemarketplace/database generate
+          pnpm --filter @homeservicemarketplace/api typecheck
+          pnpm --filter @homeservicemarketplace/api lint
+          pnpm --filter @homeservicemarketplace/api build
+          pnpm --filter @homeservicemarketplace/api exec jest --maxWorkers=2 --json --outputFile="$RUNNER_TEMP/jest30-candidate/api-tests.json"
+      - name: Preserve exact-source test diagnostics on failure
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const crypto = require('node:crypto');
+          const {execFileSync} = require('node:child_process');
+          const out = path.join(process.env.RUNNER_TEMP, 'jest30-diagnostics');
+          fs.mkdirSync(out, {recursive: true});
+          const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
+          const report = {head: git('rev-parse', 'HEAD'), tree: git('rev-parse', 'HEAD^{tree}'), changed: git('diff', 'HEAD', '--name-only'), trackedSpecs: git('ls-files', 'apps/api/src', 'apps/api/test').split('\n').filter(p => p.endsWith('.spec.ts')), failureSources: []};
+          for (const name of ['baseline-tests.json', 'candidate-tests.json']) {
+            const file = path.join(process.env.RUNNER_TEMP, 'jest30-candidate', name);
+            if (fs.existsSync(file)) {
+              const paths = JSON.parse(fs.readFileSync(file, 'utf8'));
+              report[name] = paths.map(p => path.relative(process.cwd(), p));
+            }
+          }
+          const file = path.join(process.env.RUNNER_TEMP, 'jest30-candidate/api-tests.json');
+          if (fs.existsSync(file)) {
+            const results = JSON.parse(fs.readFileSync(file, 'utf8'));
+            report.result = {success: results.success, passed: results.numPassedTests, failed: results.numFailedTests, skipped: results.numPendingTests, suites: results.numTotalTestSuites};
+            report.failures = results.testResults.filter(t => t.status === 'failed').map(t => ({path: path.relative(process.cwd(), t.name), assertions: t.assertionResults.filter(a => a.status === 'failed').map(a => ({title: a.fullName, status: a.status}))}));
+            for (const failure of report.failures) {
+              const relative = failure.path;
+              if (!report.trackedSpecs.includes(relative)) continue;
+              const source = execFileSync('git', ['show', 'HEAD:' + relative]);
+              const destination = path.join(out, 'tracked-source', relative);
+              fs.mkdirSync(path.dirname(destination), {recursive: true});
+              fs.writeFileSync(destination, source);
+              report.failureSources.push({path: relative, gitBlob: git('rev-parse', 'HEAD:' + relative), sha256: crypto.createHash('sha256').update(source).digest('hex')});
+            }
+          } else report.result = 'NOT AVAILABLE: Jest JSON was not produced';
+          fs.writeFileSync(path.join(out, 'diagnostics.json'), JSON.stringify(report, null, 2) + '\n');
+          console.log(JSON.stringify(report));
+          NODE
+      - name: Upload diagnostic provenance without runtime sessions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jest30-test-diagnostics
+          path: ${{ runner.temp }}/jest30-diagnostics/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Validate and package only the three intended source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --check apps/api/package.json pnpm-lock.yaml .github/workflows/ci.yml
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const crypto = require('node:crypto');
+          const assert = require('node:assert/strict');
+          const {execFileSync} = require('node:child_process');
+          const out = path.join(process.env.RUNNER_TEMP, 'jest30-candidate');
+          const allowed = ['.github/workflows/ci.yml', 'apps/api/package.json', 'pnpm-lock.yaml'].sort();
+          const changed = execFileSync('git', ['diff', 'HEAD', '--name-only'], {encoding: 'utf8'}).trim().split('\n').sort();
+          assert.deepEqual(changed, allowed, 'No unrelated tracked source changes are allowed');
+          const results = JSON.parse(fs.readFileSync(path.join(out, 'api-tests.json'), 'utf8'));
+          assert.equal(results.success, true);
+          assert.equal(results.numFailedTests, 0);
+          assert.equal(results.numFailedTestSuites, 0);
+          const files = allowed.map(name => {
+            const raw = fs.readFileSync(name);
+            const dest = path.join(out, 'source', name);
+            fs.mkdirSync(path.dirname(dest), {recursive: true});
+            fs.writeFileSync(dest, raw);
+            return {path: name, sha256: crypto.createHash('sha256').update(raw).digest('hex')};
+          });
+          const receipt = {
+            baseline: '083bf5c53b8a4bb989a9b3a9d3f861d093dd8a21', files,
+            validation: {discovery: 'identical', fullAudit: 'pass', productionAudit: 'pass', apiUnitPassed: results.numPassedTests, apiUnitSkipped: results.numPendingTests, apiUnitFailed: results.numFailedTests},
+            limitations: 'Candidate validation only. Full real-service, browser, CodeQL and container acceptance must run after the final PR-head commit.'
+          };
+          fs.writeFileSync(path.join(out, 'receipt.json'), JSON.stringify(receipt, null, 2) + '\n');
+          console.log(JSON.stringify(receipt));
+          NODE
+      - name: Upload validated source and non-secret evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: jest30-recovery-candidate
+          path: |
+            ${{ runner.temp }}/jest30-candidate/source/
+            ${{ runner.temp }}/jest30-candidate/receipt.json
+            ${{ runner.temp }}/jest30-candidate/discovery.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Retain registry audit evidence even when it fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jest30-recovery-audits
+          path: |
+            audit-full.json
+            audit-production.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  publish-source-objects:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: jest30-recovery-candidate
+          path: candidate
+      - name: Verify allowlisted bytes and publish immutable objects only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import base64, hashlib, json, os, pathlib, urllib.request
+          repo = 'baraabd/homeservicemarketplace'
+          base = '083bf5c53b8a4bb989a9b3a9d3f861d093dd8a21'
+          allowed = {'.github/workflows/ci.yml', 'apps/api/package.json', 'pnpm-lock.yaml'}
+          root = pathlib.Path('candidate')
+          receipt = json.loads((root / 'receipt.json').read_text())
+          assert receipt['baseline'] == base
+          assert {f['path'] for f in receipt['files']} == allowed and len(receipt['files']) == 3
+          def call(route, data=None):
+              req = urllib.request.Request('https://api.github.com/repos/' + repo + route,
+                  data=None if data is None else json.dumps(data).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'})
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  return json.load(response)
+          def original(name):
+              item = call('/contents/' + name + '?ref=' + base)
+              return base64.b64decode(item['content'])
+          package_before = json.loads(original('apps/api/package.json'))
+          package_expected = json.loads(json.dumps(package_before))
+          package_expected['devDependencies'].update({'jest': '30.5.2', '@types/jest': '30.0.0', 'ts-jest': '29.4.9'})
+          package_after = json.loads((root / 'source/apps/api/package.json').read_text())
+          assert package_after == package_expected
+          ci_before = original('.github/workflows/ci.yml').decode()
+          old_flag = '--testPathPattern=evidence-retention.integration'
+          assert ci_before.count(old_flag) == 1
+          assert (root / 'source/.github/workflows/ci.yml').read_text() == ci_before.replace(old_flag, '--testPathPatterns=evidence-retention.integration')
+          entries = []
+          for item in receipt['files']:
+              name = item['path']
+              raw = (root / 'source' / name).read_bytes()
+              raw.decode('utf-8')
+              assert hashlib.sha256(raw).hexdigest() == item['sha256']
+              expected = hashlib.sha1(('blob ' + str(len(raw)) + '\0').encode() + raw).hexdigest()
+              result = call('/git/blobs', {'encoding': 'base64', 'content': base64.b64encode(raw).decode()})
+              assert result['sha'] == expected
+              entries.append({'path': name, 'mode': '100644', 'type': 'blob', 'sha': expected})
+          base_tree = call('/git/commits/' + base)['tree']['sha']
+          tree = call('/git/trees', {'base_tree': base_tree, 'tree': entries})['sha']
+          result = {'baseline': base, 'tree': tree, 'files': entries, 'validation': receipt['validation'],
+                    'publication': 'Immutable source objects only. No commit, branch update, merge or deployment performed.'}
+          pathlib.Path('source-receipt').mkdir()
+          pathlib.Path('source-receipt/receipt.json').write_text(json.dumps(result, indent=2) + '\n')
+          print(json.dumps(result))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jest30-recovery-source-receipt
+          path: source-receipt/receipt.json
+          if-no-files-found: error
+          retention-days: 7
