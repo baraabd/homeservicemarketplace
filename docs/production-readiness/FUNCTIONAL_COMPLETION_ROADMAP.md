@@ -26,18 +26,18 @@ plan after R05 closure.
 
 ## Source-backed functional gaps
 
-| Gap | Current source evidence | Classification |
-| --- | --- | --- |
-| Request media ownership | `RequestsService.create` forwards `input.mediaUrls`; request presign has no request-owned `MediaAsset` reservation | Confirmed server authority gap |
-| Request-to-provider lifecycle | Core request/outbox behavior exists, but end-to-end attachment integrity, duplicate/race/recovery and matching-provider delivery still require final acceptance | Functional durability gap |
-| Reviews/reputation | `JobDetailView` submits rating only to local state; Provider feed seeker rating is explicitly `null` because no reputation source exists | Missing authoritative feature |
-| Booking actions | `JobDetailView` keeps Message/Call/Track disabled behind `isPlaceholderAction` | Missing/incomplete user actions |
-| Chat calling | `ChatScreen` phone control is disabled and labelled Coming soon | Missing capability; requires explicit product/communications authority |
-| Help & support | `HelpSupportPage` uses seeded messages, local bot replies and `setTimeout`; no durable support-agent handoff is established | Client-only placeholder behavior |
-| Provider budget view | Available-request `toBudget()` returns all-null; no seeker-side budget authority exists | Missing optional marketplace feature |
-| Provider withdrawals | Wallet CTA is disabled; tests state there is no withdrawal endpoint | Missing financial capability |
-| Money authority | Existing earnings/admin summaries are booking-derived read models; no authoritative financial ledger/execution controller is mounted | Missing platform foundation |
-| Provider V2 rollout | V2 exists behind a build/runtime gate, but all-field persistence, map/hours negatives and artifact-level cutover evidence remain incomplete | Functional completion before cutover |
+| Gap                           | Current source evidence                                                                                                                                         | Classification                                                         |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Request media ownership       | `RequestsService.create` forwards `input.mediaUrls`; request presign has no request-owned `MediaAsset` reservation                                              | Confirmed server authority gap                                         |
+| Request-to-provider lifecycle | Core request/outbox behavior exists, but end-to-end attachment integrity, duplicate/race/recovery and matching-provider delivery still require final acceptance | Functional durability gap                                              |
+| Reviews/reputation            | `JobDetailView` submits rating only to local state; Provider feed seeker rating is explicitly `null` because no reputation source exists                        | Missing authoritative feature                                          |
+| Booking actions               | `JobDetailView` keeps Message/Call/Track disabled behind `isPlaceholderAction`                                                                                  | Missing/incomplete user actions                                        |
+| Chat calling                  | `ChatScreen` phone control is disabled and labelled Coming soon                                                                                                 | Missing capability; requires explicit product/communications authority |
+| Help & support                | `HelpSupportPage` uses seeded messages, local bot replies and `setTimeout`; no durable support-agent handoff is established                                     | Client-only placeholder behavior                                       |
+| Provider budget view          | Available-request `toBudget()` returns all-null; no seeker-side budget authority exists                                                                         | Missing optional marketplace feature                                   |
+| Provider withdrawals          | Wallet CTA is disabled; tests state there is no withdrawal endpoint                                                                                             | Missing financial capability                                           |
+| Money authority               | Existing earnings/admin summaries are booking-derived read models; no authoritative financial ledger/execution controller is mounted                            | Missing platform foundation                                            |
+| Provider V2 rollout           | V2 exists behind a build/runtime gate, but all-field persistence, map/hours negatives and artifact-level cutover evidence remain incomplete                     | Functional completion before cutover                                   |
 
 These findings are intentionally separated from production-configuration-only gaps such
 as real hosted SMTP/S3/TLS/secret-manager configuration. Both matter for release, but
@@ -145,6 +145,12 @@ Overlap/adjacency, empty week, timezone, concurrent writers, relogin/DB equality
 separately documented appointment/DST policy.
 
 ## R11 — Reviews, ratings and reputation authority
+
+**Status (2026-10-03):** implemented on `feat/r11-reviews-ratings-reputation-authority`,
+pending merge. Policy, authority matrix and evidence:
+[r11/REVIEW_POLICY.md](r11/REVIEW_POLICY.md),
+[r11/REVIEW_AUTHORITY_MATRIX.md](r11/REVIEW_AUTHORITY_MATRIX.md),
+[r11/IMPLEMENTATION.md](r11/IMPLEMENTATION.md).
 
 **Goal:** replace the current local-only rating success with a durable post-completion
 review system.

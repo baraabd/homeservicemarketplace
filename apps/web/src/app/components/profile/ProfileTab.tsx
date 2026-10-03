@@ -8,7 +8,6 @@ import {
   Settings,
   ChevronRight,
   ChevronLeft,
-  Star,
   WifiOff,
   CheckCircle2,
   BellOff,
@@ -312,12 +311,6 @@ function ProfileList({
             >
               {identity.email ?? ''}
             </p>
-            <div className="flex items-center gap-1 mt-1">
-              <Star size={12} className="text-white fill-white" />
-              <span className="text-white" style={{ fontSize: '12px', fontWeight: 600 }}>
-                4.9 · {lang === 'ar' ? '12 طلب' : '12 jobs posted'}
-              </span>
-            </div>
           </div>
         </div>
       </div>

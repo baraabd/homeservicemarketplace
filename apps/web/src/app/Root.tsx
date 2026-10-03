@@ -36,7 +36,11 @@ function RootInner() {
   const [isOffline, setIsOffline] = useState(false);
   const [offlineSnack, setOfflineSnack] = useState(false);
   const { user } = useAuth();
-  const [wizard, setWizard] = useIdentityState<{ open: boolean; service: string; categoryId: string | null }>(user?.id ?? 'signed-out', { open: false, service: 'General', categoryId: null });
+  const [wizard, setWizard] = useIdentityState<{
+    open: boolean;
+    service: string;
+    categoryId: string | null;
+  }>(user?.id ?? 'signed-out', { open: false, service: 'General', categoryId: null });
 
   const location = useLocation();
   const navigation = useNavigation();
@@ -175,12 +179,14 @@ function RootInner() {
         </span>
       </div>
 
-      {/* Phone container */}
+      {/* Phone container. Clipped, not scrollable: the closed wizard sheet
+          sits below it, and a scrollable shell would follow keyboard focus
+          and slide the whole app up with no way back (R11). */}
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={lang}
           dir={dir}
-          className={`relative w-full flex flex-col overflow-hidden shadow-2xl transition-colors duration-300 ${darkMode ? 'dark bg-slate-900' : 'bg-white'}`}
+          className={`relative w-full flex flex-col overflow-clip shadow-2xl transition-colors duration-300 ${darkMode ? 'dark bg-slate-900' : 'bg-white'}`}
           style={{
             maxWidth: '430px',
             minHeight: '100svh',
@@ -197,7 +203,7 @@ function RootInner() {
             style={{ opacity: isLoading ? 0.5 : 1 }}
           >
             <AuthSessionNotice />
-        <Outlet context={ctx} />
+            <Outlet context={ctx} />
           </div>
 
           {isHome && (

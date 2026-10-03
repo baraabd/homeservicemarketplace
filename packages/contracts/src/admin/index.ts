@@ -26,3 +26,4 @@ export * from './access-requests';
 export * from './catalog';
 export * from './provider-review';
 export * from './portfolio';
+export * from './reviews';

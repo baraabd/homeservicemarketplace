@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -8,7 +8,6 @@ import {
   MessageCircle,
   Phone,
   Navigation,
-  CheckCircle2,
   MoreVertical,
   Wrench,
   Zap,
@@ -17,7 +16,6 @@ import {
   Hammer,
   PaintBucket,
   Shield,
-  ThumbsUp,
   XCircle,
   Loader2,
 } from 'lucide-react';
@@ -45,6 +43,9 @@ import {
 import { formatServiceAddressForDisplay } from '../../../lib/address-display';
 import { RequestMediaGallery } from '../ds/RequestMediaGallery';
 import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
+import { ProviderRating } from '../ds/ProviderRating';
+import { BookingReviewEntry, BookingReviewSheet } from './BookingReview';
+import { useBookingReviewController } from '../../hooks/seeker/useBookingReviewController';
 
 // ─── Source discriminator ────────────────────────────────────────────────────
 // Slice 2.4: JobDetailView is opened with a request id (for OPEN_FOR_BIDS /
@@ -414,27 +415,6 @@ function StatusTimeline({
   );
 }
 
-// ─── Rating Stars ──────────────────────────────────────────────────────────────
-function Stars({ rating }: { rating: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((s) => (
-        <svg
-          key={s}
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill={s <= Math.round(rating) ? '#F59E0B' : 'none'}
-          stroke={s <= Math.round(rating) ? '#F59E0B' : '#CBD5E1'}
-          strokeWidth="1.5"
-        >
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-        </svg>
-      ))}
-    </div>
-  );
-}
-
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface JobDetailViewProps {
   source: JobDetailSource;
@@ -479,9 +459,6 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
   const { lang, dir } = useLang();
   const langKey: 'en' | 'ar' = lang === 'ar' ? 'ar' : 'en';
   const { showHourlyRate } = useEcosystem();
-  const [showRateModal, setShowRateModal] = useState(false);
-  const [selectedRating, setSelectedRating] = useState(0);
-  const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Source-driven fetches. Each hook short-circuits when its `id` arg is
@@ -494,6 +471,12 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
   const requestTimeline = useRequestTimeline(requestId);
   const bookingDetail = useBookingDetail(bookingId);
   const bookingTimeline = useBookingTimeline(bookingId);
+  // R11 — the review belongs to a completed booking. Whether it can be
+  // reviewed, and whether it has been, is the server's answer.
+  const review = useBookingReviewController(
+    bookingId && bookingDetail.data?.status === 'COMPLETED' ? bookingId : null,
+  );
+  const reviewTriggerRef = useRef<HTMLButtonElement>(null);
 
   const cancelRequestMut = useCancelServiceRequest();
   const cancelBookingMut = useCancelBooking();
@@ -632,11 +615,6 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
           : langKey === 'ar'
             ? 'ملغى'
             : 'Cancelled';
-
-  const handleRateSubmit = () => {
-    setRatingSubmitted(true);
-    setTimeout(() => setShowRateModal(false), 1500);
-  };
 
   // Cancel handlers — wired to real API. Errors map to safe friendly copy
   // keyed by HTTP status; raw backend payload is never rendered.
@@ -799,14 +777,12 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                       <p className="text-slate-900" style={{ fontSize: '16px', fontWeight: 800 }}>
                         {providerNamePrivacy}
                       </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <Stars rating={render.provider?.ratingAvg ?? 0} />
-                        <span className="text-slate-500" style={{ fontSize: '11px' }}>
-                          {(render.provider?.ratingAvg ?? 0).toFixed(1)} ·{' '}
-                          {render.provider?.reviewCount ?? 0}{' '}
-                          {langKey === 'ar' ? 'تقييم' : 'reviews'}
-                        </span>
-                      </div>
+                      <ProviderRating
+                        ratingAvg={render.provider?.ratingAvg ?? 0}
+                        reviewCount={render.provider?.reviewCount ?? 0}
+                        lang={langKey}
+                        className="mt-0.5"
+                      />
                       {render.provider.verified && (
                         <div className="flex items-center gap-1 mt-1">
                           <Shield size={11} className="text-green-500" />
@@ -1070,39 +1046,14 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                 </div>
               )}
 
-              {/* Rate & Review (for completed jobs). Slice 2.4 keeps the
-                  visual but the submit is still UI-only — reviews ship in a
-                  later slice. */}
-              {status === 'completed' && !ratingSubmitted && (
-                <button
-                  onClick={() => setShowRateModal(true)}
-                  className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl p-4 flex items-center gap-3 active:scale-95 transition-all"
-                >
-                  <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
-                    <ThumbsUp size={18} className="text-white" />
-                  </div>
-                  <div className="flex-1 text-start">
-                    <p className="text-white" style={{ fontSize: '14px', fontWeight: 800 }}>
-                      {langKey === 'ar' ? 'كيف كانت تجربتك؟' : 'How was your experience?'}
-                    </p>
-                    <p className="text-white/70" style={{ fontSize: '12px' }}>
-                      {langKey === 'ar'
-                        ? 'اترك تقييماً لمساعدة المحترفين الآخرين'
-                        : 'Leave a review to help other pros'}
-                    </p>
-                  </div>
-                  <ChevronRight size={18} className="text-white/60 rtl:rotate-180" />
-                </button>
-              )}
-
-              {ratingSubmitted && (
-                <div className="bg-green-50 border border-green-200 rounded-3xl p-4 flex items-center gap-3">
-                  <CheckCircle2 size={20} className="text-green-500" />
-                  <p className="text-green-700" style={{ fontSize: '13px', fontWeight: 600 }}>
-                    {langKey === 'ar' ? 'شكراً على تقييمك! 🌟' : 'Thanks for your review! 🌟'}
-                  </p>
-                </div>
-              )}
+              {/* Review of a completed booking (R11). What shows here is the
+                  server's answer for this booking: a prompt while it can be
+                  reviewed, the saved review once it has been. */}
+              <BookingReviewEntry
+                controller={review}
+                lang={langKey}
+                triggerRef={reviewTriggerRef}
+              />
 
               {/* Cancel option — request branch shows it for OPEN_FOR_BIDS,
                   booking branch shows it for SCHEDULED. Both wired to real
@@ -1154,80 +1105,15 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
         </div>
       </div>
 
-      {/* ── Rate Modal ── */}
-      {showRateModal && render && (
-        <div className="absolute inset-0 z-30 flex flex-col justify-end">
-          <div
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-            onClick={() => setShowRateModal(false)}
-          />
-          <div className="relative bg-white rounded-t-3xl px-6 py-6">
-            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mb-5" />
-            <div className="flex flex-col items-center text-center gap-2 mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center mb-2">
-                <span className="text-amber-700" style={{ fontSize: '20px', fontWeight: 800 }}>
-                  {render.provider?.initials ?? '—'}
-                </span>
-              </div>
-              <p className="text-slate-900" style={{ fontSize: '18px', fontWeight: 800 }}>
-                {langKey === 'ar'
-                  ? `كيف كانت تجربتك مع ${providerNamePrivacy}؟`
-                  : `Rate your experience with ${providerNamePrivacy}`}
-              </p>
-              <p className="text-slate-400" style={{ fontSize: '13px' }}>
-                {langKey === 'ar' ? 'اضغط على النجوم للتقييم' : 'Tap to rate'}
-              </p>
-            </div>
-
-            {/* Stars */}
-            <div className="flex justify-center gap-3 mb-6">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setSelectedRating(s)}
-                  className="active:scale-90 transition-all"
-                >
-                  <svg
-                    width="40"
-                    height="40"
-                    viewBox="0 0 24 24"
-                    fill={s <= selectedRating ? '#F59E0B' : 'none'}
-                    stroke={s <= selectedRating ? '#F59E0B' : '#CBD5E1'}
-                    strokeWidth="1.5"
-                  >
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                  </svg>
-                </button>
-              ))}
-            </div>
-
-            {selectedRating > 0 && (
-              <div className="mb-4">
-                <textarea
-                  placeholder={
-                    langKey === 'ar' ? 'أضف تعليقاً (اختياري)…' : 'Add a comment (optional)…'
-                  }
-                  rows={3}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 outline-none text-slate-700 placeholder-slate-400 resize-none"
-                  style={{ fontSize: '13px' }}
-                />
-              </div>
-            )}
-
-            <button
-              onClick={handleRateSubmit}
-              disabled={selectedRating === 0}
-              className={`w-full py-4 rounded-2xl transition-all active:scale-95 ${
-                selectedRating > 0
-                  ? 'bg-amber-500 text-white shadow-md shadow-amber-200'
-                  : 'bg-slate-100 text-slate-400'
-              }`}
-              style={{ fontSize: '15px', fontWeight: 700 }}
-            >
-              {langKey === 'ar' ? 'إرسال التقييم' : 'Submit Review'}
-            </button>
-          </div>
-        </div>
+      {/* ── Review sheet (R11) ── */}
+      {render && (
+        <BookingReviewSheet
+          controller={review}
+          lang={langKey}
+          providerName={providerNamePrivacy}
+          providerInitials={render.provider?.initials ?? '—'}
+          triggerRef={reviewTriggerRef}
+        />
       )}
     </>
   );

@@ -1,27 +1,8 @@
 import { ReactNode } from 'react';
 
-// ─── Rating Stars ─────────────────────────────────────────────────────────────
-function RatingStars({ rating }: { rating: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((s) => (
-        <svg
-          key={s}
-          width="11"
-          height="11"
-          viewBox="0 0 24 24"
-          fill={s <= Math.round(rating) ? '#F59E0B' : 'none'}
-          stroke={s <= Math.round(rating) ? '#F59E0B' : '#CBD5E1'}
-          strokeWidth="1.5"
-        >
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-        </svg>
-      ))}
-    </div>
-  );
-}
+import { ProviderRating } from './ProviderRating';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Rating Stars ─────────────────────────────────────────────────────────────
 export interface ProBidCardProps {
   name: string;
   initials: string;
@@ -31,6 +12,8 @@ export interface ProBidCardProps {
   rating: number;
   reviewCount: number;
   jobCount: number;
+  /** Language of the rating line. */
+  lang?: 'en' | 'ar';
   price: number;
   unit?: string; // "/hr", "/job", etc.
   tags?: string[];
@@ -52,6 +35,7 @@ export function ProBidCard({
   rating,
   reviewCount,
   jobCount,
+  lang = 'en',
   price,
   unit = '/hr',
   tags = [],
@@ -123,12 +107,12 @@ export function ProBidCard({
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <RatingStars rating={rating ?? 0} />
-              <span className="text-slate-500" style={{ fontSize: '11px' }}>
-                {(rating ?? 0).toFixed(1)} ({reviewCount ?? 0})
-              </span>
-            </div>
+            <ProviderRating
+              ratingAvg={rating}
+              reviewCount={reviewCount}
+              lang={lang}
+              className="mt-0.5"
+            />
             <p className="text-slate-400 mt-0.5" style={{ fontSize: '11px' }}>
               {jobCount} jobs completed
             </p>

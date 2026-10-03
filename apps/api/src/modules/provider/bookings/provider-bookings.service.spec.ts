@@ -171,6 +171,8 @@ function makeMocks(
         return Promise.resolve(call === 1 ? owned : reload);
       }),
       setStatusOwnedByProvider: jest.fn().mockResolvedValue({ count: setCount }),
+      // R11 — completion recomputes the provider's completed-jobs count.
+      recomputeCompletedJobsForProvider: jest.fn().mockResolvedValue(undefined),
     } as unknown as BookingRepository,
     events: {
       create: jest.fn().mockResolvedValue(undefined),
@@ -353,6 +355,8 @@ describe('ProviderBookingsService', () => {
       const mocks = makeMocks({ ownedRow: owned, reloadedRow: reloaded });
       const out = await makeService(mocks).complete('user-provider-1', 'bk-1');
       expect(out.booking.status).toBe('COMPLETED');
+      // R11 — the completed-jobs count is recomputed in the same transaction.
+      expect(mocks.bookings.recomputeCompletedJobsForProvider).toHaveBeenCalledTimes(1);
       expect(mocks.notifications.createForUser).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-seeker-1',

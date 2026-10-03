@@ -237,6 +237,13 @@ export class ProviderBookingsService {
         },
         tx,
       );
+      if (to === BookingStatus.COMPLETED) {
+        // R11 — the completed-jobs count seekers see is the provider's real
+        // COMPLETED bookings, kept in step in this same transaction. Booking
+        // row first (the flip above), provider row second: the order every
+        // reputation change takes.
+        await this.bookings.recomputeCompletedJobsForProvider(profile.id, tx);
+      }
       if (notify) {
         // Sprint 7.6 — seeker is the non-actor recipient for this
         // provider-initiated transition. actorUserId = providerUserId
