@@ -3,16 +3,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Send,
-  Phone,
-  Video,
-  MoreVertical,
+  PhoneOff,
   Check,
   CheckCheck,
+  Clock,
   Loader2,
 } from 'lucide-react';
 import type { MessageSummary } from '@homeservicemarketplace/contracts';
 import { useLang } from '../../i18n/LanguageContext';
 import { useMarkConversationRead, useMessages, useSendMessage } from '../../hooks/seeker/useChat';
+import { keyForSend, type SendAttempt } from '../../../lib/chat/send-attempt';
 
 // ─── Render shape ─────────────────────────────────────────────────────────────
 // Slice 3.3 wires ChatScreen to GET /v1/me/conversations/:id/messages.
@@ -67,7 +67,6 @@ interface ChatScreenProps {
     initials: string;
     bg: string;
     textColor: string;
-    status: string;
   };
   onBack: () => void;
   isVisible: boolean;
@@ -78,13 +77,15 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
   const { t, dir, lang } = useLang();
   const langKey: 'en' | 'ar' = lang === 'ar' ? 'ar' : 'en';
 
-  const messagesQuery = useMessages(conversationId);
+  const messagesQuery = useMessages(conversationId, { live: isVisible });
   const sendMut = useSendMessage(conversationId);
   const markReadMut = useMarkConversationRead(conversationId);
 
   const [pending, setPending] = useState<RenderMessage[]>([]);
   const [input, setInput] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
+  // R12 — the last send that has not been acknowledged, with its key.
+  const unacknowledged = useRef<SendAttempt | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Server messages → render shape. Pending optimistic rows are
@@ -94,13 +95,9 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
   // triggers a refetch).
   const messages: RenderMessage[] = useMemo(() => {
     const rows = (messagesQuery.data?.items ?? []).map((m) => apiToRender(m, langKey));
-    const pendingFiltered = pending.filter(
-      // Drop pending rows whose body now matches a confirmed server
-      // row from the same sender — defensive in case the server
-      // response races the optimistic render.
-      (p) => !rows.some((r) => r.sender === p.sender && r.text === p.text),
-    );
-    return [...rows, ...pendingFiltered];
+    // R12 — pending rows are removed by their own outcome, never because some
+    // server row has the same text: two identical messages are two messages.
+    return [...rows, ...pending];
   }, [messagesQuery.data, pending, langKey]);
 
   const isInitialLoading = messagesQuery.isLoading && !messagesQuery.data;
@@ -132,6 +129,9 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
     // invalidation that the mutation's onSuccess fires. If the send
     // fails, we drop the pending row + surface a safe error.
     const pendingId = `pending-${Date.now()}`;
+    // The same text sent again after a failure is the same logical message.
+    const idempotencyKey = keyForSend(unacknowledged.current, conversationId, trimmed);
+    unacknowledged.current = { conversationId, body: trimmed, idempotencyKey };
     const now = new Date();
     const timeStr = now.toLocaleTimeString(langKey === 'ar' ? 'ar-SA' : 'en-US', {
       hour: '2-digit',
@@ -143,35 +143,41 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
     ]);
     setInput('');
 
-    sendMut.mutate(trimmed, {
-      onSuccess: () => {
-        // Drop the optimistic row — the refetch will surface the
-        // canonical server row.
-        setPending((prev) => prev.filter((r) => r.id !== pendingId));
+    sendMut.mutate(
+      { body: trimmed, idempotencyKey },
+      {
+        onSuccess: () => {
+          // The acknowledged row is in the cache now (useSendMessage).
+          if (unacknowledged.current?.idempotencyKey === idempotencyKey)
+            unacknowledged.current = null;
+          setPending((prev) => prev.filter((r) => r.id !== pendingId));
+        },
+        onError: (err) => {
+          setPending((prev) => prev.filter((r) => r.id !== pendingId));
+          const status =
+            (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
+          if (status === 400) {
+            setSendError(
+              langKey === 'ar' ? 'لا يمكن إرسال رسالة فارغة.' : 'Empty message cannot be sent.',
+            );
+          } else if (status === 404) {
+            setSendError(
+              langKey === 'ar' ? 'لم يتم العثور على المحادثة.' : 'Conversation not found.',
+            );
+          } else {
+            setSendError(
+              langKey === 'ar'
+                ? 'تعذر إرسال الرسالة. حاول مرة أخرى.'
+                : "Couldn't send message. Please try again.",
+            );
+          }
+          // Restore the input so the user can retry without retyping. Sending
+          // it unchanged reuses the key, so a send that was stored but whose
+          // reply was lost is not stored twice.
+          setInput(trimmed);
+        },
       },
-      onError: (err) => {
-        setPending((prev) => prev.filter((r) => r.id !== pendingId));
-        const status =
-          (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
-        if (status === 400) {
-          setSendError(
-            langKey === 'ar' ? 'لا يمكن إرسال رسالة فارغة.' : 'Empty message cannot be sent.',
-          );
-        } else if (status === 404) {
-          setSendError(
-            langKey === 'ar' ? 'لم يتم العثور على المحادثة.' : 'Conversation not found.',
-          );
-        } else {
-          setSendError(
-            langKey === 'ar'
-              ? 'تعذر إرسال الرسالة. حاول مرة أخرى.'
-              : "Couldn't send message. Please try again.",
-          );
-        }
-        // Restore the input so the user can retry without retyping.
-        setInput(trimmed);
-      },
-    });
+    );
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -219,39 +225,30 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
             <p className="text-slate-900 truncate" style={{ fontSize: '15px', fontWeight: 700 }}>
               {contact.name}
             </p>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-green-400" />
-              <span className="text-slate-400" style={{ fontSize: '11px' }}>
-                {contact.status}
-              </span>
-            </div>
           </div>
 
-          {/* Actions — Phone/Video/More are visual placeholders. Calls
-              are explicitly out of scope for slice 3.3. */}
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              title={langKey === 'ar' ? 'قريباً' : 'Coming soon'}
-              className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center opacity-60 cursor-not-allowed"
-            >
-              <Phone size={16} className="text-slate-600" />
-            </button>
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              title={langKey === 'ar' ? 'قريباً' : 'Coming soon'}
-              className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center opacity-60 cursor-not-allowed"
-            >
-              <Video size={16} className="text-slate-600" />
-            </button>
-            <button className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center active:bg-slate-100 transition-all">
-              <MoreVertical size={16} className="text-slate-600" />
-            </button>
-          </div>
+          {/* R12 — calling is not available and no number is shown. The
+              control says so instead of promising it. There is no presence
+              information, so no "online" status, and the menu that did
+              nothing is gone. docs/production-readiness/r12/COMMUNICATION_POLICY.md */}
+          <button
+            type="button"
+            disabled
+            aria-label={
+              langKey === 'ar'
+                ? 'المكالمات غير متاحة في التطبيق'
+                : 'Calls aren’t available in the app'
+            }
+            title={
+              langKey === 'ar'
+                ? 'المكالمات غير متاحة في التطبيق'
+                : 'Calls aren’t available in the app'
+            }
+            data-testid="chat-call-unavailable"
+            className="w-11 h-11 rounded-xl bg-slate-50 flex items-center justify-center opacity-60 cursor-not-allowed"
+          >
+            <PhoneOff size={16} className="text-slate-600" aria-hidden="true" />
+          </button>
         </div>
       </div>
 
@@ -355,6 +352,7 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
                           : 'bg-white border border-slate-200 text-slate-800 rounded-[20px] rounded-bl-[6px] shadow-sm'
                       }`}
                       style={{ fontSize: '14px', lineHeight: '1.5' }}
+                      dir="auto"
                     >
                       {msg.text}
                     </div>
@@ -366,8 +364,19 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
                       <span className="text-slate-400" style={{ fontSize: '10px' }}>
                         {msg.time}
                       </span>
+                      {/* R12: a message the server has not acknowledged says
+                          so. Only an acknowledged one gets the check. */}
                       {isUser &&
-                        (msg.read ? (
+                        (msg.pending ? (
+                          <span
+                            className="flex items-center gap-1 text-slate-500"
+                            style={{ fontSize: '10px' }}
+                            data-testid="chat-message-pending"
+                          >
+                            <Clock size={11} aria-hidden="true" />
+                            {langKey === 'ar' ? 'جارٍ الإرسال…' : 'Sending…'}
+                          </span>
+                        ) : msg.read ? (
                           <CheckCheck size={12} className="text-amber-500" />
                         ) : (
                           <Check size={12} className="text-slate-400" />
@@ -395,11 +404,7 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
           </div>
         )}
         <div className="flex items-end gap-3">
-          {/* Emoji button — visual placeholder, no picker yet. */}
-          <button className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 active:bg-slate-200 transition-all">
-            <span style={{ fontSize: '18px' }}>😊</span>
-          </button>
-
+          {/* R12: the emoji button that opened nothing is gone. */}
           {/* Text area */}
           <div className="flex-1 bg-slate-100 rounded-2xl px-4 py-2.5 flex items-end gap-2 min-h-[44px]">
             <textarea
@@ -407,17 +412,23 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t('typeMessage')}
+              aria-label={t('typeMessage')}
+              data-testid="chat-input"
+              dir="auto"
               rows={1}
               className="flex-1 bg-transparent outline-none text-slate-700 placeholder-slate-400 resize-none"
-              style={{ fontSize: '14px', lineHeight: '1.5', maxHeight: '100px' }}
+              style={{ fontSize: '16px', lineHeight: '1.5', maxHeight: '100px' }}
             />
           </div>
 
           {/* Send button */}
           <button
+            type="button"
             onClick={sendMessage}
             disabled={!input.trim() || sendMut.isPending || !conversationId}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-90 ${
+            aria-label={langKey === 'ar' ? 'إرسال' : 'Send'}
+            data-testid="chat-send"
+            className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-90 ${
               input.trim() && !sendMut.isPending && conversationId
                 ? 'bg-amber-500 shadow-md shadow-amber-200'
                 : 'bg-slate-200'

@@ -28,8 +28,21 @@ export function useConversations() {
   });
 }
 
-export function useMessages(conversationId: string | null | undefined) {
+// R12 — while the conversation is on screen (`live`), it is read again every
+// 4 s, the cadence the provider thread already uses, so a reply appears
+// without reopening the chat. It stops when the chat is closed or hidden, when
+// the conversation is gone, and after an error such as lost access (the read
+// is then not repeated until the person reopens it). No socket is involved.
+const LIVE_MESSAGES_REFETCH_MS = 4_000;
+
+export function useMessages(
+  conversationId: string | null | undefined,
+  options: { live?: boolean } = {},
+) {
   return useQuery<MessageListResponse>({
+    refetchInterval: (query) =>
+      options.live && query.state.status !== 'error' ? LIVE_MESSAGES_REFETCH_MS : false,
+    refetchIntervalInBackground: false,
     queryKey: conversationId
       ? seekerQueryKeys.conversations.messages(conversationId)
       : seekerQueryKeys.conversations.root,
@@ -65,14 +78,23 @@ export function useGetOrCreateConversation() {
 // against the response.
 export function useSendMessage(conversationId: string | null | undefined) {
   const qc = useQueryClient();
-  return useMutation<SendMessageResponse, Error, string>({
-    mutationFn: (body: string) => {
+  return useMutation<SendMessageResponse, Error, { body: string; idempotencyKey: string }>({
+    mutationFn: (input) => {
       if (!conversationId)
         throw new Error('useSendMessage: conversationId is required to send a message.');
-      return sendMessage(conversationId, { body });
+      return sendMessage(conversationId, input);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       if (!conversationId) return;
+      // R12 — the acknowledged message is the server's row; put it in place by
+      // its id (a replayed send returns the row already there).
+      qc.setQueryData<MessageListResponse>(
+        seekerQueryKeys.conversations.messages(conversationId),
+        (current) =>
+          current && !current.items.some((m) => m.id === data.message.id)
+            ? { ...current, items: [...current.items, data.message] }
+            : current,
+      );
       qc.invalidateQueries({ queryKey: seekerQueryKeys.conversations.messages(conversationId) });
       qc.invalidateQueries({ queryKey: seekerQueryKeys.conversations.list() });
     },

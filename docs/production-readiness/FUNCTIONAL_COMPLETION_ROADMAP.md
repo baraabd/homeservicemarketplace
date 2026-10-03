@@ -175,6 +175,12 @@ consistency, reload/relogin and public/provider projections.
 
 ## R12 — Booking communication and job actions
 
+**Status (2026-10-03):** integrated on `feat/r12-booking-communication-job-actions` over develop
+`21b98b7` (R11 merged); acceptance blocked on owner decisions (calling model; the unpatched
+dev-only `braces` advisory failing the zero-finding audit) and the R05 prerequisite PR #131. See
+[r12/IMPLEMENTATION.md](r12/IMPLEMENTATION.md), [r12/COMMUNICATION_POLICY.md](r12/COMMUNICATION_POLICY.md),
+[r12/ACTION_AUTHORITY_MATRIX.md](r12/ACTION_AUTHORITY_MATRIX.md).
+
 **Goal:** remove unsupported disabled actions where a real authoritative capability
 already exists, and explicitly bound actions that require new infrastructure.
 

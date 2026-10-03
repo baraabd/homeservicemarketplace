@@ -1,4 +1,5 @@
 import { RequireCapability } from '../provider/guards/require-capability.decorator';
+import { ConversationParticipantRole } from '@homeservicemarketplace/database';
 import { ProviderCapability } from '@homeservicemarketplace/contracts';
 import {
   Body,
@@ -27,9 +28,13 @@ import { Roles } from '../iam/authorization/decorators/roles.decorator';
 import { RolesGuard } from '../iam/authorization/guards/roles.guard';
 import { ProviderCapabilityGuard } from '../provider/guards/provider-capability.guard';
 import { ConversationsService } from './conversations.service';
+
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListMessagesQueryDto } from './dto/list-messages.query';
 import { SendMessageDto } from './dto/send-message.dto';
+
+// R12: every call from this controller acts for the PROVIDER side only.
+const SIDE = ConversationParticipantRole.PROVIDER;
 
 // /v1/provider/conversations — Provider-facing chat surface
 // (Sprint 5.5, canonical path).
@@ -61,7 +66,7 @@ export class ProviderConversationsController {
   @Get()
   @HttpCode(HttpStatus.OK)
   list(@CurrentUser() user: AuthenticatedUser): Promise<ConversationListResponse> {
-    return this.conversations.list(user.id);
+    return this.conversations.list(user.id, SIDE);
   }
 
   @UseGuards(CsrfGuard)
@@ -71,7 +76,7 @@ export class ProviderConversationsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: CreateConversationDto,
   ): Promise<CreateConversationResponse> {
-    return this.conversations.getOrCreateForBooking(user.id, body.bookingId);
+    return this.conversations.getOrCreateForBooking(user.id, body.bookingId, SIDE);
   }
 
   @Get(':conversationId/messages')
@@ -81,7 +86,7 @@ export class ProviderConversationsController {
     @Param('conversationId') conversationId: string,
     @Query() query: ListMessagesQueryDto,
   ): Promise<MessageListResponse> {
-    return this.conversations.listMessages(user.id, conversationId, query);
+    return this.conversations.listMessages(user.id, conversationId, query, SIDE);
   }
 
   @UseGuards(CsrfGuard)
@@ -92,7 +97,13 @@ export class ProviderConversationsController {
     @Param('conversationId') conversationId: string,
     @Body() body: SendMessageDto,
   ): Promise<SendMessageResponse> {
-    return this.conversations.sendMessage(user.id, conversationId, body.body);
+    return this.conversations.sendMessage(
+      user.id,
+      conversationId,
+      body.body,
+      SIDE,
+      body.idempotencyKey,
+    );
   }
 
   @UseGuards(CsrfGuard)
@@ -102,6 +113,6 @@ export class ProviderConversationsController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('conversationId') conversationId: string,
   ): Promise<MarkConversationReadResponse> {
-    return this.conversations.markRead(user.id, conversationId);
+    return this.conversations.markRead(user.id, conversationId, SIDE);
   }
 }

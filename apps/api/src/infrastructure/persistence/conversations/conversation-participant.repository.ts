@@ -35,13 +35,20 @@ export class ConversationParticipantRepository {
 
   // Primary ownership gate. Returns null if the user is not a
   // participant of the conversation; service maps that to 404.
+  /**
+   * The user's participation in a conversation. With `role`, only as that
+   * side: the seeker routes act for the SEEKER side and the provider routes
+   * for the PROVIDER side (R12). Without it, either side, which only the
+   * realtime room gate uses.
+   */
   findByConversationAndUser(
     conversationId: string,
     userId: string,
+    role?: ConversationParticipantRole,
     tx?: PrismaTx,
   ): Promise<ConversationParticipant | null> {
     return this.db(tx).conversationParticipant.findFirst({
-      where: { conversationId, userId },
+      where: { conversationId, userId, ...(role ? { role } : {}) },
     });
   }
 

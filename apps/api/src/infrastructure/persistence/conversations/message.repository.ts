@@ -13,6 +13,7 @@ export interface CreateMessageInput {
   senderUserId: string | null;
   senderRole: ConversationParticipantRole;
   body: string;
+  idempotencyKey?: string | null;
 }
 
 @Injectable()
@@ -30,7 +31,24 @@ export class MessageRepository {
         senderUserId: input.senderUserId,
         senderRole: input.senderRole,
         body: input.body,
+        idempotencyKey: input.idempotencyKey ?? null,
       },
+    });
+  }
+
+  /**
+   * The message this sender already stored in this conversation under
+   * `idempotencyKey` (R12). The sender is part of the lookup, so a key can
+   * only ever find the caller's own message.
+   */
+  findByIdempotencyKey(
+    conversationId: string,
+    senderUserId: string,
+    idempotencyKey: string,
+    tx?: PrismaTx,
+  ): Promise<Message | null> {
+    return this.db(tx).message.findFirst({
+      where: { conversationId, senderUserId, idempotencyKey },
     });
   }
 

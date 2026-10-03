@@ -168,7 +168,7 @@ describe('ConversationsController (e2e)', () => {
       const res = await request(app.getHttpServer()).get('/v1/me/conversations');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ items: [], nextCursor: null });
-      expect(conversationsService.list).toHaveBeenCalledWith('user-1');
+      expect(conversationsService.list).toHaveBeenCalledWith('user-1', 'SEEKER');
     });
   });
 
@@ -218,7 +218,11 @@ describe('ConversationsController (e2e)', () => {
         .send({ bookingId: 'bk-1' });
       expect(res.status).toBe(200);
       expect(res.body.conversation.id).toBe('conv-1');
-      expect(conversationsService.getOrCreateForBooking).toHaveBeenCalledWith('user-1', 'bk-1');
+      expect(conversationsService.getOrCreateForBooking).toHaveBeenCalledWith(
+        'user-1',
+        'bk-1',
+        'SEEKER',
+      );
     });
 
     it('cross-user bookingId surfaces as 404 (no Prisma leak)', async () => {
@@ -250,6 +254,7 @@ describe('ConversationsController (e2e)', () => {
         'user-1',
         'conv-1',
         expect.objectContaining({ limit: 20 }),
+        'SEEKER',
       );
     });
 
@@ -314,7 +319,13 @@ describe('ConversationsController (e2e)', () => {
         .send({ body: 'hi' });
       expect(res.status).toBe(201);
       expect(res.body.message.body).toBe('hi');
-      expect(conversationsService.sendMessage).toHaveBeenCalledWith('user-1', 'conv-1', 'hi');
+      expect(conversationsService.sendMessage).toHaveBeenCalledWith(
+        'user-1',
+        'conv-1',
+        'hi',
+        'SEEKER',
+        undefined,
+      );
     });
   });
 
@@ -336,7 +347,7 @@ describe('ConversationsController (e2e)', () => {
         .set('X-CSRF-Token', 'tok');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ lastReadAt: '2026-04-29T03:30:00.000Z' });
-      expect(conversationsService.markRead).toHaveBeenCalledWith('user-1', 'conv-1');
+      expect(conversationsService.markRead).toHaveBeenCalledWith('user-1', 'conv-1', 'SEEKER');
     });
 
     it('non-participant surfaces as 404 (no Prisma leak)', async () => {

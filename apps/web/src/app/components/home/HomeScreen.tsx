@@ -416,7 +416,6 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
     initials: string;
     bg: string;
     textColor: string;
-    status: string;
   }>(null);
 
   // Slice 3.3: live conversations feed. Drives the messages tab list
@@ -530,7 +529,6 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
             initials: conv.otherParticipant?.initials ?? '',
             bg: 'bg-amber-100',
             textColor: 'text-amber-700',
-            status: 'Online',
           });
         }
         return true;
@@ -666,10 +664,12 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const { data: serviceCategories } = useServiceCategories();
 
   // ── Nav tabs ────────────────────────────────────────────────────────────────
+  const unreadMessages = conversations.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
   const NAV_TABS = [
     { id: 'home', labelKey: 'home', Icon: Home, badge: 0 },
     { id: 'bookings', labelKey: 'bookings', Icon: Briefcase, badge: 0 },
-    { id: 'messages', labelKey: 'chat', Icon: MessageCircle, badge: 3 },
+    // R12 — unread messages as the server counts them, not a constant.
+    { id: 'messages', labelKey: 'chat', Icon: MessageCircle, badge: unreadMessages },
     { id: 'profile', labelKey: 'profile', Icon: User, badge: 0 },
   ];
 
@@ -1042,6 +1042,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                   key={b.id}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => handleBookingTap(b)}
+                  data-testid={`booking-card-${b.id}`}
                   className="w-full bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 mb-3 text-start cursor-pointer"
                 >
                   <div className="flex items-start justify-between mb-2">
@@ -1205,7 +1206,6 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                         initials: c.otherParticipant?.initials ?? '',
                         bg: 'bg-amber-100',
                         textColor: 'text-amber-700',
-                        status: 'Online',
                       })
                     }
                     className="w-full flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 mb-2 cursor-pointer transition-all text-start"
@@ -1414,17 +1414,17 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
             source={jobDetail}
             isVisible={!!jobDetail}
             onBack={() => setJobDetail(null)}
-            onOpenChat={(_contact) => {
-              // Slice 2.4 made JobDetailView's Message button a
-              // disabled placeholder — onOpenChat is never invoked
-              // from there. Slice 3.3 routes chat openings through
-              // the messages tab + notification taps, both of which
-              // resolve a real conversationId. If a future surface
-              // calls this from a booking, it should call
-              // useGetOrCreateConversation first and dispatch the
-              // resulting conversationId here.
-              void _contact;
-            }}
+            // R12 — the booking's Message action hands over the conversation
+            // the server resolved for it.
+            onOpenChat={(conversation) =>
+              setChatContact({
+                conversationId: conversation.conversationId,
+                name: formatChatName(conversation.name),
+                initials: conversation.initials,
+                bg: 'bg-amber-100',
+                textColor: 'text-amber-700',
+              })
+            }
           />
         )}
 

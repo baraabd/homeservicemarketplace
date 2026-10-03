@@ -19,6 +19,7 @@ import {
 import { formatRelativeTime } from '../../../../lib/provider/available-jobs-adapter';
 import { formatPrivacyDisplayName } from '../../../../lib/privacy-name';
 import { ArrowLeft, MessageCircle, Send } from 'lucide-react';
+import { keyForSend, type SendAttempt } from '../../../../lib/chat/send-attempt';
 
 // ─── Provider chat screen (Sprint 5.5) ───────────────────────────────────────
 // Two-pane: left lists conversations, right shows the active thread
@@ -182,6 +183,9 @@ function ProviderChatThread({
   const messagesQuery = useProviderMessages(conversationId);
   const sendMessage = useSendProviderMessage(conversationId);
   const [draft, setDraft] = useState('');
+  // R12 — the last send that has not been acknowledged, with its key. A failed
+  // send keeps the draft; sending it unchanged reuses the key.
+  const unacknowledged = useRef<SendAttempt | null>(null);
   const messages = messagesQuery.data?.items ?? [];
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -210,10 +214,17 @@ function ProviderChatThread({
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSend) return;
+    const idempotencyKey = keyForSend(unacknowledged.current, conversationId, trimmed);
+    unacknowledged.current = { conversationId, body: trimmed, idempotencyKey };
     sendMessage.mutate(
-      { body: trimmed },
+      { body: trimmed, idempotencyKey },
       {
-        onSuccess: () => setDraft(''),
+        onSuccess: () => {
+          if (unacknowledged.current?.idempotencyKey === idempotencyKey) {
+            unacknowledged.current = null;
+          }
+          setDraft('');
+        },
       },
     );
   };

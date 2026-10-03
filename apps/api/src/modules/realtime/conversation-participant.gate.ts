@@ -1,8 +1,17 @@
 import { Injectable } from '@nestjs/common';
+import { ProviderCapability } from '@homeservicemarketplace/contracts';
+import { ConversationParticipantRole } from '@homeservicemarketplace/database';
 
 import { ConversationParticipantRepository } from '../../infrastructure/persistence/conversations/conversation-participant.repository';
 import { ProviderProfileRepository } from '../../infrastructure/persistence/bids/provider-profile.repository';
 import { SessionRepository } from '../../infrastructure/persistence/iam/session.repository';
+import { ProviderCapabilityService } from '../provider/capability/provider-capability.service';
+
+/** Whether a user may receive a conversation's events, and as which side. */
+export type ConversationReceipt =
+  | { allowed: false }
+  | { allowed: true; side: 'SEEKER' }
+  | { allowed: true; side: 'PROVIDER'; providerProfileId: string | null };
 
 // Sprint 7.0 (refined): minimal authorization helper used by the
 // Socket.IO gateway to decide:
@@ -19,6 +28,7 @@ export class ConversationParticipantGate {
     private readonly providerProfiles: ProviderProfileRepository,
     private readonly participants: ConversationParticipantRepository,
     private readonly sessions: SessionRepository,
+    private readonly capabilities: ProviderCapabilityService,
   ) {}
 
   // D-4 — used to revalidate a security-sensitive socket event. The socket
@@ -35,6 +45,29 @@ export class ConversationParticipantGate {
   async findProviderProfileId(userId: string): Promise<string | null> {
     const profile = await this.providerProfiles.findByUserId(userId);
     return profile?.id ?? null;
+  }
+
+  /**
+   * R12 — may this user receive this conversation's events?
+   *
+   * The same answer REST gives for reading it. A seeker-side participant reads
+   * through /v1/me/conversations (session only). A provider-side participant
+   * reads through /v1/provider/conversations, which also requires the provider
+   * to be allowed to manage bookings; the realtime room must not be a way
+   * round that. Both participants may share the room.
+   */
+  async mayReceiveConversation(
+    userId: string,
+    conversationId: string,
+  ): Promise<ConversationReceipt> {
+    const participant = await this.participants.findByConversationAndUser(conversationId, userId);
+    if (!participant) return { allowed: false };
+    if (participant.role === ConversationParticipantRole.SEEKER) {
+      return { allowed: true, side: 'SEEKER' };
+    }
+    const working = await this.capabilities.can(userId, ProviderCapability.ManageBookings);
+    if (!working) return { allowed: false };
+    return { allowed: true, side: 'PROVIDER', providerProfileId: participant.providerProfileId };
   }
 
   async userIsParticipant(userId: string, conversationId: string): Promise<boolean> {

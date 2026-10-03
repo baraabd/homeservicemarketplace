@@ -3,6 +3,7 @@ import { Global, Module } from '@nestjs/common';
 import { ConfigModule } from '../../config/config.module';
 import { PersistenceModule } from '../../infrastructure/persistence/persistence.module';
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
+import { ProviderCapabilityModule } from '../provider/capability/provider-capability.module';
 import { ConversationParticipantGate } from './conversation-participant.gate';
 import { RealtimeIdentityResolver } from './realtime-identity.resolver';
 import { RealtimeEventsController } from './realtime-events.controller';
@@ -19,7 +20,7 @@ import { RealtimeGateway } from './realtime.gateway';
 // dev fallback; the gateway is the production channel.
 @Global()
 @Module({
-  imports: [AuthenticationModule, ConfigModule, PersistenceModule],
+  imports: [AuthenticationModule, ConfigModule, PersistenceModule, ProviderCapabilityModule],
   controllers: [RealtimeEventsController],
   providers: [
     RealtimeEventsPublisher,

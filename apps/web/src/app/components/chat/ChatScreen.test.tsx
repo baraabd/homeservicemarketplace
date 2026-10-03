@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
@@ -27,7 +27,6 @@ function renderChat(conversationId: string | null) {
             initials: 'OK',
             bg: 'bg-amber-100',
             textColor: 'text-amber-700',
-            status: 'Online',
           }}
           onBack={() => {}}
           isVisible
@@ -141,7 +140,8 @@ describe('ChatScreen — slice 3.3', () => {
     fireEvent.click(sendBtn);
 
     await waitFor(() => expect(postedUrl).toBe('/v1/me/conversations/conv-1/messages'));
-    expect(postedBody).toEqual({ body: 'hi from test' });
+    // R12 — one logical send carries one idempotency key.
+    expect(postedBody).toEqual({ body: 'hi from test', idempotencyKey: expect.any(String) });
     // The body must NOT carry senderUserId / senderRole — those come
     // from the session server-side.
     expect(postedBody).not.toHaveProperty('senderUserId');
@@ -170,5 +170,150 @@ describe('ChatScreen — slice 3.3', () => {
     expect(screen.getByText(/couldn't load this conversation/i)).toBeInTheDocument();
     expect(screen.queryByText(/PrismaClient/i)).toBeNull();
     expect(screen.queryByText(/column messages/i)).toBeNull();
+  });
+});
+
+describe('ChatScreen — R12 header', () => {
+  it('claims no presence and offers no call; calling says it is not available', async () => {
+    mock.onGet('/v1/me/conversations/conv-1/messages').reply(200, { items: [], nextCursor: null });
+    renderChat('conv-1');
+    await screen.findByText('Omar Al-Khalid');
+    expect(screen.queryByText(/online/i)).toBeNull();
+    const call = screen.getByTestId('chat-call-unavailable');
+    expect(call).toBeDisabled();
+    expect(call).toHaveAccessibleName('Calls aren’t available in the app');
+    expect(screen.queryByText(/coming soon/i)).toBeNull();
+    expect(document.querySelector('a[href^="tel:"]')).toBeNull();
+  });
+});
+
+describe('ChatScreen — R12 send recovery and replies', () => {
+  const ROUTE = '/v1/me/conversations/conv-1/messages';
+  const serverRow = (id: string, body: string, sentByMe = true) => ({
+    id,
+    senderRole: sentByMe ? 'SEEKER' : 'PROVIDER',
+    body,
+    sentByMe,
+    createdAt: '2026-10-04T10:00:00.000Z',
+  });
+  const input = () => screen.getByTestId('chat-input');
+  const sendBtn = () => screen.getByTestId('chat-send');
+  const posted = () =>
+    mock.history.post
+      .filter((r) => r.url === ROUTE)
+      .map((r) => JSON.parse(r.data as string) as { body: string; idempotencyKey: string });
+
+  beforeEach(() => {
+    mock.onPost('/v1/me/conversations/conv-1/read').reply(200, { lastReadAt: 'x' });
+  });
+
+  it('sending the failed message again reuses its key, so it is stored once', async () => {
+    // A server that stores by key. The first send IS stored but its reply is
+    // lost; the second, with the same key, is answered with the stored row.
+    const stored: Array<ReturnType<typeof serverRow> & { key: string }> = [];
+    let loseReply = true;
+    mock.onGet(ROUTE).reply(() => [200, { items: [...stored], nextCursor: null }]);
+    mock.onPost(ROUTE).reply((config) => {
+      const { body, idempotencyKey } = JSON.parse(config.data as string);
+      let row = stored.find((m) => m.key === idempotencyKey);
+      const replayed = Boolean(row);
+      if (!row) {
+        row = { ...serverRow(`m-${stored.length + 1}`, body), key: idempotencyKey };
+        stored.push(row);
+      }
+      if (loseReply) {
+        loseReply = false;
+        return Promise.reject(Object.assign(new Error('Network Error'), { isAxiosError: true }));
+      }
+      return [201, { message: row, ...(replayed ? { replayed } : {}) }];
+    });
+    renderChat('conv-1');
+    await screen.findByText(/Start the conversation/i);
+    fireEvent.change(input(), { target: { value: 'Is ten good?' } });
+    fireEvent.click(sendBtn());
+    await screen.findByRole('alert');
+    // The text is back in the box; sending it unchanged is the same message.
+    expect(input()).toHaveValue('Is ten good?');
+    fireEvent.click(sendBtn());
+    await waitFor(() => expect(posted()).toHaveLength(2));
+    expect(posted()[1].idempotencyKey).toBe(posted()[0].idempotencyKey);
+    await waitFor(() => expect(screen.getAllByText('Is ten good?')).toHaveLength(1));
+    expect(stored).toHaveLength(1);
+  });
+
+  it('two messages with the same text are two sends with two keys, and both are shown', async () => {
+    // A server that stores every keyed send it has not seen.
+    const stored: Array<ReturnType<typeof serverRow>> = [];
+    mock.onGet(ROUTE).reply(() => [200, { items: [...stored], nextCursor: null }]);
+    mock.onPost(ROUTE).reply((config) => {
+      const row = serverRow(`m-${stored.length + 1}`, JSON.parse(config.data as string).body);
+      stored.push(row);
+      return [201, { message: row }];
+    });
+    renderChat('conv-1');
+    await screen.findByText(/Start the conversation/i);
+    fireEvent.change(input(), { target: { value: 'ok' } });
+    fireEvent.click(sendBtn());
+    await waitFor(() => expect(posted()).toHaveLength(1));
+    await waitFor(() => expect(sendBtn()).toBeDisabled());
+    fireEvent.change(input(), { target: { value: 'ok' } });
+    await waitFor(() => expect(sendBtn()).toBeEnabled());
+    fireEvent.click(sendBtn());
+    await waitFor(() => expect(posted()).toHaveLength(2));
+    expect(posted()[1].idempotencyKey).not.toBe(posted()[0].idempotencyKey);
+    await waitFor(() => expect(screen.getAllByText('ok')).toHaveLength(2));
+  });
+
+  it('a reply appears in the open chat without reopening it, and reading stops when it closes', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mock
+        .onGet(ROUTE)
+        .replyOnce(200, { items: [serverRow('m-1', 'Hello?')], nextCursor: null })
+        .onGet(ROUTE)
+        .reply(200, {
+          items: [serverRow('m-1', 'Hello?'), serverRow('m-2', 'Yes, see you at ten.', false)],
+          nextCursor: null,
+        });
+      const view = renderChat('conv-1');
+      await screen.findByText('Hello?');
+      expect(screen.queryByText('Yes, see you at ten.')).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_100);
+      });
+      expect(await screen.findByText('Yes, see you at ten.')).toBeInTheDocument();
+      // Shown once, not once per read.
+      expect(screen.getAllByText('Yes, see you at ten.')).toHaveLength(1);
+
+      view.unmount();
+      const reads = mock.history.get.filter((r) => r.url === ROUTE).length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(mock.history.get.filter((r) => r.url === ROUTE)).toHaveLength(reads);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('after losing access the chat stops reading', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mock.onGet(ROUTE).reply(404, { error: { code: 'NOT_FOUND' } });
+      renderChat('conv-1');
+      await waitFor(() =>
+        expect(mock.history.get.filter((r) => r.url === ROUTE).length).toBeGreaterThan(0),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      const reads = mock.history.get.filter((r) => r.url === ROUTE).length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(mock.history.get.filter((r) => r.url === ROUTE)).toHaveLength(reads);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -57,6 +57,8 @@ interface SocketData {
   providerProfileId: string | null;
   providerStatus: string | null;
   joinedRooms: string[];
+  /** R12 — conversation rooms joined on the PROVIDER side; left on access loss. */
+  providerConversationRooms?: string[];
 }
 
 // Room name helpers — one definition, used by both the join path and the
@@ -65,6 +67,10 @@ export const userRoom = (userId: string): string => `user:${userId}`;
 export const sessionRoom = (sessionId: string): string => `session:${sessionId}`;
 export const providerRoom = (providerProfileId: string): string => `provider:${providerProfileId}`;
 export const ADMIN_ROOM = 'admin';
+// R12 — every socket subscribed to a conversation on the provider side of
+// `providerProfileId` also sits here, so losing provider access can find it.
+export const providerConversationsRoom = (providerProfileId: string): string =>
+  `provider-conversations:${providerProfileId}`;
 
 // Socket.IO gateway.
 //
@@ -160,6 +166,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       // access, which is a separate axis. Evicting the room (rather than
       // disconnecting) is what makes that distinction real.
       await this.leaveRoom(providerRoom(providerProfileId), 'provider-status-changed');
+      // R12 — and the booking conversations this provider was receiving as the
+      // provider. Rooms joined as a customer, on other bookings, are kept.
+      await this.leaveProviderConversations(providerProfileId);
       this.log.log({
         msg: 'socket.provider-room.evicted',
         providerProfileId,
@@ -183,6 +192,25 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         msg: 'socket.room.disconnect.failed',
         room,
         reason,
+        err: (err as Error).message,
+      });
+    }
+  }
+
+  private async leaveProviderConversations(providerProfileId: string): Promise<void> {
+    if (!this.server) return;
+    const marker = providerConversationsRoom(providerProfileId);
+    try {
+      const sockets = await this.server.in(marker).fetchSockets();
+      for (const socket of sockets) {
+        const data = socket.data as Partial<SocketData>;
+        for (const room of data.providerConversationRooms ?? []) socket.leave(room);
+        socket.leave(marker);
+      }
+    } catch (err) {
+      this.log.warn({
+        msg: 'socket.provider-conversations.leave.failed',
+        providerProfileId,
         err: (err as Error).message,
       });
     }
@@ -346,8 +374,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if (!conversationId) {
       return { ok: false, code: 'VALIDATION_ERROR' };
     }
-    const allowed = await this.participantGate.userIsParticipant(data.userId, conversationId);
-    if (!allowed) {
+    // R12 — the same rule REST applies to reading this conversation: a
+    // provider-side participant must still be allowed to manage bookings.
+    const receipt = await this.participantGate.mayReceiveConversation(data.userId, conversationId);
+    if (!receipt.allowed) {
       // Same shape REST uses for cross-conversation reads.
       this.log.warn({
         msg: 'socket.subscribe.conversation.forbidden',
@@ -359,6 +389,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const room = `conversation:${conversationId}`;
     await client.join(room);
     if (!data.joinedRooms.includes(room)) data.joinedRooms.push(room);
+    if (receipt.side === 'PROVIDER' && receipt.providerProfileId) {
+      const rooms = (data.providerConversationRooms ??= []);
+      if (!rooms.includes(room)) rooms.push(room);
+      await client.join(providerConversationsRoom(receipt.providerProfileId));
+    }
     return { ok: true, room };
   }
 

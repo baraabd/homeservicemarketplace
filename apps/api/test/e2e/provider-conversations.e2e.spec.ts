@@ -181,7 +181,7 @@ describe('ProviderConversationsController (e2e) — /v1/provider/conversations/*
       conversationsService.list.mockResolvedValue({ items: [], nextCursor: null });
       const res = await request(app.getHttpServer()).get('/v1/provider/conversations');
       expect(res.status).toBe(200);
-      expect(conversationsService.list).toHaveBeenCalledWith('user-prov-1');
+      expect(conversationsService.list).toHaveBeenCalledWith('user-prov-1', 'PROVIDER');
     });
   });
 });

@@ -681,6 +681,36 @@ jobs:
             apps/web/test-results/r11-reviews-reputation-report/
           retention-days: 14
           if-no-files-found: warn
+      - name: Accept R12 booking communication through the build-flagged bundle
+        # Two browsers on one real booking: the seeker presses Message, the
+        # provider opens the same server conversation from their booking,
+        # both write, and both read it back after a reload and a fresh login.
+        # One conversation however often it is opened; strangers, other
+        # providers, no session and a suspended provider (on either route
+        # family) refused; Call says it is not available; Progress is the
+        # recorded status; a lost reply, offline sending, and Arabic by
+        # keyboard at three mobile widths. Synthetic people and messages; the
+        # spec records no trace or video.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r12-booking-communication-report
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r12-booking-communication.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --retries=0 \
+            --output=test-results/r12-booking-communication
+      - name: Upload R12 booking communication real-service evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r12-booking-communication-evidence
+          path: |
+            apps/web/test-results/r12-booking-communication/
+            apps/web/test-results/r12-booking-communication-report/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed

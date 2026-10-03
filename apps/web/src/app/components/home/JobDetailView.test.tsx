@@ -302,7 +302,10 @@ describe('JobDetailView — booking source', () => {
     expect(screen.queryByText('Top Rated')).toBeNull();
   });
 
-  it('Chat / Call / Track buttons render but are disabled (no fake actions)', async () => {
+  // R12 replaced the three "coming soon" placeholders. Still no fake actions:
+  // Message opens the server's conversation (BookingActions.test.tsx), Call
+  // says it is not available, and Progress is the recorded timeline.
+  it('Message and Progress work; Call says it is not available; nothing promises "coming soon"', async () => {
     mock.onGet('/v1/me/bookings/bk-1').reply(200, BOOKING_DETAIL);
     mock.onGet('/v1/me/bookings/bk-1/timeline').reply(200, BOOKING_TIMELINE);
 
@@ -310,14 +313,15 @@ describe('JobDetailView — booking source', () => {
 
     await waitFor(() => expect(screen.getByText('O. Al-Khalid')).toBeInTheDocument());
 
-    const message = screen.getByRole('button', { name: /Message/ });
-    const call = screen.getByRole('button', { name: /Call/ });
-    const track = screen.getByRole('button', { name: /Track/ });
-    expect(message).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Message' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Progress' })).toBeEnabled();
+    const call = screen.getByRole('button', { name: 'Call' });
     expect(call).toBeDisabled();
-    expect(track).toBeDisabled();
-    // The "coming soon" hint is rendered.
-    expect(screen.getByText(/Messaging, calls, and tracking are coming soon/i)).toBeInTheDocument();
+    expect(call).toHaveAccessibleDescription(
+      'Calls aren’t available in the app. Use Message to reach your pro.',
+    );
+    expect(screen.queryByText(/coming soon/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Track/ })).toBeNull();
   });
 
   it('renders timeline timestamps from real events (no hardcoded 9:00 AM placeholder)', async () => {
