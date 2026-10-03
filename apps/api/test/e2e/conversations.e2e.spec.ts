@@ -324,6 +324,7 @@ describe('ConversationsController (e2e)', () => {
         'conv-1',
         'hi',
         'SEEKER',
+        undefined,
       );
     });
   });

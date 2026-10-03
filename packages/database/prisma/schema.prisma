@@ -421,11 +421,16 @@ model Message {
   senderUserId   String?
   senderRole     ConversationParticipantRole
   body           String
+  // R12 — a client-generated key for one logical send, so a retry after a
+  // lost reply returns the stored message instead of storing it twice.
+  // Scoped to the sender in one conversation; NULL for keyless sends.
+  idempotencyKey String?
   createdAt      DateTime                    @default(now())
   deletedAt      DateTime?
   conversation   Conversation                @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender         User?                       @relation(fields: [senderUserId], references: [id])
 
+  @@unique([conversationId, senderUserId, idempotencyKey])
   @@index([conversationId, createdAt])
   @@index([deletedAt])
 }

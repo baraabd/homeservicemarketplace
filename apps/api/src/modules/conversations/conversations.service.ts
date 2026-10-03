@@ -268,26 +268,56 @@ export class ConversationsService {
   // messages persist as PROVIDER and seeker messages as SEEKER.
   // After the commit, publish a `message.created` event into the
   // conversation room so connected clients update without polling.
+  //
+  // R12 — an `idempotencyKey` makes a retried send safe. The participant check
+  // comes first, so a key never grants access. An earlier message from this
+  // sender under the same key is returned as it is (`replayed`); the same key
+  // with a different body is refused rather than replacing anything. Two
+  // concurrent sends with one key race on the unique index; the loser reads
+  // the winner. No other database error is treated as a replay.
   async sendMessage(
     userId: string,
     conversationId: string,
     body: string,
     side: ConversationSide,
+    idempotencyKey?: string,
   ): Promise<SendMessageResponse> {
     const participant = await this.assertParticipant(userId, conversationId, side);
-    const created = await this.tx.run(async (tx) => {
-      const message = await this.messages.create(
-        {
-          conversationId,
-          senderUserId: userId,
-          senderRole: participant.role,
-          body,
-        },
-        tx,
+    if (idempotencyKey) {
+      const prior = await this.messages.findByIdempotencyKey(
+        conversationId,
+        userId,
+        idempotencyKey,
       );
-      await this.conversations.bumpUpdatedAt(conversationId, tx);
-      return message;
-    });
+      if (prior) return replayOf(prior, body, userId);
+    }
+    let created: Message;
+    try {
+      created = await this.tx.run(async (tx) => {
+        const message = await this.messages.create(
+          {
+            conversationId,
+            senderUserId: userId,
+            senderRole: participant.role,
+            body,
+            idempotencyKey: idempotencyKey ?? null,
+          },
+          tx,
+        );
+        await this.conversations.bumpUpdatedAt(conversationId, tx);
+        return message;
+      });
+    } catch (err) {
+      if (idempotencyKey && isMessageIdempotencyConflict(err)) {
+        const winner = await this.messages.findByIdempotencyKey(
+          conversationId,
+          userId,
+          idempotencyKey,
+        );
+        if (winner) return replayOf(winner, body, userId);
+      }
+      throw err;
+    }
 
     // Realtime fan-out — post-commit, best-effort. The publisher
     // swallows its own errors so a bus failure cannot roll back the
@@ -338,6 +368,31 @@ export class ConversationsService {
     }
     return participant;
   }
+}
+
+// R12 — a send that names a message already stored under its key.
+function replayOf(prior: Message, body: string, userId: string): SendMessageResponse {
+  if (prior.body !== body) {
+    throw new AppError(
+      'CONFLICT',
+      'This message key was already used for a different message.',
+      409,
+      { reason: 'IDEMPOTENCY_KEY_REUSED' },
+    );
+  }
+  return { message: toMessageSummary(prior, userId), replayed: true };
+}
+
+// True only for the R12 message-key unique index. Any other failure is
+// rethrown as it is.
+function isMessageIdempotencyConflict(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false;
+  const target = (err.meta as { target?: string | string[] } | undefined)?.target;
+  const columns = Array.isArray(target) ? target : typeof target === 'string' ? [target] : [];
+  return (
+    columns.includes('idempotencyKey') ||
+    columns.includes('Message_conversationId_senderUserId_idempotencyKey_key')
+  );
 }
 
 // True when the error is the Sprint-7.3 partial unique index firing on

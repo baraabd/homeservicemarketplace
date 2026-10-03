@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsString, Length, Matches, MaxLength, MinLength } from 'class-validator';
 import type { SendMessageRequest } from '@homeservicemarketplace/contracts';
 
 // Body DTO for POST /v1/me/conversations/:id/messages.
@@ -14,4 +14,12 @@ export class SendMessageDto implements SendMessageRequest {
   @MinLength(1)
   @MaxLength(4000)
   body!: string;
+
+  // R12 — one logical send. Same bounds as the R07 request key; restricted to
+  // URL-safe characters so it can never smuggle anything into logs.
+  @IsOptional()
+  @IsString()
+  @Length(16, 128)
+  @Matches(/^[A-Za-z0-9_-]+$/)
+  idempotencyKey?: string;
 }

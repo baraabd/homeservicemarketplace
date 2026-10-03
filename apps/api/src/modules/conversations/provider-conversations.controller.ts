@@ -97,7 +97,13 @@ export class ProviderConversationsController {
     @Param('conversationId') conversationId: string,
     @Body() body: SendMessageDto,
   ): Promise<SendMessageResponse> {
-    return this.conversations.sendMessage(user.id, conversationId, body.body, SIDE);
+    return this.conversations.sendMessage(
+      user.id,
+      conversationId,
+      body.body,
+      SIDE,
+      body.idempotencyKey,
+    );
   }
 
   @UseGuards(CsrfGuard)
