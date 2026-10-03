@@ -100,6 +100,53 @@ jobs:
           pnpm --filter @homeservicemarketplace/api lint
           pnpm --filter @homeservicemarketplace/api build
           pnpm --filter @homeservicemarketplace/api exec jest --maxWorkers=2 --json --outputFile="$RUNNER_TEMP/jest30-candidate/api-tests.json"
+      - name: Preserve exact-source test diagnostics on failure
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const crypto = require('node:crypto');
+          const {execFileSync} = require('node:child_process');
+          const out = path.join(process.env.RUNNER_TEMP, 'jest30-diagnostics');
+          fs.mkdirSync(out, {recursive: true});
+          const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
+          const report = {head: git('rev-parse', 'HEAD'), tree: git('rev-parse', 'HEAD^{tree}'), changed: git('diff', 'HEAD', '--name-only'), trackedSpecs: git('ls-files', 'apps/api/src', 'apps/api/test').split('\n').filter(p => p.endsWith('.spec.ts')), failureSources: []};
+          for (const name of ['baseline-tests.json', 'candidate-tests.json']) {
+            const file = path.join(process.env.RUNNER_TEMP, 'jest30-candidate', name);
+            if (fs.existsSync(file)) {
+              const paths = JSON.parse(fs.readFileSync(file, 'utf8'));
+              report[name] = paths.map(p => path.relative(process.cwd(), p));
+            }
+          }
+          const file = path.join(process.env.RUNNER_TEMP, 'jest30-candidate/api-tests.json');
+          if (fs.existsSync(file)) {
+            const results = JSON.parse(fs.readFileSync(file, 'utf8'));
+            report.result = {success: results.success, passed: results.numPassedTests, failed: results.numFailedTests, skipped: results.numPendingTests, suites: results.numTotalTestSuites};
+            report.failures = results.testResults.filter(t => t.status === 'failed').map(t => ({path: path.relative(process.cwd(), t.name), assertions: t.assertionResults.filter(a => a.status === 'failed').map(a => ({title: a.fullName, status: a.status}))}));
+            for (const failure of report.failures) {
+              const relative = failure.path;
+              if (!report.trackedSpecs.includes(relative)) continue;
+              const source = execFileSync('git', ['show', 'HEAD:' + relative]);
+              const destination = path.join(out, 'tracked-source', relative);
+              fs.mkdirSync(path.dirname(destination), {recursive: true});
+              fs.writeFileSync(destination, source);
+              report.failureSources.push({path: relative, gitBlob: git('rev-parse', 'HEAD:' + relative), sha256: crypto.createHash('sha256').update(source).digest('hex')});
+            }
+          } else report.result = 'NOT AVAILABLE: Jest JSON was not produced';
+          fs.writeFileSync(path.join(out, 'diagnostics.json'), JSON.stringify(report, null, 2) + '\n');
+          console.log(JSON.stringify(report));
+          NODE
+      - name: Upload diagnostic provenance without runtime sessions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jest30-test-diagnostics
+          path: ${{ runner.temp }}/jest30-diagnostics/
+          if-no-files-found: error
+          retention-days: 7
       - name: Validate and package only the three intended source changes
         shell: bash
         run: |
