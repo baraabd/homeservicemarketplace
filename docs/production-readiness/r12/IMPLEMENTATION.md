@@ -1,163 +1,200 @@
 # R12 — Booking communication and job actions
 
-Status: **PREPARED — AWAITING R11 MERGE AND FINAL INTEGRATION ACCEPTANCE.**
+Status: **ACCEPTANCE BLOCKED.** The implementation and local evidence are
+complete. Readiness is blocked by owner decisions and an external dependency
+gate; see section 6.
 
-## Execution mode and identities
+## 1. Identities
 
-R12 was prepared on a branch that depends on R11 (mode B of the 2026-10-03
-handoff). R11 was accepted on its exact head but is not merged.
+| Item                        | Value                                                                                                                                                     |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Integration base            | `develop` @ `21b98b7262c2dc6b7bf815cd8155c9a3d678cb3f`, the R11 merge (#130). Its tree is identical to the accepted R11 head `32e0f4d`.                   |
+| R12 branch                  | `feat/r12-booking-communication-job-actions`                                                                                                              |
+| Historical preparation head | `f9805b38807a9e40d54d7b50553acfe36b2f74a7`, kept as the local ref `backup/r12-pre-integration-f9805b3`                                                    |
+| Integration                 | Ordinary merge commit `1333ce6`. It brings in only the R11 merge commit, with no content change. No R11 change was replayed and nothing was force-pushed. |
+| Final head                  | Recorded in the pull request. A commit cannot contain its own hash.                                                                                       |
+| Prerequisite                | R05 recovery, PR #131 (`fix/r05-first-hydration-edits`, `083bf5c`), Draft                                                                                 |
 
-| Item                      | Value                                                                                                                                                                           |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Parent                    | R11, PR #130, head `32e0f4d3d2509dfe2be0671bf7cc05e0862370cb`. All six workflows were green on that head on the first attempt, with no open code-scanning alerts on the PR ref. |
-| Accepted develop baseline | `0d9485b5ac9b52f82265705320367e6a811f19a1` (R10 merged)                                                                                                                         |
-| R12 branch                | `feat/r12-booking-communication-job-actions`, branched from the R11 head                                                                                                        |
-| R12 PR                    | none                                                                                                                                                                            |
+## 2. Historical preparation (before R11 merged; superseded where noted)
 
-There is no R12 PR on purpose. Production governance runs only for PRs that
-target `develop` or `main`, and a develop PR opened now would bundle R11 and
-R12. The focused R12 PR is opened after R11 merges, once R12's own commits sit
-on the accepted develop.
+R12 was first prepared on top of the unmerged R11 head. That work:
 
-All evidence below is **local preparatory evidence for R12's source**. None of
-R11's green CI is R12 evidence. R12 has no hosted acceptance yet.
+- connected Message to the booking conversation;
+- made Call and Progress honest;
+- removed fabricated chat state;
+- bound each conversation route family to its own side.
 
-## What was wrong
+Its evidence was local only and was recorded against the working tree before
+`f9805b3`. It does not certify the current head. Two statements from that
+period are superseded:
 
-- **The booking screen's Message button did nothing.** It was disabled with
-  "Coming soon", and its handler was a no-op. The backend conversation
-  authority already existed, but no screen ever created a conversation, so
-  chat lists only filled when the API was called directly.
-- **Call and Track were placeholders promising "coming soon".** No calling
-  backend, phone disclosure policy or live location source exists.
-- **The two chat route families did not keep to their side (security).**
-  `/v1/me/conversations` resolved either side of a booking. A provider refused
-  on the provider routes (where `ManageBookings` is required; a suspended
-  provider loses it) could still open and post in the booking's chat through
-  `/v1/me`. Four integration tests reproduced this before the repair.
-- **Fabricated communication state.**
-  - "Online" with a green dot, though no presence information exists.
-  - A constant `3` unread badge.
-  - Video, menu and emoji buttons that did nothing.
-  - A message waiting to send showed the same check as a sent one. The R12
-    offline browser test found this.
-- **The progress timeline misstated a booking's state.** The first step not
-  yet reached was labelled "Current status", so a scheduled booking read "In
-  Progress". "Pro assigned" depended on a timeline row rather than on the
-  booking's existence. The R12 screenshots showed this.
-- **The chat input was not accessible.** It had no label, used 14 px text, and
-  the send button had no accessible name.
+- "Seeker replies appear on reopen or reload; message send is not idempotent
+  (deferred to R17)". Both gaps are now closed in R12; see section 3.
+- "R05: the stored name was sent / the typed name was sent". The session log
+  held both readings. Correlating the evidence settled it; see section 5.
 
-## What R12 changes
+## 3. What R12 changes (current)
 
-### API (no schema, migration or contract change)
+### API
 
-- `ConversationsService` takes the side a route acts for. The seeker
-  controller passes SEEKER and the provider controller passes PROVIDER.
-  - **Listing** matches the caller's participant row of that side.
-  - **Opening** looks up only that side's ownership of the booking.
-  - **Reading, sending and marking read** require that side's participant
-    row. Anything else is 404, exactly as before for strangers.
-- The realtime room gate is unchanged. It still admits either side.
+- **Side binding.** `/v1/me/conversations` acts for the SEEKER side only and
+  `/v1/provider/conversations` for the PROVIDER side only. This applies to
+  open, list, read, send and mark-read. Before this, a provider refused on the
+  provider routes (`ManageBookings`) could open and post through `/v1/me`.
+  Four real-database tests reproduced that before the repair.
+- **Message send recovery.**
+  - The send request takes an optional `SendMessageRequest.idempotencyKey`:
+    16–128 characters from `[A-Za-z0-9_-]`, following the R07 request-key
+    convention.
+  - The participant check runs first, so a key grants nothing.
+  - A stored message from the same sender under the same key is returned with
+    `replayed: true`.
+  - The same key with a different body is refused: 409
+    `IDEMPOTENCY_KEY_REUSED`.
+  - Concurrent sends with one key race on the unique index; the loser reads
+    the winner's row.
+  - Any other database error is rethrown, not turned into success.
+- **Migration `20261004090000_r12_message_send_idempotency`** (additive).
+  - Adds a nullable `Message.idempotencyKey`.
+  - Adds a unique index on `(conversationId, senderUserId, idempotencyKey)`.
+  - NULLs are distinct in a unique index, so existing rows and keyless clients
+    are unaffected.
+- **Realtime room.**
+  - Joining `conversation:{id}` now needs exactly what the REST read needs: a
+    provider-side participant must hold `ManageBookings`.
+  - Both participants still share the room.
+  - On the existing provider-status event, sockets leave the rooms they joined
+    as the provider. Rooms joined as a customer are kept.
+  - The gateway stays off by default.
 
 ### Web
 
-- **`useOpenBookingConversation`** (shared) opens a booking's conversation
-  through the server's get-or-create:
-  - one request per booking at a time;
-  - the answer is used only for the booking still on screen, from the latest
-    press, for the same signed-in person, while mounted;
-  - "opening" and "failed" states are scoped to the booking.
-- **Seeker `JobDetailView`**:
-  - Message opens the server's conversation in the existing ChatScreen.
-  - Call is disabled, with a described reason.
-  - "Track" became **Progress**. It focuses the recorded timeline, and a
-    scheduled booking reads "Scheduled".
-- **Provider My Bids**: an accepted booking has **Message customer**, which
-  opens the same conversation at `/provider/messages/:id`.
-- **ChatScreen**:
-  - no presence claim;
-  - a single honest Call control;
-  - pending messages read "Sending…";
-  - a labelled 16 px input with a named Send button;
-  - `dir="auto"` on message text;
-  - the no-op buttons removed.
-- **HomeScreen**: the messages badge is the server's unread total. The
-  seeker's chat opens from the booking.
+- **Message:**
+  - Message on the seeker's booking and on the provider's accepted booking
+    opens the conversation the server resolves.
+  - Opening is guarded per booking, per press and per session.
+- **Call and Progress:**
+  - Call says it is not available and points to Message.
+  - Progress shows the recorded timeline. Its current step is the last one
+    reached.
+- **Message send:**
+  - Each logical send carries one key.
+  - Sending a failed message again unchanged reuses its key, for both seeker
+    and provider.
+  - Pending bubbles are no longer dropped because some server row has the same
+    text, so identical messages stay distinct.
+  - The acknowledged row is placed in the cache by its id.
+- **Open chat:** the seeker's chat reads the conversation again every 4 s
+  while visible. This reuses the provider thread's existing cadence. It stops
+  when the chat closes or is hidden, or after a read error.
+- **Fabricated state removed:**
+  - the "Online" presence label;
+  - the constant unread badge;
+  - buttons that did nothing;
+  - the "coming soon" footer;
+  - the "sent" check on a message the server had not yet acknowledged.
 
-## Evidence (local, R12 working tree before commit)
+## 4. Evidence on the current source (local)
 
-All runs used throwaway PostgreSQL and Redis containers. The user's
-development containers were not touched.
+**Source under test.** The branch head `1333ce6` plus the uncommitted R12
+recovery changes, captured as git tree
+`2db255903d77c77afe27e6ea904c7a70aa2c29a7`. The commit that follows contains
+that tree plus these documents and the model-migration index entry. Hosted
+runs for the final head are recorded in the PR.
 
-| Gate                                                                                                                          | Result                                                                                                                                                                                                        |
-| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R12 integration (real PostgreSQL), `RUN_DB_INTEGRATION=1 jest test/integration/r12-booking-communication.integration.spec.ts` | 20/20. Before the repair: 16/20, with the 4 side-binding tests failing                                                                                                                                        |
-| Full gated API suite, fresh migrated and seeded database, 6 shards, `--maxWorkers=3`                                          | 5131 passed, 37 skipped, 1 failed: `restricted-erasure.spec.ts` ENOTDIR, the known Windows-only failure                                                                                                       |
-| Conversation unit and e2e specs                                                                                               | 106/106 (forwarding assertions extended to the side)                                                                                                                                                          |
-| Web unit, `test:ci`, final source                                                                                             | 186 files, 2328 tests passed                                                                                                                                                                                  |
-| Ordering guards                                                                                                               | Removing the booking guard or the session guard fails its test (checked)                                                                                                                                      |
-| R12 real browser, `--workers=1 --retries=0`                                                                                   | 4/4 on the final source (one full run), after 4/4 on an earlier full run before the last progress fix                                                                                                         |
-| R11 real browser                                                                                                              | 5/5                                                                                                                                                                                                           |
-| R07 real browser                                                                                                              | 1/1                                                                                                                                                                                                           |
-| R05 real browser                                                                                                              | see below                                                                                                                                                                                                     |
-| Static                                                                                                                        | API lint and typecheck, web typecheck and e2e typecheck, `production-governance.mjs`, `release-baseline.mjs`, `verify-inventory.mjs` all pass. Web lint: 0 errors, and the 34 existing warnings are unchanged |
+**Environment.** Throwaway PostgreSQL and Redis containers. The user's
+development containers and other worktrees were not touched.
 
-### R05: an intermittent failure found, not caused by an R12 change
+**How results were taken.** Each result is the test runner's own exit code
+with its full log saved. Logs were filtered for display only after saving.
 
-- **Observed:** one of four runs of `r05-seeker-durability` on the R12 build
-  failed. The browser saved the stored "R05 Seeker" instead of the typed full
-  name, while the typed phone, city and bio were kept. The first-failure
-  screenshot and error context are preserved locally. Six runs on the R11
-  build all passed.
-- **Probable cause, from the code and the screenshot:** `EditProfilePage`
-  resets its "edited fields" record whenever the profile it hydrates from
-  belongs to a different account. That test also fires on the very first
-  hydration, when the record is still empty. A name typed before the first
-  `GET /v1/me/profile` answer arrives is therefore overwritten.
-- **Ownership:** R12 does not modify `EditProfilePage` or the profile hooks.
-  Whether the R12 build changes the timing enough to expose the race more
-  often has not been established.
-- **Recommendation:** a small separate R05 repair. Treat the first hydration
-  as "seed", not "account switch", and add a failing ordering test first.
-- **Status:** R12 does not fix it, because doing so would mix scopes.
+| Gate                                                          | Command                                                                                                                                                                                               | Result                                                                                                                                                          |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R12 integration (real PostgreSQL)                             | `RUN_DB_INTEGRATION=1 jest test/integration/r12-booking-communication.integration.spec.ts`                                                                                                            | 35/35 (exit 0)                                                                                                                                                  |
+| Mutation check: realtime capability                           | The same suite with `-t realtime`, with the gate's capability check removed                                                                                                                           | 2 failed, as expected (exit 1); file restored                                                                                                                   |
+| Full gated API suite on a fresh, migrated and seeded database | `jest --shard=N/6 --maxWorkers=3`, N=1..6                                                                                                                                                             | 5153 passed, 37 skipped, 1 failed: `restricted-erasure.spec.ts` ENOTDIR (Windows-only, pre-existing)                                                            |
+| Conversation and realtime unit + e2e                          | `jest src/modules/realtime src/modules/conversations test/e2e/*conversations*`                                                                                                                        | 113/113 (exit 0)                                                                                                                                                |
+| Web unit                                                      | `pnpm --filter @homeservicemarketplace/web test:ci`                                                                                                                                                   | 188 files, 2336 tests (exit 0)                                                                                                                                  |
+| R12 browser                                                   | `playwright test e2e/r12-booking-communication.real-api.spec.ts --workers=1 --retries=0`                                                                                                              | 5/5 on two consecutive runs (exit 0 each)                                                                                                                       |
+| R11, R07 and R05 browser                                      | Same options                                                                                                                                                                                          | 5/5, 1/1, 2/2 (exit 0 each)                                                                                                                                     |
+| Migration                                                     | `r12-migration-acceptance.sh`: replay from empty, and upgrade from the 64 pre-R12 migrations with existing messages                                                                                   | No drift. Existing messages unchanged with NULL keys; identical messages both kept. A reused key is refused for the same sender and allowed for another sender. |
+| Static and governance                                         | Web lint (0 errors); web typecheck and e2e typecheck; API lint and typecheck; `prisma validate`; `production-governance.mjs`; `release-baseline.mjs`; `verify-inventory.mjs`; script tests (79/10/15) | All exit 0                                                                                                                                                      |
+| Dependency audit                                              | `pnpm security:audit` and `security:audit:prod`                                                                                                                                                       | Full tree: **1 high** (exit 1). Production: 0 (exit 0). See section 6.                                                                                          |
 
-### Not run locally for R12
+**Visual review:**
 
-- R08, R09 and R10, and the Provider V2 browser suites. R12 does not touch
-  their screens. CI runs them.
-- Docker production boot, Compose smoke and the scanners: hosted only.
+- the seeker's open chat showing the provider's reply, which arrived without
+  reopening (390 px);
+- the seeker's chat before the reply;
+- the existing Arabic action and chat screenshots at 360, 390 and 430 px.
 
-## Shared files modified
+No trace or video was recorded.
 
-- `apps/api/src/modules/conversations/*` and
-  `apps/api/src/infrastructure/persistence/conversations/*`: the side binding.
-- `apps/api/test/e2e/conversations.e2e.spec.ts` and
-  `provider-conversations.e2e.spec.ts`: forwarding assertions.
-- `apps/web/src/app/components/home/JobDetailView.tsx` (shared with R11's
-  review UI, which is unchanged and re-proven), `HomeScreen.tsx`,
-  `chat/ChatScreen.tsx` and `provider/screens/MyBidsScreen.tsx`.
-- `.github/workflows/ci.yml`: one R12 step and its artifact, in the existing
-  Phase 5 real-route job.
+## 5. R05: the hypothesis resolved
 
-## Known limitations
+**The one failing run** (account `r05-1790990712929-431787@itest.local`):
 
-- **Message persistence (R17):**
-  - message send is not idempotent;
-  - the seeker chat neither polls nor subscribes, so a reply appears on
-    reopen or reload;
-  - there are no per-message delivery or read receipts.
-- **Product decisions left open** (see `COMMUNICATION_POLICY.md`):
-  - messaging rules by booking status;
-  - pre-booking messaging;
-  - the calling model;
-  - richer progress events;
-  - whether the realtime gate should check provider capability.
-- **The intermittent R05 editor failure** described above.
+- The failed assertion was the PATCH payload check; the diff lists only the
+  five intended fields.
+- The API log shows a single `PATCH /v1/me/profile` (200) and no later request
+  from that test.
+- The screenshot shows the registration name in Full Name beside the typed
+  phone, city and bio, with "Saved successfully".
+- The save-timeline attachment was not retained (UNAVAILABLE).
 
-## Rollback
+**The defect, demonstrated.** The editor treated the first profile answer as
+an account switch. A name typed while the profile was still loading was
+overwritten. Tests I and J fail on untouched `21b98b7`.
 
-Revert R12's commits. No schema, migration or contract change is involved.
+**The repair** is PR #131, kept separate from R12. R12's branch does not
+contain it. R12's own R05 run here passed 2/2, but the race remains possible
+on R12 until #131 merges.
 
-Reverting the side binding re-opens the route-family bypass. If only the web
-needs rolling back, revert the web commit alone and keep the API repair.
+## 6. Blockers
+
+1. **External dependency advisory, on develop and on every PR.**
+   - GHSA-vfj7-8cjw-p6xm: `braces` ≤3.0.3, high. There is no patched version
+     (`first_patched_version: null`; advisory updated 2026-10-02 22:36Z).
+   - It is reached only through test tooling (`micromatch@4.0.8` under jest
+     29 and `@types/jest`). The production audit is clean.
+   - Develop's post-merge CI for `21b98b7` (run 37102002731) failed only at
+     "Full dependency audit (ZERO findings at every severity)". The other five
+     workflows passed.
+   - The audit policy allows no exceptions. Nothing was weakened, excluded or
+     waived. **Owner decision required.**
+2. **Product policy, owner decision required.** The calling model is
+   UNRESOLVED. R12's original acceptance asks for "honest approved Call
+   behaviour". The current state is honest ("not available, use Message") but
+   not approved.
+3. **Prerequisite.** R05 recovery PR #131 is unmerged.
+4. **Hosted acceptance for the final head.** Pending, and expected to fail at
+   the audit step while blocker 1 stands.
+
+**Optional future features (not blocking R12):**
+
+- messaging rules by booking status;
+- chat before a booking exists;
+- richer progress events;
+- per-message read receipts;
+- live sockets in production.
+
+## 7. Known limitations
+
+- **Polling, not live delivery.** The open-chat refresh is a 4 s poll. The
+  cadence is an engineering default (PROPOSED).
+- **Realtime eviction is event-driven.** It relies on the existing
+  provider-status event. A loss of booking access that emits no event is
+  enforced only at the next subscribe or reconnect, not on sockets already
+  joined. An example is a work-access grant lapsing while
+  `WORK_ACCESS_ENFORCED` is on. The gateway is off in every deployed
+  configuration.
+- **Message send keys are optional.** A client that omits them keeps the old
+  behaviour.
+
+## 8. Rollback
+
+- **Web:** revert the web commits. The API stays compatible.
+- **API:** reverting the side binding re-opens the route-family bypass.
+  Reverting the realtime check re-opens the room bypass.
+- **Migration:** additive. The nullable column and its index can stay in
+  place unused. Forward fixes use new migrations.
