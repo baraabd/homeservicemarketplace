@@ -95,7 +95,11 @@ async function seekerSends(page: Page, conversationId: string, body: string): Pr
   await page.getByTestId('chat-send').click();
   const response = await sent;
   expect(response.status(), await response.text()).toBe(201);
-  expect(response.request().postDataJSON()).toEqual({ body });
+  // One logical send: the text and a key naming it (R12).
+  expect(response.request().postDataJSON()).toEqual({
+    body,
+    idempotencyKey: expect.stringMatching(/^[A-Za-z0-9_-]{16,128}$/),
+  });
 }
 
 test.describe('R12 booking communication — two browsers, real API and PostgreSQL', () => {
@@ -116,6 +120,11 @@ test.describe('R12 booking communication — two browsers, real API and PostgreS
 
     // ── the seeker presses Message ─────────────────────────────────────────
     await page.setViewportSize({ width: 390, height: 844 });
+    // Every request the seeker's browser makes to open a conversation.
+    let seekerOpens = 0;
+    page.on('request', (r) => {
+      if (r.url() === CONVERSATIONS && r.method() === 'POST') seekerOpens += 1;
+    });
     await applySession(context, seeker.jar);
     await seedLanguage(page, 'en');
     await openBooking(page, bookingId);
@@ -188,6 +197,20 @@ test.describe('R12 booking communication — two browsers, real API and PostgreS
         contentType: 'image/png',
       });
 
+      // ── the reply reaches the seeker's chat while it is open ───────────
+      // Nothing is reopened or reloaded on the seeker's side: the open chat
+      // reads the conversation again while it is on screen.
+      const opensBefore = seekerOpens;
+      await expect(page.getByTestId('chat-input')).toBeVisible();
+      await expect(page.getByText(reply).filter({ visible: true })).toHaveCount(1, {
+        timeout: 15_000,
+      });
+      expect(seekerOpens).toBe(opensBefore);
+      await testInfo.attach('r12-seeker-reply-live-390.png', {
+        body: await page.screenshot(),
+        contentType: 'image/png',
+      });
+
       // ── the seeker reads the reply after a reload ──────────────────────
       await openBooking(page, bookingId);
       expect(await pressMessage(page, bookingId)).toBe(conversationId);
@@ -222,15 +245,22 @@ test.describe('R12 booking communication — two browsers, real API and PostgreS
       await fresh.close();
     }
 
-    // ── pressing Message again and again ───────────────────────────────────
+    // ── pressing Message twice in the same moment ──────────────────────────
+    // Two real clicks dispatched in one task, before the app can re-render
+    // and disable the button: the app sends one request, and the server has
+    // one conversation for the booking.
     await openBooking(page, bookingId);
-    const presses = page.waitForResponse(
+    const opensBeforeDouble = seekerOpens;
+    const doubleOpened = page.waitForResponse(
       (r) => r.url() === CONVERSATIONS && r.request().method() === 'POST',
     );
-    const button = page.getByTestId('booking-action-message');
-    await button.click();
-    await button.click({ force: true }).catch(() => undefined);
-    await (await presses).finished();
+    await page.getByTestId('booking-action-message').evaluate((el) => {
+      (el as HTMLButtonElement).click();
+      (el as HTMLButtonElement).click();
+    });
+    expect((await doubleOpened).status()).toBe(200);
+    await expect(page.getByTestId('chat-input')).toBeVisible();
+    expect(seekerOpens - opensBeforeDouble).toBe(1);
     expect(await conversationsOf(bookingId)).toEqual([conversationId]);
 
     // ── people outside the booking ─────────────────────────────────────────
@@ -358,6 +388,63 @@ test.describe('R12 booking communication — two browsers, real API and PostgreS
     // Pressing again opens the conversation the server already made.
     expect(await pressMessage(page, bookingId)).toBe(created[0]);
     expect(await conversationsOf(bookingId)).toEqual(created);
+  });
+
+  test('a message whose reply is lost, sent again, is stored and shown once', async ({
+    page,
+    context,
+  }) => {
+    const categoryId = await leafCategoryId();
+    const seeker = await registerSeeker('r12m');
+    const provider = await workingProvider(categoryId, 'r12m');
+    const bookingId = await scheduledBooking(seeker, provider, categoryId);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await applySession(context, seeker.jar);
+    await seedLanguage(page, 'en');
+    await openBooking(page, bookingId);
+    const conversationId = await pressMessage(page, bookingId);
+    const route = `${CONVERSATIONS}/${conversationId}/messages`;
+    const text = 'Please ring the bell twice.';
+
+    // The send reaches the real server and is stored. Only its reply is
+    // dropped, once; nothing is answered on the server's behalf.
+    const sentKeys: string[] = [];
+    let dropped = 0;
+    await page.route(route, async (r) => {
+      if (r.request().method() !== 'POST') return r.fallback();
+      sentKeys.push((r.request().postDataJSON() as { idempotencyKey: string }).idempotencyKey);
+      if (dropped > 0) return r.fallback();
+      dropped += 1;
+      const stored = await r.fetch();
+      expect(stored.status()).toBe(201);
+      await r.abort('failed');
+    });
+
+    await page.getByTestId('chat-input').fill(text);
+    await page.getByTestId('chat-send').click();
+    await expect(page.getByRole('alert')).toBeVisible();
+    // Stored once already, though the browser never heard so.
+    expect((await messagesIn(conversationId)).map((m) => m.body)).toEqual([text]);
+    // The text is back in the box. Sending it unchanged is the same message.
+    await expect(page.getByTestId('chat-input')).toHaveValue(text);
+    const replayed = page.waitForResponse(
+      (r) => r.url() === route && r.request().method() === 'POST',
+    );
+    await page.getByTestId('chat-send').click();
+    const answer = await replayed;
+    expect(answer.status()).toBe(201);
+    expect(((await answer.json()) as { replayed?: boolean }).replayed).toBe(true);
+
+    expect(sentKeys).toHaveLength(2);
+    expect(sentKeys[1]).toBe(sentKeys[0]);
+    expect((await messagesIn(conversationId)).map((m) => m.body)).toEqual([text]);
+    await expect(page.getByText(text).filter({ visible: true })).toHaveCount(1);
+
+    // The next message, even with the same words, is a new message.
+    await seekerSends(page, conversationId, text);
+    expect((await messagesIn(conversationId)).map((m) => m.body)).toEqual([text, text]);
+    await expect(page.getByText(text).filter({ visible: true })).toHaveCount(2);
   });
 
   test('offline holds the message as sending; back online it is sent once', async ({
