@@ -27,7 +27,6 @@ function renderChat(conversationId: string | null) {
             initials: 'OK',
             bg: 'bg-amber-100',
             textColor: 'text-amber-700',
-            status: 'Online',
           }}
           onBack={() => {}}
           isVisible
@@ -170,5 +169,19 @@ describe('ChatScreen — slice 3.3', () => {
     expect(screen.getByText(/couldn't load this conversation/i)).toBeInTheDocument();
     expect(screen.queryByText(/PrismaClient/i)).toBeNull();
     expect(screen.queryByText(/column messages/i)).toBeNull();
+  });
+});
+
+describe('ChatScreen — R12 header', () => {
+  it('claims no presence and offers no call; calling says it is not available', async () => {
+    mock.onGet('/v1/me/conversations/conv-1/messages').reply(200, { items: [], nextCursor: null });
+    renderChat('conv-1');
+    await screen.findByText('Omar Al-Khalid');
+    expect(screen.queryByText(/online/i)).toBeNull();
+    const call = screen.getByTestId('chat-call-unavailable');
+    expect(call).toBeDisabled();
+    expect(call).toHaveAccessibleName('Calls aren’t available in the app');
+    expect(screen.queryByText(/coming soon/i)).toBeNull();
+    expect(document.querySelector('a[href^="tel:"]')).toBeNull();
   });
 });

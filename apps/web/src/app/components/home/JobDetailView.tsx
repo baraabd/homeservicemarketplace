@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useId, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft,
   ChevronRight,
@@ -6,8 +7,8 @@ import {
   Calendar,
   Clock,
   MessageCircle,
-  Phone,
-  Navigation,
+  PhoneOff,
+  ListChecks,
   MoreVertical,
   Wrench,
   Zap,
@@ -26,6 +27,7 @@ import type {
   ServiceRequestDetail,
   ServiceRequestStatus,
   BookingStatus,
+  ConversationSummary,
 } from '@homeservicemarketplace/contracts';
 import type { LeadStatus } from './LeadCard';
 import { useLang } from '../../i18n/LanguageContext';
@@ -46,6 +48,12 @@ import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
 import { ProviderRating } from '../ds/ProviderRating';
 import { BookingReviewEntry, BookingReviewSheet } from './BookingReview';
 import { useBookingReviewController } from '../../hooks/seeker/useBookingReviewController';
+import {
+  useOpenBookingConversation,
+  type OpenConversationError,
+} from '../../hooks/shared/useOpenBookingConversation';
+import { getOrCreateConversation } from '../../../lib/seeker/chat-api';
+import { seekerQueryKeys } from '../../../lib/seeker/query-keys';
 
 // ─── Source discriminator ────────────────────────────────────────────────────
 // Slice 2.4: JobDetailView is opened with a request id (for OPEN_FOR_BIDS /
@@ -274,7 +282,9 @@ function stepsForBooking(
     // from the timeline (no-downgrade: Completed must never sit above an
     // un-done Pro Assigned).
     {
-      done: !!created || isInProgress || isCompleted,
+      // R12: a booking exists only once a pro is assigned, so this step is
+      // reached for every booking, whatever events were returned with it.
+      done: true,
       doneAt: formatTimeOfDay(created?.createdAt ?? null, lang),
     },
     // In Progress: BOOKING_STATUS_CHANGED with metadata.to === 'IN_PROGRESS'.
@@ -313,12 +323,15 @@ function StatusTimeline({
     { en: 'Completed', ar: 'مكتمل' },
   ];
 
-  // The "current" step is the first not-done step (or the last when
-  // everything is done). For cancelled jobs the timeline shows whatever
-  // ran before the cancel; no step is marked current.
-  const activeIndex = steps.findIndex((s) => !s.done);
-  const currentIdx =
-    status === 'cancelled' ? -1 : activeIndex === -1 ? steps.length - 1 : activeIndex;
+  // The "current" step is the last one REACHED. R12: it used to be the first
+  // one not reached, so a scheduled job that had not started was labelled
+  // "In Progress — Current status". For cancelled jobs the timeline shows
+  // whatever ran before the cancel; no step is marked current.
+  let lastDone = -1;
+  steps.forEach((step, i) => {
+    if (step.done) lastDone = i;
+  });
+  const currentIdx = status === 'cancelled' ? -1 : lastDone;
 
   return (
     <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
@@ -415,18 +428,47 @@ function StatusTimeline({
   );
 }
 
+// ─── Booking actions (R12) ────────────────────────────────────────────────────
+const openSeekerBookingConversation = (bookingId: string) => getOrCreateConversation({ bookingId });
+
+const ACTION_COPY = {
+  en: {
+    message: 'Message',
+    opening: 'Opening…',
+    call: 'Call',
+    callNote: 'Calls aren’t available in the app. Use Message to reach your pro.',
+    progress: 'Progress',
+    progressLabel: 'Booking progress',
+    errors: {
+      NETWORK: 'Couldn’t open the conversation. Check your connection and try again.',
+      SESSION: 'Your session has ended. Sign in again to send a message.',
+      NOT_FOUND: 'This booking’s conversation isn’t available.',
+      UNKNOWN: 'Couldn’t open the conversation. Try again.',
+    } satisfies Record<OpenConversationError, string>,
+  },
+  ar: {
+    message: 'رسالة',
+    opening: 'جارٍ الفتح…',
+    call: 'اتصال',
+    callNote: 'المكالمات غير متاحة في التطبيق. استخدم الرسائل للتواصل مع المحترف.',
+    progress: 'التقدّم',
+    progressLabel: 'تقدّم الحجز',
+    errors: {
+      NETWORK: 'تعذّر فتح المحادثة. تحقق من اتصالك وحاول مرة أخرى.',
+      SESSION: 'انتهت جلستك. سجّل الدخول مرة أخرى لإرسال رسالة.',
+      NOT_FOUND: 'محادثة هذا الحجز غير متاحة.',
+      UNKNOWN: 'تعذّر فتح المحادثة. حاول مرة أخرى.',
+    } satisfies Record<OpenConversationError, string>,
+  },
+} as const;
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface JobDetailViewProps {
   source: JobDetailSource;
   isVisible: boolean;
   onBack: () => void;
-  onOpenChat: (contact: {
-    name: string;
-    initials: string;
-    bg: string;
-    textColor: string;
-    status: string;
-  }) => void;
+  /** Called with the conversation the server resolved for this booking. */
+  onOpenChat: (conversation: { conversationId: string; name: string; initials: string }) => void;
 }
 
 // Unified shape the render uses regardless of which API surface populated it.
@@ -459,6 +501,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
   const { lang, dir } = useLang();
   const langKey: 'en' | 'ar' = lang === 'ar' ? 'ar' : 'en';
   const { showHourlyRate } = useEcosystem();
+  const qc = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Source-driven fetches. Each hook short-circuits when its `id` arg is
@@ -599,8 +642,14 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
           ? 'bg-green-50 border-green-200 text-green-700'
           : 'bg-red-50 border-red-200 text-red-700';
 
-  const statusLabel =
-    status === 'active'
+  // R12: a booking that has not started is scheduled, not in progress.
+  const isScheduledBooking =
+    source.kind === 'booking' && bookingDetail.data?.status === 'SCHEDULED';
+  const statusLabel = isScheduledBooking
+    ? langKey === 'ar'
+      ? 'مجدول'
+      : 'Scheduled'
+    : status === 'active'
       ? langKey === 'ar'
         ? 'جارٍ التنفيذ'
         : 'In Progress'
@@ -633,11 +682,38 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
     });
   };
 
-  // Chat / Call / Track are out-of-scope for slice 2.4. They stay visible
-  // (preserve visual) but become disabled with a small "coming soon" hint
-  // — clicking them does NOT open the existing ChatScreen against fake
-  // contact data.
-  const isPlaceholderAction = true;
+  // R12 — Message. The conversation is whatever the server answers for this
+  // booking; nothing on this screen is turned into a contact.
+  const handleConversationOpened = useCallback(
+    (conversation: ConversationSummary) => {
+      void qc.invalidateQueries({ queryKey: seekerQueryKeys.conversations.list() });
+      onOpenChat({
+        conversationId: conversation.id,
+        name: conversation.otherParticipant.displayName,
+        initials: conversation.otherParticipant.initials,
+      });
+    },
+    [onOpenChat, qc],
+  );
+  const messageAction = useOpenBookingConversation(
+    bookingId,
+    openSeekerBookingConversation,
+    handleConversationOpened,
+  );
+  const messageOpening = messageAction.state.kind === 'opening';
+  const callNoteId = useId();
+  const progressRef = useRef<HTMLDivElement>(null);
+  // R12 — Progress: the booking's recorded status and events, brought into
+  // view. It is not a location and does not claim one.
+  const showProgress = () => {
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    progressRef.current?.scrollIntoView?.({
+      block: 'start',
+      behavior: reduce ? 'auto' : 'smooth',
+    });
+    progressRef.current?.focus({ preventScroll: true });
+  };
+  const actionCopy = ACTION_COPY[langKey];
 
   return (
     <>
@@ -831,70 +907,98 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                     </div>
                   )}
 
-                  {/* Action buttons — kept visually intact but disabled in
-                      slice 2.4. Chat / Call / Track ship in later slices;
-                      we deliberately do NOT route Chat to a fabricated
-                      contact. */}
+                  {/* Actions (R12). Message opens this booking's conversation as the
+                      server resolves it. Calling is not available, and the
+                      control says so rather than promising it. Progress shows
+                      the booking's recorded status; there is no live location.
+                      docs/production-readiness/r12/COMMUNICATION_POLICY.md */}
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
-                      disabled={isPlaceholderAction}
-                      aria-disabled={isPlaceholderAction}
-                      title={langKey === 'ar' ? 'قريباً' : 'Coming soon'}
-                      className="flex flex-col items-center gap-1.5 py-3 bg-amber-50 border border-amber-100 rounded-2xl opacity-60 cursor-not-allowed"
-                      onClick={() => {
-                        // No-op: do not open ChatScreen against fabricated
-                        // contact data. Kept callable so the prop shape
-                        // stays stable for later wiring.
-                        void onOpenChat;
-                      }}
+                      onClick={() => void messageAction.open()}
+                      disabled={messageOpening}
+                      aria-busy={messageOpening}
+                      data-testid="booking-action-message"
+                      className="flex flex-col items-center gap-1.5 min-h-[44px] py-3 bg-amber-50 border border-amber-100 rounded-2xl active:scale-95 transition-all disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
                     >
-                      <MessageCircle size={18} className="text-amber-600" />
+                      {messageOpening ? (
+                        <Loader2
+                          size={18}
+                          className="text-amber-600 animate-spin"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <MessageCircle size={18} className="text-amber-600" aria-hidden="true" />
+                      )}
                       <span
                         className="text-amber-700"
                         style={{ fontSize: '11px', fontWeight: 700 }}
                       >
-                        {langKey === 'ar' ? 'رسالة' : 'Message'}
+                        {messageOpening ? actionCopy.opening : actionCopy.message}
                       </span>
                     </button>
                     <button
                       type="button"
-                      disabled={isPlaceholderAction}
-                      aria-disabled={isPlaceholderAction}
-                      title={langKey === 'ar' ? 'قريباً' : 'Coming soon'}
-                      className="flex flex-col items-center gap-1.5 py-3 bg-blue-50 border border-blue-100 rounded-2xl opacity-60 cursor-not-allowed"
+                      disabled
+                      aria-describedby={callNoteId}
+                      data-testid="booking-action-call"
+                      className="flex flex-col items-center gap-1.5 min-h-[44px] py-3 bg-slate-50 border border-slate-100 rounded-2xl opacity-60 cursor-not-allowed"
                     >
-                      <Phone size={18} className="text-blue-600" />
-                      <span className="text-blue-700" style={{ fontSize: '11px', fontWeight: 700 }}>
-                        {langKey === 'ar' ? 'اتصال' : 'Call'}
+                      <PhoneOff size={18} className="text-slate-500" aria-hidden="true" />
+                      <span
+                        className="text-slate-600"
+                        style={{ fontSize: '11px', fontWeight: 700 }}
+                      >
+                        {actionCopy.call}
                       </span>
                     </button>
                     <button
                       type="button"
-                      disabled={isPlaceholderAction}
-                      aria-disabled={isPlaceholderAction}
-                      title={langKey === 'ar' ? 'قريباً' : 'Coming soon'}
-                      className="flex flex-col items-center gap-1.5 py-3 bg-green-50 border border-green-100 rounded-2xl opacity-60 cursor-not-allowed"
+                      onClick={showProgress}
+                      data-testid="booking-action-progress"
+                      className="flex flex-col items-center gap-1.5 min-h-[44px] py-3 bg-green-50 border border-green-100 rounded-2xl active:scale-95 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
                     >
-                      <Navigation size={18} className="text-green-600" />
+                      <ListChecks size={18} className="text-green-600" aria-hidden="true" />
                       <span
                         className="text-green-700"
                         style={{ fontSize: '11px', fontWeight: 700 }}
                       >
-                        {langKey === 'ar' ? 'تتبع' : 'Track'}
+                        {actionCopy.progress}
                       </span>
                     </button>
                   </div>
-                  <p className="text-slate-400 mt-2 text-center" style={{ fontSize: '10px' }}>
-                    {langKey === 'ar'
-                      ? 'قريباً: المراسلة، الاتصال، والتتبع'
-                      : 'Messaging, calls, and tracking are coming soon'}
+                  {messageAction.state.kind === 'failed' && (
+                    <p
+                      role="alert"
+                      className="text-red-600 mt-2 text-center"
+                      style={{ fontSize: '12px' }}
+                      data-testid="booking-action-message-error"
+                      data-error={messageAction.state.error}
+                    >
+                      {actionCopy.errors[messageAction.state.error]}
+                    </p>
+                  )}
+                  <p
+                    id={callNoteId}
+                    className="text-slate-500 mt-2 text-center"
+                    style={{ fontSize: '11px' }}
+                    data-testid="booking-action-call-note"
+                  >
+                    {actionCopy.callNote}
                   </p>
                 </div>
               )}
 
               {/* Status Timeline */}
-              <StatusTimeline status={status} steps={render.steps} lang={langKey} />
+              <div
+                ref={progressRef}
+                tabIndex={-1}
+                aria-label={actionCopy.progressLabel}
+                data-testid="booking-progress"
+                className="focus:outline-none"
+              >
+                <StatusTimeline status={status} steps={render.steps} lang={langKey} />
+              </div>
 
               {/* Job Details */}
               <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
