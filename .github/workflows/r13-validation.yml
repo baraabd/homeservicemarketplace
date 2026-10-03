@@ -72,6 +72,12 @@ jobs:
           pnpm --filter @homeservicemarketplace/api typecheck
           pnpm --filter @homeservicemarketplace/api lint
           pnpm --filter @homeservicemarketplace/api build
+      - name: R13 real PostgreSQL integration
+        env:
+          RUN_DB_INTEGRATION: '1'
+        run: |
+          pnpm --filter @homeservicemarketplace/api exec jest \
+            test/integration/r13-support.integration.spec.ts --runInBand
       - name: Web verification
         run: |
           pnpm --filter @homeservicemarketplace/web typecheck
