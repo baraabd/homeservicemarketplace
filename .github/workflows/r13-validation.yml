@@ -1,0 +1,81 @@
+name: Validate R13 implementation
+
+on:
+  push:
+    branches: ['feat/r13-durable-help-support']
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'docs/production-readiness/r13/**'
+      - 'docs/production-readiness/FUNCTIONAL_COMPLETION_ROADMAP.md'
+      - 'docs/production-readiness/baseline/MODEL_MIGRATION_INDEX.json'
+      - '.github/workflows/r13-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: r13_validation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d r13_validation"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      NODE_ENV: test
+      APP_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/r13_validation
+      JWT_ACCESS_SECRET: r13_validation_secret_at_least_32_chars_long
+      AUTH_ANTI_ENUM_DELAY_MS: '0'
+      OUTBOX_WORKER_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/r13-durable-help-support
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+          run_install: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Prepare ephemeral environment
+        shell: bash
+        run: printf 'DATABASE_URL=%s\n' "$DATABASE_URL" > .env
+      - name: Contracts
+        run: |
+          pnpm --filter @homeservicemarketplace/contracts typecheck
+          pnpm --filter @homeservicemarketplace/contracts build
+      - name: Database schema and migration
+        run: |
+          pnpm --filter @homeservicemarketplace/database generate
+          pnpm --filter @homeservicemarketplace/database prisma:validate
+          pnpm --filter @homeservicemarketplace/database typecheck
+          pnpm --filter @homeservicemarketplace/database build
+          pnpm --filter @homeservicemarketplace/database migrate:deploy
+      - name: API static verification
+        run: |
+          pnpm --filter @homeservicemarketplace/api typecheck
+          pnpm --filter @homeservicemarketplace/api lint
+          pnpm --filter @homeservicemarketplace/api build
+      - name: Web verification
+        run: |
+          pnpm --filter @homeservicemarketplace/web typecheck
+          pnpm --filter @homeservicemarketplace/web typecheck:e2e
+          pnpm --filter @homeservicemarketplace/web lint
+          pnpm --filter @homeservicemarketplace/web test
+          pnpm --filter @homeservicemarketplace/web build
