@@ -856,3 +856,155 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
     expect(screen.getByDisplayValue('Jeddah')).toBeInTheDocument();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R05 recovery — edits made BEFORE the first profile answer arrives.
+//
+// The form is editable while GET /v1/me/profile is still in flight. The first
+// answer must seed only the fields the person has not touched, exactly like a
+// later refetch does. It must not be mistaken for a switch to another account
+// (test H above pins that a real switch still clears unsaved edits).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('EditProfilePage — edits made before the first profile answer', () => {
+  const STORED = {
+    ...MOCK_PROFILE,
+    phoneNumber: '+1 555 0000',
+    city: 'London',
+    bio: 'Analyst.',
+  };
+  const nameField = () => screen.getByLabelText(/full name|الاسم الكامل/i) as HTMLInputElement;
+  const phoneField = () =>
+    (screen.getAllByRole('textbox') as HTMLInputElement[]).find((i) => i.type === 'tel')!;
+  const saveButton = () => screen.getByRole('button', { name: /save changes|حفظ التغييرات/i });
+
+  function held<T>() {
+    let release!: (value: T) => void;
+    const promise = new Promise<T>((done) => {
+      release = done;
+    });
+    return { promise, release };
+  }
+
+  /** The session is known (as it always is once the app shows this page); the profile is not. */
+  const signedIn = () =>
+    waitFor(() =>
+      expect(qc.getQueryData(['auth', 'me'])).toMatchObject({ email: 'ada@example.com' }),
+    );
+
+  it('I — a name typed before the first answer is kept, and saved', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    const first = held<[number, unknown]>();
+    mock.onGet('/v1/me/profile').replyOnce(() => first.promise);
+    mock.onPatch('/v1/me/profile').reply((config) => [
+      200,
+      {
+        profile: {
+          ...STORED,
+          ...JSON.parse(config.data as string),
+          updatedAt: '2026-05-09T00:00:00.000Z',
+        },
+      },
+    ]);
+    renderEdit();
+    await signedIn();
+
+    // Typed while the profile is still loading.
+    fireEvent.change(nameField(), { target: { value: 'Typed Early' } });
+    expect(nameField().value).toBe('Typed Early');
+
+    // The first answer arrives.
+    first.release([200, { profile: STORED }]);
+    // Untouched fields follow the server…
+    await waitFor(() => expect(phoneField().value).toBe('+1 555 0000'));
+    // …the typed one does not.
+    expect(nameField().value).toBe('Typed Early');
+
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(mock.history.patch).toHaveLength(1));
+    expect(JSON.parse(mock.history.patch[0].data as string)).toMatchObject({
+      firstName: 'Typed',
+      lastName: 'Early',
+      phoneNumber: '+1 555 0000',
+    });
+  });
+
+  it('J — a field cleared before the first answer stays cleared', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    const first = held<[number, unknown]>();
+    mock.onGet('/v1/me/profile').replyOnce(() => first.promise);
+    renderEdit();
+    await signedIn();
+    fireEvent.change(phoneField(), { target: { value: 'x' } });
+    fireEvent.change(phoneField(), { target: { value: '' } });
+    first.release([200, { profile: STORED }]);
+    await waitFor(() => expect(nameField().value).toBe('Ada Lovelace'));
+    expect(phoneField().value).toBe('');
+  });
+});
+
+describe('EditProfilePage — first answer versus a different account', () => {
+  const STORED = { ...MOCK_PROFILE, phoneNumber: '+1 555 0000', city: 'London', bio: 'Analyst.' };
+  const GRACE_ME = { ...MOCK_ME_ADA, id: 'u2', email: 'grace@example.com', firstName: 'Grace' };
+  const GRACE = {
+    ...MOCK_PROFILE,
+    email: 'grace@example.com',
+    displayName: 'Grace Hopper',
+    phoneNumber: '+1 555 7777',
+  };
+  const nameField = () => screen.getByLabelText(/full name|الاسم الكامل/i) as HTMLInputElement;
+  const phoneField = () =>
+    (screen.getAllByRole('textbox') as HTMLInputElement[]).find((i) => i.type === 'tel')!;
+  function held<T>() {
+    let release!: (value: T) => void;
+    const promise = new Promise<T>((done) => {
+      release = done;
+    });
+    return { promise, release };
+  }
+
+  it('K — an edit made before the session is known is not kept', async () => {
+    const me = held<[number, unknown]>();
+    mock.onGet('/v1/auth/me').replyOnce(() => me.promise);
+    mock.onGet('/v1/me/profile').reply(200, { profile: STORED });
+    renderEdit();
+    // Nobody is known to be signed in yet.
+    fireEvent.change(nameField(), { target: { value: 'Whose Edit' } });
+    me.release([200, MOCK_ME_ADA]);
+    await waitFor(() => expect(nameField().value).toBe('Ada Lovelace'));
+    expect(screen.queryByDisplayValue('Whose Edit')).toBeNull();
+  });
+
+  it('L — edits made under one account are not kept when the first answer is another account’s', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    const first = held<[number, unknown]>();
+    mock.onGet('/v1/me/profile').replyOnce(() => first.promise);
+    renderEdit();
+    await waitFor(() =>
+      expect(qc.getQueryData(['auth', 'me'])).toMatchObject({ email: 'ada@example.com' }),
+    );
+    fireEvent.change(nameField(), { target: { value: 'Ada Typed' } });
+    fireEvent.change(phoneField(), { target: { value: '+1 555 1234' } });
+    // The session becomes Grace's, and Grace's profile is the first answer.
+    qc.setQueryData(['auth', 'me'], GRACE_ME);
+    first.release([200, { profile: GRACE }]);
+    await waitFor(() => expect(nameField().value).toBe('Grace Hopper'));
+    expect(phoneField().value).toBe('+1 555 7777');
+    expect(screen.queryByDisplayValue('Ada Typed')).toBeNull();
+  });
+
+  it('M — a former session’s late answer does not keep that session’s edits', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME_ADA);
+    const first = held<[number, unknown]>();
+    mock.onGet('/v1/me/profile').replyOnce(() => first.promise);
+    renderEdit();
+    await waitFor(() =>
+      expect(qc.getQueryData(['auth', 'me'])).toMatchObject({ email: 'ada@example.com' }),
+    );
+    fireEvent.change(nameField(), { target: { value: 'Ada Typed' } });
+    // Ada signs out and Grace signs in before Ada's profile answer lands.
+    qc.setQueryData(['auth', 'me'], GRACE_ME);
+    first.release([200, { profile: STORED }]);
+    await waitFor(() => expect(nameField().value).toBe('Ada Lovelace'));
+    expect(screen.queryByDisplayValue('Ada Typed')).toBeNull();
+  });
+});
