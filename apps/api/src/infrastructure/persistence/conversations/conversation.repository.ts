@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type {
   Conversation,
   ConversationParticipant,
+  ConversationParticipantRole,
   Message,
   Prisma,
   PrismaTx,
@@ -87,13 +88,14 @@ export class ConversationRepository {
   findExistingForBooking(
     bookingId: string,
     userId: string,
+    role: ConversationParticipantRole,
     tx?: PrismaTx,
   ): Promise<ConversationWithRelations | null> {
     return this.db(tx).conversation.findFirst({
       where: {
         bookingId,
         deletedAt: null,
-        participants: { some: { userId } },
+        participants: { some: { userId, role } },
       },
       include: {
         participants: { include: PARTICIPANT_INCLUDE },
@@ -112,6 +114,7 @@ export class ConversationRepository {
   listForUser(
     args: {
       userId: string;
+      role: ConversationParticipantRole;
       take: number;
       cursor?: string;
     },
@@ -119,7 +122,7 @@ export class ConversationRepository {
   ): Promise<ConversationWithRelations[]> {
     const where: Prisma.ConversationWhereInput = {
       deletedAt: null,
-      participants: { some: { userId: args.userId } },
+      participants: { some: { userId: args.userId, role: args.role } },
     };
     return this.db(tx).conversation.findMany({
       where,

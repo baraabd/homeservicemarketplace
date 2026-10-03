@@ -31,6 +31,18 @@ import { AppError } from '../../shared/errors/app-error';
 
 const DEFAULT_PAGE_SIZE = 50;
 
+/**
+ * Which side of a conversation a route acts for (R12).
+ *
+ * `/v1/me/conversations` acts for the SEEKER side, `/v1/provider/conversations`
+ * for the PROVIDER side. The provider routes require the provider to be
+ * allowed to manage bookings; before R12 the seeker routes resolved either
+ * side, so a provider refused there could still open and post in the same
+ * chat through `/v1/me`. Every read and write now matches the participant row
+ * of the route's side, and anything else is not found.
+ */
+export type ConversationSide = ConversationParticipantRole;
+
 @Injectable()
 export class ConversationsService {
   private readonly log = new Logger(ConversationsService.name);
@@ -51,8 +63,12 @@ export class ConversationsService {
   ) {}
 
   // ─── list ──────────────────────────────────────────────────────────────────
-  async list(userId: string): Promise<ConversationListResponse> {
-    const rows = await this.conversations.listForUser({ userId, take: DEFAULT_PAGE_SIZE + 1 });
+  async list(userId: string, side: ConversationSide): Promise<ConversationListResponse> {
+    const rows = await this.conversations.listForUser({
+      userId,
+      role: side,
+      take: DEFAULT_PAGE_SIZE + 1,
+    });
     const page = rows.slice(0, DEFAULT_PAGE_SIZE);
     const items = await Promise.all(page.map((row) => toSummary(row, userId, this.messages)));
     const nextCursor = rows.length > DEFAULT_PAGE_SIZE ? items[items.length - 1].id : null;
@@ -90,9 +106,10 @@ export class ConversationsService {
   async getOrCreateForBooking(
     userId: string,
     bookingId: string,
+    side: ConversationSide,
   ): Promise<CreateConversationResponse> {
     // Fast path: the conversation already exists.
-    const existing = await this.conversations.findExistingForBooking(bookingId, userId);
+    const existing = await this.conversations.findExistingForBooking(bookingId, userId, side);
     if (existing) {
       return { conversation: await toSummary(existing, userId, this.messages) };
     }
@@ -100,8 +117,11 @@ export class ConversationsService {
     let createdId: string;
     try {
       createdId = await this.tx.run(async (tx) => {
-        // Try the seeker side first (cheap path).
-        const seekerOwned = await this.bookings.findOwned(bookingId, userId, tx);
+        // Only the side this route acts for is looked up (R12).
+        const seekerOwned =
+          side === ConversationParticipantRole.SEEKER
+            ? await this.bookings.findOwned(bookingId, userId, tx)
+            : null;
         if (seekerOwned) {
           return this.createConversationRows(
             {
@@ -118,7 +138,10 @@ export class ConversationsService {
         // up the booking by providerId. If the profile is missing OR
         // the booking is not theirs, return 404 (indistinguishable
         // from "doesn't exist").
-        const profile = await this.providers.findByUserId(userId, tx);
+        const profile =
+          side === ConversationParticipantRole.PROVIDER
+            ? await this.providers.findByUserId(userId, tx)
+            : null;
         if (profile) {
           const providerOwned = await this.bookings.findOwnedByProvider(bookingId, profile.id, tx);
           if (providerOwned) {
@@ -143,7 +166,7 @@ export class ConversationsService {
       // winning transaction so the requesting user is guaranteed to
       // see the row through the participant gate.
       if (isUniqueConversationBookingViolation(err)) {
-        const winner = await this.conversations.findExistingForBooking(bookingId, userId);
+        const winner = await this.conversations.findExistingForBooking(bookingId, userId, side);
         if (winner) {
           this.log.log({
             msg: 'conversation.getOrCreate.race_resolved',
@@ -218,8 +241,9 @@ export class ConversationsService {
     userId: string,
     conversationId: string,
     args: { limit?: number; cursor?: string },
+    side: ConversationSide,
   ): Promise<MessageListResponse> {
-    await this.assertParticipant(userId, conversationId);
+    await this.assertParticipant(userId, conversationId, side);
     const take = Math.min(Math.max(args.limit ?? DEFAULT_PAGE_SIZE, 1), 100);
     const rows = await this.messages.listForConversation({
       conversationId,
@@ -248,8 +272,9 @@ export class ConversationsService {
     userId: string,
     conversationId: string,
     body: string,
+    side: ConversationSide,
   ): Promise<SendMessageResponse> {
-    const participant = await this.assertParticipant(userId, conversationId);
+    const participant = await this.assertParticipant(userId, conversationId, side);
     const created = await this.tx.run(async (tx) => {
       const message = await this.messages.create(
         {
@@ -281,11 +306,12 @@ export class ConversationsService {
   }
 
   // ─── markRead ──────────────────────────────────────────────────────────────
-  async markRead(userId: string, conversationId: string): Promise<MarkConversationReadResponse> {
-    const participant = await this.participants.findByConversationAndUser(conversationId, userId);
-    if (!participant) {
-      throw new AppError('NOT_FOUND', 'Conversation not found.', 404);
-    }
+  async markRead(
+    userId: string,
+    conversationId: string,
+    side: ConversationSide,
+  ): Promise<MarkConversationReadResponse> {
+    const participant = await this.assertParticipant(userId, conversationId, side);
     const at = new Date();
     await this.participants.setLastReadAt(participant.id, at);
     return { lastReadAt: at.toISOString() };
@@ -300,8 +326,13 @@ export class ConversationsService {
   private async assertParticipant(
     userId: string,
     conversationId: string,
+    side: ConversationSide,
   ): Promise<ConversationParticipant> {
-    const participant = await this.participants.findByConversationAndUser(conversationId, userId);
+    const participant = await this.participants.findByConversationAndUser(
+      conversationId,
+      userId,
+      side,
+    );
     if (!participant) {
       throw new AppError('NOT_FOUND', 'Conversation not found.', 404);
     }

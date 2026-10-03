@@ -5,6 +5,7 @@ import type {
   Message,
   ProviderProfile,
 } from '@homeservicemarketplace/database';
+import { ConversationParticipantRole } from '@homeservicemarketplace/database';
 import { Prisma } from '@homeservicemarketplace/database';
 
 import type { BookingRepository } from '../../infrastructure/persistence/bookings/booking.repository';
@@ -307,7 +308,7 @@ describe('ConversationsService', () => {
         conversations: { listForUser: jest.fn().mockResolvedValue([makeConvWithRels()]) },
         messages: { countUnreadForParticipant: jest.fn().mockResolvedValue(2) },
       });
-      const out = await makeService(m).list('user-1');
+      const out = await makeService(m).list('user-1', ConversationParticipantRole.SEEKER);
       expect(out.items).toHaveLength(1);
       const dto = out.items[0];
       expect(dto.otherParticipant.displayName).toBe('Omar Al-Khalid');
@@ -321,7 +322,7 @@ describe('ConversationsService', () => {
       const m = makeMocks({
         conversations: { listForUser: jest.fn().mockResolvedValue([makeConvWithRels()]) },
       });
-      const out = await makeService(m).list('user-prov-2');
+      const out = await makeService(m).list('user-prov-2', ConversationParticipantRole.PROVIDER);
       expect(out.items).toHaveLength(1);
       const dto = out.items[0];
       // Seeker is Layla Mansour — provider sees a privacy-friendly
@@ -341,14 +342,14 @@ describe('ConversationsService', () => {
           listForUser: jest.fn().mockResolvedValue([makeConvWithUnlinkedProvider()]),
         },
       });
-      const out = await makeService(m).list('user-1');
+      const out = await makeService(m).list('user-1', ConversationParticipantRole.SEEKER);
       const dto = out.items[0];
       expect(dto.otherParticipant.displayName).toBe('Omar Al-Khalid');
     });
 
     it('empty list returns 200-shape with empty items', async () => {
       const m = makeMocks();
-      const out = await makeService(m).list('user-1');
+      const out = await makeService(m).list('user-1', ConversationParticipantRole.SEEKER);
       expect(out).toEqual({ items: [], nextCursor: null });
     });
   });
@@ -360,7 +361,11 @@ describe('ConversationsService', () => {
       const m = makeMocks({
         conversations: { findExistingForBooking: jest.fn().mockResolvedValue(existing) },
       });
-      const out = await makeService(m).getOrCreateForBooking('user-1', 'bk-1');
+      const out = await makeService(m).getOrCreateForBooking(
+        'user-1',
+        'bk-1',
+        ConversationParticipantRole.SEEKER,
+      );
       expect(out.conversation.id).toBe('conv-1');
       expect(m.conversations.create).not.toHaveBeenCalled();
       expect(m.participants.create).not.toHaveBeenCalled();
@@ -368,7 +373,11 @@ describe('ConversationsService', () => {
 
     it('creates conversation + 2 participants in a transaction when none exists', async () => {
       const m = makeMocks();
-      const out = await makeService(m).getOrCreateForBooking('user-1', 'bk-1');
+      const out = await makeService(m).getOrCreateForBooking(
+        'user-1',
+        'bk-1',
+        ConversationParticipantRole.SEEKER,
+      );
       expect(out.conversation.id).toBe('conv-1');
       expect(m.participants.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -399,7 +408,11 @@ describe('ConversationsService', () => {
         providers: { findByUserId: jest.fn().mockResolvedValue(null) },
       });
       await expect(
-        makeService(m).getOrCreateForBooking('user-attacker', 'bk-victim'),
+        makeService(m).getOrCreateForBooking(
+          'user-attacker',
+          'bk-victim',
+          ConversationParticipantRole.SEEKER,
+        ),
       ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
       expect(m.conversations.create).not.toHaveBeenCalled();
       expect(m.participants.create).not.toHaveBeenCalled();
@@ -415,7 +428,11 @@ describe('ConversationsService', () => {
           }),
         },
       });
-      await makeService(m).getOrCreateForBooking('user-1', 'bk-1');
+      await makeService(m).getOrCreateForBooking(
+        'user-1',
+        'bk-1',
+        ConversationParticipantRole.SEEKER,
+      );
       expect(m.participants.create).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-prov-2',
@@ -440,7 +457,11 @@ describe('ConversationsService', () => {
           findByUserId: jest.fn().mockResolvedValue({ id: 'pp-prov', userId: 'user-prov-2' }),
         },
       });
-      const out = await makeService(m).getOrCreateForBooking('user-prov-2', 'bk-1');
+      const out = await makeService(m).getOrCreateForBooking(
+        'user-prov-2',
+        'bk-1',
+        ConversationParticipantRole.PROVIDER,
+      );
       expect(out.conversation.id).toBe('conv-1');
       expect(m.bookings.findOwnedByProvider).toHaveBeenCalledWith('bk-1', 'pp-prov', undefined);
       expect(m.participants.create).toHaveBeenCalledWith(
@@ -484,7 +505,11 @@ describe('ConversationsService', () => {
         },
       });
 
-      const out = await makeService(m).getOrCreateForBooking('user-1', 'bk-1');
+      const out = await makeService(m).getOrCreateForBooking(
+        'user-1',
+        'bk-1',
+        ConversationParticipantRole.SEEKER,
+      );
       expect(out.conversation.id).toBe('conv-1');
       // Loser must NOT call participants.create on the second pass —
       // the create call raised before participants were inserted.
@@ -506,7 +531,9 @@ describe('ConversationsService', () => {
           create: jest.fn().mockRejectedValue(conflict),
         },
       });
-      await expect(makeService(m).getOrCreateForBooking('user-1', 'bk-1')).rejects.toMatchObject({
+      await expect(
+        makeService(m).getOrCreateForBooking('user-1', 'bk-1', ConversationParticipantRole.SEEKER),
+      ).rejects.toMatchObject({
         code: 'CONFLICT',
         status: 409,
       });
@@ -520,7 +547,12 @@ describe('ConversationsService', () => {
         participants: { findByConversationAndUser: jest.fn().mockResolvedValue(null) },
       });
       await expect(
-        makeService(m).listMessages('user-attacker', 'conv-victim', {}),
+        makeService(m).listMessages(
+          'user-attacker',
+          'conv-victim',
+          {},
+          ConversationParticipantRole.SEEKER,
+        ),
       ).rejects.toMatchObject({ code: 'NOT_FOUND' });
       expect(m.messages.listForConversation).not.toHaveBeenCalled();
     });
@@ -549,7 +581,12 @@ describe('ConversationsService', () => {
       const m = makeMocks({
         messages: { listForConversation: jest.fn().mockResolvedValue(messages) },
       });
-      const out = await makeService(m).listMessages('user-1', 'conv-1', {});
+      const out = await makeService(m).listMessages(
+        'user-1',
+        'conv-1',
+        {},
+        ConversationParticipantRole.SEEKER,
+      );
       expect(out.items.map((x) => x.id)).toEqual(['m-1', 'm-2']);
       expect(out.items[0].sentByMe).toBe(false);
       expect(out.items[1].sentByMe).toBe(true);
@@ -564,7 +601,12 @@ describe('ConversationsService', () => {
         participants: { findByConversationAndUser: jest.fn().mockResolvedValue(null) },
       });
       await expect(
-        makeService(m).sendMessage('user-attacker', 'conv-victim', 'hi'),
+        makeService(m).sendMessage(
+          'user-attacker',
+          'conv-victim',
+          'hi',
+          ConversationParticipantRole.SEEKER,
+        ),
       ).rejects.toMatchObject({ code: 'NOT_FOUND' });
       expect(m.messages.create).not.toHaveBeenCalled();
       expect(m.conversations.bumpUpdatedAt).not.toHaveBeenCalled();
@@ -591,7 +633,12 @@ describe('ConversationsService', () => {
           } as unknown as Message),
         },
       });
-      const out = await makeService(m).sendMessage('user-1', 'conv-1', 'hi from seeker');
+      const out = await makeService(m).sendMessage(
+        'user-1',
+        'conv-1',
+        'hi from seeker',
+        ConversationParticipantRole.SEEKER,
+      );
       expect(m.messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
           conversationId: 'conv-1',
@@ -647,7 +694,12 @@ describe('ConversationsService', () => {
           } as unknown as Message),
         },
       });
-      const out = await makeService(m).sendMessage('user-prov-2', 'conv-1', 'on my way');
+      const out = await makeService(m).sendMessage(
+        'user-prov-2',
+        'conv-1',
+        'on my way',
+        ConversationParticipantRole.PROVIDER,
+      );
       expect(m.messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
           conversationId: 'conv-1',
@@ -674,7 +726,11 @@ describe('ConversationsService', () => {
   describe('markRead', () => {
     it('sets the participants lastReadAt and returns ISO timestamp', async () => {
       const m = makeMocks();
-      const out = await makeService(m).markRead('user-1', 'conv-1');
+      const out = await makeService(m).markRead(
+        'user-1',
+        'conv-1',
+        ConversationParticipantRole.SEEKER,
+      );
       expect(m.participants.setLastReadAt).toHaveBeenCalled();
       expect(typeof out.lastReadAt).toBe('string');
       expect(() => new Date(out.lastReadAt).toISOString()).not.toThrow();
@@ -684,7 +740,9 @@ describe('ConversationsService', () => {
       const m = makeMocks({
         participants: { findByConversationAndUser: jest.fn().mockResolvedValue(null) },
       });
-      await expect(makeService(m).markRead('user-attacker', 'conv-victim')).rejects.toMatchObject({
+      await expect(
+        makeService(m).markRead('user-attacker', 'conv-victim', ConversationParticipantRole.SEEKER),
+      ).rejects.toMatchObject({
         code: 'NOT_FOUND',
       });
       expect(m.participants.setLastReadAt).not.toHaveBeenCalled();
@@ -700,10 +758,18 @@ describe('ConversationsService', () => {
     });
     const svc = makeService(m);
     await Promise.all([
-      expect(svc.getOrCreateForBooking('u', 'b')).rejects.toBeInstanceOf(AppError),
-      expect(svc.listMessages('u', 'c', {})).rejects.toBeInstanceOf(AppError),
-      expect(svc.sendMessage('u', 'c', 'x')).rejects.toBeInstanceOf(AppError),
-      expect(svc.markRead('u', 'c')).rejects.toBeInstanceOf(AppError),
+      expect(
+        svc.getOrCreateForBooking('u', 'b', ConversationParticipantRole.SEEKER),
+      ).rejects.toBeInstanceOf(AppError),
+      expect(
+        svc.listMessages('u', 'c', {}, ConversationParticipantRole.SEEKER),
+      ).rejects.toBeInstanceOf(AppError),
+      expect(
+        svc.sendMessage('u', 'c', 'x', ConversationParticipantRole.SEEKER),
+      ).rejects.toBeInstanceOf(AppError),
+      expect(svc.markRead('u', 'c', ConversationParticipantRole.SEEKER)).rejects.toBeInstanceOf(
+        AppError,
+      ),
     ]);
   });
 });
