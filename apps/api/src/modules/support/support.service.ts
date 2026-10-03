@@ -8,7 +8,7 @@ import type {
   SupportTicketSummaryView,
 } from '@homeservicemarketplace/contracts';
 import { AuditEventType, SupportTicketStatus } from '@homeservicemarketplace/database';
-import type { SupportMessage, SupportTicket } from '@homeservicemarketplace/database';
+import type { PrismaTx, SupportMessage, SupportTicket } from '@homeservicemarketplace/database';
 
 import {
   SupportRepository,
@@ -249,7 +249,7 @@ export class SupportService {
     return this.detailAdmin(actorUserId, ticketId);
   }
 
-  private async requireSupport(actorUserId: string, tx?: Parameters<PermissionResolverService['resolveFreshForUser']>[1]) {
+  private async requireSupport(actorUserId: string, tx?: PrismaTx) {
     const rights = await this.permissions.resolveFreshForUser(actorUserId, tx);
     if (!rights.has(SUPPORT_ADMIN_PERMISSION)) {
       throw new AppError('FORBIDDEN', 'You do not have permission to operate support tickets.', 403);
