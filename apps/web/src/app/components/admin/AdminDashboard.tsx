@@ -8,6 +8,7 @@ import {
   DollarSign,
   FileText,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   Menu,
   Moon,
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { id: 'identity-cases', icon: ShieldCheck, en: 'Identity cases', ar: 'قضايا الهوية' },
   { id: 'financials', icon: DollarSign, en: 'Financials', ar: 'الماليات' },
   { id: 'disputes', icon: AlertTriangle, en: 'Dispute Center', ar: 'مركز النزاعات' },
+  { id: 'support', icon: LifeBuoy, en: 'Support', ar: 'الدعم' },
   { id: 'settings', icon: Settings, en: 'Settings', ar: 'الإعدادات' },
   { id: 'audit', icon: FileText, en: 'Audit Logs', ar: 'سجل التدقيق' },
 ] as const;

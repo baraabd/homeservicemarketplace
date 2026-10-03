@@ -1,426 +1,342 @@
-import { useState, useRef, useEffect } from 'react';
-import { motion } from 'motion/react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Send,
-  Check,
-  CheckCheck,
-  HelpCircle,
-  CreditCard,
-  Clock,
-  Star,
-} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, HelpCircle, Send } from 'lucide-react';
+import type {
+  CreateSupportTicketResponse,
+  ListSupportTicketsResponse,
+  SupportTicketDetailView,
+  SupportTicketSummaryView,
+} from '@homeservicemarketplace/contracts';
+
+import { api } from '../../../lib/api';
 import { useLang } from '../../i18n/LanguageContext';
 
-interface Message {
-  id: string;
-  from: 'bot' | 'user';
-  text: string;
-  time: string;
-  read: boolean;
-}
-
-type FAQ = { en: string; ar: string };
-
-const FAQS: FAQ[] = [
-  { en: 'How do I cancel a booking?', ar: 'كيف أُلغي الحجز؟' },
-  { en: 'When do pros get paid?', ar: 'متى يحصل المحترفون على المدفوعات؟' },
-  { en: 'How is the price calculated?', ar: 'كيف يُحسب السعر؟' },
-  { en: "What if I'm not satisfied?", ar: 'ماذا لو لم أكن راضياً؟' },
-];
-
-const BOT_REPLIES: Record<string, { en: string; ar: string }> = {
-  cancel: {
-    en: 'You can cancel a booking up to 2 hours before the scheduled time from the Bookings tab. Late cancellations may incur a fee.',
-    ar: 'يمكنك إلغاء الحجز قبل ساعتين من الموعد المحدد من تبويب الحجوزات. قد تُفرض رسوم على الإلغاء المتأخر.',
-  },
-  paid: {
-    en: "Payment is arranged directly between you and the professional for each job. FixNow helps you find, book, and keep track of jobs, but it doesn't process payments or hold your money.",
-    ar: 'يتم الدفع مباشرةً بينك وبين المحترف لكل مهمة. يساعدك فيكس ناو في العثور على المحترفين وحجزهم وتتبّع مهامك، لكنه لا يعالج المدفوعات ولا يحتفظ بأموالك.',
-  },
-  price: {
-    en: "Pricing is based on the pro's hourly rate. You'll always see the total estimate before confirming a booking.",
-    ar: 'يعتمد التسعير على السعر بالساعة للمحترف. ستتمكن دائماً من رؤية التقدير الكلي قبل تأكيد الحجز.',
-  },
-  satisfied: {
-    en: "If something isn't right, contact support and open a dispute from the booking. Our team reviews every case and works with you and the professional to sort it out.",
-    ar: 'إذا لم تكن راضياً، تواصل مع الدعم وافتح نزاعاً من صفحة الحجز. يراجع فريقنا كل حالة ويعمل معك ومع المحترف لإيجاد حل مناسب.',
-  },
-  default: {
-    en: 'Thanks for reaching out! A support agent will respond shortly. Our usual response time is under 5 minutes. 🙂',
-    ar: 'شكراً للتواصل! سيرد عليك أحد فريق الدعم قريباً. وقت استجابتنا المعتاد أقل من 5 دقائق. 🙂',
-  },
-};
-
-export function getBotReply(text: string, lang: string): string {
-  const lower = text.toLowerCase();
-  const key =
-    lower.includes('cancel') || lower.includes('إلغ')
-      ? 'cancel'
-      : lower.includes('paid') || lower.includes('مدفو')
-        ? 'paid'
-        : lower.includes('price') || lower.includes('سعر')
-          ? 'price'
-          : lower.includes('satisf') || lower.includes('راض')
-            ? 'satisfied'
-            : 'default';
-  return BOT_REPLIES[key][lang as 'en' | 'ar'];
-}
-
-function now() {
-  return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-}
-
-// دالة خارجية للحصول على الوقت لمنع خطأ Impure Function داخل الـ Component
-function getTimestamp() {
-  return Date.now();
-}
-
-const SEED_EN: Message[] = [
+const FAQS = [
   {
-    id: 'b0',
-    from: 'bot',
-    text: "👋 Hi there! I'm your FixNow Support assistant. How can I help you today?",
-    time: '9:00 AM',
-    read: true,
+    en: 'How do I cancel a booking?',
+    ar: 'كيف أُلغي الحجز؟',
+    answerEn:
+      'Open the booking and use the cancellation action when the booking state allows it.',
+    answerAr: 'افتح الحجز واستخدم إجراء الإلغاء عندما تسمح حالة الحجز بذلك.',
   },
   {
-    id: 'b1',
-    from: 'bot',
-    text: 'You can ask me about bookings, payments, how the platform works, or anything else!',
-    time: '9:00 AM',
-    read: true,
-  },
-];
-const SEED_AR: Message[] = [
-  {
-    id: 'b0',
-    from: 'bot',
-    text: '👋 مرحباً! أنا مساعد دعم فيكس ناو. كيف يمكنني مساعدتك اليوم؟',
-    time: '9:00 ص',
-    read: true,
+    en: 'How do payments work?',
+    ar: 'كيف تعمل المدفوعات؟',
+    answerEn:
+      'The current product does not process or hold customer funds. Follow the payment details shown for the booking.',
+    answerAr:
+      'المنتج الحالي لا يعالج أموال العميل أو يحتفظ بها. اتبع تفاصيل الدفع المعروضة للحجز.',
   },
   {
-    id: 'b1',
-    from: 'bot',
-    text: 'يمكنك سؤالي عن الحجوزات، المدفوعات، كيفية عمل المنصة، أو أي شيء آخر!',
-    time: '9:00 ص',
-    read: true,
+    en: 'What if I have a problem with a job?',
+    ar: 'ماذا أفعل إذا واجهت مشكلة في المهمة؟',
+    answerEn:
+      'Use the booking dispute flow for a dispute about a job. Use Support below for platform help.',
+    answerAr:
+      'استخدم مسار النزاع داخل الحجز عند وجود نزاع متعلق بالمهمة، واستخدم الدعم أدناه للمساعدة في المنصة.',
   },
 ];
 
-interface HelpSupportPageProps {
-  onBack: () => void;
+function submissionKey() {
+  return crypto.randomUUID().replace(/-/g, '');
 }
 
-export function HelpSupportPage({ onBack }: HelpSupportPageProps) {
+export function HelpSupportPage({ onBack }: { onBack: () => void }) {
   const { lang, dir } = useLang();
-  // تعديل تمرير القيمة الابتدائية لكي لا تسبب أي مشكلة Cascading Render
-  const [messages, setMessages] = useState<Message[]>(() => (lang === 'ar' ? SEED_AR : SEED_EN));
-  const [input, setInput] = useState('');
-  const [typing, setTyping] = useState(false);
-  const [rating, setRating] = useState(0);
-  const [rated, setRated] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const ar = lang === 'ar';
+  const [tickets, setTickets] = useState<SupportTicketSummaryView[]>([]);
+  const [selected, setSelected] = useState<SupportTicketDetailView | null>(null);
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
+  const [newMessage, setNewMessage] = useState('');
+  const [faqOpen, setFaqOpen] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const createAttempt = useRef<{ signature: string; key: string } | null>(null);
+  const sendAttempt = useRef<{ signature: string; key: string } | null>(null);
+
+  const copy = useMemo(
+    () => ({
+      title: ar ? 'المساعدة والدعم' : 'Help & Support',
+      faq: ar ? 'أسئلة شائعة' : 'Frequently asked questions',
+      tickets: ar ? 'طلبات الدعم' : 'Support tickets',
+      newTicket: ar ? 'طلب دعم جديد' : 'New support ticket',
+      subject: ar ? 'الموضوع' : 'Subject',
+      describe: ar ? 'صف المشكلة أو السؤال' : 'Describe the problem or question',
+      create: ar ? 'إرسال الطلب' : 'Create ticket',
+      send: ar ? 'إرسال' : 'Send',
+      empty: ar ? 'لا توجد طلبات دعم بعد.' : 'No support tickets yet.',
+      open: ar ? 'مفتوح' : 'Open',
+      closed: ar ? 'مغلق' : 'Closed',
+      back: ar ? 'العودة' : 'Back',
+      loadFail: ar ? 'تعذر تحميل الدعم. حاول مجدداً.' : 'Could not load support. Try again.',
+      sendFail: ar
+        ? 'تعذر الإرسال. رسالتك لم تُسجل كناجحة.'
+        : 'Could not send. The message was not marked as saved.',
+    }),
+    [ar],
+  );
+
+  async function loadTickets() {
+    const { data } = await api.get<ListSupportTicketsResponse>('/v1/me/support/tickets');
+    setTickets(data.items);
+  }
+
+  async function loadDetail(id: string) {
+    const { data } = await api.get<SupportTicketDetailView>(`/v1/me/support/tickets/${id}`);
+    setSelected(data);
+  }
 
   useEffect(() => {
-    setMessages(lang === 'ar' ? SEED_AR : SEED_EN);
-  }, [lang]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 60);
-    return () => clearTimeout(timer);
-  }, [messages, typing]);
-
-  const sendMessage = (text: string) => {
-    if (!text.trim()) return;
-
-    // استخدام الدالة الخارجية بدلاً من Date.now() مباشرة
-    const currentTimestamp = getTimestamp();
-    const currentTime = now();
-
-    const userMsg: Message = {
-      id: `u${currentTimestamp}`,
-      from: 'user',
-      text: text.trim(),
-      time: currentTime,
-      read: false,
+    let alive = true;
+    void loadTickets()
+      .catch(() => {
+        if (alive) setError(copy.loadFail);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
     };
+  }, [copy.loadFail]);
 
-    setMessages((prev) => [...prev, userMsg]);
-    setInput('');
-    setTyping(true);
+  useEffect(() => {
+    if (!selected || selected.status !== 'OPEN') return;
+    const id = selected.id;
+    const timer = window.setInterval(() => {
+      void loadDetail(id).catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [selected?.id, selected?.status]);
 
-    setTimeout(() => {
-      setTyping(false);
-      const botTimestamp = getTimestamp();
-      const botTime = now();
+  async function createTicket() {
+    const s = subject.trim();
+    const m = message.trim();
+    if (!s || !m || busy) return;
+    const signature = `${s}\n${m}`;
+    if (!createAttempt.current || createAttempt.current.signature !== signature) {
+      createAttempt.current = { signature, key: submissionKey() };
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const { data } = await api.post<CreateSupportTicketResponse>('/v1/me/support/tickets', {
+        subject: s,
+        message: m,
+        idempotencyKey: createAttempt.current.key,
+      });
+      createAttempt.current = null;
+      setSubject('');
+      setMessage('');
+      setSelected(data.ticket);
+      await loadTickets();
+    } catch {
+      setError(copy.sendFail);
+    } finally {
+      setBusy(false);
+    }
+  }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `b${botTimestamp}`,
-          from: 'bot',
-          text: getBotReply(text, lang),
-          time: botTime,
-          read: false,
-        },
-      ]);
-    }, 1400);
-  };
-
-  const L = {
-    title: lang === 'ar' ? 'المساعدة والدعم' : 'Help & Support',
-    online: lang === 'ar' ? 'متصل' : 'Online',
-    support: lang === 'ar' ? 'دعم فيكس ناو' : 'FixNow Support',
-    today: lang === 'ar' ? 'اليوم' : 'Today',
-    placeholder: lang === 'ar' ? 'اكتب سؤالك…' : 'Type your question…',
-    faqTitle: lang === 'ar' ? 'أسئلة شائعة' : 'Quick Questions',
-    rateChat: lang === 'ar' ? 'كيف كانت تجربتك مع الدعم؟' : 'How was your support experience?',
-    thankRate: lang === 'ar' ? 'شكراً على تقييمك! 🌟' : 'Thank you for rating! 🌟',
-  };
-
-  const FAQ_ICONS = [
-    <HelpCircle size={13} />,
-    <CreditCard size={13} />,
-    <Clock size={13} />,
-    <Star size={13} />,
-  ];
+  async function send() {
+    if (!selected || selected.status !== 'OPEN') return;
+    const body = newMessage.trim();
+    if (!body || busy) return;
+    if (!sendAttempt.current || sendAttempt.current.signature !== body) {
+      sendAttempt.current = { signature: body, key: submissionKey() };
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await api.post(`/v1/me/support/tickets/${selected.id}/messages`, {
+        body,
+        idempotencyKey: sendAttempt.current.key,
+      });
+      sendAttempt.current = null;
+      setNewMessage('');
+      await loadDetail(selected.id);
+      await loadTickets();
+    } catch {
+      setError(copy.sendFail);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <motion.div
-      className="absolute inset-0 flex flex-col bg-slate-50 dark:bg-slate-900"
-      initial={{ x: dir === 'rtl' ? '-100%' : '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: dir === 'rtl' ? '-100%' : '100%' }}
-      transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-    >
-      {/* Header */}
-      <div className="flex-shrink-0 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 shadow-sm">
-        <div className="flex items-center gap-3 px-4 py-3.5">
-          <button
-            onClick={onBack}
-            className="w-9 h-9 rounded-xl bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center active:scale-90 transition-all"
-          >
-            {dir === 'rtl' ? (
-              <ChevronRight size={20} className="text-slate-700 dark:text-slate-300" />
-            ) : (
-              <ChevronLeft size={20} className="text-slate-700 dark:text-slate-300" />
-            )}
-          </button>
+    <div className="absolute inset-0 flex flex-col bg-slate-50 dark:bg-slate-900" dir={dir}>
+      <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+        <button
+          type="button"
+          onClick={selected ? () => setSelected(null) : onBack}
+          aria-label={copy.back}
+          className="flex size-11 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700"
+        >
+          {dir === 'rtl' ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+        </button>
+        <div className="flex size-10 items-center justify-center rounded-2xl bg-amber-500 text-white">
+          <HelpCircle size={20} />
+        </div>
+        <div>
+          <h2 className="font-extrabold text-slate-900 dark:text-white">{copy.title}</h2>
+          <p className="text-xs text-slate-500">
+            {ar
+              ? 'ردود الدعم تظهر فقط بعد حفظها في الخادم.'
+              : 'Support replies appear only after the server stores them.'}
+          </p>
+        </div>
+      </header>
 
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0">
-            <span className="text-white" style={{ fontSize: '12px', fontWeight: 800 }}>
-              FN
-            </span>
-          </div>
+      <main className="flex-1 overflow-y-auto p-4">
+        {error && (
+          <p role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">
+            {error}
+          </p>
+        )}
 
-          <div className="flex-1">
-            <p
-              className="text-slate-900 dark:text-white"
-              style={{ fontSize: '15px', fontWeight: 700 }}
-            >
-              {L.support}
-            </p>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-green-400" />
-              <span className="text-slate-400 dark:text-slate-500" style={{ fontSize: '11px' }}>
-                {L.online}
-              </span>
+        {selected ? (
+          <section aria-label={selected.subject}>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-white">{selected.subject}</h3>
+                <span className="text-xs text-slate-500">
+                  {selected.status === 'OPEN' ? copy.open : copy.closed}
+                </span>
+              </div>
             </div>
-          </div>
-        </div>
+            <div className="space-y-3">
+              {selected.messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
+                    msg.authorRole === 'REQUESTER'
+                      ? 'ms-auto bg-amber-500 text-white'
+                      : 'me-auto border border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
+                  }`}
+                  dir="auto"
+                >
+                  <p className="whitespace-pre-wrap break-words">{msg.body}</p>
+                  <time className="mt-1 block text-[10px] opacity-70">
+                    {new Date(msg.createdAt).toLocaleString()}
+                  </time>
+                </div>
+              ))}
+            </div>
+            {selected.status === 'OPEN' && (
+              <div className="sticky bottom-0 mt-5 flex items-end gap-2 bg-slate-50 py-3 dark:bg-slate-900">
+                <label className="flex-1">
+                  <span className="sr-only">{copy.describe}</span>
+                  <textarea
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    rows={2}
+                    maxLength={4000}
+                    className="min-h-11 w-full rounded-2xl border border-slate-300 bg-white p-3 text-base dark:border-slate-600 dark:bg-slate-800"
+                    placeholder={copy.describe}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void send()}
+                  disabled={busy || !newMessage.trim()}
+                  aria-label={copy.send}
+                  className="flex size-11 items-center justify-center rounded-xl bg-amber-500 text-white disabled:opacity-50"
+                >
+                  <Send size={18} />
+                </button>
+              </div>
+            )}
+          </section>
+        ) : (
+          <div className="space-y-5">
+            <section>
+              <h3 className="mb-2 font-bold text-slate-900 dark:text-white">{copy.faq}</h3>
+              <div className="space-y-2">
+                {FAQS.map((faq, index) => (
+                  <div
+                    key={faq.en}
+                    className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setFaqOpen(faqOpen === index ? null : index)}
+                      className="min-h-11 w-full px-4 py-3 text-start font-semibold"
+                      aria-expanded={faqOpen === index}
+                    >
+                      {ar ? faq.ar : faq.en}
+                    </button>
+                    {faqOpen === index && (
+                      <p className="px-4 pb-4 text-sm text-slate-600 dark:text-slate-300">
+                        {ar ? faq.answerAr : faq.answerEn}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
 
-        {/* Quick FAQ chips */}
-        <div className="flex gap-2 px-4 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-          {FAQS.map((faq, i) => (
-            <button
-              key={i}
-              onClick={() => sendMessage(lang === 'ar' ? faq.ar : faq.en)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-100 dark:border-amber-800 flex-shrink-0 active:bg-amber-100 transition-all"
-            >
-              <span className="text-amber-600 dark:text-amber-400">{FAQ_ICONS[i]}</span>
-              <span
-                className="text-amber-700 dark:text-amber-300"
-                style={{ fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap' }}
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+              <h3 className="mb-3 font-bold">{copy.newTicket}</h3>
+              <label className="mb-3 block">
+                <span className="mb-1 block text-sm font-semibold">{copy.subject}</span>
+                <input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  maxLength={160}
+                  className="min-h-11 w-full rounded-xl border border-slate-300 bg-transparent px-3"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold">{copy.describe}</span>
+                <textarea
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  rows={4}
+                  maxLength={4000}
+                  className="w-full rounded-xl border border-slate-300 bg-transparent p-3 text-base"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void createTicket()}
+                disabled={busy || !subject.trim() || !message.trim()}
+                className="mt-3 min-h-11 rounded-xl bg-amber-500 px-4 font-bold text-white disabled:opacity-50"
               >
-                {lang === 'ar' ? faq.ar : faq.en}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
+                {copy.create}
+              </button>
+            </section>
 
-      {/* Messages */}
-      <div
-        className="flex-1 overflow-y-auto px-4 py-4"
-        style={{
-          scrollbarWidth: 'none',
-          background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
-        }}
-      >
-        {/* Date separator */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-          <span
-            className="text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-800 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700"
-            style={{ fontSize: '11px' }}
-          >
-            {L.today}
-          </span>
-          <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-        </div>
-
-        {messages.map((msg) => {
-          const isUser = msg.from === 'user';
-          return (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`flex items-end gap-2 mb-3 ${isUser ? 'justify-end' : 'justify-start'}`}
-            >
-              {!isUser && (
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mb-1 bg-gradient-to-br from-amber-400 to-orange-500">
-                  <span className="text-white" style={{ fontSize: '10px', fontWeight: 800 }}>
-                    FN
-                  </span>
+            <section>
+              <h3 className="mb-2 font-bold">{copy.tickets}</h3>
+              {loading ? (
+                <p role="status" className="text-sm text-slate-500">
+                  {ar ? 'جارٍ التحميل…' : 'Loading…'}
+                </p>
+              ) : tickets.length === 0 ? (
+                <p className="text-sm text-slate-500">{copy.empty}</p>
+              ) : (
+                <div className="space-y-2">
+                  {tickets.map((ticket) => (
+                    <button
+                      key={ticket.id}
+                      type="button"
+                      onClick={() =>
+                        void loadDetail(ticket.id).catch(() => setError(copy.loadFail))
+                      }
+                      className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white p-4 text-start dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <span className="block font-semibold">{ticket.subject}</span>
+                      <span className="text-xs text-slate-500">
+                        {ticket.status === 'OPEN' ? copy.open : copy.closed}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               )}
-              <div
-                className={`max-w-[78%] flex flex-col gap-0.5 ${isUser ? 'items-end' : 'items-start'}`}
-              >
-                <div
-                  className={`px-4 py-2.5 ${
-                    isUser
-                      ? 'bg-amber-500 text-white rounded-[20px] rounded-br-[6px]'
-                      : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-[20px] rounded-bl-[6px] shadow-sm'
-                  }`}
-                  style={{ fontSize: '13px', lineHeight: '1.5' }}
-                >
-                  {msg.text}
-                </div>
-                <div className={`flex items-center gap-1 px-1 ${isUser ? 'flex-row-reverse' : ''}`}>
-                  <span className="text-slate-400" style={{ fontSize: '10px' }}>
-                    {msg.time}
-                  </span>
-                  {isUser &&
-                    (msg.read ? (
-                      <CheckCheck size={12} className="text-amber-500" />
-                    ) : (
-                      <Check size={12} className="text-slate-400" />
-                    ))}
-                </div>
-              </div>
-            </motion.div>
-          );
-        })}
-
-        {/* Typing indicator */}
-        {typing && (
-          <div className="flex items-end gap-2 mb-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center mb-1">
-              <span className="text-white" style={{ fontSize: '10px', fontWeight: 800 }}>
-                FN
-              </span>
-            </div>
-            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-[20px] rounded-bl-[6px] shadow-sm px-4 py-3 flex items-center gap-1">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="w-2 h-2 rounded-full bg-slate-300 animate-bounce"
-                  style={{ animationDelay: `${i * 0.15}s` }}
-                />
-              ))}
-            </div>
+            </section>
           </div>
         )}
-
-        {/* Rate support */}
-        {messages.length > 4 && !rated && (
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3 mb-3">
-            <p
-              className="text-slate-600 dark:text-slate-300 text-center mb-2"
-              style={{ fontSize: '12px' }}
-            >
-              {L.rateChat}
-            </p>
-            <div className="flex justify-center gap-2">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => {
-                    setRating(s);
-                    setRated(true);
-                  }}
-                  className="active:scale-90 transition-all"
-                >
-                  <svg
-                    width="28"
-                    height="28"
-                    viewBox="0 0 24 24"
-                    fill={s <= rating ? '#F59E0B' : 'none'}
-                    stroke={s <= rating ? '#F59E0B' : '#CBD5E1'}
-                    strokeWidth="1.5"
-                  >
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                  </svg>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {rated && (
-          <div className="flex items-center justify-center gap-2 bg-green-50 dark:bg-green-900/20 rounded-2xl py-3 mb-3 border border-green-100 dark:border-green-800">
-            <span
-              className="text-green-600 dark:text-green-400"
-              style={{ fontSize: '13px', fontWeight: 600 }}
-            >
-              {L.thankRate}
-            </span>
-          </div>
-        )}
-
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Input bar */}
-      <div className="flex-shrink-0 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-        <div className="flex items-end gap-3">
-          <div className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-2xl px-4 py-2.5 flex items-end gap-2 min-h-[44px]">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage(input);
-                }
-              }}
-              placeholder={L.placeholder}
-              rows={1}
-              className="flex-1 bg-transparent outline-none text-slate-700 dark:text-slate-200 placeholder-slate-400 resize-none"
-              style={{ fontSize: '14px', lineHeight: '1.5', maxHeight: '100px' }}
-            />
-          </div>
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim()}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 active:scale-90 transition-all ${
-              input.trim()
-                ? 'bg-amber-500 shadow-md shadow-amber-200'
-                : 'bg-slate-200 dark:bg-slate-600'
-            }`}
-          >
-            <Send
-              size={16}
-              className={input.trim() ? 'text-white' : 'text-slate-400'}
-              style={dir === 'rtl' ? { transform: 'scaleX(-1)' } : undefined}
-            />
-          </button>
-        </div>
-      </div>
-    </motion.div>
+      </main>
+    </div>
   );
 }
