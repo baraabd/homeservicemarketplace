@@ -12,6 +12,7 @@ import {
 import type { MessageSummary } from '@homeservicemarketplace/contracts';
 import { useLang } from '../../i18n/LanguageContext';
 import { useMarkConversationRead, useMessages, useSendMessage } from '../../hooks/seeker/useChat';
+import { keyForSend, type SendAttempt } from '../../../lib/chat/send-attempt';
 
 // ─── Render shape ─────────────────────────────────────────────────────────────
 // Slice 3.3 wires ChatScreen to GET /v1/me/conversations/:id/messages.
@@ -76,13 +77,15 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
   const { t, dir, lang } = useLang();
   const langKey: 'en' | 'ar' = lang === 'ar' ? 'ar' : 'en';
 
-  const messagesQuery = useMessages(conversationId);
+  const messagesQuery = useMessages(conversationId, { live: isVisible });
   const sendMut = useSendMessage(conversationId);
   const markReadMut = useMarkConversationRead(conversationId);
 
   const [pending, setPending] = useState<RenderMessage[]>([]);
   const [input, setInput] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
+  // R12 — the last send that has not been acknowledged, with its key.
+  const unacknowledged = useRef<SendAttempt | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Server messages → render shape. Pending optimistic rows are
@@ -92,13 +95,9 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
   // triggers a refetch).
   const messages: RenderMessage[] = useMemo(() => {
     const rows = (messagesQuery.data?.items ?? []).map((m) => apiToRender(m, langKey));
-    const pendingFiltered = pending.filter(
-      // Drop pending rows whose body now matches a confirmed server
-      // row from the same sender — defensive in case the server
-      // response races the optimistic render.
-      (p) => !rows.some((r) => r.sender === p.sender && r.text === p.text),
-    );
-    return [...rows, ...pendingFiltered];
+    // R12 — pending rows are removed by their own outcome, never because some
+    // server row has the same text: two identical messages are two messages.
+    return [...rows, ...pending];
   }, [messagesQuery.data, pending, langKey]);
 
   const isInitialLoading = messagesQuery.isLoading && !messagesQuery.data;
@@ -130,6 +129,9 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
     // invalidation that the mutation's onSuccess fires. If the send
     // fails, we drop the pending row + surface a safe error.
     const pendingId = `pending-${Date.now()}`;
+    // The same text sent again after a failure is the same logical message.
+    const idempotencyKey = keyForSend(unacknowledged.current, conversationId, trimmed);
+    unacknowledged.current = { conversationId, body: trimmed, idempotencyKey };
     const now = new Date();
     const timeStr = now.toLocaleTimeString(langKey === 'ar' ? 'ar-SA' : 'en-US', {
       hour: '2-digit',
@@ -141,35 +143,41 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
     ]);
     setInput('');
 
-    sendMut.mutate(trimmed, {
-      onSuccess: () => {
-        // Drop the optimistic row — the refetch will surface the
-        // canonical server row.
-        setPending((prev) => prev.filter((r) => r.id !== pendingId));
+    sendMut.mutate(
+      { body: trimmed, idempotencyKey },
+      {
+        onSuccess: () => {
+          // The acknowledged row is in the cache now (useSendMessage).
+          if (unacknowledged.current?.idempotencyKey === idempotencyKey)
+            unacknowledged.current = null;
+          setPending((prev) => prev.filter((r) => r.id !== pendingId));
+        },
+        onError: (err) => {
+          setPending((prev) => prev.filter((r) => r.id !== pendingId));
+          const status =
+            (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
+          if (status === 400) {
+            setSendError(
+              langKey === 'ar' ? 'لا يمكن إرسال رسالة فارغة.' : 'Empty message cannot be sent.',
+            );
+          } else if (status === 404) {
+            setSendError(
+              langKey === 'ar' ? 'لم يتم العثور على المحادثة.' : 'Conversation not found.',
+            );
+          } else {
+            setSendError(
+              langKey === 'ar'
+                ? 'تعذر إرسال الرسالة. حاول مرة أخرى.'
+                : "Couldn't send message. Please try again.",
+            );
+          }
+          // Restore the input so the user can retry without retyping. Sending
+          // it unchanged reuses the key, so a send that was stored but whose
+          // reply was lost is not stored twice.
+          setInput(trimmed);
+        },
       },
-      onError: (err) => {
-        setPending((prev) => prev.filter((r) => r.id !== pendingId));
-        const status =
-          (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
-        if (status === 400) {
-          setSendError(
-            langKey === 'ar' ? 'لا يمكن إرسال رسالة فارغة.' : 'Empty message cannot be sent.',
-          );
-        } else if (status === 404) {
-          setSendError(
-            langKey === 'ar' ? 'لم يتم العثور على المحادثة.' : 'Conversation not found.',
-          );
-        } else {
-          setSendError(
-            langKey === 'ar'
-              ? 'تعذر إرسال الرسالة. حاول مرة أخرى.'
-              : "Couldn't send message. Please try again.",
-          );
-        }
-        // Restore the input so the user can retry without retyping.
-        setInput(trimmed);
-      },
-    });
+    );
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
