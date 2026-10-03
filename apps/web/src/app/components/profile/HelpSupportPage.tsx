@@ -10,7 +10,7 @@ import type {
 import { api } from '../../../lib/api';
 import { useLang } from '../../i18n/LanguageContext';
 
-const FAQS = [
+export const HELP_FAQS = [
   {
     en: 'How do I cancel a booking?',
     ar: 'كيف أُلغي الحجز؟',
@@ -252,7 +252,7 @@ export function HelpSupportPage({ onBack }: { onBack: () => void }) {
             <section>
               <h3 className="mb-2 font-bold text-slate-900 dark:text-white">{copy.faq}</h3>
               <div className="space-y-2">
-                {FAQS.map((faq, index) => (
+                {HELP_FAQS.map((faq, index) => (
                   <div
                     key={faq.en}
                     className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800"
