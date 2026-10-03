@@ -17,6 +17,7 @@ import { useLang } from '../../i18n/LanguageContext';
 import { TextField } from '../ds/TextField';
 import { Button } from '../ds/Button';
 import { useProfile, useUpdateProfile } from '../../hooks/seeker/useProfile';
+import { useAuth } from '../../../lib/auth-provider';
 import {
   useApplyForCategory,
   useProviderProfile,
@@ -63,6 +64,11 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   const { lang, dir } = useLang();
   const profileQuery = useProfile();
   const updateMut = useUpdateProfile();
+  // Who is signed in. An edit is recorded against this account, so the first
+  // profile answer can tell "this person's own profile, still loading" from
+  // "someone else's profile" (R05 recovery; see the seeding effect).
+  const { user: sessionUser } = useAuth();
+  const sessionEmail = sessionUser?.email ?? null;
 
   // Provider-only fields are gated on APP CONTEXT, not on role. A
   // dual-role user opening /home → Edit Profile is in the Seeker
@@ -117,6 +123,9 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   const acknowledgedAt = useRef(0);
   // Whose profile the form was last seeded for.
   const seededFor = useRef<string | null>(null);
+  // The signed-in account that made the edits in `edited`; null when an edit
+  // was made before the session was known.
+  const editedBy = useRef<string | null>(null);
   // Bumped after a successful save so the form follows the server again.
   const [seedGeneration, setSeedGeneration] = useState(0);
   // Provider service-area coordinates. Either both numbers or both
@@ -184,10 +193,28 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   useEffect(() => {
     if (!profile) return;
     // Another account's edits are not this account's edits.
+    //
+    // The FIRST answer is not a switch of account. The form is editable while
+    // it is still loading, and treating the first answer as a switch cleared
+    // what the person had already typed, then overwrote it with the stored
+    // value (R05 recovery: a typed name was saved back as the registration
+    // name). Edits survive the first answer only when the account that made
+    // them, the account signed in now and the profile's own account are the
+    // same. An edit made before the session was known, or by someone else,
+    // is still cleared.
     if (seededFor.current !== profile.email) {
+      const firstAnswer = seededFor.current === null;
+      const ownEditsStillLoading =
+        firstAnswer &&
+        editedBy.current !== null &&
+        editedBy.current === profile.email &&
+        sessionEmail === profile.email;
       seededFor.current = profile.email;
-      edited.current = { name: false, phone: false, city: false, bio: false };
-      acknowledgedAt.current = 0;
+      if (!ownEditsStillLoading) {
+        edited.current = { name: false, phone: false, city: false, bio: false };
+        editedBy.current = null;
+        acknowledgedAt.current = 0;
+      }
     }
     const stamp = Date.parse(profile.updatedAt);
     if (Number.isFinite(stamp) && stamp < acknowledgedAt.current) return;
@@ -252,6 +279,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   // re-captures coords for the new city.
   const handleCityChange = (next: string): void => {
     edited.current.city = true;
+    editedBy.current = sessionEmail;
     setCity(next);
     if (serviceAreaLat !== null || serviceAreaLng !== null) {
       setServiceAreaLat(null);
@@ -291,6 +319,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
       // the backend pin is populated even when reverse-geocoding
       // couldn't resolve a city name.
       edited.current.city = true;
+      editedBy.current = sessionEmail;
       setServiceAreaLat(outcome.lat);
       setServiceAreaLng(outcome.lng);
       if (outcome.status === 'ok' && outcome.city) {
@@ -525,6 +554,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
             value={name}
             onChange={(next) => {
               edited.current.name = true;
+              editedBy.current = sessionEmail;
               setName(next);
             }}
             leadingIcon={<User size={16} />}
@@ -535,6 +565,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
             value={phone}
             onChange={(next) => {
               edited.current.phone = true;
+              editedBy.current = sessionEmail;
               setPhone(next);
             }}
             leadingIcon={<Phone size={16} />}
@@ -674,6 +705,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
               value={bio}
               onChange={(e) => {
                 edited.current.bio = true;
+                editedBy.current = sessionEmail;
                 setBio(e.target.value);
               }}
               placeholder={L.bioHint}
