@@ -107,6 +107,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -f .github/workflows/baseline-recovery-bootstrap.yml
+          rm -f audit-full.json audit-production.json
           git status --short
           git diff --check
           node <<'NODE'
@@ -118,9 +119,8 @@ jobs:
             '.github/workflows/security-jest30-candidate.yml',
             '.github/workflows/baseline-recovery-bootstrap.yml',
           ]);
-          const changed = execFileSync('git', ['status', '--porcelain'], {encoding:'utf8'})
-            .trim().split('\n').filter(Boolean)
-            .map((line) => line.slice(3));
+          const changed = execFileSync('git', ['diff', '--name-only', 'HEAD'], {encoding:'utf8'})
+            .trim().split('\n').filter(Boolean);
           for (const file of changed) {
             if (!allowed.has(file)) throw new Error('Unexpected tracked change: ' + file);
           }
