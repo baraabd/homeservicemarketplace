@@ -41,15 +41,34 @@ function makeSocket(token: string | undefined): FakeSocket {
   return s;
 }
 
+// A socket as `fetchSockets` returns it (possibly on another instance).
+interface FakeRemoteSocket {
+  data: { providerConversationRooms?: string[] };
+  left: string[];
+  leave(room: string): void;
+}
+function remoteSocket(providerConversationRooms: string[]): FakeRemoteSocket {
+  return {
+    data: { providerConversationRooms },
+    left: [],
+    leave(room) {
+      this.left.push(room);
+    },
+  };
+}
+
 // Fake Socket.IO Server that records the adapter-aware room operations the
 // gateway performs on a revocation. `in(room)` returns the operator object
 // exactly as socket.io does, so the call shape is pinned, not just the effect.
-function makeServer() {
+function makeServer(members: Record<string, FakeRemoteSocket[]> = {}) {
   const disconnected: Array<{ room: string; close: boolean }> = [];
   const left: string[] = [];
   const server = {
     in(room: string) {
       return {
+        async fetchSockets() {
+          return members[room] ?? [];
+        },
         async disconnectSockets(close: boolean) {
           disconnected.push({ room, close });
         },
@@ -71,6 +90,7 @@ interface Mocks {
   participantGate: {
     findProviderProfileId: jest.Mock;
     userIsParticipant: jest.Mock;
+    mayReceiveConversation: jest.Mock;
     currentJtiForSession: jest.Mock;
   };
   sessionValidation: { assertSessionActive: jest.Mock };
@@ -89,6 +109,7 @@ function makeMocks(over: Partial<Mocks> = {}): Mocks {
     participantGate: {
       findProviderProfileId: jest.fn().mockResolvedValue(null),
       userIsParticipant: jest.fn().mockResolvedValue(false),
+      mayReceiveConversation: jest.fn().mockResolvedValue({ allowed: false }),
       currentJtiForSession: jest.fn().mockResolvedValue('jti-1'),
     },
     // Default: the session is live. Individual tests make it reject.
@@ -463,6 +484,31 @@ describe('RealtimeGateway', () => {
       },
     );
 
+    it('losing provider status also leaves the conversations joined as the provider, not those joined as a customer', async () => {
+      const m = makeMocks();
+      const gw = makeGateway(m);
+      const asProvider = remoteSocket(['conversation:c-7', 'conversation:c-8']);
+      const { server, disconnected } = makeServer({
+        'provider-conversations:prof-9': [asProvider],
+      });
+      gw.afterInit(server as never);
+      m.securityEvents.emitProviderStatusChanged({
+        userId: 'u-1',
+        providerProfileId: 'prof-9',
+        status: 'SUSPENDED',
+      });
+      await flush();
+      expect(asProvider.left).toEqual([
+        'conversation:c-7',
+        'conversation:c-8',
+        'provider-conversations:prof-9',
+      ]);
+      // A conversation joined as a customer was never recorded here, so it is
+      // not left; and the session is not killed.
+      expect(asProvider.left).not.toContain('conversation:c-1');
+      expect(disconnected).toEqual([]);
+    });
+
     it('promotion to ACTIVE revokes nothing', async () => {
       const { m, disconnected, left } = bootWithServer();
       m.securityEvents.emitProviderStatusChanged({
@@ -505,7 +551,7 @@ describe('RealtimeGateway', () => {
 
     it('joins conversation:{id} when the participant gate passes', async () => {
       const m = makeMocks();
-      m.participantGate.userIsParticipant.mockResolvedValue(true);
+      m.participantGate.mayReceiveConversation.mockResolvedValue({ allowed: true, side: 'SEEKER' });
       const { gw, sock } = await connectedSocket(m);
       const res = await gw.handleSubscribeConversation(sock as never, { conversationId: 'c-42' });
       expect(res).toEqual({ ok: true, room: 'conversation:c-42' });
@@ -514,7 +560,7 @@ describe('RealtimeGateway', () => {
 
     it('refuses with FORBIDDEN when the user is not a participant', async () => {
       const m = makeMocks();
-      m.participantGate.userIsParticipant.mockResolvedValue(false);
+      m.participantGate.mayReceiveConversation.mockResolvedValue({ allowed: false });
       const { gw, sock } = await connectedSocket(m);
       const res = await gw.handleSubscribeConversation(sock as never, { conversationId: 'c-99' });
       expect(res).toEqual({ ok: false, code: 'FORBIDDEN' });
@@ -526,14 +572,14 @@ describe('RealtimeGateway', () => {
       const { gw, sock } = await connectedSocket(m);
       const res = await gw.handleSubscribeConversation(sock as never, { conversationId: '' });
       expect(res).toEqual({ ok: false, code: 'VALIDATION_ERROR' });
-      expect(m.participantGate.userIsParticipant).not.toHaveBeenCalled();
+      expect(m.participantGate.mayReceiveConversation).not.toHaveBeenCalled();
     });
 
     // D-4 — a security-sensitive client event revalidates the session, so a
     // socket whose eviction was missed still cannot subscribe to anything new.
     it('revalidates the session and DISCONNECTS when authorization was revoked after connect', async () => {
       const m = makeMocks();
-      m.participantGate.userIsParticipant.mockResolvedValue(true);
+      m.participantGate.mayReceiveConversation.mockResolvedValue({ allowed: true, side: 'SEEKER' });
       const { gw, sock } = await connectedSocket(m);
 
       // Session dies AFTER the handshake succeeded.
@@ -544,7 +590,36 @@ describe('RealtimeGateway', () => {
       expect(sock.disconnected).toBe(true);
       expect(sock.joined).not.toContain('conversation:c-42');
       // The participant gate must not even be consulted for a dead session.
-      expect(m.participantGate.userIsParticipant).not.toHaveBeenCalled();
+      expect(m.participantGate.mayReceiveConversation).not.toHaveBeenCalled();
+    });
+
+    // R12 — a provider-side participant is held to the REST provider rule.
+    it('a provider-side subscription is recorded so losing provider access can find it', async () => {
+      const m = makeMocks();
+      m.participantGate.mayReceiveConversation.mockResolvedValue({
+        allowed: true,
+        side: 'PROVIDER',
+        providerProfileId: 'prof-9',
+      });
+      const { gw, sock } = await connectedSocket(m);
+      const res = await gw.handleSubscribeConversation(sock as never, { conversationId: 'c-7' });
+      expect(res).toEqual({ ok: true, room: 'conversation:c-7' });
+      expect(sock.joined).toEqual(
+        expect.arrayContaining(['conversation:c-7', 'provider-conversations:prof-9']),
+      );
+      expect(
+        (sock.data as { providerConversationRooms?: string[] }).providerConversationRooms,
+      ).toEqual(['conversation:c-7']);
+    });
+
+    it('a provider refused by the gate (no booking access) joins nothing', async () => {
+      const m = makeMocks();
+      m.participantGate.mayReceiveConversation.mockResolvedValue({ allowed: false });
+      const { gw, sock } = await connectedSocket(m);
+      const res = await gw.handleSubscribeConversation(sock as never, { conversationId: 'c-7' });
+      expect(res).toEqual({ ok: false, code: 'FORBIDDEN' });
+      expect(sock.joined.filter((r) => r.startsWith('conversation:'))).toEqual([]);
+      expect(sock.joined.filter((r) => r.startsWith('provider-conversations:'))).toEqual([]);
     });
 
     it('rejects a subscribe from a socket with no established identity', async () => {
