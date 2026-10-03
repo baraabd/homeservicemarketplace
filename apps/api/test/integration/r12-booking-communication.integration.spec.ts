@@ -96,6 +96,23 @@ d('R12 - booking conversations (real HTTP, real Postgres)', () => {
     const req = request(http).post(`${base}/${conversationId}/messages`).send({ body });
     return user ? req.set('x-test-user', user) : req;
   };
+  const sendKeyed = (
+    base: string,
+    conversationId: string,
+    body: string,
+    idempotencyKey: string,
+    user?: string,
+  ) => {
+    const req = request(http)
+      .post(`${base}/${conversationId}/messages`)
+      .send({ body, idempotencyKey });
+    return user ? req.set('x-test-user', user) : req;
+  };
+  const storedMessages = (conversationId: string) =>
+    prisma.message.findMany({
+      where: { conversationId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
   const messagesOf = (base: string, conversationId: string) =>
     request(http).get(`${base}/${conversationId}/messages`);
 
@@ -147,6 +164,8 @@ d('R12 - booking conversations (real HTTP, real Postgres)', () => {
       `DROP TRIGGER IF EXISTS r12_fail_participant ON "ConversationParticipant"`,
     );
     await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS r12_fail_participant()`);
+    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS r12_fail_message ON "Message"`);
+    await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS r12_fail_message()`);
     await prisma.conversation.deleteMany({ where: { bookingId: { startsWith: P } } });
     await prisma.booking.deleteMany({ where: { id: { startsWith: P } } });
     await prisma.bid.deleteMany({ where: { id: { startsWith: P } } });
@@ -583,6 +602,263 @@ d('R12 - booking conversations (real HTTP, real Postgres)', () => {
       for (const secret of [SEEKER_PHONE, PROVIDER_PHONE, '@r12com.test', 'Fixture']) {
         expect(wire).not.toContain(secret);
       }
+    });
+  });
+
+  // ── sending the same message again (R12 recovery) ─────────────────────────
+  //
+  // A reply can be lost after the server stored the message. The client then
+  // sends the same logical message again with the same idempotency key. One
+  // message must exist, and nothing about the key may widen access.
+  describe('a retried send', () => {
+    const KEY = 'r12-key-0000000000000001';
+
+    it('stores one message when the same send is repeated, and says it was a replay', async () => {
+      const id = await booking();
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      const first = await sendKeyed(SEEKER_BASE, conv, 'Is ten still good?', KEY);
+      const again = await sendKeyed(SEEKER_BASE, conv, 'Is ten still good?', KEY);
+      expect(first.status).toBe(201);
+      expect(first.body.replayed).toBeUndefined();
+      expect(again.status).toBe(201);
+      expect(again.body.replayed).toBe(true);
+      expect(again.body.message.id).toBe(first.body.message.id);
+      const rows = await storedMessages(conv);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ senderUserId: SEEKER, idempotencyKey: KEY });
+      // The other side sees one contribution.
+      as(PROVIDER_USER);
+      const seen = await messagesOf(PROVIDER_BASE, conv);
+      expect(seen.body.items).toHaveLength(1);
+    });
+
+    it('eight simultaneous copies of one send store one message', async () => {
+      const id = await booking();
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      const answers = await Promise.all(
+        Array.from({ length: 8 }, () => sendKeyed(SEEKER_BASE, conv, 'Once only', KEY, SEEKER)),
+      );
+      expect(answers.map((r) => r.status)).toEqual(Array(8).fill(201));
+      expect(new Set(answers.map((r) => r.body.message.id)).size).toBe(1);
+      expect(answers.filter((r) => r.body.replayed !== true)).toHaveLength(1);
+      expect(await storedMessages(conv)).toHaveLength(1);
+    });
+
+    it('refuses the same key with a different message and keeps the first', async () => {
+      const id = await booking();
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      await sendKeyed(SEEKER_BASE, conv, 'The original', KEY);
+      const other = await sendKeyed(SEEKER_BASE, conv, 'Something else', KEY);
+      expect(other.status).toBe(409);
+      expect(other.body.error?.details?.reason).toBe('IDEMPOTENCY_KEY_REUSED');
+      const rows = await storedMessages(conv);
+      expect(rows.map((r: any) => r.body)).toEqual(['The original']);
+    });
+
+    it('two intended messages with the same text stay two messages', async () => {
+      const id = await booking();
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      await sendKeyed(SEEKER_BASE, conv, 'ok', 'r12-key-0000000000000010');
+      await sendKeyed(SEEKER_BASE, conv, 'ok', 'r12-key-0000000000000011');
+      await send(SEEKER_BASE, conv, 'ok');
+      await send(SEEKER_BASE, conv, 'ok');
+      expect((await storedMessages(conv)).map((r: any) => r.body)).toEqual([
+        'ok',
+        'ok',
+        'ok',
+        'ok',
+      ]);
+    });
+
+    it('a key belongs to its sender: the other participant using it gets nothing of the first', async () => {
+      const id = await booking();
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      await sendKeyed(SEEKER_BASE, conv, 'From the seeker', KEY);
+      as(PROVIDER_USER);
+      const providers = await sendKeyed(PROVIDER_BASE, conv, 'From the provider', KEY);
+      expect(providers.status).toBe(201);
+      expect(providers.body.replayed).toBeUndefined();
+      expect(providers.body.message.body).toBe('From the provider');
+      expect((await storedMessages(conv)).map((r: any) => [r.senderUserId, r.body])).toEqual([
+        [SEEKER, 'From the seeker'],
+        [PROVIDER_USER, 'From the provider'],
+      ]);
+    });
+
+    it('a key opens no door: a stranger with a known key is not found', async () => {
+      const id = await booking();
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      await sendKeyed(SEEKER_BASE, conv, 'Private', KEY);
+      as(OTHER_SEEKER);
+      const res = await sendKeyed(SEEKER_BASE, conv, 'Private', KEY);
+      expect(res.status).toBe(404);
+      expect(JSON.stringify(res.body)).not.toContain('Private');
+      // The provider route with a fresh key does not let the seeker in either.
+      as(SEEKER);
+      const sideways = await sendKeyed(PROVIDER_BASE, conv, 'x', 'r12-key-0000000000000099');
+      expect(sideways.status).toBe(404);
+      expect(await storedMessages(conv)).toHaveLength(1);
+    });
+
+    it.each([
+      ['too short', 'short'],
+      ['unsafe characters', 'r12-key-0000000000/../'],
+      ['too long', 'k'.repeat(129)],
+    ])('refuses a malformed key (%s)', async (_label, key) => {
+      const id = await booking();
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      expect((await sendKeyed(SEEKER_BASE, conv, 'hi', key)).status).toBe(400);
+      expect(await storedMessages(conv)).toHaveLength(0);
+    });
+
+    it('a failure while storing is reported, not turned into a replay', async () => {
+      const id = await booking();
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      await prisma.$executeRawUnsafe(`
+        CREATE FUNCTION r12_fail_message() RETURNS trigger AS $$
+        BEGIN
+          IF NEW."conversationId" = '${conv}' THEN
+            RAISE EXCEPTION 'r12 injected message failure';
+          END IF;
+          RETURN NEW;
+        END $$ LANGUAGE plpgsql`);
+      await prisma.$executeRawUnsafe(`
+        CREATE TRIGGER r12_fail_message BEFORE INSERT ON "Message"
+        FOR EACH ROW EXECUTE FUNCTION r12_fail_message()`);
+      const res = await sendKeyed(SEEKER_BASE, conv, 'Will fail', KEY);
+      expect(res.status).toBe(500);
+      expect(JSON.stringify(res.body)).not.toContain('r12 injected');
+      expect(await storedMessages(conv)).toHaveLength(0);
+      await prisma.$executeRawUnsafe(`DROP TRIGGER r12_fail_message ON "Message"`);
+      // The same send, retried once storage works, is stored once.
+      const retried = await sendKeyed(SEEKER_BASE, conv, 'Will fail', KEY);
+      expect(retried.status).toBe(201);
+      expect(retried.body.replayed).toBeUndefined();
+      expect(await storedMessages(conv)).toHaveLength(1);
+    });
+  });
+
+  // ── the realtime room (R12) ───────────────────────────────────────────────
+  //
+  // REALTIME_SOCKET_IO is off by default and in every deployed configuration;
+  // only CI's production-image boot turns it on. When on, joining a
+  // conversation room must give no more than REST gives: the real gate, the
+  // real capability service (default flags) and the real gateway handler,
+  // against real rows. Mutations never go through the socket.
+  describe('the realtime conversation room', () => {
+    let gate: any;
+    let gateway: any;
+
+    beforeAll(() => {
+      const prismaSvc = { client: prisma, isReady: () => true };
+      const {
+        ConversationParticipantRepository,
+      } = require('../../src/infrastructure/persistence/conversations/conversation-participant.repository');
+      const {
+        ProviderProfileRepository,
+      } = require('../../src/infrastructure/persistence/bids/provider-profile.repository');
+      const {
+        ProviderCapabilityService,
+      } = require('../../src/modules/provider/capability/provider-capability.service');
+      const {
+        ConversationParticipantGate,
+      } = require('../../src/modules/realtime/conversation-participant.gate');
+      const { RealtimeGateway } = require('../../src/modules/realtime/realtime.gateway');
+      const { SecurityEventsBus } = require('../../src/shared/security-events/security-events.bus');
+      // The environment's defaults: VERIFICATION_ENFORCED and
+      // WORK_ACCESS_ENFORCED are off (env.schema.ts).
+      const config = { get: () => undefined };
+      gate = new ConversationParticipantGate(
+        new ProviderProfileRepository(prismaSvc),
+        new ConversationParticipantRepository(prismaSvc),
+        { findByIdWithUserStanding: async () => ({ revokedAt: null, currentJti: 'jti' }) },
+        new ProviderCapabilityService(prismaSvc, config),
+      );
+      gateway = new RealtimeGateway(
+        {} as never,
+        { get: () => true } as never,
+        gate,
+        { assertSessionActive: async () => undefined } as never,
+        {} as never,
+        new SecurityEventsBus(),
+      );
+    });
+
+    const socketOf = (userId: string) => {
+      const joined: string[] = [];
+      return {
+        joined,
+        data: { userId, sessionId: `${userId}-session`, joinedRooms: [] as string[] },
+        join: async (room: string) => {
+          joined.push(room);
+        },
+        disconnect: () => undefined,
+      };
+    };
+    const subscribe = async (userId: string, conversationId: string) => {
+      const sock = socketOf(userId);
+      const res = await gateway.handleSubscribeConversation(sock, { conversationId });
+      return { res, sock };
+    };
+    const setStanding = (standing: 'GOOD' | 'SUSPENDED') =>
+      prisma.providerProfile.update({ where: { id: PROVIDER }, data: { standingState: standing } });
+    const setLegacyStatus = (status: 'ACTIVE' | 'SUSPENDED') =>
+      prisma.providerProfile.update({ where: { id: PROVIDER }, data: { status } });
+
+    afterEach(async () => {
+      await setStanding('GOOD');
+      await setLegacyStatus('ACTIVE');
+    });
+
+    it('both participants of a booking may share its room', async () => {
+      const id = await booking();
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      const seeker = await subscribe(SEEKER, conv);
+      const provider = await subscribe(PROVIDER_USER, conv);
+      expect(seeker.res).toEqual({ ok: true, room: `conversation:${conv}` });
+      expect(provider.res).toEqual({ ok: true, room: `conversation:${conv}` });
+      expect(provider.sock.joined).toContain(`provider-conversations:${PROVIDER}`);
+      expect(seeker.sock.joined).not.toContain(`provider-conversations:${PROVIDER}`);
+    });
+
+    it('a stranger may not join, whoever they are', async () => {
+      const id = await booking();
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      for (const user of [OTHER_SEEKER, OTHER_PROVIDER_USER]) {
+        const { res, sock } = await subscribe(user, conv);
+        expect(res).toEqual({ ok: false, code: 'FORBIDDEN' });
+        expect(sock.joined).toEqual([]);
+      }
+    });
+
+    it.each([
+      ['a suspended standing', () => setStanding('SUSPENDED')],
+      ['a suspended provider status', () => setLegacyStatus('SUSPENDED')],
+    ])('after %s the provider may not join, exactly as REST refuses', async (_label, suspend) => {
+      const id = await booking();
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      // Joined before access was lost: allowed.
+      expect((await subscribe(PROVIDER_USER, conv)).res.ok).toBe(true);
+      await suspend();
+      // Joining (or re-joining after a reconnect) after the loss: refused.
+      const after = await subscribe(PROVIDER_USER, conv);
+      expect(after.res).toEqual({ ok: false, code: 'FORBIDDEN' });
+      expect(after.sock.joined).toEqual([]);
+      // The seeker of the same booking is unaffected.
+      expect((await subscribe(SEEKER, conv)).res.ok).toBe(true);
+    });
+
+    it('a suspended provider who is also a customer still receives their own customer conversations', async () => {
+      const asCustomer = await booking('SCHEDULED', {
+        seeker: PROVIDER_USER,
+        provider: OTHER_PROVIDER,
+      });
+      as(PROVIDER_USER);
+      const conv = (await open(SEEKER_BASE, asCustomer)).body.conversation.id;
+      await setStanding('SUSPENDED');
+      const { res, sock } = await subscribe(PROVIDER_USER, conv);
+      expect(res).toEqual({ ok: true, room: `conversation:${conv}` });
+      expect(sock.joined.filter((r) => r.startsWith('provider-conversations:'))).toEqual([]);
     });
   });
 });
