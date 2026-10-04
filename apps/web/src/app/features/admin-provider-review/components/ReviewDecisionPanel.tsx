@@ -10,6 +10,11 @@ import { approveProviderReview, requestProviderReviewChanges, requestStatus } fr
 import { BLOCKER_LABELS, REVIEW_COPY, TASK_LABELS, type ReviewLanguage } from '../copy';
 import { ReviewBadge, ReviewBanner, StatusBadge } from './ReviewPrimitives';
 import { formatReviewDate } from '../format-review-date';
+import {
+  EVIDENCE_CONFLICT_COPY,
+  evidenceConflictReason,
+  type EvidenceConflictReason,
+} from '../evidence/evidence-review-copy';
 import { ReviewDialog } from './ReviewDialog';
 import { reviewCorrectionFieldLabel } from '../../provider-onboarding-v2/copy/review-correction-fields';
 import {
@@ -54,6 +59,7 @@ export function ReviewDecisionPanel({
     submissionId: string;
   } | null>(null);
   const [error, setError] = useState<number | null>(null);
+  const [conflictReason, setConflictReason] = useState<EvidenceConflictReason | null>(null);
   const [invalid, setInvalid] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -148,6 +154,7 @@ export function ReviewDecisionPanel({
       attempt.current = null;
     } catch (failure) {
       setError(requestStatus(failure) ?? 500);
+      setConflictReason(evidenceConflictReason(failure));
     }
   }
   const capabilityLabels: Record<string, string> = {
@@ -462,7 +469,13 @@ export function ReviewDecisionPanel({
         {error && (
           <div data-testid={error === 409 ? 'review-conflict' : 'review-command-error'}>
             <ReviewBanner tone="danger" role="alert">
-              {error === 409 ? t.conflict : error === 403 ? t.noActions : t.mutationFailed}
+              {error === 409
+                ? conflictReason
+                  ? EVIDENCE_CONFLICT_COPY[lang][conflictReason]
+                  : t.conflict
+                : error === 403
+                  ? t.noActions
+                  : t.mutationFailed}
             </ReviewBanner>
           </div>
         )}

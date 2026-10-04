@@ -37,6 +37,7 @@ configured, or that the user's Windows runtime is using this exact commit.
 | Image decoding              | Receiving an allowed MIME blob enabled decisions before the browser decoded the image.                                                        | Enable approval only after the exact current preview loads successfully. Failed decoding offers retry and replacement/rejection recovery.                                                                                                         |
 | Dossier hierarchy           | Historical submission portfolio metadata preceded current actionable image moderation.                                                        | Present current moderation first and disclose the immutable historical snapshot separately.                                                                                                                                                       |
 | Decision summary            | A correction-only state could show a generic Ready indicator.                                                                                 | Ready requires the server-advertised approval action.                                                                                                                                                                                             |
+| Identity approval errors    | Missing physical evidence and unfinished checks returned HTTP 409, but both approval dialogs displayed a generic revision-conflict message.   | Allowlisted domain reasons explain replacement, current evidence readiness, or a changed preflight in AR/EN. Unknown conflicts retain safe existing copy; notes and refresh requirements are preserved.                                           |
 | Test scanner wait           | The browser helper accepted any `CLEAN` string, including an old replaced document.                                                           | Wait for all current nonsuperseded documents to be CLEAN before proceeding.                                                                                                                                                                       |
 
 ## Security and state ownership
@@ -123,15 +124,22 @@ requires Node 24.21.0; the downloaded exact binary was unstable in this
 authoring runtime, so these results do not certify the required Node release.
 Remote CI uses the exact repository pin. No runtime declaration was weakened.
 
-Before publishing, affected scoped suites passed: 150 dossier UI tests,
+Before publishing, affected scoped suites passed: 164 dossier UI tests,
 267 identity/review API tests and 69 portfolio/media tests. A whole Web run
-passed 2361 tests across 189 files; Web typecheck, E2E typecheck and build
+passed 2375 tests across 189 files; Web typecheck, E2E typecheck and build
 passed. Web lint reports 34 existing warnings and no errors after removing
 an unused test import. API typecheck/build passed; a whole API run passed
 4006 tests with 1390 explicitly gated tests skipped because local database/
 Redis services were absent. Additional immutable-upload tests are validated
 with 48 passing tests across five scoped suites and the final source checks.
 The dependency audit reports zero findings.
+
+A broad replay exposed an existing provider-profile test race: the service
+catalog and saved skill selection arrive independently, but the assertion
+waited only for the catalog. The same selection assertions now await the
+saved selection; the 31-test file and the 2375-test Web replay passed. No
+production profile behavior or expected selection was weakened. The added
+approval-error copy has 14 AR/EN regressions, including unknown unsafe reasons.
 
 Local PostgreSQL installation cannot perform its required UID/group changes
 in this workspace, and Chromium download repeatedly returned truncated

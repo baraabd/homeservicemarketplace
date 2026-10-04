@@ -11,6 +11,7 @@ import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { ReviewIdentity } from '../components/ReviewIdentity';
 import { IDENTITY_PREVIEW_LIFETIME_MS } from '../evidence/useIdentityPreview';
 import { reviewFixture, STAMP } from './fixtures';
+import { REVIEW_COPY } from '../copy';
 
 vi.mock('../evidence/IdentityPdfCanvas', () => ({
   IdentityPdfCanvas: () => <canvas data-testid="identity-evidence-pdf" />,
@@ -100,6 +101,54 @@ afterEach(() => {
 });
 
 describe('restricted identity preview', () => {
+  it.each([
+    ['en', 'EVIDENCE_OBJECT_UNAVAILABLE', 'request replacement identity evidence'],
+    ['ar', 'EVIDENCE_OBJECT_UNAVAILABLE', 'وثيقة هوية بديلة'],
+    ['en', 'EVIDENCE_PREFLIGHT_STALE', 'The identity evidence changed during the evidence check'],
+    ['ar', 'EVIDENCE_PREFLIGHT_STALE', 'تغيّرت وثائق الهوية أثناء التحقق من الأدلة'],
+    ['en', 'EVIDENCE_NOT_READY', 'Check the current documents and their safety checks'],
+    ['ar', 'EVIDENCE_NOT_READY', 'راجع الوثائق الحالية ونتائج فحص الأمان'],
+  ] as const)(
+    'explains %s identity conflict %s while preserving the case note',
+    async (lang, reason, hint) => {
+      const review = fixture();
+      review.verification!.availableActions = ['approve'];
+      mock.onPost('/v1/admin/verification/cases/case-1/approve').reply(409, {
+        error: {
+          code: 'CONFLICT',
+          message: 'private-storage-key-must-not-render',
+          details: { reason },
+        },
+      });
+      setup(review, lang);
+      fireEvent.click(screen.getByTestId('review-case-approve'));
+      fireEvent.change(screen.getByRole('combobox'), {
+        target: { value: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' },
+      });
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Preserved case note' } });
+      fireEvent.click(screen.getByTestId('review-case-confirm'));
+      expect(await screen.findByRole('alert')).toHaveTextContent(hint);
+      expect(screen.getByRole('textbox')).toHaveValue('Preserved case note');
+      expect(screen.queryByTestId('review-case-confirm')).not.toBeInTheDocument();
+      expect(screen.queryByText('private-storage-key-must-not-render')).not.toBeInTheDocument();
+      expect(mock.history.post).toHaveLength(1);
+    },
+  );
+  it('keeps an unknown identity conflict on the safe existing message', async () => {
+    const review = fixture();
+    review.verification!.availableActions = ['assign'];
+    mock.onPost('/v1/admin/verification/cases/case-1/assign').reply(409, {
+      error: {
+        message: 'private-storage-key-must-not-render',
+        details: { reason: 'UNKNOWN_PRIVATE_REASON' },
+      },
+    });
+    setup(review);
+    fireEvent.click(screen.getByTestId('review-case-assign'));
+    fireEvent.click(screen.getByTestId('review-case-confirm'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(REVIEW_COPY.en.conflict);
+    expect(screen.queryByText('private-storage-key-must-not-render')).not.toBeInTheDocument();
+  });
   it('normalizes a safe response MIME with parameters without rejecting a valid image', async () => {
     mock.onGet(PATH).reply(200, new Blob(['PNG fixture'], { type: 'image/png; charset=binary' }));
     setup();

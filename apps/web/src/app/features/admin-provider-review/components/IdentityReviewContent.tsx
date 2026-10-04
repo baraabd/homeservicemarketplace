@@ -19,7 +19,13 @@ import { ReviewMutationNotice } from './ReviewMutationNotice';
 import { IdentityEvidenceViewer } from '../evidence/IdentityEvidenceViewer';
 import { IDENTITY_PREVIEW_COPY } from '../evidence/identity-preview-copy';
 import { verificationReasonLabel } from '../evidence/verification-reason-labels';
-import { EVIDENCE_REVIEW_COPY, EVIDENCE_SCAN_LABELS } from '../evidence/evidence-review-copy';
+import {
+  EVIDENCE_REVIEW_COPY,
+  EVIDENCE_SCAN_LABELS,
+  EVIDENCE_CONFLICT_COPY,
+  evidenceConflictReason,
+  type EvidenceConflictReason,
+} from '../evidence/evidence-review-copy';
 
 const ACTION_LABEL: Record<VerificationCaseActionCode, string> = {
   assign: 'actionAssign',
@@ -70,6 +76,7 @@ export function ReviewIdentity({
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<number | null>(null);
+  const [conflictReason, setConflictReason] = useState<EvidenceConflictReason | null>(null);
   const [invalid, setInvalid] = useState(false);
   const mutation = useMutation({ mutationFn: runCaseCommand });
   const currentDocuments = kase?.documents.filter((document) => !document.supersededAt) ?? [];
@@ -208,6 +215,7 @@ export function ReviewIdentity({
       await onChanged();
     } catch (failure) {
       setError(requestStatus(failure) ?? 500);
+      setConflictReason(evidenceConflictReason(failure));
     }
   }
   return (
@@ -398,7 +406,13 @@ export function ReviewIdentity({
         )}
         {error && (
           <ReviewBanner role="alert" tone="danger">
-            {error === 409 ? t.conflict : error === 403 ? t.noActions : t.mutationFailed}
+            {error === 409
+              ? conflictReason
+                ? EVIDENCE_CONFLICT_COPY[lang][conflictReason]
+                : t.conflict
+              : error === 403
+                ? t.noActions
+                : t.mutationFailed}
           </ReviewBanner>
         )}
         <div className="ar-actions">

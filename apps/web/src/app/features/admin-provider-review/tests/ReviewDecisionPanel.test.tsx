@@ -16,6 +16,71 @@ beforeEach(() => {
 afterEach(() => mock.restore());
 
 describe('field-specific correction commands', () => {
+  it.each([
+    ['en', 'EVIDENCE_OBJECT_UNAVAILABLE', 'request replacement identity evidence'],
+    ['ar', 'EVIDENCE_OBJECT_UNAVAILABLE', 'وثيقة هوية بديلة'],
+    ['en', 'EVIDENCE_PREFLIGHT_STALE', 'The identity evidence changed during the evidence check'],
+    ['ar', 'EVIDENCE_PREFLIGHT_STALE', 'تغيّرت وثائق الهوية أثناء التحقق من الأدلة'],
+    ['en', 'EVIDENCE_NOT_READY', 'Check the current documents and their safety checks'],
+    ['ar', 'EVIDENCE_NOT_READY', 'راجع الوثائق الحالية ونتائج فحص الأمان'],
+  ] as const)(
+    'explains %s approval conflict %s without losing the private note',
+    async (lang, reason, hint) => {
+      mock.onPost('/v1/admin/providers/provider-1/review/approve').reply(409, {
+        error: {
+          code: 'CONFLICT',
+          message: 'private-storage-key-must-not-render',
+          details: { reason },
+        },
+      });
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <LanguageProvider>
+            <ReviewDecisionPanel
+              review={reviewFixture()}
+              lang={lang}
+              onChanged={vi.fn()}
+              onDecided={vi.fn()}
+            />
+          </LanguageProvider>
+        </QueryClientProvider>,
+      );
+      fireEvent.change(screen.getByTestId('review-private-note'), {
+        target: { value: 'Preserved investigation note' },
+      });
+      fireEvent.click(screen.getByTestId('review-approve'));
+      fireEvent.click(screen.getByTestId('review-approval-ack'));
+      fireEvent.click(screen.getByTestId('review-confirm'));
+      expect(await screen.findByRole('alert')).toHaveTextContent(hint);
+      expect(screen.getByTestId('review-private-note')).toHaveValue('Preserved investigation note');
+      expect(screen.queryByTestId('review-confirm')).not.toBeInTheDocument();
+      expect(screen.getByTestId('review-conflict-refresh')).toBeEnabled();
+      expect(screen.queryByText('private-storage-key-must-not-render')).not.toBeInTheDocument();
+      expect(mock.history.post).toHaveLength(1);
+    },
+  );
+  it('keeps unknown conflicts on the safe existing message instead of showing arbitrary server content', async () => {
+    mock.onPost('/v1/admin/providers/provider-1/review/approve').reply(409, {
+      error: { message: 'private-storage-key-must-not-render', details: { reason: '__proto__' } },
+    });
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <LanguageProvider>
+          <ReviewDecisionPanel
+            review={reviewFixture()}
+            lang="en"
+            onChanged={vi.fn()}
+            onDecided={vi.fn()}
+          />
+        </LanguageProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByTestId('review-approve'));
+    fireEvent.click(screen.getByTestId('review-approval-ack'));
+    fireEvent.click(screen.getByTestId('review-confirm'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(REVIEW_COPY.en.conflict);
+    expect(screen.queryByText('private-storage-key-must-not-render')).not.toBeInTheDocument();
+  });
   it.each(['APPROVED', 'RETURNED'] as const)(
     'keeps the recorded %s decision visible in the decision panel',
     (decision) => {

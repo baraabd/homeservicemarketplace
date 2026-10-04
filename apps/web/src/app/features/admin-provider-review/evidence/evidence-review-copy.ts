@@ -1,6 +1,44 @@
 import type { MediaScanStateCode } from '@homeservicemarketplace/contracts';
 import type { ReviewLanguage } from '../copy';
 
+export type EvidenceConflictReason =
+  | 'EVIDENCE_OBJECT_UNAVAILABLE'
+  | 'EVIDENCE_NOT_READY'
+  | 'EVIDENCE_PREFLIGHT_STALE';
+
+/** Read only the allowlisted domain reason; never show raw server messages or details. */
+export function evidenceConflictReason(error: unknown): EvidenceConflictReason | null {
+  const reason = (
+    error as {
+      response?: { data?: { error?: { details?: { reason?: unknown } } } };
+    } | null
+  )?.response?.data?.error?.details?.reason;
+  return reason === 'EVIDENCE_OBJECT_UNAVAILABLE' ||
+    reason === 'EVIDENCE_NOT_READY' ||
+    reason === 'EVIDENCE_PREFLIGHT_STALE'
+    ? reason
+    : null;
+}
+
+export const EVIDENCE_CONFLICT_COPY = {
+  en: {
+    EVIDENCE_OBJECT_UNAVAILABLE:
+      'An identity document file is missing or unreadable. Your notes are preserved. Close this confirmation and request replacement identity evidence from the provider before approval.',
+    EVIDENCE_NOT_READY:
+      'Identity evidence is not ready for approval. Your notes are preserved. Check the current documents and their safety checks; request a replacement if evidence is missing or invalid.',
+    EVIDENCE_PREFLIGHT_STALE:
+      'The identity evidence changed during the evidence check. Your notes are preserved. Refresh the file, inspect the current evidence and reopen the decision confirmation.',
+  },
+  ar: {
+    EVIDENCE_OBJECT_UNAVAILABLE:
+      'ملف إحدى وثائق الهوية مفقود أو غير قابل للقراءة. احتفظنا بملاحظاتك. أغلق نافذة التأكيد واطلب من المهني رفع وثيقة هوية بديلة قبل الموافقة.',
+    EVIDENCE_NOT_READY:
+      'وثائق الهوية غير جاهزة للموافقة. احتفظنا بملاحظاتك. راجع الوثائق الحالية ونتائج فحص الأمان، واطلب بديلًا إذا كانت الوثائق ناقصة أو غير صالحة.',
+    EVIDENCE_PREFLIGHT_STALE:
+      'تغيّرت وثائق الهوية أثناء التحقق من الأدلة. احتفظنا بملاحظاتك. حدّث الملف وافحص الوثائق الحالية ثم افتح تأكيد القرار مجددًا.',
+  },
+} satisfies Record<ReviewLanguage, Record<EvidenceConflictReason, string>>;
+
 /** Scan status describes file safety, independently of the human review decision. */
 export const EVIDENCE_SCAN_LABELS = {
   en: {
