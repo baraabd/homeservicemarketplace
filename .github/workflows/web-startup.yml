@@ -19,6 +19,11 @@ jobs:
     name: Dev browser startup (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    # Git Bash is available on Windows runners. Explicit bash enables -e and
+    # pipefail for every run block; a later success cannot hide a failed build.
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -37,7 +42,7 @@ jobs:
       - name: Verify exact runtime and safe-start regressions
         run: |
           node scripts/runtime/toolchain.cjs
-          node --test scripts/runtime/toolchain.test.cjs scripts/dev/preflight.test.cjs scripts/dev/compose-smoke-context.test.cjs
+          node --test scripts/runtime/toolchain.test.cjs scripts/dev/preflight.test.cjs scripts/dev/compose-smoke-context.test.cjs .github/scripts/merge-integrity.test.mjs
       - run: pnpm install --frozen-lockfile
       - name: Assert lockfile remains unchanged
         run: git diff --exit-code -- pnpm-lock.yaml

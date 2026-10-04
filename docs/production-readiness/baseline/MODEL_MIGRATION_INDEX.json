@@ -11,7 +11,8 @@
       "20260822092000_sprint02_case_insensitive_unique_email",
       "20260824084629_sprint09_verification_restricted_media_work_access",
       "20260828220000_sprint09b20_earned_service_area_expansion",
-      "20261004120000_r13_support_tickets"
+      "20261004120000_r13_support_tickets",
+      "20261004150000_r15_ledger_foundation"
     ],
     "Role": [
       "20260501003603_rename_tables_to_pascal_case",
@@ -26,7 +27,8 @@
       "20260915120000_verification_policy_management_permission",
       "20260918160000_sprint12_dispute_collaboration",
       "20260920103200_dispute_privacy_permissions",
-      "20261004120000_r13_support_tickets"
+      "20261004120000_r13_support_tickets",
+      "20261004150000_r15_ledger_foundation"
     ],
     "UserRole": [
       "20260501003603_rename_tables_to_pascal_case",
@@ -77,7 +79,8 @@
     "Booking": [
       "20260501003603_rename_tables_to_pascal_case",
       "20260501010000_add_provider_profile_extensions",
-      "20260502010000_add_disputes_and_settings"
+      "20260502010000_add_disputes_and_settings",
+      "20261004150000_r15_ledger_foundation"
     ],
     "ConversationParticipant": [
       "20260501003603_rename_tables_to_pascal_case",
@@ -224,7 +227,10 @@
     "DisputeNotificationPreference": ["20260918160000_sprint12_dispute_collaboration"],
     "BookingReview": ["20261003090000_r11_booking_reviews"],
     "SupportTicket": ["20261004120000_r13_support_tickets"],
-    "SupportMessage": ["20261004120000_r13_support_tickets"]
+    "SupportMessage": ["20261004120000_r13_support_tickets"],
+    "LedgerAccount": ["20261004150000_r15_ledger_foundation"],
+    "LedgerTransaction": ["20261004150000_r15_ledger_foundation"],
+    "LedgerEntry": ["20261004150000_r15_ledger_foundation"]
   },
   "migrationRoot": "packages/database/prisma/migrations"
 }

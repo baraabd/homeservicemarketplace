@@ -11,6 +11,11 @@ const ALLOWED_METADATA_KEYS = new Set<string>([
   // Deliberately NOT the rating or the comment.
   'reviewId',
   'bookingId',
+  // R15 — ledger postings. Identifiers and the internal caller's name only;
+  // never an amount, account balance or external payload.
+  'ledgerTransactionId',
+  'reversesTransactionId',
+  'actorSystem',
   // R13 — support identifiers only. Message bodies and subjects are never
   // duplicated into the audit log.
   'supportTicketId',

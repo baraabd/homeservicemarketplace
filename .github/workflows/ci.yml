@@ -739,6 +739,31 @@ jobs:
             apps/web/test-results/r13-support-report/
           retention-days: 14
           if-no-files-found: warn
+      - name: Accept R14 budget authority through the build-flagged bundle
+        # No seeker budget authority exists, so the provider sees no budget on
+        # the feed wire, card, detail or offer form, in English and Arabic,
+        # after a reload; the API refuses a client-sent budget and stores
+        # nothing. Synthetic people; the spec records no trace or video.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r14-budget-authority-report
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r14-budget-authority.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --retries=0 \
+            --output=test-results/r14-budget-authority
+      - name: Upload R14 budget authority real-service evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r14-budget-authority-evidence
+          path: |
+            apps/web/test-results/r14-budget-authority/
+            apps/web/test-results/r14-budget-authority-report/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed

@@ -27,6 +27,7 @@ import { AdminProviderReviewEventsHandler } from './modules/admin/provider-revie
 import { BidsModule } from './modules/bids/bids.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { LedgerModule } from './modules/money/ledger/ledger.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { IamModule } from './modules/iam/iam.module';
 import { MediaModule } from './modules/media/media.module';
@@ -126,6 +127,8 @@ import { SupportModule } from './modules/support/support.module';
     BookingsModule,
     // R11 — customer reviews of completed bookings, and their moderation.
     ReviewsModule,
+    // R15 — dark double-entry ledger foundation. No routes; no live caller.
+    LedgerModule,
     // R13 — durable, authenticated help/support tickets.
     SupportModule,
     DisputesModule,
