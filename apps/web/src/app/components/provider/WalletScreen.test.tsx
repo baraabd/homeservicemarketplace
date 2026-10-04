@@ -263,9 +263,18 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     const withdraw = screen.getByRole('button', { name: /Bank withdrawals — coming soon/i });
     expect(withdraw).toBeDisabled();
     // Click should not raise an exception, change state, or invoke any
-    // POST handler — there is no withdraw endpoint yet, so any call would
-    // 404 with the mock adapter and surface as a test failure.
+    // POST handler — there is no withdraw endpoint yet.
     fireEvent.click(withdraw);
+
+    // R16: payouts are policy- and funding-blocked (docs/production-readiness/
+    // r16/PAYOUT_POLICY.md). Prove the click sent no write of any kind rather
+    // than relying on an unmocked route surfacing as a 404.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mock.history.post).toHaveLength(0);
+    expect(mock.history.put).toHaveLength(0);
+    expect(mock.history.patch).toHaveLength(0);
+    expect(mock.history.delete).toHaveLength(0);
+    expect(withdraw).toBeDisabled();
   });
 
   it('honours the chart range toggle and fires another /chart request', async () => {
