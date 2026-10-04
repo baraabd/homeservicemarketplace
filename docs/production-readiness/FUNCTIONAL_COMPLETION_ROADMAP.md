@@ -237,6 +237,9 @@ edit/cancel semantics and locale rendering.
 
 ## R15 — Authoritative Money persistence foundation
 
+**Status (2026-10-04):** dark double-entry foundation implemented on `feat/r15-authoritative-money-foundation`;
+integration pending its prerequisites (see `r15/IMPLEMENTATION.md`). No live money movement is enabled.
+
 **Goal:** create a dark, non-live accounting authority before any withdrawal button is
 enabled.
 
