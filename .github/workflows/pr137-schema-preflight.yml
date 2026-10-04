@@ -1,0 +1,110 @@
+name: PR 137 isolated schema preflight (not for merge)
+
+on:
+  push:
+    branches: ['work/pr137-schema-preflight-232f5a1']
+    paths: ['.github/workflows/pr137-schema-preflight.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  schema-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/schema_preflight_unused
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: '232f5a145726536f1bf4b7e9622a928765e668dc'
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          cache: pnpm
+      - name: Install the exact existing dependency graph
+        run: |
+          node scripts/runtime/toolchain.cjs
+          pnpm install --frozen-lockfile
+          git diff --exit-code -- pnpm-lock.yaml
+      - name: Reproduce the original three missing inverse relations
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const { spawnSync } = require('node:child_process');
+          const result = spawnSync('pnpm', ['--filter', '@homeservicemarketplace/database', 'exec', 'prisma', 'validate'], {encoding: 'utf8'});
+          assert.ifError(result.error);
+          assert.equal(result.status, 1, 'Original schema must reproduce the observed validation failure');
+          const output = result.stdout + result.stderr;
+          for (const field of ['requester', 'closedBy', 'author']) {
+            assert(output.includes('field `' + field + '`'), 'Missing expected relation failure: ' + field);
+          }
+          assert(output.includes('P1012'));
+          assert(output.includes('Validation Error Count: 3'));
+          console.log('REPRODUCED: original PR head has exactly three missing support inverse relations.');
+          NODE
+      - name: Apply only the reviewed inverse-field restoration
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import hashlib
+          path = Path('packages/database/prisma/schema.prisma')
+          before = path.read_bytes()
+          def blob(data):
+              return hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          assert blob(before) == '0e970befdd99b77df708e0809fa0c44241833a56'
+          lines = before.decode().splitlines(keepends=True)
+          anchors = [line for line in lines if line.startswith('  ledgerAccounts')]
+          assert len(anchors) == 1
+          relations = (
+              '  supportTicketsRequested    SupportTicket[]                 @relation("SupportTicketRequester")\n'
+              '  supportTicketsClosed       SupportTicket[]                 @relation("SupportTicketCloser")\n'
+              '  supportMessages            SupportMessage[]\n'
+          )
+          after = before.decode().replace(anchors[0], relations + anchors[0]).encode()
+          assert blob(after) == '59cb848a6bb86885b8d3d58139399ff8d879cb34', blob(after)
+          path.write_bytes(after)
+          print('RESTORED_SCHEMA_BLOB=' + blob(after))
+          PY
+      - name: Validate and generate with the repository-pinned Prisma
+        run: |
+          pnpm --filter @homeservicemarketplace/database exec prisma validate
+          pnpm --filter @homeservicemarketplace/database exec prisma generate
+          pnpm --filter @homeservicemarketplace/database typecheck
+          pnpm --filter @homeservicemarketplace/database build
+          git diff --check
+          git diff --exit-code -- pnpm-lock.yaml packages/database/prisma/migrations
+      - name: Publish only the validated immutable schema blob (no commit or ref write)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import base64, hashlib, json, os, urllib.request
+          data = Path('packages/database/prisma/schema.prisma').read_bytes()
+          expected = '59cb848a6bb86885b8d3d58139399ff8d879cb34'
+          actual = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          assert actual == expected
+          req = urllib.request.Request(
+              'https://api.github.com/repos/baraabd/homeservicemarketplace/git/blobs',
+              data=json.dumps({'content': base64.b64encode(data).decode(), 'encoding': 'base64'}).encode(),
+              headers={
+                  'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                  'Accept': 'application/vnd.github+json',
+                  'Content-Type': 'application/json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+              },
+          )
+          with urllib.request.urlopen(req, timeout=30) as response:
+              result = json.load(response)
+          assert result['sha'] == expected
+          print('VALIDATED_SCHEMA_BLOB=' + result['sha'])
+          print('No branch, commit, migration, PR, deployment or workflow was changed by this job.')
+          PY
