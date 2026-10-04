@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import type {
-  ProviderAvailableRequestBudget,
   ProviderAvailableRequestDetail,
   ProviderAvailableRequestListResponse,
   ProviderAvailableRequestSeekerPreview,
@@ -31,7 +30,10 @@ const DEFAULT_PAGE_SIZE = 20;
 // Sprint 5.2 (canonical) — provider available-requests feed.
 // Sprint 7.x — STRICT location + category match (was: optional).
 // Sprint 7.4 — completed the privacy-safe summary projection
-//   (distanceKm, budget, seekerPublicLabel, seekerRating).
+//   (distanceKm, seekerPublicLabel, seekerRating).
+// R14 — removed the all-null budget projection: no seeker budget authority
+//   exists, so the provider feed carries no budget field at all
+//   (docs/production-readiness/r14/BUDGET_POLICY.md).
 //
 // Visibility rules applied (in this order):
 //   1. status = OPEN_FOR_BIDS, deletedAt = null (always)
@@ -52,7 +54,7 @@ const DEFAULT_PAGE_SIZE = 20;
 //
 // The wire DTO is a NARROW privacy projection — see `toSummary` for
 // what is intentionally stripped (seekerUserId, line1, last name,
-// email, phone). Sprint 7.4 added the seeker preview + budget + distance
+// email, phone). Sprint 7.4 added the seeker preview + distance
 // fields on top of the existing media/location surface; nothing in the
 // new shape exposes the seeker's identifying information.
 @Injectable()
@@ -187,13 +189,6 @@ function toSummary(
   // across both surfaces.
   const seeker = toSeekerPreview(row.seeker);
 
-  // Sprint 7.4 — budget passthrough. No seeker-side budget input
-  // exists today, so every field is `null`. The mapper signature is
-  // shaped so a future migration adding `budgetAmountMin`/`Max`/
-  // `Currency` columns to ServiceRequest can be threaded in with a
-  // single-line change — no contract churn required.
-  const budget = toBudget(row);
-
   // Sprint 6 — distance now comes from the SAME haversineKm the matching
   // predicate uses, over the SAME promoted columns the query filtered on.
   //
@@ -235,7 +230,6 @@ function toSummary(
       lng: snapshot.lng,
     },
     distanceKm,
-    budget,
     seeker,
     bidsCount,
     createdAt: row.createdAt.toISOString(),
@@ -259,23 +253,6 @@ function toSeekerPreview(
     // Reputation source not implemented yet — explicit null on the
     // wire so the UI doesn't render a fabricated zero.
     rating: null,
-  };
-}
-
-// Budget passthrough. Today the ServiceRequest row has no budget
-// columns, so we emit an all-null shape. The mapper kept on a row
-// reference (rather than a hardcoded constant) so a future schema
-// change adding the columns becomes a one-line read.
-function toBudget(_row: ServiceRequestForProvider): ProviderAvailableRequestBudget {
-  // Touch the row reference so a future `_row.budgetAmountMin` read
-  // is a one-line diff. Today every branch returns nulls; the
-  // pre-formatted `label` is left null so the client renders its
-  // own locale-appropriate "Open budget" copy.
-  return {
-    amountMin: null,
-    amountMax: null,
-    currency: null,
-    label: null,
   };
 }
 
