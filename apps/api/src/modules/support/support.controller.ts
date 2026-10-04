@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Type } from 'class-transformer';
 import {
   IsIn,
@@ -107,12 +108,14 @@ export class SupportController {
 
   @Post()
   @UseGuards(CsrfGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateSupportTicketDto) {
     return this.support.createTicket(user.id, body);
   }
 
   @Post(':ticketId/messages')
   @UseGuards(CsrfGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   send(
     @CurrentUser() user: AuthenticatedUser,
     @Param('ticketId') ticketId: string,
@@ -124,16 +127,13 @@ export class SupportController {
 
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles('admin')
-@Permissions('user:read:any')
+@Permissions('support:read')
 @Controller({ path: 'admin/support/tickets', version: '1' })
 export class AdminSupportController {
   constructor(private readonly support: SupportService) {}
 
   @Get()
-  list(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query() query: ListAdminSupportDto,
-  ) {
+  list(@CurrentUser() user: AuthenticatedUser, @Query() query: ListAdminSupportDto) {
     return this.support.listAdmin(user.id, query.status, query.limit, query.cursor);
   }
 
@@ -144,6 +144,7 @@ export class AdminSupportController {
 
   @Post(':ticketId/messages')
   @UseGuards(CsrfGuard)
+  @Permissions('support:respond')
   reply(
     @CurrentUser() user: AuthenticatedUser,
     @Param('ticketId') ticketId: string,
@@ -154,6 +155,7 @@ export class AdminSupportController {
 
   @Post(':ticketId/close')
   @UseGuards(CsrfGuard)
+  @Permissions('support:respond')
   @HttpCode(HttpStatus.OK)
   close(@CurrentUser() user: AuthenticatedUser, @Param('ticketId') ticketId: string) {
     return this.support.closeAdmin(user.id, ticketId);
@@ -161,6 +163,7 @@ export class AdminSupportController {
 
   @Post(':ticketId/reopen')
   @UseGuards(CsrfGuard)
+  @Permissions('support:respond')
   @HttpCode(HttpStatus.OK)
   reopen(@CurrentUser() user: AuthenticatedUser, @Param('ticketId') ticketId: string) {
     return this.support.reopenAdmin(user.id, ticketId);

@@ -74,6 +74,8 @@ describe('PermissionsGuard', () => {
     'verification:policy:manage',
     'verification:evidence:view',
     'portfolio:review',
+    'support:read',
+    'support:respond',
     'user:read:any',
   ])('denies revoked %s even when the token and cached role still grant it', async (permission) => {
     const resolver = resolverReturning([permission]);

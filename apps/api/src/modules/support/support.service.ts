@@ -21,7 +21,8 @@ import { AppError } from '../../shared/errors/app-error';
 import { AuditService } from '../iam/audit/audit.service';
 import { PermissionResolverService } from '../iam/authorization/services/permission-resolver.service';
 
-const SUPPORT_ADMIN_PERMISSION = 'user:read:any';
+const SUPPORT_READ = 'support:read';
+const SUPPORT_RESPOND = 'support:respond';
 const SUBJECT_MAX = 160;
 const MESSAGE_MAX = 4000;
 const KEY_RE = /^[A-Za-z0-9_-]{16,128}$/;
@@ -112,7 +113,7 @@ export class SupportService {
     limit = 25,
     cursor?: string,
   ) {
-    await this.requireSupport(actorUserId);
+    await this.requireSupport(actorUserId, SUPPORT_READ);
     const take = Math.min(Math.max(limit, 1), 100);
     const rows = await this.repo.listAdmin(status, take + 1, cursor);
     const page = rows.slice(0, take);
@@ -128,7 +129,7 @@ export class SupportService {
   }
 
   async detailAdmin(actorUserId: string, ticketId: string): Promise<AdminSupportTicketDetailView> {
-    await this.requireSupport(actorUserId);
+    await this.requireSupport(actorUserId, SUPPORT_READ);
     const row = await this.repo.findAdminDetail(ticketId);
     if (!row) throw new AppError('NOT_FOUND', 'Support ticket not found.', 404);
     return toAdminDetail(row);
@@ -171,21 +172,24 @@ export class SupportService {
 
     try {
       return await this.tx.run(async (tx) => {
-        if (role === 'SUPPORT') await this.requireSupport(authorUserId, tx);
+        if (role === 'SUPPORT') await this.requireSupport(authorUserId, SUPPORT_RESPOND, tx);
         await this.repo.lock(ticketId, tx);
         const ticket =
           role === 'REQUESTER'
             ? await this.repo.findOwnedDetail(ticketId, authorUserId, tx)
             : await this.repo.findAdminDetail(ticketId, tx);
         if (!ticket) throw new AppError('NOT_FOUND', 'Support ticket not found.', 404);
+
+        // A retry of a send that was stored before the ticket closed replays
+        // the stored message; only a genuinely new message is refused.
+        const existing = await this.repo.findMessageByKey(ticketId, authorUserId, key, tx);
+        if (existing) return replayMessage(existing, body);
+
         if (ticket.status !== SupportTicketStatus.OPEN) {
           throw new AppError('CONFLICT', 'This support ticket is closed.', 409, {
             reason: 'SUPPORT_TICKET_CLOSED',
           });
         }
-
-        const existing = await this.repo.findMessageByKey(ticketId, authorUserId, key, tx);
-        if (existing) return replayMessage(existing, body);
 
         const created = await this.repo.createMessage(
           { ticketId, authorUserId, authorRole: role, body, idempotencyKey: key },
@@ -220,7 +224,7 @@ export class SupportService {
     to: SupportTicketStatus,
   ): Promise<AdminSupportTicketDetailView> {
     await this.tx.run(async (tx) => {
-      await this.requireSupport(actorUserId, tx);
+      await this.requireSupport(actorUserId, SUPPORT_RESPOND, tx);
       await this.repo.lock(ticketId, tx);
       const ticket = await this.repo.findAdminDetail(ticketId, tx);
       if (!ticket) throw new AppError('NOT_FOUND', 'Support ticket not found.', 404);
@@ -249,10 +253,14 @@ export class SupportService {
     return this.detailAdmin(actorUserId, ticketId);
   }
 
-  private async requireSupport(actorUserId: string, tx?: PrismaTx) {
+  private async requireSupport(actorUserId: string, permission: string, tx?: PrismaTx) {
     const rights = await this.permissions.resolveFreshForUser(actorUserId, tx);
-    if (!rights.has(SUPPORT_ADMIN_PERMISSION)) {
-      throw new AppError('FORBIDDEN', 'You do not have permission to operate support tickets.', 403);
+    if (!rights.has(permission)) {
+      throw new AppError(
+        'FORBIDDEN',
+        'You do not have permission to operate support tickets.',
+        403,
+      );
     }
   }
 
@@ -320,8 +328,18 @@ function toSummary(row: SupportTicket & { messages?: SupportMessage[] }): Suppor
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     closedAt: row.closedAt ? row.closedAt.toISOString() : null,
-    lastMessageAt: row.messages?.[0]?.createdAt?.toISOString() ?? null,
+    lastMessageAt: latestMessageAt(row.messages)?.toISOString() ?? null,
   };
+}
+
+// List rows carry only their newest message, detail rows every message in
+// ascending order; the latest timestamp is correct for both shapes.
+function latestMessageAt(messages: SupportMessage[] | undefined): Date | null {
+  let latest: Date | null = null;
+  for (const message of messages ?? []) {
+    if (!latest || message.createdAt > latest) latest = message.createdAt;
+  }
+  return latest;
 }
 
 function toDetail(row: SupportTicketWithMessages): SupportTicketDetailView {

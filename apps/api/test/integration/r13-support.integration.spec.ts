@@ -51,9 +51,13 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
   const OTHER = `${P}other`;
   const ADMIN = `${P}admin`;
   const NO_ADMIN = `${P}no-admin`;
+  const READER = `${P}reader`;
   const ROLE_ID = `${P}role`;
   const ROLE_NAME = `${P}support-operator`;
-  const USERS = [REQUESTER, OTHER, ADMIN, NO_ADMIN];
+  const READ_ROLE_ID = `${P}read-role`;
+  const READ_ROLE_NAME = `${P}support-reader`;
+  const ROLES = [ROLE_ID, READ_ROLE_ID];
+  const USERS = [REQUESTER, OTHER, ADMIN, NO_ADMIN, READER];
 
   const createKey = (suffix: string) => `r13_create_${suffix.padEnd(16, 'x')}`;
   const sendKey = (suffix: string) => `r13_send_${suffix.padEnd(16, 'y')}`;
@@ -86,8 +90,8 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
     await prisma.supportTicket.deleteMany({ where: { requesterUserId: { in: USERS } } });
     await prisma.auditEvent.deleteMany({ where: { userId: { in: USERS } } });
     await prisma.userRole.deleteMany({ where: { userId: { in: USERS } } });
-    await prisma.rolePermission.deleteMany({ where: { roleId: ROLE_ID } });
-    await prisma.role.deleteMany({ where: { id: ROLE_ID } });
+    await prisma.rolePermission.deleteMany({ where: { roleId: { in: ROLES } } });
+    await prisma.role.deleteMany({ where: { id: { in: ROLES } } });
     await prisma.user.deleteMany({ where: { id: { in: USERS } } });
   }
 
@@ -188,11 +192,14 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
       });
     }
 
-    const permission = await prisma.permission.upsert({
-      where: { key: 'user:read:any' },
-      update: {},
-      create: { key: 'user:read:any', description: 'R13 support acceptance permission' },
-    });
+    const grant = (key: string) =>
+      prisma.permission.upsert({
+        where: { key },
+        update: {},
+        create: { key, description: 'R13 support acceptance permission' },
+      });
+    const read = await grant('support:read');
+    const respond = await grant('support:respond');
     await prisma.role.create({
       data: {
         id: ROLE_ID,
@@ -201,10 +208,23 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
         isSystem: false,
       },
     });
-    await prisma.rolePermission.create({
-      data: { roleId: ROLE_ID, permissionId: permission.id },
+    await prisma.role.create({
+      data: {
+        id: READ_ROLE_ID,
+        name: READ_ROLE_NAME,
+        description: 'R13 isolated read-only support test role',
+        isSystem: false,
+      },
+    });
+    await prisma.rolePermission.createMany({
+      data: [
+        { roleId: ROLE_ID, permissionId: read.id },
+        { roleId: ROLE_ID, permissionId: respond.id },
+        { roleId: READ_ROLE_ID, permissionId: read.id },
+      ],
     });
     await prisma.userRole.create({ data: { userId: ADMIN, roleId: ROLE_ID } });
+    await prisma.userRole.create({ data: { userId: READER, roleId: READ_ROLE_ID } });
   });
 
   afterAll(async () => {
@@ -362,9 +382,7 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
     ]);
     expect([a.status, b.status].sort()).toEqual([201, 201]);
     expect(new Set([a.body.message.id, b.body.message.id]).size).toBe(1);
-    expect(
-      await prisma.supportMessage.count({ where: { ticketId, body: 'only once' } }),
-    ).toBe(1);
+    expect(await prisma.supportMessage.count({ where: { ticketId, body: 'only once' } })).toBe(1);
   });
 
   it('requires a fresh support permission for admin read/write and revocation is immediate', async () => {
@@ -389,6 +407,11 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
     });
     expect(reply.status).toBe(201);
 
+    const detail = await as(ADMIN, 'get', `/v1/admin/support/tickets/${ticketId}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.messages.map((m: any) => m.authorRole)).toEqual(['REQUESTER', 'SUPPORT']);
+    expect(detail.body.lastMessageAt).toBe(reply.body.message.createdAt);
+
     const audit = await prisma.auditEvent.findFirst({
       where: { userId: ADMIN, type: 'ADMIN_SUPPORT_REPLIED' },
     });
@@ -401,15 +424,88 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
     await prisma.userRole.delete({
       where: { userId_roleId: { userId: ADMIN, roleId: ROLE_ID } },
     });
-    const revoked = await as(
-      ADMIN,
-      'post',
-      `/v1/admin/support/tickets/${ticketId}/messages`,
-    ).send({ body: 'must fail', idempotencyKey: sendKey('revoked') });
+    const revoked = await as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/messages`).send({
+      body: 'must fail',
+      idempotencyKey: sendKey('revoked'),
+    });
     expect(revoked.status).toBe(403);
+    expect(await prisma.supportMessage.count({ where: { ticketId, body: 'must fail' } })).toBe(0);
+  });
+
+  it('lets a read-only support role read but never reply, close or reopen', async () => {
+    const created = await createTicket(REQUESTER, createKey('reader'));
+    const ticketId = created.body.ticket.id;
+
+    const list = await as(READER, 'get', '/v1/admin/support/tickets');
+    expect(list.status).toBe(200);
+    const detail = await as(READER, 'get', `/v1/admin/support/tickets/${ticketId}`);
+    expect(detail.status).toBe(200);
+
+    const reply = await as(READER, 'post', `/v1/admin/support/tickets/${ticketId}/messages`).send({
+      body: 'reader must not reply',
+      idempotencyKey: sendKey('reader-reply'),
+    });
+    expect(reply.status).toBe(403);
+    const close = await as(READER, 'post', `/v1/admin/support/tickets/${ticketId}/close`);
+    expect(close.status).toBe(403);
+
+    const row = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
+    expect(row.status).toBe('OPEN');
+    expect(await prisma.supportMessage.count({ where: { ticketId } })).toBe(1);
     expect(
-      await prisma.supportMessage.count({ where: { ticketId, body: 'must fail' } }),
+      await prisma.auditEvent.count({
+        where: { userId: READER, type: { in: ['ADMIN_SUPPORT_REPLIED', 'ADMIN_SUPPORT_CLOSED'] } },
+      }),
     ).toBe(0);
+  });
+
+  it('replays a send stored before the ticket closed instead of refusing the retry', async () => {
+    const created = await createTicket(REQUESTER, createKey('late-retry'));
+    const ticketId = created.body.ticket.id;
+    const key = sendKey('late-retry');
+
+    const first = await sendMessage(REQUESTER, ticketId, key, 'sent before close');
+    expect(first.status).toBe(201);
+    const closed = await as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/close`);
+    expect(closed.status).toBe(200);
+
+    const retry = await sendMessage(REQUESTER, ticketId, key, 'sent before close');
+    expect(retry.status).toBe(201);
+    expect(retry.body).toMatchObject({ replayed: true, message: { id: first.body.message.id } });
+
+    const changed = await sendMessage(REQUESTER, ticketId, key, 'different after close');
+    expect(changed.status).toBe(409);
+    expect(await prisma.supportMessage.count({ where: { ticketId } })).toBe(2);
+  });
+
+  it('pages tickets deterministically by creation order even while they are updated', async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const created = await createTicket(REQUESTER, createKey(`page-${i}`), `Ticket ${i}`);
+      ids.push(created.body.ticket.id);
+    }
+    const first = await as(REQUESTER, 'get', '/v1/me/support/tickets?limit=2');
+    expect(first.status).toBe(200);
+    expect(first.body.items).toHaveLength(2);
+
+    // Activity on an already-listed ticket must not move it into a later page.
+    await sendMessage(REQUESTER, first.body.items[0].id, sendKey('page-touch'), 'activity');
+
+    const seen = first.body.items.map((item: any) => item.id);
+    let cursor = first.body.nextCursor;
+    while (cursor) {
+      const page = await as(REQUESTER, 'get', `/v1/me/support/tickets?limit=2&cursor=${cursor}`);
+      expect(page.status).toBe(200);
+      seen.push(...page.body.items.map((item: any) => item.id));
+      cursor = page.body.nextCursor;
+    }
+    const expected = await prisma.supportTicket.findMany({
+      where: { requesterUserId: REQUESTER },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true },
+    });
+    expect(seen).toEqual(expected.map((row: any) => row.id));
+    expect(new Set(seen)).toEqual(new Set(ids));
   });
 
   it('closes and reopens atomically and a closed ticket refuses messages', async () => {
@@ -423,22 +519,12 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
 
     const refused = await sendMessage(REQUESTER, ticketId, sendKey('while-closed'), 'hello?');
     expect(refused.status).toBe(409);
-    expect(
-      await prisma.supportMessage.count({ where: { ticketId, body: 'hello?' } }),
-    ).toBe(0);
+    expect(await prisma.supportMessage.count({ where: { ticketId, body: 'hello?' } })).toBe(0);
 
-    const duplicateClose = await as(
-      ADMIN,
-      'post',
-      `/v1/admin/support/tickets/${ticketId}/close`,
-    );
+    const duplicateClose = await as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/close`);
     expect(duplicateClose.status).toBe(409);
 
-    const reopened = await as(
-      ADMIN,
-      'post',
-      `/v1/admin/support/tickets/${ticketId}/reopen`,
-    );
+    const reopened = await as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/reopen`);
     expect(reopened.status).toBe(200);
     expect(reopened.body).toMatchObject({ id: ticketId, status: 'OPEN', closedAt: null });
 

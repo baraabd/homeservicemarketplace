@@ -70,7 +70,7 @@ export class SupportRepository {
       where: { requesterUserId },
       take,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: { messages: { orderBy: [{ createdAt: 'desc' }], take: 1 } },
     });
   }
@@ -80,7 +80,7 @@ export class SupportRepository {
       where: status ? { status } : {},
       take,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: {
         requester: { select: { id: true, email: true, firstName: true, lastName: true } },
         messages: { orderBy: [{ createdAt: 'desc' }], take: 1 },
@@ -88,12 +88,7 @@ export class SupportRepository {
     });
   }
 
-  findMessageByKey(
-    ticketId: string,
-    authorUserId: string,
-    idempotencyKey: string,
-    tx?: PrismaTx,
-  ) {
+  findMessageByKey(ticketId: string, authorUserId: string, idempotencyKey: string, tx?: PrismaTx) {
     return (tx ?? this.prisma.client).supportMessage.findUnique({
       where: {
         ticketId_authorUserId_idempotencyKey: { ticketId, authorUserId, idempotencyKey },
