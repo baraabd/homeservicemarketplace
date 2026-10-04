@@ -10,7 +10,8 @@
       "20260821120000_add_admin_access_requests_and_provider_onboarding",
       "20260822092000_sprint02_case_insensitive_unique_email",
       "20260824084629_sprint09_verification_restricted_media_work_access",
-      "20260828220000_sprint09b20_earned_service_area_expansion"
+      "20260828220000_sprint09b20_earned_service_area_expansion",
+      "20261004120000_r13_support_tickets"
     ],
     "Role": [
       "20260501003603_rename_tables_to_pascal_case",
@@ -24,7 +25,8 @@
       "20260915010000_admin_provider_review",
       "20260915120000_verification_policy_management_permission",
       "20260918160000_sprint12_dispute_collaboration",
-      "20260920103200_dispute_privacy_permissions"
+      "20260920103200_dispute_privacy_permissions",
+      "20261004120000_r13_support_tickets"
     ],
     "UserRole": [
       "20260501003603_rename_tables_to_pascal_case",
@@ -34,7 +36,8 @@
       "20260501003603_rename_tables_to_pascal_case",
       "20260501010000_add_provider_profile_extensions",
       "20260915010000_admin_provider_review",
-      "20260915120000_verification_policy_management_permission"
+      "20260915120000_verification_policy_management_permission",
+      "20261004120000_r13_support_tickets"
     ],
     "Session": [
       "20260501003603_rename_tables_to_pascal_case",
@@ -219,7 +222,9 @@
     "DisputeDecisionRecord": ["20260918160000_sprint12_dispute_collaboration"],
     "DisputeAppealRecord": ["20260918160000_sprint12_dispute_collaboration"],
     "DisputeNotificationPreference": ["20260918160000_sprint12_dispute_collaboration"],
-    "BookingReview": ["20261003090000_r11_booking_reviews"]
+    "BookingReview": ["20261003090000_r11_booking_reviews"],
+    "SupportTicket": ["20261004120000_r13_support_tickets"],
+    "SupportMessage": ["20261004120000_r13_support_tickets"]
   },
   "migrationRoot": "packages/database/prisma/migrations"
 }

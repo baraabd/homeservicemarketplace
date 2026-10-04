@@ -49,6 +49,7 @@ import { DisputeIntakeEventsHandler } from './modules/disputes/dispute-intake.ev
 import { WorkspaceEventsHandler } from './modules/disputes/workspace/workspace-events.handler';
 import { DisputePrivacyMiddleware } from './modules/disputes/dispute-privacy.middleware';
 import { ServicesModule } from './modules/services/services.module';
+import { SupportModule } from './modules/support/support.module';
 
 // Infrastructure & data-foundation bootstrap. Seeker domain modules
 // are wired in incrementally — Sprint 1 shipped Services / Addresses /
@@ -125,6 +126,8 @@ import { ServicesModule } from './modules/services/services.module';
     BookingsModule,
     // R11 — customer reviews of completed bookings, and their moderation.
     ReviewsModule,
+    // R13 — durable, authenticated help/support tickets.
+    SupportModule,
     DisputesModule,
     NotificationsModule,
     ConversationsModule,
