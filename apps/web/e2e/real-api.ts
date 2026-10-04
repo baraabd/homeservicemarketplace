@@ -62,6 +62,16 @@ export async function api<T = unknown>(
   path: string,
   init: { method?: string; body?: unknown } = {},
 ): Promise<ApiResult<T>> {
+  return apiAt<T>(REAL_API, jar, path, init);
+}
+
+/** The same request against a named API instance (R17 cross-instance runs). */
+export async function apiAt<T = unknown>(
+  base: string,
+  jar: Jar,
+  path: string,
+  init: { method?: string; body?: unknown } = {},
+): Promise<ApiResult<T>> {
   const method = init.method ?? 'GET';
   const headers: Record<string, string> = {
     Cookie: [...jar].map(([k, v]) => `${k}=${v}`).join('; '),
@@ -70,7 +80,7 @@ export async function api<T = unknown>(
   const csrf = jar.get('hsm_csrf');
   if (csrf && method !== 'GET') headers['X-CSRF-Token'] = csrf;
 
-  const res = await fetch(`${REAL_API}${path}`, {
+  const res = await fetch(`${base}${path}`, {
     method,
     headers,
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
