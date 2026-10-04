@@ -949,6 +949,29 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+      # Keep the complete evidence above. These existing synthetic screenshots
+      # also need a small independent archive for human visual inspection in
+      # clients with bounded artifact-transfer sizes. No logs, traces or auth
+      # material are copied into this review sample.
+      - name: Upload inspectable Admin visual samples
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: admin-review-visual-samples
+          path: |
+            apps/web/test-results/admin-real-api/**/tabs-v1-ar-light-390-identity.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-ar-dark-320-identity.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-en-light-1440-identity.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-en-dark-1024-identity.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-ar-light-390-portfolio.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-en-dark-1440-portfolio.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-ar-light-390-application.png
+            apps/web/test-results/admin-real-api/**/identity-replaced-and-current-real-api.png
+            apps/web/test-results/admin-real-api/**/portfolio-inspection-ar-light-390.png
+            apps/web/test-results/admin-real-api/**/portfolio-real-revision-conflict.png
+          retention-days: 14
+          if-no-files-found: error
+
   # ── cookies / CSRF / refresh / logout, in a REAL browser ──────────────────
   # These behaviours are defined by rules only a browser implements: HttpOnly
   # hides a cookie from document.cookie, SameSite withholds it cross-site, and

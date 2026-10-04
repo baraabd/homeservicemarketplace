@@ -137,6 +137,11 @@ Local PostgreSQL installation cannot perform its required UID/group changes
 in this workspace, and Chromium download repeatedly returned truncated
 archives. Real HTTP/PostgreSQL/browser/visual acceptance is therefore delegated
 to the existing required CI jobs, not replaced with stub-only evidence.
+The complete Admin evidence archive is retained. An additional small archive
+contains ten existing synthetic identity/portfolio/application screenshots,
+including AR/EN, mobile/desktop and light/dark samples, for visual inspection
+by clients with bounded transfer sizes. It contains no logs, traces or auth
+material and does not replace the full browser evidence or any test gate.
 Final-head results and inspected screenshots are recorded in the delivered
 acceptance report. Authored or skipped tests are not passing tests, and
 baseline results are not reused as evidence for the repair commit.
