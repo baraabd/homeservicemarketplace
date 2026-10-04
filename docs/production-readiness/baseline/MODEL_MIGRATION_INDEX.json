@@ -11,7 +11,8 @@
       "20260822092000_sprint02_case_insensitive_unique_email",
       "20260824084629_sprint09_verification_restricted_media_work_access",
       "20260828220000_sprint09b20_earned_service_area_expansion",
-      "20261004120000_r13_support_tickets"
+      "20261004120000_r13_support_tickets",
+      "20261004150000_r15_ledger_foundation"
     ],
     "Role": [
       "20260501003603_rename_tables_to_pascal_case",
@@ -78,7 +79,8 @@
     "Booking": [
       "20260501003603_rename_tables_to_pascal_case",
       "20260501010000_add_provider_profile_extensions",
-      "20260502010000_add_disputes_and_settings"
+      "20260502010000_add_disputes_and_settings",
+      "20261004150000_r15_ledger_foundation"
     ],
     "ConversationParticipant": [
       "20260501003603_rename_tables_to_pascal_case",

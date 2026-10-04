@@ -66,8 +66,8 @@ model User {
   verificationDecisions      VerificationDecision[]         @relation("VerificationDecisionReviewer")
   /// Sprint 9B.20 — service-area ceilings this admin granted by hand.
   serviceAreaOverrides       ProviderServiceAreaExpansion[] @relation("ServiceAreaOverrideBy")
-  supportTicketsRequested    SupportTicket[]                @relation("SupportTicketRequester")
-  supportTicketsClosed       SupportTicket[]                @relation("SupportTicketCloser")
+  supportTicketsRequested    SupportTicket[]                 @relation("SupportTicketRequester")
+  supportTicketsClosed       SupportTicket[]                 @relation("SupportTicketCloser")
   supportMessages            SupportMessage[]
   ledgerAccounts             LedgerAccount[]                @relation("LedgerAccountOwner")
 

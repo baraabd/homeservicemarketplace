@@ -3,9 +3,9 @@
 Status: **R15_INTEGRATION_PENDING. NO LIVE MONEY MOVEMENT IS ENABLED.**
 
 Original R15 base: `develop@a2b31c3090000d2ef8a5e96dd21e80023ee160a7`.
-PR #139 integrates `develop@dff53bb702b82e81506bcdc05c523143a8900979`,
-including the baseline repair, durable support, budget authority and tracked-tree
-secret scan. Policy:
+PR #139 integrates `develop@865636ac7691e6c3548bca7d741bcd93d06a116b`,
+including the baseline repair, durable support, budget authority, tracked-tree
+secret scan and R15 foundation from PR #137. Policy:
 [`ACCOUNTING_POLICY.md`](ACCOUNTING_POLICY.md). Invariants:
 [`LEDGER_INVARIANTS.md`](LEDGER_INVARIANTS.md). Inventory:
 [`MONEY_AUTHORITY_MATRIX.md`](MONEY_AUTHORITY_MATRIX.md).
@@ -22,6 +22,14 @@ secret scan. Policy:
 No contract, web, route, feature flag, payment adapter or booking hook changed.
 
 ## PR #139 integration repair
+
+PR #137 merged while #139 was being verified. Its ledger service, real-PostgreSQL
+caller transaction cases and accounting policy match this repair byte for byte.
+The updated #139 retains those implementations and adds module/audit/transaction
+unit regressions, stronger merge-integrity checks and this acceptance context.
+Startup's fail-fast Bash defaults and the original merge-recovery report are
+preserved from current develop. Schema, runtime modules, audit allowlist, model
+inventory and existing migration contents match current develop.
 
 - Preserve R13's `User` support back-relations, `SupportModule` registration,
   support audit identifiers and model-to-migration index alongside R15.

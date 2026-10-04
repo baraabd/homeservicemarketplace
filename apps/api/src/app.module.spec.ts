@@ -22,8 +22,8 @@ describe('AppModule feature registration', () => {
       SupportModule,
     ) as unknown[];
 
-    expect(imports).toContain(SupportModule);
-    expect(imports).toContain(LedgerModule);
+    expect(imports.filter((entry) => entry === SupportModule)).toHaveLength(1);
+    expect(imports.filter((entry) => entry === LedgerModule)).toHaveLength(1);
     expect(supportControllers).toEqual(
       expect.arrayContaining([SupportController, AdminSupportController]),
     );
