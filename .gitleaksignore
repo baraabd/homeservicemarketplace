@@ -55,3 +55,8 @@ b876db762045bf70ee7d1fb3eea9eb00ac4bbb97:apps/api/src/modules/disputes/dispute-i
 7c7a11861f85cf1168db7a0d217594f3388bbc44:apps/api/src/modules/requests/requests.service.spec.ts:generic-api-key:352
 7c7a11861f85cf1168db7a0d217594f3388bbc44:apps/api/src/modules/requests/requests.service.spec.ts:generic-api-key:355
 8968db809d5a89e1b4e44ac07e8a79c5f435144f:apps/api/test/integration/r07-marketplace-races.integration.spec.ts:generic-api-key:212
+
+# R13 — one test-only CI placeholder, individually reviewed in §8. Not a
+# credential: a readable JWT_ACCESS_SECRET for a disposable CI job, in a
+# diagnostic workflow that was deleted on the same branch.
+d316a2f46270024b301c78bfa86d15e94e2350c9:.github/workflows/r13-validation.yml:generic-api-key:39

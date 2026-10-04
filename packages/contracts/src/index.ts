@@ -11,6 +11,7 @@ export * from './provider';
 export * from './admin';
 export * from './realtime';
 export * from './money';
+export * from './support';
 export { DISPUTE_ISSUE_CODES, DISPUTE_REQUESTED_OUTCOMES } from './disputes/intake';
 export type * from './disputes/intake';
 export * from './disputes/workspace';

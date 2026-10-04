@@ -711,6 +711,34 @@ jobs:
             apps/web/test-results/r12-booking-communication-report/
           retention-days: 14
           if-no-files-found: warn
+      - name: Accept R13 durable help and support through the build-flagged bundle
+        # A seeker opens a ticket in the browser; support replies through the
+        # real admin screen; the seeker answers and reads everything back after
+        # a full navigation; support closes it and the thread becomes
+        # read-only. No fabricated reply ever appears. Strangers and seekers
+        # are refused by the real guards; a lost answer does not duplicate the
+        # ticket; Arabic by keyboard at two mobile widths. Synthetic people and
+        # messages; the spec records no trace or video.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r13-support-report
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r13-support.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --retries=0 \
+            --output=test-results/r13-support
+      - name: Upload R13 support real-service evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r13-support-evidence
+          path: |
+            apps/web/test-results/r13-support/
+            apps/web/test-results/r13-support-report/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed
