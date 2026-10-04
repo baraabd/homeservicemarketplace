@@ -128,14 +128,15 @@ describe('chat-api — sendMessage', () => {
 });
 
 describe('chat-api — markConversationRead', () => {
-  it('POSTs /v1/me/conversations/:id/read with no body', async () => {
-    let bodyLen: number | undefined;
+  // R17: the body names the newest message shown, and nothing else.
+  it('POSTs /v1/me/conversations/:id/read up to the newest message shown', async () => {
+    let body: unknown;
     mock.onPost('/v1/me/conversations/conv-1/read').reply((config) => {
-      bodyLen = (config.data as string | undefined)?.length;
+      body = JSON.parse(config.data as string);
       return [200, { lastReadAt: '2026-04-29T03:30:00.000Z' }];
     });
-    const out = await markConversationRead('conv-1');
+    const out = await markConversationRead('conv-1', 'm-7');
     expect(out.lastReadAt).toBe('2026-04-29T03:30:00.000Z');
-    expect(bodyLen === undefined || bodyLen === 0).toBe(true);
+    expect(body).toEqual({ upToMessageId: 'm-7' });
   });
 });

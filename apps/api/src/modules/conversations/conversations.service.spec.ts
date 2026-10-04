@@ -214,12 +214,13 @@ interface Mocks {
   participants: {
     create: jest.Mock;
     findByConversationAndUser: jest.Mock;
-    setLastReadAt: jest.Mock;
+    advanceLastReadAt: jest.Mock;
   };
   messages: {
     create: jest.Mock;
     listForConversation: jest.Mock;
     countUnreadForParticipant: jest.Mock;
+    findInConversation: jest.Mock;
   };
   bookings: {
     findOwned: jest.Mock;
@@ -250,7 +251,7 @@ function makeMocks(over: MocksOverride = {}): Mocks {
     participants: {
       create: jest.fn().mockResolvedValue(makeParticipant()),
       findByConversationAndUser: jest.fn().mockResolvedValue(makeParticipant()),
-      setLastReadAt: jest.fn().mockResolvedValue(makeParticipant()),
+      advanceLastReadAt: jest.fn().mockResolvedValue(makeParticipant()),
       ...(over.participants ?? {}),
     },
     messages: {
@@ -265,6 +266,7 @@ function makeMocks(over: MocksOverride = {}): Mocks {
       } as unknown as Message),
       listForConversation: jest.fn().mockResolvedValue([]),
       countUnreadForParticipant: jest.fn().mockResolvedValue(0),
+      findInConversation: jest.fn().mockResolvedValue(null),
       ...(over.messages ?? {}),
     },
     bookings: {
@@ -731,7 +733,7 @@ describe('ConversationsService', () => {
         'conv-1',
         ConversationParticipantRole.SEEKER,
       );
-      expect(m.participants.setLastReadAt).toHaveBeenCalled();
+      expect(m.participants.advanceLastReadAt).toHaveBeenCalled();
       expect(typeof out.lastReadAt).toBe('string');
       expect(() => new Date(out.lastReadAt).toISOString()).not.toThrow();
     });
@@ -745,7 +747,57 @@ describe('ConversationsService', () => {
       ).rejects.toMatchObject({
         code: 'NOT_FOUND',
       });
-      expect(m.participants.setLastReadAt).not.toHaveBeenCalled();
+      expect(m.participants.advanceLastReadAt).not.toHaveBeenCalled();
+    });
+
+    it('R17: reads up to the named message at its stored time, not the clock', async () => {
+      const seenAt = new Date('2026-04-29T03:00:00.000Z');
+      const m = makeMocks({
+        messages: {
+          findInConversation: jest.fn().mockResolvedValue({ id: 'msg-9', createdAt: seenAt }),
+        },
+        participants: {
+          advanceLastReadAt: jest.fn().mockResolvedValue(makeParticipant({ lastReadAt: seenAt })),
+        },
+      });
+      const out = await makeService(m).markRead(
+        'user-1',
+        'conv-1',
+        ConversationParticipantRole.SEEKER,
+        'msg-9',
+      );
+      expect(m.messages.findInConversation).toHaveBeenCalledWith('conv-1', 'msg-9');
+      expect(m.participants.advanceLastReadAt).toHaveBeenCalledWith('pcp-self', seenAt);
+      expect(out).toEqual({ lastReadAt: seenAt.toISOString() });
+    });
+
+    it('R17: a message outside the conversation is NOT_FOUND and moves nothing', async () => {
+      const m = makeMocks();
+      await expect(
+        makeService(m).markRead('user-1', 'conv-1', ConversationParticipantRole.SEEKER, 'foreign'),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      expect(m.participants.advanceLastReadAt).not.toHaveBeenCalled();
+    });
+
+    it('R17: answers with the stored position when a newer read already happened', async () => {
+      const newer = new Date('2026-04-29T05:00:00.000Z');
+      const m = makeMocks({
+        messages: {
+          findInConversation: jest
+            .fn()
+            .mockResolvedValue({ id: 'msg-1', createdAt: new Date('2026-04-29T03:00:00.000Z') }),
+        },
+        participants: {
+          advanceLastReadAt: jest.fn().mockResolvedValue(makeParticipant({ lastReadAt: newer })),
+        },
+      });
+      const out = await makeService(m).markRead(
+        'user-1',
+        'conv-1',
+        ConversationParticipantRole.SEEKER,
+        'msg-1',
+      );
+      expect(out).toEqual({ lastReadAt: newer.toISOString() });
     });
   });
 

@@ -347,7 +347,35 @@ describe('ConversationsController (e2e)', () => {
         .set('X-CSRF-Token', 'tok');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ lastReadAt: '2026-04-29T03:30:00.000Z' });
-      expect(conversationsService.markRead).toHaveBeenCalledWith('user-1', 'conv-1', 'SEEKER');
+      // No body: read as of now (the pre-R17 call shape still works).
+      expect(conversationsService.markRead).toHaveBeenCalledWith(
+        'user-1',
+        'conv-1',
+        'SEEKER',
+        undefined,
+      );
+    });
+
+    it('R17: passes the newest shown message through, and refuses a malformed or extra field', async () => {
+      conversationsService.markRead.mockResolvedValue({ lastReadAt: '2026-04-29T03:30:00.000Z' });
+      const post = (body: object) =>
+        request(app.getHttpServer())
+          .post('/v1/me/conversations/conv-1/read')
+          .set('Cookie', 'hsm_csrf=tok')
+          .set('X-CSRF-Token', 'tok')
+          .send(body);
+      expect((await post({ upToMessageId: 'msg-42' })).status).toBe(200);
+      expect(conversationsService.markRead).toHaveBeenLastCalledWith(
+        'user-1',
+        'conv-1',
+        'SEEKER',
+        'msg-42',
+      );
+      conversationsService.markRead.mockClear();
+      expect((await post({ upToMessageId: 'msg 42; drop' })).status).toBe(400);
+      expect((await post({ upToMessageId: 'x'.repeat(65) })).status).toBe(400);
+      expect((await post({ lastReadAt: '2030-01-01T00:00:00Z' })).status).toBe(400);
+      expect(conversationsService.markRead).not.toHaveBeenCalled();
     });
 
     it('non-participant surfaces as 404 (no Prisma leak)', async () => {

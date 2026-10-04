@@ -31,6 +31,7 @@ import { ConversationsService } from './conversations.service';
 
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListMessagesQueryDto } from './dto/list-messages.query';
+import { MarkConversationReadDto } from './dto/mark-conversation-read.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 
 // R12: every call from this controller acts for the PROVIDER side only.
@@ -112,7 +113,8 @@ export class ProviderConversationsController {
   markRead(
     @CurrentUser() user: AuthenticatedUser,
     @Param('conversationId') conversationId: string,
+    @Body() body: MarkConversationReadDto,
   ): Promise<MarkConversationReadResponse> {
-    return this.conversations.markRead(user.id, conversationId, SIDE);
+    return this.conversations.markRead(user.id, conversationId, SIDE, body.upToMessageId);
   }
 }
