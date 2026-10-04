@@ -1198,9 +1198,47 @@ jobs:
           if-no-files-found: error
 
       - name: Secret scan
+        # History scan: catches a secret that was added and later removed.
+        # It reads `git log --no-merges --first-parent <range>`, so it never
+        # sees content introduced only by a merge commit, and on a develop
+        # push (every first-parent commit is a merge) it scans 0 commits.
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tracked-tree secret scan policy tests
+        if: always()
+        run: node --test scripts/security/secret-scan-tree.test.cjs
+
+      - name: Secret scan of the exact tracked source tree
+        # Complements the history scan: every tracked file of the checked-out
+        # commit (the PR merge ref, or the pushed develop tip) is scanned, and
+        # an empty, partial or zero-byte scope fails instead of passing.
+        # Pinned release, verified against its published SHA-256.
+        if: always()
+        env:
+          GITLEAKS_VERSION: 8.24.3
+          GITLEAKS_SHA256: 9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c
+        run: |
+          set -euo pipefail
+          tool="$RUNNER_TEMP/gitleaks-tree"
+          mkdir -p "$tool"
+          curl -sSfL -o "$tool/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $tool/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$tool/gitleaks.tar.gz" -C "$tool" gitleaks
+          node scripts/security/secret-scan-tree.cjs \
+            --gitleaks "$tool/gitleaks" --work-dir "$RUNNER_TEMP/secret-scan-tree" \
+            --report gitleaks-tree.sarif
+
+      - name: Upload the tracked-tree secret scan report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: secret-scan-tree
+          path: gitleaks-tree.sarif
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: Build the image to scan
         run: docker build -f apps/api/Dockerfile -t hsm-api:scan .
