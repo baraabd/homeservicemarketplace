@@ -806,9 +806,12 @@ describe('ProviderApp — Phase 6 Job Detail overlay', () => {
     // Overlay closed AND BiddingModal mounted (its title is "Submit Offer").
     await waitFor(() => expect(screen.queryByTestId('job-detail-overlay')).toBeNull());
     expect(screen.getByText(/submit offer|تقديم عرض/i)).toBeInTheDocument();
+    // R14 — the offer form no longer shows a "Budget:" note with nothing
+    // after it; the seeker never states a budget.
+    expect(document.body.textContent).not.toMatch(/Budget|ميزانية/i);
   });
 
-  it('hides Budget and Seeker tiles when blank, keeps Distance with "—" until Haversine lands', async () => {
+  it('has no Budget tile, hides a blank Seeker tile, keeps Distance with "—" while unknown', async () => {
     mockBaseFlow();
     renderProvider();
 
@@ -817,11 +820,9 @@ describe('ProviderApp — Phase 6 Job Detail overlay', () => {
     fireEvent.click(popupCta);
 
     const overlay = await screen.findByTestId('job-detail-overlay');
-    // Sprint 7.x — Budget and Seeker are permanently empty on the
-    // canonical available-requests wire (no schema column for budget;
-    // seeker identity stays masked per the Sprint 5.2 security
-    // projection), so the overlay collapses those tiles entirely
-    // rather than showing a placeholder em-dash. Distance still falls
+    // R14 — there is no budget on the wire or in the overlay. A blank
+    // seeker label (identity stays masked per the Sprint 5.2 security
+    // projection) collapses its tile rather than showing an em-dash. Distance still falls
     // back to "—" while `distanceKm` is null on the wire — that
     // fallback retires once the backend Haversine slice lands.
     const placeholders = Array.from(overlay.querySelectorAll('p')).filter(

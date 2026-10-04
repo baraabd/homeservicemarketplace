@@ -46,7 +46,7 @@ export const DEPRECATED_ROUTES: readonly DeprecatedRoute[] = [
     canonical: '/v1/provider/available-requests',
     sunset: '2027-02-01',
     reason:
-      'Superseded by /v1/provider/available-requests, which returns a richer summary (distanceKm, budget, seeker preview).',
+      'Superseded by /v1/provider/available-requests, which returns a richer summary (distanceKm, seeker preview).',
   },
   {
     prefix: '/v1/me/provider/bids',
