@@ -22,10 +22,8 @@ import type { ServiceRequest } from '../../app/context/EcosystemContext';
 //     `seekerRating` ← `seeker.rating ?? 0` (zero just means "no
 //     reputation data yet" — the JobDetailOverlay already gates
 //     visibility on a non-empty name and never on the rating).
-//   - threads the budget label from `budget.label`. When the seeker
-//     hasn't set a budget (today: always) the label is null and we
-//     render an empty string; the JobDetailOverlay then hides the
-//     budget tile entirely.
+//   - carries no budget: the seeker never states one, so there is
+//     nothing truthful to show (R14, docs/production-readiness/r14).
 //   - derives `urgency` from `scheduleType === 'ASAP'`.
 //   - maps the category slug to a default emoji; `customServiceText`
 //     requests fall back to a generic icon.
@@ -41,7 +39,7 @@ import type { ServiceRequest } from '../../app/context/EcosystemContext';
 // The function accepts EITHER the older `AvailableJobSummary` (legacy
 // /me/provider/jobs feed) OR the canonical
 // `ProviderAvailableRequestSummary` (Sprint 5.2 `/v1/provider/available-requests`).
-// The legacy feed does NOT carry distance / budget / seeker preview;
+// The legacy feed does NOT carry distance / seeker preview;
 // when one of those rows comes through, the mapper falls back to the
 // pre-7.4 empty-string / null defaults so the screens render but
 // never display a fabricated value.
@@ -61,7 +59,6 @@ export function mapAvailableJobToLegacy(job: AdaptableJob): ServiceRequest {
   const isCanonical = 'seeker' in job;
   const seekerName = isCanonical ? job.seeker.publicLabel : '';
   const seekerRating = isCanonical ? (job.seeker.rating ?? 0) : 0;
-  const budgetLabel = isCanonical ? (job.budget.label ?? '') : '';
   const distanceKm = isCanonical ? job.distanceKm : null;
 
   return {
@@ -71,7 +68,6 @@ export function mapAvailableJobToLegacy(job: AdaptableJob): ServiceRequest {
     serviceIcon: icon,
     description,
     descriptionAr: description,
-    budget: budgetLabel,
     location: job.location.city,
     locationAr: job.location.city,
     seekerName,

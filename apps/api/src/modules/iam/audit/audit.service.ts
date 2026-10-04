@@ -16,6 +16,10 @@ const ALLOWED_METADATA_KEYS = new Set<string>([
   'ledgerTransactionId',
   'reversesTransactionId',
   'actorSystem',
+  // R13 — support identifiers only. Message bodies and subjects are never
+  // duplicated into the audit log.
+  'supportTicketId',
+  'supportMessageId',
   'sessionId',
   'familyId',
   'jti',

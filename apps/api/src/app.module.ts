@@ -129,6 +129,8 @@ import { SupportModule } from './modules/support/support.module';
     ReviewsModule,
     // R15 — dark double-entry ledger foundation. No routes; no live caller.
     LedgerModule,
+    // R13 — durable, authenticated help/support tickets.
+    SupportModule,
     DisputesModule,
     NotificationsModule,
     ConversationsModule,
