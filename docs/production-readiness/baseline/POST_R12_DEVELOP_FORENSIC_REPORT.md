@@ -202,3 +202,30 @@ its final head; see the PR body.
 | Secret/container scans not executing on develop                | PROVEN; expected to execute once the audit passes (see PR CI) |
 | Missing branch protection on `develop`                         | PROVEN; BLOCKED on owner setting                              |
 | Windows-only erasure spec failure                              | PROVEN pre-existing; not in scope                             |
+
+## 10. Post-merge secret-scan coverage (2026-10-04, after #134)
+
+OBSERVED in develop push run 37195248164 (job 111416373998): the
+_Secret scan_ step passed while gitleaks logged `0 commits scanned` and
+`scanned ~0 bytes`.
+
+PROVEN cause: `gitleaks/gitleaks-action@v2` runs
+`git log -p -U0 --no-merges --first-parent <first-pushed>^..<head>`. Every
+first-parent commit on `develop` is a merge commit (15 of the last 15), so a
+develop push always selects zero commits. On pull requests the same flags
+scan the branch's own non-merge commits (8 for #134), but content introduced
+only by a merge commit — for example a conflict resolution when a feature
+branch merges develop — is never read by any run.
+
+Reproduced in an isolated temporary repository with a synthetic token placed
+only in a merge commit: the action-equivalent command scanned 0 commits and
+reported no leaks; a scan of the commit's tracked tree found it.
+
+Not a finding of a leaked credential: a tracked-tree scan of `5e7a02b`
+(2,046 files, ~16.4 MB) found no leaks.
+
+FIXED (separate PR): a second step scans every tracked file of the checked-out
+commit with a pinned, checksum-verified gitleaks, and fails on an empty,
+partial or zero-byte scope (`scripts/security/secret-scan-tree.cjs`, with
+policy tests). The history scan is kept unchanged so a secret that was added
+and later removed is still caught on pull requests.

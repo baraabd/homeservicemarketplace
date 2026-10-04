@@ -224,6 +224,9 @@ policy, audit trail and failure/offline behavior.
 
 ## R14 — Budget / quote intent authority
 
+**Status (2026-10-04):** Option B implemented on `feat/r14-budget-quote-intent-authority`
+(no approved budget authority existed; see `r14/BUDGET_POLICY.md`). Acceptance pending.
+
 **Goal:** resolve the current all-null provider budget shape.
 
 **Product decision required before implementation:** either:

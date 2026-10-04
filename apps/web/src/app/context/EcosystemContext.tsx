@@ -23,7 +23,6 @@ export interface ServiceRequest {
   serviceIcon: string;
   description: string;
   descriptionAr: string;
-  budget: string;
   location: string;
   locationAr: string;
   seekerName: string;
@@ -95,7 +94,6 @@ const SEED_REQUESTS: ServiceRequest[] = [
     serviceIcon: '🔧',
     description: 'Pipe leak under kitchen sink, needs urgent fix',
     descriptionAr: 'تسرب في أنبوب مجلى المطبخ، يحتاج إصلاحاً عاجلاً',
-    budget: '$30–50/hr',
     location: 'Al Olaya District',
     locationAr: 'حي العليا',
     seekerName: 'Ahmed K.',
@@ -144,7 +142,6 @@ const SEED_REQUESTS: ServiceRequest[] = [
     serviceIcon: '⚡',
     description: 'Faulty socket in living room, sparks when plugging in',
     descriptionAr: 'مقبس معطوب في غرفة الجلوس، شرارات عند التوصيل',
-    budget: '$25–45/hr',
     location: 'Al Malqa',
     locationAr: 'الملقا',
     seekerName: 'Sara R.',
@@ -166,7 +163,6 @@ const SEED_REQUESTS: ServiceRequest[] = [
     serviceIcon: '❄️',
     description: 'AC unit not cooling, making loud noise',
     descriptionAr: 'وحدة التكييف لا تبرد وتصدر ضوضاء',
-    budget: '$40–70/hr',
     location: 'King Fahd Road',
     locationAr: 'طريق الملك فهد',
     seekerName: 'Nora S.',
@@ -188,7 +184,6 @@ const SEED_REQUESTS: ServiceRequest[] = [
     serviceIcon: '✨',
     description: 'Deep cleaning for 3-bedroom apartment',
     descriptionAr: 'تنظيف عميق لشقة من 3 غرف نوم',
-    budget: '$80 flat',
     location: 'Diplomatic Quarter',
     locationAr: 'الحي الدبلوماسي',
     seekerName: 'Omar H.',
@@ -224,7 +219,6 @@ const SEED_REQUESTS: ServiceRequest[] = [
     serviceIcon: '🔨',
     description: 'Install 2 wall shelves in bedroom',
     descriptionAr: 'تركيب رفين للجدار في غرفة النوم',
-    budget: '$20–30/hr',
     location: 'Al Nakheel',
     locationAr: 'النخيل',
     seekerName: 'Laila F.',
@@ -448,7 +442,13 @@ const EcosystemContext = createContext<EcosystemCtx>({
   setShowHourlyRate: () => {},
 });
 
-export function EcosystemProvider({ children, identityKey = 'signed-out' }: { children: React.ReactNode; identityKey?: string }) {
+export function EcosystemProvider({
+  children,
+  identityKey = 'signed-out',
+}: {
+  children: React.ReactNode;
+  identityKey?: string;
+}) {
   const [requests, setRequests] = useIdentityState<ServiceRequest[]>(identityKey, SEED_REQUESTS);
   const [adminNotifs, setAdminNotifs] = useIdentityState<CrossAppNotif[]>(identityKey, SEED_NOTIFS);
   const [showHourlyRate, setShowHourlyRate] = useIdentityState(identityKey, true);
@@ -511,32 +511,41 @@ export function EcosystemProvider({ children, identityKey = 'signed-out' }: { ch
     [setRequests, setAdminNotifs],
   );
 
-  const acceptBid = useCallback((requestId: string, bidId: string) => {
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === requestId
-          ? {
-              ...r,
-              status: 'assigned' as const,
-              bids: r.bids.map((b) => ({
-                ...b,
-                status: b.id === bidId ? ('accepted' as const) : ('rejected' as const),
-              })),
-            }
-          : r,
-      ),
-    );
-  }, [setRequests]);
+  const acceptBid = useCallback(
+    (requestId: string, bidId: string) => {
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.id === requestId
+            ? {
+                ...r,
+                status: 'assigned' as const,
+                bids: r.bids.map((b) => ({
+                  ...b,
+                  status: b.id === bidId ? ('accepted' as const) : ('rejected' as const),
+                })),
+              }
+            : r,
+        ),
+      );
+    },
+    [setRequests],
+  );
 
-  const completeJob = useCallback((requestId: string) => {
-    setRequests((prev) =>
-      prev.map((r) => (r.id === requestId ? { ...r, status: 'completed' as const } : r)),
-    );
-  }, [setRequests]);
+  const completeJob = useCallback(
+    (requestId: string) => {
+      setRequests((prev) =>
+        prev.map((r) => (r.id === requestId ? { ...r, status: 'completed' as const } : r)),
+      );
+    },
+    [setRequests],
+  );
 
-  const markAdminRead = useCallback((id: string) => {
-    setAdminNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-  }, [setAdminNotifs]);
+  const markAdminRead = useCallback(
+    (id: string) => {
+      setAdminNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    },
+    [setAdminNotifs],
+  );
 
   return (
     <EcosystemContext.Provider

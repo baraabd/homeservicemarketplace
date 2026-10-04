@@ -66,40 +66,10 @@ export interface ProviderAvailableRequestSeekerPreview {
   rating: number | null;
 }
 
-// Sprint 7.4 — budget hint embedded on the available-request summary.
-// The seeker may declare a budget range, a single amount, or leave it
-// open. The shape covers all three so the wire DTO is stable
-// regardless of how the seeker scoped their ask:
-//
-//   - amountMin / amountMax: integer marketplace units (cents-equiv).
-//     Either may be null. `amountMin == null && amountMax == null`
-//     means "open budget"; the renderer should treat that as "no
-//     fixed cap, please bid your true price".
-//   - currency: ISO 4217 (e.g. "USD"). Null when the request has no
-//     stated budget at all (caller falls back to the marketplace
-//     default for the bid form).
-//   - label: a pre-formatted, locale-neutral display string the
-//     server emits so each client renders identically. Examples:
-//       "Open budget"
-//       "$50"           (single amount)
-//       "$50 – $100"    (range)
-//     The renderer treats this as opaque text — currency formatting
-//     is owned server-side so the marketplace can change rules in
-//     one place. Null when the request has no budget data and the
-//     UI prefers to render its own "Open budget" copy in-locale.
-//
-// All four fields are nullable to accommodate the existing data set
-// (no seeker-side budget input today). The Sprint 7.4 mapper emits
-// `{ amountMin: null, amountMax: null, currency: null, label: null }`
-// until the seeker create-request wizard grows a budget input, at
-// which point the mapper threads the persisted columns through
-// without a contract change.
-export interface ProviderAvailableRequestBudget {
-  amountMin: number | null;
-  amountMax: number | null;
-  currency: string | null;
-  label: string | null;
-}
+// R14 — there is deliberately no budget on the provider projection. The
+// seeker never states one, so any value here would be fabricated. A future
+// seeker budget intent needs an approved product decision first; see
+// docs/production-readiness/r14/BUDGET_POLICY.md.
 
 export interface ProviderAvailableRequestSummary {
   id: string;
@@ -126,12 +96,6 @@ export interface ProviderAvailableRequestSummary {
    * value (provider standing on top of the request).
    */
   distanceKm: number | null;
-  /**
-   * Sprint 7.4 — seeker's stated budget (always present in shape,
-   * fields nullable when no source). See
-   * `ProviderAvailableRequestBudget` for field semantics.
-   */
-  budget: ProviderAvailableRequestBudget;
   /**
    * Sprint 7.4 — privacy-safe seeker preview (label + optional
    * rating). NEVER carries userId, full name, email, phone, or

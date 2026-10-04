@@ -403,7 +403,7 @@ describe('AvailableRequestsService.list', () => {
 
   // ─── Sprint 7.4 — privacy-safe summary projection ─────────────────────
 
-  it('SHAPE: every summary carries the Sprint 7.4 wire fields (distanceKm, budget, seeker)', async () => {
+  it('SHAPE: every summary carries distanceKm and seeker, and no fabricated budget (R14)', async () => {
     const cat = makeCategory();
     const row = makeRequest('r-shape', cat);
     const m = makeMocks({
@@ -414,13 +414,9 @@ describe('AvailableRequestsService.list', () => {
     const out = await makeService(m).list('user-provider-1', {});
     const dto = out.items[0];
     expect(dto).toHaveProperty('distanceKm');
-    expect(dto).toHaveProperty('budget');
-    expect(dto.budget).toEqual({
-      amountMin: null,
-      amountMax: null,
-      currency: null,
-      label: null,
-    });
+    // R14 — the seeker never states a budget, so the projection has none.
+    expect(dto).not.toHaveProperty('budget');
+    expect(JSON.stringify(dto)).not.toMatch(/budget|amountMin|amountMax/i);
     expect(dto).toHaveProperty('seeker');
     expect(dto.seeker).toMatchObject({ publicLabel: expect.any(String) });
     // rating is optional-nullable — explicit null today.
@@ -557,7 +553,7 @@ describe('AvailableRequestsService.detail', () => {
     expect(out.bidsCount).toBe(2);
     // Sprint 7.4 — detail carries the same enriched shape.
     expect(out.seeker.publicLabel).toBe('Layla M.');
-    expect(out.budget).toMatchObject({ amountMin: null, amountMax: null });
+    expect(out).not.toHaveProperty('budget');
   });
 
   it('returns 404 when the request is not visible (foreign / deleted / cancelled / category mismatch / already-bid)', async () => {
