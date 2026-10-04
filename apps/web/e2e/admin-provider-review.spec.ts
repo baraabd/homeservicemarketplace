@@ -348,6 +348,7 @@ interface HarnessOptions {
   denied?: boolean;
   conflictOnce?: boolean;
   path?: string;
+  portfolioMediaFailureOnce?: 'not-found' | 'forbidden' | 'invalid-image';
 }
 async function open(page: Page, lang: 'en' | 'ar', options: HarnessOptions = {}) {
   let review = options.review ?? fixture();
@@ -357,6 +358,8 @@ async function open(page: Page, lang: 'en' | 'ar', options: HarnessOptions = {})
   > = [];
   const evidenceReads: string[] = [];
   const portfolioReads: string[] = [];
+  const portfolioDecisions: unknown[] = [];
+  let portfolioMediaFailure = options.portfolioMediaFailureOnce;
   const directoryQueries: URLSearchParams[] = [];
   await seedLanguage(page, lang);
   await page.route('**/v1/**', async (route) => {
@@ -415,16 +418,34 @@ async function open(page: Page, lang: 'en' | 'ar', options: HarnessOptions = {})
       return json({ changed: true, review });
     }
     if (path === `${ROOT}/portfolio`) return json(PORTFOLIO);
+    if (path === `${ROOT}/portfolio/portfolio-1/review`) {
+      portfolioDecisions.push(route.request().postDataJSON());
+      return json(PORTFOLIO.items[0]);
+    }
     if (path === `${ROOT}/portfolio/portfolio-1/media`) {
       portfolioReads.push(path);
+      if (portfolioMediaFailure) {
+        const failure = portfolioMediaFailure;
+        portfolioMediaFailure = undefined;
+        if (failure === 'not-found') return json({ error: { code: 'NOT_FOUND' } }, 404);
+        if (failure === 'forbidden') return json({ error: { code: 'FORBIDDEN' } }, 403);
+        return route.fulfill({
+          contentType: 'image/png',
+          body: Buffer.from('unreadable image bytes'),
+        });
+      }
       return route.fulfill({
         contentType: 'image/png',
         body: PNG,
         headers: { 'Cache-Control': 'private, no-store' },
       });
     }
-    if (path === '/v1/verification/documents/document-1/content') {
+    const requestedDocument = review.verification?.documents.find(
+      (document) => path === `/v1/verification/documents/${document.id}/content`,
+    );
+    if (requestedDocument) {
       evidenceReads.push(path);
+      if (!requestedDocument.viewable) return json({ error: { code: 'NOT_FOUND' } }, 404);
       return route.fulfill({
         body: IDENTITY_PDF,
         contentType: 'application/pdf',
@@ -463,7 +484,7 @@ async function open(page: Page, lang: 'en' | 'ar', options: HarnessOptions = {})
   await page.goto(options.path ?? `/admin/providers/${PROFILE}`);
   if (!options.denied && !options.path)
     await expect(page.getByTestId('admin-provider-review-workspace')).toBeVisible();
-  return { decisions, evidenceReads, portfolioReads, directoryQueries };
+  return { decisions, evidenceReads, portfolioReads, portfolioDecisions, directoryQueries };
 }
 
 for (const lang of ['en', 'ar'] as const) {
@@ -536,7 +557,9 @@ for (const lang of ['en', 'ar'] as const) {
     expect(state.decisions[0].idempotencyKey.length).toBeGreaterThan(7);
   });
 
-  test(`tabs support keyboard, reload and retained unsent notes without approving (${lang})`, async ({ page }) => {
+  test(`tabs support keyboard, reload and retained unsent notes without approving (${lang})`, async ({
+    page,
+  }) => {
     const state = await open(page, lang);
     const workspace = page.getByTestId('admin-provider-review-workspace');
     await expect(workspace).toHaveAttribute('data-admin-review-layout', 'tabbed-v1');
@@ -545,7 +568,10 @@ for (const lang of ['en', 'ar'] as const) {
     await page.getByTestId('review-tab-BASICS_IDENTITY').focus();
     await page.keyboard.press(lang === 'ar' ? 'ArrowLeft' : 'ArrowRight');
     await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toBeFocused();
-    await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await page.keyboard.press('End');
     await expect(page.getByTestId('review-tab-REVIEW_SUBMISSION')).toBeFocused();
     await page.keyboard.press('Home');
@@ -559,23 +585,34 @@ for (const lang of ['en', 'ar'] as const) {
     expect(state.portfolioReads).toHaveLength(0);
     await openReviewTask(page, 'WORKING_HOURS');
     await page.getByTestId('review-source-current').click();
-    await expect(page.getByTestId('review-tab-WORKING_HOURS')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('review-tab-WORKING_HOURS')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await expect(page).toHaveURL(/reviewTab=WORKING_HOURS/);
     await page.reload();
-    await expect(page.getByTestId('review-tab-WORKING_HOURS')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('review-tab-WORKING_HOURS')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await expect(workspace.getByRole('tabpanel')).toHaveCount(1);
     await expect(page.getByTestId('review-panel-BASICS_IDENTITY')).toBeHidden();
   });
 }
 
-test('server blocker links select hidden panels and the decision anchor preserves the selection', async ({ page }) => {
+test('server blocker links select hidden panels and the decision anchor preserves the selection', async ({
+  page,
+}) => {
   const review = fixture();
   review.availableActions = ['requestChanges'];
   review.blockers = [{ code: 'CATEGORY_REVIEW_REQUIRED', taskId: 'SERVICES_EXPERIENCE' }];
   await open(page, 'en', { review });
   const link = page.locator('#review-decision-panel a[href="#review-section-SERVICES_EXPERIENCE"]');
   await link.click();
-  await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await expect(page.getByTestId('review-panel-SERVICES_EXPERIENCE')).toBeFocused();
   await expect(page).toHaveURL(/reviewTab=SERVICES_EXPERIENCE/);
   await expect(page.getByTestId('review-approve')).toHaveCount(0);
@@ -584,7 +621,10 @@ test('server blocker links select hidden panels and the decision anchor preserve
   // The mobile shortcut is a normal anchor, not a tab change or an approval command.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('a[href="#review-decision-panel"]').click();
-  await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
 });
 
 test('a 409 keeps correction instructions and private notes until a refreshed decision is confirmed', async ({
@@ -642,6 +682,97 @@ test('restricted evidence and pending portfolio bytes are fetched only after an 
   await expect.poll(() => state.portfolioReads.length).toBe(1);
   await expect(page.getByRole('dialog').getByRole('img')).toBeVisible();
 });
+
+for (const failure of ['not-found', 'forbidden', 'invalid-image'] as const) {
+  test(`a ${failure} portfolio preview prevents approval and can recover through a fresh inspection (UI fixture)`, async ({
+    page,
+  }) => {
+    const state = await open(page, 'en', { portfolioMediaFailureOnce: failure });
+    await openReviewTask(page, 'PORTFOLIO');
+    await page.getByTestId('review-portfolio-open-portfolio-1').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('alert')).toBeVisible();
+    await expect(page.getByTestId('review-portfolio-action-approve')).toBeDisabled();
+    if (failure === 'forbidden') {
+      // An explicit permission denial cannot permit decisions using an older
+      // list's permissions. The server also reauthorizes every mutation.
+      await expect(page.getByTestId('review-portfolio-action-reject')).toBeDisabled();
+    } else {
+      // An unavailable or unreadable supplied image cannot be accepted, but
+      // its server-authorized rejection can request a provider replacement.
+      await expect(page.getByTestId('review-portfolio-action-reject')).toBeEnabled();
+    }
+    expect(state.portfolioDecisions).toEqual([]);
+    await page.getByTestId('review-portfolio-media-retry').click();
+    const image = dialog.getByRole('img');
+    await expect
+      .poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+    await expect(page.getByTestId('review-portfolio-action-approve')).toBeEnabled();
+    await expect(page.getByTestId('review-portfolio-action-reject')).toBeEnabled();
+    expect(state.portfolioReads).toHaveLength(2);
+    expect(state.portfolioDecisions).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('review-portfolio-open-portfolio-1')).toBeFocused();
+  });
+}
+
+for (const lang of ['en', 'ar'] as const) {
+  test(`retained historical identity remains inspectable while erased history stays unavailable (${lang}, UI fixture)`, async ({
+    page,
+  }) => {
+    const review = fixture();
+    const document = review.verification!.documents[0]!;
+    review.verification!.documents.push(
+      {
+        ...document,
+        id: 'previous-retained',
+        supersededAt: STAMP,
+        retentionState: 'ACTIVE',
+        viewable: true,
+      },
+      {
+        ...document,
+        id: 'previous-erased',
+        supersededAt: STAMP,
+        retentionState: 'ERASED',
+        viewable: false,
+        evidenceDeletedAt: STAMP,
+      },
+    );
+    const state = await open(page, lang, { review });
+    const history = page
+      .getByTestId('review-identity')
+      .locator('details')
+      .filter({
+        has: page.locator('summary', {
+          hasText: lang === 'ar' ? 'الوثائق السابقة' : 'Previous documents',
+        }),
+      });
+    await history.locator('summary').click();
+    await expect(history.getByTestId('review-evidence-previous-retained')).toBeEnabled();
+    await expect(history.getByTestId('review-evidence-download-previous-retained')).toBeEnabled();
+    await expect(history.getByTestId('review-evidence-previous-erased')).toHaveCount(0);
+    await expect(history.getByTestId('review-evidence-download-previous-erased')).toHaveCount(0);
+    await expect(history.getByTestId('evidence-retention-notice')).toContainText(
+      lang === 'ar'
+        ? 'حُذف الملف من مخزن الأدلة'
+        : 'The file has been removed from the evidence store',
+    );
+    await expect(history).not.toContainText(lang === 'ar' ? 'بانتظار المراجعة' : 'Pending review');
+    await history.getByTestId('review-evidence-previous-retained').click();
+    await expect(page.getByTestId('identity-evidence-pdf')).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('region')).toHaveAttribute(
+      'aria-busy',
+      'false',
+    );
+    await page.keyboard.press('Escape');
+    await expect(history.getByTestId('review-evidence-previous-retained')).toBeFocused();
+    expect(state.evidenceReads).toEqual(['/v1/verification/documents/previous-retained/content']);
+    expect(state.decisions).toEqual([]);
+    await expectNoHorizontalPageOverflow(page);
+  });
+}
 
 test('read-only reviewers can inspect metadata without decision or evidence access', async ({
   page,
@@ -703,7 +834,10 @@ test('directory pagination, filters and the return route survive opening a provi
   await expect(page.getByTestId('admin-provider-review-workspace')).toBeVisible();
   await openReviewTask(page, 'WORKING_HOURS');
   await page.reload();
-  await expect(page.getByTestId('review-tab-WORKING_HOURS')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('review-tab-WORKING_HOURS')).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await page.getByRole('button', { name: 'Back to providers', exact: true }).click();
   await expect(directory).toBeVisible();
   const restored = new URL(page.url());

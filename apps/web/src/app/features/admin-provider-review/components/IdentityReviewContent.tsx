@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import type {
   AdminProviderReview,
+  AdminVerificationDocument,
   VerificationCaseActionCode,
 } from '@homeservicemarketplace/contracts';
 import { useEvidenceDownload } from '../../admin-verification/evidence/useEvidenceDownload';
@@ -18,6 +19,7 @@ import { ReviewMutationNotice } from './ReviewMutationNotice';
 import { IdentityEvidenceViewer } from '../evidence/IdentityEvidenceViewer';
 import { IDENTITY_PREVIEW_COPY } from '../evidence/identity-preview-copy';
 import { verificationReasonLabel } from '../evidence/verification-reason-labels';
+import { EVIDENCE_REVIEW_COPY, EVIDENCE_SCAN_LABELS } from '../evidence/evidence-review-copy';
 
 const ACTION_LABEL: Record<VerificationCaseActionCode, string> = {
   assign: 'actionAssign',
@@ -47,6 +49,7 @@ export function ReviewIdentity({
   readOnly?: boolean;
 }) {
   const t = REVIEW_COPY[lang];
+  const evidenceCopy = EVIDENCE_REVIEW_COPY[lang];
   const actionLabel = (action: VerificationCaseActionCode) =>
     action === 'reverify'
       ? lang === 'ar'
@@ -69,15 +72,125 @@ export function ReviewIdentity({
   const [error, setError] = useState<number | null>(null);
   const [invalid, setInvalid] = useState(false);
   const mutation = useMutation({ mutationFn: runCaseCommand });
+  const currentDocuments = kase?.documents.filter((document) => !document.supersededAt) ?? [];
+  const previousDocuments = kase?.documents.filter((document) => !!document.supersededAt) ?? [];
+  function documentRow(document: AdminVerificationDocument, previous = false) {
+    const available = review.permissions.canViewEvidence && document.viewable;
+    const scanTone =
+      document.scanState === 'CLEAN'
+        ? 'success'
+        : document.scanState === 'PENDING'
+          ? 'warning'
+          : 'danger';
+    const unavailableReason =
+      document.retentionState && document.retentionState !== 'ACTIVE'
+        ? null // The retention notice already explains this server-authored availability.
+        : !review.permissions.canViewEvidence
+          ? t.evidenceDenied
+          : document.scanState === 'PENDING'
+            ? evidenceCopy.pending
+            : document.scanState === 'QUARANTINED'
+              ? evidenceCopy.quarantined
+              : document.scanState === 'SCAN_FAILED'
+                ? evidenceCopy.failed
+                : document.scanState === 'REJECTED'
+                  ? evidenceCopy.rejected
+                  : evidenceCopy.unavailable;
+    return (
+      <li className="ar-list-row ar-evidence-row" key={document.id}>
+        <div className="ar-document">
+          <FileText size={22} aria-hidden />
+          <div className="ar-document-details">
+            <strong>{DOCUMENT_KIND_LABELS[lang][document.kind]}</strong>
+            <p className="ar-muted">
+              <bdi dir="auto">{document.displayFilename || evidenceCopy.unnamedFile}</bdi>
+            </p>
+            <small className="ar-muted">
+              {evidenceCopy.uploaded}: {formatReviewDate(document.uploadedAt, lang, t.notCaptured)}
+            </small>
+            {(document.serviceCategoryLabelAr || document.serviceCategoryLabelEn) && (
+              <p>
+                {lang === 'ar'
+                  ? document.serviceCategoryLabelAr || document.serviceCategoryLabelEn
+                  : document.serviceCategoryLabelEn || document.serviceCategoryLabelAr}
+              </p>
+            )}
+            {!previous && (
+              <ReviewBadge tone={scanTone}>
+                {EVIDENCE_SCAN_LABELS[lang][document.scanState]}
+              </ReviewBadge>
+            )}
+            <EvidenceRetentionNotice
+              state={document.retentionState}
+              lang={lang}
+              className="ar-muted"
+            />
+            {!previous && !available && unavailableReason && (
+              <p className="ar-muted" id={`review-evidence-reason-${document.id}`}>
+                {unavailableReason}
+              </p>
+            )}
+          </div>
+        </div>
+        {(!previous || available) && (
+          <div className="ar-actions">
+            <button
+              type="button"
+              data-testid={`review-evidence-${document.id}`}
+              className="ar-button"
+              disabled={!available}
+              aria-describedby={
+                !available && unavailableReason
+                  ? `review-evidence-reason-${document.id}`
+                  : undefined
+              }
+              onClick={(event) => {
+                previewOpenerRef.current = event.currentTarget;
+                setPreviewId(document.id);
+              }}
+            >
+              <ScanSearch size={16} aria-hidden />
+              {IDENTITY_PREVIEW_COPY[lang].open}
+            </button>
+            <button
+              type="button"
+              data-testid={`review-evidence-download-${document.id}`}
+              className="ar-button"
+              disabled={!available}
+              aria-describedby={
+                !available && unavailableReason
+                  ? `review-evidence-reason-${document.id}`
+                  : undefined
+              }
+              onClick={() => evidence.open(document.id)}
+            >
+              <Download size={16} aria-hidden />
+              {t.download}
+            </button>
+          </div>
+        )}
+      </li>
+    );
+  }
   // Never retarget an open confirmation to a replacement case, even when
   // both cases happen to have the same state. The server still owns actions.
-  const selectionCurrent = !!chosen && !!kase &&
-    chosen.caseId === kase.id && chosen.expectedState === kase.state &&
-    review.permissions.canDecide && kase.availableActions.includes(chosen.action);
+  const selectionCurrent =
+    !!chosen &&
+    !!kase &&
+    chosen.caseId === kase.id &&
+    chosen.expectedState === kase.state &&
+    review.permissions.canDecide &&
+    kase.availableActions.includes(chosen.action);
   async function confirm() {
     if (
-      !chosen || readOnly || mutation.isPending || !selectionCurrent || error === 403 || error === 409
-    ) return;
+      !chosen ||
+      readOnly ||
+      mutation.isPending ||
+      !selectionCurrent ||
+      error === 403 ||
+      error === 409
+    )
+      return;
     if (chosen.action !== 'assign' && !reason) {
       setInvalid(true);
       return;
@@ -104,7 +217,7 @@ export function ReviewIdentity({
         <h3 className="ar-subheading">{t.evidence}</h3>
         <ReviewBadge>
           <LockKeyhole size={14} aria-hidden />
-          {t.protected}
+          {evidenceCopy.secure}
         </ReviewBadge>
       </div>
       <p className="ar-muted">{t.evidenceHint}</p>
@@ -117,7 +230,11 @@ export function ReviewIdentity({
             <span>
               {t.policyVersion}: <bdi dir="ltr">{kase.policyVersion}</bdi>
             </span>
-            <span>{formatReviewDate(kase.submittedAt, lang, t.notProvided)}</span>
+            <span>
+              {kase.submittedAt
+                ? formatReviewDate(kase.submittedAt, lang, t.notCaptured)
+                : evidenceCopy.notSubmitted}
+            </span>
           </div>
           {!!kase.requirements.length && (
             <div>
@@ -149,67 +266,35 @@ export function ReviewIdentity({
           {!review.permissions.canViewEvidence && (
             <ReviewBanner tone="warning">{t.evidenceDenied}</ReviewBanner>
           )}
-          <ul className="ar-list">
-            {kase.documents.map((document) => (
-              <li className="ar-list-row" key={document.id}>
-                <div className="ar-document">
-                  <FileText size={22} aria-hidden />
-                  <div>
-                    <strong>{DOCUMENT_KIND_LABELS[lang][document.kind]}</strong>
-                    <p className="ar-muted">{document.displayFilename || t.notProvided}</p>
-                    <StatusBadge value={document.scanState} lang={lang} />
-                    <EvidenceRetentionNotice
-                      state={document.retentionState}
-                      lang={lang}
-                      className="ar-muted"
-                    />
-                    {document.supersededAt && (
-                      <p className="ar-muted">
-                        {lang === 'ar' ? 'وثيقة سابقة تم استبدالها' : 'Previous document, replaced'}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="ar-actions">
-                  <button
-                    type="button"
-                    data-testid={`review-evidence-${document.id}`}
-                    className="ar-button"
-                    disabled={!review.permissions.canViewEvidence || !document.viewable}
-                    onClick={(event) => {
-                      previewOpenerRef.current = event.currentTarget;
-                      setPreviewId(document.id);
-                    }}
-                  >
-                    <ScanSearch size={16} aria-hidden />
-                    {document.viewable && review.permissions.canViewEvidence
-                      ? IDENTITY_PREVIEW_COPY[lang].open
-                      : t.unavailable}
-                  </button>
-                  <button
-                    type="button"
-                    data-testid={`review-evidence-download-${document.id}`}
-                    className="ar-button"
-                    disabled={!review.permissions.canViewEvidence || !document.viewable}
-                    onClick={() => evidence.open(document.id)}
-                  >
-                    <Download size={16} aria-hidden />
-                    {document.viewable && review.permissions.canViewEvidence
-                      ? t.download
-                      : t.unavailable}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="ar-stack">
+            <h4 className="ar-subheading">{evidenceCopy.currentDocuments}</h4>
+            {currentDocuments.length ? (
+              <ul className="ar-list" aria-label={evidenceCopy.currentDocuments}>
+                {currentDocuments.map((document) => documentRow(document))}
+              </ul>
+            ) : (
+              <ReviewBanner tone="warning">{evidenceCopy.noCurrentDocuments}</ReviewBanner>
+            )}
+            {!!previousDocuments.length && (
+              <details className="ar-evidence-history">
+                <summary className="ar-disclosure">
+                  {evidenceCopy.previousDocuments} ({previousDocuments.length.toLocaleString(lang)})
+                </summary>
+                <p className="ar-muted">{evidenceCopy.previousHint}</p>
+                <ul className="ar-list" aria-label={evidenceCopy.previousDocuments}>
+                  {previousDocuments.map((document) => documentRow(document, true))}
+                </ul>
+              </details>
+            )}
+          </div>
           {evidence.failed && (
             <ReviewBanner tone="danger" role="alert">
               {t.evidenceFailed}
             </ReviewBanner>
           )}
           {review.permissions.canDecide && !!kase.availableActions.length && (
-            <details>
-              <summary className="ar-disclosure">{t.caseAction}</summary>
+            <section className="ar-stack" aria-label={t.caseAction}>
+              <h4 className="ar-subheading">{t.caseAction}</h4>
               <p className="ar-muted">{UI[lang].axisNote}</p>
               <div className="ar-actions">
                 {kase.availableActions.map((action) => (
@@ -232,7 +317,7 @@ export function ReviewIdentity({
                   </button>
                 ))}
               </div>
-            </details>
+            </section>
           )}
           <details>
             <summary className="ar-disclosure">{t.verifiedEvidence}</summary>

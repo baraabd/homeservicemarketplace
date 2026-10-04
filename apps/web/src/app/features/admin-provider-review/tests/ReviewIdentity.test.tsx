@@ -100,6 +100,13 @@ afterEach(() => {
 });
 
 describe('restricted identity preview', () => {
+  it('normalizes a safe response MIME with parameters without rejecting a valid image', async () => {
+    mock.onGet(PATH).reply(200, new Blob(['PNG fixture'], { type: 'image/png; charset=binary' }));
+    setup();
+    await open();
+    expect(mock.history.get[0].timeout).toBe(30000);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
   it('reads only after an explicit click, preserves the audited endpoint and releases bytes on close', async () => {
     setup();
     expect(mock.history.get).toHaveLength(0);
@@ -241,6 +248,86 @@ describe('restricted identity preview', () => {
     await screen.findByTestId('identity-evidence-pdf');
     expect(URL.createObjectURL).not.toHaveBeenCalled();
     expect(document.querySelector('iframe, object, embed')).toBeNull();
+  });
+});
+
+describe('current evidence and historical replacements', () => {
+  it('preserves secure inspection of previous evidence when the server still authorizes the read', async () => {
+    const review = fixture();
+    review.verification!.documents = [{ ...evidence, supersededAt: STAMP, viewable: true }];
+    setup(review);
+    const previous = screen.getByRole('list', { name: 'Previous documents', hidden: true });
+    expect(within(previous).getByTestId('review-evidence-document-1')).toBeEnabled();
+    previous.closest('details')!.open = true;
+    await open();
+    expect(mock.history.get[0].url).toBe(PATH);
+  });
+  it.each(['en', 'ar'] as const)(
+    'separates replaced records from actionable evidence in %s',
+    (lang) => {
+      const review = fixture();
+      review.verification!.documents = [
+        {
+          ...evidence,
+          id: 'previous-1',
+          viewable: false,
+          supersededAt: STAMP,
+          displayFilename: null,
+        },
+        evidence,
+      ];
+      setup(review, lang);
+      const current = screen.getByRole('list', {
+        name: lang === 'ar' ? 'الوثائق الحالية' : 'Current documents',
+      });
+      expect(within(current).getByTestId('review-evidence-document-1')).toBeEnabled();
+      expect(
+        within(current).queryByText(
+          lang === 'ar' ? 'لم يُحفظ اسم الملف' : 'Filename was not recorded',
+        ),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId('review-evidence-previous-1')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('review-evidence-download-previous-1')).not.toBeInTheDocument();
+      const summary = screen.getByText(lang === 'ar' ? /الوثائق السابقة/ : /Previous documents/);
+      expect(summary.closest('details')).not.toHaveAttribute('open');
+      expect(mock.history.get).toHaveLength(0);
+    },
+  );
+  it.each(['en', 'ar'] as const)(
+    'explains safety checks rather than a pending human decision in %s',
+    (lang) => {
+      const review = fixture();
+      review.verification!.documents = [
+        { ...evidence, scanState: 'PENDING', viewable: false, displayFilename: null },
+      ];
+      setup(review, lang);
+      expect(
+        screen.getByText(lang === 'ar' ? 'بانتظار فحص الأمان' : 'Awaiting safety check'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(lang === 'ar' ? 'لم يُحفظ اسم الملف' : 'Filename was not recorded'),
+      ).toBeInTheDocument();
+      const preview = screen.getByTestId('review-evidence-document-1');
+      expect(preview).toBeDisabled();
+      expect(preview).toHaveAccessibleDescription(
+        lang === 'ar'
+          ? 'يتاح فتح الوثيقة بعد اكتمال فحص الأمان. حدّث البيانات للتحقق من تقدم الفحص.'
+          : 'Opening becomes available after the safety check completes. Refresh to check progress.',
+      );
+      expect(
+        screen.queryByText(lang === 'ar' ? 'غير متاح للفتح' : 'Not available to open'),
+      ).not.toBeInTheDocument();
+      expect(mock.history.get).toHaveLength(0);
+    },
+  );
+  it('offers a clear replacement path when all document records are historical', () => {
+    const review = fixture();
+    review.verification!.documents = [{ ...evidence, supersededAt: STAMP, viewable: false }];
+    setup(review);
+    expect(
+      screen.getByText('No current documents. Ask the provider to upload the required evidence.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('review-evidence-document-1')).not.toBeInTheDocument();
   });
 });
 

@@ -14,14 +14,21 @@ let mock: MockAdapter;
 let qc: QueryClient;
 const refresh = vi.fn(async () => undefined);
 beforeEach(() => {
-  localStorage.clear(); localStorage.setItem('hsm.lang', 'en');
+  localStorage.clear();
+  localStorage.setItem('hsm.lang', 'en');
   refresh.mockClear();
   mock = new MockAdapter(api);
   mock.onPost().reply(200, {});
   mock.onPatch().reply(200, {});
-  qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
 });
-afterEach(() => { cleanup(); qc.clear(); mock.restore(); });
+afterEach(() => {
+  cleanup();
+  qc.clear();
+  mock.restore();
+});
 
 function setup(kind: 'identity' | 'categories', lang: 'en' | 'ar' = 'en') {
   localStorage.setItem('hsm.lang', lang);
@@ -39,25 +46,28 @@ function setup(kind: 'identity' | 'categories', lang: 'en' | 'ar' = 'en') {
 
 function openIdentity() {
   const button = screen.getByTestId('review-case-assign');
-  button.closest('details')!.open = true;
   fireEvent.click(button);
 }
 
 describe('identity confirmation pins the inspected case', () => {
   it('sends the original case and expected state with the private note', async () => {
-    setup('identity'); openIdentity();
+    setup('identity');
+    openIdentity();
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Inspected case one' } });
     fireEvent.click(screen.getByTestId('review-case-confirm'));
     await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
     expect(mock.history.post).toHaveLength(1);
     expect(mock.history.post[0].url).toBe('/v1/admin/verification/cases/case-1/assign');
     expect(JSON.parse(mock.history.post[0].data)).toEqual({
-      expectedState: 'SUBMITTED', note: 'Inspected case one',
+      expectedState: 'SUBMITTED',
+      note: 'Inspected case one',
     });
   });
   it.each(['replacement', 'state', 'action', 'permission', 'missing'] as const)(
-    'cannot confirm after the current case changes: %s', (change) => {
-      const update = setup('identity'); openIdentity();
+    'cannot confirm after the current case changes: %s',
+    (change) => {
+      const update = setup('identity');
+      openIdentity();
       fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Keep my note' } });
       const next = actionableReview();
       if (change === 'replacement') next.verification!.id = 'case-2';
@@ -68,18 +78,23 @@ describe('identity confirmation pins the inspected case', () => {
       update(next);
       expect(screen.getByTestId('review-case-confirm')).toBeDisabled();
       expect(screen.getByRole('textbox')).toHaveValue('Keep my note');
-      expect(screen.getByRole('status')).toHaveTextContent('selected item or available action changed');
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'selected item or available action changed',
+      );
       fireEvent.click(screen.getByTestId('review-case-confirm'));
       expect(mock.history.post).toHaveLength(0);
     },
   );
   it.each(['en', 'ar'] as const)('pauses open confirmations and preserves notes in %s', (lang) => {
-    const update = setup('identity', lang); openIdentity();
+    const update = setup('identity', lang);
+    openIdentity();
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Unsent note' } });
     update(actionableReview(), true);
     expect(screen.getByTestId('review-case-confirm')).toBeDisabled();
     expect(screen.getByRole('textbox')).toHaveValue('Unsent note');
-    expect(screen.getByRole('status')).toHaveTextContent(lang === 'ar' ? 'القرارات متوقفة' : 'Decisions are paused');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      lang === 'ar' ? 'القرارات متوقفة' : 'Decisions are paused',
+    );
     fireEvent.click(screen.getByTestId('review-case-confirm'));
     expect(mock.history.post).toHaveLength(0);
     update();
