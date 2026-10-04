@@ -66,6 +66,7 @@ model User {
   verificationDecisions      VerificationDecision[]         @relation("VerificationDecisionReviewer")
   /// Sprint 9B.20 — service-area ceilings this admin granted by hand.
   serviceAreaOverrides       ProviderServiceAreaExpansion[] @relation("ServiceAreaOverrideBy")
+  ledgerAccounts             LedgerAccount[]                @relation("LedgerAccountOwner")
 
   @@index([deletedAt])
   @@index([status])
@@ -293,26 +294,27 @@ model BookingEvent {
 }
 
 model Booking {
-  id            String          @id @default(cuid())
-  requestId     String
-  bidId         String          @unique
-  seekerUserId  String
-  providerId    String
-  status        BookingStatus   @default(SCHEDULED)
-  scheduledAt   DateTime?
-  priceAmount   Int
-  currency      String          @default("USD")
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  deletedAt     DateTime?
-  events        BookingEvent[]
-  bid           Bid             @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  provider      ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  request       ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  seeker        User            @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
-  conversations Conversation[]
-  disputes      Dispute[]
-  review        BookingReview?
+  id                 String              @id @default(cuid())
+  requestId          String
+  bidId              String              @unique
+  seekerUserId       String
+  providerId         String
+  status             BookingStatus       @default(SCHEDULED)
+  scheduledAt        DateTime?
+  priceAmount        Int
+  currency           String              @default("USD")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  deletedAt          DateTime?
+  events             BookingEvent[]
+  bid                Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  provider           ProviderProfile     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  request            ServiceRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  seeker             User                @relation(fields: [seekerUserId], references: [id], onDelete: Cascade)
+  conversations      Conversation[]
+  disputes           Dispute[]
+  review             BookingReview?
+  ledgerTransactions LedgerTransaction[]
 
   // R11 — the target of BookingReview's composite foreign key. A review
   // repeats the booking's seeker and provider so reputation can be computed
@@ -979,6 +981,8 @@ enum TokenPurpose {
 }
 
 enum AuditEventType {
+  MONEY_LEDGER_POSTED
+  MONEY_LEDGER_REVERSED
   DISPUTE_PRIVATE_RETENTION
   DISPUTE_EVIDENCE_READ
   USER_REGISTERED
@@ -2715,4 +2719,103 @@ model DisputeNotificationPreference {
   enabled   Boolean  @default(true)
   language  String   @default("en")
   updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R15 — authoritative double-entry ledger foundation (DARK).
+//
+// docs/production-readiness/r15/ACCOUNTING_POLICY.md and LEDGER_INVARIANTS.md.
+// Nothing here moves money: no route, no payment rail, no automatic posting.
+// Amounts are positive integer minor units; the side says debit or credit.
+// PostgreSQL triggers in migration 20261004150000_r15_ledger_foundation
+// enforce balance at posting, single currency, reversal mirroring and
+// append-only posted history; the service is not the only guard.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum LedgerAccountOwnerType {
+  PLATFORM
+  USER
+}
+
+enum LedgerTransactionStatus {
+  DRAFT
+  POSTED
+}
+
+enum LedgerTransactionKind {
+  STANDARD
+  REVERSAL
+}
+
+enum LedgerEntrySide {
+  DEBIT
+  CREDIT
+}
+
+/// One balance-carrying account in exactly one currency. `key` is a stable,
+/// caller-chosen identity; R15 assigns no business meaning (fees, escrow,
+/// payouts) to any key.
+model LedgerAccount {
+  id          String                 @id @default(cuid())
+  key         String                 @unique
+  ownerType   LedgerAccountOwnerType
+  ownerUserId String?
+  currency    String                 @db.Char(3)
+  createdAt   DateTime               @default(now())
+
+  owner   User?         @relation("LedgerAccountOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  entries LedgerEntry[]
+
+  // Target of LedgerEntry's (accountId, currency) foreign key: an entry can
+  // only reference an account in its own currency.
+  @@unique([id, currency])
+  @@index([ownerUserId])
+}
+
+/// One accounting event. Posted once (DRAFT -> POSTED inside the posting
+/// database transaction) and never changed afterwards. A correction is a
+/// separate REVERSAL transaction that references the original.
+model LedgerTransaction {
+  id                    String                  @id @default(cuid())
+  kind                  LedgerTransactionKind
+  status                LedgerTransactionStatus @default(DRAFT)
+  currency              String                  @db.Char(3)
+  description           String
+  idempotencyKey        String                  @unique
+  requestDigest         String                  @db.Char(64)
+  bookingId             String?
+  externalReference     String?
+  reversesTransactionId String?                 @unique
+  actorUserId           String?
+  actorSystem           String?
+  createdAt             DateTime                @default(now())
+  postedAt              DateTime?
+
+  booking    Booking?           @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  reverses   LedgerTransaction? @relation("LedgerReversal", fields: [reversesTransactionId], references: [id], onDelete: Restrict)
+  reversedBy LedgerTransaction? @relation("LedgerReversal")
+  entries    LedgerEntry[]
+
+  // Target of LedgerEntry's (transactionId, currency) foreign key.
+  @@unique([id, currency])
+  @@index([bookingId])
+  @@index([externalReference])
+  @@index([status, postedAt])
+}
+
+model LedgerEntry {
+  id            String          @id @default(cuid())
+  transactionId String
+  lineNo        Int
+  accountId     String
+  side          LedgerEntrySide
+  amountMinor   BigInt
+  currency      String          @db.Char(3)
+  createdAt     DateTime        @default(now())
+
+  transaction LedgerTransaction @relation(fields: [transactionId, currency], references: [id, currency], onDelete: Restrict)
+  account     LedgerAccount     @relation(fields: [accountId, currency], references: [id, currency], onDelete: Restrict)
+
+  @@unique([transactionId, lineNo])
+  @@index([accountId, createdAt, id])
 }

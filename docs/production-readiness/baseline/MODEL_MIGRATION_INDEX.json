@@ -24,7 +24,8 @@
       "20260915010000_admin_provider_review",
       "20260915120000_verification_policy_management_permission",
       "20260918160000_sprint12_dispute_collaboration",
-      "20260920103200_dispute_privacy_permissions"
+      "20260920103200_dispute_privacy_permissions",
+      "20261004150000_r15_ledger_foundation"
     ],
     "UserRole": [
       "20260501003603_rename_tables_to_pascal_case",
@@ -219,7 +220,10 @@
     "DisputeDecisionRecord": ["20260918160000_sprint12_dispute_collaboration"],
     "DisputeAppealRecord": ["20260918160000_sprint12_dispute_collaboration"],
     "DisputeNotificationPreference": ["20260918160000_sprint12_dispute_collaboration"],
-    "BookingReview": ["20261003090000_r11_booking_reviews"]
+    "BookingReview": ["20261003090000_r11_booking_reviews"],
+    "LedgerAccount": ["20261004150000_r15_ledger_foundation"],
+    "LedgerTransaction": ["20261004150000_r15_ledger_foundation"],
+    "LedgerEntry": ["20261004150000_r15_ledger_foundation"]
   },
   "migrationRoot": "packages/database/prisma/migrations"
 }
