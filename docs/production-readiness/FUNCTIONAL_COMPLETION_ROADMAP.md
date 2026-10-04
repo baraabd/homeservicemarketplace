@@ -201,9 +201,9 @@ contact data and no fabricated tracking state.
 
 ## R13 — Durable Help & Support
 
-**Status (2026-10-03):** implementation in progress on `feat/r13-durable-help-support`.
+**Status (2026-10-04):** implemented on `feat/r13-durable-help-support`; acceptance in progress.
 The sprint replaces client-only seeded support chat with authenticated support tickets;
-final acceptance waits for the post-R12 security baseline recovery to return develop to green.
+final acceptance waits for the post-R12 security baseline recovery (PR #134) to return develop to green.
 
 **Goal:** replace seeded/local support chat behavior with honest support functionality.
 
