@@ -34,7 +34,7 @@ async function createRequest(seeker: Seeker, categoryId: string, extra: object =
     body: {
       categoryId,
       customServiceText: null,
-      description: 'R14 budget authority acceptance job',
+      description: 'R14 acceptance job: fix a leaking kitchen tap',
       mediaAssetIds: [],
       scheduleType: 'ASAP',
       scheduledAt: null,
