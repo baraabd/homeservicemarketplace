@@ -101,7 +101,6 @@ function BiddingModal({
     submit: lang === 'ar' ? 'إرسال العرض' : 'Send Offer',
     sending: lang === 'ar' ? 'جارٍ الإرسال…' : 'Sending…',
     sent: lang === 'ar' ? 'تم إرسال عرضك! 🎉' : 'Offer sent! 🎉',
-    budget: lang === 'ar' ? 'ميزانية الطلب:' : 'Budget:',
     failed:
       lang === 'ar'
         ? 'تعذّر إرسال العرض. الرجاء المحاولة مرة أخرى.'
@@ -179,13 +178,8 @@ function BiddingModal({
           </button>
         </div>
 
-        {/* Budget note */}
-        <div className="mx-5 mb-4 flex items-center gap-2 bg-blue-50 dark:bg-blue-900/30 rounded-2xl px-4 py-2.5">
-          <DollarSign size={14} className="text-blue-600 dark:text-blue-400 flex-shrink-0" />
-          <p className="text-blue-700 dark:text-blue-300" style={{ fontSize: '12px' }}>
-            {L.budget} <span style={{ fontWeight: 700 }}>{request.budget}</span>
-          </p>
-        </div>
+        {/* R14 — no budget note: the seeker never states a budget, so the
+            provider prices from the request itself. */}
 
         {done ? (
           <motion.div
@@ -411,9 +405,11 @@ function JobMarker({
           >
             {lang === 'ar' ? req.serviceAr : req.service}
           </p>
-          <p className="text-slate-400" style={{ fontSize: '11px', margin: '2px 0 0' }}>
-            {req.distance}km · {req.budget}
-          </p>
+          {req.distanceKm !== null && (
+            <p className="text-slate-400" style={{ fontSize: '11px', margin: '2px 0 0' }}>
+              {req.distanceKm.toFixed(1)} km
+            </p>
+          )}
           <div className="flex items-center gap-1.5 mt-1">
             <span
               className="w-2 h-2 rounded-full animate-pulse"
@@ -470,13 +466,11 @@ function MapAutoFit({ points }: { points: Array<[number, number]> }) {
 // full request context → the overlay's "Place Bid" CTA is what
 // actually opens the BiddingModal.
 //
-// Data caveat (intentional, not a TODO): three legacy ServiceRequest
-// fields — `distance`, `seekerName`, `budget` — are NOT on the
-// Sprint 5.2 ProviderAvailableRequestSummary wire. The adapter
-// blanks them (0 / '' / ''); we surface those rows with a `—` so the
-// operator sees the layout but never a fabricated value. Whenever the
-// wire grows the matching fields, the rendering here will start
-// showing real values without further frontend work.
+// Data caveat (intentional, not a TODO): the legacy `distance` primitive
+// stays 0 from the adapter and is never rendered; distance comes from the
+// nullable `distanceKm`, shown as `—` while null. A blank `seekerName`
+// hides its tile. There is no budget at all (R14): the seeker never
+// states one, so no budget surface exists to fill.
 function JobDetailOverlay({
   req,
   lang,
@@ -493,7 +487,6 @@ function JobDetailOverlay({
     placeBid: string;
     distance: string;
     seeker: string;
-    budget: string;
     urgency: string;
     description: string;
     urgent: string;
@@ -511,7 +504,6 @@ function JobDetailOverlay({
   // request); the legacy `req.distance` is no longer the source of
   // truth and stays 0 from the adapter.
   const hasDistance = req.distanceKm !== null;
-  const hasBudget = Boolean(req.budget && req.budget.trim());
   const hasSeeker = Boolean(req.seekerName && req.seekerName.trim());
 
   return (
@@ -582,14 +574,12 @@ function JobDetailOverlay({
         </div>
 
         <div className="px-5 pb-6 flex flex-col gap-4">
-          {/* Meta row — Distance / Budget / Seeker.
+          {/* Meta row — Distance / Seeker.
               Layout uses flex + flex-1 (instead of a fixed 3-col grid)
               so the visible tiles split the row evenly regardless of
-              count: 1 tile fills the row, 2 split 50/50, 3 split 33/33/33.
-              Budget and Seeker are permanently empty in the current
-              wire shape (no schema column for budget; seeker identity
-              stays masked per the Sprint 5.2 security projection), so
-              both conditionally render — no dead `—` placeholder.
+              count. There is no budget tile: the seeker never states a
+              budget (R14). Seeker conditionally renders — no dead `—`
+              placeholder.
               Distance keeps the `labels.notSet` fallback while
               `distanceKm` is null; the fallback path retires once the
               backend Haversine slice lands. */}
@@ -605,19 +595,6 @@ function JobDetailOverlay({
                 {hasDistance ? `${req.distanceKm!.toFixed(1)} km` : labels.notSet}
               </p>
             </div>
-            {hasBudget && (
-              <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
-                <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
-                  {labels.budget}
-                </p>
-                <p
-                  className="text-slate-900 dark:text-white mt-0.5 truncate"
-                  style={{ fontSize: '13px', fontWeight: 700 }}
-                >
-                  {req.budget}
-                </p>
-              </div>
-            )}
             {hasSeeker && (
               <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
                 <p className="text-slate-400" style={{ fontSize: '10px', fontWeight: 600 }}>
@@ -893,7 +870,6 @@ export function LiveJobsScreen() {
     detailTitle: lang === 'ar' ? 'تفاصيل الطلب' : 'Request details',
     distanceLabel: lang === 'ar' ? 'المسافة' : 'Distance',
     seekerLabel: lang === 'ar' ? 'صاحب الطلب' : 'Seeker',
-    budgetLabel: lang === 'ar' ? 'الميزانية' : 'Budget',
     descriptionLabel: lang === 'ar' ? 'الوصف' : 'Description',
     standardTag: lang === 'ar' ? 'عادي' : 'Standard',
     notSet: '—',
@@ -1176,18 +1152,16 @@ export function LiveJobsScreen() {
                         >
                           {lang === 'ar' ? req.locationAr : req.location}
                         </p>
-                        {/* Meta row — Distance / Budget / Seeker icons.
+                        {/* Meta row — Distance / Seeker icons.
                             Each chip only renders when the underlying
                             value is real, so the card never shows a
                             fabricated "0 km" / empty pill / empty
                             avatar gap when the wire deliberately
                             omits the field. Distance gates on
                             `distanceKm !== null` (0 km is a real
-                            value); budget + seekerName gate on a
-                            non-empty string. */}
-                        {(req.distanceKm !== null ||
-                          req.budget.trim().length > 0 ||
-                          req.seekerName.trim().length > 0) && (
+                            value); seekerName gates on a non-empty
+                            string. There is no budget chip (R14). */}
+                        {(req.distanceKm !== null || req.seekerName.trim().length > 0) && (
                           <div className="flex items-center gap-3 mt-1.5">
                             {req.distanceKm !== null && (
                               <div className="flex items-center gap-1">
@@ -1198,17 +1172,6 @@ export function LiveJobsScreen() {
                                 >
                                   {req.distanceKm.toFixed(1)}
                                   {L.km}
-                                </span>
-                              </div>
-                            )}
-                            {req.budget.trim().length > 0 && (
-                              <div className="flex items-center gap-1">
-                                <DollarSign size={11} className="text-green-500" />
-                                <span
-                                  className="text-green-600 dark:text-green-400"
-                                  style={{ fontSize: '11px', fontWeight: 600 }}
-                                >
-                                  {req.budget}
                                 </span>
                               </div>
                             )}
@@ -1274,7 +1237,6 @@ export function LiveJobsScreen() {
               placeBid: L.bid,
               distance: L.distanceLabel,
               seeker: L.seekerLabel,
-              budget: L.budgetLabel,
               urgency: L.urgentTag,
               description: L.descriptionLabel,
               urgent: L.urgentTag,
