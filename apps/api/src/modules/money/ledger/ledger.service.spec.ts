@@ -1,3 +1,5 @@
+import { Prisma, type PrismaTx } from '@homeservicemarketplace/database';
+
 import { LedgerService, digestOf } from './ledger.service';
 
 // Hermetic checks of the posting authority's own rules. The invariants the
@@ -8,8 +10,12 @@ const SYSTEM = { kind: 'SYSTEM', system: 'r15.unit' } as const;
 
 function make(overrides: { rights?: string[] } = {}) {
   const repo = {
+    findAccountByKey: jest.fn().mockResolvedValue(null),
+    createAccount: jest.fn(),
     findTransactionByKey: jest.fn().mockResolvedValue(null),
+    findTransaction: jest.fn(),
     findAccounts: jest.fn().mockResolvedValue([]),
+    bookingExists: jest.fn().mockResolvedValue(true),
     createDraft: jest.fn(),
     insertEntry: jest.fn(),
     markPosted: jest.fn(),
@@ -95,6 +101,91 @@ describe('LedgerService (hermetic)', () => {
       code: 'FORBIDDEN',
     });
     expect(repo.createDraft).not.toHaveBeenCalled();
+  });
+
+  it('enlists authorization, reference checks, posting and audit in the supplied transaction', async () => {
+    const { service, repo, tx, audit, permissions } = make({ rights: ['ledger:post'] });
+    const callerTx = { ledgerCaller: true } as unknown as PrismaTx;
+    repo.findAccounts.mockResolvedValue([
+      { id: 'a1', currency: 'USD' },
+      { id: 'a2', currency: 'USD' },
+    ]);
+    repo.createDraft.mockResolvedValue({ id: 'posted-tx' });
+    repo.findTransaction.mockResolvedValue({
+      id: 'posted-tx',
+      kind: 'STANDARD',
+      status: 'POSTED',
+      currency: 'USD',
+      description: 'unit',
+      bookingId: 'booking-1',
+      externalReference: null,
+      reversesTransactionId: null,
+      postedAt: new Date('2026-01-01T00:00:00Z'),
+      entries: [],
+    });
+
+    await expect(
+      service.post({ kind: 'USER', userId: 'u1' }, command({ bookingId: 'booking-1' }), callerTx),
+    ).resolves.toMatchObject({ replayed: false, transaction: { id: 'posted-tx' } });
+    expect(tx.run).not.toHaveBeenCalled();
+    expect(permissions.resolveFreshForUser).toHaveBeenCalledWith('u1', callerTx);
+    expect(repo.findTransactionByKey).toHaveBeenCalledWith('unit_key_0000000001', callerTx);
+    expect(repo.findAccounts).toHaveBeenCalledWith(['a1', 'a2'], callerTx);
+    expect(repo.bookingExists).toHaveBeenCalledWith('booking-1', callerTx);
+    expect(repo.createDraft).toHaveBeenCalledWith(expect.any(Object), callerTx);
+    expect(repo.insertEntry).toHaveBeenCalledTimes(2);
+    for (const call of repo.insertEntry.mock.calls) expect(call[1]).toBe(callerTx);
+    expect(repo.markPosted).toHaveBeenCalledWith('posted-tx', callerTx);
+    expect(audit.record).toHaveBeenCalledWith(expect.any(Object), callerTx);
+    expect(repo.findTransaction).toHaveBeenCalledWith('posted-tx', callerTx);
+  });
+
+  it('propagates account uniqueness failures without leaving the supplied transaction', async () => {
+    const { service, repo, tx } = make();
+    const callerTx = { ledgerCaller: true } as unknown as PrismaTx;
+    const unique = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+      meta: { target: ['key'] },
+    });
+    repo.createAccount.mockRejectedValueOnce(unique);
+
+    await expect(
+      service.openAccount(
+        SYSTEM,
+        { key: 'unit:account', ownerType: 'PLATFORM', currency: 'USD' },
+        callerTx,
+      ),
+    ).rejects.toBe(unique);
+    expect(tx.run).not.toHaveBeenCalled();
+    expect(repo.findAccountByKey).toHaveBeenCalledTimes(1);
+    expect(repo.findAccountByKey).toHaveBeenCalledWith('unit:account', callerTx);
+    expect(repo.createAccount).toHaveBeenCalledWith(expect.any(Object), callerTx);
+  });
+
+  it('preserves account duplicate recovery after its own transaction has rolled back', async () => {
+    const { service, repo, tx } = make();
+    const unique = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+      meta: { target: ['key'] },
+    });
+    const existing = {
+      id: 'existing-account',
+      key: 'unit:account',
+      ownerType: 'PLATFORM',
+      ownerUserId: null,
+      currency: 'USD',
+    };
+    repo.findAccountByKey.mockResolvedValueOnce(null).mockResolvedValueOnce(existing);
+    repo.createAccount.mockRejectedValueOnce(unique);
+
+    await expect(
+      service.openAccount(SYSTEM, { key: 'unit:account', ownerType: 'PLATFORM', currency: 'USD' }),
+    ).resolves.toEqual({ account: existing, replayed: true });
+    expect(tx.run).toHaveBeenCalledTimes(1);
+    expect(repo.findAccountByKey).toHaveBeenNthCalledWith(1, 'unit:account', {});
+    expect(repo.findAccountByKey).toHaveBeenNthCalledWith(2, 'unit:account');
   });
 
   it('treats a stored key with a different digest as a conflict and returns nothing of it', async () => {

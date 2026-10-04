@@ -118,6 +118,7 @@ export class LedgerService {
   async openAccount(
     actor: LedgerActor,
     command: OpenLedgerAccountCommand,
+    callerTx?: PrismaTx,
   ): Promise<{ account: LedgerAccount; replayed: boolean }> {
     const key = requirePattern(
       command.key,
@@ -141,13 +142,19 @@ export class LedgerService {
       return { account: existing, replayed: true };
     };
 
+    const execute = async (tx: PrismaTx) => {
+      await this.authorize(actor, LEDGER_POST, tx);
+      const existing = await this.repo.findAccountByKey(key, tx);
+      if (existing) return replay(existing);
+      return { account: await this.repo.createAccount(wanted, tx), replayed: false };
+    };
+    // An enlisted operation never commits independently or recovers outside
+    // the caller's transaction. Its owner must propagate errors and retry the
+    // whole transaction, not continue after a PostgreSQL uniqueness failure.
+    if (callerTx) return execute(callerTx);
+
     try {
-      return await this.tx.run(async (tx) => {
-        await this.authorize(actor, LEDGER_POST, tx);
-        const existing = await this.repo.findAccountByKey(key, tx);
-        if (existing) return replay(existing);
-        return { account: await this.repo.createAccount(wanted, tx), replayed: false };
-      }, LEDGER_TX_OPTIONS);
+      return await this.tx.run(execute, LEDGER_TX_OPTIONS);
     } catch (error) {
       if (!isLedgerUniqueViolation(error, 'key')) throw error;
       const existing = await this.repo.findAccountByKey(key);
@@ -161,6 +168,7 @@ export class LedgerService {
   async post(
     actor: LedgerActor,
     command: PostLedgerTransactionCommand,
+    callerTx?: PrismaTx,
   ): Promise<LedgerPostingResult> {
     const key = requirePattern(
       command.idempotencyKey,
@@ -182,39 +190,46 @@ export class LedgerService {
       lines: lines.map((l) => [l.accountId, l.side, l.amountMinor.toString()]),
     });
 
-    return this.write(actor, key, digest, async (tx) => {
-      const accounts = await this.repo.findAccounts(
-        [...new Set(lines.map((l) => l.accountId))],
-        tx,
-      );
-      const byId = new Map(accounts.map((a) => [a.id, a]));
-      for (const line of lines) {
-        const account = byId.get(line.accountId);
-        if (!account) throw new AppError('NOT_FOUND', 'Ledger account not found.', 404);
-        if (account.currency !== currency) {
-          throw invalid('Every line must use an account in the transaction currency.');
+    return this.write(
+      actor,
+      key,
+      digest,
+      async (tx) => {
+        const accounts = await this.repo.findAccounts(
+          [...new Set(lines.map((l) => l.accountId))],
+          tx,
+        );
+        const byId = new Map(accounts.map((a) => [a.id, a]));
+        for (const line of lines) {
+          const account = byId.get(line.accountId);
+          if (!account) throw new AppError('NOT_FOUND', 'Ledger account not found.', 404);
+          if (account.currency !== currency) {
+            throw invalid('Every line must use an account in the transaction currency.');
+          }
         }
-      }
-      if (bookingId && !(await this.repo.bookingExists(bookingId, tx))) {
-        throw new AppError('NOT_FOUND', 'Booking not found.', 404);
-      }
-      return {
-        header: {
-          kind: 'STANDARD' as const,
-          currency,
-          description,
-          bookingId,
-          externalReference,
-          reversesTransactionId: null,
-        },
-        lines,
-      };
-    });
+        if (bookingId && !(await this.repo.bookingExists(bookingId, tx))) {
+          throw new AppError('NOT_FOUND', 'Booking not found.', 404);
+        }
+        return {
+          header: {
+            kind: 'STANDARD' as const,
+            currency,
+            description,
+            bookingId,
+            externalReference,
+            reversesTransactionId: null,
+          },
+          lines,
+        };
+      },
+      callerTx,
+    );
   }
 
   async reverse(
     actor: LedgerActor,
     command: ReverseLedgerTransactionCommand,
+    callerTx?: PrismaTx,
   ): Promise<LedgerPostingResult> {
     const key = requirePattern(
       command.idempotencyKey,
@@ -230,33 +245,42 @@ export class LedgerService {
     const digest = digestOf({ op: 'reverse', actor: actorTag(actor), transactionId, description });
 
     try {
-      return await this.write(actor, key, digest, async (tx) => {
-        const original = await this.repo.findTransaction(transactionId, tx);
-        if (!original || original.status !== 'POSTED') {
-          throw new AppError('NOT_FOUND', 'Posted ledger transaction not found.', 404);
-        }
-        if (original.kind !== 'STANDARD') {
-          throw conflict('LEDGER_REVERSAL_OF_REVERSAL', 'A reversal cannot itself be reversed.');
-        }
-        if (await this.repo.findReversalOf(original.id, tx)) {
-          throw conflict('LEDGER_ALREADY_REVERSED', 'This ledger transaction is already reversed.');
-        }
-        return {
-          header: {
-            kind: 'REVERSAL' as const,
-            currency: original.currency,
-            description,
-            bookingId: original.bookingId,
-            externalReference: original.externalReference,
-            reversesTransactionId: original.id,
-          },
-          lines: original.entries.map((e) => ({
-            accountId: e.accountId,
-            side: (e.side === 'DEBIT' ? 'CREDIT' : 'DEBIT') as LedgerEntrySide,
-            amountMinor: e.amountMinor,
-          })),
-        };
-      });
+      return await this.write(
+        actor,
+        key,
+        digest,
+        async (tx) => {
+          const original = await this.repo.findTransaction(transactionId, tx);
+          if (!original || original.status !== 'POSTED') {
+            throw new AppError('NOT_FOUND', 'Posted ledger transaction not found.', 404);
+          }
+          if (original.kind !== 'STANDARD') {
+            throw conflict('LEDGER_REVERSAL_OF_REVERSAL', 'A reversal cannot itself be reversed.');
+          }
+          if (await this.repo.findReversalOf(original.id, tx)) {
+            throw conflict(
+              'LEDGER_ALREADY_REVERSED',
+              'This ledger transaction is already reversed.',
+            );
+          }
+          return {
+            header: {
+              kind: 'REVERSAL' as const,
+              currency: original.currency,
+              description,
+              bookingId: original.bookingId,
+              externalReference: original.externalReference,
+              reversesTransactionId: original.id,
+            },
+            lines: original.entries.map((e) => ({
+              accountId: e.accountId,
+              side: (e.side === 'DEBIT' ? 'CREDIT' : 'DEBIT') as LedgerEntrySide,
+              amountMinor: e.amountMinor,
+            })),
+          };
+        },
+        callerTx,
+      );
     } catch (error) {
       // Lost the race to another reversal of the same original under a
       // different key: the unique reversesTransactionId decided it.
@@ -270,7 +294,9 @@ export class LedgerService {
   /**
    * One logical command, exactly once. The idempotency key is unique in the
    * database; a concurrent duplicate either waits and replays, or loses the
-   * unique race and replays after this transaction rolls back.
+   * unique race and replays after this transaction rolls back. When a caller
+   * supplies a transaction, no nested transaction or out-of-transaction replay
+   * is attempted: the caller propagates failures and retries its whole unit.
    */
   private async write(
     actor: LedgerActor,
@@ -287,56 +313,63 @@ export class LedgerService {
       };
       lines: LedgerLineInput[];
     }>,
+    callerTx?: PrismaTx,
   ): Promise<LedgerPostingResult> {
-    try {
-      return await this.tx.run(async (tx) => {
-        await this.authorize(actor, LEDGER_POST, tx);
-        const existing = await this.repo.findTransactionByKey(key, tx);
-        if (existing) return replay(existing, digest);
+    const execute = async (tx: PrismaTx): Promise<LedgerPostingResult> => {
+      await this.authorize(actor, LEDGER_POST, tx);
+      const existing = await this.repo.findTransactionByKey(key, tx);
+      if (existing) return replay(existing, digest);
 
-        const { header, lines } = await prepare(tx);
-        const draft = await this.repo.createDraft(
-          {
-            ...header,
-            idempotencyKey: key,
-            requestDigest: digest,
-            actorUserId: actor.kind === 'USER' ? actor.userId : null,
+      const { header, lines } = await prepare(tx);
+      const draft = await this.repo.createDraft(
+        {
+          ...header,
+          idempotencyKey: key,
+          requestDigest: digest,
+          actorUserId: actor.kind === 'USER' ? actor.userId : null,
+          actorSystem: actor.kind === 'SYSTEM' ? actor.system : null,
+        },
+        tx,
+      );
+      let lineNo = 0;
+      for (const line of lines) {
+        lineNo += 1;
+        await this.repo.insertEntry(
+          { transactionId: draft.id, lineNo, currency: header.currency, ...line },
+          tx,
+        );
+      }
+      await this.repo.markPosted(draft.id, tx);
+      // Part of the same database transaction: if the audit row cannot be
+      // written, nothing is posted (AuditService rethrows).
+      await this.audit.record(
+        {
+          type:
+            header.kind === 'REVERSAL'
+              ? AuditEventType.MONEY_LEDGER_REVERSED
+              : AuditEventType.MONEY_LEDGER_POSTED,
+          userId: actor.kind === 'USER' ? actor.userId : undefined,
+          metadata: {
+            ledgerTransactionId: draft.id,
+            reversesTransactionId: header.reversesTransactionId,
+            bookingId: header.bookingId,
             actorSystem: actor.kind === 'SYSTEM' ? actor.system : null,
           },
-          tx,
-        );
-        let lineNo = 0;
-        for (const line of lines) {
-          lineNo += 1;
-          await this.repo.insertEntry(
-            { transactionId: draft.id, lineNo, currency: header.currency, ...line },
-            tx,
-          );
-        }
-        await this.repo.markPosted(draft.id, tx);
-        // Part of the same database transaction: if the audit row cannot be
-        // written, nothing is posted (AuditService rethrows).
-        await this.audit.record(
-          {
-            type:
-              header.kind === 'REVERSAL'
-                ? AuditEventType.MONEY_LEDGER_REVERSED
-                : AuditEventType.MONEY_LEDGER_POSTED,
-            userId: actor.kind === 'USER' ? actor.userId : undefined,
-            metadata: {
-              ledgerTransactionId: draft.id,
-              reversesTransactionId: header.reversesTransactionId,
-              bookingId: header.bookingId,
-              actorSystem: actor.kind === 'SYSTEM' ? actor.system : null,
-            },
-          },
-          tx,
-        );
-        const posted = await this.repo.findTransaction(draft.id, tx);
-        if (!posted)
-          throw new AppError('INTERNAL_ERROR', 'Failed to reload ledger transaction.', 500);
-        return { transaction: toView(posted), replayed: false };
-      }, LEDGER_TX_OPTIONS);
+        },
+        tx,
+      );
+      const posted = await this.repo.findTransaction(draft.id, tx);
+      if (!posted)
+        throw new AppError('INTERNAL_ERROR', 'Failed to reload ledger transaction.', 500);
+      return { transaction: toView(posted), replayed: false };
+    };
+    // The enclosing operation owns commit/rollback. The returned view is
+    // provisional until that transaction commits; it must not be sent as an
+    // acknowledgement or trigger an external effect before then.
+    if (callerTx) return execute(callerTx);
+
+    try {
+      return await this.tx.run(execute, LEDGER_TX_OPTIONS);
     } catch (error) {
       if (!isLedgerUniqueViolation(error)) throw error;
       const existing = await this.repo.findTransactionByKey(key);

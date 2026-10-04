@@ -63,6 +63,51 @@ describe('AuditService', () => {
     expect(h.repo.write.mock.calls[0]![0].metadata).toEqual({});
   });
 
+  it.each(['SUPPORT_TICKET_CREATED', 'SUPPORT_MESSAGE_SENT', 'ADMIN_SUPPORT_REPLIED'] as const)(
+    'preserves support identifiers for %s without retaining message content',
+    async (type) => {
+      const h = makeHarness();
+      await h.svc.record({
+        type,
+        userId: 'u-1',
+        metadata: {
+          supportTicketId: 'ticket-1',
+          supportMessageId: 'message-1',
+          subject: 'Private ticket subject',
+          body: 'Private message body',
+          email: 'requester@example.com',
+        },
+      });
+
+      expect(h.repo.write.mock.calls[0]![0].metadata).toEqual({
+        supportTicketId: 'ticket-1',
+        supportMessageId: 'message-1',
+      });
+    },
+  );
+
+  it.each([
+    ['ADMIN_SUPPORT_CLOSED', 'OPEN', 'CLOSED'],
+    ['ADMIN_SUPPORT_REOPENED', 'CLOSED', 'OPEN'],
+  ] as const)('preserves the ticket and status transition for %s', async (type, from, to) => {
+    const h = makeHarness();
+    await h.svc.record({
+      type,
+      metadata: {
+        supportTicketId: 'ticket-1',
+        previousStatus: from,
+        newStatus: to,
+        body: 'Private closure explanation',
+      },
+    });
+
+    expect(h.repo.write.mock.calls[0]![0].metadata).toEqual({
+      supportTicketId: 'ticket-1',
+      previousStatus: from,
+      newStatus: to,
+    });
+  });
+
   it('propagates repository errors — audit is not best-effort for critical events', async () => {
     const h = makeHarness();
     h.repo.write.mockRejectedValueOnce(new Error('db-down'));

@@ -127,6 +127,8 @@ import { SupportModule } from './modules/support/support.module';
     BookingsModule,
     // R11 — customer reviews of completed bookings, and their moderation.
     ReviewsModule,
+    // R13 — durable, authenticated help/support tickets.
+    SupportModule,
     // R15 — dark double-entry ledger foundation. No routes; no live caller.
     LedgerModule,
     DisputesModule,

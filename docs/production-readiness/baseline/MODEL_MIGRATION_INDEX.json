@@ -26,6 +26,7 @@
       "20260915120000_verification_policy_management_permission",
       "20260918160000_sprint12_dispute_collaboration",
       "20260920103200_dispute_privacy_permissions",
+      "20261004120000_r13_support_tickets",
       "20261004150000_r15_ledger_foundation"
     ],
     "UserRole": [
@@ -223,6 +224,8 @@
     "DisputeAppealRecord": ["20260918160000_sprint12_dispute_collaboration"],
     "DisputeNotificationPreference": ["20260918160000_sprint12_dispute_collaboration"],
     "BookingReview": ["20261003090000_r11_booking_reviews"],
+    "SupportTicket": ["20261004120000_r13_support_tickets"],
+    "SupportMessage": ["20261004120000_r13_support_tickets"],
     "LedgerAccount": ["20261004150000_r15_ledger_foundation"],
     "LedgerTransaction": ["20261004150000_r15_ledger_foundation"],
     "LedgerEntry": ["20261004150000_r15_ledger_foundation"]

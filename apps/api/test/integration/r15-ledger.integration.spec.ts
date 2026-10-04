@@ -9,6 +9,7 @@ import { Test } from '@nestjs/testing';
 
 import { fixturePrefix } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
+import { registerLedgerCallerTransactionCases } from '../support/ledger-caller-transaction.cases';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // R15 — the dark double-entry ledger against real PostgreSQL.
@@ -278,6 +279,20 @@ d('R15 - authoritative double-entry ledger (real Postgres)', () => {
     });
     expect(grants.every((g: any) => g.roleId === ROLE_ID)).toBe(true);
   });
+
+  registerLedgerCallerTransactionCases(() => ({
+    prisma,
+    ledger,
+    repo,
+    audit,
+    system: SYSTEM,
+    from: usd1,
+    to: usd2,
+    markerUserId: NOBODY,
+    roleId: ROLE_ID,
+    accountPrefix: AP,
+    key,
+  }));
 
   // ─── Posting ───────────────────────────────────────────────────────────
 
