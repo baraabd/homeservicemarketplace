@@ -37,10 +37,10 @@ CREATE TABLE "SupportMessage" (
 
 CREATE UNIQUE INDEX "SupportTicket_requesterUserId_creationKey_key"
   ON "SupportTicket"("requesterUserId", "creationKey");
-CREATE INDEX "SupportTicket_requesterUserId_status_updatedAt_idx"
-  ON "SupportTicket"("requesterUserId", "status", "updatedAt");
-CREATE INDEX "SupportTicket_status_updatedAt_idx"
-  ON "SupportTicket"("status", "updatedAt");
+CREATE INDEX "SupportTicket_requesterUserId_createdAt_id_idx"
+  ON "SupportTicket"("requesterUserId", "createdAt", "id");
+CREATE INDEX "SupportTicket_status_createdAt_id_idx"
+  ON "SupportTicket"("status", "createdAt", "id");
 
 CREATE UNIQUE INDEX "SupportMessage_ticketId_authorUserId_idempotencyKey_key"
   ON "SupportMessage"("ticketId", "authorUserId", "idempotencyKey");
@@ -69,3 +69,16 @@ ALTER TABLE "SupportTicket" ADD CONSTRAINT "support_ticket_close_consistent"
     ("status" = 'OPEN' AND "closedAt" IS NULL AND "closedByUserId" IS NULL)
     OR ("status" = 'CLOSED' AND "closedAt" IS NOT NULL)
   );
+
+-- Support work has its own capabilities instead of borrowing user:read:any.
+-- Existing installations receive the same narrow grants as a fresh seed.
+INSERT INTO "Permission" ("id", "key", "description", "createdAt", "updatedAt") VALUES
+  ('perm_support_read', 'support:read', 'Read support tickets and their messages', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('perm_support_respond', 'support:respond', 'Reply to, close or reopen a support ticket', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT ("key") DO NOTHING;
+
+INSERT INTO "RolePermission" ("roleId", "permissionId")
+SELECT r."id", p."id" FROM "Role" r CROSS JOIN "Permission" p
+WHERE r."name" = 'admin' AND r."deletedAt" IS NULL
+  AND p."key" IN ('support:read', 'support:respond')
+ON CONFLICT DO NOTHING;

@@ -142,6 +142,8 @@ const PERMISSIONS: PermissionSpec[] = [
   { key: 'portfolio:review', description: 'Approve or reject provider portfolio publication' },
   { key: 'reviews:read', description: 'Read customer reviews of bookings for moderation' },
   { key: 'reviews:moderate', description: 'Hide or restore a customer review' },
+  { key: 'support:read', description: 'Read support tickets and their messages' },
+  { key: 'support:respond', description: 'Reply to, close or reopen a support ticket' },
   { key: 'user:read:self', description: 'Read own user profile' },
   { key: 'user:write:self', description: 'Update own user profile' },
   { key: 'user:read:any', description: 'Read any user profile (admin)' },

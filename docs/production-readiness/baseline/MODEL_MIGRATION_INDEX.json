@@ -11,7 +11,7 @@
       "20260822092000_sprint02_case_insensitive_unique_email",
       "20260824084629_sprint09_verification_restricted_media_work_access",
       "20260828220000_sprint09b20_earned_service_area_expansion",
-      "20261003170000_r13_support_tickets"
+      "20261004120000_r13_support_tickets"
     ],
     "Role": [
       "20260501003603_rename_tables_to_pascal_case",
@@ -25,7 +25,8 @@
       "20260915010000_admin_provider_review",
       "20260915120000_verification_policy_management_permission",
       "20260918160000_sprint12_dispute_collaboration",
-      "20260920103200_dispute_privacy_permissions"
+      "20260920103200_dispute_privacy_permissions",
+      "20261004120000_r13_support_tickets"
     ],
     "UserRole": [
       "20260501003603_rename_tables_to_pascal_case",
@@ -35,15 +36,14 @@
       "20260501003603_rename_tables_to_pascal_case",
       "20260501010000_add_provider_profile_extensions",
       "20260915010000_admin_provider_review",
-      "20260915120000_verification_policy_management_permission"
+      "20260915120000_verification_policy_management_permission",
+      "20261004120000_r13_support_tickets"
     ],
     "Session": [
       "20260501003603_rename_tables_to_pascal_case",
       "20260501010000_add_provider_profile_extensions"
     ],
-    "AdminAccessRequest": [
-      "20260821120000_add_admin_access_requests_and_provider_onboarding"
-    ],
+    "AdminAccessRequest": ["20260821120000_add_admin_access_requests_and_provider_onboarding"],
     "VerificationToken": [
       "20260501003603_rename_tables_to_pascal_case",
       "20260501010000_add_provider_profile_extensions"
@@ -58,8 +58,7 @@
     ],
     "AuditEvent": [
       "20260501003603_rename_tables_to_pascal_case",
-      "20260501010000_add_provider_profile_extensions",
-      "20261003170000_r13_support_tickets"
+      "20260501010000_add_provider_profile_extensions"
     ],
     "Address": [
       "20260501003603_rename_tables_to_pascal_case",
@@ -116,9 +115,7 @@
       "20260828190000_sprint09b19_service_area_country_code",
       "20260828220000_sprint09b20_earned_service_area_expansion"
     ],
-    "ProviderProfileServiceCategory": [
-      "20260501010000_add_provider_profile_extensions"
-    ],
+    "ProviderProfileServiceCategory": ["20260501010000_add_provider_profile_extensions"],
     "ProviderCategoryApplication": [
       "20260507214217_add_provider_category_applications",
       "20260822090000_sprint02_moderation_schema",
@@ -156,22 +153,14 @@
       "20260822093000_sprint02_one_default_address_per_user",
       "20260824084700_sprint09_backfill_legacy_work_access_grants"
     ],
-    "DisputeEvent": [
-      "20260502030000_add_dispute_priority_and_events"
-    ],
-    "PlatformSetting": [
-      "20260502010000_add_disputes_and_settings"
-    ],
+    "DisputeEvent": ["20260502030000_add_dispute_priority_and_events"],
+    "PlatformSetting": ["20260502010000_add_disputes_and_settings"],
     "UserProfile": [
       "20260501003603_rename_tables_to_pascal_case",
       "20260501010000_add_provider_profile_extensions"
     ],
-    "OutboxEvent": [
-      "20260822205824_sprint06_geo_columns_and_outbox"
-    ],
-    "OutboxHandlerRun": [
-      "20260822205824_sprint06_geo_columns_and_outbox"
-    ],
+    "OutboxEvent": ["20260822205824_sprint06_geo_columns_and_outbox"],
+    "OutboxHandlerRun": ["20260822205824_sprint06_geo_columns_and_outbox"],
     "ProviderOnboardingSubmission": [
       "20260823120235_sprint07_provider_lifecycle_axes",
       "20260915010000_admin_provider_review"
@@ -181,39 +170,17 @@
       "20260824084629_sprint09_verification_restricted_media_work_access",
       "20260824084700_sprint09_backfill_legacy_work_access_grants"
     ],
-    "ProviderAvailabilityInterval": [
-      "20260823224144_sprint08_onboarding_wizard_foundation"
-    ],
-    "EquipmentCatalogItem": [
-      "20260823224144_sprint08_onboarding_wizard_foundation"
-    ],
-    "ProviderEquipment": [
-      "20260823224144_sprint08_onboarding_wizard_foundation"
-    ],
-    "City": [
-      "20260823224144_sprint08_onboarding_wizard_foundation"
-    ],
-    "District": [
-      "20260823224144_sprint08_onboarding_wizard_foundation"
-    ],
-    "Neighborhood": [
-      "20260823224144_sprint08_onboarding_wizard_foundation"
-    ],
-    "ProviderServiceArea": [
-      "20260823224144_sprint08_onboarding_wizard_foundation"
-    ],
-    "ServiceAreaExpansionPolicy": [
-      "20260828220000_sprint09b20_earned_service_area_expansion"
-    ],
-    "ProviderServiceAreaExpansion": [
-      "20260828220000_sprint09b20_earned_service_area_expansion"
-    ],
-    "ProviderOnboardingDraft": [
-      "20260823224144_sprint08_onboarding_wizard_foundation"
-    ],
-    "PlatformSettingHistory": [
-      "20260823224144_sprint08_onboarding_wizard_foundation"
-    ],
+    "ProviderAvailabilityInterval": ["20260823224144_sprint08_onboarding_wizard_foundation"],
+    "EquipmentCatalogItem": ["20260823224144_sprint08_onboarding_wizard_foundation"],
+    "ProviderEquipment": ["20260823224144_sprint08_onboarding_wizard_foundation"],
+    "City": ["20260823224144_sprint08_onboarding_wizard_foundation"],
+    "District": ["20260823224144_sprint08_onboarding_wizard_foundation"],
+    "Neighborhood": ["20260823224144_sprint08_onboarding_wizard_foundation"],
+    "ProviderServiceArea": ["20260823224144_sprint08_onboarding_wizard_foundation"],
+    "ServiceAreaExpansionPolicy": ["20260828220000_sprint09b20_earned_service_area_expansion"],
+    "ProviderServiceAreaExpansion": ["20260828220000_sprint09b20_earned_service_area_expansion"],
+    "ProviderOnboardingDraft": ["20260823224144_sprint08_onboarding_wizard_foundation"],
+    "PlatformSettingHistory": ["20260823224144_sprint08_onboarding_wizard_foundation"],
     "MediaAsset": [
       "20260824084629_sprint09_verification_restricted_media_work_access",
       "20260825120000_sprint09b3_prepared_evidence_case_link",
@@ -229,22 +196,14 @@
       "20260825060000_sprint09b2_verification_policy_and_case_constraints",
       "20260825120000_sprint09b3_prepared_evidence_case_link"
     ],
-    "VerificationDocument": [
-      "20260824084629_sprint09_verification_restricted_media_work_access"
-    ],
-    "VerificationDecision": [
-      "20260824084629_sprint09_verification_restricted_media_work_access"
-    ],
-    "VerificationAccessLog": [
-      "20260824084629_sprint09_verification_restricted_media_work_access"
-    ],
+    "VerificationDocument": ["20260824084629_sprint09_verification_restricted_media_work_access"],
+    "VerificationDecision": ["20260824084629_sprint09_verification_restricted_media_work_access"],
+    "VerificationAccessLog": ["20260824084629_sprint09_verification_restricted_media_work_access"],
     "ProviderPortfolioItem": [
       "20260824084629_sprint09_verification_restricted_media_work_access",
       "20260915010000_admin_provider_review"
     ],
-    "EvidenceRetentionJob": [
-      "20260917210000_sprint12_retention_jobs"
-    ],
+    "EvidenceRetentionJob": ["20260917210000_sprint12_retention_jobs"],
     "DisputeWorkspace": [
       "20260918160000_sprint12_dispute_collaboration",
       "20260920103000_dispute_private_retention"
@@ -253,45 +212,19 @@
       "20260918160000_sprint12_dispute_collaboration",
       "20260920103000_dispute_private_retention"
     ],
-    "DisputeCommandReceipt": [
-      "20260918160000_sprint12_dispute_collaboration"
-    ],
-    "DisputeWorkspaceEvent": [
-      "20260918160000_sprint12_dispute_collaboration"
-    ],
-    "DisputeInformationRequest": [
-      "20260918160000_sprint12_dispute_collaboration"
-    ],
-    "DisputeStatement": [
-      "20260918160000_sprint12_dispute_collaboration"
-    ],
-    "DisputeEvidence": [
-      "20260918160000_sprint12_dispute_collaboration"
-    ],
-    "DisputeResolutionProposal": [
-      "20260918160000_sprint12_dispute_collaboration"
-    ],
-    "DisputeResolutionConsent": [
-      "20260918160000_sprint12_dispute_collaboration"
-    ],
-    "DisputeDecisionRecord": [
-      "20260918160000_sprint12_dispute_collaboration"
-    ],
-    "DisputeAppealRecord": [
-      "20260918160000_sprint12_dispute_collaboration"
-    ],
-    "DisputeNotificationPreference": [
-      "20260918160000_sprint12_dispute_collaboration"
-    ],
-    "BookingReview": [
-      "20261003090000_r11_booking_reviews"
-    ],
-    "SupportTicket": [
-      "20261003170000_r13_support_tickets"
-    ],
-    "SupportMessage": [
-      "20261003170000_r13_support_tickets"
-    ]
+    "DisputeCommandReceipt": ["20260918160000_sprint12_dispute_collaboration"],
+    "DisputeWorkspaceEvent": ["20260918160000_sprint12_dispute_collaboration"],
+    "DisputeInformationRequest": ["20260918160000_sprint12_dispute_collaboration"],
+    "DisputeStatement": ["20260918160000_sprint12_dispute_collaboration"],
+    "DisputeEvidence": ["20260918160000_sprint12_dispute_collaboration"],
+    "DisputeResolutionProposal": ["20260918160000_sprint12_dispute_collaboration"],
+    "DisputeResolutionConsent": ["20260918160000_sprint12_dispute_collaboration"],
+    "DisputeDecisionRecord": ["20260918160000_sprint12_dispute_collaboration"],
+    "DisputeAppealRecord": ["20260918160000_sprint12_dispute_collaboration"],
+    "DisputeNotificationPreference": ["20260918160000_sprint12_dispute_collaboration"],
+    "BookingReview": ["20261003090000_r11_booking_reviews"],
+    "SupportTicket": ["20261004120000_r13_support_tickets"],
+    "SupportMessage": ["20261004120000_r13_support_tickets"]
   },
   "migrationRoot": "packages/database/prisma/migrations"
 }

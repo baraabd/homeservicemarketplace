@@ -395,8 +395,8 @@ model SupportTicket {
   messages   SupportMessage[]
 
   @@unique([requesterUserId, creationKey])
-  @@index([requesterUserId, status, updatedAt])
-  @@index([status, updatedAt])
+  @@index([requesterUserId, createdAt, id])
+  @@index([status, createdAt, id])
 }
 
 model SupportMessage {
