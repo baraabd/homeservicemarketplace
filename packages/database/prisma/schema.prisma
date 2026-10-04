@@ -66,6 +66,9 @@ model User {
   verificationDecisions      VerificationDecision[]         @relation("VerificationDecisionReviewer")
   /// Sprint 9B.20 — service-area ceilings this admin granted by hand.
   serviceAreaOverrides       ProviderServiceAreaExpansion[] @relation("ServiceAreaOverrideBy")
+  supportTicketsRequested    SupportTicket[]                 @relation("SupportTicketRequester")
+  supportTicketsClosed       SupportTicket[]                 @relation("SupportTicketCloser")
+  supportMessages            SupportMessage[]
 
   @@index([deletedAt])
   @@index([status])
@@ -372,6 +375,44 @@ enum BookingReviewState {
   PUBLISHED
   /// Hidden by an administrator. Kept, and not counted.
   HIDDEN
+}
+
+/// R13 — durable help & support. Static FAQs are not stored here; only an
+/// authenticated support request becomes a ticket.
+model SupportTicket {
+  id              String              @id @default(cuid())
+  requesterUserId String
+  subject         String
+  status          SupportTicketStatus @default(OPEN)
+  creationKey     String
+  closedAt        DateTime?
+  closedByUserId  String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  requester User  @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
+  closedBy   User? @relation("SupportTicketCloser", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  messages   SupportMessage[]
+
+  @@unique([requesterUserId, creationKey])
+  @@index([requesterUserId, createdAt, id])
+  @@index([status, createdAt, id])
+}
+
+model SupportMessage {
+  id             String                   @id @default(cuid())
+  ticketId       String
+  authorUserId   String?
+  authorRole     SupportMessageAuthorRole
+  body           String
+  idempotencyKey String
+  createdAt      DateTime                 @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User?         @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([ticketId, authorUserId, idempotencyKey])
+  @@index([ticketId, createdAt])
 }
 
 model ConversationParticipant {
@@ -1012,6 +1053,11 @@ enum AuditEventType {
   ADMIN_DISPUTE_RESOLVED
   ADMIN_DISPUTE_UPDATED
   ADMIN_SETTING_UPDATED
+  SUPPORT_TICKET_CREATED
+  SUPPORT_MESSAGE_SENT
+  ADMIN_SUPPORT_REPLIED
+  ADMIN_SUPPORT_CLOSED
+  ADMIN_SUPPORT_REOPENED
   // Phase 4 — admin access-request lifecycle. Every transition is audited so
   // "who granted this person admin, and when" is always answerable.
   ADMIN_ACCESS_REQUESTED
@@ -1138,6 +1184,16 @@ enum BookingStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+enum SupportTicketStatus {
+  OPEN
+  CLOSED
+}
+
+enum SupportMessageAuthorRole {
+  REQUESTER
+  SUPPORT
 }
 
 enum ConversationParticipantRole {

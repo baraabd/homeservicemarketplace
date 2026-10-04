@@ -12,6 +12,7 @@ import { ApprovalCenter } from '../../features/admin-approvals/ApprovalCenter';
 import { FinancialsSection } from './FinancialsSection';
 import { SettingsSection } from './SettingsSection';
 import { AuditLogsSection } from './AuditLogsSection';
+import { SupportSection } from './SupportSection';
 import { directoryReturn, type AdminRoute } from './admin-routes';
 
 export function AdminRouteContent({ route }: { route: AdminRoute }) {
@@ -82,6 +83,8 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
       return <FinancialsSection lang={lang} />;
     case 'disputes':
       return <AdminDisputeInbox />;
+    case 'support':
+      return <SupportSection lang={lang} />;
     case 'settings':
       return <SettingsSection lang={lang} />;
     case 'audit':

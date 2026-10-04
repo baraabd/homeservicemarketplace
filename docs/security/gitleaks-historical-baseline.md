@@ -265,3 +265,37 @@ Not done, and not claimed: a new scanner canary run was not performed for this
 delta. The unchanged scanner must pass on the final PR head before the PR is
 accepted. Maintain these five entries only while their originating commits
 remain reachable, and review them with §5's procedure at release review.
+
+## 8. R13 delta — test-only CI placeholder (2026-10-04)
+
+Found before publication, by a local gitleaks 8.24.3 history scan
+(`--no-merges 5e7a02b..HEAD`, 12 commits) of PR #135's integration candidate.
+No hosted run had reported it: on every earlier R13 head the dependency audit
+failed first and the _Secret scan_ step was skipped (runs 37188327866,
+37189568393). Once the audit passes, the unchanged scanner would stop on it.
+
+| Origin commit                              | File                                   | Line | Classification                                        |
+| ------------------------------------------ | -------------------------------------- | ---- | ----------------------------------------------------- |
+| `d316a2f46270024b301c78bfa86d15e94e2350c9` | `.github/workflows/r13-validation.yml` | 39   | Readable `JWT_ACCESS_SECRET` placeholder for a CI job |
+
+Read at its commit: a 44-character, sentence-like value set as the job-level
+`JWT_ACCESS_SECRET` of a branch-only diagnostic workflow. That job used a
+disposable PostgreSQL database and test-only environment (`NODE_ENV=test`); the
+value signs nothing outside that job. `git log --all -S<value>` finds it only
+where that workflow file was added (`d316a2f`) and deleted (`1e3005b`, whose
+commit also staged the workflow deletion). It is absent from the worktree, from
+every environment file, and from application source and deployment
+configuration. It carries no provider prefix. No value is recorded here.
+
+**Verdict: synthetic CI placeholder. No rotation is required.**
+
+The source is already gone: the workflow was deleted on the same branch. Only
+this one exact fingerprint is appended to `.gitleaksignore`; the existing
+seventeen are unchanged. No path pattern, rule, tolerance, scan range or
+blocking exit status is changed, and history is not rewritten.
+
+Proof the gate still blocks: in an isolated temporary repository carrying the
+updated `.gitleaksignore`, a runtime-generated `generic-api-key` canary was
+committed and detected (exit 2). The canary value was neither printed nor
+committed here. Maintain this entry only while `d316a2f` remains reachable, and
+review it with §5's procedure at release review.

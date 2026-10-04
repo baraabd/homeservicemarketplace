@@ -8,6 +8,7 @@ export const ADMIN_SECTIONS = [
   'identity-cases',
   'financials',
   'disputes',
+  'support',
   'settings',
   'audit',
 ] as const;

@@ -23,7 +23,10 @@ export class PermissionsGuard implements CanActivate {
 
     const sensitive = required.some(
       (key) =>
-        key.startsWith('verification:') || key.startsWith('portfolio:') || key === 'user:read:any',
+        key.startsWith('verification:') ||
+        key.startsWith('portfolio:') ||
+        key.startsWith('support:') ||
+        key === 'user:read:any',
     );
     const granted = sensitive
       ? await this.resolver.resolveFreshForUser(user.id)
