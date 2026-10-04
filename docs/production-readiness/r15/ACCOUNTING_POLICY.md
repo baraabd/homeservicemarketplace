@@ -49,6 +49,31 @@ Any failure at any step rolls everything back: there is no committed half
 posting. A `DRAFT` is never returned or read as authoritative; reads consider
 `POSTED` rows only.
 
+## Caller-owned transactions
+
+`openAccount`, `post` and `reverse` accept an optional third `PrismaTx`
+argument. With it, permission reads, account/reference validation, entries,
+posting state and audit use the caller's transaction. No nested independent
+transaction is opened or committed. Without it, the existing managed
+transaction and post-rollback duplicate recovery behavior is unchanged.
+
+This is the composition boundary required by ADR 0014 decision 9 and
+`docs/money/FAILURE_RECOVERY.md`. It does not add a payment, subscription or
+other live caller. Tests use synthetic caller-owned fixture writes.
+
+The caller must await the ledger operation and propagate failure from its
+transaction callback. It must not swallow an audit/validation/storage failure
+and then commit related business state. A result obtained inside that callback
+is provisional until the enclosing transaction commits; no external success
+acknowledgement or side effect may be emitted before commit.
+
+An enlisted operation never recovers from a uniqueness error by reading outside
+its transaction or continuing in an aborted PostgreSQL transaction. That error
+propagates to the owner, which rolls back and retries its whole idempotent unit
+when appropriate. Normal same-key replay already visible to the transaction
+still works. A failed outer transaction leaves no committed header, entries or
+ledger audit. The same command may subsequently be retried safely.
+
 ## Idempotency
 
 Every posting/reversal carries an `idempotencyKey` (`^[A-Za-z0-9_-]{16,128}$`),

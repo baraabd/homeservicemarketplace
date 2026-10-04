@@ -44,6 +44,23 @@ R13/R14 and secret-scanning changes. No direct write to develop is made.
 6. **Metadata drift (already corrected on the old head).** A previous description
    declared an obsolete Final SHA. Keep metadata synchronized after the final
    source commit; do not weaken the validator or create a self-referential commit.
+7. **R14 browser acceptance lost from integrated CI.** The R14 browser spec
+   remains in develop, but its execution and artifact steps disappeared from
+   the integrated workflow. Restore the exact approved step from R14 source
+   `b7d240a373497e50fecdcb1c7c79da5d491aa411`, after R13 and before the existing
+   aggregate evidence checks. Preserve every other existing acceptance step.
+   A new regression fails when any R12/R13/R14 journey or evidence entry is
+   missing. A previous green workflow without that execution cannot certify R14.
+8. **Ledger operations could not enlist in a caller transaction.** Review
+   comment `4177959774` identified the conflict with ADR 0014 decision 9 and
+   `docs/money/FAILURE_RECOVERY.md`: unconditional independent transactions
+   could commit the ledger even if the caller later rolls back. `openAccount`,
+   `post` and `reverse` now accept an optional caller-owned `PrismaTx`.
+   Permission checks, persistence, posting state and audit all use that
+   transaction. Enlisted failures propagate to the owner instead of performing
+   recovery outside an aborted transaction. Standalone behavior is retained.
+   The accounting policy documents provisional results and the requirement
+   to propagate errors and retry the complete caller-owned unit.
 
 CI run `37207715558` stopped in database verification and consequently skipped
 its downstream real-service/browser/security jobs. Its aggregate failure is a
@@ -58,28 +75,48 @@ None of those skipped journeys or scans counts as accepted evidence.
 
 The added `.github/scripts/merge-integrity.test.mjs` is an early source-integration
 regression fence, not a replacement for Prisma or real database/browser tests.
-Its 14 checks cover support/ledger coexistence, module registration, audit and
-inventory preservation, and failing native shell commands. Seven checks fail
-against the original source; all 14 pass on the repaired source in the offline
-Node 22 diagnostic environment. Canonical Node 24, database and browser results
-must come from the exact corrected PR head's hosted workflows.
+Its initial 14 checks cover support/ledger coexistence, module registration,
+audit and inventory preservation, and failing native shell commands. Seven
+checks fail against the original source; all 14 passed on the first repaired
+source in the offline Node 22 diagnostic environment. A fifteenth check now
+preserves the actual R12/R13/R14 CI executions and evidence entries.
 
-An isolated preflight run (`37230345225`) used the original immutable PR source,
+Isolated preflight `37230345225` used the original immutable PR source,
 Node 24.21.0 and the frozen dependency graph. It reproduced exactly three P1012
 errors, restored only the reviewed back-relations, and passed Prisma validate,
-generate, database typecheck and database build. It published only the verified
-immutable schema blob. Its temporary workflow is not included in this PR and
-its result is not final integrated acceptance.
+generate, database typecheck and database build.
 
-Final acceptance requires the normal six workflow families, real R13/R14
-regressions, the enabled R15 PostgreSQL suite, Docker/Compose, and all required
-security evidence on the final source. Run IDs belong in the PR handoff rather
-than in another commit that changes the accepted head.
+Caller-transaction preflight `37231994152` checked out the first repaired source
+`61f5bf7ee14c3e432abb16a67a54a05c456e3579`, Node 24.21.0 and the frozen graph.
+Seven new cases executed on real PostgreSQL before the service correction:
+six failed for the demonstrated transaction-escape behavior, while the existing
+audit-failure rollback case passed. After the narrow correction, API typecheck,
+lint and build passed. A fresh independently migrated database then passed the
+complete ledger integration and unit suites: **2 suites, 46 tests, no skips**.
+These cover caller commit visibility, outer rollback, account creation,
+reversal, audit failure, uncommitted permissions, and a real unique-constraint
+failure that must not be recovered outside the caller transaction. The
+controlled stale-read and audit faults are labelled in the tests.
+
+Acceptance-wiring preflight `37232500145` proved the missing R14 step on the
+first repaired source, restored only the approved R14 execution/artifact block,
+and passed all **15** merge-regression checks on the pinned Node runtime.
+
+The isolated preflights published only verified immutable source blobs. Their
+temporary workflows are not included in this PR and must not be merged.
+Their successful component-level results are not final integrated acceptance.
+
+Final acceptance requires the normal six workflow families, actual R13/R14
+browser executions, the enabled full R15 PostgreSQL suite, Docker/Compose, and
+all required security evidence on the final source. Final-head run IDs belong
+in the PR handoff rather than in another commit changing the accepted head.
 
 ## Safety and rollback
 
-The ledger implementation, triggers, migration and existing tests are retained.
-No public money route, posting caller, payment provider or financial rollout is
-introduced. Do not revert this integration wholesale: doing so would restore
-invalid schema/module state. Any later correction must preserve both support
-and ledger invariants and follow normal review. No production data was changed.
+The ledger schema, SQL triggers, migration and pre-existing tests are retained.
+The follow-up service change only adds caller-transaction composition and
+regression coverage; it introduces no live business caller. No public money
+route, payment provider or financial rollout is introduced. Do not revert this
+integration wholesale: doing so would restore invalid schema/module state.
+Any later correction must preserve both support and ledger invariants and
+follow normal review. No production data was changed.

@@ -54,8 +54,11 @@ test('SupportModule and LedgerModule are both in the root module imports', () =>
 
 test('support and ledger audit identifiers both remain allowlisted', () => {
   for (const key of [
-    'supportTicketId', 'supportMessageId', 'ledgerTransactionId',
-    'reversesTransactionId', 'actorSystem',
+    'supportTicketId',
+    'supportMessageId',
+    'ledgerTransactionId',
+    'reversesTransactionId',
+    'actorSystem',
   ]) {
     assert.match(audit, new RegExp(`^\\s*'${key}',`, 'm'));
   }
@@ -71,33 +74,70 @@ test('migration inventory preserves both support and ledger ownership', () => {
     assert.ok(index.models[name]?.includes(ledger), `Missing ledger inventory: ${name}`);
   }
   for (const migration of [support, ledger]) {
-    assert.ok(index.models.Permission.includes(migration), `Missing permission migration: ${migration}`);
+    assert.ok(
+      index.models.Permission.includes(migration),
+      `Missing permission migration: ${migration}`,
+    );
   }
 });
 
 test('startup uses explicit fail-fast bash on both operating systems', () => {
   assert.match(workflow, /os: \[ubuntu-latest, windows-latest\]/);
   assert.match(workflow, /    defaults:\n      run:\n        shell: bash\n/);
-  assert.doesNotMatch(workflow.split('    steps:')[1], /^ {8}shell:/m, 'A per-step shell must not weaken job defaults');
+  assert.doesNotMatch(
+    workflow.split('    steps:')[1],
+    /^ {8}shell:/m,
+    'A per-step shell must not weaken job defaults',
+  );
   assert.match(workflow, /if-no-files-found: error/, 'Browser evidence remains mandatory');
 });
 
 test('startup shell refuses a failed native command before a later success', () => {
-  const result = spawnSync('bash', [
-    '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c',
-    'node -e "process.exit(23)"\nnode -e "console.log(\'UNREACHABLE_AFTER_FAILURE\')"',
-  ], { encoding: 'utf8' });
+  const result = spawnSync(
+    'bash',
+    [
+      '--noprofile',
+      '--norc',
+      '-e',
+      '-o',
+      'pipefail',
+      '-c',
+      'node -e "process.exit(23)"\nnode -e "console.log(\'UNREACHABLE_AFTER_FAILURE\')"',
+    ],
+    { encoding: 'utf8' },
+  );
   assert.ifError(result.error);
   assert.equal(result.status, 23, result.stderr);
   assert.doesNotMatch(result.stdout, /UNREACHABLE_AFTER_FAILURE/);
 });
 
 test('startup shell refuses an upstream pipeline failure', () => {
-  const result = spawnSync('bash', [
-    '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c',
-    'node -e "process.exit(29)" | node -e "process.stdin.resume()"\nnode -e "console.log(\'UNREACHABLE_AFTER_PIPELINE\')"',
-  ], { encoding: 'utf8' });
+  const result = spawnSync(
+    'bash',
+    [
+      '--noprofile',
+      '--norc',
+      '-e',
+      '-o',
+      'pipefail',
+      '-c',
+      'node -e "process.exit(29)" | node -e "process.stdin.resume()"\nnode -e "console.log(\'UNREACHABLE_AFTER_PIPELINE\')"',
+    ],
+    { encoding: 'utf8' },
+  );
   assert.ifError(result.error);
   assert.equal(result.status, 29, result.stderr);
   assert.doesNotMatch(result.stdout, /UNREACHABLE_AFTER_PIPELINE/);
+});
+
+test('CI retains the actual R12, R13 and R14 real-browser journeys', () => {
+  const ci = read('.github/workflows/ci.yml');
+  for (const [spec, artifact] of [
+    ['r12-booking-communication.real-api.spec.ts', 'r12-booking-communication-evidence'],
+    ['r13-support.real-api.spec.ts', 'r13-support-evidence'],
+    ['r14-budget-authority.real-api.spec.ts', 'r14-budget-authority-evidence'],
+  ]) {
+    assert.ok(ci.includes(`e2e/${spec}`), `Missing real-browser execution: ${spec}`);
+    assert.ok(ci.includes(`name: ${artifact}`), `Missing retained evidence: ${artifact}`);
+  }
 });
