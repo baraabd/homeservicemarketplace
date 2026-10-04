@@ -150,8 +150,11 @@ test.describe('R13 durable help and support — real browser, API and PostgreSQL
     await openSupport(page);
 
     // The static FAQ is not a conversation and no assistant is pretended.
-    await expect(page.getByText('No support tickets yet.')).toBeVisible();
-    await expect(page.getByText(/\bonline\b|under 5 minutes/i)).toHaveCount(0);
+    // Scoped to the support page: the profile screen beneath it carries its
+    // own, real network-status card ("Online · Connected & synced").
+    const support = page.getByTestId('help-support-page');
+    await expect(support.getByText('No support tickets yet.')).toBeVisible();
+    await expect(support.getByText(/\bonline\b|under 5 minutes|typing/i)).toHaveCount(0);
 
     const subject = `Cannot update my phone ${randomUUID().slice(0, 8)}`;
     const body = 'Markup stays text: <b>bold</b> <img src=x onerror="window.__r13=1"> نص عربي';

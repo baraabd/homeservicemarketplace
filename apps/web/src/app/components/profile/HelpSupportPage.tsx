@@ -14,8 +14,7 @@ export const HELP_FAQS = [
   {
     en: 'How do I cancel a booking?',
     ar: 'كيف أُلغي الحجز؟',
-    answerEn:
-      'Open the booking and use the cancellation action when the booking state allows it.',
+    answerEn: 'Open the booking and use the cancellation action when the booking state allows it.',
     answerAr: 'افتح الحجز واستخدم إجراء الإلغاء عندما تسمح حالة الحجز بذلك.',
   },
   {
@@ -23,8 +22,7 @@ export const HELP_FAQS = [
     ar: 'كيف تعمل المدفوعات؟',
     answerEn:
       'The current product does not process or hold customer funds. Follow the payment details shown for the booking.',
-    answerAr:
-      'المنتج الحالي لا يعالج أموال العميل أو يحتفظ بها. اتبع تفاصيل الدفع المعروضة للحجز.',
+    answerAr: 'المنتج الحالي لا يعالج أموال العميل أو يحتفظ بها. اتبع تفاصيل الدفع المعروضة للحجز.',
   },
   {
     en: 'What if I have a problem with a job?',
@@ -164,7 +162,11 @@ export function HelpSupportPage({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="absolute inset-0 flex flex-col bg-slate-50 dark:bg-slate-900" dir={dir}>
+    <div
+      data-testid="help-support-page"
+      className="absolute inset-0 flex flex-col bg-slate-50 dark:bg-slate-900"
+      dir={dir}
+    >
       <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
         <button
           type="button"
