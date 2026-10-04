@@ -1356,7 +1356,7 @@ jobs:
       - name: Verify erasure, recovery, authority fences and independent process
         run: |
           pnpm --filter @homeservicemarketplace/api exec jest \
-            --runInBand --testPathPattern=evidence-retention.integration \
+            --runInBand --testPathPatterns=evidence-retention.integration \
             --json --outputFile=retention-ci-report.json
       - name: Retain synthetic test evidence
         if: always()
