@@ -14,6 +14,7 @@ import {
 } from '../../../infrastructure/storage/portfolio-storage-policy';
 import { AppError } from '../../../shared/errors/app-error';
 import { PermissionResolverService } from '../../iam/authorization/services/permission-resolver.service';
+import { PortfolioMediaService } from '../../media/portfolio-media.service';
 
 const SELECT = {
   id: true,
@@ -30,7 +31,16 @@ const SELECT = {
   publicationRightAckAt: true,
   providerProfile: { select: { userId: true } },
   mediaAsset: {
-    select: { storageKey: true, declaredMimeType: true, visibility: true, deletedAt: true },
+    select: {
+      storageKey: true,
+      declaredMimeType: true,
+      visibility: true,
+      deletedAt: true,
+      uploadCompletedAt: true,
+      retainUntil: true,
+      erasureStartedAt: true,
+      scanState: true,
+    },
   },
 } as const;
 type Row = Prisma.ProviderPortfolioItemGetPayload<{ select: typeof SELECT }>;
@@ -47,6 +57,7 @@ export class AdminPortfolioService {
     private readonly tx: TransactionRunner,
     private readonly config: AppConfigService,
     private readonly permissions: PermissionResolverService,
+    private readonly media: PortfolioMediaService,
   ) {}
 
   async list(actorId: string, providerProfileId: string): Promise<AdminPortfolioListResponse> {
@@ -83,6 +94,24 @@ export class AdminPortfolioService {
         'Explain the change needed before rejecting this image.',
         400,
       );
+    if (input.action === 'APPROVE') {
+      const candidate = await this.prisma.client.providerPortfolioItem.findFirst({
+        where: {
+          id: itemId,
+          providerProfileId,
+          deletedAt: null,
+          providerProfile: { deletedAt: null },
+        },
+        select: SELECT,
+      });
+      if (!candidate) throw missing();
+      this.assertDecisionAllowed(candidate, actorId, input);
+      await this.media.assertAvailableForApproval(
+        providerProfileId,
+        itemId,
+        input.expectedRevision,
+      );
+    }
     try {
       return await this.tx.run(
         async (client) => {
@@ -98,25 +127,8 @@ export class AdminPortfolioService {
             select: SELECT,
           });
           if (!before) throw missing();
-          if (before.providerProfile.userId === actorId)
-            throw new AppError('FORBIDDEN', 'You cannot review your own portfolio.', 403);
-          if (before.revision !== input.expectedRevision) throw stale();
-          if (this.blocked(before))
-            throw new AppError('CONFLICT', 'This image needs media migration before review.', 409, {
-              reason: 'MEDIA_MIGRATION_REQUIRED',
-            });
-          if (!before.publicationRightAckAt)
-            throw new AppError(
-              'CONFLICT',
-              'Publication permission must be recorded before review.',
-              409,
-              { reason: 'PUBLICATION_ACK_REQUIRED' },
-            );
+          this.assertDecisionAllowed(before, actorId, input);
           const next = input.action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
-          if (before.moderationState === next)
-            throw new AppError('CONFLICT', 'This image already has that decision.', 409, {
-              reason: 'ALREADY_REVIEWED',
-            });
           const changed = await client.providerPortfolioItem.updateMany({
             where: {
               id: itemId,
@@ -182,11 +194,11 @@ export class AdminPortfolioService {
     rights: Set<string>,
     history: Awaited<ReturnType<AdminPortfolioService['history']>>,
   ): AdminPortfolioItem {
-    const blocked = this.blocked(row);
+    const blockedReason = this.blockedReason(row);
     const mayReview =
       rights.has('portfolio:review') &&
       row.providerProfile.userId !== actorId &&
-      !blocked &&
+      blockedReason !== 'MEDIA_MIGRATION_REQUIRED' &&
       !!row.publicationRightAckAt;
     return {
       id: row.id,
@@ -204,14 +216,16 @@ export class AdminPortfolioService {
       updatedAt: row.updatedAt.toISOString(),
       moderatedAt: row.moderatedAt?.toISOString() ?? null,
       revision: row.revision,
-      reviewBlockedReason: blocked
-        ? 'MEDIA_MIGRATION_REQUIRED'
+      reviewBlockedReason: blockedReason
+        ? blockedReason
         : !row.publicationRightAckAt
           ? 'PUBLICATION_ACK_REQUIRED'
           : null,
       availableActions: mayReview
         ? (['APPROVE', 'REJECT'] as const).filter(
-            (action) => row.moderationState !== (action === 'APPROVE' ? 'APPROVED' : 'REJECTED'),
+            (action) =>
+              !(action === 'APPROVE' && blockedReason === 'MEDIA_UNAVAILABLE') &&
+              row.moderationState !== (action === 'APPROVE' ? 'APPROVED' : 'REJECTED'),
           )
         : [],
       history: history.flatMap((entry) => {
@@ -235,14 +249,56 @@ export class AdminPortfolioService {
     };
   }
 
-  private blocked(row: Row): boolean {
-    return (
+  private blockedReason(row: Row): AdminPortfolioItem['reviewBlockedReason'] {
+    // An unavailable legacy object still needs migration: changing moderation
+    // cannot revoke a historical direct public URL or its CDN cache.
+    if (
+      this.config.get('STORAGE_DRIVER') === 's3' &&
+      row.mediaAsset.visibility === 'PUBLIC' &&
+      isPortfolioStorageKey(row.mediaAsset.storageKey) &&
+      !isStagedPortfolioKey(row.mediaAsset.storageKey)
+    )
+      return 'MEDIA_MIGRATION_REQUIRED';
+    if (
       row.mediaAsset.visibility !== 'PUBLIC' ||
       !!row.mediaAsset.deletedAt ||
-      !isPortfolioStorageKey(row.mediaAsset.storageKey) ||
-      (this.config.get('STORAGE_DRIVER') === 's3' &&
-        !isStagedPortfolioKey(row.mediaAsset.storageKey))
-    );
+      !row.mediaAsset.uploadCompletedAt ||
+      !!row.mediaAsset.retainUntil ||
+      !!row.mediaAsset.erasureStartedAt ||
+      ['QUARANTINED', 'REJECTED', 'SCAN_FAILED'].includes(row.mediaAsset.scanState) ||
+      !isPortfolioStorageKey(row.mediaAsset.storageKey)
+    )
+      return 'MEDIA_UNAVAILABLE';
+    return null;
+  }
+
+  private assertDecisionAllowed(
+    row: Row,
+    actorId: string,
+    input: ReviewAdminPortfolioItemRequest,
+  ): void {
+    if (row.providerProfile.userId === actorId)
+      throw new AppError('FORBIDDEN', 'You cannot review your own portfolio.', 403);
+    if (row.revision !== input.expectedRevision) throw stale();
+    const blockedReason = this.blockedReason(row);
+    if (
+      blockedReason === 'MEDIA_MIGRATION_REQUIRED' ||
+      (blockedReason === 'MEDIA_UNAVAILABLE' && input.action === 'APPROVE')
+    )
+      throw new AppError('CONFLICT', 'This image is not available for review.', 409, {
+        reason: blockedReason,
+      });
+    if (!row.publicationRightAckAt)
+      throw new AppError(
+        'CONFLICT',
+        'Publication permission must be recorded before review.',
+        409,
+        { reason: 'PUBLICATION_ACK_REQUIRED' },
+      );
+    if (row.moderationState === (input.action === 'APPROVE' ? 'APPROVED' : 'REJECTED'))
+      throw new AppError('CONFLICT', 'This image already has that decision.', 409, {
+        reason: 'ALREADY_REVIEWED',
+      });
   }
 
   private requirePermission(rights: Set<string>, permission: string) {

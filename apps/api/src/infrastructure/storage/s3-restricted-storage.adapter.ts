@@ -13,6 +13,7 @@ import type { Readable } from 'node:stream';
 import { AppConfigService } from '../../config/app-config.service';
 import {
   RestrictedObjectStoragePort,
+  RestrictedObjectAlreadyExistsError,
   type RestrictedObjectMetadata,
   type RestrictedErasureReceipt,
 } from './restricted-object-storage.port';
@@ -103,23 +104,28 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
     body.on('error', () => undefined);
 
     try {
-      await this.guarded(() =>
-        this.client.send(
-          new PutObjectCommand({
-            Bucket: this.bucket(),
-            Key: input.key,
-            // A file stream with an explicit length, so a 10 MiB upload never
-            // becomes a 10 MiB Buffer. ContentLength is required because the
-            // SDK cannot infer it from a stream, and it is the SERVER-counted
-            // value, not anything the client claimed.
-            Body: body,
-            ContentLength: input.sizeBytes,
-            ContentType: input.contentType,
-            // Belt and braces against a bucket whose policy is looser than it
-            // should be. Evidence is served by this API or not at all.
-            ACL: 'private',
-          }),
-        ),
+      await this.guarded(
+        () =>
+          this.client.send(
+            new PutObjectCommand({
+              Bucket: this.bucket(),
+              Key: input.key,
+              // A file stream with an explicit length, so a 10 MiB upload never
+              // becomes a 10 MiB Buffer. ContentLength is required because the
+              // SDK cannot infer it from a stream, and it is the SERVER-counted
+              // value, not anything the client claimed.
+              Body: body,
+              ContentLength: input.sizeBytes,
+              ContentType: input.contentType,
+              // Finalization and scanning refer to one immutable object version.
+              // An upload admitted before completion must not overwrite it later.
+              IfNoneMatch: '*',
+              // Belt and braces against a bucket whose policy is looser than it
+              // should be. Evidence is served by this API or not at all.
+              ACL: 'private',
+            }),
+          ),
+        true,
       );
     } finally {
       // Settled on BOTH paths. On success the SDK has already consumed and
@@ -236,10 +242,19 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
    * containing a bucket name and a credential-shaped token, then checking
    * neither survives.
    */
-  private async guarded<T>(run: () => Promise<T>): Promise<T> {
+  private async guarded<T>(run: () => Promise<T>, immutableWrite = false): Promise<T> {
     try {
       return await run();
     } catch (err) {
+      const error = err as { name?: string; $metadata?: { httpStatusCode?: number } };
+      if (
+        immutableWrite &&
+        (error?.name === 'PreconditionFailed' ||
+          error?.name === 'ConditionalRequestConflict' ||
+          error?.$metadata?.httpStatusCode === 412 ||
+          error?.$metadata?.httpStatusCode === 409)
+      )
+        throw new RestrictedObjectAlreadyExistsError();
       this.log.error({
         msg: 'restricted.storage.backend_error',
         // The error NAME is a stable, non-sensitive classifier. The message is

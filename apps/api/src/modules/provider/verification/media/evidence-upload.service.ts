@@ -17,6 +17,7 @@ import { TransactionRunner } from '../../../../infrastructure/prisma/transaction
 import {
   RESTRICTED_OBJECT_STORAGE,
   RestrictedObjectStoragePort,
+  RestrictedObjectAlreadyExistsError,
 } from '../../../../infrastructure/storage/restricted-object-storage.port';
 import { AppError } from '../../../../shared/errors/app-error';
 import { AuditService } from '../../../iam/audit/audit.service';
@@ -333,41 +334,129 @@ export class EvidenceUploadService {
     const sha256 = hash.digest('hex');
 
     try {
-      await this.objects.putObjectFromFile({
-        key: asset.storageKey,
-        sourcePath: stagingPath,
-        contentType: verdict.detected,
-        sizeBytes: received,
-      });
-    } catch {
-      await this.discard(stagingDir);
-      throw new AppError(
-        'DEPENDENCY_UNAVAILABLE',
-        'Storage is unavailable. Try again shortly.',
-        503,
-      );
-    }
-
-    try {
-      await this.prisma.client.mediaAsset.update({
-        where: { id: asset.id },
+      // Claim the exact content ONCE, after receiving it but before publishing
+      // bytes. The old unconditional post-PUT update could change CLEAN media
+      // when another upload finalized while this request was still streaming.
+      // A failed transport remains retryable with these same bytes; finalize
+      // still requires a complete object, and the scanner only sees completed
+      // uploads. No storage operation holds a database transaction open.
+      const claimed = await this.prisma.client.mediaAsset.updateMany({
+        where: {
+          id: asset.id,
+          storageKey: asset.storageKey,
+          visibility: 'RESTRICTED',
+          sha256: null,
+          scanState: 'PENDING',
+          uploadCompletedAt: null,
+          deletedAt: null,
+          erasureStartedAt: null,
+          retainUntil: null,
+          OR: [{ uploadExpiresAt: null }, { uploadExpiresAt: { gt: new Date() } }],
+          verificationCase: {
+            state: { in: [...EVIDENCE_ACCEPTING_STATES] },
+            providerProfile: { userId, deletedAt: null },
+          },
+        },
         data: {
           detectedMimeType: verdict.detected,
-          // The COUNTED length, replacing whatever was declared at prepare.
           sizeBytes: received,
           sha256,
         },
       });
-    } catch (err) {
-      // Compensation: the object landed but the row did not. Leaving it would
-      // be an orphan in a bucket that holds passports, so it is removed before
-      // the error surfaces.
-      await this.objects.deleteObject(asset.storageKey).catch(() => undefined);
+
+      if (claimed.count !== 1) {
+        const current = await this.ownPreparedAsset(userId, assetId);
+        if (current.uploadCompletedAt !== null) {
+          throw new AppError('CONFLICT', 'This upload is already complete.', 409, {
+            reason: 'ALREADY_FINALIZED',
+          });
+        }
+        if (
+          current.scanState !== 'PENDING' ||
+          current.retainUntil ||
+          !EVIDENCE_ACCEPTING_STATES.includes(current.verificationCase!.state)
+        )
+          throw notFound();
+        if (current.uploadExpiresAt && current.uploadExpiresAt <= new Date()) {
+          throw new AppError('CONFLICT', 'This upload window has expired.', 409, {
+            reason: 'UPLOAD_EXPIRED',
+          });
+        }
+        if (current.sha256 !== sha256 || current.sizeBytes !== received) {
+          throw new AppError(
+            'CONFLICT',
+            'This upload already contains different evidence. Retry with the same file.',
+            409,
+            {
+              reason: 'CONTENT_ALREADY_STORED',
+            },
+          );
+        }
+      }
+
+      let createdObject = true;
+      try {
+        await this.objects.putObjectFromFile({
+          key: asset.storageKey,
+          sourcePath: stagingPath,
+          contentType: verdict.detected,
+          sizeBytes: received,
+        });
+      } catch (error) {
+        if (error instanceof RestrictedObjectAlreadyExistsError) {
+          createdObject = false;
+          let head;
+          try {
+            head = await this.objects.head(asset.storageKey);
+          } catch {
+            throw new AppError(
+              'DEPENDENCY_UNAVAILABLE',
+              'Storage is unavailable. Try again shortly.',
+              503,
+            );
+          }
+          if (!head || head.sizeBytes !== received) {
+            throw new AppError('CONFLICT', 'The uploaded file is incomplete.', 409, {
+              reason: 'OBJECT_MISMATCH',
+            });
+          }
+          // An identical pending retry may adopt the winner's complete object.
+          // Different content was rejected by the database claim above. Never
+          // delete an existing object from this losing request's error path.
+        } else {
+          throw new AppError(
+            'DEPENDENCY_UNAVAILABLE',
+            'Storage is unavailable. Try again shortly.',
+            503,
+          );
+        }
+      }
+
+      // Cleanup can fence an abandoned upload while physical promotion is in
+      // flight. Deny the retired version and remove bytes only if THIS request
+      // created them. A retry that lost to an existing object must never erase
+      // its winner. This compensation does not replace crash reconciliation.
+      const live = await this.prisma.client.mediaAsset.findUnique({
+        where: { id: asset.id },
+        select: { deletedAt: true, erasureStartedAt: true, retainUntil: true },
+      });
+      if (
+        !live ||
+        live.deletedAt ||
+        live.erasureStartedAt ||
+        (live.retainUntil && live.retainUntil <= new Date())
+      ) {
+        if (createdObject) {
+          await this.objects.deleteObject(asset.storageKey).catch(() => {
+            this.log.error({ msg: 'evidence.upload.retired_object_cleanup_failed', assetId });
+          });
+        }
+        throw notFound();
+      }
+    } finally {
       await this.discard(stagingDir);
-      throw err;
     }
 
-    await this.discard(stagingDir);
     // Size and type only. No key, no filename, no hash — a hash is a stable
     // correlation identifier for a document, which is exactly what an audit
     // log should not hand out.
@@ -609,6 +698,7 @@ export class EvidenceUploadService {
         createdAt: true,
         deletedAt: true,
         erasureStartedAt: true,
+        retainUntil: true,
         uploadCompletedAt: true,
         uploadExpiresAt: true,
         verificationCaseId: true,

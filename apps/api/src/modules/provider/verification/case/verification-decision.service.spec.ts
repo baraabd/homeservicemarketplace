@@ -1,5 +1,6 @@
 import { VerificationCaseWorkflowService } from './verification-case-workflow.service';
 import { AppError } from '../../../../shared/errors/app-error';
+import { EvidenceAvailabilityService } from '../media/evidence-availability.service';
 
 // Sprint 9B.7 — the transaction that turns checked evidence into work access.
 //
@@ -48,11 +49,16 @@ function caseRow(over: Partial<CaseRow> = {}): CaseRow {
     providerProfile: { id: PROFILE, userId: PROVIDER_USER },
     documents: [
       {
+        id: 'document-1',
         kind: 'INDIVIDUAL_IDENTITY',
         serviceCategoryId: null,
         supersededAt: null,
         expiresOn: null,
         mediaAsset: {
+          id: 'asset-1',
+          storageKey: 'verification/case-1/asset-1.pdf',
+          sizeBytes: 100,
+          sha256: 'a'.repeat(64),
           scanState: 'CLEAN',
           visibility: 'RESTRICTED',
           deletedAt: null,
@@ -74,6 +80,7 @@ function harness(
     existingGrant?: { id: string; status: string } | null;
     /** Sprint 9B.7 — what the settings row says a grant lasts, in days. */
     validityDays?: number;
+    objectState?: 'missing' | 'truncated' | 'present';
   } = {},
 ) {
   const writes: string[] = [];
@@ -89,10 +96,13 @@ function harness(
   const boom = (step: string) => {
     if (options.failAt === step) throw new Error(`forced failure at ${step}`);
   };
+  // Two reads of one persisted asset must keep its completion timestamp. A
+  // regenerated fixture on every read incorrectly simulates a replacement.
+  const persistedCase = options.row === undefined ? caseRow() : options.row;
 
   const client = {
     verificationCase: {
-      findUnique: jest.fn(async () => options.row ?? caseRow()),
+      findUnique: jest.fn(async () => persistedCase),
       findFirst: jest.fn(async () => (options.row === null ? null : { id: CASE_ID })),
       updateMany: jest.fn(async () => {
         writes.push('case');
@@ -184,6 +194,18 @@ function harness(
     // asserting the transaction, not the number.
     workGrantValidityDays: jest.fn(async () => options.validityDays ?? 365),
   };
+  const objects = new Map<string, Buffer>();
+  if (options.objectState !== 'missing') {
+    objects.set(
+      'verification/case-1/asset-1.pdf',
+      Buffer.alloc(options.objectState === 'truncated' ? 1 : 100),
+    );
+  }
+  const head = jest.fn(async (key: string) => {
+    const bytes = objects.get(key);
+    return bytes ? { sizeBytes: bytes.length } : null;
+  });
+  const availability = new EvidenceAvailabilityService({ head } as never);
 
   const service = new VerificationCaseWorkflowService(
     { client } as never,
@@ -191,6 +213,7 @@ function harness(
     audit as never,
     outboxRepo as never,
     settings as never,
+    availability,
   );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (service as any).log = {
@@ -210,6 +233,8 @@ function harness(
     outbox,
     notifications,
     logged,
+    objects,
+    head,
   };
 }
 
@@ -634,6 +659,21 @@ describe('grant closure is scoped to the case that issued it', () => {
 });
 
 describe('current evidence at approval', () => {
+  it.each(['missing', 'truncated'] as const)(
+    'refuses %s identity bytes even when the persisted document is clean and complete',
+    async (objectState) => {
+      const h = harness({ objectState });
+      await expect(
+        h.service.approve(REVIEWER, { caseId: CASE_ID, reasonCode: APPROVE_REASON }),
+      ).rejects.toMatchObject({
+        status: 409,
+        details: { reason: 'EVIDENCE_OBJECT_UNAVAILABLE' },
+      });
+      expect(h.writes).toEqual([]);
+      expect(h.grants).toEqual([]);
+    },
+  );
+
   it.each(['PENDING', 'QUARANTINED'])(
     'refuses a submitted document now scanned as %s',
     async (scanState) => {
@@ -649,25 +689,38 @@ describe('current evidence at approval', () => {
       expect(h.writes).toEqual([]);
     },
   );
-  it.each(['expired', 'superseded', 'public', 'deleted', 'incomplete'])(
-    'refuses %s evidence without writing a grant',
-    async (condition) => {
-      const row = caseRow();
-      const doc = row.documents[0] as {
-        expiresOn: Date | null;
-        supersededAt: Date | null;
-        mediaAsset: { visibility: string; deletedAt: Date | null; uploadCompletedAt: Date | null };
+  it.each([
+    'expired',
+    'superseded',
+    'public',
+    'deleted',
+    'incomplete',
+    'retention expired',
+    'erasing',
+  ])('refuses %s evidence without writing a grant', async (condition) => {
+    const row = caseRow();
+    const doc = row.documents[0] as {
+      expiresOn: Date | null;
+      supersededAt: Date | null;
+      mediaAsset: {
+        visibility: string;
+        deletedAt: Date | null;
+        uploadCompletedAt: Date | null;
+        retainUntil?: Date | null;
+        erasureStartedAt?: Date | null;
       };
-      if (condition === 'expired') doc.expiresOn = new Date('2000-01-01');
-      if (condition === 'superseded') doc.supersededAt = new Date();
-      if (condition === 'public') doc.mediaAsset.visibility = 'PUBLIC';
-      if (condition === 'deleted') doc.mediaAsset.deletedAt = new Date();
-      if (condition === 'incomplete') doc.mediaAsset.uploadCompletedAt = null;
-      const h = harness({ row });
-      await expect(
-        h.service.approve(REVIEWER, { caseId: CASE_ID, reasonCode: APPROVE_REASON }),
-      ).rejects.toMatchObject({ status: 409 });
-      expect(h.grants).toEqual([]);
-    },
-  );
+    };
+    if (condition === 'expired') doc.expiresOn = new Date('2000-01-01');
+    if (condition === 'superseded') doc.supersededAt = new Date();
+    if (condition === 'public') doc.mediaAsset.visibility = 'PUBLIC';
+    if (condition === 'deleted') doc.mediaAsset.deletedAt = new Date();
+    if (condition === 'incomplete') doc.mediaAsset.uploadCompletedAt = null;
+    if (condition === 'retention expired') doc.mediaAsset.retainUntil = new Date(0);
+    if (condition === 'erasing') doc.mediaAsset.erasureStartedAt = new Date();
+    const h = harness({ row });
+    await expect(
+      h.service.approve(REVIEWER, { caseId: CASE_ID, reasonCode: APPROVE_REASON }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(h.grants).toEqual([]);
+  });
 });

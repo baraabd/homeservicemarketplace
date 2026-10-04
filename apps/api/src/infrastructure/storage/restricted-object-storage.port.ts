@@ -38,6 +38,15 @@ export interface RestrictedObjectMetadata {
   sizeBytes: number;
 }
 
+/** A conditional first write lost to an existing immutable evidence object.
+ * Contains no storage coordinates or backend exception details. */
+export class RestrictedObjectAlreadyExistsError extends Error {
+  constructor() {
+    super('restricted-object-already-exists');
+    this.name = 'RestrictedObjectAlreadyExistsError';
+  }
+}
+
 /**
  * Server-side object operations for restricted evidence.
  *
@@ -67,6 +76,8 @@ export abstract class RestrictedObjectStoragePort {
    * concurrent request is an avoidable memory cliff. The caller streams the
    * request body to a staging file under a hard byte cap, then hands that file
    * here, so memory stays O(chunk) whichever backend is configured.
+   * Creates the key atomically ONLY if absent. Existing evidence bytes must
+   * never be overwritten; collisions throw RestrictedObjectAlreadyExistsError.
    */
   abstract putObjectFromFile(input: {
     key: string;

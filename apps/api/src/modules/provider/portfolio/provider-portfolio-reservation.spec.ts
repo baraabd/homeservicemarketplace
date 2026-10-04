@@ -4,7 +4,8 @@ import type { PrismaService } from '../../../infrastructure/prisma/prisma.servic
 import type { PlatformSettingRepository } from '../../../infrastructure/persistence/settings/platform-setting.repository';
 import type { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import type { AppConfigService } from '../../../config/app-config.service';
-import type { StoragePort } from '../../../infrastructure/storage/storage.port';
+import type { StoragePort, StoredObjectHead } from '../../../infrastructure/storage/storage.port';
+import * as validation from '../../../infrastructure/storage/portfolio-image-validation';
 
 function fixture() {
   const client = {
@@ -12,7 +13,7 @@ function fixture() {
     providerPortfolioItem: { findFirst: jest.fn(async () => null) },
     mediaAsset: { findFirst: jest.fn(async (): Promise<{ id: string } | null> => null) },
   };
-  const storage = { readObjectHead: jest.fn(async () => null) };
+  const storage = { readObjectHead: jest.fn(async (): Promise<StoredObjectHead | null> => null) };
   const tx = { run: jest.fn() };
   const service = new ProviderPortfolioService(
     { client } as unknown as PrismaService,
@@ -46,6 +47,10 @@ describe('portfolio attachment proves reservation ownership before reading bytes
         visibility: 'PUBLIC',
         uploadCompletedAt: null,
         deletedAt: null,
+        retainUntil: null,
+        erasureStartedAt: null,
+        purpose: null,
+        uploadExpiresAt: { gt: expect.any(Date) },
         declaredMimeType: 'image/jpeg',
         sizeBytes: 1024,
       },
@@ -64,5 +69,25 @@ describe('portfolio attachment proves reservation ownership before reading bytes
     });
     expect(f.storage.readObjectHead).toHaveBeenCalledWith(f.input.storageKey, expect.any(Number));
     expect(f.tx.run).not.toHaveBeenCalled();
+  });
+  it('does not blame a valid upload when the native decoder is unavailable', async () => {
+    const f = fixture();
+    f.client.mediaAsset.findFirst.mockResolvedValue({ id: 'asset' });
+    f.storage.readObjectHead.mockResolvedValue({
+      sizeBytes: 1024,
+      head: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
+    });
+    const unavailable = jest
+      .spyOn(validation, 'validateStoredPortfolioImage')
+      .mockRejectedValueOnce(new validation.PortfolioImageDecoderUnavailableError());
+    try {
+      await expect(f.service.create('owner', f.input)).rejects.toMatchObject({
+        status: 503,
+        message: 'Portfolio image validation is temporarily unavailable.',
+      });
+      expect(f.tx.run).not.toHaveBeenCalled();
+    } finally {
+      unavailable.mockRestore();
+    }
   });
 });

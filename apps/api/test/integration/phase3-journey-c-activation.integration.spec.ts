@@ -486,6 +486,9 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     const { VerificationCaseWorkflowService } = r(
       '../../src/modules/provider/verification/case/verification-case-workflow.service',
     );
+    const { EvidenceAvailabilityService } = r(
+      '../../src/modules/provider/verification/media/evidence-availability.service',
+    );
     const { VerificationSettingsService } = r(
       '../../src/modules/provider/verification/verification-settings.service',
     );
@@ -501,7 +504,7 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     const { MALWARE_SCANNER_PORT } = r(
       '../../src/modules/provider/verification/media/malware-scanner.port',
     );
-    const { RESTRICTED_OBJECT_STORAGE } = r(
+    const { RESTRICTED_OBJECT_STORAGE, RestrictedObjectAlreadyExistsError } = r(
       '../../src/infrastructure/storage/restricted-object-storage.port',
     );
     const { ProviderBidsController } = r(
@@ -612,8 +615,10 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
         sourcePath: string;
         contentType: string;
       }): Promise<void> {
+        const bytes = await readFile(input.sourcePath);
+        if (objects.has(input.key)) throw new RestrictedObjectAlreadyExistsError();
         objects.set(input.key, {
-          bytes: await readFile(input.sourcePath),
+          bytes,
           contentType: input.contentType,
         });
       },
@@ -663,6 +668,7 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
         SecurityEventsBus,
         ProviderVerificationCaseService,
         VerificationCaseWorkflowService,
+        EvidenceAvailabilityService,
         VerificationSettingsService,
         EvidenceUploadService,
         EvidenceScanService,

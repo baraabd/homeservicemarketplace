@@ -10,6 +10,10 @@ import {
   VersioningType,
 } from '@nestjs/common';
 import request from 'supertest';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import type { PrismaClient, Prisma } from '@homeservicemarketplace/database';
 import type {
   AdminProviderReview,
@@ -49,6 +53,8 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
   const applicationId = `${prefix}application`;
   const assetId = `${prefix}asset`;
   const policy = `2026.09-${prefix}-v1`;
+  const evidenceKey = `verification/${caseId}/${assetId}.pdf`;
+  const evidenceBytes = Buffer.from('%PDF-1.4\nSynthetic identity review fixture only.\n%%EOF\n');
   const keys = ['user:read:any', 'verification:decide', 'verification:evidence:view'];
   let prisma: PrismaClient;
   let app: INestApplication;
@@ -56,6 +62,8 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
   let locks: HeldLock | undefined;
   let outbox: import('../../src/infrastructure/outbox/outbox.repository').OutboxRepository;
   let capture: typeof import('../../src/modules/provider/onboarding/review/provider-review-snapshot').readProviderReviewSnapshot;
+  let storageRoot: string;
+  let evidenceStorage: import('../../src/infrastructure/storage/local-disk-restricted-storage.adapter').LocalDiskRestrictedStorageAdapter;
 
   const asAdmin = () => {
     actor = { id: reviewer, roles: ['admin'] };
@@ -146,6 +154,21 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
       AdminVerificationCaseService,
     } = require('../../src/modules/admin/verification/admin-verification-case.service');
     const {
+      EvidenceAvailabilityService,
+    } = require('../../src/modules/provider/verification/media/evidence-availability.service');
+    const {
+      RESTRICTED_OBJECT_STORAGE,
+    } = require('../../src/infrastructure/storage/restricted-object-storage.port');
+    const {
+      LocalDiskRestrictedStorageAdapter,
+    } = require('../../src/infrastructure/storage/local-disk-restricted-storage.adapter');
+    const {
+      AdminVerificationCaseCommandsController,
+    } = require('../../src/modules/admin/verification/admin-verification-case-commands.controller');
+    const {
+      AdminVerificationQueueService,
+    } = require('../../src/modules/admin/verification/admin-verification-queue.service');
+    const {
       AdminCategoryApplicationsController,
     } = require('../../src/modules/admin/category-applications/admin-category-applications.controller');
     const {
@@ -182,17 +205,24 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
       get: (key: string) =>
         ['WORK_ACCESS_ENFORCED', 'VERIFICATION_ENFORCED'].includes(key) ? true : undefined,
     };
+    storageRoot = await mkdtemp(join(tmpdir(), 'hsm-admin-review-evidence-'));
+    evidenceStorage = new LocalDiskRestrictedStorageAdapter({
+      get: (key: string) => (key === 'RESTRICTED_STORAGE_DIR' ? storageRoot : undefined),
+    });
     const moduleRef = await Test.createTestingModule({
       controllers: [
         AdminProviderReviewController,
         AdminCategoryApplicationsController,
         ProviderVerificationCaseController,
+        AdminVerificationCaseCommandsController,
       ],
       providers: [
         AdminProviderReviewService,
         AdminProviderReviewHistoryService,
         AdminProviderReviewRepository,
         AdminVerificationCaseService,
+        AdminVerificationQueueService,
+        EvidenceAvailabilityService,
         AdminCategoryApplicationsService,
         ProviderCategoryApplicationRepository,
         VerificationCaseWorkflowService,
@@ -211,6 +241,7 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
         SecurityEventsBus,
         Reflector,
         { provide: PrismaService, useValue: { client: prisma, isReady: () => true } },
+        { provide: RESTRICTED_OBJECT_STORAGE, useValue: evidenceStorage },
         { provide: AppConfigService, useValue: config },
         { provide: 'AppConfigService', useValue: config },
         // Any accidental cache use fails this suite: sensitive permissions must
@@ -259,6 +290,9 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
   beforeEach(async () => {
     jest.restoreAllMocks();
     await cleanup();
+    await rm(storageRoot, { recursive: true, force: true });
+    await mkdir(dirname(join(storageRoot, evidenceKey)), { recursive: true });
+    await writeFile(join(storageRoot, evidenceKey), evidenceBytes);
     await prisma.verificationRequirementPolicy.update({
       where: { version: policy },
       data: { retiredAt: new Date('2026-01-02T00:00:00Z') },
@@ -361,11 +395,11 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
         ownerUserId: owner,
         verificationCaseId: caseId,
         visibility: 'RESTRICTED',
-        storageKey: `verification/${caseId}/${assetId}.pdf`,
+        storageKey: evidenceKey,
         declaredMimeType: 'application/pdf',
         detectedMimeType: 'application/pdf',
-        sizeBytes: 100,
-        sha256: 'a'.repeat(64),
+        sizeBytes: evidenceBytes.length,
+        sha256: createHash('sha256').update(evidenceBytes).digest('hex'),
         scanState: 'CLEAN',
         uploadCompletedAt: new Date(),
       },
@@ -400,6 +434,7 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
     await app?.close();
     await prisma?.$disconnect();
     await locks?.release();
+    if (storageRoot) await rm(storageRoot, { recursive: true, force: true });
   });
 
   it('returns complete submitted metadata without evidence credentials and keeps it immutable', async () => {
@@ -611,6 +646,15 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
         state: 'ACTION_REQUIRED',
         availableActions: ['submit'],
       });
+      const resumed = await request(http)
+        .post('/v1/me/provider/verification/case')
+        .send({})
+        .expect(200);
+      expect(resumed.body.created).toBe(false);
+      expect(resumed.body.case.documents).toEqual(own.body.case.documents);
+      expect(resumed.body.case.documents).toHaveLength(1);
+      expect(resumed.body.case.latestDecision).toEqual(own.body.case.latestDecision);
+      expect(resumed.body.case.latestDecision.reasonCode).toBe('OTHER');
       expect(JSON.stringify(own.body)).not.toContain('Internal reviewer context remains private');
     },
   );
@@ -699,6 +743,90 @@ dbDescribe('Admin provider review workspace (real PostgreSQL and HTTP)', () => {
       ).toBe(0);
     },
   );
+
+  it.each(['expired retention', 'erasing evidence'] as const)(
+    'does not advertise final approval for clean but %s',
+    async (condition) => {
+      await prisma.mediaAsset.update({
+        where: { id: assetId },
+        data:
+          condition === 'expired retention'
+            ? { retainUntil: new Date(Date.now() - 1) }
+            : { erasureStartedAt: new Date() },
+      });
+      const review = await read();
+      expect(review.availableActions).not.toContain('approve');
+      expect(review.blockers).toContainEqual({
+        code: 'EVIDENCE_NOT_READY',
+        taskId: 'BASICS_IDENTITY',
+      });
+      expect(review.verification?.documents[0]).toMatchObject({
+        scanState: 'CLEAN',
+        viewable: false,
+      });
+      expect(review.verification?.availableActions).not.toContain('approve');
+      const response = await approve(command(review)).expect(409);
+      expect(response.body.error.details.reason).toBe('REVIEW_BLOCKED');
+      expect(
+        await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: profileId } }),
+      ).toBe(0);
+      expect(
+        (
+          await prisma.providerOnboardingSubmission.findUniqueOrThrow({
+            where: { id: submissionId },
+          })
+        ).decidedAt,
+      ).toBeNull();
+    },
+  );
+
+  it('refuses both case approval and final activation when the clean identity object is physically missing', async () => {
+    await evidenceStorage.deleteObject(evidenceKey);
+    expect(await evidenceStorage.head(evidenceKey)).toBeNull();
+    const review = await read();
+    expect(review.verification?.documents[0].scanState).toBe('CLEAN');
+    const final = await approve(command(review)).expect(409);
+    expect(final.body.error.details.reason).toBe('EVIDENCE_OBJECT_UNAVAILABLE');
+    const identity = await request(http)
+      .post(`/v1/admin/verification/cases/${caseId}/approve`)
+      .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE', expectedState: 'SUBMITTED' })
+      .expect(409);
+    expect(identity.body.error.details.reason).toBe('EVIDENCE_OBJECT_UNAVAILABLE');
+    expect(JSON.stringify([final.body, identity.body])).not.toContain(evidenceKey);
+    const [profile, submission, kase, grants, notifications] = await persisted();
+    expect(profile.status).toBe('PENDING_REVIEW');
+    expect(submission.decidedAt).toBeNull();
+    expect(kase.state).toBe('SUBMITTED');
+    expect(grants).toHaveLength(0);
+    expect(notifications).toHaveLength(0);
+    const { reasonCode: _reason, ...base } = command(review);
+    await request(http)
+      .post(`/v1/admin/providers/${profileId}/review/request-changes`)
+      .send({
+        ...base,
+        feedback: [
+          {
+            taskId: 'BASICS_IDENTITY',
+            field: 'identityDocument',
+            reasonCode: 'DOCUMENT_MISSING',
+            providerMessage: 'Upload a fresh identity document so it can be reviewed.',
+          },
+        ],
+      })
+      .expect(200);
+    expect((await prisma.verificationCase.findUniqueOrThrow({ where: { id: caseId } })).state).toBe(
+      'ACTION_REQUIRED',
+    );
+  });
+
+  it('refuses a truncated identity object before publishing an approval or grant', async () => {
+    await writeFile(join(storageRoot, evidenceKey), evidenceBytes.subarray(0, 1));
+    const response = await approve(command(await read())).expect(409);
+    expect(response.body.error.details.reason).toBe('EVIDENCE_OBJECT_UNAVAILABLE');
+    expect(
+      await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: profileId } }),
+    ).toBe(0);
+  });
 
   it('refuses a country change, even when the earlier evidence remains clean', async () => {
     await prisma.providerProfile.update({

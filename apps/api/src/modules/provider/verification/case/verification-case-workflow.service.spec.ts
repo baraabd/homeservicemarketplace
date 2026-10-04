@@ -161,6 +161,7 @@ function harness(
     audit as never,
     outboxRepo as never,
     settings as never,
+    {} as never, // This suite exercises submit/return, which never probe storage.
   );
 
   return { service, client, updates, decisions, audits, outbox, notifications, ownCaseQueries };

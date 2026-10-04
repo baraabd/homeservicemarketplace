@@ -6,7 +6,10 @@ import type { S3Client } from '@aws-sdk/client-s3';
 
 import { LocalDiskRestrictedStorageAdapter } from './local-disk-restricted-storage.adapter';
 import { S3RestrictedStorageAdapter } from './s3-restricted-storage.adapter';
-import type { RestrictedObjectStoragePort } from './restricted-object-storage.port';
+import {
+  RestrictedObjectAlreadyExistsError,
+  type RestrictedObjectStoragePort,
+} from './restricted-object-storage.port';
 
 // Sprint 9B.3 — ONE behavioural contract, asserted against BOTH backends.
 //
@@ -56,6 +59,12 @@ function fakeS3(): { client: S3Client; objects: Map<string, Buffer>; fail?: bool
         const body = command.input.Body as Readable;
         const chunks: Buffer[] = [];
         for await (const c of body) chunks.push(Buffer.from(c as Buffer));
+        if (command.input.IfNoneMatch === '*' && objects.has(key)) {
+          throw Object.assign(new Error('existing restricted object'), {
+            name: 'PreconditionFailed',
+            $metadata: { httpStatusCode: 412 },
+          });
+        }
         objects.set(key, Buffer.concat(chunks));
         return {};
       }
@@ -169,6 +178,55 @@ afterAll(() => {
 });
 
 describe.each(BACKENDS)('$name restricted object storage', (backend) => {
+  it('refuses to overwrite evidence with another complete object', async () => {
+    const { port, cleanup } = backend.make();
+    try {
+      await port.putObjectFromFile({
+        key: KEY,
+        sourcePath: backend.stage(BYTES),
+        contentType: 'application/pdf',
+        sizeBytes: BYTES.length,
+      });
+      const replacement = Buffer.from('%PDF-1.4 other');
+      await expect(
+        port.putObjectFromFile({
+          key: KEY,
+          sourcePath: backend.stage(replacement),
+          contentType: 'application/pdf',
+          sizeBytes: replacement.length,
+        }),
+      ).rejects.toBeInstanceOf(RestrictedObjectAlreadyExistsError);
+      expect(await drain(await port.openReadStream(KEY))).toEqual(BYTES);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('allows exactly one concurrent writer and preserves its complete bytes', async () => {
+    const { port, cleanup } = backend.make();
+    try {
+      const candidates = [BYTES, Buffer.from('%PDF-1.4 other')];
+      const results = await Promise.allSettled(
+        candidates.map((bytes) =>
+          port.putObjectFromFile({
+            key: KEY,
+            sourcePath: backend.stage(bytes),
+            contentType: 'application/pdf',
+            sizeBytes: bytes.length,
+          }),
+        ),
+      );
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+      const winner = results.findIndex((result) => result.status === 'fulfilled');
+      expect(await drain(await port.openReadStream(KEY))).toEqual(candidates[winner]);
+      const loser = results.find((result) => result.status === 'rejected') as PromiseRejectedResult;
+      expect(loser.reason).toBeInstanceOf(RestrictedObjectAlreadyExistsError);
+    } finally {
+      cleanup();
+    }
+  });
+
   it('stores a complete object and reads it back byte-for-byte', async () => {
     const { port, cleanup } = backend.make();
     await port.putObjectFromFile({

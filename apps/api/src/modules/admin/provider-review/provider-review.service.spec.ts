@@ -7,6 +7,7 @@ import type { AuthenticatedUser } from '../../iam/authentication/types/authentic
 import { AdminProviderReviewService } from './provider-review.service';
 import { reviewFixture } from '../../../../test/fixtures/admin-provider-review.fixture';
 import { reviewHash, reviewRevision } from './provider-review.policy';
+import { EvidenceAvailabilityService } from '../../provider/verification/media/evidence-availability.service';
 
 const actor = { id: 'admin-1', roles: ['admin'] } as AuthenticatedUser;
 function fixture() {
@@ -18,7 +19,17 @@ function fixture() {
     },
     notification: { create: jest.fn().mockResolvedValue({ id: 'notification-1' }) },
   };
-  const tx = { run: jest.fn(async (fn: (client: unknown) => unknown) => fn(db)) };
+  let transactionOpen = false;
+  const tx = {
+    run: jest.fn(async (fn: (client: unknown) => unknown) => {
+      transactionOpen = true;
+      try {
+        return await fn(db);
+      } finally {
+        transactionOpen = false;
+      }
+    }),
+  };
   const repository = { load: jest.fn().mockResolvedValue(data) };
   const permissions = {
     resolveFreshForUser: jest
@@ -36,6 +47,13 @@ function fixture() {
   const audit = { record: jest.fn().mockResolvedValue(undefined) };
   const outbox = { enqueue: jest.fn().mockResolvedValue(undefined) };
   const security = { emitProviderStatusChanged: jest.fn() };
+  const objects = new Map([['verification/case-1/media-1.pdf', Buffer.alloc(100)]]);
+  const head = jest.fn(async (key: string) => {
+    expect(transactionOpen).toBe(false);
+    const bytes = objects.get(key);
+    return bytes ? { sizeBytes: bytes.length } : null;
+  });
+  const availability = new EvidenceAvailabilityService({ head } as never);
   const service = new AdminProviderReviewService(
     tx as never,
     repository as never,
@@ -47,6 +65,7 @@ function fixture() {
     audit as never,
     outbox as never,
     security as never,
+    availability,
   );
   const response = { provider: { userId: 'owner-1' } } as AdminProviderReview;
   jest.spyOn(service, 'get').mockResolvedValue(response);
@@ -70,6 +89,8 @@ function fixture() {
     outbox,
     security,
     input,
+    objects,
+    head,
   };
 }
 
@@ -92,7 +113,11 @@ describe('unified provider review decisions', () => {
     expect(f.workflow.approve).toHaveBeenCalledWith(
       actor.id,
       expect.objectContaining({ caseId: 'case-1' }),
-      { transaction: f.db, suppressNotification: true },
+      expect.objectContaining({
+        transaction: f.db,
+        suppressNotification: true,
+        evidenceAvailability: expect.objectContaining({ caseId: 'case-1' }),
+      }),
     );
     expect(f.audit.record).toHaveBeenCalledWith(expect.any(Object), f.db);
     expect(f.outbox.enqueue).toHaveBeenCalledWith(
@@ -136,12 +161,44 @@ describe('unified provider review decisions', () => {
   it('honors permission revocation inside the decision transaction', async () => {
     const f = fixture();
     f.permissions.resolveFreshForUser
-      .mockResolvedValueOnce(new Set(['user:read:any', 'verification:decide']))
+      .mockResolvedValueOnce(
+        new Set(['user:read:any', 'verification:decide', 'verification:evidence:view']),
+      )
       .mockResolvedValueOnce(new Set());
     await expect(f.service.approve(actor, 'provider-1', f.input)).rejects.toMatchObject({
       status: 403,
     });
     expect(f.db.providerOnboardingSubmission.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses final activation when clean identity metadata points at missing bytes', async () => {
+    const f = fixture();
+    f.objects.clear();
+    await expect(f.service.approve(actor, 'provider-1', f.input)).rejects.toMatchObject({
+      status: 409,
+      details: { reason: 'EVIDENCE_OBJECT_UNAVAILABLE' },
+    });
+    expect(f.db.providerOnboardingSubmission.updateMany).not.toHaveBeenCalled();
+    expect(f.providers.decideIfInStatus).not.toHaveBeenCalled();
+    expect(f.workflow.approve).not.toHaveBeenCalled();
+  });
+
+  it('allows identity correction requests even when the old bytes are unavailable', async () => {
+    const f = fixture();
+    f.objects.clear();
+    await f.service.requestChanges(actor, 'provider-1', {
+      ...f.input,
+      feedback: [
+        {
+          taskId: 'BASICS_IDENTITY',
+          field: 'identityDocument',
+          reasonCode: 'DOCUMENT_MISSING',
+          providerMessage: 'Upload a fresh identity document.',
+        },
+      ],
+    });
+    expect(f.head).not.toHaveBeenCalled();
+    expect(f.workflow.requestAction).toHaveBeenCalled();
   });
 
   it('requires evidence access before approving an unverified identity', async () => {

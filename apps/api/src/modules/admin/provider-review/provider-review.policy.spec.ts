@@ -1,11 +1,41 @@
 import { reviewFixture } from '../../../../test/fixtures/admin-provider-review.fixture';
-import { reviewBlockers, reviewRevision, stableReviewJson } from './provider-review.policy';
+import {
+  canRequestChanges,
+  reviewBlockers,
+  reviewRevision,
+  stableReviewJson,
+} from './provider-review.policy';
 
 const now = new Date('2026-09-15T12:01:00Z');
 const codes = (data: ReturnType<typeof reviewFixture>, actor = 'admin-1', allowed = true) =>
   reviewBlockers(data, actor, allowed, now).map((row) => row.code);
 
 describe('complete provider review policy', () => {
+  it.each(['ACCEPTED', 'RETURNED'] as const)(
+    'does not call an already %s submission missing',
+    (decision) => {
+      const data = reviewFixture();
+      data.submission!.decision = decision;
+      data.submission!.decidedAt = now;
+      data.profile.status = decision === 'ACCEPTED' ? 'ACTIVE' : 'REJECTED';
+      const blockers = reviewBlockers(data, 'admin-1', true, now);
+      expect(blockers.map((blocker) => blocker.code)).toContain('SUBMISSION_ALREADY_DECIDED');
+      expect(blockers.map((blocker) => blocker.code)).not.toContain('NOT_SUBMITTED');
+      expect(canRequestChanges(blockers)).toBe(false);
+    },
+  );
+
+  it('distinguishes a saved submission that is not pending review from no submission', () => {
+    const data = reviewFixture();
+    data.profile.status = 'DRAFT';
+    const blockers = reviewBlockers(data, 'admin-1', true, now);
+    expect(blockers.map((blocker) => blocker.code)).toContain('REVIEW_NOT_PENDING');
+    expect(blockers.map((blocker) => blocker.code)).not.toContain('NOT_SUBMITTED');
+    expect(canRequestChanges(blockers)).toBe(false);
+    data.submission = null;
+    expect(codes(data)).toContain('NOT_SUBMITTED');
+    expect(codes(data)).not.toContain('REVIEW_NOT_PENDING');
+  });
   it('requires a full submission and scoped, clean identity evidence even when the gallery is empty', () => {
     expect(codes(reviewFixture())).toEqual([]);
     const data = reviewFixture();
@@ -37,6 +67,31 @@ describe('complete provider review policy', () => {
     expect(codes(data)).toEqual(
       expect.arrayContaining(['EVIDENCE_NOT_READY', 'WORK_GRANT_REQUIRED']),
     );
+  });
+
+  it.each(['expired retention', 'erasing evidence', 'erased evidence'])(
+    'blocks final approval for %s even when the malware verdict is clean',
+    (condition) => {
+      const data = reviewFixture();
+      const asset = data.verificationCase!.documents[0].mediaAsset;
+      if (condition === 'expired retention') asset.retainUntil = now;
+      if (condition === 'erasing evidence') asset.erasureStartedAt = now;
+      if (condition === 'erased evidence') asset.deletedAt = now;
+      expect(codes(data)).toContain('EVIDENCE_NOT_READY');
+    },
+  );
+
+  it('allows clean evidence while its retention window remains open', () => {
+    const data = reviewFixture();
+    data.verificationCase!.documents[0].mediaAsset.retainUntil = new Date(now.getTime() + 1);
+    expect(codes(data)).toEqual([]);
+  });
+
+  it('includes the retention fence in the review revision', () => {
+    const data = reviewFixture();
+    const original = reviewRevision(data);
+    data.verificationCase!.documents[0].mediaAsset.erasureStartedAt = now;
+    expect(reviewRevision(data)).not.toBe(original);
   });
 
   it('does not confuse a new trade or changed country with already reviewed scope', () => {

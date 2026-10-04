@@ -20,6 +20,11 @@ import {
   type VerificationCaseAction,
 } from '../policy/case-transitions';
 import { assessSubmissionReadiness } from './submission-readiness';
+import { evidenceSatisfiesRequirement } from './evidence-readiness';
+import {
+  EvidenceAvailabilityService,
+  type EvidenceAvailabilityProof,
+} from '../media/evidence-availability.service';
 import { GRANT_SOURCE_FOR_APPROVAL, grantClosureFor } from '../grant/work-access-grant.policy';
 import { computeGrantWindow, type GrantWindow } from '../grant/grant-validity';
 import type { ResolvedRequirements } from '../policy/requirement-resolver';
@@ -59,6 +64,7 @@ export interface CaseCommandResult {
 interface VerificationWorkflowContext {
   transaction: PrismaTx;
   suppressNotification?: boolean;
+  evidenceAvailability?: EvidenceAvailabilityProof;
 }
 
 interface LoadedCase {
@@ -84,11 +90,16 @@ interface LoadedCase {
     _count?: { serviceCategories?: number } | null;
   };
   documents: Array<{
+    id: string;
     kind: string;
     serviceCategoryId: string | null;
     supersededAt: Date | null;
     expiresOn: Date | null;
     mediaAsset: {
+      id: string;
+      storageKey: string;
+      sizeBytes: number;
+      sha256: string | null;
       scanState: string;
       visibility: string;
       deletedAt: Date | null;
@@ -109,6 +120,7 @@ export class VerificationCaseWorkflowService {
     private readonly audit: AuditService,
     private readonly outbox: OutboxRepository,
     private readonly settings: VerificationSettingsService,
+    private readonly evidenceAvailability: EvidenceAvailabilityService,
   ) {}
 
   // ── submit ──────────────────────────────────────────────────────────────
@@ -419,10 +431,25 @@ export class VerificationCaseWorkflowService {
     },
     context?: VerificationWorkflowContext,
   ): Promise<CaseCommandResult> {
+    if (VERIFICATION_CASE_TRANSITIONS.approve.requiresReason && !input.reasonCode) {
+      throw new AppError('VALIDATION_ERROR', 'A reason is required to approve this case.', 400, {
+        reason: 'REASON_REQUIRED',
+      });
+    }
     if (!context) {
+      const preflightCase = await this.requireReviewable(input.caseId, reviewerUserId);
+      if (preflightCase.state === 'VERIFIED') return this.replay(preflightCase, 'reviewer');
+      this.assertFresh(preflightCase, input.expectedState);
+      this.assertLegal('approve', preflightCase.state);
+      this.assertEvidenceReady(preflightCase, new Date());
+      const evidenceAvailability = await this.evidenceAvailability.prepare({
+        ...preflightCase,
+        requirements: this.requirementsOf(preflightCase).requirements,
+      });
       try {
         return await this.tx.run(
-          (transaction) => this.approve(reviewerUserId, input, { transaction }),
+          (transaction) =>
+            this.approve(reviewerUserId, input, { transaction, evidenceAvailability }),
           { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
         );
       } catch (error) {
@@ -437,14 +464,6 @@ export class VerificationCaseWorkflowService {
         throw error;
       }
     }
-    // Approval carries a reason like every other judgement: "why did we trust
-    // this?" is exactly what the permanent record has to answer years later.
-    if (VERIFICATION_CASE_TRANSITIONS.approve.requiresReason && !input.reasonCode) {
-      throw new AppError('VALIDATION_ERROR', 'A reason is required to approve this case.', 400, {
-        reason: 'REASON_REQUIRED',
-      });
-    }
-
     const kase = await this.requireReviewable(input.caseId, reviewerUserId, context?.transaction);
     if (kase.state === 'VERIFIED') return this.replay(kase, 'reviewer');
     this.assertFresh(kase, input.expectedState);
@@ -456,6 +475,14 @@ export class VerificationCaseWorkflowService {
     // on why a second `new Date()` here is a real failure and not pedantry.
     const decidedAt = new Date();
     this.assertEvidenceReady(kase, decidedAt);
+    this.evidenceAvailability.assertCurrent(
+      context.evidenceAvailability,
+      {
+        ...kase,
+        requirements: this.requirementsOf(kase).requirements,
+      },
+      decidedAt,
+    );
 
     // Resolve one grant window before writing any decision. A misconfigured
     // validity fails the whole transaction instead of issuing unintended access.
@@ -958,6 +985,10 @@ export class VerificationCaseWorkflowService {
           include: {
             mediaAsset: {
               select: {
+                id: true,
+                storageKey: true,
+                sizeBytes: true,
+                sha256: true,
                 scanState: true,
                 visibility: true,
                 deletedAt: true,
@@ -979,19 +1010,7 @@ export class VerificationCaseWorkflowService {
       requirements.policyVersion === kase.policyVersion &&
       (requirements.verificationRequired === false || requirements.requirements.length > 0) &&
       requirements.requirements.every((required) =>
-        kase.documents.some(
-          (doc) =>
-            doc.kind === required.kind &&
-            doc.serviceCategoryId === required.serviceCategoryId &&
-            doc.supersededAt === null &&
-            (!doc.expiresOn || doc.expiresOn > now) &&
-            doc.mediaAsset?.scanState === 'CLEAN' &&
-            doc.mediaAsset.visibility === 'RESTRICTED' &&
-            doc.mediaAsset.deletedAt === null &&
-            !doc.mediaAsset.erasureStartedAt &&
-            (!doc.mediaAsset.retainUntil || doc.mediaAsset.retainUntil > now) &&
-            doc.mediaAsset.uploadCompletedAt !== null,
-        ),
+        kase.documents.some((doc) => evidenceSatisfiesRequirement(doc, required, now)),
       );
     if (!ready) {
       throw new AppError('CONFLICT', 'Current clean evidence is required before approval.', 409, {
