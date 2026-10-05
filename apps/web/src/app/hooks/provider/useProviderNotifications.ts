@@ -52,7 +52,7 @@ export function useMarkProviderNotificationRead() {
 export function useMarkAllProviderNotificationsRead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => markAllProviderNotificationsRead(),
+    mutationFn: (ids: string[]) => markAllProviderNotificationsRead(ids),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: providerQueryKeys.notifications.root });
     },

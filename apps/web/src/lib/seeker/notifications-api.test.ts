@@ -45,7 +45,8 @@ describe('notifications-api — listNotifications', () => {
       return [200, { items: [], nextCursor: null }];
     });
     await listNotifications({ unread: true });
-    expect(captured).toEqual({ unread: true });
+    // R17-B: the seeker app always names its experience.
+    expect(captured).toEqual({ experience: 'seeker', unread: true });
   });
 
   it('does NOT send userId on the wire', async () => {

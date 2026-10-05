@@ -1,5 +1,6 @@
 import type {
   ListNotificationsQuery,
+  MarkAllNotificationsReadRequest,
   MarkAllNotificationsReadResponse,
   MarkNotificationReadResponse,
   NotificationListResponse,
@@ -49,10 +50,15 @@ export async function markProviderNotificationRead(
   return data;
 }
 
-export async function markAllProviderNotificationsRead(): Promise<MarkAllNotificationsReadResponse> {
+// R17-B — read-all names the unread notifications the provider was shown;
+// one that arrived after the list was read stays unread.
+export async function markAllProviderNotificationsRead(
+  ids: string[],
+): Promise<MarkAllNotificationsReadResponse> {
+  const body: MarkAllNotificationsReadRequest = { ids };
   const { data } = await api.post<MarkAllNotificationsReadResponse>(
     '/v1/me/notifications/read-all',
-    null,
+    body,
     { params: { experience: PROVIDER_EXPERIENCE } },
   );
   return data;

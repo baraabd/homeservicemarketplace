@@ -75,8 +75,8 @@ export function useMarkNotificationRead() {
 // was unread). Same invalidation as single mark-read.
 export function useMarkAllNotificationsRead() {
   const qc = useQueryClient();
-  return useMutation<MarkAllNotificationsReadResponse, Error, void>({
-    mutationFn: () => markAllNotificationsRead(),
+  return useMutation<MarkAllNotificationsReadResponse, Error, string[]>({
+    mutationFn: (ids: string[]) => markAllNotificationsRead(ids),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: seekerQueryKeys.notifications.root });
     },

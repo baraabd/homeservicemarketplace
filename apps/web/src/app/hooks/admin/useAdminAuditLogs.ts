@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListAdminAuditLogsQuery } from '@homeservicemarketplace/contracts';
 
 import {
+  getAdminUnreadNotificationsCount,
   listAdminAuditLogs,
   listAdminNotifications,
   markAdminNotificationRead,
@@ -17,6 +18,7 @@ export const adminAuditQueryKeys = {
 export const adminNotificationsQueryKeys = {
   root: ['admin', 'notifications'] as const,
   list: (filters: { unread?: boolean }) => ['admin', 'notifications', 'list', filters] as const,
+  unreadCount: () => ['admin', 'notifications', 'unread-count'] as const,
 };
 
 export function useAdminAuditLogs(filters: ListAdminAuditLogsQuery = {}) {
@@ -32,6 +34,16 @@ export function useAdminNotifications(filters: { unread?: boolean } = {}) {
   return useQuery({
     queryKey: adminNotificationsQueryKeys.list(filters),
     queryFn: () => listAdminNotifications(filters),
+    refetchInterval: REFETCH_MS,
+    refetchOnWindowFocus: true,
+    staleTime: 5_000,
+  });
+}
+
+export function useAdminUnreadNotificationsCount() {
+  return useQuery({
+    queryKey: adminNotificationsQueryKeys.unreadCount(),
+    queryFn: () => getAdminUnreadNotificationsCount(),
     refetchInterval: REFETCH_MS,
     refetchOnWindowFocus: true,
     staleTime: 5_000,

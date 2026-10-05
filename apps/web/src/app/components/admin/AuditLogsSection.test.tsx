@@ -158,24 +158,22 @@ describe('AdminDashboard — Audit Logs (Sprint 6.6)', () => {
 });
 
 describe('AdminDashboard — Notifications bell (Sprint 6.6)', () => {
-  it('renders the live unread count from the API', async () => {
+  // R17-B (B-9): the badge is the server's count for the admin experience —
+  // more than a 50-row page could ever show — not the length of a list.
+  it('renders the server unread count, beyond one page, capped only for display', async () => {
     mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
     mock.onGet('/v1/admin/audit-logs').reply(200, { items: [], nextCursor: null });
-    mock.onGet('/v1/admin/notifications').reply((config) => {
-      const params = (config.params as { unread?: string } | undefined) ?? {};
-      return [
-        200,
-        params.unread === 'true'
-          ? { items: [NOTIFICATION, { ...NOTIFICATION, id: 'n-2' }], nextCursor: null }
-          : { items: [NOTIFICATION], nextCursor: null },
-      ];
+    mock.onGet('/v1/admin/notifications').reply(200, { items: [NOTIFICATION], nextCursor: null });
+    let countParams: unknown;
+    mock.onGet('/v1/me/notifications/unread-count').reply((config) => {
+      countParams = config.params;
+      return [200, { count: 130 }];
     });
 
     renderAdmin();
 
-    // The bell badge displays unread count. The unread query lists
-    // only unread items so we expect "2".
-    await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('99+')).toBeInTheDocument());
+    expect(countParams).toEqual({ experience: 'admin' });
   });
 
   it('mark-read button POSTs /v1/admin/notifications/:id/read', async () => {

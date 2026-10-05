@@ -24,14 +24,28 @@ import { X, Bell } from 'lucide-react';
 // experience=provider with a 15 s poll. Renders a 99+ pill when the
 // count is large enough that it would overflow the badge.
 export function ProviderNotificationsBellButton({ onOpen }: { onOpen: () => void }) {
+  const { lang } = useLang();
   const countQuery = useProviderUnreadNotificationsCount();
   const count = countQuery.data?.count ?? 0;
   const display = count > 99 ? '99+' : String(count);
+  // R17-B (B-5) — a count that could not be read is not "nothing unread".
+  const unknown = countQuery.data === undefined && countQuery.isError;
+  const label = unknown
+    ? lang === 'ar'
+      ? 'فتح الإشعارات، تعذّر تحميل عدد غير المقروء'
+      : 'Open notifications, unread count couldn’t be loaded'
+    : count > 0
+      ? lang === 'ar'
+        ? `فتح الإشعارات، ${count} غير مقروءة`
+        : `Open notifications, ${count} unread`
+      : lang === 'ar'
+        ? 'فتح الإشعارات'
+        : 'Open notifications';
   return (
     <button
       type="button"
       onClick={onOpen}
-      aria-label="Open notifications"
+      aria-label={label}
       className="relative w-9 h-9 rounded-xl bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 flex items-center justify-center active:scale-90 transition-all"
     >
       <Bell size={17} className="text-slate-600 dark:text-slate-300" />
@@ -69,6 +83,8 @@ export function ProviderNotificationsDrawer({ onClose }: { onClose: () => void }
 
   const empty = items.length === 0;
   const allRead = items.every((n) => n.readAt !== null);
+  // R17-B — exactly the unread rows on screen; nothing that arrives later.
+  const unreadShown = items.filter((n) => n.readAt === null).map((n) => n.id);
 
   return (
     <>
@@ -103,7 +119,7 @@ export function ProviderNotificationsDrawer({ onClose }: { onClose: () => void }
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => markAllRead.mutate()}
+              onClick={() => markAllRead.mutate(unreadShown)}
               disabled={empty || allRead || markAllRead.isPending}
               className="text-blue-600 disabled:text-slate-400 disabled:cursor-not-allowed"
               style={{ fontSize: '12px', fontWeight: 600 }}

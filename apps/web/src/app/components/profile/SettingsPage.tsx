@@ -82,10 +82,6 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const navigate = useNavigate();
   const { logout } = useAuth();
 
-  const [pushNotifs, setPushNotifs] = useState(true);
-  const [emailNotifs, setEmailNotifs] = useState(false);
-  const [smsNotifs, setSmsNotifs] = useState(true);
-  const [bidAlerts, setBidAlerts] = useState(true);
   const [locationSvc, setLocationSvc] = useState(true);
   const [dataSharing, setDataSharing] = useState(false);
   const [signOutModal, setSignOutModal] = useState(false);
@@ -98,11 +94,15 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
     language: lang === 'ar' ? 'اللغة' : 'Language',
     langSub: lang === 'ar' ? 'العربية / الإنجليزية' : 'Arabic / English',
     notifications: lang === 'ar' ? 'الإشعارات' : 'Notifications',
-    push: lang === 'ar' ? 'إشعارات الجهاز' : 'Push Notifications',
-    pushSub: lang === 'ar' ? 'تلقّي الإشعارات الفورية' : 'Receive real-time alerts',
-    email: lang === 'ar' ? 'إشعارات البريد' : 'Email Notifications',
-    sms: lang === 'ar' ? 'إشعارات الرسائل' : 'SMS Notifications',
-    bids: lang === 'ar' ? 'تنبيهات العروض الجديدة' : 'New Bid Alerts',
+    inApp: lang === 'ar' ? 'الإشعارات داخل التطبيق' : 'In-app notifications',
+    inAppSub:
+      lang === 'ar'
+        ? 'تظهر في جرس الإشعارات، ومنها تنبيهات العروض الجديدة.'
+        : 'Shown under the bell, including new bid alerts.',
+    channelsUnavailable:
+      lang === 'ar'
+        ? 'لا يتوفر بعد اختيار إشعارات الجهاز أو البريد أو الرسائل النصية، ولا يُرسل التطبيق أيًّا منها.'
+        : 'Choosing push, email or SMS notifications isn’t available yet, and the app sends none of them.',
     privacy: lang === 'ar' ? 'الخصوصية' : 'Privacy',
     location: lang === 'ar' ? 'خدمات الموقع' : 'Location Services',
     locationSub: lang === 'ar' ? 'للتطابق الأفضل مع المحترفين' : 'For better pro matching',
@@ -182,28 +182,28 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
           </Section>
 
           {/* ── Notifications ── */}
+          {/* R17-B (B-8): these used to be four switches that changed only
+              this screen's memory — push and SMS even started "on" — while
+              no push, email or SMS channel exists and no preference is
+              stored. A switch that saves nothing is a promise the app does
+              not keep, so the section now says what is true. Choosing
+              channels needs a product decision first (r17/
+              R17_B_NOTIFICATION_POLICY.md). */}
           <Section title={L.notifications}>
-            <SettingsToggle
-              enabled={pushNotifs}
-              onChange={() => setPushNotifs((v) => !v)}
-              label={L.push}
-              sub={L.pushSub}
-            />
-            <SettingsToggle
-              enabled={emailNotifs}
-              onChange={() => setEmailNotifs((v) => !v)}
-              label={L.email}
-            />
-            <SettingsToggle
-              enabled={smsNotifs}
-              onChange={() => setSmsNotifs((v) => !v)}
-              label={L.sms}
-            />
-            <SettingsToggle
-              enabled={bidAlerts}
-              onChange={() => setBidAlerts((v) => !v)}
-              label={L.bids}
-            />
+            <div className="py-3.5 px-4" data-testid="settings-notifications-info">
+              <p
+                className="text-slate-800 dark:text-slate-100"
+                style={{ fontSize: '14px', fontWeight: 500 }}
+              >
+                {L.inApp}
+              </p>
+              <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: '12px' }}>
+                {L.inAppSub}
+              </p>
+              <p className="text-slate-500 dark:text-slate-400 mt-2" style={{ fontSize: '12px' }}>
+                {L.channelsUnavailable}
+              </p>
+            </div>
           </Section>
 
           {/* ── Privacy ── */}

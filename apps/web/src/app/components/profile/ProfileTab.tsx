@@ -59,21 +59,33 @@ function NotificationsPage({
   notifications,
   onMarkAllRead,
   onMarkRead,
+  status,
+  onRetry,
 }: {
   onBack: () => void;
   notifications: AppNotification[];
   onMarkAllRead: () => void;
   onMarkRead: (id: string) => void;
+  /** R17-B (B-5) — a failed load is not an empty inbox. */
+  status: 'loading' | 'error' | 'ready';
+  onRetry?: () => void;
 }) {
   const { lang, dir } = useLang();
   const unread = notifications.filter((n) => !n.read).length;
 
   const L = {
     title: lang === 'ar' ? 'الإشعارات' : 'Notifications',
-    markAll: lang === 'ar' ? 'تحديد الكل' : 'Mark all read',
+    markAll: lang === 'ar' ? 'تعليم الكل كمقروء' : 'Mark all read',
     new: lang === 'ar' ? 'جديد' : 'New',
     earlier: lang === 'ar' ? 'سابقاً' : 'Earlier',
     empty: lang === 'ar' ? 'لا توجد إشعارات' : 'No notifications yet',
+    loading: lang === 'ar' ? 'جارٍ تحميل الإشعارات…' : 'Loading notifications…',
+    failed: lang === 'ar' ? 'تعذّر تحميل الإشعارات.' : 'Couldn’t load notifications.',
+    stale:
+      lang === 'ar'
+        ? 'تعذّر التحديث. تُعرض الإشعارات السابقة.'
+        : 'Couldn’t refresh. Showing earlier notifications.',
+    retry: lang === 'ar' ? 'إعادة المحاولة' : 'Try again',
   };
 
   return (
@@ -131,14 +143,44 @@ function NotificationsPage({
 
       {/* List */}
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+        {status === 'error' && notifications.length > 0 && (
+          <div
+            role="status"
+            className="mx-4 mt-3 px-3 py-2 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-between gap-3"
+            style={{ fontSize: '12px', color: '#92400E' }}
+          >
+            <span>{L.stale}</span>
+            {onRetry && (
+              <button type="button" onClick={onRetry} className="min-h-[44px] px-2 font-bold">
+                {L.retry}
+              </button>
+            )}
+          </div>
+        )}
         {notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
               <BellOff size={28} className="text-slate-300" />
             </div>
-            <p className="text-slate-400" style={{ fontSize: '14px' }}>
-              {L.empty}
+            <p
+              role="status"
+              data-testid="notifications-page-state"
+              data-state={status}
+              className="text-slate-400"
+              style={{ fontSize: '14px' }}
+            >
+              {status === 'loading' ? L.loading : status === 'error' ? L.failed : L.empty}
             </p>
+            {status === 'error' && onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="min-h-[44px] px-4 rounded-xl bg-slate-100 text-slate-700"
+                style={{ fontSize: '13px', fontWeight: 700 }}
+              >
+                {L.retry}
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -272,7 +314,7 @@ function ProfileList({
 }: {
   isOffline: boolean;
   onToggleOffline: () => void;
-  unreadCount: number;
+  unreadCount: number | undefined;
   onNavigate: (v: ProfileView) => void;
 }) {
   const { lang, t } = useLang();
@@ -436,7 +478,10 @@ interface ProfileTabProps {
   notifications: AppNotification[];
   onMarkAllRead: () => void;
   onMarkRead: (id: string) => void;
-  unreadCount: number;
+  /** R17-B — the server's unread count; undefined while it is unknown. */
+  unreadCount: number | undefined;
+  notificationsStatus?: 'loading' | 'error' | 'ready';
+  onRetryNotifications?: () => void;
   // Sprint 7.12 — tapping a Completed Post opens the SAME JobDetailView
   // the Bookings tab uses. Optional so existing call sites that don't
   // wire it still compile (the Completed Posts list still renders;
@@ -452,6 +497,8 @@ export function ProfileTab({
   onMarkAllRead,
   onMarkRead,
   unreadCount,
+  notificationsStatus = 'ready',
+  onRetryNotifications,
   onOpenBooking,
 }: ProfileTabProps) {
   const [view, setView] = useState<ProfileView>(null);
@@ -488,6 +535,8 @@ export function ProfileTab({
             notifications={notifications}
             onMarkAllRead={onMarkAllRead}
             onMarkRead={onMarkRead}
+            status={notificationsStatus}
+            onRetry={onRetryNotifications}
           />
         )}
         {view === 'completedPosts' && (

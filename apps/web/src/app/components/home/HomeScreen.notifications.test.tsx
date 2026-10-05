@@ -304,3 +304,105 @@ describe('HomeScreen — notification tap deep-links by resourceType', () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R17-B — notification lifecycle (docs/production-readiness/r17/R17_B_NOTIFICATIONS.md)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('HomeScreen — R17-B notification authority', () => {
+  beforeEach(() => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/requests').reply(200, { items: [], nextCursor: null });
+    mock.onGet('/v1/me/bookings').reply(200, { items: [], nextCursor: null });
+    mock.onGet('/v1/me/conversations').reply(200, { items: [], nextCursor: null });
+  });
+  const row = (id: string, body: string, readAt: string | null = null) => ({
+    ...NOTIF_BID,
+    id,
+    body,
+    readAt,
+  });
+
+  it('B-2/B-3: read-all names exactly the unread notifications on screen, in the seeker experience', async () => {
+    mock.onGet('/v1/me/notifications').reply(200, {
+      items: [
+        row('n-1', 'First unread.'),
+        row('n-2', 'Second unread.'),
+        row('n-3', 'Already read.', '2026-04-29T11:00:00.000Z'),
+      ],
+      nextCursor: null,
+    });
+    mock.onGet('/v1/me/notifications/unread-count').reply(200, { count: 2 });
+    let sent: { params: unknown; body: unknown } | null = null;
+    mock.onPost('/v1/me/notifications/read-all').reply((config) => {
+      const raw = config.data as string | undefined;
+      sent = { params: config.params ?? {}, body: raw ? JSON.parse(raw) : {} };
+      return [200, { updatedCount: 2 }];
+    });
+
+    renderHome();
+    await waitFor(() => expect(screen.getByText('Second unread.')).toBeInTheDocument());
+    fireEvent.click(screen.getAllByText('Mark all read')[0]);
+
+    await waitFor(() => expect(sent).not.toBeNull());
+    expect(sent).toEqual({ params: { experience: 'seeker' }, body: { ids: ['n-1', 'n-2'] } });
+    // Every notification read is scoped to the seeker experience too.
+    for (const r of mock.history.get.filter((g) => g.url?.startsWith('/v1/me/notifications'))) {
+      expect(r.params).toMatchObject({ experience: 'seeker' });
+    }
+  });
+
+  it('B-5: a failed load is not an empty inbox, and it can be retried', async () => {
+    mock
+      .onGet('/v1/me/notifications')
+      .replyOnce(503, { error: { code: 'UNAVAILABLE', message: 'x' } })
+      .onGet('/v1/me/notifications')
+      .reply(200, { items: [row('n-9', 'Back again.')], nextCursor: null });
+    mock.onGet('/v1/me/notifications/unread-count').reply(200, { count: 1 });
+
+    renderHome();
+    await waitFor(() =>
+      expect(mock.history.get.some((g) => g.url === '/v1/me/notifications')).toBe(true),
+    );
+    // The failure must never read as "you have nothing".
+    await waitFor(() =>
+      expect(screen.getByText('Couldn’t load notifications.')).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('No notifications yet')).toBeNull();
+    expect(screen.getByTestId('notification-drawer-state')).toHaveAttribute('data-state', 'error');
+
+    fireEvent.click(screen.getAllByText('Try again')[0]);
+    await waitFor(() => expect(screen.getByText('Back again.')).toBeInTheDocument());
+  });
+
+  it('B-5/B-9: an unknown count shows no number, and a known one is the server count', async () => {
+    mock
+      .onGet('/v1/me/notifications')
+      .reply(200, { items: [row('n-1', 'One unread.')], nextCursor: null });
+    mock.onGet('/v1/me/notifications/unread-count').reply(503, {});
+
+    const view = renderHome();
+    await waitFor(() => expect(screen.getByText('One unread.')).toBeInTheDocument());
+    // The loaded page has one unread row; that is not the count, so no number
+    // is drawn on the bell.
+    await waitFor(() =>
+      expect(mock.history.get.some((g) => g.url === '/v1/me/notifications/unread-count')).toBe(
+        true,
+      ),
+    );
+    expect(screen.queryAllByText('1', { selector: 'button > span' })).toHaveLength(0);
+    expect(screen.queryByTestId('seeker-notifications-badge')).toBeNull();
+    expect(screen.getByTestId('seeker-notifications-bell')).toHaveAccessibleName(
+      'Open notifications',
+    );
+    view.unmount();
+
+    mock.onGet('/v1/me/notifications/unread-count').reply(200, { count: 130 });
+    renderHome();
+    await waitFor(() =>
+      expect(screen.getByTestId('seeker-notifications-badge')).toHaveTextContent('99+'),
+    );
+    expect(screen.getByTestId('seeker-notifications-bell')).toHaveAccessibleName(
+      'Open notifications, 130 unread',
+    );
+  });
+});
