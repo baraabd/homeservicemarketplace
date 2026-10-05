@@ -52,6 +52,17 @@ export class MessageRepository {
     });
   }
 
+  /** A live message of this conversation, or null (R17 read position). */
+  findInConversation(
+    conversationId: string,
+    messageId: string,
+    tx?: PrismaTx,
+  ): Promise<Message | null> {
+    return this.db(tx).message.findFirst({
+      where: { id: messageId, conversationId, deletedAt: null },
+    });
+  }
+
   // Cursor-paginated, newest-first. The contract returns
   // chronologically (oldest-first) but we paginate from the bottom up
   // (infinite-scroll-up). The service reverses the page so the

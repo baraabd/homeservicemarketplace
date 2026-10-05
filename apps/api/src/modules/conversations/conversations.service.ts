@@ -340,11 +340,20 @@ export class ConversationsService {
     userId: string,
     conversationId: string,
     side: ConversationSide,
+    upToMessageId?: string,
   ): Promise<MarkConversationReadResponse> {
     const participant = await this.assertParticipant(userId, conversationId, side);
-    const at = new Date();
-    await this.participants.setLastReadAt(participant.id, at);
-    return { lastReadAt: at.toISOString() };
+    // R17 — read up to the newest message the reader was shown, so a message
+    // that arrived after it stays unread. The position is that message's own
+    // stored time, not this replica's clock. Without an id: now, as before.
+    let at = new Date();
+    if (upToMessageId !== undefined) {
+      const seen = await this.messages.findInConversation(conversationId, upToMessageId);
+      if (!seen) throw new AppError('NOT_FOUND', 'Message not found.', 404);
+      at = seen.createdAt;
+    }
+    const stored = await this.participants.advanceLastReadAt(participant.id, at);
+    return { lastReadAt: (stored.lastReadAt ?? at).toISOString() };
   }
 
   // ─── invariants ────────────────────────────────────────────────────────────

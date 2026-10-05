@@ -584,6 +584,128 @@ d('R12 - booking conversations (real HTTP, real Postgres)', () => {
     );
   });
 
+  // ── R17: the read position is what was shown ─────────────────────────────
+  // docs/production-readiness/r17/R17_A_MESSAGING.md. `upToMessageId` names the
+  // newest message the reader was shown; anything after it stays unread, and
+  // the position never moves backwards.
+  describe('R17 read position', () => {
+    const readUpTo = (base: string, conv: string, upToMessageId: string) =>
+      request(http).post(`${base}/${conv}/read`).send({ upToMessageId });
+    const unreadOf = async (base: string, conv: string): Promise<number> =>
+      (await request(http).get(base)).body.items.find((c: any) => c.id === conv).unreadCount;
+    const lastReadAtOf = async (conv: string, userId: string): Promise<Date | null> =>
+      (
+        await prisma.conversationParticipant.findFirstOrThrow({
+          where: { conversationId: conv, userId },
+        })
+      ).lastReadAt;
+
+    it('a message that arrived after the one shown stays unread', async () => {
+      const id = await booking();
+      as(SEEKER);
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      as(PROVIDER_USER);
+      const first = (await send(PROVIDER_BASE, conv, 'Arriving at ten.')).body.message;
+      as(SEEKER);
+      // The seeker's screen shows `first`. Before the read request lands, a
+      // second message is committed.
+      expect((await messagesOf(SEEKER_BASE, conv)).body.items.map((m: any) => m.id)).toEqual([
+        first.id,
+      ]);
+      as(PROVIDER_USER);
+      await send(PROVIDER_BASE, conv, 'Running ten minutes late.');
+      as(SEEKER);
+
+      const read = await readUpTo(SEEKER_BASE, conv, first.id);
+      expect(read.status).toBe(200);
+      const stored = await prisma.message.findUniqueOrThrow({ where: { id: first.id } });
+      expect(read.body).toEqual({ lastReadAt: stored.createdAt.toISOString() });
+      expect(await lastReadAtOf(conv, SEEKER)).toEqual(stored.createdAt);
+      expect(await unreadOf(SEEKER_BASE, conv)).toBe(1);
+    });
+
+    it('a late read from another tab never moves the position backwards', async () => {
+      const id = await booking();
+      as(SEEKER);
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      as(PROVIDER_USER);
+      const older = (await send(PROVIDER_BASE, conv, 'one')).body.message;
+      const newer = (await send(PROVIDER_BASE, conv, 'two')).body.message;
+      as(SEEKER);
+      expect((await readUpTo(SEEKER_BASE, conv, newer.id)).status).toBe(200);
+      const late = await readUpTo(SEEKER_BASE, conv, older.id);
+      expect(late.status).toBe(200);
+      const newerAt = (await prisma.message.findUniqueOrThrow({ where: { id: newer.id } }))
+        .createdAt;
+      expect(late.body).toEqual({ lastReadAt: newerAt.toISOString() });
+      expect(await lastReadAtOf(conv, SEEKER)).toEqual(newerAt);
+      expect(await unreadOf(SEEKER_BASE, conv)).toBe(0);
+    });
+
+    it('concurrent reads settle on the newest message read', async () => {
+      const id = await booking();
+      as(SEEKER);
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      as(PROVIDER_USER);
+      const sent: { id: string }[] = [];
+      for (let i = 0; i < 8; i += 1) {
+        sent.push((await send(PROVIDER_BASE, conv, `update ${i}`)).body.message);
+      }
+      as(SEEKER);
+      const answers = await Promise.all(
+        [...sent]
+          .reverse()
+          .map((m) => readUpTo(SEEKER_BASE, conv, m.id).set('x-test-user', SEEKER)),
+      );
+      expect(answers.map((a) => a.status)).toEqual(Array(8).fill(200));
+      const newestAt = (await prisma.message.findUniqueOrThrow({ where: { id: sent[7].id } }))
+        .createdAt;
+      expect(await lastReadAtOf(conv, SEEKER)).toEqual(newestAt);
+      expect(await unreadOf(SEEKER_BASE, conv)).toBe(0);
+    });
+
+    it('a message from another conversation, or a guessed id, moves nothing', async () => {
+      const mine = await booking();
+      const theirs = await booking('SCHEDULED', { seeker: OTHER_SEEKER });
+      as(SEEKER);
+      const conv = (await open(SEEKER_BASE, mine)).body.conversation.id;
+      as(OTHER_SEEKER);
+      const otherConv = (await open(SEEKER_BASE, theirs)).body.conversation.id;
+      const foreign = (await send(SEEKER_BASE, otherConv, 'not yours')).body.message;
+      as(PROVIDER_USER);
+      await send(PROVIDER_BASE, conv, 'hello');
+      as(SEEKER);
+
+      for (const guess of [foreign.id, `${P}no-such-message`]) {
+        const res = await readUpTo(SEEKER_BASE, conv, guess);
+        expect(res.status).toBe(404);
+        expect(JSON.stringify(res.body)).not.toContain('not yours');
+      }
+      expect((await readUpTo(SEEKER_BASE, conv, 'bad id!')).status).toBe(400);
+      expect(
+        (await request(http).post(`${SEEKER_BASE}/${conv}/read`).send({ upTo: 'x' })).status,
+      ).toBe(400);
+      expect(await lastReadAtOf(conv, SEEKER)).toBeNull();
+      expect(await unreadOf(SEEKER_BASE, conv)).toBe(1);
+      // A stranger cannot use someone else's conversation either.
+      as(OTHER_SEEKER);
+      expect((await readUpTo(SEEKER_BASE, conv, foreign.id)).status).toBe(404);
+    });
+
+    it('the provider side reads by the same rule, and the bodyless call still works', async () => {
+      const id = await booking();
+      as(SEEKER);
+      const conv = (await open(SEEKER_BASE, id)).body.conversation.id;
+      const shown = (await send(SEEKER_BASE, conv, 'first')).body.message;
+      await send(SEEKER_BASE, conv, 'second');
+      as(PROVIDER_USER);
+      expect((await readUpTo(PROVIDER_BASE, conv, shown.id)).status).toBe(200);
+      expect(await unreadOf(PROVIDER_BASE, conv)).toBe(1);
+      expect((await request(http).post(`${PROVIDER_BASE}/${conv}/read`)).status).toBe(200);
+      expect(await unreadOf(PROVIDER_BASE, conv)).toBe(0);
+    });
+  });
+
   // ── privacy ───────────────────────────────────────────────────────────────
   describe('what the other side learns', () => {
     it('no phone number, email address or full surname crosses a conversation', async () => {

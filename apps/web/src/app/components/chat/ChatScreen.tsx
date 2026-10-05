@@ -110,15 +110,17 @@ export function ChatScreen({ conversationId, contact, onBack, isVisible }: ChatS
     }
   }, [messages, isVisible]);
 
-  // Auto-mark-read whenever the conversation is opened with new
-  // messages. Idempotent server-side; the conversation list
-  // invalidation clears the unread badge.
+  // Mark read whenever the newest server message on screen changes. R17: keyed
+  // on that message's id, not the page length — once the newest page is full a
+  // reply replaces its oldest row and the length no longer changes. The server
+  // reads up to this message only, so anything that arrived after it stays
+  // unread; the conversation list invalidation updates the badge.
+  const newestShownId = messagesQuery.data?.items.at(-1)?.id;
   useEffect(() => {
-    if (!isVisible || !conversationId || !messagesQuery.data) return;
-    if (messagesQuery.data.items.length === 0) return;
-    markReadMut.mutate();
+    if (!isVisible || !conversationId || !newestShownId) return;
+    markReadMut.mutate(newestShownId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isVisible, conversationId, messagesQuery.data?.items.length]);
+  }, [isVisible, conversationId, newestShownId]);
 
   const sendMessage = () => {
     const trimmed = input.trim();

@@ -2,6 +2,7 @@ import type {
   ConversationListResponse,
   CreateConversationRequest,
   CreateConversationResponse,
+  MarkConversationReadRequest,
   MarkConversationReadResponse,
   MessageListResponse,
   SendMessageRequest,
@@ -55,11 +56,16 @@ export async function sendMessage(
   return data;
 }
 
+// R17 — `upToMessageId` is the newest message the reader was shown; the
+// server reads up to that message's stored time, never further.
 export async function markConversationRead(
   conversationId: string,
+  upToMessageId: string,
 ): Promise<MarkConversationReadResponse> {
+  const body: MarkConversationReadRequest = { upToMessageId };
   const { data } = await api.post<MarkConversationReadResponse>(
     `/v1/me/conversations/${conversationId}/read`,
+    body,
   );
   return data;
 }

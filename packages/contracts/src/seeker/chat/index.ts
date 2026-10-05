@@ -3,6 +3,7 @@
 // of scope and are NOT exported from this barrel.
 export * from './enums/conversation-participant-role';
 export * from './request/create-conversation.request';
+export * from './request/mark-conversation-read.request';
 export * from './request/send-message.request';
 export * from './response/conversation-list.response';
 export * from './response/conversation-summary';

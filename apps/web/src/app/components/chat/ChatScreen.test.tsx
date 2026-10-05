@@ -296,6 +296,42 @@ describe('ChatScreen — R12 send recovery and replies', () => {
     }
   });
 
+  it('R17: a reply in a full thread is marked read up to the newest message shown', async () => {
+    // The newest page holds 50 messages. A reply that arrives while the chat is
+    // open replaces the oldest row on that page, so the page length stays 50.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const page = (from: number) =>
+        Array.from({ length: 50 }, (_, i) => serverRow(`m-${from + i}`, `line ${from + i}`, false));
+      mock
+        .onGet(ROUTE)
+        .replyOnce(200, { items: page(1), nextCursor: 'm-1' })
+        .onGet(ROUTE)
+        .reply(200, { items: page(2), nextCursor: 'm-2' });
+      mock.onPost('/v1/me/conversations/conv-1/read').reply(200, { lastReadAt: 'x' });
+      const reads = () =>
+        mock.history.post
+          .filter((r) => r.url === '/v1/me/conversations/conv-1/read')
+          .map((r) => JSON.parse((r.data as string | undefined) ?? '{}') as object);
+
+      renderChat('conv-1');
+      await screen.findByText('line 50');
+      await waitFor(() => expect(reads()).toHaveLength(1));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_100);
+      });
+      await screen.findByText('line 51');
+      // The reply is read once it is on screen, although the page length did
+      // not change…
+      await waitFor(() => expect(reads()).toHaveLength(2));
+      // …and only up to the newest message shown: nothing newer is claimed.
+      expect(reads()).toEqual([{ upToMessageId: 'm-50' }, { upToMessageId: 'm-51' }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('after losing access the chat stops reading', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
