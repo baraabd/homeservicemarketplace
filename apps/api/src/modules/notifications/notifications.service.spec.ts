@@ -51,17 +51,21 @@ function makeMocks(over: MocksOverride = {}): Mocks {
   };
 }
 
-function makeService(m: Mocks) {
-  // Sprint 7.0 — realtime publisher is injected; tests only need a
-  // no-op stub since they don't assert on the bus.
-  const realtime = {
-    publish: jest.fn(),
-    publishFor: jest.fn(),
-    subscribe: jest.fn(),
-  };
+// R17-B — the service no longer publishes anything itself. It writes the row
+// and a `notification.created` outbox event in one transaction; a local
+// transaction is opened when the caller supplies none.
+const OWN_TX = 'own-tx';
+function makeOutbox() {
+  return { enqueue: jest.fn().mockResolvedValue({ id: 'evt-1' }) };
+}
+function makeRunner() {
+  return { run: jest.fn((fn: (tx: unknown) => unknown) => fn(OWN_TX)) };
+}
+function makeService(m: Mocks, outbox = makeOutbox(), runner = makeRunner()): NotificationsService {
   return new NotificationsService(
     m.notifications as unknown as NotificationRepository,
-    realtime as unknown as import('../realtime/realtime-events.publisher').RealtimeEventsPublisher,
+    outbox as unknown as import('../../infrastructure/outbox/outbox.repository').OutboxRepository,
+    runner as unknown as import('../../infrastructure/prisma/transaction.runner').TransactionRunner,
   );
 }
 
@@ -177,16 +181,21 @@ describe('NotificationsService', () => {
       const m = makeMocks({
         notifications: { markAllReadOwned: jest.fn().mockResolvedValue({ count: 4 }) },
       });
-      const out = await makeService(m).markAllRead('user-1');
+      const out = await makeService(m).markAllRead('user-1', ['n-1', 'n-2', 'n-3', 'n-4']);
       expect(out).toEqual({ updatedCount: 4 });
-      expect(m.notifications.markAllReadOwned).toHaveBeenCalledWith('user-1', undefined);
+      // R17-B: only the named rows are offered to the repository.
+      expect(m.notifications.markAllReadOwned).toHaveBeenCalledWith(
+        'user-1',
+        ['n-1', 'n-2', 'n-3', 'n-4'],
+        undefined,
+      );
     });
 
-    it('is idempotent (returns 0 when nothing was unread)', async () => {
+    it('is idempotent (returns 0 when nothing named was unread)', async () => {
       const m = makeMocks({
         notifications: { markAllReadOwned: jest.fn().mockResolvedValue({ count: 0 }) },
       });
-      const out = await makeService(m).markAllRead('user-1');
+      const out = await makeService(m).markAllRead('user-1', ['n-1']);
       expect(out).toEqual({ updatedCount: 0 });
     });
 
@@ -194,8 +203,12 @@ describe('NotificationsService', () => {
       const m = makeMocks({
         notifications: { markAllReadOwned: jest.fn().mockResolvedValue({ count: 2 }) },
       });
-      await makeService(m).markAllRead('user-1', 'provider');
-      expect(m.notifications.markAllReadOwned).toHaveBeenCalledWith('user-1', '/provider/');
+      await makeService(m).markAllRead('user-1', ['n-1', 'n-2'], 'provider');
+      expect(m.notifications.markAllReadOwned).toHaveBeenCalledWith(
+        'user-1',
+        ['n-1', 'n-2'],
+        '/provider/',
+      );
     });
   });
 
@@ -239,98 +252,75 @@ describe('NotificationsService', () => {
         resourceType: 'BID',
         resourceId: 'bid-1',
       }),
-      undefined,
+      // R17-B: no caller transaction, so the service opened its own.
+      OWN_TX,
     );
   });
 
-  // Sprint 7.6 — actorUserId on the input threads onto the realtime
-  // envelope (NOT onto the persisted Notification row). The persisted
-  // row's audit purpose is satisfied by the domain timeline tables;
-  // the realtime envelope is the only surface that needs the actor.
-  it('createForUser threads actorUserId onto the realtime envelope without persisting it', async () => {
-    // Construct a service with a publisher we can spy on directly.
-    const create = jest.fn().mockResolvedValue({
-      id: 'notif-1',
-      userId: 'recipient-1',
-      type: 'BOOKING_COMPLETED' as NotificationType,
-      title: 'x',
-      body: 'y',
-      resourceType: 'BOOKING',
-      resourceId: 'bk-1',
-      deepLink: null,
-      metadata: null,
-      readAt: null,
-      createdAt: new Date('2026-05-30T10:00:00Z'),
-      deletedAt: null,
+  // R17-B — the announcement is an outbox event written with the row, in the
+  // caller's transaction. Sprint 7.6's actorUserId rides on that event (for
+  // anti-echo) and is still NOT persisted on the Notification row.
+  it('createForUser writes the row and its announcement event in the caller transaction', async () => {
+    const m = makeMocks({
+      notifications: { create: jest.fn().mockResolvedValue(makeNotif({ id: 'notif-1' })) },
     });
-    const publishFor = jest.fn();
-    const service = new NotificationsService(
-      { create } as unknown as NotificationRepository,
+    const outbox = makeOutbox();
+    const runner = makeRunner();
+    await makeService(m, outbox, runner).createForUser(
       {
-        publish: jest.fn(),
-        publishFor,
-        subscribe: jest.fn(),
-      } as unknown as import('../realtime/realtime-events.publisher').RealtimeEventsPublisher,
+        userId: 'recipient-1',
+        type: 'BOOKING_COMPLETED' as NotificationType,
+        title: 'x',
+        body: 'y',
+        resourceType: 'BOOKING',
+        resourceId: 'bk-1',
+        actorUserId: 'actor-2',
+      },
+      'caller-tx' as never,
     );
-    await service.createForUser({
-      userId: 'recipient-1',
-      type: 'BOOKING_COMPLETED' as NotificationType,
-      title: 'x',
-      body: 'y',
-      resourceType: 'BOOKING',
-      resourceId: 'bk-1',
-      actorUserId: 'actor-2',
-    });
-    // The 4th publish arg is the actor metadata bag that gets
-    // hoisted onto the envelope by the publisher.
-    expect(publishFor).toHaveBeenCalledWith(
-      'recipient-1',
-      'notification.created',
-      expect.objectContaining({ type: 'BOOKING_COMPLETED' }),
-      { actorUserId: 'actor-2' },
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(m.notifications.create.mock.calls[0]?.[1]).toBe('caller-tx');
+    expect(m.notifications.create.mock.calls[0]?.[0]).not.toHaveProperty('actorUserId');
+    expect(outbox.enqueue).toHaveBeenCalledWith(
+      {
+        aggregateType: 'Notification',
+        aggregateId: 'notif-1',
+        eventType: 'notification.created',
+        dedupeKey: 'notification.created:notif-1',
+        payload: { schemaVersion: 1, notificationId: 'notif-1', actorUserId: 'actor-2' },
+      },
+      'caller-tx',
     );
-    // The persisted row MUST NOT carry actorUserId — the domain
-    // audit history is the canonical actor trail.
-    const persisted = create.mock.calls[0]?.[0];
-    expect(persisted).not.toHaveProperty('actorUserId');
   });
 
-  it('createForUser passes actorUserId: null when omitted (backward compatibility for system notifications)', async () => {
-    const create = jest.fn().mockResolvedValue({
-      id: 'notif-2',
-      userId: 'recipient-1',
-      type: 'BID_RECEIVED' as NotificationType,
-      title: 't',
-      body: 'b',
-      resourceType: null,
-      resourceId: null,
-      deepLink: null,
-      metadata: null,
-      readAt: null,
-      createdAt: new Date(),
-      deletedAt: null,
+  it('createForUser carries actorUserId: null when omitted (system notifications)', async () => {
+    const m = makeMocks({
+      notifications: { create: jest.fn().mockResolvedValue(makeNotif({ id: 'notif-2' })) },
     });
-    const publishFor = jest.fn();
-    const service = new NotificationsService(
-      { create } as unknown as NotificationRepository,
-      {
-        publish: jest.fn(),
-        publishFor,
-        subscribe: jest.fn(),
-      } as unknown as import('../realtime/realtime-events.publisher').RealtimeEventsPublisher,
-    );
-    await service.createForUser({
+    const outbox = makeOutbox();
+    await makeService(m, outbox).createForUser({
       userId: 'recipient-1',
       type: 'BID_RECEIVED' as NotificationType,
       title: 't',
       body: 'b',
     });
-    expect(publishFor).toHaveBeenCalledWith(
-      'recipient-1',
-      'notification.created',
-      expect.any(Object),
-      { actorUserId: null },
+    expect(outbox.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: { schemaVersion: 1, notificationId: 'notif-2', actorUserId: null },
+      }),
+      OWN_TX,
     );
+  });
+
+  it('createForUser fails as a whole when the announcement cannot be written', async () => {
+    const m = makeMocks();
+    const outbox = { enqueue: jest.fn().mockRejectedValue(new Error('outbox down')) };
+    await expect(
+      makeService(m, outbox).createForUser(
+        { userId: 'u', type: 'SYSTEM' as NotificationType, title: 't', body: 'b' },
+        'caller-tx' as never,
+      ),
+    ).rejects.toThrow('outbox down');
   });
 
   // ─── error contract ────────────────────────────────────────────────────

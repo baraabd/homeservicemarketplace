@@ -3,6 +3,7 @@ import type {
   ListAdminAuditLogsResponse,
   MarkNotificationReadResponse,
   NotificationListResponse,
+  NotificationUnreadCountResponse,
 } from '@homeservicemarketplace/contracts';
 
 import { api } from '../api';
@@ -39,6 +40,18 @@ export async function markAdminNotificationRead(
 ): Promise<MarkNotificationReadResponse> {
   const { data } = await api.post<MarkNotificationReadResponse>(
     `/v1/admin/notifications/${notificationId}/read`,
+  );
+  return data;
+}
+
+// R17-B (B-9) — the admin bell's badge is the server's unread count for the
+// admin experience (the caller's own rows linked under /admin/), not the
+// length of one loaded page. `experience=admin` only selects which of the
+// caller's own rows are counted; it grants no administrative authority.
+export async function getAdminUnreadNotificationsCount(): Promise<NotificationUnreadCountResponse> {
+  const { data } = await api.get<NotificationUnreadCountResponse>(
+    '/v1/me/notifications/unread-count',
+    { params: { experience: 'admin' } },
   );
   return data;
 }

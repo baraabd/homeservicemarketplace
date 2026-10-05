@@ -4,6 +4,7 @@
 export * from './enums/notification-resource-type';
 export * from './enums/notification-type';
 export * from './request/list-notifications.query';
+export * from './request/mark-all-notifications-read.request';
 export * from './response/mark-all-notifications-read.response';
 export * from './response/mark-notification-read.response';
 export * from './response/notification-list.response';

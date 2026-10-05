@@ -38,6 +38,12 @@ ol[data-sonner-toaster].hsm-toaster-shell {
    */
   width: min(100%, 430px);
   left: 50%;
+  /* R17-B: on narrow screens Sonner also sets `right`. With left, right and
+   * width all set, CSS honours `left` in LTR but `right` in RTL, so in Arabic
+   * the list started at the right offset and was then shifted half its width
+   * further left — the arrival toast was cut off. `auto` keeps `left` in
+   * charge in both directions. */
+  right: auto;
   transform: translateX(-50%);
 }
 

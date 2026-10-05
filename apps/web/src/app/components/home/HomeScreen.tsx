@@ -432,7 +432,20 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   // refresh path) but fall back to deriving from the loaded list when
   // the count query is still in flight or errored — never leaves the
   // bell badge stuck on a stale local value.
-  const unreadCount = unreadCountQuery.data?.count ?? notifications.filter((n) => !n.read).length;
+  //
+  // R17-B (B-5/B-9): the badge is the server's count for the seeker
+  // experience, which can exceed the 50 rows loaded. When it cannot be read it
+  // is unknown — not the loaded rows' count, and not zero.
+  const unreadCount = unreadCountQuery.data?.count;
+  const notificationsStatus: 'loading' | 'error' | 'ready' = notificationsQuery.isError
+    ? 'error'
+    : notificationsQuery.isPending
+      ? 'loading'
+      : 'ready';
+  const retryNotifications = () => {
+    void notificationsQuery.refetch();
+    void unreadCountQuery.refetch();
+  };
 
   // markAllRead / markRead now hit the backend. The mutations
   // invalidate the notifications root, which triggers list +
@@ -441,9 +454,12 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   // bug we're fixing — the unread count would snap back on refresh
   // because the server didn't know the user had marked anything
   // read.
+  // R17-B — exactly the unread notifications on screen, by id.
   const markAllRead = () => {
     if (markAllReadMut.isPending) return;
-    markAllReadMut.mutate();
+    const shown = notifications.filter((n) => !n.read).map((n) => n.id);
+    if (shown.length === 0) return;
+    markAllReadMut.mutate(shown);
   };
   const markRead = (id: string) => {
     if (markReadMut.isPending) return;
@@ -1268,6 +1284,8 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
               onMarkAllRead={markAllRead}
               onMarkRead={markRead}
               unreadCount={unreadCount}
+              notificationsStatus={notificationsStatus}
+              onRetryNotifications={retryNotifications}
               // Sprint 7.12 — Completed Posts → JobDetailView. The
               // ProfileTab closes its CompletedPostsPage first then
               // calls this back so the booking-detail overlay slides
@@ -1325,18 +1343,30 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
             )}
             <button
               onClick={() => setNotifOpen(true)}
+              data-testid="seeker-notifications-bell"
+              aria-label={
+                unreadCount === undefined
+                  ? lang === 'ar'
+                    ? 'فتح الإشعارات'
+                    : 'Open notifications'
+                  : lang === 'ar'
+                    ? `فتح الإشعارات، ${unreadCount} غير مقروءة`
+                    : `Open notifications, ${unreadCount} unread`
+              }
               className="relative w-9 h-9 rounded-xl bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 flex items-center justify-center active:scale-90 transition-all"
             >
               <Bell
                 size={17}
                 className={notifOpen ? 'text-amber-500' : 'text-slate-600 dark:text-slate-300'}
               />
-              {unreadCount > 0 && (
+              {unreadCount !== undefined && unreadCount > 0 && (
                 <span
-                  className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center border-2 border-white dark:border-slate-800"
+                  data-testid="seeker-notifications-badge"
+                  aria-hidden="true"
+                  className="absolute -top-1 -end-1 min-w-4 h-4 px-0.5 rounded-full bg-red-500 text-white flex items-center justify-center border-2 border-white dark:border-slate-800"
                   style={{ fontSize: '8px', fontWeight: 800 }}
                 >
-                  {unreadCount}
+                  {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}
             </button>
@@ -1447,6 +1477,9 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
           onMarkRead={markRead}
           onTapNotif={handleNotifTap}
           onOpenSettings={() => navigate('/home/profile')}
+          status={notificationsStatus}
+          onRetry={retryNotifications}
+          totalUnread={unreadCount}
         />
       </div>
 

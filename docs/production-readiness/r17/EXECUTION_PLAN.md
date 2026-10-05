@@ -51,13 +51,13 @@ Security (not cleared by a green workflow): 8 open CodeQL alerts on develop —
 
 ## Units
 
-| Unit  | Branch                                  | Scope                                                         | Order | State                         |
-| ----- | --------------------------------------- | ------------------------------------------------------------- | ----- | ----------------------------- |
-| R17-A | `feat/r17-a-messaging-authority`        | Messaging read position, cross-instance acceptance            | 1     | `R17_A_IN_PROGRESS` (this PR) |
-| R17-B | `feat/r17-b-notification-authority`     | Notification lifecycle, scoping, commit-safe live push        | 2     | analysis only                 |
-| R17-C | `feat/r17-c-dispute-authority`          | Legacy admin dispute race and copy; journey acceptance        | 3     | analysis only                 |
-| R17-D | `feat/r17-d-admin-operations`           | Admin settings authority, users safeguards, analytics honesty | 4     | analysis only                 |
-| R17-E | `feat/r17-e-provider-surface-authority` | Feed/detail/bid agreement, booking actions, stale capability  | 5     | analysis only                 |
+| Unit  | Branch                                  | Scope                                                         | Order | State                                                        |
+| ----- | --------------------------------------- | ------------------------------------------------------------- | ----- | ------------------------------------------------------------ |
+| R17-A | `feat/r17-a-messaging-authority`        | Messaging read position, cross-instance acceptance            | 1     | `R17_A_MERGED` (#142, `e1f7f51`; post-merge push runs green) |
+| R17-B | `feat/r17-b-notification-authority`     | Notification lifecycle, scoping, commit-safe live push        | 2     | `R17_B_IN_PROGRESS` (base `e1f7f51`)                         |
+| R17-C | `feat/r17-c-dispute-authority`          | Legacy admin dispute race and copy; journey acceptance        | 3     | analysis only                                                |
+| R17-D | `feat/r17-d-admin-operations`           | Admin settings authority, users safeguards, analytics honesty | 4     | analysis only                                                |
+| R17-E | `feat/r17-e-provider-surface-authority` | Feed/detail/bid agreement, booking actions, stale capability  | 5     | analysis only                                                |
 
 One unit = one branch = one PR = one report. A dependent unit starts after
 its predecessor is merged and the post-merge develop SHA is accepted. While a
@@ -65,13 +65,27 @@ merge is pending, only read-only analysis and test design continue.
 
 ## Shared-file reservations (serialized)
 
-| Shared authority                                   | First R17 user | Notes                                                      |
-| -------------------------------------------------- | -------------- | ---------------------------------------------------------- |
-| `packages/contracts` (chat request barrel)         | R17-A          | additive `MarkConversationReadRequest`                     |
-| `.github/workflows/ci.yml` (`phase5-real-api` job) | R17-A          | two steps + one upload; no existing step changed           |
-| `apps/web/e2e/real-api.ts`                         | R17-A          | additive `apiAt` (base-addressed variant of `api`)         |
-| `schema.prisma`, migrations                        | none planned   | any later unit must coordinate and prove upgrade/replay    |
-| `AppModule`, authorization, audit allowlists       | none planned   | R17-C/D may need audit identifiers; serialize when they do |
+| Shared authority                                      | First R17 user | Notes                                                            |
+| ----------------------------------------------------- | -------------- | ---------------------------------------------------------------- |
+| `packages/contracts` (chat request barrel)            | R17-A          | additive `MarkConversationReadRequest`                           |
+| `.github/workflows/ci.yml` (`phase5-real-api` job)    | R17-A          | two steps + one upload; no existing step changed                 |
+| `apps/web/e2e/real-api.ts`                            | R17-A          | additive `apiAt` (base-addressed variant of `api`)               |
+| `packages/contracts` (notifications request barrel)   | R17-B          | additive `MarkAllNotificationsReadRequest`                       |
+| `apps/api/src/app.module.ts` (outbox handler list)    | R17-B          | registers `NotificationCreatedHandler`                           |
+| `apps/api/src/infrastructure/outbox/outbox.tokens.ts` | R17-B          | new event type `notification.created`                            |
+| `.github/workflows/ci.yml` (`phase5-real-api` job)    | R17-B          | stop the job API, one acceptance step, one upload, after R17-A's |
+| `apps/web/src/app/styles/toast-theme.css`             | R17-B          | `right: auto` (RTL toast clipping)                               |
+| `schema.prisma`, migrations                           | none planned   | any later unit must coordinate and prove upgrade/replay          |
+| `AppModule`, authorization, audit allowlists          | none planned   | R17-C/D may need audit identifiers; serialize when they do       |
+
+## R17-B coordination
+
+Open Draft #141 (provider evidence lifecycle) edits two notification
+producers (`provider-review.service.ts`,
+`verification-case-workflow.service.ts`) but none of their notification
+writes; R17-B leaves both files untouched. Both PRs add steps to
+`.github/workflows/ci.yml` in different jobs; whichever merges second
+re-runs its acceptance on the integrated tree.
 
 ## Not in R17
 

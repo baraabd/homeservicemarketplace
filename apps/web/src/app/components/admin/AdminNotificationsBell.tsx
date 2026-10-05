@@ -3,6 +3,7 @@ import { Bell, X } from 'lucide-react';
 
 import {
   useAdminNotifications,
+  useAdminUnreadNotificationsCount,
   useMarkAdminNotificationRead,
 } from '../../hooks/admin/useAdminAuditLogs';
 
@@ -16,11 +17,12 @@ import {
 export function AdminNotificationsBell({ lang }: { lang: string }) {
   const isAr = lang === 'ar';
   const [open, setOpen] = useState(false);
-  const unreadQuery = useAdminNotifications({ unread: true });
+  // R17-B (B-9): the server's count, which a 50-row page cannot express.
+  const unreadQuery = useAdminUnreadNotificationsCount();
   const allQuery = useAdminNotifications({});
   const markRead = useMarkAdminNotificationRead();
 
-  const unreadCount = unreadQuery.data?.items.length ?? 0;
+  const unreadCount = unreadQuery.data?.count ?? 0;
   const items = allQuery.data?.items ?? [];
 
   const L = {

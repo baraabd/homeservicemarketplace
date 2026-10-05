@@ -30,6 +30,10 @@ export const OutboxEventType = {
   VERIFICATION_CASE_APPROVED: 'verification.case.approved',
   /** Sprint 9B.7 — a grant was closed, by revocation or re-verification. */
   VERIFICATION_CASE_ACCESS_CLOSED: 'verification.case.access_closed',
+  /** R17-B — a notification row committed through NotificationsService.
+   *  Enqueued in the SAME transaction as the row; the handler announces it
+   *  live only after that transaction has committed. */
+  NOTIFICATION_CREATED: 'notification.created',
 } as const;
 
 export type OutboxEventTypeName = (typeof OutboxEventType)[keyof typeof OutboxEventType];

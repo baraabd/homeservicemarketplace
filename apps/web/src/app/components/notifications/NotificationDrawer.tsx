@@ -12,6 +12,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useSwipe } from '../../hooks/useSwipe';
+import { useLang } from '../../i18n/LanguageContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type NotifType = 'bid' | 'tracking' | 'confirmed' | 'message' | 'payment' | 'promo';
@@ -74,6 +75,13 @@ interface NotificationDrawerProps {
   onMarkRead: (id: string) => void;
   onTapNotif?: (n: AppNotification) => void;
   onOpenSettings?: () => void;
+  /** R17-B (B-5) — what the server has said so far. A failed load is not an
+   *  empty inbox, and a failed refresh keeps the last list with a notice. */
+  status?: 'loading' | 'error' | 'ready';
+  onRetry?: () => void;
+  /** R17-B (B-9) — the server's unread count for this experience, which can
+   *  exceed the rows loaded here. Falls back to the loaded rows when absent. */
+  totalUnread?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,7 +95,41 @@ export function NotificationDrawer({
   onMarkRead,
   onTapNotif,
   onOpenSettings,
+  status = 'ready',
+  onRetry,
+  totalUnread,
 }: NotificationDrawerProps) {
+  const { lang } = useLang();
+  const T =
+    lang === 'ar'
+      ? {
+          loading: 'جارٍ تحميل الإشعارات…',
+          failed: 'تعذّر تحميل الإشعارات.',
+          stale: 'تعذّر التحديث. تُعرض الإشعارات السابقة.',
+          retry: 'إعادة المحاولة',
+          title: 'الإشعارات',
+          markAll: 'تعليم الكل كمقروء',
+          empty: 'لا توجد إشعارات بعد',
+          fresh: 'جديد',
+          earlier: 'سابقاً',
+          close: 'إغلاق',
+          hint: 'اسحب للأعلى أو اضغط خارجها للإغلاق',
+          settings: 'الإعدادات',
+        }
+      : {
+          loading: 'Loading notifications…',
+          failed: 'Couldn’t load notifications.',
+          stale: 'Couldn’t refresh. Showing earlier notifications.',
+          retry: 'Try again',
+          title: 'Notifications',
+          markAll: 'Mark all read',
+          empty: 'No notifications yet',
+          fresh: 'New',
+          earlier: 'Earlier',
+          close: 'Close',
+          hint: 'Swipe up or tap outside to close',
+          settings: 'Settings',
+        };
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   // Swipe up on the panel to dismiss
@@ -96,7 +138,8 @@ export function NotificationDrawer({
     threshold: 60,
   });
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadShown = notifications.filter((n) => !n.read).length;
+  const unreadCount = totalUnread ?? unreadShown;
 
   const dismiss = (id: string) => {
     setRemovingId(id);
@@ -160,7 +203,7 @@ export function NotificationDrawer({
               )}
             </div>
             <span className="text-slate-900" style={{ fontSize: '16px', fontWeight: 800 }}>
-              Notifications
+              {T.title}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -171,11 +214,12 @@ export function NotificationDrawer({
                 style={{ fontSize: '11px', fontWeight: 700, color: '#D97706' }}
               >
                 <CheckCircle2 size={11} />
-                Mark all read
+                {T.markAll}
               </button>
             )}
             <button
               onClick={onClose}
+              aria-label={T.close}
               className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center active:scale-90 transition-all"
             >
               <X size={15} className="text-slate-600" />
@@ -185,14 +229,45 @@ export function NotificationDrawer({
 
         {/* List */}
         <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+          {status === 'error' && notifications.length > 0 && (
+            <div
+              role="status"
+              data-testid="notification-drawer-stale"
+              className="mx-4 mt-3 px-3 py-2 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-between gap-3"
+              style={{ fontSize: '12px', color: '#92400E' }}
+            >
+              <span>{T.stale}</span>
+              {onRetry && (
+                <button type="button" onClick={onRetry} className="min-h-[44px] px-2 font-bold">
+                  {T.retry}
+                </button>
+              )}
+            </div>
+          )}
           {notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
                 <BellOff size={28} className="text-slate-300" />
               </div>
-              <p className="text-slate-400" style={{ fontSize: '14px' }}>
-                No notifications yet
+              <p
+                role="status"
+                data-testid="notification-drawer-state"
+                data-state={status}
+                className="text-slate-400"
+                style={{ fontSize: '14px' }}
+              >
+                {status === 'loading' ? T.loading : status === 'error' ? T.failed : T.empty}
               </p>
+              {status === 'error' && onRetry && (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="min-h-[44px] px-4 rounded-xl bg-slate-100 text-slate-700"
+                  style={{ fontSize: '13px', fontWeight: 700 }}
+                >
+                  {T.retry}
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -208,7 +283,7 @@ export function NotificationDrawer({
                     letterSpacing: '0.06em',
                   }}
                 >
-                  New · {unreadCount}
+                  {T.fresh} · {unreadShown}
                 </div>
               )}
               {notifications.map((n) => {
@@ -278,7 +353,7 @@ export function NotificationDrawer({
                     letterSpacing: '0.06em',
                   }}
                 >
-                  Earlier
+                  {T.earlier}
                 </div>
               )}
             </>
@@ -289,7 +364,7 @@ export function NotificationDrawer({
         {/* Footer hint */}
         <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50">
           <p className="text-slate-400" style={{ fontSize: '11px' }}>
-            Swipe up or tap outside to close
+            {T.hint}
           </p>
           <button
             onClick={() => {
@@ -299,7 +374,7 @@ export function NotificationDrawer({
             className="text-amber-600 active:opacity-70"
             style={{ fontSize: '11px', fontWeight: 600 }}
           >
-            Settings
+            {T.settings}
           </button>
         </div>
       </div>
