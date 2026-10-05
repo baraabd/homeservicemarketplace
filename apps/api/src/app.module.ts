@@ -32,6 +32,7 @@ import { ConversationsModule } from './modules/conversations/conversations.modul
 import { IamModule } from './modules/iam/iam.module';
 import { MediaModule } from './modules/media/media.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { NotificationCreatedHandler } from './modules/notifications/notification-created.handler';
 import { ProfileModule } from './modules/profile/profile.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { ProviderVerificationModule } from './modules/provider/verification/provider-verification.module';
@@ -77,7 +78,15 @@ import { SupportModule } from './modules/support/support.module';
       // ProviderVerificationModule contributes EvidenceScannedHandler. Without
       // it registered here the worker has no consumer for 'evidence.scanned'
       // and DEAD-LETTERS every scan announcement — see OutboxWorker.
-      imports: [RequestOutboxModule, ProviderVerificationModule, RealtimeModule, DisputesModule],
+      // R17-B: NotificationsModule contributes NotificationCreatedHandler, the
+      // only path that announces a NotificationsService notification live.
+      imports: [
+        RequestOutboxModule,
+        ProviderVerificationModule,
+        RealtimeModule,
+        DisputesModule,
+        NotificationsModule,
+      ],
       handlers: [
         RequestAvailableDispatchHandler,
         RequestAvailableBatchHandler,
@@ -87,6 +96,7 @@ import { SupportModule } from './modules/support/support.module';
         AdminProviderReviewEventsHandler,
         DisputeIntakeEventsHandler,
         WorkspaceEventsHandler,
+        NotificationCreatedHandler,
       ],
     }),
     // Global, transport-agnostic post-commit security notifications

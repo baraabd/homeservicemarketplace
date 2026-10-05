@@ -17,9 +17,11 @@ import type {
   PrismaTx,
 } from '@homeservicemarketplace/database';
 
+import { OutboxRepository } from '../../infrastructure/outbox/outbox.repository';
+import { OutboxEventType } from '../../infrastructure/outbox/outbox.tokens';
 import { NotificationRepository } from '../../infrastructure/persistence/notifications/notification.repository';
+import { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
-import { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 
 const DEFAULT_PAGE_SIZE = 50;
 
@@ -45,7 +47,8 @@ export interface CreateNotificationForUserInput {
 export class NotificationsService {
   constructor(
     private readonly notifications: NotificationRepository,
-    private readonly realtime: RealtimeEventsPublisher,
+    private readonly outbox: OutboxRepository,
+    private readonly tx: TransactionRunner,
   ) {}
 
   // ─── list ──────────────────────────────────────────────────────────────────
@@ -58,7 +61,7 @@ export class NotificationsService {
       take: take + 1,
       cursor: query.cursor,
     });
-    const items = rows.slice(0, take).map(toSummary);
+    const items = rows.slice(0, take).map(toNotificationSummary);
     const nextCursor = rows.length > take ? items[items.length - 1].id : null;
     return { items, nextCursor };
   }
@@ -100,20 +103,25 @@ export class NotificationsService {
       // defend against a concurrent soft-delete.
       throw new AppError('NOT_FOUND', 'Notification not found.', 404);
     }
-    return { notification: toSummary(reloaded) };
+    return { notification: toNotificationSummary(reloaded) };
   }
 
   // ─── markAllRead ───────────────────────────────────────────────────────────
+  // R17-B — read-all marks the notifications the reader was shown, named by
+  // id, never "whatever is unread when the request lands": a notification
+  // that arrived after the list was read, or whose transaction committed
+  // after it, stays unread. Ids outside the caller's own, live, in-scope
+  // rows are ignored; `updatedCount` is the number of rows this call flipped.
+  // Sprint 5.5: the experience filter still applies, so the provider drawer
+  // cannot silence the seeker's badge even when sent a seeker row's id.
   async markAllRead(
     userId: string,
+    ids: readonly string[],
     experience?: ListNotificationsQuery['experience'],
   ): Promise<MarkAllNotificationsReadResponse> {
-    // Sprint 5.5: when an experience filter is supplied, only flip
-    // notifications whose deepLink lives under that experience's
-    // tree. The provider drawer's "mark all read" must NOT silence
-    // the seeker's unread badge.
     const result = await this.notifications.markAllReadOwned(
       userId,
+      ids,
       experienceToDeepLinkPrefix(experience),
     );
     return { updatedCount: result.count };
@@ -139,7 +147,15 @@ export class NotificationsService {
   // NOT exposed via HTTP — there is no "post a notification" endpoint.
   // Marketplace events are the only legitimate writers; a client-driven
   // create surface would let callers spoof system messages.
+  //
+  // R17-B — nothing leaves the process from here. The row and a
+  // `notification.created` outbox event are written in the SAME transaction;
+  // NotificationCreatedHandler announces it live only after commit. Inside a
+  // caller's transaction the returned row is provisional until that caller
+  // commits; a rollback removes the row and its announcement together.
+  // Without a caller transaction, both are written in one local transaction.
   async createForUser(input: CreateNotificationForUserInput, tx?: PrismaTx): Promise<Notification> {
+    if (!tx) return this.tx.run((own) => this.createForUser(input, own));
     const created = await this.notifications.create(
       {
         userId: input.userId,
@@ -153,21 +169,24 @@ export class NotificationsService {
       },
       tx,
     );
-    // Sprint 7.0 — realtime fan-out. Publishes the wire-shape summary
-    // so the SSE client can drop it straight into the React Query
-    // notifications cache. The publisher swallows its own errors so
-    // a bus failure can never roll back the calling transaction.
-    //
-    // Sprint 7.6 — also threads `actorUserId` onto the envelope when
-    // the caller supplied one (e.g. BidsService.accept passes the
-    // seekerUserId; ProviderBookingsService passes the providerUserId).
-    // The client side-effects bridge uses this to silence UX feedback
-    // when actor === self. The persisted Notification row itself does
-    // NOT carry actorUserId — the realtime envelope is the only
-    // surface that needs it.
-    this.realtime.publishFor(input.userId, 'notification.created', toSummary(created), {
-      actorUserId: input.actorUserId ?? null,
-    });
+    // Sprint 7.6 — `actorUserId` rides on the event, not the row, so the
+    // delayed announcement still carries it and the client can silence UX
+    // feedback when actor === self. The notification itself is persisted
+    // either way.
+    await this.outbox.enqueue(
+      {
+        aggregateType: 'Notification',
+        aggregateId: created.id,
+        eventType: OutboxEventType.NOTIFICATION_CREATED,
+        dedupeKey: `notification.created:${created.id}`,
+        payload: {
+          schemaVersion: 1,
+          notificationId: created.id,
+          actorUserId: input.actorUserId ?? null,
+        },
+      },
+      tx,
+    );
     return created;
   }
 }
@@ -193,7 +212,7 @@ function experienceToDeepLinkPrefix(
 // Persistence row → wire DTO. Drops infra-only fields (userId, deletedAt)
 // and serialises the timestamps to ISO-8601 strings so the wire payload
 // is JSON-portable.
-function toSummary(row: Notification): NotificationSummary {
+export function toNotificationSummary(row: Notification): NotificationSummary {
   return {
     id: row.id,
     type: row.type as ContractNotificationType,

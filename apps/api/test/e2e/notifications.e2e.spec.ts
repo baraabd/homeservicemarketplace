@@ -257,15 +257,41 @@ describe('NotificationsController (e2e)', () => {
       expect(res.status).toBe(401);
     });
 
-    it('returns the updatedCount envelope on a valid POST', async () => {
-      notificationsService.markAllRead.mockResolvedValue({ updatedCount: 5 });
+    // R17-B: read-all names the notifications the reader was shown.
+    it('returns the updatedCount envelope for the named notifications', async () => {
+      notificationsService.markAllRead.mockResolvedValue({ updatedCount: 2 });
       const res = await request(app.getHttpServer())
-        .post('/v1/me/notifications/read-all')
+        .post('/v1/me/notifications/read-all?experience=seeker')
         .set('Cookie', 'hsm_csrf=tok')
-        .set('X-CSRF-Token', 'tok');
+        .set('X-CSRF-Token', 'tok')
+        .send({ ids: ['n-1', 'n-2'] });
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ updatedCount: 5 });
-      expect(notificationsService.markAllRead).toHaveBeenCalledWith('user-1', undefined);
+      expect(res.body).toEqual({ updatedCount: 2 });
+      expect(notificationsService.markAllRead).toHaveBeenCalledWith(
+        'user-1',
+        ['n-1', 'n-2'],
+        'seeker',
+      );
+    });
+
+    it('R17-B: refuses the unbounded bodyless call and malformed selections', async () => {
+      const post = (body?: object) => {
+        const req = request(app.getHttpServer())
+          .post('/v1/me/notifications/read-all')
+          .set('Cookie', 'hsm_csrf=tok')
+          .set('X-CSRF-Token', 'tok');
+        return body ? req.send(body) : req;
+      };
+      for (const body of [
+        undefined,
+        { ids: [] },
+        { ids: Array.from({ length: 101 }, (_, i) => `n${i}`) },
+        { ids: ['n 1'] },
+        { ids: ['n-1'], userId: 'user-2' },
+      ]) {
+        expect((await post(body)).status).toBe(400);
+      }
+      expect(notificationsService.markAllRead).not.toHaveBeenCalled();
     });
   });
 

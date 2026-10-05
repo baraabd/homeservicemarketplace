@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
+import { NotificationCreatedHandler } from './notification-created.handler';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 
@@ -11,10 +12,13 @@ import { NotificationsService } from './notifications.service';
 // `NotificationsService` is exported so other domain modules
 // (BidsModule, BookingsModule) can inject it and call
 // `createForUser(...)` from inside their existing transactions.
+//
+// R17-B — NotificationCreatedHandler is exported for the outbox registration
+// in AppModule: it announces a notification only after it has committed.
 @Module({
   imports: [AuthenticationModule],
   controllers: [NotificationsController],
-  providers: [NotificationsService],
-  exports: [NotificationsService],
+  providers: [NotificationsService, NotificationCreatedHandler],
+  exports: [NotificationsService, NotificationCreatedHandler],
 })
 export class NotificationsModule {}

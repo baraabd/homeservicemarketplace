@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -22,6 +23,7 @@ import { CsrfGuard } from '../iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../iam/authentication/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../iam/authentication/types/authenticated-user';
 import { ListNotificationsQueryDto } from './dto/list-notifications.query';
+import { MarkAllNotificationsReadDto } from './dto/mark-all-notifications-read.dto';
 import { NotificationsService } from './notifications.service';
 
 // /v1/me/notifications — Seeker-facing notification feed (Sprint 3,
@@ -86,11 +88,12 @@ export class NotificationsController {
   markAllRead(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: ListNotificationsQueryDto,
+    @Body() body: MarkAllNotificationsReadDto,
   ): Promise<MarkAllNotificationsReadResponse> {
     // Sprint 5.5: optional `?experience=` scopes which unread rows
     // get flipped — the provider drawer's "mark all read" must NOT
-    // silence the seeker's unread badge.
-    return this.notifications.markAllRead(user.id, query.experience);
+    // silence the seeker's unread badge. R17-B: only the named rows.
+    return this.notifications.markAllRead(user.id, body.ids, query.experience);
   }
 
   @UseGuards(CsrfGuard)

@@ -125,18 +125,21 @@ export class NotificationRepository {
     });
   }
 
-  // Bulk flip every unread row owned by the user. Returns the count of
-  // rows that actually flipped — already-read rows are untouched.
-  // Sprint 5.5: when `deepLinkPrefix` is supplied, only rows for that
-  // experience flip. Read-all on the provider drawer must NOT silence
-  // the seeker's unread badge.
+  // R17-B — flip the named rows only: the caller's own, live, still-unread
+  // rows among `ids`, within the experience scope. Anything else in the list
+  // (another user's id, a deleted or already-read row, another experience's
+  // row) is ignored, and no row outside the list is touched, however new.
+  // Returns the count of rows that actually flipped. The caller bounds `ids`.
+  // Sprint 5.5: the provider drawer must NOT silence the seeker's badge.
   markAllReadOwned(
     userId: string,
+    ids: readonly string[],
     deepLinkPrefix?: string,
     tx?: PrismaTx,
   ): Promise<Prisma.BatchPayload> {
     return this.db(tx).notification.updateMany({
       where: {
+        id: { in: [...ids] },
         userId,
         deletedAt: null,
         readAt: null,
@@ -172,9 +175,21 @@ export class NotificationRepository {
   }
 }
 
+// A dispute belongs to its participants in whichever experience they open it
+// from: `/disputes/*` is one shared, authenticated route, and the dispute API
+// authorizes each read. So a dispute notice — typed DISPUTE, or the intake
+// notice that links to `/disputes/…` without a type (R17-B, B-4) — appears in
+// both participant experiences. It is still only ever the recipient's own row.
+// The admin scope stays `/admin/` only.
 function notificationScope(prefix?: string): Prisma.NotificationWhereInput {
   if (!prefix) return {};
   return prefix === '/home/' || prefix === '/provider/'
-    ? { OR: [{ deepLink: { startsWith: prefix } }, { resourceType: 'DISPUTE' }] }
+    ? {
+        OR: [
+          { deepLink: { startsWith: prefix } },
+          { resourceType: 'DISPUTE' },
+          { deepLink: { startsWith: '/disputes/' } },
+        ],
+      }
     : { deepLink: { startsWith: prefix } };
 }
