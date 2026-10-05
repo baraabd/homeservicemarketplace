@@ -223,9 +223,10 @@ export class AdminVerificationService {
       notification: {
         type: NotificationType.SYSTEM,
         title: 'Provider account rejected',
-        body: reasonText
-          ? `Your provider application was rejected: ${reasonText}`
-          : 'Your provider application was rejected.',
+        // R17-B (B-7): never the reason. A notification is listed, cached and
+        // pushed; the reason is shown on the provider's own onboarding screen
+        // (`rejectionReason` above) and kept in the audit record.
+        body: 'Your provider application was rejected.',
       },
       conflictMessage: 'Provider is already rejected.',
     });
@@ -247,9 +248,10 @@ export class AdminVerificationService {
       notification: {
         type: NotificationType.SYSTEM,
         title: 'Provider account suspended',
-        body: reasonText
-          ? `Your provider account was suspended: ${reasonText}`
-          : 'Your provider account was suspended.',
+        // R17-B (B-7): never the reason; it stays in the audit record. Whether
+        // a suspension reason is ever shown to the provider is an open owner
+        // decision (r17/R17_B_NOTIFICATION_POLICY.md).
+        body: 'Your provider account was suspended.',
       },
       conflictMessage: 'Only an ACTIVE provider can be suspended.',
     });

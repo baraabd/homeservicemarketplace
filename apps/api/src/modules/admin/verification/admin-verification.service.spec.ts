@@ -214,6 +214,27 @@ describe('AdminVerificationService', () => {
     expect(notifyCall.body).toBe('Your provider application was rejected.');
   });
 
+  // R17-B (B-7) — a notification is listed, cached and pushed to a device; a
+  // reviewer's reason is a judgement about a person and stays behind the
+  // access-controlled screen (the same rule the verification-case producer
+  // already follows). The reason is still recorded where it belongs.
+  it.each([
+    ['reject', 'PENDING_REVIEW', 'Your provider application was rejected.'],
+    ['suspend', 'ACTIVE', 'Your provider account was suspended.'],
+  ] as const)(
+    'R17-B: %s keeps the reviewer reason out of the notification',
+    async (action, status, body) => {
+      const m = makeMocks(makeProfile({ status }));
+      const reason = 'Internal note: ID photo looked edited — see ticket 4411';
+      await makeService(m)[action]('admin-1', 'pp-1', reason);
+      const notifyCall = (m.notifications.createForUser as jest.Mock).mock.calls[0][0];
+      expect(notifyCall.body).toBe(body);
+      expect(JSON.stringify(notifyCall)).not.toContain('ticket 4411');
+      // The reason is not lost: the audit trail keeps it.
+      expect((m.audit.record as jest.Mock).mock.calls[0][0].metadata).toMatchObject({ reason });
+    },
+  );
+
   // Sprint 9B.29 — the ONBOARDING axis moves with the status.
   //
   // Leaving it behind was a deadlock: a rejected application kept the
