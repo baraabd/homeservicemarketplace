@@ -199,6 +199,11 @@ build likewise requires an explicit `VITE_API_URL`; the missing-value guard
 was retained and the validation build uses the documented local CI value.
 These local checks still use Node 24.19.0, not the required CI pin.
 
+CodeQL retains its generated SARIF as a separate diagnostic artifact so
+security alerts can be inspected through the supported evidence transfer
+path. Its queries, analysis, upload and official security-result gate remain
+unchanged; a successful Actions job is not a successful security verdict.
+
 ## Rollout and rollback
 
 No database schema migration is introduced. Deploy compatible API/contracts/web
