@@ -135,6 +135,12 @@ Redis services were absent. Additional immutable-upload tests are validated
 with 48 passing tests across five scoped suites and the final source checks.
 The dependency audit reports zero findings.
 
+The full real-browser gate also exposed shared fixture login-budget leakage:
+independent suites reused one loopback IP and the later login received 429.
+A guarded disposable-CI helper expires only Redis rate counters between
+suite commands. Sessions, OTPs, queues and database state stay intact;
+production thresholds and all in-scenario limiter assertions remain active.
+
 A broad replay exposed an existing provider-profile test race: the service
 catalog and saved skill selection arrive independently, but the assertion
 waited only for the catalog. The same selection assertions now await the
