@@ -204,6 +204,17 @@ security alerts can be inspected through the supported evidence transfer
 path. Its queries, analysis, upload and official security-result gate remain
 unchanged; a successful Actions job is not a successful security verdict.
 
+The diagnostic artifact identified `js/insecure-temporary-file` in the local
+storage test fixture: its timestamp-derived shared temporary root was
+predictable. Each test now owns a private unique directory returned by
+`mkdtemp`, and cleanup uses only that returned directory. All 27 adapter
+tests, scoped lint and formatting passed; production storage behavior and
+security queries are unchanged. Final acceptance requires a fresh official
+CodeQL result with zero new-alert annotations. An unchanged baseline
+`js/user-controlled-bypass` result in the provider category update path is
+separate from that pull-request verdict; this repair does not claim that
+the entire repository has no security findings.
+
 ## Rollout and rollback
 
 No database schema migration is introduced. Deploy compatible API/contracts/web

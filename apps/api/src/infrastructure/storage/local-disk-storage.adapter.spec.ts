@@ -1,4 +1,4 @@
-import fsPromises, { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import fsPromises, { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { finished } from 'node:stream/promises';
@@ -80,7 +80,11 @@ describe('validateKey (pure)', () => {
 });
 
 describe('LocalDiskStorageAdapter', () => {
-  const ROOT = join(tmpdir(), `hsm-storage-spec-${Date.now()}`);
+  let ROOT: string;
+
+  beforeEach(async () => {
+    ROOT = await mkdtemp(join(tmpdir(), 'hsm-storage-spec-'));
+  });
 
   afterEach(async () => {
     jest.restoreAllMocks();
