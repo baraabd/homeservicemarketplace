@@ -62,3 +62,12 @@ jobs:
         uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           category: '/language:javascript-typescript'
+          output: ${{ runner.temp }}/codeql-results
+      - name: Preserve CodeQL analysis diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: codeql-sarif
+          path: ${{ runner.temp }}/codeql-results/*.sarif
+          retention-days: 14
+          if-no-files-found: error

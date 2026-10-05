@@ -6,6 +6,7 @@ import type {
 import { z } from 'zod';
 
 import type { AdminProviderReviewData } from './provider-review.repository';
+import { evidenceSatisfiesRequirement } from '../../provider/verification/case/evidence-readiness';
 
 const requirementsSchema = z.object({
   policyVersion: z.string().min(1),
@@ -127,7 +128,10 @@ export function reviewBlockers(
   ) {
     blockers.push({ code: 'PROVIDER_RESTRICTED' });
   }
-  if (!submission || profile.status !== 'PENDING_REVIEW') blockers.push({ code: 'NOT_SUBMITTED' });
+  if (!submission) blockers.push({ code: 'NOT_SUBMITTED' });
+  else if (!submission.decidedAt && profile.status !== 'PENDING_REVIEW') {
+    blockers.push({ code: 'REVIEW_NOT_PENDING' });
+  }
   if (submission?.decidedAt) blockers.push({ code: 'SUBMISSION_ALREADY_DECIDED' });
   const snapshot = savedReviewSnapshot(submission?.reviewSnapshot);
   if (!snapshot) blockers.push({ code: 'SNAPSHOT_UNAVAILABLE' });
@@ -167,17 +171,7 @@ export function reviewBlockers(
       requirements?.policyVersion === kase.policyVersion &&
       (!requirements.verificationRequired || requirements.requirements.length > 0) &&
       requirements.requirements.every((required) =>
-        kase.documents.some(
-          (doc) =>
-            doc.kind === required.kind &&
-            doc.serviceCategoryId === required.serviceCategoryId &&
-            doc.supersededAt === null &&
-            (!doc.expiresOn || doc.expiresOn > now) &&
-            doc.mediaAsset.scanState === 'CLEAN' &&
-            doc.mediaAsset.visibility === 'RESTRICTED' &&
-            doc.mediaAsset.deletedAt === null &&
-            doc.mediaAsset.uploadCompletedAt !== null,
-        ),
+        kase.documents.some((doc) => evidenceSatisfiesRequirement(doc, required, now)),
       );
     if (!ready) blockers.push({ code: 'EVIDENCE_NOT_READY', taskId: 'BASICS_IDENTITY' });
     if (
@@ -205,6 +199,7 @@ export function canRequestChanges(blockers: AdminProviderReviewBlocker[]): boole
       'ACCOUNT_INELIGIBLE',
       'PROVIDER_RESTRICTED',
       'NOT_SUBMITTED',
+      'REVIEW_NOT_PENDING',
       'SUBMISSION_ALREADY_DECIDED',
     ].includes(b.code),
   );

@@ -198,6 +198,9 @@ export class ProviderVerificationCaseService {
     const row = await this.prisma.client.verificationCase.findFirst({
       // Scoped to the profile, not just the id: a case id is not a capability.
       where: { id: caseId, providerProfileId },
+      // A resume must preserve the same evidence and decision projection as
+      // current(). Scalar-only reads silently emptied both on the upload page.
+      select: PROVIDER_CASE_SELECT,
     });
     if (!row) throw new AppError('NOT_FOUND', 'Verification case not found.', 404);
     return toView(row);

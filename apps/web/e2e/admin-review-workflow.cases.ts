@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { openReviewTask } from './admin-review-tabs';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   ADMIN_PROVIDER_REVIEW_TASK_IDS,
   type AdminPortfolioItem,
@@ -24,6 +24,32 @@ import {
   recordAdminEvidence,
   submittedProvider,
 } from './admin-review-real-api';
+
+async function assertReadableTaskLabels(page: Page) {
+  const labels = page.locator('.ar-review-tab > span:first-of-type');
+  await expect(labels).toHaveCount(ADMIN_PROVIDER_REVIEW_TASK_IDS.length);
+  await page.evaluate(() => document.fonts.ready);
+  // Measure actual text lines: no fixed task word should split inside itself
+  // when the dossier shares the viewport with the navigation and decision rail.
+  await expect
+    .poll(() =>
+      labels.evaluateAll((elements) =>
+        elements.flatMap((element) => {
+          const text = element.firstChild;
+          if (!text || text.nodeType !== Node.TEXT_NODE) return ['Missing task label text'];
+          const value = text.textContent ?? '';
+          return [...value.matchAll(/\S+/gu)].flatMap((word) => {
+            const range = document.createRange();
+            range.setStart(text, word.index!);
+            range.setEnd(text, word.index! + word[0].length);
+            const lines = new Set([...range.getClientRects()].map((rect) => Math.round(rect.top)));
+            return lines.size !== 1 ? [`${value}: ${word[0]}`] : [];
+          });
+        }),
+      ),
+    )
+    .toEqual([]);
+}
 
 // This suite is deliberately excluded when E2E_REAL_API is absent. It does
 // not install routes, supply auth cookies, alter database state, or grant
@@ -447,10 +473,16 @@ test.describe('real rendered Admin screens', () => {
           const dossier = page.getByTestId('admin-provider-review-workspace');
           await expect(dossier).toBeVisible();
           await expect(page.getByTestId('review-approve')).toBeVisible();
+          await assertReadableTaskLabels(page);
           for (const task of ADMIN_PROVIDER_REVIEW_TASK_IDS) {
             await openReviewTask(page, task);
             await expect(page.locator(`#review-section-${task}`)).toBeVisible();
-            await recordAdminEvidence(page, testInfo, `tabs-v1-${lang}-${theme}-${width}-${task}`, review);
+            await recordAdminEvidence(
+              page,
+              testInfo,
+              `tabs-v1-${lang}-${theme}-${width}-${task}`,
+              review,
+            );
           }
           await expect(page.getByTestId('review-history')).toContainText(
             lang === 'ar' ? 'أُرسل الطلب للمراجعة' : 'Application submitted',

@@ -17,6 +17,8 @@ import { TransactionRunner } from '../../../../infrastructure/prisma/transaction
 import {
   RESTRICTED_OBJECT_STORAGE,
   RestrictedObjectStoragePort,
+  RestrictedObjectAlreadyExistsError,
+  type RestrictedObjectMetadata,
 } from '../../../../infrastructure/storage/restricted-object-storage.port';
 import { AppError } from '../../../../shared/errors/app-error';
 import { AuditService } from '../../../iam/audit/audit.service';
@@ -46,8 +48,8 @@ import {
 //             byte is transferred.
 //   content   streams the bytes under a hard cap, decides what they ACTUALLY
 //             are, and promotes them to the restricted namespace.
-//   finalize  proves the object is really there, then links a
-//             VerificationDocument in one transaction.
+//   finalize  proves the stored bytes match their claimed length and digest,
+//             then links a VerificationDocument in one transaction.
 //
 // Every method takes a USER id. Ownership is derived through
 // case.providerProfile.userId — never from a caller-supplied provider or case
@@ -64,6 +66,8 @@ const EVIDENCE_ACCEPTING_STATES: readonly VerificationCaseState[] = Object.freez
   'DRAFT',
   'ACTION_REQUIRED',
 ]);
+
+const STORED_CONTENT_TIMEOUT_MS = 5_000;
 
 export interface PrepareInput {
   kind: VerificationDocumentKind;
@@ -333,41 +337,116 @@ export class EvidenceUploadService {
     const sha256 = hash.digest('hex');
 
     try {
-      await this.objects.putObjectFromFile({
-        key: asset.storageKey,
-        sourcePath: stagingPath,
-        contentType: verdict.detected,
-        sizeBytes: received,
-      });
-    } catch {
-      await this.discard(stagingDir);
-      throw new AppError(
-        'DEPENDENCY_UNAVAILABLE',
-        'Storage is unavailable. Try again shortly.',
-        503,
-      );
-    }
-
-    try {
-      await this.prisma.client.mediaAsset.update({
-        where: { id: asset.id },
+      // Claim the exact content ONCE, after receiving it but before publishing
+      // bytes. The old unconditional post-PUT update could change CLEAN media
+      // when another upload finalized while this request was still streaming.
+      // A failed transport remains retryable with these same bytes; finalize
+      // still requires a complete object, and the scanner only sees completed
+      // uploads. No storage operation holds a database transaction open.
+      const claimed = await this.prisma.client.mediaAsset.updateMany({
+        where: {
+          id: asset.id,
+          storageKey: asset.storageKey,
+          visibility: 'RESTRICTED',
+          sha256: null,
+          scanState: 'PENDING',
+          uploadCompletedAt: null,
+          deletedAt: null,
+          erasureStartedAt: null,
+          retainUntil: null,
+          OR: [{ uploadExpiresAt: null }, { uploadExpiresAt: { gt: new Date() } }],
+          verificationCase: {
+            state: { in: [...EVIDENCE_ACCEPTING_STATES] },
+            providerProfile: { userId, deletedAt: null },
+          },
+        },
         data: {
           detectedMimeType: verdict.detected,
-          // The COUNTED length, replacing whatever was declared at prepare.
           sizeBytes: received,
           sha256,
         },
       });
-    } catch (err) {
-      // Compensation: the object landed but the row did not. Leaving it would
-      // be an orphan in a bucket that holds passports, so it is removed before
-      // the error surfaces.
-      await this.objects.deleteObject(asset.storageKey).catch(() => undefined);
+
+      if (claimed.count !== 1) {
+        const current = await this.ownPreparedAsset(userId, assetId);
+        if (current.uploadCompletedAt !== null) {
+          throw new AppError('CONFLICT', 'This upload is already complete.', 409, {
+            reason: 'ALREADY_FINALIZED',
+          });
+        }
+        if (
+          current.scanState !== 'PENDING' ||
+          current.retainUntil ||
+          !EVIDENCE_ACCEPTING_STATES.includes(current.verificationCase!.state)
+        )
+          throw notFound();
+        if (current.uploadExpiresAt && current.uploadExpiresAt <= new Date()) {
+          throw new AppError('CONFLICT', 'This upload window has expired.', 409, {
+            reason: 'UPLOAD_EXPIRED',
+          });
+        }
+        if (current.sha256 !== sha256 || current.sizeBytes !== received) {
+          throw new AppError(
+            'CONFLICT',
+            'This upload already contains different evidence. Retry with the same file.',
+            409,
+            {
+              reason: 'CONTENT_ALREADY_STORED',
+            },
+          );
+        }
+      }
+
+      let createdObject = true;
+      try {
+        await this.objects.putObjectFromFile({
+          key: asset.storageKey,
+          sourcePath: stagingPath,
+          contentType: verdict.detected,
+          sizeBytes: received,
+        });
+      } catch (error) {
+        if (error instanceof RestrictedObjectAlreadyExistsError) {
+          createdObject = false;
+          await this.verifyStoredContent(asset.storageKey, received, sha256);
+          // An identical pending retry may adopt the winner's complete object.
+          // A legacy object may predate its database content claim: equal length
+          // alone does not establish that its bytes match the claimed digest.
+          // Never delete an existing object from this losing request's error path.
+        } else {
+          throw new AppError(
+            'DEPENDENCY_UNAVAILABLE',
+            'Storage is unavailable. Try again shortly.',
+            503,
+          );
+        }
+      }
+
+      // Cleanup can fence an abandoned upload while physical promotion is in
+      // flight. Deny the retired version and remove bytes only if THIS request
+      // created them. A retry that lost to an existing object must never erase
+      // its winner. This compensation does not replace crash reconciliation.
+      const live = await this.prisma.client.mediaAsset.findUnique({
+        where: { id: asset.id },
+        select: { deletedAt: true, erasureStartedAt: true, retainUntil: true },
+      });
+      if (
+        !live ||
+        live.deletedAt ||
+        live.erasureStartedAt ||
+        (live.retainUntil && live.retainUntil <= new Date())
+      ) {
+        if (createdObject) {
+          await this.objects.deleteObject(asset.storageKey).catch(() => {
+            this.log.error({ msg: 'evidence.upload.retired_object_cleanup_failed', assetId });
+          });
+        }
+        throw notFound();
+      }
+    } finally {
       await this.discard(stagingDir);
-      throw err;
     }
 
-    await this.discard(stagingDir);
     // Size and type only. No key, no filename, no hash — a hash is a stable
     // correlation identifier for a document, which is exactly what an audit
     // log should not hand out.
@@ -394,8 +473,13 @@ export class EvidenceUploadService {
         )
       : limits.uploadTtlSeconds;
 
-    // The object must be PROVEN present before anything is marked complete.
-    const head = await this.objects.head(asset.storageKey);
+    // One bounded budget covers metadata and content verification. Storage
+    // reads happen before the document transaction, never while holding locks.
+    const storageDeadline = Date.now() + STORED_CONTENT_TIMEOUT_MS;
+    const head = await this.withStorageDeadline(
+      () => this.objects.head(asset.storageKey),
+      storageDeadline,
+    );
 
     let decision;
     try {
@@ -467,15 +551,17 @@ export class EvidenceUploadService {
       };
     }
 
-    // The bytes must match what the content step recorded. A shorter object
-    // means a truncated or replaced upload, and finalising it would attach a
-    // document to something nobody validated.
-    if (head!.sizeBytes !== asset.sizeBytes || asset.sha256 === null) {
-      this.log.warn({ msg: 'evidence.finalize.object_mismatch', assetId });
-      throw new AppError('CONFLICT', 'The uploaded file is incomplete.', 409, {
-        reason: 'OBJECT_MISMATCH',
-      });
-    }
+    // A rejected collision still has a pending database content claim. Prove
+    // the actual bytes again so calling finalize directly cannot adopt a stale
+    // same-length object after that PUT was refused. Finalized replays above
+    // retain their existing result without rereading the document body.
+    await this.verifyStoredContent(
+      asset.storageKey,
+      asset.sizeBytes,
+      asset.sha256,
+      head!,
+      storageDeadline,
+    );
 
     if (!asset.pendingDocumentKind) throw notFound();
 
@@ -566,6 +652,89 @@ export class EvidenceUploadService {
 
   // ── internals ──────────────────────────────────────────────────────────
 
+  /** A pending retry may adopt only the exact immutable content it claimed.
+   * Hash incrementally under both a byte cap and a deadline; backend metadata
+   * is insufficient for objects left behind by an older upload implementation. */
+  private async verifyStoredContent(
+    key: string,
+    sizeBytes: number,
+    sha256: string | null,
+    knownHead?: RestrictedObjectMetadata,
+    deadline = Date.now() + STORED_CONTENT_TIMEOUT_MS,
+  ): Promise<void> {
+    const matches = await this.withStorageDeadline(async (ownStream) => {
+      const head = knownHead ?? (await this.objects.head(key));
+      if (
+        !head ||
+        head.sizeBytes !== sizeBytes ||
+        !Number.isSafeInteger(sizeBytes) ||
+        sizeBytes <= 0 ||
+        !sha256 ||
+        !/^[a-f0-9]{64}$/.test(sha256)
+      )
+        return false;
+
+      const stream = ownStream(await this.objects.openReadStream(key));
+      const hash = createHash('sha256');
+      let received = 0;
+      for await (const chunk of stream) {
+        if (!(chunk instanceof Uint8Array)) return false;
+        received += chunk.byteLength;
+        if (received > sizeBytes) return false;
+        hash.update(chunk);
+      }
+      return received === sizeBytes && hash.digest('hex') === sha256;
+    }, deadline);
+
+    if (!matches) {
+      throw new AppError('CONFLICT', 'The uploaded file is incomplete.', 409, {
+        reason: 'OBJECT_MISMATCH',
+      });
+    }
+  }
+
+  /** Own acquired streams even when open resolves after the request timed out.
+   * Neither storage coordinates nor backend exception details escape here. */
+  private async withStorageDeadline<T>(
+    operation: (ownStream: (stream: Readable) => Readable) => Promise<T>,
+    deadline: number,
+  ): Promise<T> {
+    let settled = false;
+    let stream: Readable | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new Error('evidence-storage-timeout');
+      const expired = new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('evidence-storage-timeout')), remaining);
+      });
+      return await Promise.race([
+        operation((opened) => {
+          // A late backend stream can fail after the caller has already gone.
+          // The iterator still observes read failures on the active path.
+          opened.on('error', () => undefined);
+          if (settled) {
+            opened.destroy();
+            throw new Error('evidence-storage-timeout');
+          }
+          stream = opened;
+          return opened;
+        }),
+        expired,
+      ]);
+    } catch {
+      throw new AppError(
+        'DEPENDENCY_UNAVAILABLE',
+        'Storage is unavailable. Try again shortly.',
+        503,
+      );
+    } finally {
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      stream?.destroy();
+    }
+  }
+
   /** The caller's own open case. 404 for "no profile", "no case" and "not
    *  yours" alike. */
   private async ownOpenCase(userId: string) {
@@ -609,6 +778,7 @@ export class EvidenceUploadService {
         createdAt: true,
         deletedAt: true,
         erasureStartedAt: true,
+        retainUntil: true,
         uploadCompletedAt: true,
         uploadExpiresAt: true,
         verificationCaseId: true,

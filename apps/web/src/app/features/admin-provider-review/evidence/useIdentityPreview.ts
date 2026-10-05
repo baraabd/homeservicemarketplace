@@ -38,6 +38,7 @@ export function useIdentityPreview(documentId: string, allowed: boolean, attempt
       .get<Blob>(`/v1/verification/documents/${encodeURIComponent(request.documentId)}/content`, {
         responseType: 'blob',
         signal: controller.signal,
+        timeout: 30000,
       })
       .then(({ data }) => {
         if (controller.signal.aborted) return;
@@ -46,10 +47,11 @@ export function useIdentityPreview(documentId: string, allowed: boolean, attempt
           return;
         }
         // The API sends detected MIME and nosniff; still refuse HTML/SVG/proxy error bodies.
-        if (['image/jpeg', 'image/png'].includes(data.type)) {
+        const mime = data.type.split(';')[0].trim().toLowerCase();
+        if (['image/jpeg', 'image/png'].includes(mime)) {
           url = URL.createObjectURL(data);
           publish({ status: 'image', url });
-        } else if (data.type === 'application/pdf') {
+        } else if (mime === 'application/pdf') {
           publish({ status: 'pdf', blob: data });
         } else {
           publish({ status: 'unsupported' });

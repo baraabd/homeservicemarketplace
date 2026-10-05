@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { deflateSync } from 'node:zlib';
-import type { AdminProviderReview } from '@homeservicemarketplace/contracts';
+import type {
+  AdminProviderReview,
+  CurrentVerificationCaseResponse,
+} from '@homeservicemarketplace/contracts';
 
 import { expect } from '@playwright/test';
 
@@ -132,7 +135,10 @@ export async function reactivateProvider(account: Account): Promise<void> {
  * to `EvidenceScanJob`, the sweep this sprint added, so the wait below is
  * genuine evidence that the running API scans what it is given.
  */
-export async function supplyEvidence(account: Account): Promise<{ caseId: string }> {
+export async function supplyEvidence(
+  account: Account,
+  filename = 'identity.png',
+): Promise<{ caseId: string; documentId: string }> {
   const { jar } = account;
 
   const created = await api<{ case: { id: string } }>(jar, '/v1/me/provider/verification/case', {
@@ -153,7 +159,7 @@ export async function supplyEvidence(account: Account): Promise<{ caseId: string
         kind: 'INDIVIDUAL_IDENTITY',
         declaredMimeType: 'image/png',
         sizeBytes: EVIDENCE_PNG.length,
-        filename: 'identity.png',
+        filename,
       },
     },
   );
@@ -178,15 +184,22 @@ export async function supplyEvidence(account: Account): Promise<{ caseId: string
   );
   expect(put.status, 'the evidence bytes should be accepted').toBe(200);
 
-  const finalized = await api(jar, `/v1/me/provider/verification/evidence/${assetId}/finalize`, {
-    method: 'POST',
-    body: {},
-  });
+  const finalized = await api<{ documentId: string }>(
+    jar,
+    `/v1/me/provider/verification/evidence/${assetId}/finalize`,
+    {
+      method: 'POST',
+      body: {},
+    },
+  );
   expect(finalized.status, `finalize should be accepted: ${JSON.stringify(finalized.body)}`).toBe(
     200,
   );
 
-  return { caseId };
+  expect(finalized.body.documentId, 'finalize should name the supplied document').toEqual(
+    expect.any(String),
+  );
+  return { caseId, documentId: finalized.body.documentId };
 }
 
 /**
@@ -204,9 +217,19 @@ export async function waitForEvidenceClean(account: Account, timeoutMs = 60_000)
   const deadline = Date.now() + timeoutMs;
   let last = '';
   while (Date.now() < deadline) {
-    const view = await api<unknown>(account.jar, '/v1/me/provider/verification/case');
+    const view = await api<CurrentVerificationCaseResponse>(
+      account.jar,
+      '/v1/me/provider/verification/case',
+    );
+    expect(
+      view.status,
+      'the provider case must remain readable while its evidence is scanned',
+    ).toBe(200);
     last = JSON.stringify(view.body);
-    if (last.includes('CLEAN')) return;
+    // A previous, superseded CLEAN document is not proof that its replacement
+    // has been scanned. Poll only the current files the case will submit.
+    const current = view.body.case?.documents.filter((document) => !document.superseded) ?? [];
+    if (current.length > 0 && current.every((document) => document.scanState === 'CLEAN')) return;
     await new Promise((r) => setTimeout(r, 1_000));
   }
   throw new Error(

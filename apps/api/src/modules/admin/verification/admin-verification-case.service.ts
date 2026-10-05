@@ -10,6 +10,9 @@ import type { PrismaTx } from '@homeservicemarketplace/database';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { offerableCaseActions } from '../../provider/verification/policy/case-transitions';
+import { decideEvidenceRead } from '../../provider/verification/media/evidence-read.policy';
+import { evidenceSatisfiesRequirement } from '../../provider/verification/case/evidence-readiness';
+import { PermissionResolverService } from '../../iam/authorization/services/permission-resolver.service';
 
 // Sprint 9B — the reviewer's read of a verification case.
 //
@@ -33,7 +36,10 @@ import { offerableCaseActions } from '../../provider/verification/policy/case-tr
 
 @Injectable()
 export class AdminVerificationCaseService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissions: PermissionResolverService,
+  ) {}
 
   /**
    * The newest case for a provider, or null when they have never submitted.
@@ -113,6 +119,7 @@ export class AdminVerificationCaseService {
             kind: true,
             serviceCategoryId: true,
             supersededAt: true,
+            expiresOn: true,
             uploadedAt: true,
             category: { select: { labelEn: true, labelAr: true } },
             // Only the columns a reviewer needs to decide whether to OPEN the
@@ -124,6 +131,8 @@ export class AdminVerificationCaseService {
                 sizeBytes: true,
                 originalFilename: true,
                 scanState: true,
+                visibility: true,
+                uploadCompletedAt: true,
                 deletedAt: true,
                 erasureStartedAt: true,
                 retainUntil: true,
@@ -168,6 +177,7 @@ export class AdminVerificationCaseService {
 
     if (!row) return null;
 
+    const granted = await this.permissions.resolveFreshForUser(reviewerUserId, transaction);
     const observedAt = new Date();
     const documents: AdminVerificationDocument[] = row.documents.map((d) => ({
       id: d.id,
@@ -179,14 +189,24 @@ export class AdminVerificationCaseService {
       sizeBytes: d.mediaAsset?.sizeBytes ?? 0,
       displayFilename: d.mediaAsset?.originalFilename ?? null,
       scanState: (d.mediaAsset?.scanState ?? 'PENDING') as AdminVerificationDocument['scanState'],
-      // CLEAN and not-yet-deleted. Anything else is not openable, including a
-      // scan state that does not exist yet — the comparison is against CLEAN
-      // rather than against a list of bad states, so a new state fails closed.
-      viewable:
-        d.mediaAsset?.scanState === 'CLEAN' &&
-        d.mediaAsset?.deletedAt === null &&
-        !d.mediaAsset.erasureStartedAt &&
-        (!d.mediaAsset.retainUntil || d.mediaAsset.retainUntil > observedAt),
+      // The same authorization/scan/retention decision as the audited byte
+      // reader. A metadata-only administrator must not be offered a read the
+      // protected endpoint will refuse. Replaced evidence stays readable for
+      // history while its retention window remains open.
+      viewable: d.mediaAsset
+        ? decideEvidenceRead({
+            actorUserId: reviewerUserId,
+            actorHasEvidenceViewPermission: granted.has('verification:evidence:view'),
+            ownerUserId: profile.userId,
+            visibility: d.mediaAsset.visibility,
+            scanState: d.mediaAsset.scanState,
+            evidenceDeletedAt: d.mediaAsset.deletedAt,
+            erasureStartedAt: d.mediaAsset.erasureStartedAt,
+            retainUntil: d.mediaAsset.retainUntil,
+            now: observedAt,
+            caseId: row.id,
+          }).allowed
+        : false,
       uploadedAt: d.uploadedAt.toISOString(),
       evidenceDeletedAt: d.mediaAsset?.deletedAt?.toISOString() ?? null,
       retentionState: d.mediaAsset?.deletedAt
@@ -202,26 +222,28 @@ export class AdminVerificationCaseService {
     // The checklist. Read from the SNAPSHOT taken at submission, not from the
     // live policy: a reviewer must judge what was asked at the time (ADR 0010).
     const snapshot = (row.requirementsSnapshot ?? null) as {
+      policyVersion?: string;
+      verificationRequired?: boolean;
       requirements?: Array<{ kind: string; serviceCategoryId: string | null }>;
     } | null;
 
-    const requirements: AdminVerificationRequirement[] = (snapshot?.requirements ?? []).map(
-      (req) => {
-        const match = row.documents.find(
-          (d) =>
-            d.kind === req.kind &&
-            (d.serviceCategoryId ?? null) === (req.serviceCategoryId ?? null) &&
-            d.supersededAt === null,
-        );
-        return {
-          kind: req.kind as AdminVerificationRequirement['kind'],
-          serviceCategoryId: req.serviceCategoryId ?? null,
-          serviceCategoryLabelEn: match?.category?.labelEn ?? null,
-          serviceCategoryLabelAr: match?.category?.labelAr ?? null,
-          satisfied: match !== undefined,
-        };
-      },
-    );
+    const pinnedRequirements = Array.isArray(snapshot?.requirements) ? snapshot.requirements : [];
+
+    const requirements: AdminVerificationRequirement[] = pinnedRequirements.map((req) => {
+      const match = row.documents.find(
+        (d) =>
+          d.kind === req.kind &&
+          (d.serviceCategoryId ?? null) === (req.serviceCategoryId ?? null) &&
+          d.supersededAt === null,
+      );
+      return {
+        kind: req.kind as AdminVerificationRequirement['kind'],
+        serviceCategoryId: req.serviceCategoryId ?? null,
+        serviceCategoryLabelEn: match?.category?.labelEn ?? null,
+        serviceCategoryLabelAr: match?.category?.labelAr ?? null,
+        satisfied: match !== undefined,
+      };
+    });
 
     // ── what this reviewer may do ────────────────────────────────────────
     //
@@ -232,13 +254,24 @@ export class AdminVerificationCaseService {
     // OFFERABLE, not merely legal. approve is legal from SUBMITTED and has no
     // command behind it until Sprint 9B.7; offering it would recreate D-3
     // exactly — a button the backend answers with 409.
-    const actions = isSelfReview
-      ? []
-      : (offerableCaseActions(row.state, 'reviewer') as VerificationCaseActionCode[]);
+    const evidenceReady =
+      snapshot?.policyVersion === row.policyVersion &&
+      typeof snapshot.verificationRequired === 'boolean' &&
+      (!snapshot.verificationRequired || pinnedRequirements.length > 0) &&
+      pinnedRequirements.every((required) =>
+        row.documents.some((doc) => evidenceSatisfiesRequirement(doc, required, observedAt)),
+      );
+    const actions =
+      isSelfReview || !granted.has('verification:decide')
+        ? []
+        : (offerableCaseActions(row.state, 'reviewer') as VerificationCaseActionCode[]).filter(
+            (action) =>
+              action !== 'approve' || (granted.has('verification:evidence:view') && evidenceReady),
+          );
 
     const blockedReason = isSelfReview
       ? ('SELF_REVIEW' as const)
-      : actions.length === 0
+      : offerableCaseActions(row.state, 'reviewer').length === 0
         ? row.state === 'DRAFT'
           ? ('NOT_SUBMITTED' as const)
           : ('TERMINAL_STATE' as const)

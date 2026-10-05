@@ -2,6 +2,7 @@ import type { ProviderVerificationCase } from '@homeservicemarketplace/contracts
 
 import {
   ProviderVerificationCaseService,
+  PROVIDER_CASE_SELECT,
   unwrapSnapshot,
   type ProviderCaseView,
 } from './provider-verification-case.service';
@@ -302,6 +303,54 @@ describe('resuming', () => {
     expect(h.auditRecord.mock.calls[0][0].type).toBe('VERIFICATION_CASE_RESUMED');
   });
 
+  it('resumes with the current and replaced documents and the latest correction reason', async () => {
+    const uploadedAt = new Date('2026-09-15T12:00:00Z');
+    const row = {
+      ...open,
+      state: 'ACTION_REQUIRED',
+      policyVersion: LIVE_POLICY.version,
+      submittedAt: uploadedAt,
+      requirementsSnapshot: {
+        requirements: [{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }],
+        verificationRequired: true,
+      },
+      documents: [
+        {
+          id: 'previous-doc',
+          kind: 'INDIVIDUAL_IDENTITY',
+          serviceCategoryId: null,
+          uploadedAt,
+          supersededAt: uploadedAt,
+          mediaAsset: { scanState: 'CLEAN' },
+        },
+        {
+          id: 'current-doc',
+          kind: 'INDIVIDUAL_IDENTITY',
+          serviceCategoryId: null,
+          uploadedAt,
+          supersededAt: null,
+          mediaAsset: { scanState: 'PENDING' },
+        },
+      ],
+      decisions: [
+        { outcome: 'ACTION_REQUIRED', reasonCode: 'DOCUMENT_ILLEGIBLE', decidedAt: uploadedAt },
+      ],
+    };
+    const h = build({ cases: [row] });
+    const resumed = await h.service.createOrResume(USER, {});
+    const current = await h.service.current(USER);
+    expect(h.caseFindFirst).toHaveBeenCalledWith({
+      where: { id: open.id, providerProfileId: PROFILE },
+      select: PROVIDER_CASE_SELECT,
+    });
+    expect(resumed.case).toEqual(current.case);
+    expect(resumed.case.documents).toEqual([
+      expect.objectContaining({ id: 'previous-doc', superseded: true }),
+      expect.objectContaining({ id: 'current-doc', superseded: false, scanState: 'PENDING' }),
+    ]);
+    expect(resumed.case.latestDecision?.reasonCode).toBe('DOCUMENT_ILLEGIBLE');
+  });
+
   it('refuses to reopen a verified provider', async () => {
     const h = build({
       cases: [
@@ -319,6 +368,30 @@ describe('resuming', () => {
       status: 409,
     });
     expect(h.caseCreate).not.toHaveBeenCalled();
+  });
+
+  it('creates fresh pinned evidence after expiry and resumes the new open case on retry', async () => {
+    const h = build({ cases: [{ ...open, id: 'expired-case', state: 'EXPIRED' }] });
+    const fresh = await h.service.createOrResume(USER, {});
+    expect(fresh.created).toBe(true);
+    expect(fresh.case).toMatchObject({
+      id: 'case-new',
+      state: 'DRAFT',
+      availableActions: ['submit'],
+    });
+    expect(fresh.case.documents).toEqual([]);
+    // The successful create is now persisted. A timeout retry asks to resume
+    // the live case, never to revive the expired evidence or open two cases.
+    const resumed = build({
+      cases: [
+        { ...open, id: fresh.case.id, state: 'DRAFT' },
+        { ...open, id: 'expired-case', state: 'EXPIRED' },
+      ],
+    });
+    const retry = await resumed.service.createOrResume(USER, {});
+    expect(retry.created).toBe(false);
+    expect(retry.case.id).toBe(fresh.case.id);
+    expect(resumed.caseCreate).not.toHaveBeenCalled();
   });
 
   it('fails closed on corrupt history rather than picking a case', async () => {

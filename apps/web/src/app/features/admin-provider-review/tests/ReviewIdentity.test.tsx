@@ -11,6 +11,7 @@ import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { ReviewIdentity } from '../components/ReviewIdentity';
 import { IDENTITY_PREVIEW_LIFETIME_MS } from '../evidence/useIdentityPreview';
 import { reviewFixture, STAMP } from './fixtures';
+import { REVIEW_COPY } from '../copy';
 
 vi.mock('../evidence/IdentityPdfCanvas', () => ({
   IdentityPdfCanvas: () => <canvas data-testid="identity-evidence-pdf" />,
@@ -100,6 +101,61 @@ afterEach(() => {
 });
 
 describe('restricted identity preview', () => {
+  it.each([
+    ['en', 'EVIDENCE_OBJECT_UNAVAILABLE', 'request replacement identity evidence'],
+    ['ar', 'EVIDENCE_OBJECT_UNAVAILABLE', 'وثيقة هوية بديلة'],
+    ['en', 'EVIDENCE_PREFLIGHT_STALE', 'The identity evidence changed during the evidence check'],
+    ['ar', 'EVIDENCE_PREFLIGHT_STALE', 'تغيّرت وثائق الهوية أثناء التحقق من الأدلة'],
+    ['en', 'EVIDENCE_NOT_READY', 'Check the current documents and their safety checks'],
+    ['ar', 'EVIDENCE_NOT_READY', 'راجع الوثائق الحالية ونتائج فحص الأمان'],
+  ] as const)(
+    'explains %s identity conflict %s while preserving the case note',
+    async (lang, reason, hint) => {
+      const review = fixture();
+      review.verification!.availableActions = ['approve'];
+      mock.onPost('/v1/admin/verification/cases/case-1/approve').reply(409, {
+        error: {
+          code: 'CONFLICT',
+          message: 'private-storage-key-must-not-render',
+          details: { reason },
+        },
+      });
+      setup(review, lang);
+      fireEvent.click(screen.getByTestId('review-case-approve'));
+      fireEvent.change(screen.getByRole('combobox'), {
+        target: { value: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' },
+      });
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Preserved case note' } });
+      fireEvent.click(screen.getByTestId('review-case-confirm'));
+      expect(await screen.findByRole('alert')).toHaveTextContent(hint);
+      expect(screen.getByRole('textbox')).toHaveValue('Preserved case note');
+      expect(screen.queryByTestId('review-case-confirm')).not.toBeInTheDocument();
+      expect(screen.queryByText('private-storage-key-must-not-render')).not.toBeInTheDocument();
+      expect(mock.history.post).toHaveLength(1);
+    },
+  );
+  it('keeps an unknown identity conflict on the safe existing message', async () => {
+    const review = fixture();
+    review.verification!.availableActions = ['assign'];
+    mock.onPost('/v1/admin/verification/cases/case-1/assign').reply(409, {
+      error: {
+        message: 'private-storage-key-must-not-render',
+        details: { reason: 'UNKNOWN_PRIVATE_REASON' },
+      },
+    });
+    setup(review);
+    fireEvent.click(screen.getByTestId('review-case-assign'));
+    fireEvent.click(screen.getByTestId('review-case-confirm'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(REVIEW_COPY.en.conflict);
+    expect(screen.queryByText('private-storage-key-must-not-render')).not.toBeInTheDocument();
+  });
+  it('normalizes a safe response MIME with parameters without rejecting a valid image', async () => {
+    mock.onGet(PATH).reply(200, new Blob(['PNG fixture'], { type: 'image/png; charset=binary' }));
+    setup();
+    await open();
+    expect(mock.history.get[0].timeout).toBe(30000);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
   it('reads only after an explicit click, preserves the audited endpoint and releases bytes on close', async () => {
     setup();
     expect(mock.history.get).toHaveLength(0);
@@ -241,6 +297,86 @@ describe('restricted identity preview', () => {
     await screen.findByTestId('identity-evidence-pdf');
     expect(URL.createObjectURL).not.toHaveBeenCalled();
     expect(document.querySelector('iframe, object, embed')).toBeNull();
+  });
+});
+
+describe('current evidence and historical replacements', () => {
+  it('preserves secure inspection of previous evidence when the server still authorizes the read', async () => {
+    const review = fixture();
+    review.verification!.documents = [{ ...evidence, supersededAt: STAMP, viewable: true }];
+    setup(review);
+    const previous = screen.getByRole('list', { name: 'Previous documents', hidden: true });
+    expect(within(previous).getByTestId('review-evidence-document-1')).toBeEnabled();
+    previous.closest('details')!.open = true;
+    await open();
+    expect(mock.history.get[0].url).toBe(PATH);
+  });
+  it.each(['en', 'ar'] as const)(
+    'separates replaced records from actionable evidence in %s',
+    (lang) => {
+      const review = fixture();
+      review.verification!.documents = [
+        {
+          ...evidence,
+          id: 'previous-1',
+          viewable: false,
+          supersededAt: STAMP,
+          displayFilename: null,
+        },
+        evidence,
+      ];
+      setup(review, lang);
+      const current = screen.getByRole('list', {
+        name: lang === 'ar' ? 'الوثائق الحالية' : 'Current documents',
+      });
+      expect(within(current).getByTestId('review-evidence-document-1')).toBeEnabled();
+      expect(
+        within(current).queryByText(
+          lang === 'ar' ? 'لم يُحفظ اسم الملف' : 'Filename was not recorded',
+        ),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId('review-evidence-previous-1')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('review-evidence-download-previous-1')).not.toBeInTheDocument();
+      const summary = screen.getByText(lang === 'ar' ? /الوثائق السابقة/ : /Previous documents/);
+      expect(summary.closest('details')).not.toHaveAttribute('open');
+      expect(mock.history.get).toHaveLength(0);
+    },
+  );
+  it.each(['en', 'ar'] as const)(
+    'explains safety checks rather than a pending human decision in %s',
+    (lang) => {
+      const review = fixture();
+      review.verification!.documents = [
+        { ...evidence, scanState: 'PENDING', viewable: false, displayFilename: null },
+      ];
+      setup(review, lang);
+      expect(
+        screen.getByText(lang === 'ar' ? 'بانتظار فحص الأمان' : 'Awaiting safety check'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(lang === 'ar' ? 'لم يُحفظ اسم الملف' : 'Filename was not recorded'),
+      ).toBeInTheDocument();
+      const preview = screen.getByTestId('review-evidence-document-1');
+      expect(preview).toBeDisabled();
+      expect(preview).toHaveAccessibleDescription(
+        lang === 'ar'
+          ? 'يتاح فتح الوثيقة بعد اكتمال فحص الأمان. حدّث البيانات للتحقق من تقدم الفحص.'
+          : 'Opening becomes available after the safety check completes. Refresh to check progress.',
+      );
+      expect(
+        screen.queryByText(lang === 'ar' ? 'غير متاح للفتح' : 'Not available to open'),
+      ).not.toBeInTheDocument();
+      expect(mock.history.get).toHaveLength(0);
+    },
+  );
+  it('offers a clear replacement path when all document records are historical', () => {
+    const review = fixture();
+    review.verification!.documents = [{ ...evidence, supersededAt: STAMP, viewable: false }];
+    setup(review);
+    expect(
+      screen.getByText('No current documents. Ask the provider to upload the required evidence.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('review-evidence-document-1')).not.toBeInTheDocument();
   });
 });
 

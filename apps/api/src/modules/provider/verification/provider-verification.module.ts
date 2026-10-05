@@ -12,6 +12,7 @@ import { EvidenceCleanupService } from './media/evidence-cleanup.service';
 import { EvidenceUploadService } from './media/evidence-upload.service';
 import { VerificationSettingsService } from './verification-settings.service';
 import { EvidenceReadService } from './media/evidence-read.service';
+import { EvidenceAvailabilityService } from './media/evidence-availability.service';
 import { EvidenceScanService } from './media/evidence-scan.service';
 import { EvidenceScanJob } from './media/evidence-scan.job';
 import { VerificationCaseWorkflowService } from './case/verification-case-workflow.service';
@@ -90,6 +91,7 @@ import { Logger } from '@nestjs/common';
     EvidenceErasedHandler,
     // Sprint 9B.5 — the only class allowed to act on the case transition table.
     VerificationCaseWorkflowService,
+    EvidenceAvailabilityService,
     VerificationCaseEventsHandler,
   ],
   providers: [
@@ -100,6 +102,7 @@ import { Logger } from '@nestjs/common';
     VerificationExpiryService,
     VerificationExpiryJob,
     EvidenceReadService,
+    EvidenceAvailabilityService,
     EvidenceUploadService,
     // No controller. A route that deletes evidence in bulk is a weapon; the
     // sweep is invoked by an operator process or scheduler, and its batch

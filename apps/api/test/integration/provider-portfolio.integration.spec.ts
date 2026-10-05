@@ -9,6 +9,7 @@ import { Test } from '@nestjs/testing';
 import { APP_FILTER, Reflector } from '@nestjs/core';
 import { CanActivate, ExecutionContext, INestApplication, VersioningType } from '@nestjs/common';
 import request from 'supertest';
+import { Readable } from 'node:stream';
 
 import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
 
@@ -107,6 +108,9 @@ d('Provider portfolio (real guard, real Postgres)', () => {
   const remove = (id: string) => request(http).delete(`${base}/${id}`);
 
   let seq = 0;
+  let fixtureImage: Buffer;
+  const unavailableStorageKeys = new Set<string>();
+  const corruptStorageKeys = new Set<string>();
   /** The opaque owner segment the presign step puts in a portfolio key.
    *  Computed the same way the server does — a public portfolio URL must never
    *  carry a raw user id, so the fixtures cannot use one either. */
@@ -172,6 +176,13 @@ d('Provider portfolio (real guard, real Postgres)', () => {
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
     prisma = db.prisma;
+    const { default: sharp } = await import('sharp');
+    const encoded = await sharp({
+      create: { width: 2, height: 2, channels: 3, background: '#226644' },
+    })
+      .jpeg()
+      .toBuffer();
+    fixtureImage = Buffer.concat([encoded, Buffer.alloc(1024 - encoded.byteLength)]);
 
     const { PrismaService } = require('../../src/infrastructure/prisma/prisma.service');
     const { TransactionRunner } = require('../../src/infrastructure/prisma/transaction.runner');
@@ -234,10 +245,22 @@ d('Provider portfolio (real guard, real Postgres)', () => {
           provide: STORAGE_PORT,
           useValue: {
             readObjectHead: async (key: string) => {
+              if (unavailableStorageKeys.has(key)) return null;
               const asset = await prisma.mediaAsset.findUnique({ where: { storageKey: key } });
               return asset
-                ? { sizeBytes: asset.sizeBytes, head: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]) }
+                ? { sizeBytes: asset.sizeBytes, head: new Uint8Array(fixtureImage.subarray(0, 16)) }
                 : null;
+            },
+            readObjectStream: async (key: string) => {
+              if (unavailableStorageKeys.has(key)) return null;
+              const asset = await prisma.mediaAsset.findUnique({ where: { storageKey: key } });
+              if (!asset) return null;
+              if (corruptStorageKeys.has(key)) {
+                const invalid = Buffer.alloc(1024);
+                invalid.set([0xff, 0xd8, 0xff, 0xe0]);
+                return Readable.from(invalid);
+              }
+              return Readable.from(fixtureImage);
             },
           },
         },
@@ -338,6 +361,8 @@ d('Provider portfolio (real guard, real Postgres)', () => {
     await setLimits(12, 5 * 1024 * 1024);
     currentUser = { id: OWNER };
     logLines.length = 0;
+    unavailableStorageKeys.clear();
+    corruptStorageKeys.clear();
   });
 
   afterAll(async () => {
@@ -794,6 +819,60 @@ d('Provider portfolio (real guard, real Postgres)', () => {
       expect((await list()).body.items).toHaveLength(1);
     });
 
+    it('does not oversubscribe the last gallery slot under concurrent distinct uploads', async () => {
+      await setLimits(1, 5 * 1024 * 1024);
+      const bodies = [goodBody(), goodBody()];
+      await Promise.all(bodies.map((body) => reserveKey(body.storageKey)));
+      const results = await Promise.all(bodies.map((body) => request(http).post(base).send(body)));
+      expect(results.filter((result) => result.status === 200)).toHaveLength(1);
+      expect(results.every((result) => [200, 400, 409].includes(result.status))).toBe(true);
+      expect((await list()).body.items).toHaveLength(1);
+      expect(
+        await prisma.mediaAsset.count({
+          where: { ownerUserId: OWNER, uploadCompletedAt: { not: null } },
+        }),
+      ).toBe(1);
+    });
+
+    it('refuses attachment of a header-valid upload with corrupt pixel data', async () => {
+      const body = goodBody();
+      await reserveKey(body.storageKey);
+      corruptStorageKeys.add(body.storageKey);
+      const result = await request(http).post(base).send(body);
+      expect(result.status).toBe(400);
+      expect(result.body.error.details.reason).toBe('INVALID_IMAGE');
+      expect((await list()).body.items).toEqual([]);
+      expect(
+        (await prisma.mediaAsset.findUnique({ where: { storageKey: body.storageKey } }))
+          .uploadCompletedAt,
+      ).toBeNull();
+    });
+
+    it.each(['expired', 'retired', 'erasing'] as const)(
+      'refuses an %s upload reservation without attaching it',
+      async (state) => {
+        const body = goodBody();
+        await reserveKey(body.storageKey);
+        await prisma.mediaAsset.update({
+          where: { storageKey: body.storageKey },
+          data:
+            state === 'expired'
+              ? { uploadExpiresAt: new Date(Date.now() - 1) }
+              : state === 'retired'
+                ? { retainUntil: new Date() }
+                : { erasureStartedAt: new Date() },
+        });
+        const result = await request(http).post(base).send(body);
+        expect(result.status).toBe(400);
+        expect(result.body.error.details.reason).toBe('UPLOAD_NOT_RESERVED');
+        expect((await list()).body.items).toEqual([]);
+        expect(
+          (await prisma.mediaAsset.findUnique({ where: { storageKey: body.storageKey } }))
+            .uploadCompletedAt,
+        ).toBeNull();
+      },
+    );
+
     it('deleting twice is a no-op, not an error', async () => {
       // A double-tap on a phone must not produce an error nobody can act on.
       const created = await create(goodBody());
@@ -929,6 +1008,99 @@ d('Provider portfolio (real guard, real Postgres)', () => {
       expect(result.status).toBe(403);
       expect((await request(http).get(adminBase)).body.items[0].availableActions).toEqual([]);
     });
+
+    it('keeps pending media private while owner and authorized reviewer can inspect it', async () => {
+      const body = goodBody();
+      const created = await create(body);
+      expect(created.status).toBe(200);
+      expect((await request(http).get(`${base}/${created.body.id}/media`)).status).toBe(200);
+      currentUser = { id: OTHER };
+      expect((await request(http).get(`${base}/${created.body.id}/media`)).status).toBe(404);
+      expect((await request(http).get(`${adminBase}/${created.body.id}/media`)).status).toBe(200);
+      expect(
+        (await request(http).get(`/v1/admin/providers/${PP2}/portfolio/${created.body.id}/media`))
+          .status,
+      ).toBe(404);
+    });
+
+    it('does not publish absent bytes and still accepts an explained replacement request', async () => {
+      const body = goodBody();
+      const created = await create(body);
+      expect(created.status).toBe(200);
+      unavailableStorageKeys.add(body.storageKey);
+      currentUser = { id: OTHER };
+      expect((await request(http).get(`${adminBase}/${created.body.id}/media`)).status).toBe(404);
+      const result = await request(http)
+        .patch(`${adminBase}/${created.body.id}/review`)
+        .send({ action: 'APPROVE', expectedRevision: 1 });
+      expect(result.status).toBe(409);
+      expect(result.body.error.details.reason).toBe('MEDIA_UNAVAILABLE');
+      const before = await prisma.providerPortfolioItem.findUnique({
+        where: { id: created.body.id },
+      });
+      expect(before).toMatchObject({ revision: 1, moderationState: 'PENDING' });
+      const rejected = await request(http).patch(`${adminBase}/${created.body.id}/review`).send({
+        action: 'REJECT',
+        expectedRevision: 1,
+        reason: 'Please replace the unavailable image.',
+      });
+      expect(rejected.status).toBe(200);
+      expect(rejected.body).toMatchObject({ revision: 2, moderationState: 'REJECTED' });
+    });
+
+    it('keeps rejected originals available privately to their owner for correction', async () => {
+      const created = await create(goodBody());
+      currentUser = { id: OTHER };
+      const rejected = await request(http).patch(`${adminBase}/${created.body.id}/review`).send({
+        action: 'REJECT',
+        expectedRevision: 1,
+        reason: 'Please remove the visible customer address.',
+      });
+      expect(rejected.status).toBe(200);
+      currentUser = { id: OWNER };
+      const preview = await request(http).get(`${base}/${created.body.id}/media`);
+      expect(preview.status).toBe(200);
+      expect(preview.headers['cache-control']).toBe('private, no-store');
+      expect((await list()).body.items[0].moderationReason).toBe(
+        'Please remove the visible customer address.',
+      );
+    });
+
+    it.each(['retired', 'erasing', 'quarantined', 'unfinalized'] as const)(
+      'denies current bytes and approval for %s media',
+      async (state) => {
+        const created = await create(goodBody());
+        expect(created.status).toBe(200);
+        const item = await prisma.providerPortfolioItem.findUnique({
+          where: { id: created.body.id },
+        });
+        await prisma.mediaAsset.update({
+          where: { id: item.mediaAssetId },
+          data:
+            state === 'retired'
+              ? { retainUntil: new Date() }
+              : state === 'erasing'
+                ? { erasureStartedAt: new Date() }
+                : state === 'quarantined'
+                  ? { scanState: 'QUARANTINED' }
+                  : { uploadCompletedAt: null },
+        });
+        currentUser = { id: OTHER };
+        const detail = (await request(http).get(adminBase)).body.items[0];
+        expect(detail).toMatchObject({
+          reviewBlockedReason: 'MEDIA_UNAVAILABLE',
+          availableActions: ['REJECT'],
+        });
+        expect((await request(http).get(`${adminBase}/${created.body.id}/media`)).status).toBe(404);
+        expect(
+          (
+            await request(http)
+              .patch(`${adminBase}/${created.body.id}/review`)
+              .send({ action: 'APPROVE', expectedRevision: 1 })
+          ).status,
+        ).toBe(409);
+      },
+    );
 
     it('reordering retains approval while a material edit resets review and preserves its history', async () => {
       const created = await create(goodBody({ title: 'Original' }));

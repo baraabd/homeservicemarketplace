@@ -82,9 +82,13 @@ export class AdminProviderReviewRepository {
                 mediaAsset: {
                   select: {
                     id: true,
+                    storageKey: true,
+                    sizeBytes: true,
                     scanState: true,
                     visibility: true,
                     deletedAt: true,
+                    erasureStartedAt: true,
+                    retainUntil: true,
                     uploadCompletedAt: true,
                     sha256: true,
                     updatedAt: true,
@@ -99,7 +103,7 @@ export class AdminProviderReviewRepository {
     if (!profile) throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
     const current = await readProviderReviewSnapshot(db, providerProfileId);
     if (!current) throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
-    const verificationCase = profile.verificationCases[0] ?? null;
+    const verificationCase = profile.verificationCases.at(0) ?? null;
     // Old cases did not stamp their selected trade scope. Reconstruct ONLY at
     // the original instant, never against today's policies. The policy layer
     // accepts this proof only if every pinned version and requirement matches.
@@ -135,7 +139,7 @@ export class AdminProviderReviewRepository {
     return {
       profile,
       current,
-      submission: profile.onboardingSubmissions[0] ?? null,
+      submission: profile.onboardingSubmissions.at(0) ?? null,
       verificationCase,
       historicalRequirements,
     };

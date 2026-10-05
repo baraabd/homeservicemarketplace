@@ -119,7 +119,11 @@ describe('Admin application dossier', () => {
     setup();
     await screen.findByRole('heading', { name: 'Current provider' });
     const decision = () =>
-      within(screen.getByText(REVIEW_COPY.en.applicationDecision).parentElement!);
+      within(
+        within(screen.getByTestId('review-section-REVIEW_SUBMISSION')).getByText(
+          REVIEW_COPY.en.applicationDecision,
+        ).parentElement!,
+      );
     expect(decision().getByText('Approved')).toBeInTheDocument();
     expect(decision().queryByText(REVIEW_COPY.en.awaitingDecision)).not.toBeInTheDocument();
     review.submission = null;

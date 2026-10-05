@@ -105,10 +105,19 @@ export class S3StorageAdapter extends StoragePort {
         new GetObjectCommand({ Bucket: this.bucketForKey(key), Key: key }),
       );
       const body = result.Body;
-      return body && 'pipe' in body ? (body as Readable) : null;
+      if (!body || !('pipe' in body)) throw new Error('Object response has no readable body.');
+      return body as Readable;
     } catch (error) {
+      const { name, $metadata } = error as {
+        name?: string;
+        $metadata?: { httpStatusCode?: number };
+      };
+      // A missing bucket is a dependency/configuration failure, not evidence
+      // that this image was lost. Some compatible backends return an unnamed 404.
       if (
-        (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404
+        name === 'NoSuchKey' ||
+        name === 'NotFound' ||
+        (!name && $metadata?.httpStatusCode === 404)
       ) {
         return null;
       }

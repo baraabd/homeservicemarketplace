@@ -18,9 +18,11 @@ import { AppConfigService } from '../../../config/app-config.service';
 import { STORAGE_PORT, StoragePort } from '../../../infrastructure/storage/storage.port';
 import { isStagedPortfolioKey } from '../../../infrastructure/storage/portfolio-storage-policy';
 import {
-  AVATAR_SIGNATURE_PROBE_BYTES,
-  verifyAvatarSignature,
-} from '../../../infrastructure/storage/image-signature';
+  PortfolioImageDecoderUnavailableError,
+  PortfolioImageStorageUnavailableError,
+  PortfolioImageValidationError,
+  validateStoredPortfolioImage,
+} from '../../../infrastructure/storage/portfolio-image-validation';
 import {
   PORTFOLIO_MAX_FILE_BYTES_KEY,
   PORTFOLIO_MAX_ITEMS_KEY,
@@ -158,6 +160,10 @@ export class ProviderPortfolioService {
       visibility: 'PUBLIC' as const,
       uploadCompletedAt: null,
       deletedAt: null,
+      retainUntil: null,
+      erasureStartedAt: null,
+      purpose: null,
+      uploadExpiresAt: { gt: new Date() },
       declaredMimeType: input.contentType,
       sizeBytes: input.sizeBytes,
     };
@@ -167,20 +173,26 @@ export class ProviderPortfolioService {
     });
     if (!reserved) throw uploadNotReserved();
 
-    const stored = await this.storage.readObjectHead(
-      input.storageKey,
-      AVATAR_SIGNATURE_PROBE_BYTES,
-    );
-    const signature = stored && verifyAvatarSignature(input.contentType, stored.head);
-    if (
-      !stored ||
-      stored.sizeBytes !== input.sizeBytes ||
-      stored.sizeBytes > limits.maxFileBytes ||
-      !signature?.ok
-    ) {
+    let detectedMimeType: string;
+    try {
+      detectedMimeType = await validateStoredPortfolioImage(this.storage, {
+        storageKey: input.storageKey,
+        contentType: input.contentType,
+        sizeBytes: input.sizeBytes,
+        maxBytes: limits.maxFileBytes,
+      });
+    } catch (error) {
+      if (!(error instanceof PortfolioImageValidationError))
+        throw new AppError(
+          'DEPENDENCY_UNAVAILABLE',
+          error instanceof PortfolioImageDecoderUnavailableError
+            ? error.message
+            : new PortfolioImageStorageUnavailableError().message,
+          503,
+        );
       throw new AppError(
         'VALIDATION_ERROR',
-        'The uploaded image could not be validated. Please upload it again.',
+        'The uploaded image could not be decoded. Please upload a valid image again.',
         400,
         { reason: 'INVALID_IMAGE' },
       );
@@ -195,51 +207,71 @@ export class ProviderPortfolioService {
       throw toAppError(err);
     }
 
-    const created = await this.tx.run(async (trx) => {
-      const client = trx;
-      // Sprint 09B.29 Phase 4 — CLAIM the reservation, do not mint a new row.
-      //
-      // The MediaAsset is created at PRESIGN now, before the upload URL is
-      // issued, so that an upload abandoned between the PUT and this call is
-      // still discoverable and can be swept (O-4). Creating a second row here
-      // would collide on the unique storageKey, and — worse — would mean the
-      // only row for an abandoned upload never existed.
-      //
-      // The claim is conditional on owner + key + PUBLIC + unclaimed, so a
-      // client cannot attach a key it was never issued, cannot attach another
-      // provider's reservation, and two concurrent creates resolve to one.
-      const claimedAsset = await client.mediaAsset.updateMany({
-        where: reservation,
-        data: { uploadCompletedAt: new Date() },
-      });
-      if (claimedAsset.count !== 1) {
-        // No reservation to claim: either it was never made, it belongs to
-        // somebody else, or it is already attached. All three are the same
-        // answer to the caller, so the surface cannot be probed for which.
-        throw uploadNotReserved();
-      }
-      const asset = await client.mediaAsset.findUniqueOrThrow({
-        where: { storageKey: input.storageKey },
-        select: { id: true },
-      });
-      return client.providerPortfolioItem.create({
-        data: {
-          providerProfileId: profileId,
-          mediaAssetId: asset.id,
-          title: input.title ?? null,
-          description: input.description ?? null,
-          serviceCategoryId: input.serviceCategoryId ?? null,
-          publicationRightAckAt: new Date(),
-          // The VERSION of the wording, resolved above — or the pre-9B.22
-          // sentinel when the client did not name one.
-          publicationRightAckText: ackText,
-          // New work goes to the END of the gallery. Prepending would silently
-          // reorder a gallery the provider arranged deliberately.
-          position: count,
+    const created = await this.tx
+      .run(
+        async (trx) => {
+          const client = trx;
+          // Count under serializable isolation: two distinct uploads must not both
+          // take the final slot or receive the same append position.
+          const currentCount = await client.providerPortfolioItem.count({
+            where: { providerProfileId: profileId, deletedAt: null },
+          });
+          try {
+            assertHasRoom(currentCount, limits.maxItems);
+          } catch (error) {
+            throw toAppError(error);
+          }
+          // Sprint 09B.29 Phase 4 — CLAIM the reservation, do not mint a new row.
+          //
+          // The MediaAsset is created at PRESIGN now, before the upload URL is
+          // issued, so that an upload abandoned between the PUT and this call is
+          // still discoverable and can be swept (O-4). Creating a second row here
+          // would collide on the unique storageKey, and — worse — would mean the
+          // only row for an abandoned upload never existed.
+          //
+          // The claim is conditional on owner + key + PUBLIC + unclaimed, so a
+          // client cannot attach a key it was never issued, cannot attach another
+          // provider's reservation, and two concurrent creates resolve to one.
+          const claimedAsset = await client.mediaAsset.updateMany({
+            where: { ...reservation, uploadExpiresAt: { gt: new Date() } },
+            data: { uploadCompletedAt: new Date(), detectedMimeType },
+          });
+          if (claimedAsset.count !== 1) {
+            // No reservation to claim: either it was never made, it belongs to
+            // somebody else, or it is already attached. All three are the same
+            // answer to the caller, so the surface cannot be probed for which.
+            throw uploadNotReserved();
+          }
+          const asset = await client.mediaAsset.findUniqueOrThrow({
+            where: { storageKey: input.storageKey },
+            select: { id: true },
+          });
+          return client.providerPortfolioItem.create({
+            data: {
+              providerProfileId: profileId,
+              mediaAssetId: asset.id,
+              title: input.title ?? null,
+              description: input.description ?? null,
+              serviceCategoryId: input.serviceCategoryId ?? null,
+              publicationRightAckAt: new Date(),
+              // The VERSION of the wording, resolved above — or the pre-9B.22
+              // sentinel when the client did not name one.
+              publicationRightAckText: ackText,
+              // New work goes to the END of the gallery. Prepending would silently
+              // reorder a gallery the provider arranged deliberately.
+              position: currentCount,
+            },
+            select: ITEM_SELECT,
+          });
         },
-        select: ITEM_SELECT,
+        { isolationLevel: 'Serializable' },
+      )
+      .catch((error: unknown) => {
+        if ((error as { code?: string })?.code === 'P2034') {
+          throw new AppError('CONFLICT', 'Your portfolio changed. Reload and try again.', 409);
+        }
+        throw error;
       });
-    });
 
     this.log.log({ msg: 'portfolio.item.created', providerProfileId: profileId });
     return this.toItem(created);

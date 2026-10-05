@@ -19,9 +19,16 @@ import { PermissionResolverService } from '../../iam/authorization/services/perm
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
 import { ProviderCapabilityService } from '../../provider/capability/provider-capability.service';
 import { VerificationCaseWorkflowService } from '../../provider/verification/case/verification-case-workflow.service';
+import {
+  EvidenceAvailabilityService,
+  type EvidenceAvailabilityProof,
+} from '../../provider/verification/media/evidence-availability.service';
 import { AdminAuditService } from '../admin-audit.service';
 import { AdminVerificationCaseService } from '../verification/admin-verification-case.service';
-import { AdminProviderReviewRepository } from './provider-review.repository';
+import {
+  AdminProviderReviewRepository,
+  type AdminProviderReviewData,
+} from './provider-review.repository';
 import { validateReviewFeedback } from './provider-review-feedback';
 import {
   canRequestChanges,
@@ -48,6 +55,7 @@ export class AdminProviderReviewService {
     private readonly audit: AdminAuditService,
     private readonly outbox: OutboxRepository,
     private readonly securityEvents: SecurityEventsBus,
+    private readonly evidenceAvailability: EvidenceAvailabilityService,
   ) {}
 
   async get(actor: AuthenticatedUser, providerProfileId: string): Promise<AdminProviderReview> {
@@ -165,6 +173,39 @@ export class AdminProviderReviewService {
     const granted = await this.permissions.resolveFreshForUser(actor.id);
     if (!granted.has('user:read:any') || !granted.has('verification:decide')) throw forbidden();
     const requestHash = reviewHash({ actorUserId: actor.id, providerProfileId, action, ...input });
+    let evidenceAvailability: EvidenceAvailabilityProof | undefined;
+    if (action === 'APPROVE') {
+      // Read and finish this transaction BEFORE touching object storage. The
+      // serializable decision below rechecks revision, permissions and live
+      // evidence; a storage call must never hold its database row locks.
+      const preflight = await this.transactions.run(async (db) => {
+        const receipt = await db.providerOnboardingSubmission.findFirst({
+          where: { id: input.submissionId, providerProfileId },
+        });
+        if (!receipt) throw new AppError('NOT_FOUND', 'Submission not found.', 404);
+        if (receipt.decisionIdempotencyKey === input.idempotencyKey) {
+          if (receipt.decisionRequestHash !== requestHash || receipt.decidedByUserId !== actor.id)
+            throw conflict('IDEMPOTENCY_KEY_REUSED');
+          return null;
+        }
+        if (receipt.decidedAt) throw conflict('SUBMISSION_ALREADY_DECIDED');
+        const data = await this.repository.load(db, providerProfileId);
+        if (data.submission?.id !== input.submissionId) throw conflict('SUBMISSION_SUPERSEDED');
+        if (reviewRevision(data) !== input.expectedRevision) throw conflict('STALE_REVIEW');
+        if (needsEvidenceView(data) && !granted.has('verification:evidence:view'))
+          throw forbidden();
+        const blockers = reviewBlockers(data, actor.id, true);
+        if (blockers.length > 0) {
+          throw new AppError('CONFLICT', 'This application is not ready for that decision.', 409, {
+            reason: 'REVIEW_BLOCKED',
+            blockers,
+          });
+        }
+        return data;
+      });
+      if (!preflight) return { changed: false, review: await this.get(actor, providerProfileId) };
+      evidenceAvailability = await this.evidenceAvailability.prepare(availabilityCase(preflight));
+    }
     let changed: boolean;
     try {
       changed = await this.transactions.run(
@@ -214,6 +255,13 @@ export class AdminProviderReviewService {
             );
           }
           const now = new Date();
+          if (action === 'APPROVE') {
+            this.evidenceAvailability.assertCurrent(
+              evidenceAvailability,
+              availabilityCase(data),
+              now,
+            );
+          }
           const feedback: ProviderOnboardingFeedback | undefined =
             action === 'REQUEST_CHANGES'
               ? {
@@ -269,7 +317,7 @@ export class AdminProviderReviewService {
                 reasonCode: (input as ApproveAdminProviderReviewRequest).reasonCode,
                 // Internal final-review prose belongs only on the submission.
               },
-              { transaction: db, suppressNotification: true },
+              { transaction: db, suppressNotification: true, evidenceAvailability },
             );
           }
           if (
@@ -360,6 +408,17 @@ export class AdminProviderReviewService {
       });
     return { changed, review };
   }
+}
+
+function availabilityCase(data: AdminProviderReviewData) {
+  const kase = data.verificationCase;
+  if (!kase) throw conflict('EVIDENCE_NOT_READY');
+  // reviewBlockers has already validated the pinned snapshot, including its
+  // exact selected country/trade scope. It remains the readiness authority.
+  const snapshot = kase.requirementsSnapshot as {
+    requirements: Array<{ kind: string; serviceCategoryId: string | null }>;
+  };
+  return { ...kase, requirements: snapshot.requirements };
 }
 
 function forbidden(): AppError {

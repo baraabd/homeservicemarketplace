@@ -397,6 +397,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
+      - name: Verify disposable browser rate-budget isolation
+        run: node --test scripts/runtime/reset-ci-browser-rate-limits.test.cjs
       - name: Generate prisma client
         run: pnpm --filter @homeservicemarketplace/database generate
       - name: Apply migrations
@@ -464,6 +466,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/provider-repairs-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/provider-onboarding-repairs.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --output=test-results/provider-repairs
@@ -484,6 +489,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r05-seeker-real-api-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r05-seeker-durability.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --output=test-results/r05-seeker-real-api
@@ -510,6 +518,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r05-seeker-stability-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r05-seeker-durability.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --retries=0 --repeat-each=5 --max-failures=1 \
@@ -534,6 +545,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r06-request-media-real-api-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r06-request-media.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --output=test-results/r06-request-media-real-api
@@ -554,6 +568,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r07-request-provider-lifecycle-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r07-request-provider-lifecycle.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --output=test-results/r07-request-provider-lifecycle
@@ -580,6 +597,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r08-provider-v2-all-field-authority-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r08-provider-v2-all-field-authority.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --output=test-results/r08-provider-v2-all-field-authority
@@ -606,6 +626,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r09-work-area-geo-authority-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r09-work-area-geo-authority.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --output=test-results/r09-work-area-geo-authority
@@ -638,6 +661,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r10-working-hours-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r10-working-hours-schedule-durability.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --retries=0 \
@@ -667,6 +693,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r11-reviews-reputation-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r11-reviews-reputation.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --retries=0 \
@@ -697,6 +726,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r12-booking-communication-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r12-booking-communication.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --retries=0 \
@@ -725,6 +757,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r13-support-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r13-support.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --retries=0 \
@@ -750,6 +785,9 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r14-budget-authority-report
         run: |
+          # Independent suites share one loopback login IP in disposable CI.
+          # Expire only rate counters between suites; keep limits and sessions.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r14-budget-authority.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --retries=0 \
@@ -804,6 +842,8 @@ jobs:
           E2E_REPLICA_B_WEB: http://127.0.0.1:4175
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r17-a-messaging-report
         run: |
+          # Preserve the same suite-boundary isolation for the new base gate.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r17-messaging-cross-instance.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --retries=0 \
@@ -1002,6 +1042,29 @@ jobs:
             /tmp/preview.log
           retention-days: 14
           if-no-files-found: warn
+
+      # Keep the complete evidence above. These existing synthetic screenshots
+      # also need a small independent archive for human visual inspection in
+      # clients with bounded artifact-transfer sizes. No logs, traces or auth
+      # material are copied into this review sample.
+      - name: Upload inspectable Admin visual samples
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: admin-review-visual-samples
+          path: |
+            apps/web/test-results/admin-real-api/**/tabs-v1-ar-light-390-BASICS_IDENTITY.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-ar-dark-320-BASICS_IDENTITY.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-en-light-1440-BASICS_IDENTITY.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-en-dark-1024-BASICS_IDENTITY.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-ar-light-390-PORTFOLIO.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-en-dark-1440-PORTFOLIO.png
+            apps/web/test-results/admin-real-api/**/tabs-v1-ar-light-390-REVIEW_SUBMISSION.png
+            apps/web/test-results/admin-real-api/**/identity-replaced-and-current-real-api.png
+            apps/web/test-results/admin-real-api/**/portfolio-inspection-ar-light-390.png
+            apps/web/test-results/admin-real-api/**/portfolio-real-revision-conflict.png
+          retention-days: 14
+          if-no-files-found: error
 
   # ── cookies / CSRF / refresh / logout, in a REAL browser ──────────────────
   # These behaviours are defined by rules only a browser implements: HttpOnly

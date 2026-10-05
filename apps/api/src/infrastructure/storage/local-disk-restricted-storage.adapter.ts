@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createReadStream } from 'node:fs';
-import { copyFile, mkdir, rename, rm, stat } from 'node:fs/promises';
+import { copyFile, link, mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { dirname, join, normalize, sep } from 'node:path';
 import type { Readable } from 'node:stream';
 
 import { AppConfigService } from '../../config/app-config.service';
 import {
   RestrictedObjectStoragePort,
+  RestrictedObjectAlreadyExistsError,
   type RestrictedObjectMetadata,
   type RestrictedErasureReceipt,
 } from './restricted-object-storage.port';
@@ -38,16 +39,29 @@ export class LocalDiskRestrictedStorageAdapter extends RestrictedObjectStoragePo
     const target = this.absolutePathForKey(input.key);
     await mkdir(dirname(target), { recursive: true });
 
-    // rename() is atomic within a filesystem, so a reader can never observe a
-    // half-written object: the key either does not resolve, or resolves to the
-    // complete file. Falls back to copy+unlink across devices, where the
-    // staging dir is on a different mount from the storage root.
+    // A hard link publishes complete bytes atomically AND refuses an existing
+    // key. rename() overwrites, allowing a slow concurrent PUT to replace an
+    // already-finalized, scanned document. For separate filesystems, copy into
+    // a private staging directory on the destination mount before linking.
+    let destinationStage: string | undefined;
     try {
-      await rename(input.sourcePath, target);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code !== 'EXDEV') throw err;
-      await copyFile(input.sourcePath, target);
+      try {
+        await link(input.sourcePath, target);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code !== 'EXDEV') throw err;
+        destinationStage = await mkdtemp(join(dirname(target), '.evidence-stage-'));
+        const completeCopy = join(destinationStage, 'complete.bin');
+        await copyFile(input.sourcePath, completeCopy);
+        await link(completeCopy, target);
+      }
       await rm(input.sourcePath, { force: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === 'EEXIST') {
+        throw new RestrictedObjectAlreadyExistsError();
+      }
+      throw err;
+    } finally {
+      if (destinationStage) await rm(destinationStage, { recursive: true, force: true });
     }
 
     // Size only. No key, no filename, no content.

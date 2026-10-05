@@ -19,6 +19,7 @@ import {
 import request from 'supertest';
 
 import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { MemoryRestrictedEvidenceStorage } from '../support/memory-restricted-evidence';
 
 // Sprint 9B.7 — the enforcement flags turned ON, over real HTTP, against a real
 // database.
@@ -87,6 +88,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   const PP = `${P}pp`;
   const POLICY = `2099.08-${P.replace(/-$/, '')}-v1`;
   const CATEGORY = `${P}cat`;
+  const restrictedStorage = new MemoryRestrictedEvidenceStorage();
   let locks: HeldLock | undefined;
   const REQS = {
     policyVersion: POLICY,
@@ -141,15 +143,16 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
       },
     });
     const assetId = `${P}asset${seq}`;
+    const storageKey = `verification/${caseId}/${assetId}.png`;
+    const stored = restrictedStorage.seed(storageKey);
     await prisma.mediaAsset.create({
       data: {
         id: assetId,
         visibility: 'RESTRICTED',
-        storageKey: `verification/${caseId}/${assetId}.pdf`,
-        declaredMimeType: 'application/pdf',
-        detectedMimeType: 'application/pdf',
-        sizeBytes: 10,
-        sha256: 'b'.repeat(64),
+        storageKey,
+        declaredMimeType: 'image/png',
+        detectedMimeType: 'image/png',
+        ...stored,
         scanState: 'CLEAN',
         ownerUserId: OWNER,
         verificationCaseId: caseId,
@@ -169,6 +172,7 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
   }
 
   async function cleanupFixtures(): Promise<void> {
+    restrictedStorage.reset();
     await prisma.notification.deleteMany({ where: { userId: { startsWith: P } } });
     await prisma.auditEvent.deleteMany({ where: { userId: { startsWith: P } } });
     await prisma.outboxEvent.deleteMany({ where: { aggregateId: { startsWith: P } } });
@@ -227,6 +231,12 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
       VerificationCaseWorkflowService,
     } = require('../../src/modules/provider/verification/case/verification-case-workflow.service');
     const {
+      EvidenceAvailabilityService,
+    } = require('../../src/modules/provider/verification/media/evidence-availability.service');
+    const {
+      RESTRICTED_OBJECT_STORAGE,
+    } = require('../../src/infrastructure/storage/restricted-object-storage.port');
+    const {
       VerificationExpiryService,
     } = require('../../src/modules/provider/verification/expiry/verification-expiry.service');
     const {
@@ -250,6 +260,9 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
     const {
       PermissionsGuard,
     } = require('../../src/modules/iam/authorization/guards/permissions.guard');
+    const {
+      PermissionResolverService,
+    } = require('../../src/modules/iam/authorization/services/permission-resolver.service');
     const { RolesGuard } = require('../../src/modules/iam/authorization/guards/roles.guard');
     const { AppConfigService } = require('../../src/config/app-config.service');
 
@@ -267,6 +280,8 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
       controllers: [AdminVerificationCaseCommandsController, WorkProbeController],
       providers: [
         VerificationCaseWorkflowService,
+        EvidenceAvailabilityService,
+        { provide: RESTRICTED_OBJECT_STORAGE, useValue: restrictedStorage },
         VerificationExpiryService,
         ProviderCapabilityService,
         ProviderActiveGuard,
@@ -278,6 +293,10 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
         AuditService,
         AuditEventRepository,
         OutboxRepository,
+        {
+          provide: PermissionResolverService,
+          useValue: { resolveFreshForUser: async () => new Set(permissions) },
+        },
         { provide: PrismaService, useValue: { client: prisma, isReady: () => true } },
         { provide: AppConfigService, useValue: config },
         { provide: 'AppConfigService', useValue: config },
@@ -425,6 +444,28 @@ d('Work-access enforcement with the flags ON (real Postgres, real routes)', () =
     // And the flags did not quietly become a verification state either.
     const profile = await profileRow();
     expect(profile.verificationState).not.toBe('VERIFIED');
+  });
+
+  it('keeps work denied when clean evidence metadata points to absent stored bytes', async () => {
+    const caseId = await seedCase();
+    const asset = await prisma.mediaAsset.findFirst({ where: { verificationCaseId: caseId } });
+    await restrictedStorage.deleteObject(asset.storageKey);
+    currentUser = { id: REVIEWER };
+    permissions = new Set(['verification:decide', 'verification:evidence:view']);
+
+    const refused = await approve(caseId);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.details.reason).toBe('EVIDENCE_OBJECT_UNAVAILABLE');
+    expect(await grantsOf()).toEqual([]);
+    expect(await prisma.verificationDecision.count({ where: { caseId } })).toBe(0);
+    expect((await profileRow()).verificationState).toBe('UNVERIFIED');
+    expect((await prisma.mediaAsset.findUnique({ where: { id: asset.id } })).scanState).toBe(
+      'CLEAN',
+    );
+    expect(restrictedStorage.headCalls).toEqual([asset.storageKey]);
+    expect(restrictedStorage.readCalls).toEqual([]);
+    currentUser = { id: OWNER };
+    expect((await work()).status).toBe(403);
   });
 
   it('approval opens work access, and the grant carries a real expiry', async () => {

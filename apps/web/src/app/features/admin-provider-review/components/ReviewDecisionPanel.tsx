@@ -8,7 +8,13 @@ import type {
 } from '@homeservicemarketplace/contracts';
 import { approveProviderReview, requestProviderReviewChanges, requestStatus } from '../api';
 import { BLOCKER_LABELS, REVIEW_COPY, TASK_LABELS, type ReviewLanguage } from '../copy';
-import { ReviewBadge, ReviewBanner } from './ReviewPrimitives';
+import { ReviewBadge, ReviewBanner, StatusBadge } from './ReviewPrimitives';
+import { formatReviewDate } from '../format-review-date';
+import {
+  EVIDENCE_CONFLICT_COPY,
+  evidenceConflictReason,
+  type EvidenceConflictReason,
+} from '../evidence/evidence-review-copy';
 import { ReviewDialog } from './ReviewDialog';
 import { reviewCorrectionFieldLabel } from '../../provider-onboarding-v2/copy/review-correction-fields';
 import {
@@ -37,9 +43,10 @@ export function ReviewDecisionPanel({
   onDecided: (response: AdminProviderReviewMutationResponse) => void;
 }) {
   const t = REVIEW_COPY[lang];
-  const pausedMessage = lang === 'ar'
-    ? 'القرارات متوقفة حتى نجاح تحديث الملف. النصوص غير المرسلة باقية في هذه الصفحة.'
-    : 'Decisions are paused until the file refresh succeeds. Unsent text remains on this page.';
+  const pausedMessage =
+    lang === 'ar'
+      ? 'القرارات متوقفة حتى نجاح تحديث الملف. النصوص غير المرسلة باقية في هذه الصفحة.'
+      : 'Decisions are paused until the file refresh succeeds. Unsent text remains on this page.';
   const [note, setNote] = useState('');
   const [corrections, setCorrections] = useState<AdminProviderReviewFeedbackInput[]>([
     blankCorrection(),
@@ -52,6 +59,7 @@ export function ReviewDecisionPanel({
     submissionId: string;
   } | null>(null);
   const [error, setError] = useState<number | null>(null);
+  const [conflictReason, setConflictReason] = useState<EvidenceConflictReason | null>(null);
   const [invalid, setInvalid] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -146,6 +154,7 @@ export function ReviewDecisionPanel({
       attempt.current = null;
     } catch (failure) {
       setError(requestStatus(failure) ?? 500);
+      setConflictReason(evidenceConflictReason(failure));
     }
   }
   const capabilityLabels: Record<string, string> = {
@@ -162,6 +171,17 @@ export function ReviewDecisionPanel({
           <ShieldCheck size={22} aria-hidden className="ar-muted" />
         </div>
         <p className="ar-muted">{t.decisionHint}</p>
+        {review.submission?.decision && (
+          <div className="ar-stack ar-decision-receipt" data-testid="review-recorded-decision">
+            <span className="ar-muted">{t.applicationDecision}</span>
+            <StatusBadge value={review.submission.decision} lang={lang} />
+            {review.submission.decidedAt && (
+              <small className="ar-muted">
+                {formatReviewDate(review.submission.decidedAt, lang, t.notCaptured)}
+              </small>
+            )}
+          </div>
+        )}
         {readOnly && (
           <ReviewBanner role="status" tone="warning">
             {pausedMessage}
@@ -174,7 +194,13 @@ export function ReviewDecisionPanel({
         )}
         {review.blockers.length ? (
           <div>
-            <h3 className="ar-subheading">{t.blockers}</h3>
+            <h3 className="ar-subheading">
+              {review.submission?.decision
+                ? lang === 'ar'
+                  ? 'حالة المراجعة الحالية'
+                  : 'Current review status'
+                : t.blockers}
+            </h3>
             <ul className="ar-blockers">
               {review.blockers.map((blocker, index) => (
                 <li key={`${blocker.code}-${index}`}>
@@ -189,7 +215,7 @@ export function ReviewDecisionPanel({
             </ul>
           </div>
         ) : (
-          !!review.availableActions.length && (
+          review.availableActions.includes('approve') && (
             <ReviewBadge tone="success">
               <Check size={15} aria-hidden />
               {t.ready}
@@ -272,7 +298,11 @@ export function ReviewDecisionPanel({
         description={selection?.action === 'approve' ? t.confirmApprovalHint : t.confirmChangesHint}
         openerRef={openerRef}
       >
-        {readOnly && <ReviewBanner tone="warning" role="status">{pausedMessage}</ReviewBanner>}
+        {readOnly && (
+          <ReviewBanner tone="warning" role="status">
+            {pausedMessage}
+          </ReviewBanner>
+        )}
         {selection?.action === 'approve' ? (
           <label className="ar-check">
             <input
@@ -439,7 +469,13 @@ export function ReviewDecisionPanel({
         {error && (
           <div data-testid={error === 409 ? 'review-conflict' : 'review-command-error'}>
             <ReviewBanner tone="danger" role="alert">
-              {error === 409 ? t.conflict : error === 403 ? t.noActions : t.mutationFailed}
+              {error === 409
+                ? conflictReason
+                  ? EVIDENCE_CONFLICT_COPY[lang][conflictReason]
+                  : t.conflict
+                : error === 403
+                  ? t.noActions
+                  : t.mutationFailed}
             </ReviewBanner>
           </div>
         )}

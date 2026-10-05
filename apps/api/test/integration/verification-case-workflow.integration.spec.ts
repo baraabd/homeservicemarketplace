@@ -11,6 +11,7 @@ import { CanActivate, ExecutionContext, INestApplication, VersioningType } from 
 import request from 'supertest';
 
 import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { MemoryRestrictedEvidenceStorage } from '../support/memory-restricted-evidence';
 
 // Sprint 9B.5 — the case workflow over real HTTP against a real database.
 //
@@ -62,6 +63,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
   const CASE_ID = `${P}case`;
   const POLICY = `2099.08-${P.replace(/-$/, '')}-v1`;
   const CATEGORY = `${P}cat`;
+  const restrictedStorage = new MemoryRestrictedEvidenceStorage();
   let locks: HeldLock | undefined;
   const REQS = {
     policyVersion: POLICY,
@@ -90,15 +92,16 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       },
     });
     const assetId = `${P}asset`;
+    const storageKey = `verification/${CASE_ID}/${assetId}.png`;
+    const stored = restrictedStorage.seed(storageKey);
     await prisma.mediaAsset.create({
       data: {
         id: assetId,
         visibility: 'RESTRICTED',
-        storageKey: `verification/${CASE_ID}/${assetId}.pdf`,
-        declaredMimeType: 'application/pdf',
-        detectedMimeType: 'application/pdf',
-        sizeBytes: 10,
-        sha256: 'a'.repeat(64),
+        storageKey,
+        declaredMimeType: 'image/png',
+        detectedMimeType: 'image/png',
+        ...stored,
         scanState: cleanEvidence ? 'CLEAN' : 'PENDING',
         ownerUserId: OWNER,
         verificationCaseId: CASE_ID,
@@ -118,6 +121,7 @@ d('Verification case workflow (real Postgres, real routes)', () => {
 
   /** Fixtures only — never the policy, which cases reference by foreign key. */
   async function cleanupFixtures(): Promise<void> {
+    restrictedStorage.reset();
     await prisma.notification.deleteMany({ where: { userId: { startsWith: P } } });
     await prisma.auditEvent.deleteMany({ where: { userId: { startsWith: P } } });
     await prisma.outboxEvent.deleteMany({ where: { aggregateId: { startsWith: P } } });
@@ -185,6 +189,12 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       VerificationCaseWorkflowService,
     } = require('../../src/modules/provider/verification/case/verification-case-workflow.service');
     const {
+      EvidenceAvailabilityService,
+    } = require('../../src/modules/provider/verification/media/evidence-availability.service');
+    const {
+      RESTRICTED_OBJECT_STORAGE,
+    } = require('../../src/infrastructure/storage/restricted-object-storage.port');
+    const {
       ProviderVerificationCaseController,
     } = require('../../src/modules/provider/verification/case/provider-verification-case.controller');
     const {
@@ -207,6 +217,9 @@ d('Verification case workflow (real Postgres, real routes)', () => {
     const {
       PermissionsGuard,
     } = require('../../src/modules/iam/authorization/guards/permissions.guard');
+    const {
+      PermissionResolverService,
+    } = require('../../src/modules/iam/authorization/services/permission-resolver.service');
 
     const config = { get: () => undefined, isProduction: false };
 
@@ -214,6 +227,8 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       controllers: [ProviderVerificationCaseController, AdminVerificationCaseCommandsController],
       providers: [
         VerificationCaseWorkflowService,
+        EvidenceAvailabilityService,
+        { provide: RESTRICTED_OBJECT_STORAGE, useValue: restrictedStorage },
         AdminVerificationQueueService,
         AdminVerificationCaseService,
         VerificationSettingsService,
@@ -223,6 +238,10 @@ d('Verification case workflow (real Postgres, real routes)', () => {
         AuditService,
         AuditEventRepository,
         OutboxRepository,
+        {
+          provide: PermissionResolverService,
+          useValue: { resolveFreshForUser: async () => new Set(permissions) },
+        },
         { provide: PrismaService, useValue: { client: prisma, isReady: () => true } },
         // Sprint 9B.8 — ProviderCapabilityGuard now gates these routes and
         // needs this service. A SET rather than a blanket allow: these suites
@@ -621,6 +640,8 @@ d('Verification case workflow (real Postgres, real routes)', () => {
       const text = JSON.stringify(notes);
       expect(text).not.toContain('SENTINELREJECT');
       expect(text).not.toContain('SUSPECTED_FORGERY');
+      expect(restrictedStorage.headCalls).toEqual([]);
+      expect(restrictedStorage.readCalls).toEqual([]);
     });
 
     it('refuses without a reason', async () => {
@@ -720,6 +741,61 @@ d('Verification case workflow (real Postgres, real routes)', () => {
 
       const decisions = await prisma.verificationDecision.findMany({ where: { caseId: CASE_ID } });
       expect(decisions[0]).toMatchObject({ outcome: 'APPROVED', toState: 'VERIFIED' });
+      expect(restrictedStorage.headCalls).toEqual([`verification/${CASE_ID}/${P}asset.png`]);
+      expect(restrictedStorage.readCalls).toEqual([]);
+    });
+
+    it.each(['missing', 'truncated'] as const)(
+      'does not approve %s stored evidence even when its database scan verdict is CLEAN',
+      async (failure) => {
+        await seedCase('IN_REVIEW');
+        currentUser = { id: REVIEWER };
+        permissions = new Set(['verification:decide', 'verification:evidence:view']);
+        const key = `verification/${CASE_ID}/${P}asset.png`;
+        if (failure === 'missing') await restrictedStorage.deleteObject(key);
+        else restrictedStorage.objects.set(key, restrictedStorage.objects.get(key)!.subarray(0, 8));
+
+        const res = await request(http)
+          .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+          .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+
+        expect(res.status).toBe(409);
+        expect(res.body.error.details.reason).toBe('EVIDENCE_OBJECT_UNAVAILABLE');
+        expect(await stateOf()).toBe('IN_REVIEW');
+        expect(await prisma.verificationDecision.count({ where: { caseId: CASE_ID } })).toBe(0);
+        expect(
+          await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } }),
+        ).toBe(0);
+        expect(await prisma.notification.count({ where: { userId: OWNER } })).toBe(0);
+        expect((await prisma.mediaAsset.findUnique({ where: { id: `${P}asset` } })).scanState).toBe(
+          'CLEAN',
+        );
+        expect(restrictedStorage.headCalls).toEqual([key]);
+        expect(restrictedStorage.readCalls).toEqual([]);
+      },
+    );
+
+    it('replays an existing approval without probing evidence storage again', async () => {
+      await seedCase('IN_REVIEW');
+      currentUser = { id: REVIEWER };
+      permissions = new Set(['verification:decide', 'verification:evidence:view']);
+      const call = () =>
+        request(http)
+          .post(`/v1/admin/verification/cases/${CASE_ID}/approve`)
+          .send({ reasonCode: 'DOCUMENTS_COMPLETE_AND_LEGIBLE' });
+      expect((await call()).status).toBe(200);
+      const probes = [...restrictedStorage.headCalls];
+      await restrictedStorage.deleteObject(`verification/${CASE_ID}/${P}asset.png`);
+
+      const replay = await call();
+      expect(replay.status).toBe(200);
+      expect(replay.body.changed).toBe(false);
+      expect(restrictedStorage.headCalls).toEqual(probes);
+      expect(restrictedStorage.readCalls).toEqual([]);
+      expect(await prisma.verificationDecision.count({ where: { caseId: CASE_ID } })).toBe(1);
+      expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
+        1,
+      );
     });
 
     it('two concurrent approvals produce ONE decision and ONE grant', async () => {

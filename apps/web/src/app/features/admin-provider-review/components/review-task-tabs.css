@@ -1,14 +1,15 @@
 /* Versioned Admin review layout: semantic tabs, not a long anchor-linked page. */
 .ar-review-tabs { scroll-margin-block-start: var(--admin-header-offset, 100px); }
-.ar-review-tabs-header { display: grid; gap: 16px; padding: 16px; }
+.ar-review-tabs-header { display: grid; gap: 16px; padding: 16px; container-type: inline-size; container-name: ar-review-tabs; }
 .ar-review-tabs-header .ar-subheader { flex-wrap: wrap; }
 .ar-review-tab-position { font-size: 12px; white-space: nowrap; }
-.ar-review-tab-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
-.ar-review-tab { display: flex; align-items: center; gap: 8px; min-height: 52px; min-width: 0; padding: 10px; border: 1px solid var(--ar-border); border-radius: 12px; background: var(--ar-surface); color: var(--ar-muted); font: inherit; font-weight: 650; line-height: 1.5; text-align: start; overflow-wrap: anywhere; cursor: pointer; }
+.ar-review-tab-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+.ar-review-tab { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 52px; min-width: 0; padding: 10px; border: 1px solid var(--ar-border); border-radius: 12px; background: var(--ar-surface); color: var(--ar-muted); font: inherit; font-weight: 650; line-height: 1.5; text-align: start; overflow-wrap: normal; word-break: normal; hyphens: none; cursor: pointer; }
 .ar-review-tab > svg { flex-shrink: 0; }
+.ar-review-tab > span:not(.ar-review-tab-count) { flex: 1 1 0; min-width: min-content; }
 .ar-review-tab:hover { background: var(--ar-sunken); }
 .ar-review-tab[data-state='active'] { background: var(--ar-accent-fill); color: var(--ar-accent); border-color: var(--ar-accent); box-shadow: inset 0 -3px 0 var(--ar-accent); }
-.ar-review-tab-count { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; min-height: 22px; margin-inline-start: auto; border-radius: 6px; background: var(--ar-accent-fill); color: var(--ar-accent); font-size: 12px; }
+.ar-review-tab-count { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; min-width: 22px; min-height: 22px; margin-inline-start: auto; border-radius: 6px; background: var(--ar-accent-fill); color: var(--ar-accent); font-size: 12px; }
 .ar-review-tabs-hint { font-size: 13px; margin: 0; }
 .ar-review-tab-issues { margin: 0; padding-inline-start: 20px; color: var(--ar-accent); font-size: 13px; }
 .ar-review-tab-panel { min-width: 0; scroll-margin-block-start: var(--admin-header-offset, 100px); }
@@ -17,8 +18,14 @@
 .ar-review-tab-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
 .ar-review-tab-actions > button { flex: 1; min-width: 0; }
 .ar-review-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+/* The decision rail changes this panel's width independently of the viewport. */
+@container ar-review-tabs (min-width: 280px) {
+  .ar-review-tab-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container ar-review-tabs (min-width: 480px) {
+  .ar-review-tab-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (min-width: 640px) {
   .ar-review-tabs-header { padding: 20px; }
-  .ar-review-tab-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ar-review-tab-actions > button { flex: 0 1 auto; }
 }

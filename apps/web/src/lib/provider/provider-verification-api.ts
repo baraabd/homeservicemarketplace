@@ -73,6 +73,7 @@ export async function uploadEvidence(
       serviceCategoryId: input.serviceCategoryId ?? null,
       declaredMimeType: input.file.type,
       sizeBytes: input.file.size,
+      filename: input.file.name,
     },
   );
 

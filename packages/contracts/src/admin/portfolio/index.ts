@@ -5,7 +5,11 @@ export interface AdminPortfolioItem extends ProviderPortfolioItem {
   revision: number;
   updatedAt: string;
   moderatedAt: string | null;
-  reviewBlockedReason: 'MEDIA_MIGRATION_REQUIRED' | 'PUBLICATION_ACK_REQUIRED' | null;
+  reviewBlockedReason:
+    | 'MEDIA_MIGRATION_REQUIRED'
+    | 'MEDIA_UNAVAILABLE'
+    | 'PUBLICATION_ACK_REQUIRED'
+    | null;
   availableActions: Array<'APPROVE' | 'REJECT'>;
   /** Most recent 200 events across this gallery; no reviewer PII or storage keys. */
   history: Array<{

@@ -88,9 +88,13 @@ export function reviewFixture(): AdminProviderReviewData {
         updatedAt: now,
         mediaAsset: {
           id: 'media-1',
+          storageKey: 'verification/case-1/media-1.pdf',
+          sizeBytes: 100,
           scanState: 'CLEAN',
           visibility: 'RESTRICTED',
           deletedAt: null,
+          erasureStartedAt: null,
+          retainUntil: null,
           uploadCompletedAt: now,
           sha256: 'hash',
           updatedAt: now,

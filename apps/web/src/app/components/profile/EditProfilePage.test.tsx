@@ -608,9 +608,14 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
       expect(screen.getByTestId('skill-pill-plumbing')).toBeInTheDocument();
       expect(screen.getByTestId('skill-pill-electrical')).toBeInTheDocument();
     });
-    // Plumbing is currently selected (aria-pressed=true); electrical is not.
-    expect(screen.getByTestId('skill-pill-plumbing').getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByTestId('skill-pill-electrical').getAttribute('aria-pressed')).toBe('false');
+    // The catalog and saved profile arrive independently. Wait for the saved
+    // selection as well, rather than asserting as soon as the catalog renders.
+    await waitFor(() => {
+      expect(screen.getByTestId('skill-pill-plumbing').getAttribute('aria-pressed')).toBe('true');
+      expect(screen.getByTestId('skill-pill-electrical').getAttribute('aria-pressed')).toBe(
+        'false',
+      );
+    });
   });
 
   it('does NOT render the skills picker in seeker context, even when the user has the provider role (regression for dual-role bleed)', async () => {

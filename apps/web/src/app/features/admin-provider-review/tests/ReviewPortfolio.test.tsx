@@ -60,6 +60,80 @@ afterEach(() => {
 });
 
 describe('private portfolio inspection', () => {
+  it('does not let a listed replacement reason override fresh media authorization denial', async () => {
+    mock.onGet(ROOT).reply(200, {
+      items: [{ ...item, reviewBlockedReason: 'MEDIA_UNAVAILABLE', availableActions: ['REJECT'] }],
+    });
+    mock.onGet(`${ROOT}/image-1/media`).reply(403);
+    setup();
+    fireEvent.click(await screen.findByTestId('review-portfolio-open-image-1'));
+    await screen.findByText('The image could not be opened.');
+    expect(screen.getByRole('button', { name: 'Reject image' })).toBeDisabled();
+    expect(mock.history.patch).toHaveLength(0);
+  });
+  it('enables approval only after the inspected image is displayed and submits that revision', async () => {
+    mock
+      .onPatch(`${ROOT}/image-1/review`)
+      .reply(200, { ...item, moderationState: 'APPROVED', revision: 4 });
+    setup();
+    fireEvent.click(await screen.findByTestId('review-portfolio-open-image-1'));
+    const image = await screen.findByRole('img');
+    expect(screen.getByRole('button', { name: 'Approve image' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve image' }));
+    expect(screen.queryByTestId('review-portfolio-confirm')).not.toBeInTheDocument();
+    fireEvent.load(image);
+    expect(screen.getByRole('button', { name: 'Approve image' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve image' }));
+    fireEvent.click(screen.getByTestId('review-portfolio-confirm'));
+    await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+    expect(JSON.parse(mock.history.patch[0].data)).toEqual({
+      action: 'APPROVE',
+      expectedRevision: 3,
+    });
+  });
+  it('blocks approval for undecodable bytes and requires a fresh displayed preview after retry', async () => {
+    setup();
+    fireEvent.click(await screen.findByTestId('review-portfolio-open-image-1'));
+    fireEvent.error(await screen.findByRole('img'));
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve image' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Reject image' })).toBeEnabled();
+    expect(screen.getByRole('alert')).toHaveTextContent('The image could not be opened.');
+    fireEvent.click(screen.getByTestId('review-portfolio-media-retry'));
+    const image = await screen.findByRole('img');
+    expect(screen.getByRole('button', { name: 'Approve image' })).toBeDisabled();
+    fireEvent.load(image);
+    expect(screen.getByRole('button', { name: 'Approve image' })).toBeEnabled();
+    expect(mock.history.get.filter((request) => request.url?.endsWith('/media'))).toHaveLength(2);
+    expect(mock.history.patch).toHaveLength(0);
+  });
+  it.each(['MEDIA_UNAVAILABLE', null] as const)(
+    'lets reviewers reject missing media with replacement instructions (listed reason: %s)',
+    async (listedReason) => {
+      mock.onGet(ROOT).reply(200, {
+        items: [{ ...item, reviewBlockedReason: listedReason, availableActions: ['REJECT'] }],
+      });
+      mock.onGet(`${ROOT}/image-1/media`).reply(404);
+      mock
+        .onPatch(`${ROOT}/image-1/review`)
+        .reply(200, { ...item, moderationState: 'REJECTED', revision: 4 });
+      setup();
+      fireEvent.click(await screen.findByTestId('review-portfolio-open-image-1'));
+      await screen.findByText('The image could not be opened.');
+      expect(screen.queryByRole('button', { name: 'Approve image' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Reject image' }));
+      fireEvent.change(screen.getByRole('textbox'), {
+        target: { value: 'Please upload a readable replacement image.' },
+      });
+      fireEvent.click(screen.getByTestId('review-portfolio-confirm'));
+      await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+      expect(JSON.parse(mock.history.patch[0].data)).toEqual({
+        action: 'REJECT',
+        expectedRevision: 3,
+        reason: 'Please upload a readable replacement image.',
+      });
+    },
+  );
   it('loads bytes only after an explicit open, never caches them, and revokes the preview on close', async () => {
     setup();
     const open = await screen.findByTestId('review-portfolio-open-image-1');

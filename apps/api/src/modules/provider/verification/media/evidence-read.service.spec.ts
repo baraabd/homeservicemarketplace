@@ -28,7 +28,15 @@ function makeService(doc: Record<string, unknown> | null, opts: { auditThrows?: 
   return { service: new EvidenceReadService(prisma), create };
 }
 
-function doc(over: { scanState?: string; deletedAt?: Date | null; visibility?: string } = {}) {
+function doc(
+  over: {
+    scanState?: string;
+    deletedAt?: Date | null;
+    visibility?: string;
+    erasureStartedAt?: Date | null;
+    retainUntil?: Date | null;
+  } = {},
+) {
   return {
     id: 'doc-1',
     caseId: 'case-1',
@@ -39,6 +47,8 @@ function doc(over: { scanState?: string; deletedAt?: Date | null; visibility?: s
       visibility: over.visibility ?? 'RESTRICTED',
       scanState: over.scanState ?? 'CLEAN',
       deletedAt: over.deletedAt ?? null,
+      erasureStartedAt: over.erasureStartedAt ?? null,
+      retainUntil: over.retainUntil ?? null,
       detectedMimeType: 'application/pdf',
       sizeBytes: 1234,
       originalFilename: 'passport.pdf',
@@ -220,6 +230,32 @@ describe('every attempt is audited', () => {
 });
 
 describe('durable audit before identity disclosure', () => {
+  it.each(['expired retention', 'erasure in progress'])(
+    'audits and withholds clean bytes for %s',
+    async (condition) => {
+      const row = doc(
+        condition === 'expired retention'
+          ? { retainUntil: new Date(0) }
+          : { erasureStartedAt: new Date() },
+      );
+      const { service, create } = makeService(row);
+      await expect(
+        service.authorizeRead({
+          ...base,
+          actorUserId: REVIEWER,
+          actorHasEvidenceViewPermission: true,
+        }),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          outcome: 'DENIED_EVIDENCE_RETENTION_BLOCKED',
+          actorUserId: REVIEWER,
+          caseId: 'case-1',
+        }),
+      });
+    },
+  );
+
   it('withholds protected bytes when the audit write throws', async () => {
     // Admin review requires a durable record before disclosure. This replaces
     // the prior best-effort audit policy; authorization alone is insufficient.

@@ -448,6 +448,8 @@ export const BLOCKER_LABELS: Record<ReviewLanguage, Record<string, string>> = {
     ACCOUNT_INELIGIBLE: 'The account is not eligible for work.',
     PROVIDER_RESTRICTED: 'A provider restriction must be resolved.',
     NOT_SUBMITTED: 'No application has been submitted.',
+    REVIEW_NOT_PENDING:
+      'This application is not currently awaiting an administrative decision. Check its current state before continuing.',
     SUBMISSION_ALREADY_DECIDED: 'This submission already has a decision.',
     SNAPSHOT_UNAVAILABLE: 'A complete submitted snapshot is required.',
     SUBMITTED_CONTENT_CHANGED:
@@ -464,6 +466,8 @@ export const BLOCKER_LABELS: Record<ReviewLanguage, Record<string, string>> = {
     ACCOUNT_INELIGIBLE: 'الحساب غير مؤهل للعمل.',
     PROVIDER_RESTRICTED: 'يجب معالجة القيد المفروض على المهني.',
     NOT_SUBMITTED: 'لم يُرسل طلب للمراجعة.',
+    REVIEW_NOT_PENDING:
+      'هذا الطلب لا ينتظر قرارًا إداريًا حاليًا. راجع حالته الحالية قبل المتابعة.',
     SUBMISSION_ALREADY_DECIDED: 'صدر قرار بشأن هذا الطلب مسبقًا.',
     SNAPSHOT_UNAVAILABLE: 'يلزم وجود نسخة كاملة من الطلب المُرسل.',
     SUBMITTED_CONTENT_CHANGED:

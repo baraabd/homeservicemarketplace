@@ -25,6 +25,7 @@ import {
   ReviewSection,
   StatusBadge,
 } from './ReviewPrimitives';
+import { EVIDENCE_REVIEW_COPY } from '../evidence/evidence-review-copy';
 
 const TASKS: AdminProviderReviewTaskId[] = [
   'BASICS_IDENTITY',
@@ -81,6 +82,7 @@ export function ReviewDossier({
   submittedSource: boolean;
 }) {
   const t = REVIEW_COPY[lang];
+  const evidenceCopy = EVIDENCE_REVIEW_COPY[lang];
   const p = snapshot?.profile;
   const equipment = useEquipmentCatalog();
   const equipmentName = (code: string) => {
@@ -345,50 +347,58 @@ export function ReviewDossier({
               {text(p?.additionalInformation)}
             </ReviewField>
           </dl>
-          <div>
-            <h3 className="ar-subheading">
-              {submittedSource ? t.snapshotItems : t.galleryCurrent}
-            </h3>
-            <p className="ar-muted">{submittedSource ? t.galleryHistoric : t.currentHint}</p>
-            {snapshot ? (
-              snapshot.portfolio.length ? (
-                <ul className="ar-list">
-                  {snapshot.portfolio.map((item, index) => (
-                    <li className="ar-list-row" key={item.id}>
-                      <div>
-                        <strong>
-                          <bdi dir="auto">{item.title || `${t.order} ${index + 1}`}</bdi>
-                        </strong>
-                        <p>
-                          <bdi dir="auto">{item.description}</bdi>
-                        </p>
-                        <p className="ar-muted">{serviceName(item.serviceCategoryId)}</p>
-                        <small className="ar-muted">
-                          {t.publicationAck}: {date(item.publicationRightAckAt)}
-                          {item.publicationRightAckVersion && (
-                            <>
-                              {' · '}
-                              {item.publicationRightAckVersion === LEGACY_PUBLICATION_ACK_TEXT ? (
-                                t.legacyPublicationAck
-                              ) : (
-                                <bdi dir="ltr">{item.publicationRightAckVersion}</bdi>
-                              )}
-                            </>
-                          )}
-                        </small>
-                      </div>
-                      <StatusBadge value={item.moderationState} lang={lang} />
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <ReviewBanner>{t.galleryEmpty}</ReviewBanner>
-              )
-            ) : (
-              <p className="ar-muted">{empty}</p>
-            )}
-          </div>
           {portfolio}
+          {submittedSource && (
+            <details className="ar-evidence-history" data-testid="review-submitted-portfolio">
+              <summary className="ar-disclosure">
+                {evidenceCopy.historical} ({snapshot?.portfolio.length.toLocaleString(lang) ?? '0'})
+              </summary>
+              <p className="ar-muted">{t.galleryHistoric}</p>
+              {snapshot ? (
+                snapshot.portfolio.length ? (
+                  <ul className="ar-list">
+                    {snapshot.portfolio.map((item, index) => (
+                      <li className="ar-list-row" key={item.id}>
+                        <div>
+                          <strong>
+                            <bdi dir="auto">{item.title || `${t.order} ${index + 1}`}</bdi>
+                          </strong>
+                          {item.description && (
+                            <p>
+                              <bdi dir="auto">{item.description}</bdi>
+                            </p>
+                          )}
+                          <p className="ar-muted">
+                            {item.serviceCategoryId
+                              ? serviceName(item.serviceCategoryId)
+                              : evidenceCopy.unnamedCategory}
+                          </p>
+                          <small className="ar-muted">
+                            {t.publicationAck}: {date(item.publicationRightAckAt)}
+                            {item.publicationRightAckVersion && (
+                              <>
+                                {' · '}
+                                {item.publicationRightAckVersion === LEGACY_PUBLICATION_ACK_TEXT ? (
+                                  t.legacyPublicationAck
+                                ) : (
+                                  <bdi dir="ltr">{item.publicationRightAckVersion}</bdi>
+                                )}
+                              </>
+                            )}
+                          </small>
+                        </div>
+                        <StatusBadge value={item.moderationState} lang={lang} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <ReviewBanner>{t.galleryEmpty}</ReviewBanner>
+                )
+              ) : (
+                <p className="ar-muted">{empty}</p>
+              )}
+            </details>
+          )}
         </div>,
       )}
       {section(
