@@ -42,6 +42,38 @@ that owns it reproduces it before changing code.
 | B-9  | Admin bell count is the page length; no producer writes admin notifications.                                                                                                             | DEMONSTRATED_DEFECT (pending reproduction)                  | reported         |
 | B-10 | Account switch: query keys carry no user id; isolation depends on `clearAuthSession`, wired to expiry and credential reset — login-as-another-user path unverified.                      | IMPLEMENTED_EVIDENCE_MISSING                                | reported         |
 
+### R17-B results (base `e1f7f51`; details in `R17_B_NOTIFICATIONS.md`)
+
+The rows above are the inventory as recorded at `460b9ee`; they are kept
+for provenance. Results, using the R17-B classes:
+
+| ID   | Result                                                                                                 | How it was established                                                   |
+| ---- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| B-1  | REPRODUCED_DEFECT → FIXED                                                                              | real PostgreSQL + publisher bus; real Socket.IO client across replicas   |
+| B-2  | REPRODUCED_DEFECT → FIXED (explicit ids); unloaded-pages semantics → decision 1                        | real PostgreSQL (late commit, equal timestamps), browser across replicas |
+| B-3  | REPRODUCED_DEFECT → FIXED                                                                              | web unit (baseline sent no scope), browser dual-role account             |
+| B-4  | intake-notice scope REPRODUCED_DEFECT → FIXED; admin-dispute deep link OUT_OF_SCOPE_WITH_OWNER (R17-C) | real PostgreSQL                                                          |
+| B-5  | REPRODUCED_DEFECT → FIXED (seeker drawer, profile page, badges); provider drawer ALREADY_CORRECT       | web unit on baseline; browser fault injection                            |
+| B-6  | EVIDENCE_ADDED; ALREADY_CORRECT                                                                        | real outbox worker: re-delivery, reclaimed lease                         |
+| B-7  | REPRODUCED_DEFECT → FIXED; suspension-reason visibility POLICY_BLOCKED (decision 3)                    | unit on baseline                                                         |
+| B-8  | false controls REPRODUCED_DEFECT → FIXED by removal; channel preferences POLICY_BLOCKED (decision 2)   | unit                                                                     |
+| B-9  | badge REPRODUCED_DEFECT → FIXED; admin producers POLICY_BLOCKED (decision 5)                           | unit, browser                                                            |
+| B-10 | EVIDENCE_ADDED; ALREADY_CORRECT                                                                        | browser: sign out and sign in as another user in one tab                 |
+
+New during R17-B:
+
+| ID   | Finding                                                                                           | Result                      |
+| ---- | ------------------------------------------------------------------------------------------------- | --------------------------- |
+| B-11 | Seeker drawer labels English-only; Arabic arrival toast cut off at 360–430 px (RTL centring CSS). | REPRODUCED_DEFECT → FIXED   |
+| B-12 | Server-written notification titles/bodies are English only (except the dispute workspace).        | POLICY_BLOCKED (decision 4) |
+| B-13 | Dispute-intake notice ignores the dispute notification opt-out.                                   | POLICY_BLOCKED (decision 6) |
+
+## Platform
+
+| ID            | Finding                                                                                                                                                                                                                                                                                                                                                            | Class                                             | Evidence                                                                                                                                                          | Owner action                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| PLATFORM-TX-1 | Prisma 5.22.0 interactive `$transaction`: a failure raised at COMMIT is logged and the promise **resolves**; the caller reports success for work that was rolled back. Affects every `TransactionRunner` caller. No deferred constraints exist in the schema, so exposure is commit-time serialization failures, connection loss during COMMIT, or storage errors. | DEMONSTRATED_DEFECT (prerequisite, outside R17-B) | reproduced 3/3 with a deferred constraint trigger (callback result returned, 0 rows); through HTTP, booking start answered 200 while the booking stayed SCHEDULED | decide on a focused repair PR: evaluate the supported Prisma behaviour/upgrade path, or verify commit for money/decision paths |
+
 ## R17-C — Disputes
 
 | ID  | Finding                                                                                                                                                       | Class                                      | Evidence                                |
