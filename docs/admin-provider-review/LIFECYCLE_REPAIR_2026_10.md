@@ -4,11 +4,13 @@
 
 Repository: `baraabd/homeservicemarketplace`. Baseline: `develop` at
 `460b9eefd8e0eafc5f4aad65a2c03c3ef102ca30`. Branch:
-`fix/provider-review-evidence-lifecycle`.
+`fix/provider-review-evidence-lifecycle`. The latest `develop` update
+`e1f7f5148c72743542ac6fab23b02646ef20573e` was integrated safely
+before final acceptance; its messaging tests and browser gate are preserved.
 
 Backend work uses Integration and Bug-Fix Mode; the provider dossier uses scoped
 UX/UI Redesign Mode under the current repository design policy. No unrelated
-customer, payments, or payout work is included. No merge, deployment, live
+customer, payments, or payout work is included. No pull-request merge into `develop`, deployment, live
 provider decision, permission grant, destructive migration, or storage cleanup
 is authorized by this repair.
 
@@ -25,6 +27,7 @@ configured, or that the user's Windows runtime is using this exact commit.
 | Identity readiness          | Final application review checked CLEAN/current/uploaded evidence but omitted erasure and retention boundaries checked by identity decisions.  | One predicate checks current document, kind/category, expiry, restricted visibility, completed upload, scan verdict, retention and erasure across both decision paths.                                                                            |
 | Missing identity object     | CLEAN database metadata alone could authorize a decision even after the actual stored object was lost.                                        | Bounded storage HEAD checks required immutable object length before either approval path; a server-only fingerprint is rechecked inside the decision transaction. Storage I/O never holds decision row locks. Replay does not read storage again. |
 | Identity upload concurrency | A second slow PUT admitted before finalization could overwrite the first file after it was scanned CLEAN.                                     | Conditionally claim one content hash and publish restricted bytes with atomic create-if-absent. A losing or failed retry cannot overwrite or erase finalized evidence.                                                                            |
+| Existing-object retry       | A legacy or stale restricted object of the same length could be adopted as an identical retry without comparing its actual SHA-256.           | Bounded byte/hash verification proves identical contents; first finalization also refuses mismatched bytes. Preserve existing objects on every failure.                                                                                           |
 | Identity projection         | The standalone case projection could offer reads/approval that the protected reader would refuse, including missing evidence-view permission. | Use fresh reviewer permissions and the existing audited reader's access policy; require matching current eligible evidence before offering approval.                                                                                              |
 | Historical identity         | Replaced documents were mixed with current evidence and retained pending-style labels.                                                        | Current evidence comes first; historical replacements are disclosed separately. Retained readable versions remain securely inspectable but cannot satisfy current requirements.                                                                   |
 | Scan copy                   | `PENDING` malware scan looked like pending human review.                                                                                      | Separate safety-check state from case/application review state and explain why opening is unavailable.                                                                                                                                            |
@@ -33,6 +36,7 @@ configured, or that the user's Windows runtime is using this exact commit.
 | Portfolio capacity          | Count and append position were read before the creation transaction.                                                                          | Recheck capacity and position under serializable isolation; concurrent conflicts require retry.                                                                                                                                                   |
 | Portfolio read              | The read projection omitted completed-upload and retirement/erasure fences; storage failures lacked a bounded service response.               | Read only finalized, live, eligible media and return a safe availability failure.                                                                                                                                                                 |
 | Portfolio approval          | Moderation could publish an item whose stored image was missing or failed byte validation.                                                    | Read the bounded immutable object and fully decode its pixels before new attachment and approval, outside the transaction; repeat permission/self/revision/DB checks inside the atomic decision. No approval for unreadable media.                |
+| Transient portfolio storage | Stream failures and read deadlines were classified like invalid or permanently missing images.                                                | Keep transport/dependency failures retryable as safe HTTP 503; reserve invalid/missing-image recovery for validated permanent evidence failures.                                                                                                  |
 | Portfolio state             | Broken assets were conflated with legacy migration requirements.                                                                              | Add server-owned `MEDIA_UNAVAILABLE`, retain the distinct S3 migration gate, and permit a reasoned rejection/correction when appropriate.                                                                                                         |
 | Image decoding              | Receiving an allowed MIME blob enabled decisions before the browser decoded the image.                                                        | Enable approval only after the exact current preview loads successfully. Failed decoding offers retry and replacement/rejection recovery.                                                                                                         |
 | Dossier hierarchy           | Historical submission portfolio metadata preceded current actionable image moderation.                                                        | Present current moderation first and disclose the immutable historical snapshot separately.                                                                                                                                                       |
@@ -57,6 +61,12 @@ legacy GIFs remain supported by moderation; new upload format rules remain
 JPEG/PNG/WebP. Decoder unavailability is a dependency failure, not an assertion
 that the provider supplied an invalid image. No decoded output is persisted.
 
+Identity collision recovery and first finalization incrementally verify the
+actual SHA-256 and exact byte count under a five-second storage budget.
+This proves byte identity, not full PDF/image decoding or human legibility.
+Identity approval still uses current CLEAN metadata and immutable-object HEAD
+availability, with current database fences checked inside the decision.
+
 The backend owns permissions, eligibility, available actions, review revision,
 moderation, verification, and work access. UI labels organize those facts;
 they do not invent an approval policy. Portfolio is optional for application
@@ -69,25 +79,28 @@ notes are not substituted for provider instructions.
 
 ## Acceptance matrix
 
-| Scenario                                                | Expected result                                                                                                                                      | Evidence layer                                                       |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| First current identity upload and submission            | CLEAN evidence opens privately; current application can be reviewed.                                                                                 | Real API/browser plus existing audited-read integration              |
-| Identity correction, two replacements, resubmission     | Same open correction case; one current document; retained previous records; new application submission and revision.                                 | New real API/browser lifecycle                                       |
-| Resume a case containing evidence and a reason          | Evidence and latest decision remain present.                                                                                                         | Service regression and real DB integration                           |
-| Current document pending/failed/quarantined scan        | No unsafe read or approval; visible reason and correction path.                                                                                      | Predicate/projection unit matrix and existing protected reader tests |
-| Missing/truncated physical identity object              | Both standalone identity approval and final application/work approval refuse the decision without writing a grant. Rejection/correction still works. | New availability, command and real local-object/DB regression        |
-| Two overlapping identity PUTs, finalization, CLEAN scan | A late PUT never changes the accepted object/hash/scan state or deletes the first writer's evidence. Identical prefinalization retries are safe.     | Upload race and restricted adapter regressions                       |
-| Expired document/retention, erasing/deleted media       | No readiness or approve action; decision fails without changing accepted state/work grant.                                                           | New unit and real DB regression                                      |
-| Terminal EXPIRED case renewal                           | Create a new DRAFT case; subsequent resume selects it. Old idempotency receipts remain old receipts.                                                 | Existing renewal integration plus new service regression             |
-| Anonymous or another provider reads identity/portfolio  | Request refused, no storage key or signed object credential disclosed.                                                                               | New real HTTP/browser-run case                                       |
-| Owner/admin opens pending or rejected portfolio         | Eligible stored bytes remain privately readable; public publication requires APPROVED.                                                               | Unit and real DB HTTP integration                                    |
-| Missing/corrupt portfolio bytes                         | Approval refused; visible retry/replacement or reasoned rejection.                                                                                   | Unit, real DB HTTP, and fixture browser recovery tests               |
-| Expired/retired upload attaches                         | Claim refused and no new portfolio item persists.                                                                                                    | Reservation regression and real DB HTTP                              |
-| Concurrent uploads at final slot                        | Capacity is preserved; losing transaction conflicts.                                                                                                 | New real DB concurrency regression                                   |
-| Provider edits during reviewer inspection               | Old revision conflicts; current image remains pending; reason retained; refresh available; immutable snapshot unchanged.                             | New real API/browser lifecycle                                       |
-| Final approval after correction                         | Application accepted, identity verified, work grant active and operational capability usable.                                                        | New real API/browser lifecycle plus existing atomic integration      |
-| Returned/accepted/nonpending application                | Accurate state and blockers; no false “not submitted” message.                                                                                       | Unit/API projection and web copy                                     |
-| AR/RTL and EN/LTR, mobile/tablet/desktop                | Current evidence and next actions are reachable, no clipping, keyboard focus retained, accessibility checks pass.                                    | Existing real rendered-screen matrix plus new lifecycle captures     |
+| Scenario                                                  | Expected result                                                                                                                                                            | Evidence layer                                                       |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| First current identity upload and submission              | CLEAN evidence opens privately; current application can be reviewed.                                                                                                       | Real API/browser plus existing audited-read integration              |
+| Identity correction, two replacements, resubmission       | Same open correction case; one current document; retained previous records; new application submission and revision.                                                       | New real API/browser lifecycle                                       |
+| Resume a case containing evidence and a reason            | Evidence and latest decision remain present.                                                                                                                               | Service regression and real DB integration                           |
+| Allowlisted identity approval conflicts                   | Missing object, unfinished checks and changed preflight display safe actionable AR/EN explanations; drafts stay intact and unknown reasons disclose no raw server message. | Web/API reason and decision regressions                              |
+| Current document pending/failed/quarantined scan          | No unsafe read or approval; visible reason and correction path.                                                                                                            | Predicate/projection unit matrix and existing protected reader tests |
+| Missing/truncated physical identity object                | Both standalone identity approval and final application/work approval refuse the decision without writing a grant. Rejection/correction still works.                       | New availability, command and real local-object/DB regression        |
+| Two overlapping identity PUTs, finalization, CLEAN scan   | A late PUT never changes the accepted object/hash/scan state or deletes the first writer's evidence. Identical prefinalization retries are safe.                           | Upload race and restricted adapter regressions                       |
+| Existing same-size identity bytes differ from claimed SHA | Failed upload does not adopt or delete the old object, and direct first finalization cannot attach mismatched bytes.                                                       | Upload collision and finalize regressions                            |
+| Expired document/retention, erasing/deleted media         | No readiness or approve action; decision fails without changing accepted state/work grant.                                                                                 | New unit and real DB regression                                      |
+| Terminal EXPIRED case renewal                             | Create a new DRAFT case; subsequent resume selects it. Old idempotency receipts remain old receipts.                                                                       | Existing renewal integration plus new service regression             |
+| Anonymous or another provider reads identity/portfolio    | Request refused, no storage key or signed object credential disclosed.                                                                                                     | New real HTTP/browser-run case                                       |
+| Owner/admin opens pending or rejected portfolio           | Eligible stored bytes remain privately readable; public publication requires APPROVED.                                                                                     | Unit and real DB HTTP integration                                    |
+| Missing/corrupt portfolio bytes                           | Approval refused; visible retry/replacement or reasoned rejection.                                                                                                         | Unit, real DB HTTP, and fixture browser recovery tests               |
+| Transient portfolio read/deadline                         | Upload and moderation return safe retryable 503, preserving the review reason and avoiding a permanent unavailable verdict.                                                | Validator/service regressions and existing preview retry UI tests    |
+| Expired/retired upload attaches                           | Claim refused and no new portfolio item persists.                                                                                                                          | Reservation regression and real DB HTTP                              |
+| Concurrent uploads at final slot                          | Capacity is preserved; losing transaction conflicts.                                                                                                                       | New real DB concurrency regression                                   |
+| Provider edits during reviewer inspection                 | Old revision conflicts; current image remains pending; reason retained; refresh available; immutable snapshot unchanged.                                                   | New real API/browser lifecycle                                       |
+| Final approval after correction                           | Application accepted, identity verified, work grant active and operational capability usable.                                                                              | New real API/browser lifecycle plus existing atomic integration      |
+| Returned/accepted/nonpending application                  | Accurate state and blockers; no false “not submitted” message.                                                                                                             | Unit/API projection and web copy                                     |
+| AR/RTL and EN/LTR, mobile/tablet/desktop                  | Current evidence and next actions are reachable, no clipping, keyboard focus retained, accessibility checks pass.                                                          | Existing real rendered-screen matrix plus new lifecycle captures     |
 
 ## Operational findings that code cannot silently repair
 
@@ -135,11 +148,25 @@ Redis services were absent. Additional immutable-upload tests are validated
 with 48 passing tests across five scoped suites and the final source checks.
 The dependency audit reports zero findings.
 
+The collision/finalize follow-up passed 96 scoped tests across six executed
+suites; 42 evidence-upload database cases remained explicitly gated locally.
+That set includes a new real-HTTP regression proving a rejected stale-object
+PUT cannot be finalized into a document. Those database cases require the
+final exact-head service job; gated tests are not counted as passing.
+
+The transient-storage follow-up passed 101 tests across six scoped suites,
+covering validator/callers and local/S3 adapter failure classification.
+Full API TypeScript and scoped lint/format checks passed. Invalid/missing
+images remain separate from retryable outages, and failed approval writes
+no moderation state, transaction or audit decision.
+
 The full real-browser gate also exposed shared fixture login-budget leakage:
 independent suites reused one loopback IP and the later login received 429.
 A guarded disposable-CI helper expires only Redis rate counters between
 suite commands. Sessions, OTPs, queues and database state stay intact;
 production thresholds and all in-scenario limiter assertions remain active.
+The same boundary isolation applies to the R17 two-instance browser gate brought in by the latest `develop` merge; that upstream
+gate and all its assertions remain enabled.
 
 A broad replay exposed an existing provider-profile test race: the service
 catalog and saved skill selection arrive independently, but the assertion
@@ -160,6 +187,17 @@ material and does not replace the full browser evidence or any test gate.
 Final-head results and inspected screenshots are recorded in the delivered
 acceptance report. Authored or skipped tests are not passing tests, and
 baseline results are not reused as evidence for the repair commit.
+
+After integrating the latest `develop` and the two follow-up fixes, the
+full local API replay passed 4054 tests with 1396 service-gated cases skipped
+(223 passing suites, 64 gated suites). Full Web passed 2376 tests across
+189 files. An initial authoring command omitted the documented CI stub
+environment, causing three API suites to fail during environment validation
+before their cases ran; supplying the same nonsecret placeholder variables
+as CI resolved that setup failure without a source change. Web production
+build likewise requires an explicit `VITE_API_URL`; the missing-value guard
+was retained and the validation build uses the documented local CI value.
+These local checks still use Node 24.19.0, not the required CI pin.
 
 ## Rollout and rollback
 

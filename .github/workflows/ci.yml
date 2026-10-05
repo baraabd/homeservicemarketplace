@@ -842,6 +842,8 @@ jobs:
           E2E_REPLICA_B_WEB: http://127.0.0.1:4175
           PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r17-a-messaging-report
         run: |
+          # Preserve the same suite-boundary isolation for the new base gate.
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
           pnpm --filter @homeservicemarketplace/web exec playwright test \
             e2e/r17-messaging-cross-instance.real-api.spec.ts \
             --project=chromium-desktop --workers=1 --retries=0 \

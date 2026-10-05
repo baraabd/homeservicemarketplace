@@ -7,6 +7,8 @@ import { isPortfolioStorageKey } from '../../infrastructure/storage/portfolio-st
 import { ALLOWED_IMAGE_TYPES } from '../../infrastructure/storage/content-type';
 import {
   PortfolioImageDecoderUnavailableError,
+  PortfolioImageStorageUnavailableError,
+  PortfolioImageValidationError,
   validateStoredPortfolioImage,
 } from '../../infrastructure/storage/portfolio-image-validation';
 import { AppError } from '../../shared/errors/app-error';
@@ -83,8 +85,14 @@ export class PortfolioMediaService {
         sizeBytes: row.mediaAsset.sizeBytes,
       });
     } catch (error) {
-      if (error instanceof PortfolioImageDecoderUnavailableError)
-        throw new AppError('DEPENDENCY_UNAVAILABLE', error.message, 503);
+      if (!(error instanceof PortfolioImageValidationError))
+        throw new AppError(
+          'DEPENDENCY_UNAVAILABLE',
+          error instanceof PortfolioImageDecoderUnavailableError
+            ? error.message
+            : new PortfolioImageStorageUnavailableError().message,
+          503,
+        );
       throw unavailable();
     }
   }

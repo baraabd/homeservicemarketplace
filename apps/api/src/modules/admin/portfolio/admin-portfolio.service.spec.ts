@@ -4,6 +4,7 @@ import type { TransactionRunner } from '../../../infrastructure/prisma/transacti
 import type { AppConfigService } from '../../../config/app-config.service';
 import type { PermissionResolverService } from '../../iam/authorization/services/permission-resolver.service';
 import type { PortfolioMediaService } from '../../media/portfolio-media.service';
+import { AppError } from '../../../shared/errors/app-error';
 
 function fixture() {
   let row = {
@@ -48,14 +49,15 @@ function fixture() {
     resolveFreshForUser: jest.fn(async () => new Set(['portfolio:read', 'portfolio:review'])),
   };
   const media = { assertAvailableForApproval: jest.fn(async () => undefined) };
+  const tx = { run: jest.fn(async (fn: (tx: unknown) => unknown) => fn(client)) };
   const service = new AdminPortfolioService(
     { client } as unknown as PrismaService,
-    { run: async (fn: (tx: unknown) => unknown) => fn(client) } as unknown as TransactionRunner,
+    tx as unknown as TransactionRunner,
     { get: () => 's3' } as unknown as AppConfigService,
     permissions as unknown as PermissionResolverService,
     media as unknown as PortfolioMediaService,
   );
-  return { service, client, permissions, media, row };
+  return { service, client, permissions, media, row, tx };
 }
 
 describe('Admin portfolio revision decisions', () => {
@@ -174,6 +176,24 @@ describe('Admin portfolio revision decisions', () => {
     ).rejects.toMatchObject({ status: 409, details: { reason: 'MEDIA_UNAVAILABLE' } });
     expect(f.client.providerPortfolioItem.updateMany).not.toHaveBeenCalled();
     expect(f.client.auditEvent.create).not.toHaveBeenCalled();
+  });
+  it('does not begin a decision transaction during a retryable storage failure', async () => {
+    const f = fixture();
+    f.media.assertAvailableForApproval.mockRejectedValueOnce(
+      new AppError(
+        'DEPENDENCY_UNAVAILABLE',
+        'Portfolio image storage is temporarily unavailable. Please try again.',
+        503,
+      ),
+    );
+    await expect(
+      f.service.review('reviewer', 'profile', 'item', { action: 'APPROVE', expectedRevision: 4 }),
+    ).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE', status: 503 });
+    expect(f.tx.run).not.toHaveBeenCalled();
+    expect(f.client.providerPortfolioItem.updateMany).not.toHaveBeenCalled();
+    expect(f.client.auditEvent.create).not.toHaveBeenCalled();
+    expect(f.row.moderationState).toBe('PENDING');
+    expect(f.row.revision).toBe(4);
   });
   it('rechecks a provider edit that commits while approval bytes are inspected', async () => {
     const f = fixture();

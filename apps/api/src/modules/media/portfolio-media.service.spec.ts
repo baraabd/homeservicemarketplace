@@ -157,6 +157,66 @@ describe('portfolio bytes are resolved through persisted moderation and ownershi
       unavailable.mockRestore();
     }
   });
+  it.each(['open', 'stream'])(
+    'keeps approval retryable when storage fails during %s',
+    async (phase) => {
+      const f = fixture();
+      f.client.providerPortfolioItem.findFirst.mockResolvedValue({
+        mediaAsset: {
+          storageKey: 'portfolio-staging/ref/image.jpg',
+          declaredMimeType: 'image/jpeg',
+          sizeBytes: image.byteLength,
+        },
+      });
+      if (phase === 'open')
+        f.storage.readObjectStream.mockRejectedValueOnce(new Error('AccessDenied: secret bucket'));
+      else
+        f.storage.readObjectStream.mockResolvedValueOnce(
+          new Readable({
+            read() {
+              this.destroy(new Error('ECONNRESET: private endpoint'));
+            },
+          }),
+        );
+      await expect(
+        f.service.assertAvailableForApproval('profile', 'item', 4),
+      ).rejects.toMatchObject({
+        code: 'DEPENDENCY_UNAVAILABLE',
+        status: 503,
+        message: new validation.PortfolioImageStorageUnavailableError().message,
+      });
+      await expect(
+        f.service.assertAvailableForApproval('profile', 'item', 4),
+      ).resolves.toBeUndefined();
+    },
+  );
+  it('returns a retryable approval error and closes a stalled storage response at the deadline', async () => {
+    jest.useFakeTimers();
+    const f = fixture();
+    const stream = new Readable({ read() {} });
+    f.client.providerPortfolioItem.findFirst.mockResolvedValue({
+      mediaAsset: {
+        storageKey: 'portfolio-staging/ref/image.jpg',
+        declaredMimeType: 'image/jpeg',
+        sizeBytes: image.byteLength,
+      },
+    });
+    f.storage.readObjectStream.mockResolvedValueOnce(stream);
+    try {
+      const attempt = f.service.assertAvailableForApproval('profile', 'item', 4);
+      const rejection = expect(attempt).rejects.toMatchObject({
+        code: 'DEPENDENCY_UNAVAILABLE',
+        status: 503,
+        message: new validation.PortfolioImageStorageUnavailableError().message,
+      });
+      await jest.advanceTimersByTimeAsync(5000);
+      await rejection;
+      expect(stream.destroyed).toBe(true);
+    } finally {
+      jest.useRealTimers();
+      stream.destroy();
+    }
+  });
   it.each(['missing', 'size mismatch', 'content mismatch', 'corrupt pixels'])(
     'refuses approval when stored media has %s',
     async (failure) => {

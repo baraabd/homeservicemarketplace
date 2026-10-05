@@ -55,7 +55,8 @@ export interface StoredObjectHead {
 export abstract class StoragePort {
   abstract presignUpload(input: PresignUploadInput): Promise<PresignedUpload>;
 
-  /** API-mediated delivery. Authorization is checked before opening this stream. */
+  /** API-mediated delivery. Authorization is checked before opening this stream.
+   * Return null only for an absent object; transport and storage faults must throw. */
   abstract readObjectStream(key: string): Promise<Readable | null>;
 
   /**

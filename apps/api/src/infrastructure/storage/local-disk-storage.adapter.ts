@@ -67,15 +67,26 @@ export class LocalDiskStorageAdapter extends StoragePort {
   }
 
   async readObjectStream(key: string): Promise<Readable | null> {
+    let path: string;
     try {
-      const file = await open(this.absolutePathForKey(key), 'r');
+      path = this.absolutePathForKey(key);
+    } catch {
+      return null;
+    }
+    let file: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      file = await open(path, 'r');
       if (!(await file.stat()).isFile()) {
         await file.close();
         return null;
       }
       return file.createReadStream();
-    } catch {
-      return null;
+    } catch (error) {
+      // The response stream owns the descriptor only after it is returned.
+      await file?.close().catch(() => undefined);
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+      throw error;
     }
   }
 

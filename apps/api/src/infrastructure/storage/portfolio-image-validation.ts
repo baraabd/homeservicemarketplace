@@ -21,6 +21,13 @@ export class PortfolioImageDecoderUnavailableError extends Error {
   }
 }
 
+export class PortfolioImageStorageUnavailableError extends Error {
+  constructor() {
+    super('Portfolio image storage is temporarily unavailable. Please try again.');
+    this.name = 'PortfolioImageStorageUnavailableError';
+  }
+}
+
 /** Validate the whole immutable object, not only a plausible image header.
  * Bytes and decoded pixels are bounded; no output is saved and no metadata
  * leaves this function. Call outside database transactions and their locks. */
@@ -84,10 +91,11 @@ async function readBoundedImage(
   let deadline: ReturnType<typeof setTimeout> | undefined;
   const read = async () => {
     stream = await storage.readObjectStream(storageKey);
-    if (!stream || expired) {
+    if (expired) {
       stream?.destroy();
-      throw new PortfolioImageValidationError();
+      throw new PortfolioImageStorageUnavailableError();
     }
+    if (!stream) throw new PortfolioImageValidationError();
     const chunks: Buffer[] = [];
     let sizeBytes = 0;
     for await (const chunk of stream) {
@@ -108,12 +116,19 @@ async function readBoundedImage(
         deadline = setTimeout(() => {
           expired = true;
           stream?.destroy();
-          reject(new PortfolioImageValidationError());
+          reject(new PortfolioImageStorageUnavailableError());
         }, STORAGE_READ_TIMEOUT_MS);
       }),
     ]);
-  } catch {
-    throw new PortfolioImageValidationError();
+  } catch (error) {
+    // Only proven absence or invalid bytes require a replacement. A failed
+    // transport cannot tell us whether the immutable image itself is valid.
+    if (
+      error instanceof PortfolioImageValidationError ||
+      error instanceof PortfolioImageStorageUnavailableError
+    )
+      throw error;
+    throw new PortfolioImageStorageUnavailableError();
   } finally {
     if (deadline) clearTimeout(deadline);
     // A storage response arriving after the deadline is destroyed in read().

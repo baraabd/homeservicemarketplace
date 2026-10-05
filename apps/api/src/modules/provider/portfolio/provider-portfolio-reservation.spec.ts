@@ -1,20 +1,41 @@
+import { Readable } from 'node:stream';
+import sharp from 'sharp';
 import { ProviderPortfolioService } from './provider-portfolio.service';
 import { portfolioOwnerRef } from './portfolio-policy';
 import type { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import type { PlatformSettingRepository } from '../../../infrastructure/persistence/settings/platform-setting.repository';
 import type { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import type { AppConfigService } from '../../../config/app-config.service';
-import type { StoragePort, StoredObjectHead } from '../../../infrastructure/storage/storage.port';
+import type { StoragePort } from '../../../infrastructure/storage/storage.port';
 import * as validation from '../../../infrastructure/storage/portfolio-image-validation';
 
 function fixture() {
   const client = {
     providerProfile: { findFirst: jest.fn(async () => ({ id: 'profile' })) },
-    providerPortfolioItem: { findFirst: jest.fn(async () => null) },
-    mediaAsset: { findFirst: jest.fn(async (): Promise<{ id: string } | null> => null) },
+    providerPortfolioItem: {
+      findFirst: jest.fn(async () => null),
+      count: jest.fn(async () => 0),
+      create: jest.fn(async ({ data }) => ({
+        ...data,
+        id: 'item',
+        moderationState: 'PENDING',
+        createdAt: new Date(),
+        mediaAsset: {
+          storageKey: 'portfolio-staging/ref/image.png',
+          declaredMimeType: 'image/png',
+        },
+      })),
+    },
+    mediaAsset: {
+      findFirst: jest.fn(async (): Promise<{ id: string } | null> => null),
+      updateMany: jest.fn(async () => ({ count: 1 })),
+      findUniqueOrThrow: jest.fn(async () => ({ id: 'asset' })),
+    },
   };
-  const storage = { readObjectHead: jest.fn(async (): Promise<StoredObjectHead | null> => null) };
-  const tx = { run: jest.fn() };
+  const storage = { readObjectStream: jest.fn(async (): Promise<Readable | null> => null) };
+  const tx = {
+    run: jest.fn(async (fn: (trx: typeof client) => Promise<unknown>) => fn(client)),
+  };
   const service = new ProviderPortfolioService(
     { client } as unknown as PrismaService,
     { findByKey: async () => null } as unknown as PlatformSettingRepository,
@@ -56,7 +77,7 @@ describe('portfolio attachment proves reservation ownership before reading bytes
       },
       select: { id: true },
     });
-    expect(f.storage.readObjectHead).not.toHaveBeenCalled();
+    expect(f.storage.readObjectStream).not.toHaveBeenCalled();
     expect(f.tx.run).not.toHaveBeenCalled();
   });
 
@@ -67,16 +88,12 @@ describe('portfolio attachment proves reservation ownership before reading bytes
       status: 400,
       details: { reason: 'INVALID_IMAGE' },
     });
-    expect(f.storage.readObjectHead).toHaveBeenCalledWith(f.input.storageKey, expect.any(Number));
+    expect(f.storage.readObjectStream).toHaveBeenCalledWith(f.input.storageKey);
     expect(f.tx.run).not.toHaveBeenCalled();
   });
   it('does not blame a valid upload when the native decoder is unavailable', async () => {
     const f = fixture();
     f.client.mediaAsset.findFirst.mockResolvedValue({ id: 'asset' });
-    f.storage.readObjectHead.mockResolvedValue({
-      sizeBytes: 1024,
-      head: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
-    });
     const unavailable = jest
       .spyOn(validation, 'validateStoredPortfolioImage')
       .mockRejectedValueOnce(new validation.PortfolioImageDecoderUnavailableError());
@@ -89,5 +106,87 @@ describe('portfolio attachment proves reservation ownership before reading bytes
     } finally {
       unavailable.mockRestore();
     }
+  });
+
+  it.each(['open', 'stream'])(
+    'does not claim an upload when storage fails during %s',
+    async (phase) => {
+      const f = fixture();
+      f.client.mediaAsset.findFirst.mockResolvedValue({ id: 'asset' });
+      if (phase === 'open')
+        f.storage.readObjectStream.mockRejectedValueOnce(new Error('AccessDenied: secret bucket'));
+      else
+        f.storage.readObjectStream.mockResolvedValueOnce(
+          new Readable({
+            read() {
+              this.destroy(new Error('ECONNRESET: private endpoint'));
+            },
+          }),
+        );
+      await expect(f.service.create('owner', f.input)).rejects.toMatchObject({
+        code: 'DEPENDENCY_UNAVAILABLE',
+        status: 503,
+        message: new validation.PortfolioImageStorageUnavailableError().message,
+      });
+      expect(f.tx.run).not.toHaveBeenCalled();
+    },
+  );
+
+  it('leaves a slow upload reservation unclaimed and reports a retryable deadline', async () => {
+    jest.useFakeTimers();
+    const f = fixture();
+    const stream = new Readable({ read() {} });
+    f.client.mediaAsset.findFirst.mockResolvedValue({ id: 'asset' });
+    f.storage.readObjectStream.mockResolvedValueOnce(stream);
+    try {
+      const attempt = f.service.create('owner', f.input);
+      const rejection = expect(attempt).rejects.toMatchObject({
+        code: 'DEPENDENCY_UNAVAILABLE',
+        status: 503,
+        message: new validation.PortfolioImageStorageUnavailableError().message,
+      });
+      await jest.advanceTimersByTimeAsync(5000);
+      await rejection;
+      expect(f.tx.run).not.toHaveBeenCalled();
+      expect(stream.destroyed).toBe(true);
+    } finally {
+      jest.useRealTimers();
+      stream.destroy();
+    }
+  });
+
+  it('attaches the same reservation after storage recovers and persists the fully validated MIME', async () => {
+    const f = fixture();
+    const bytes = await sharp({
+      create: { width: 2, height: 2, channels: 3, background: '#226644' },
+    })
+      .png()
+      .toBuffer();
+    f.input.contentType = 'image/png';
+    f.input.sizeBytes = bytes.byteLength;
+    f.client.mediaAsset.findFirst.mockResolvedValue({ id: 'asset' });
+    f.storage.readObjectStream
+      .mockRejectedValueOnce(new Error('AccessDenied: secret bucket'))
+      .mockResolvedValueOnce(Readable.from(bytes));
+    await expect(f.service.create('owner', f.input)).rejects.toMatchObject({ status: 503 });
+    expect(f.tx.run).not.toHaveBeenCalled();
+    await expect(f.service.create('owner', f.input)).resolves.toMatchObject({
+      id: 'item',
+      moderationState: 'PENDING',
+      media: { contentType: 'image/png' },
+    });
+    expect(f.client.mediaAsset.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        storageKey: f.input.storageKey,
+        ownerUserId: 'owner',
+        declaredMimeType: 'image/png',
+        sizeBytes: bytes.byteLength,
+        uploadCompletedAt: null,
+        retainUntil: null,
+        erasureStartedAt: null,
+        uploadExpiresAt: { gt: expect.any(Date) },
+      }),
+      data: { uploadCompletedAt: expect.any(Date), detectedMimeType: 'image/png' },
+    });
   });
 });

@@ -19,12 +19,10 @@ import { STORAGE_PORT, StoragePort } from '../../../infrastructure/storage/stora
 import { isStagedPortfolioKey } from '../../../infrastructure/storage/portfolio-storage-policy';
 import {
   PortfolioImageDecoderUnavailableError,
+  PortfolioImageStorageUnavailableError,
+  PortfolioImageValidationError,
   validateStoredPortfolioImage,
 } from '../../../infrastructure/storage/portfolio-image-validation';
-import {
-  AVATAR_SIGNATURE_PROBE_BYTES,
-  verifyAvatarSignature,
-} from '../../../infrastructure/storage/image-signature';
 import {
   PORTFOLIO_MAX_FILE_BYTES_KEY,
   PORTFOLIO_MAX_ITEMS_KEY,
@@ -175,35 +173,23 @@ export class ProviderPortfolioService {
     });
     if (!reserved) throw uploadNotReserved();
 
-    const stored = await this.storage.readObjectHead(
-      input.storageKey,
-      AVATAR_SIGNATURE_PROBE_BYTES,
-    );
-    const signature = stored && verifyAvatarSignature(input.contentType, stored.head);
-    if (
-      !stored ||
-      stored.sizeBytes !== input.sizeBytes ||
-      stored.sizeBytes > limits.maxFileBytes ||
-      !signature?.ok
-    ) {
-      throw new AppError(
-        'VALIDATION_ERROR',
-        'The uploaded image could not be validated. Please upload it again.',
-        400,
-        { reason: 'INVALID_IMAGE' },
-      );
-    }
-
+    let detectedMimeType: string;
     try {
-      await validateStoredPortfolioImage(this.storage, {
+      detectedMimeType = await validateStoredPortfolioImage(this.storage, {
         storageKey: input.storageKey,
         contentType: input.contentType,
         sizeBytes: input.sizeBytes,
         maxBytes: limits.maxFileBytes,
       });
     } catch (error) {
-      if (error instanceof PortfolioImageDecoderUnavailableError)
-        throw new AppError('DEPENDENCY_UNAVAILABLE', error.message, 503);
+      if (!(error instanceof PortfolioImageValidationError))
+        throw new AppError(
+          'DEPENDENCY_UNAVAILABLE',
+          error instanceof PortfolioImageDecoderUnavailableError
+            ? error.message
+            : new PortfolioImageStorageUnavailableError().message,
+          503,
+        );
       throw new AppError(
         'VALIDATION_ERROR',
         'The uploaded image could not be decoded. Please upload a valid image again.',
@@ -248,7 +234,7 @@ export class ProviderPortfolioService {
           // provider's reservation, and two concurrent creates resolve to one.
           const claimedAsset = await client.mediaAsset.updateMany({
             where: { ...reservation, uploadExpiresAt: { gt: new Date() } },
-            data: { uploadCompletedAt: new Date(), detectedMimeType: signature.detected },
+            data: { uploadCompletedAt: new Date(), detectedMimeType },
           });
           if (claimedAsset.count !== 1) {
             // No reservation to claim: either it was never made, it belongs to

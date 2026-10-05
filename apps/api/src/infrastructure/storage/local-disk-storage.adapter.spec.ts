@@ -1,6 +1,7 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import fsPromises, { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { finished } from 'node:stream/promises';
 
 import type { AppConfigService } from '../../config/app-config.service';
 import { LocalDiskStorageAdapter, signToken, validateKey } from './local-disk-storage.adapter';
@@ -82,6 +83,7 @@ describe('LocalDiskStorageAdapter', () => {
   const ROOT = join(tmpdir(), `hsm-storage-spec-${Date.now()}`);
 
   afterEach(async () => {
+    jest.restoreAllMocks();
     await rm(ROOT, { recursive: true, force: true });
   });
 
@@ -233,6 +235,94 @@ describe('LocalDiskStorageAdapter', () => {
         actualContentType: 'image/jpeg',
       }),
     ).rejects.toThrow('size-mismatch');
+  });
+
+  it('returns no stream when the requested file is absent', async () => {
+    const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+    await expect(adapter.readObjectStream('portfolio-staging/ref/missing.jpg')).resolves.toBeNull();
+  });
+
+  it('returns no stream when a parent path is a file', async () => {
+    const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+    await mkdir(ROOT, { recursive: true });
+    await writeFile(join(ROOT, 'obstruction'), 'a file, not a directory');
+    await expect(adapter.readObjectStream('obstruction/photo.jpg')).resolves.toBeNull();
+  });
+
+  it.each(['../escape.jpg', '/outside.jpg', 'invalid\0key.jpg'])(
+    'refuses an invalid stream key %s before opening a descriptor',
+    async (key) => {
+      const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+      const open = jest.spyOn(fsPromises, 'open');
+      await expect(adapter.readObjectStream(key)).resolves.toBeNull();
+      expect(open).not.toHaveBeenCalled();
+    },
+  );
+
+  it('closes an opened non-file descriptor without returning a stream', async () => {
+    const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+    const handle = {
+      stat: jest.fn(async () => ({ isFile: () => false })),
+      close: jest.fn(async () => undefined),
+      createReadStream: jest.fn(),
+    };
+    jest
+      .spyOn(fsPromises, 'open')
+      .mockResolvedValueOnce(handle as unknown as Awaited<ReturnType<typeof fsPromises.open>>);
+    await expect(adapter.readObjectStream('portfolio-staging/ref/photo.jpg')).resolves.toBeNull();
+    expect(handle.close).toHaveBeenCalledTimes(1);
+    expect(handle.createReadStream).not.toHaveBeenCalled();
+  });
+
+  it.each(['EACCES', 'EIO'])(
+    'preserves %s as a dependency failure rather than claiming the image is missing',
+    async (code) => {
+      const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+      const failure = Object.assign(new Error('storage cannot be read'), { code });
+      jest.spyOn(fsPromises, 'open').mockRejectedValueOnce(failure);
+      await expect(adapter.readObjectStream('portfolio-staging/ref/photo.jpg')).rejects.toBe(
+        failure,
+      );
+    },
+  );
+
+  it('closes the owned descriptor if inspecting it fails, preserving the original failure', async () => {
+    const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+    const failure = Object.assign(new Error('descriptor inspection failed'), { code: 'EIO' });
+    const handle = {
+      stat: jest.fn(async () => {
+        throw failure;
+      }),
+      close: jest.fn(async () => undefined),
+      createReadStream: jest.fn(),
+    };
+    jest
+      .spyOn(fsPromises, 'open')
+      .mockResolvedValueOnce(handle as unknown as Awaited<ReturnType<typeof fsPromises.open>>);
+    await expect(adapter.readObjectStream('portfolio-staging/ref/photo.jpg')).rejects.toBe(failure);
+    expect(handle.close).toHaveBeenCalledTimes(1);
+    expect(handle.createReadStream).not.toHaveBeenCalled();
+  });
+
+  it('transfers the descriptor to a valid stream that closes after delivering its bytes', async () => {
+    const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+    const key = 'portfolio-staging/ref/photo.jpg';
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+    await mkdir(join(ROOT, 'portfolio-staging', 'ref'), { recursive: true });
+    await writeFile(adapter.absolutePathForKey(key), bytes);
+    const handle = await fsPromises.open(adapter.absolutePathForKey(key), 'r');
+    jest.spyOn(fsPromises, 'open').mockResolvedValueOnce(handle);
+
+    const stream = await adapter.readObjectStream(key);
+    expect(stream).not.toBeNull();
+    expect(handle.fd).toBeGreaterThanOrEqual(0);
+    const closed = finished(stream!);
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream!) chunks.push(Buffer.from(chunk));
+    await closed;
+    expect(Buffer.concat(chunks)).toEqual(bytes);
+    expect(handle.fd).toBe(-1);
+    expect(stream?.destroyed).toBe(true);
   });
 
   // ── Sprint 9B.17 — readObjectHead, the avatar finalize measurement ──────

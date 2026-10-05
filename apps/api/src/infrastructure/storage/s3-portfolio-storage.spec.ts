@@ -1,5 +1,10 @@
-import { GetBucketPolicyStatusCommand, GetPublicAccessBlockCommand } from '@aws-sdk/client-s3';
+import {
+  GetBucketPolicyStatusCommand,
+  GetObjectCommand,
+  GetPublicAccessBlockCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Readable } from 'node:stream';
 import { S3StorageAdapter } from './s3-storage.adapter';
 import type { AppConfigService } from '../../config/app-config.service';
 
@@ -30,6 +35,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
   return { adapter, send };
 }
 describe('private S3 portfolio staging', () => {
+  afterEach(() => jest.restoreAllMocks());
   it('keeps unrelated boot valid when portfolio storage has not yet been configured', () => {
     expect(() => fixture({ S3_PORTFOLIO_BUCKET: undefined })).not.toThrow();
   });
@@ -81,5 +87,59 @@ describe('private S3 portfolio staging', () => {
       }),
       { expiresIn: 300 },
     );
+  });
+
+  it.each([
+    ['NoSuchKey', { name: 'NoSuchKey', $metadata: { httpStatusCode: 404 } }],
+    ['NotFound', { name: 'NotFound', $metadata: { httpStatusCode: 404 } }],
+    ['unnamed 404', { $metadata: { httpStatusCode: 404 } }],
+  ])('returns no stream for a confirmed missing object (%s)', async (_label, failure) => {
+    const f = fixture();
+    f.send.mockRejectedValueOnce(failure);
+    await expect(f.adapter.readObjectStream(upload.key)).resolves.toBeNull();
+  });
+
+  it.each([
+    ['missing bucket', { name: 'NoSuchBucket', $metadata: { httpStatusCode: 404 } }],
+    ['access denied', { name: 'AccessDenied', $metadata: { httpStatusCode: 403 } }],
+    [
+      'connection reset',
+      Object.assign(new Error('backend connection lost'), { code: 'ECONNRESET' }),
+    ],
+  ])(
+    'preserves %s as a dependency failure without claiming object absence',
+    async (_label, failure) => {
+      const f = fixture();
+      f.send.mockRejectedValueOnce(failure);
+      await expect(f.adapter.readObjectStream(upload.key)).rejects.toBe(failure);
+    },
+  );
+
+  it.each([
+    ['bodyless', {}],
+    ['unreadable body', { Body: {} }],
+  ])('refuses a malformed successful GET response (%s)', async (_label, result) => {
+    const f = fixture();
+    f.send.mockResolvedValueOnce(result);
+    await expect(f.adapter.readObjectStream(upload.key)).rejects.toThrow('no readable body');
+  });
+
+  it('returns the successful private object stream with its ownership intact', async () => {
+    const f = fixture();
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+    const stream = Readable.from(bytes);
+    f.send.mockResolvedValueOnce({ Body: stream });
+    const result = await f.adapter.readObjectStream(upload.key);
+    expect(result).toBe(stream);
+    expect(stream.destroyed).toBe(false);
+    expect(f.send).toHaveBeenCalledWith(expect.any(GetObjectCommand));
+    expect(f.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: { Bucket: 'private-portfolio', Key: upload.key },
+      }),
+    );
+    const chunks: Buffer[] = [];
+    for await (const chunk of result!) chunks.push(Buffer.from(chunk));
+    expect(Buffer.concat(chunks)).toEqual(bytes);
   });
 });

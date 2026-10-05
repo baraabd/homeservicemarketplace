@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import {
   PORTFOLIO_MAX_DECODE_BYTES,
+  PortfolioImageStorageUnavailableError,
   PortfolioImageValidationError,
   validateStoredPortfolioImage,
 } from './portfolio-image-validation';
@@ -131,6 +132,41 @@ describe('stored portfolio pixels are decoded before attachment or approval', ()
     expect(fixture.stream?.destroyed).toBe(true);
   });
 
+  it.each(['missing', 'short'])('keeps %s bytes a validation failure', async (failure) => {
+    const bytes = await picture().jpeg().toBuffer();
+    const fixture = stored(failure === 'missing' ? null : bytes.subarray(0, -1));
+    await expect(
+      validateStoredPortfolioImage(fixture.storage, input(bytes)),
+    ).rejects.toBeInstanceOf(PortfolioImageValidationError);
+  });
+
+  it('does not blame an image or disclose storage errors when opening it fails', async () => {
+    const bytes = await picture().jpeg().toBuffer();
+    const fixture = stored(bytes);
+    fixture.readObjectStream.mockRejectedValueOnce(new Error('AccessDenied: secret bucket'));
+    await expect(validateStoredPortfolioImage(fixture.storage, input(bytes))).rejects.toEqual(
+      new PortfolioImageStorageUnavailableError(),
+    );
+    // The same immutable key succeeds after the storage dependency recovers.
+    await expect(validateStoredPortfolioImage(fixture.storage, input(bytes))).resolves.toBe(
+      'image/jpeg',
+    );
+  });
+
+  it('closes a stream that faults in transit and reports a retryable storage failure', async () => {
+    const stream = new Readable({
+      read() {
+        this.push(Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
+        this.destroy(new Error('ECONNRESET: private storage endpoint'));
+      },
+    });
+    const storage = { readObjectStream: async () => stream } as unknown as StoragePort;
+    await expect(validateStoredPortfolioImage(storage, input(Buffer.alloc(128)))).rejects.toEqual(
+      new PortfolioImageStorageUnavailableError(),
+    );
+    expect(stream.destroyed).toBe(true);
+  });
+
   it('refuses an image whose decoded pixels exceed the bounded review budget', async () => {
     const bytes = await sharp({
       create: { width: 4001, height: 4000, channels: 3, background: '#008855' },
@@ -148,12 +184,40 @@ describe('stored portfolio pixels are decoded before attachment or approval', ()
     const storage = { readObjectStream: async () => stream } as unknown as StoragePort;
     try {
       const attempt = validateStoredPortfolioImage(storage, input(Buffer.alloc(128)));
-      const rejection = expect(attempt).rejects.toBeInstanceOf(PortfolioImageValidationError);
+      const rejection = expect(attempt).rejects.toBeInstanceOf(
+        PortfolioImageStorageUnavailableError,
+      );
       await jest.advanceTimersByTimeAsync(5000);
       await rejection;
       expect(stream.destroyed).toBe(true);
     } finally {
       jest.useRealTimers();
+    }
+  });
+
+  it('treats a slow open as retryable and destroys a response arriving after its deadline', async () => {
+    jest.useFakeTimers();
+    const stream = Readable.from(Buffer.alloc(128));
+    let finishOpen: (stream: Readable) => void = () => {};
+    const storage = {
+      readObjectStream: () =>
+        new Promise<Readable>((resolve) => {
+          finishOpen = resolve;
+        }),
+    } as unknown as StoragePort;
+    try {
+      const attempt = validateStoredPortfolioImage(storage, input(Buffer.alloc(128)));
+      const rejection = expect(attempt).rejects.toEqual(
+        new PortfolioImageStorageUnavailableError(),
+      );
+      await jest.advanceTimersByTimeAsync(5000);
+      await rejection;
+      finishOpen(stream);
+      await Promise.resolve();
+      expect(stream.destroyed).toBe(true);
+    } finally {
+      jest.useRealTimers();
+      stream.destroy();
     }
   });
 });
