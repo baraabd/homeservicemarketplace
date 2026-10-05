@@ -818,6 +818,56 @@ jobs:
             apps/web/test-results/r17-a-messaging-report/
           retention-days: 14
           if-no-files-found: error
+      - name: Stop this job's API before R17-B
+        # Every API process runs an outbox worker, and a notification
+        # announcement is published through the gateway of whichever process
+        # claims it. R17-B's realtime test runs its own realtime-on replicas;
+        # this job's API (realtime off) would otherwise claim some of those
+        # announcements. No later step in this job uses it.
+        run: |
+          PID=$(ss -ltnpH 'sport = :4010' | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -n 1)
+          if [ -z "$PID" ]; then echo "::error::no API listening on 4010"; exit 1; fi
+          kill "$PID"
+          for i in $(seq 1 30); do
+            if ! curl -sf http://127.0.0.1:4010/health/live >/dev/null; then
+              echo "API on 4010 stopped"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API on 4010 did not stop"; exit 1
+      - name: Accept R17-B notification lifecycle across replicas and a real socket
+        # Notifications produced by real actions (bid, accept, start) through
+        # two API replicas on this job's PostgreSQL and Redis, read in the two
+        # replica web apps: the server count, seeker/provider experience scope,
+        # read-all bounded to what was shown while a new one arrives, reload
+        # on the other replica, a replica restart, a foreign reader refused,
+        # an account switch in one browser, an honest failed load with retry,
+        # Arabic at three widths by keyboard, and the admin bell. Then a
+        # realtime-on pair and a real Socket.IO client: an action rolled back
+        # after its notification row was written is never announced; the
+        # committed one is, once, across replicas. Synthetic people; no trace
+        # or video.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4011
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_REPLICA_A_WEB: http://127.0.0.1:4174
+          E2E_REPLICA_B_WEB: http://127.0.0.1:4175
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r17-b-notifications-report
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r17-notifications.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --retries=0 \
+            --output=test-results/r17-b-notifications
+      - name: Upload R17-B notification lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r17-b-notifications-evidence
+          path: |
+            apps/web/test-results/r17-b-notifications/
+            apps/web/test-results/r17-b-notifications-report/
+          retention-days: 14
+          if-no-files-found: error
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed
