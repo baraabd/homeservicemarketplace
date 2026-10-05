@@ -802,6 +802,60 @@ jobs:
             apps/web/test-results/r14-budget-authority-report/
           retention-days: 14
           if-no-files-found: warn
+      - name: Build and serve one web app per R17 API replica
+        # R17-A: two copies of the same build-flagged web app, each with its
+        # own API address baked in, so a browser on web A can only reach
+        # replica A and a browser on web B only replica B. Built outside the
+        # workspace so neither copy can be mistaken for the job's main bundle.
+        env:
+          VITE_PROVIDER_ONBOARDING_V2: 'true'
+        run: |
+          cd apps/web
+          VITE_API_URL=http://127.0.0.1:4011 pnpm exec vite build --outDir /tmp/r17-web-a --emptyOutDir
+          VITE_API_URL=http://127.0.0.1:4012 pnpm exec vite build --outDir /tmp/r17-web-b --emptyOutDir
+          grep -lq '127.0.0.1:4011' /tmp/r17-web-a/assets/*.js
+          grep -lq '127.0.0.1:4012' /tmp/r17-web-b/assets/*.js
+          pnpm exec vite preview --outDir /tmp/r17-web-a --host 127.0.0.1 --port 4174 --strictPort > /tmp/r17-preview-a.log 2>&1 &
+          pnpm exec vite preview --outDir /tmp/r17-web-b --host 127.0.0.1 --port 4175 --strictPort > /tmp/r17-preview-b.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4174/ >/dev/null && curl -sf http://127.0.0.1:4175/ >/dev/null; then
+              echo "both replica web apps are up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the R17 replica web apps did not come up"
+          cat /tmp/r17-preview-a.log /tmp/r17-preview-b.log; exit 1
+      - name: Accept R17-A messaging across two API instances
+        # Two real API processes (4011, 4012) started by the spec itself, on
+        # this job's PostgreSQL and Redis. The seeker writes through replica A,
+        # the provider reads and replies through replica B, the seeker moves to
+        # B with the same session, replica A is stopped and started again as a
+        # new process, and the committed history stays complete without a
+        # duplicate. A retried send crosses replicas once; paging on one
+        # replica stays complete while the other writes; a session ended on
+        # one replica is refused on the other. Realtime stays off (default).
+        # Synthetic people and messages; the spec records no trace or video.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4011
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_REPLICA_A_WEB: http://127.0.0.1:4174
+          E2E_REPLICA_B_WEB: http://127.0.0.1:4175
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r17-a-messaging-report
+        run: |
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r17-messaging-cross-instance.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --retries=0 \
+            --output=test-results/r17-a-messaging
+      - name: Upload R17-A cross-instance messaging evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r17-a-messaging-evidence
+          path: |
+            apps/web/test-results/r17-a-messaging/
+            apps/web/test-results/r17-a-messaging-report/
+          retention-days: 14
+          if-no-files-found: error
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed

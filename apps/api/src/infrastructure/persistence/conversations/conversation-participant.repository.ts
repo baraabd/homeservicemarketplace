@@ -52,12 +52,22 @@ export class ConversationParticipantRepository {
     });
   }
 
-  // Sets the seeker participant's lastReadAt to `now` so the unread
-  // count derived against the message stream goes to zero.
-  setLastReadAt(participantId: string, at: Date, tx?: PrismaTx): Promise<ConversationParticipant> {
-    return this.db(tx).conversationParticipant.update({
-      where: { id: participantId },
+  /**
+   * Moves the participant's read position forward to `at`, never backwards
+   * (R17). A late request from another tab, or a clock behind another
+   * replica's, cannot un-read what a newer request already read. Returns the
+   * row as stored after the call.
+   */
+  async advanceLastReadAt(
+    participantId: string,
+    at: Date,
+    tx?: PrismaTx,
+  ): Promise<ConversationParticipant> {
+    const db = this.db(tx);
+    await db.conversationParticipant.updateMany({
+      where: { id: participantId, OR: [{ lastReadAt: null }, { lastReadAt: { lt: at } }] },
       data: { lastReadAt: at },
     });
+    return db.conversationParticipant.findUniqueOrThrow({ where: { id: participantId } });
   }
 }

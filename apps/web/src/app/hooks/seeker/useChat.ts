@@ -105,10 +105,10 @@ export function useSendMessage(conversationId: string | null | undefined) {
 // unread badge clears.
 export function useMarkConversationRead(conversationId: string | null | undefined) {
   const qc = useQueryClient();
-  return useMutation<MarkConversationReadResponse, Error, void>({
-    mutationFn: () => {
+  return useMutation<MarkConversationReadResponse, Error, string>({
+    mutationFn: (upToMessageId) => {
       if (!conversationId) throw new Error('useMarkConversationRead: conversationId is required.');
-      return markConversationRead(conversationId);
+      return markConversationRead(conversationId, upToMessageId);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: seekerQueryKeys.conversations.list() });
