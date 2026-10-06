@@ -187,6 +187,20 @@ step after the C-7 step, which is left unchanged:
 The job timeout rose from 20 to 30 minutes for the extra step. The I and H
 specs also run in _Integration & E2E_ automatically.
 
+### Login budget shared by suites (found by hosted CI on `21ae5e8`)
+
+The first hosted run failed the new HTTP and browser specs, and the existing
+`dispute-workspace-http` spec, with `Login HTTP 429`. The cause was the tests,
+not the product: login allows 10 attempts per minute per client IP, every
+suite connects from 127.0.0.1 against one Redis, and the R17-C HTTP spec added
+9 logins. The rate limit is unchanged. Instead:
+
+- the R17-C HTTP spec now logs in 7 times;
+- the shared test `login` helper and the browser child honour the server's
+  `Retry-After` on a 429 (bounded to three attempts);
+- the CI step runs the browser spec in its own invocation before the HTTP
+  spec, and sums both reports for the fail-closed 23-case check.
+
 ## Schema, contracts, flags
 
 No migration, no Prisma schema change, no contract change, no feature flag.

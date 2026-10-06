@@ -175,21 +175,6 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     );
   });
 
-  it('a session revoked while the admin page is open cannot decide', async () => {
-    const t = await openTicket();
-    const pageSession = await httpSession(h).login(h.fixture.users.reviewer);
-    const elsewhere = await httpSession(h).login(h.fixture.users.reviewer);
-    expect((await elsewhere.request('/v1/auth/logout-all', { method: 'POST' })).status).toBe(204);
-    const late = await pageSession.request(`/v1/admin/disputes/${t.id}/resolve`, {
-      method: 'POST',
-      body: { status: 'RESOLVED_DENIED', resolution: 'After revocation' },
-    });
-    expect(late.status).toBe(401);
-    expect((await rows(t.id)).dispute.status).toBe('OPEN');
-    // `adminA` shared that account's sessions; restore it for later cases.
-    adminA = await httpSession(h).login(h.fixture.users.reviewer);
-  });
-
   it('a decision whose COMMIT is rejected answers an error, stores nothing, and a retry lands once', async () => {
     const t = await openTicket();
     const db = h.fixture.db;
@@ -232,5 +217,20 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     expect(committed.resolved).toBe(1);
     expect(committed.audits).toBe(1);
     expect(committed.notices).toHaveLength(1);
+  });
+
+  // Last on purpose: it revokes every session of `adminA`'s account. Logins
+  // are rate-limited per client IP, so the suite reuses sessions rather than
+  // re-authenticating afterwards.
+  it('a session revoked while the admin page is open cannot decide', async () => {
+    const t = await openTicket();
+    const elsewhere = await httpSession(h).login(h.fixture.users.reviewer);
+    expect((await elsewhere.request('/v1/auth/logout-all', { method: 'POST' })).status).toBe(204);
+    const late = await adminA.request(`/v1/admin/disputes/${t.id}/resolve`, {
+      method: 'POST',
+      body: { status: 'RESOLVED_DENIED', resolution: 'After revocation' },
+    });
+    expect(late.status).toBe(401);
+    expect((await rows(t.id)).dispute.status).toBe('OPEN');
   });
 });

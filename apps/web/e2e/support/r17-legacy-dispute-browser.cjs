@@ -72,11 +72,23 @@ async function run(data) {
     await page.locator('input[type=email]').waitFor({ timeout: 180000 });
     await page.locator('input[type=email]').fill(data.admin.email);
     await page.locator('input[type=password]').fill(data.admin.password);
-    const login = page.waitForResponse(
-      (r) => r.url() === `${data.api}/v1/auth/login` && r.request().method() === 'POST',
-    );
-    await page.getByRole('button', { name: 'Log In', exact: true }).click();
-    expect((await login).status()).toBe(200);
+    // Login is rate-limited per client IP and earlier suites in the same job
+    // share 127.0.0.1. Honour the server's Retry-After (bounded) like a user
+    // waiting, instead of widening the limit.
+    let loginStatus = 0;
+    for (let attempt = 0; attempt < 3 && loginStatus !== 200; attempt++) {
+      const login = page.waitForResponse(
+        (r) => r.url() === `${data.api}/v1/auth/login` && r.request().method() === 'POST',
+      );
+      await page.getByRole('button', { name: 'Log In', exact: true }).click();
+      const response = await login;
+      loginStatus = response.status();
+      if (loginStatus === 429) {
+        const seconds = Math.min(Number(response.headers()['retry-after']) || 60, 65);
+        await page.waitForTimeout(seconds * 1000);
+      }
+    }
+    expect(loginStatus).toBe(200);
     await page.getByTestId('otp-input').fill(await rpc('otp', { email: data.admin.email }));
     const otp = page.waitForResponse((r) => r.url() === `${data.api}/v1/auth/verify-otp`);
     await page.getByRole('button', { name: 'Confirm', exact: true }).click();
