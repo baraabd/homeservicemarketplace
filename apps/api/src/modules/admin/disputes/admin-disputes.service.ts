@@ -12,7 +12,9 @@ import type {
 import {
   NotificationResourceType,
   NotificationType,
+  Prisma,
   type AuditEventType,
+  type PrismaTx,
 } from '@homeservicemarketplace/database';
 
 import {
@@ -73,46 +75,68 @@ export class AdminDisputesService {
   }
 
   async open(adminUserId: string, input: OpenDisputeRequest): Promise<DisputeMutationResponse> {
-    const result = await this.tx.run(async (tx) => {
-      const created = await this.disputes.create(
-        {
-          bookingId: input.bookingId,
-          openedById: input.openedById,
-          reason: input.reason,
-          description: input.description ?? null,
-          priority: input.priority,
-        },
-        tx,
-      );
-      await this.events.create(
-        {
-          disputeId: created.id,
-          actorUserId: adminUserId,
-          type: 'OPENED',
-          after: {
-            status: created.status,
-            priority: created.priority,
-            reason: created.reason,
-            description: created.description,
-          },
-        },
-        tx,
-      );
-      await this.audit.record(
-        {
-          adminUserId,
-          type: 'ADMIN_DISPUTE_OPENED' as AuditEventType,
-          metadata: {
-            disputeId: created.id,
+    const result = await this.tx
+      .run(async (tx) => {
+        // R17-C (C-3): the opener is a fact about the booking, not whatever the
+        // request names. A ticket "opened by" someone outside the booking would
+        // send them notices about a booking they are not part of.
+        const participants = await this.disputes.bookingParticipants(input.bookingId, tx);
+        if (!participants) throw new AppError('NOT_FOUND', 'Booking not found.', 404);
+        if (
+          input.openedById !== participants.seekerUserId &&
+          input.openedById !== participants.providerUserId
+        )
+          throw new AppError(
+            'VALIDATION_ERROR',
+            "The opener must be the booking's customer or professional.",
+            400,
+          );
+        const created = await this.disputes.create(
+          {
             bookingId: input.bookingId,
             openedById: input.openedById,
-            priority: created.priority,
+            reason: input.reason,
+            description: input.description ?? null,
+            priority: input.priority,
           },
-        },
-        tx,
-      );
-      return created;
-    });
+          tx,
+        );
+        await this.events.create(
+          {
+            disputeId: created.id,
+            actorUserId: adminUserId,
+            type: 'OPENED',
+            after: {
+              status: created.status,
+              priority: created.priority,
+              reason: created.reason,
+              description: created.description,
+            },
+          },
+          tx,
+        );
+        await this.audit.record(
+          {
+            adminUserId,
+            type: 'ADMIN_DISPUTE_OPENED' as AuditEventType,
+            metadata: {
+              disputeId: created.id,
+              bookingId: input.bookingId,
+              openedById: input.openedById,
+              priority: created.priority,
+            },
+          },
+          tx,
+        );
+        return created;
+      })
+      .catch((error: unknown) => {
+        // `Dispute_one_active_per_booking` arbitrates against a concurrent
+        // participant intake or another admin; that is a conflict, not a 500.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+          throw new AppError('CONFLICT', 'This booking already has an active dispute.', 409);
+        throw error;
+      });
     return { dispute: toSummary(result) };
   }
 
@@ -133,7 +157,7 @@ export class AdminDisputesService {
       throw new AppError('VALIDATION_ERROR', 'At least one field must be provided.', 400);
     }
     const result = await this.tx.run(async (tx) => {
-      const existing = await this.disputes.findById(disputeId, tx);
+      const existing = await this.disputes.lockForDecision(disputeId, tx);
       if (!existing) throw new AppError('NOT_FOUND', 'Dispute not found.', 404);
       if (input.status !== undefined && existing.status !== input.status) {
         // Reject moves OUT of a terminal RESOLVED_* / CANCELLED state.
@@ -237,7 +261,7 @@ export class AdminDisputesService {
             body: `Your dispute is now ${input.status.toLowerCase().replace('_', ' ')}.`,
             resourceType: NotificationResourceType.BOOKING,
             resourceId: existing.bookingId,
-            deepLink: `/home/bookings/${existing.bookingId}`,
+            deepLink: await this.openerBookingLink(existing, tx),
             metadata: { disputeId, status: input.status },
           },
           tx,
@@ -255,7 +279,8 @@ export class AdminDisputesService {
     input: ResolveDisputeRequest,
   ): Promise<DisputeMutationResponse> {
     const result = await this.tx.run(async (tx) => {
-      const existing = await this.disputes.findById(disputeId, tx);
+      // Locked: a second admin waits here and then sees the first decision.
+      const existing = await this.disputes.lockForDecision(disputeId, tx);
       if (!existing) throw new AppError('NOT_FOUND', 'Dispute not found.', 404);
       if (existing.status !== 'OPEN' && existing.status !== 'IN_REVIEW') {
         throw new AppError('CONFLICT', 'Dispute is not in a resolvable state.', 409);
@@ -284,24 +309,29 @@ export class AdminDisputesService {
         {
           adminUserId,
           type: 'ADMIN_DISPUTE_RESOLVED' as AuditEventType,
+          // Identifiers and enum values only: the free-text resolution stays on
+          // the dispute and its event, not in the audit log.
           metadata: {
             disputeId,
             previousStatus: existing.status,
             newStatus: input.status,
-            resolution: input.resolution,
+            resolutionLength: input.resolution.length,
           },
         },
         tx,
       );
+      // R17-C (C-2): RESOLVED_REFUND / RESOLVED_PARTIAL record a decision
+      // intent. No refund is executed anywhere (R16), so the notice must not
+      // name one.
       await this.notifications.createForUser(
         {
           userId: existing.openedById,
           type: NotificationType.SYSTEM,
-          title: 'Dispute resolved',
-          body: `Your dispute has been resolved: ${input.status.replace('RESOLVED_', '').toLowerCase()}.`,
+          title: 'Dispute decision recorded',
+          body: 'A decision was recorded on your dispute. It does not move money by itself. Open the booking for details.',
           resourceType: NotificationResourceType.BOOKING,
           resourceId: existing.bookingId,
-          deepLink: `/home/bookings/${existing.bookingId}`,
+          deepLink: await this.openerBookingLink(existing, tx),
           metadata: { disputeId, status: input.status },
         },
         tx,
@@ -310,6 +340,17 @@ export class AdminDisputesService {
     });
     const events = await this.events.listForDispute(disputeId, DETAIL_EVENTS_LIMIT);
     return { dispute: toSummary(result, events) };
+  }
+
+  // R17-C (B-4): the booking as the opener sees it — the seeker and the
+  // provider experiences have different booking routes. An opener who is no
+  // longer a participant gets no link rather than a link into the wrong app.
+  private async openerBookingLink(row: DisputeRow, tx: PrismaTx): Promise<string | null> {
+    const participants = await this.disputes.bookingParticipants(row.bookingId, tx);
+    if (participants?.seekerUserId === row.openedById) return `/home/bookings/${row.bookingId}`;
+    if (participants?.providerUserId === row.openedById)
+      return `/provider/bookings/${row.bookingId}`;
+    return null;
   }
 }
 

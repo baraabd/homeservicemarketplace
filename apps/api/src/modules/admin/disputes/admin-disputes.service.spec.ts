@@ -61,6 +61,10 @@ function makeMocks(initial: DisputeRow | null = makeRow()): Mocks {
     disputes: {
       list: jest.fn().mockResolvedValue(current ? [current] : []),
       findById: jest.fn().mockImplementation(() => Promise.resolve(current)),
+      lockForDecision: jest.fn().mockImplementation(() => Promise.resolve(current)),
+      bookingParticipants: jest
+        .fn()
+        .mockResolvedValue({ seekerUserId: 'user-seeker-1', providerUserId: 'user-provider-1' }),
       create: jest.fn().mockImplementation(async (input) => {
         current = makeRow({
           id: 'dp-new',
@@ -156,6 +160,30 @@ describe('AdminDisputesService', () => {
       expect.objectContaining({ type: 'OPENED', disputeId: 'dp-new' }),
       undefined,
     );
+  });
+
+  it('open refuses an opener who is not a participant of the booking', async () => {
+    const m = makeMocks(null);
+    await expect(
+      makeService(m).open('admin-1', {
+        bookingId: 'bk-1',
+        openedById: 'someone-else',
+        reason: 'x',
+      }),
+    ).rejects.toMatchObject({ status: 400, code: 'VALIDATION_ERROR' });
+    expect(m.disputes.create).not.toHaveBeenCalled();
+  });
+
+  it('open returns 404 for a booking that does not exist', async () => {
+    const m = makeMocks(null);
+    (m.disputes.bookingParticipants as jest.Mock).mockResolvedValue(null);
+    await expect(
+      makeService(m).open('admin-1', {
+        bookingId: 'bk-x',
+        openedById: 'user-seeker-1',
+        reason: 'x',
+      }),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   describe('update (Sprint 6.3 PATCH)', () => {
@@ -258,7 +286,37 @@ describe('AdminDisputesService', () => {
         undefined,
       );
       expect(m.notifications.createForUser).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'user-seeker-1' }),
+        expect.objectContaining({
+          userId: 'user-seeker-1',
+          deepLink: '/home/bookings/bk-1',
+          body: expect.not.stringMatching(/refund/i),
+        }),
+        undefined,
+      );
+      // R17-C: identifiers in the audit row, never the free-text resolution.
+      const [[auditArgs]] = (m.audit.record as jest.Mock).mock.calls;
+      expect(auditArgs.metadata).not.toHaveProperty('resolution');
+      expect(auditArgs.metadata.resolutionLength).toBe('full refund'.length);
+    });
+
+    it('decides from the locked read, never from an unlocked one', async () => {
+      const m = makeMocks(makeRow({ status: 'OPEN' }));
+      await makeService(m).resolve('admin-1', 'dp-1', {
+        status: 'RESOLVED_DENIED',
+        resolution: 'x',
+      });
+      expect(m.disputes.lockForDecision).toHaveBeenCalledWith('dp-1', undefined);
+      expect(m.disputes.findById).not.toHaveBeenCalled();
+    });
+
+    it('links a provider opener into the provider experience', async () => {
+      const m = makeMocks(makeRow({ status: 'OPEN', openedById: 'user-provider-1' }));
+      await makeService(m).resolve('admin-1', 'dp-1', {
+        status: 'RESOLVED_DENIED',
+        resolution: 'x',
+      });
+      expect(m.notifications.createForUser).toHaveBeenCalledWith(
+        expect.objectContaining({ deepLink: '/provider/bookings/bk-1' }),
         undefined,
       );
     });
