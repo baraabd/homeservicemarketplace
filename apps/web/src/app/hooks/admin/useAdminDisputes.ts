@@ -56,7 +56,9 @@ export function useUpdateAdminDispute() {
   return useMutation({
     mutationFn: ({ disputeId, body }: { disputeId: string; body: UpdateDisputeRequest }) =>
       updateAdminDispute(disputeId, body),
-    onSuccess: (_data, vars) => invalidateDispute(qc, vars.disputeId),
+    // Read back after any outcome: a 409 means another admin changed the
+    // dispute, and the drawer must show that state, not the stale one.
+    onSettled: (_data, _error, vars) => invalidateDispute(qc, vars.disputeId),
   });
 }
 
@@ -65,6 +67,6 @@ export function useResolveAdminDispute() {
   return useMutation({
     mutationFn: ({ disputeId, body }: { disputeId: string; body: ResolveDisputeRequest }) =>
       resolveAdminDispute(disputeId, body),
-    onSuccess: (_data, vars) => invalidateDispute(qc, vars.disputeId),
+    onSettled: (_data, _error, vars) => invalidateDispute(qc, vars.disputeId),
   });
 }
