@@ -197,6 +197,46 @@ export function registerLedgerCallerTransactionCases(context: () => Context): vo
     });
   });
 
+  // PLATFORM-TX-1 — the outer transaction is rejected AT COMMIT, after the
+  // posting and its audit row were written inside it. Nothing may survive,
+  // and the caller must see the failure rather than a posting result.
+  it('caller-owned transaction rolls back a posting when the outer COMMIT is rejected', async () => {
+    const c = context();
+    const input = command('outer_commit_rejected');
+    const marker = `ptx_ledger_${input.idempotencyKey
+      .slice(-12)
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')}`;
+    await c.prisma.$executeRawUnsafe(`CREATE TABLE ${marker} (id int)`);
+    await c.prisma
+      .$executeRawUnsafe(`CREATE OR REPLACE FUNCTION ${marker}_reject() RETURNS trigger AS $$
+      BEGIN RAISE EXCEPTION 'ptx: ledger commit rejected' USING ERRCODE = 'P0001'; END $$ LANGUAGE plpgsql`);
+    await c.prisma
+      .$executeRawUnsafe(`CREATE CONSTRAINT TRIGGER ${marker}_t AFTER INSERT ON ${marker}
+      DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION ${marker}_reject()`);
+    try {
+      let postedId = '';
+      await expect(
+        c.prisma.$transaction(async (tx) => {
+          postedId = (await c.ledger.post(c.system, input, tx)).transaction.id;
+          await tx.$executeRawUnsafe(`INSERT INTO ${marker} VALUES (1)`);
+        }, options),
+      ).rejects.toThrow('ptx: ledger commit rejected');
+      expect(postedId).not.toBe('');
+      await assertAbsent(postedId, input.idempotencyKey);
+      // The same command is a fresh posting afterwards, not a replay of
+      // something that never committed.
+      const retried = await c.prisma.$transaction(
+        (tx) => c.ledger.post(c.system, input, tx),
+        options,
+      );
+      expect(retried.replayed).toBe(false);
+    } finally {
+      await c.prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS ${marker}`);
+      await c.prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${marker}_reject()`);
+    }
+  });
+
   it('caller-owned transaction authorizes against its own uncommitted permission state', async () => {
     const c = context();
     const input = command('outer_permission');

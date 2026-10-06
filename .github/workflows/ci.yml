@@ -908,6 +908,34 @@ jobs:
             apps/web/test-results/r17-b-notifications-report/
           retention-days: 14
           if-no-files-found: error
+      - name: Accept PLATFORM-TX-1 — a rejected COMMIT is never reported as success
+        # The provider presses Start Job on replica A's web app; a test-only
+        # deferred trigger (created and dropped by the spec, never migrated)
+        # rejects that transaction at COMMIT after every statement succeeded.
+        # The API must not answer success, nothing may be stored and the
+        # screen must not show a started job; then the same button commits
+        # once. Synthetic people; the spec records no trace or video.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4011
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_REPLICA_A_WEB: http://127.0.0.1:4174
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/platform-tx-commit-report
+        run: |
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/platform-transaction-commit.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --retries=0 \
+            --output=test-results/platform-tx-commit
+      - name: Upload PLATFORM-TX-1 commit-authority evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: platform-tx-commit-evidence
+          path: |
+            apps/web/test-results/platform-tx-commit/
+            apps/web/test-results/platform-tx-commit-report/
+          retention-days: 14
+          if-no-files-found: error
       - name: Bring in the visual evidence, so the counters can be complete
         # Into the same tree this job wrote its own markers to. The ledger keeps
         # the two namespaces separate by path — PROVISIONAL_UI for the stubbed
