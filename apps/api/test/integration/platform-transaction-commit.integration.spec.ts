@@ -191,7 +191,13 @@ d('PLATFORM-TX-1 transaction commit authority (real Postgres)', () => {
     const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
-    expect(rejected[0].reason?.code).toBe('P2034');
+    // SSI raises 40001 at whichever point detects the conflict. Prisma reports
+    // it as P2034 at COMMIT or on a model query, and as P2010 carrying the
+    // SQLSTATE when a raw statement (as here, on a synthetic table) detects it.
+    const reason = rejected[0].reason;
+    expect(
+      reason?.code === 'P2034' || (reason?.code === 'P2010' && reason?.meta?.code === '40001'),
+    ).toBe(true);
     // Exactly the fulfilled caller's write committed; the invariant holds.
     expect(await count(`note = 'off'`)).toBe(1);
     expect(await count(`note = 'on'`)).toBe(1);
