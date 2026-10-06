@@ -35,7 +35,7 @@ const A: Replica = replica('A', Number(process.env.E2E_REPLICA_A_PORT ?? 4011), 
   CORS_ORIGINS: WEB_A,
 });
 
-const bookingState = (bookingId: string) =>
+const bookingState = (bookingId: string, actorUserId: string) =>
   withDb(async (db) => {
     const status = (
       await db.query<{ status: string }>('SELECT status FROM "Booking" WHERE id = $1', [bookingId])
@@ -55,9 +55,13 @@ const bookingState = (bookingId: string) =>
     ).rows[0].n;
     const announcements = (
       await db.query<{ n: number }>(
+        // Scoped to this test's own (fresh, synthetic) provider as the actor:
+        // other suites share the table.
         `SELECT count(*)::int AS n FROM "OutboxEvent" e
           WHERE e."eventType" = 'notification.created'
+            AND e.payload->>'actorUserId' = $1
             AND NOT EXISTS (SELECT 1 FROM "Notification" x WHERE x.id = e."aggregateId")`,
+        [actorUserId],
       )
     ).rows[0].n;
     return { status, events, notices, orphanAnnouncements: announcements };
@@ -89,7 +93,7 @@ test.describe('PLATFORM-TX-1 — a rejected COMMIT through the real stack', () =
     const seeker = await registerSeeker('ptx');
     const provider = await workingProvider(categoryId, 'ptx');
     const bookingId = await scheduledBooking(seeker, provider, categoryId);
-    const before = await bookingState(bookingId);
+    const before = await bookingState(bookingId, provider.userId);
     expect(before.status).toBe('SCHEDULED');
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -131,7 +135,7 @@ test.describe('PLATFORM-TX-1 — a rejected COMMIT through the real stack', () =
     }
 
     // Nothing of the start survived: status, history, notice, announcement.
-    expect(await bookingState(bookingId)).toEqual(before);
+    expect(await bookingState(bookingId, provider.userId)).toEqual(before);
     // The screen does not claim a started job, before or after a reload.
     await expect(page.getByRole('button', { name: 'Mark Complete', exact: true })).toHaveCount(0);
     await page.reload();
@@ -149,7 +153,7 @@ test.describe('PLATFORM-TX-1 — a rejected COMMIT through the real stack', () =
     );
     await page.getByRole('button', { name: 'Start Job', exact: true }).click();
     expect((await accepted).status()).toBeLessThan(300);
-    const after = await bookingState(bookingId);
+    const after = await bookingState(bookingId, provider.userId);
     expect(after.status).toBe('IN_PROGRESS');
     expect(after.notices).toBe(1);
     expect(after.orphanAnnouncements).toBe(0);

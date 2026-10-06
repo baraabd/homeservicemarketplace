@@ -283,24 +283,27 @@ d('PLATFORM-TX-1 transaction commit authority (real Postgres)', () => {
       runner,
     );
     await rejectAtCommit(11);
+    let notificationId = '';
     await expect(
       runner.run(async (tx: any) => {
         const n = await notifications.createForUser(
           { userId: USER, type: 'SYSTEM', title: 'ptx', body: 'ptx', deepLink: '/home/ptx' },
           tx,
         );
+        notificationId = n.id;
         await tx.$executeRawUnsafe(`INSERT INTO ${T} VALUES (11, 'business change')`);
         return n.id;
       }),
     ).rejects.toThrow('ptx: rejected at commit');
+    // Both rows were written inside the rejected transaction. Scoped to this
+    // test's own ids: other suites share these tables in parallel.
+    expect(notificationId).not.toBe('');
     const rows = await pg.query(
-      `SELECT (SELECT count(*)::int FROM "Notification" WHERE "userId" = $1) AS n,
-              (SELECT count(*)::int FROM "OutboxEvent" e
-                 WHERE e."eventType" = 'notification.created'
-                   AND NOT EXISTS (SELECT 1 FROM "Notification" x WHERE x.id = e."aggregateId")) AS orphans`,
-      [USER],
+      `SELECT (SELECT count(*)::int FROM "Notification" WHERE "userId" = $1 OR id = $2) AS n,
+              (SELECT count(*)::int FROM "OutboxEvent" WHERE "aggregateId" = $2) AS announcements`,
+      [USER, notificationId],
     );
-    expect(rows.rows[0]).toEqual({ n: 0, orphans: 0 });
+    expect(rows.rows[0]).toEqual({ n: 0, announcements: 0 });
     expect(await count()).toBe(0);
   });
 
