@@ -54,8 +54,8 @@ Security (not cleared by a green workflow): 8 open CodeQL alerts on develop —
 | Unit  | Branch                                  | Scope                                                         | Order | State                                                        |
 | ----- | --------------------------------------- | ------------------------------------------------------------- | ----- | ------------------------------------------------------------ |
 | R17-A | `feat/r17-a-messaging-authority`        | Messaging read position, cross-instance acceptance            | 1     | `R17_A_MERGED` (#142, `e1f7f51`; post-merge push runs green) |
-| R17-B | `feat/r17-b-notification-authority`     | Notification lifecycle, scoping, commit-safe live push        | 2     | `R17_B_IN_PROGRESS` (base `e1f7f51`)                         |
-| R17-C | `feat/r17-c-dispute-authority`          | Legacy admin dispute race and copy; journey acceptance        | 3     | analysis only                                                |
+| R17-B | `feat/r17-b-notification-authority`     | Notification lifecycle, scoping, commit-safe live push        | 2     | `R17_B_MERGED` (#143, `7642513`)                             |
+| R17-C | `feat/r17-c-dispute-authority`          | Legacy admin dispute race and copy; journey acceptance        | 3     | `R17_C_IN_REVIEW` (base `a8dc1a2`, after PLATFORM-TX-1 #144) |
 | R17-D | `feat/r17-d-admin-operations`           | Admin settings authority, users safeguards, analytics honesty | 4     | analysis only                                                |
 | R17-E | `feat/r17-e-provider-surface-authority` | Feed/detail/bid agreement, booking actions, stale capability  | 5     | analysis only                                                |
 
@@ -77,6 +77,10 @@ merge is pending, only read-only analysis and test design continue.
 | `apps/web/src/app/styles/toast-theme.css`             | R17-B          | `right: auto` (RTL toast clipping)                               |
 | `schema.prisma`, migrations                           | none planned   | any later unit must coordinate and prove upgrade/replay          |
 | `AppModule`, authorization, audit allowlists          | none planned   | R17-C/D may need audit identifiers; serialize when they do       |
+| `.github/workflows/ci.yml` (`dispute-workspace` job)  | R17-C          | one acceptance step + one upload after C-7's; timeout 20 → 30    |
+
+R17-C changed no schema, migration, contract, `AppModule`, permission or audit
+allowlist. Its shared edit is the CI step above.
 
 ## R17-B coordination
 
