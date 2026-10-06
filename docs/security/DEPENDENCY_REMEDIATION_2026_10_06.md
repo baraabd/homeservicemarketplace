@@ -51,3 +51,27 @@ Normal frozen installation applies the corrected tree; no data changes.
 Revert this remediation commit to roll back (reintroduces the four findings).
 Keep PR #144 draft until all required checks pass on its final head. Do not merge
 as part of this task.
+
+## Revalidation on the pinned toolchain (2026-10-06)
+
+Separate from the validation above, which ran on Node 24.19.0 with an offline,
+lockfile-only install. Taken on `9cb2354` with Node 24.21.0 and pnpm 10.32.1:
+
+- full `pnpm install --frozen-lockfile` (online, lifecycle scripts enabled);
+- `security:audit:test` 39/39; `security:audit` and `security:audit:prod`
+  0 findings at every severity at 14:14 UTC;
+- each consumer resolves the corrected version: express → proxy-addr 2.0.8,
+  pino-pretty → fast-copy 4.1.0, @tailwindcss/node → source-map-js 1.2.2,
+  load-nyc-config 1.1.0 → js-yaml 4.3.2 → argparse 2.0.1; the lockfile has no
+  reference to the replaced versions;
+- 21/21 behavioural probes on the installed packages: Express `trust proxy` at
+  0, 1 and 2 hops (the API's `TRUST_PROXY_HOPS` mode) with an IPv4-mapped IPv6
+  hop; proxy-addr subnet trust for mapped addresses; `load-nyc-config` with
+  `.nycrc.yml`, `.nycrc.yaml`, JSON, `package.json` and invalid YAML (rejected
+  with `YAMLException`); pino-pretty and fast-copy on nested and circular
+  values; source-map-js round trip and unsupported-version rejection;
+- API and web rebuilt on the new tree; the PLATFORM-TX-1 browser spec passed.
+
+The repository has no nyc configuration file and CI does not collect coverage,
+so the js-yaml 4 path is exercised only by these probes, not by CI. Hosted CI
+run 37473362334 (#403, attempt 1) passed every job on `9cb2354`.

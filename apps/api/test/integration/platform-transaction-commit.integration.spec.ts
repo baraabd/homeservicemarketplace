@@ -311,6 +311,38 @@ d('PLATFORM-TX-1 transaction commit authority (real Postgres)', () => {
     );
     expect(rows.rows[0]).toEqual({ n: 0, announcements: 0 });
     expect(await count()).toBe(0);
+
+    // Control: the same operation, committed, is found by the same filter.
+    // Without it, the zeros above could come from a filter that never matches.
+    await clearTriggers();
+    let committedId = '';
+    try {
+      committedId = await runner.run(async (tx: any) => {
+        const n = await notifications.createForUser(
+          { userId: USER, type: 'SYSTEM', title: 'ptx', body: 'ptx', deepLink: '/home/ptx' },
+          tx,
+        );
+        await tx.$executeRawUnsafe(`INSERT INTO ${T} VALUES (13, 'business change')`);
+        return n.id;
+      });
+      expect(committedId).not.toBe('');
+      const committed = await pg.query(
+        `SELECT (SELECT count(*)::int FROM "Notification" WHERE "userId" = $1 OR id = $2) AS n,
+                (SELECT count(*)::int FROM "OutboxEvent"
+                   WHERE "aggregateId" = $2 AND "eventType" = 'notification.created') AS announcements`,
+        [USER, committedId],
+      );
+      expect(committed.rows[0]).toEqual({ n: 1, announcements: 1 });
+      expect(await count()).toBe(1);
+    } finally {
+      // Leave no rows in the shared outbox for other suites to see.
+      if (committedId) {
+        await prisma.outboxHandlerRun.deleteMany({
+          where: { event: { aggregateId: committedId } },
+        });
+        await prisma.outboxEvent.deleteMany({ where: { aggregateId: committedId } });
+      }
+    }
   });
 
   it('T14 the pool serves a clean transaction after every failure above', async () => {

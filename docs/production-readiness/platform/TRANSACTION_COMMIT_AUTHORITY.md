@@ -97,52 +97,108 @@ Prisma 6.12.0, same test source.
 
 What each test proves is stated in the spec headers. T8 asserts the
 `OUTCOME_UNKNOWN` contract (rejection, not `P2034`) and waits on a barrier
-(backend parked inside the deferred trigger) instead of a fixed delay.
+(backend parked inside the deferred trigger) instead of a fixed delay. It
+proves only that injected case: a backend terminated inside a deferred trigger
+cannot have committed. It does not prove that every real connection loss
+around COMMIT means nothing committed.
 
-Not covered by an automated test here: T9 is the ledger case above; T10
-(required audit failure) and T12 (outbox recovery) are covered by the existing
-R15/R17-B suites rather than new ones; T13 is the browser case.
+Positive controls keep the absence checks honest: T11 commits the same
+operation afterwards and finds exactly one notification and one announcement
+with the same `aggregateId` filter; the browser spec resolves the provider's
+user id (fixture email → user → the booking's provider profile, exactly one
+row) before the mutation, and the committed start adds exactly one
+announcement with that actor.
 
-### Regression on 6.12.0 (local Windows host)
+T6 accepts exactly two classifications of the serialization failure:
+`P2034`, or `P2010` with `meta.code = '40001'` (raised when the raw statement
+on the test's synthetic table detects the conflict; reproduced locally).
 
-- Static: `database`, `api`, `web` typecheck pass; `api` lint clean; `web` lint
-  0 errors, 34 warnings (none in changed files); Prettier clean on changed files.
-- Dependencies: `pnpm install --frozen-lockfile` passes; `security:audit:test`
-  39/39; `security:audit` and `security:audit:prod` 0 of every severity.
-- Schema: `prisma migrate diff` empty; `migrate deploy`, seed and
-  `verify:migrations` pass on a fresh database.
+Not covered by a new test here: T9 is the ledger case above; T10 (required
+audit failure) and T12 (outbox recovery) rely on the existing R15/R17-B suites;
+T13 is the browser case.
+
+### Local evidence and the source it was taken on
+
+All local runs: Windows 11, Node 24.21.0, pnpm 10.32.1, disposable PostgreSQL
+16 / Redis 7 / Mailpit containers.
+
+On `53e8f2c` (Prisma 6.12.0, before the dependency remediation):
+
+- `database`, `api`, `web` typecheck and lint (web: 0 errors, 34 existing
+  warnings); `migrate diff` empty; `migrate deploy`, seed and
+  `verify:migrations` on a fresh database.
 - API, all suites with `RUN_DB_INTEGRATION=1 RUN_REDIS_INTEGRATION=1`, four
-  shards, two workers (host memory): 5431 passed, 33 skipped, 15 failed of 5479.
-  None is attributed to the upgrade:
-  - `restricted-erasure.spec.ts` (1): the known Windows-only ENOTDIR case,
-    green on Ubuntu CI;
-  - `r17-notifications.integration.spec.ts` (2, intermittent, also alone): this
-    host's Docker VM clock runs about 0.3 s behind Windows. `availableAt` is
-    stamped by the engine from the host clock and claimed against PostgreSQL
-    `NOW()`, so a just-written event is briefly not due. Same behaviour on
-    Prisma 5, which also stamps `@default(now())` client-side;
-  - `provider-journey` (11) and `onboarding-review-submit` (1): failed only
-    when sharded together with other suites; alone 15/15 and 51/51.
-    Hosted CI runs the whole suite in its normal configuration and is the
-    deciding evidence for these.
-- Not run locally: the Docker image build and production boot (host memory);
-  the hosted _Docker cold build + production boot_ job covers the Alpine image.
+  shards, two workers (host memory): 5431 passed, 33 skipped, **15 failed** of 5479. This run is **not green**. The failures are recorded as separate
+  findings below; hosted CI on the same tree passed the full suite in its
+  normal configuration (5446 passed, 33 skipped).
 
-The clock-source mismatch (engine-side `now()` against database `NOW()`) is
-recorded as a separate observation: in production it can only delay an outbox
-event by the clock skew between API and database hosts, never lose it.
+On `9cb2354` plus the uncommitted control edits that became the next commit
+(Prisma 6.12.0 with the dependency remediation):
+
+- full `pnpm install --frozen-lockfile` (not offline, scripts enabled);
+  `security:audit:test` 39/39; `security:audit` and `security:audit:prod`
+  0 of every severity (2026-10-06 14:14 UTC — advisory data changes over time);
+- every consumer resolves the corrected versions (express → proxy-addr 2.0.8,
+  pino-pretty → fast-copy 4.1.0, @tailwindcss/node → source-map-js 1.2.2,
+  load-nyc-config 1.1.0 → js-yaml 4.3.2 → argparse 2.0.1; no lockfile
+  reference to the old versions);
+- compatibility probes against the installed packages, 21/21: Express
+  `trust proxy` at 0/1/2 hops with an IPv4-mapped IPv6 hop (the API's
+  `TRUST_PROXY_HOPS` mode), proxy-addr subnet trust for mapped addresses,
+  `load-nyc-config` with `.nycrc.yml`, `.nycrc.yaml`, JSON, `package.json` and
+  invalid YAML (rejected with `YAMLException`), pino-pretty and fast-copy on
+  nested and circular values, source-map-js round trip and version rejection.
+  The repository has no nyc config file and CI does not collect coverage, so
+  CI itself does not exercise the YAML path;
+- `api` typecheck, `web` `typecheck:e2e`, ESLint on both changed specs;
+- `platform-transaction-commit.integration.spec.ts` 10/10 twice;
+- API and web rebuilt on the new tree; the browser spec 1/1.
+
+Not run locally: the Docker image build and boot (host memory); the hosted
+_Docker cold build + production boot_ job builds the Alpine image.
+
+### Separate findings (not caused by and not fixed by this change)
+
+1. **Windows ENOTDIR** — `restricted-erasure.spec.ts` fails on Windows hosts,
+   also on the baseline; green on Ubuntu CI. Environment-specific; owner: the
+   restricted-media area.
+2. **R17-B outbox timing, local only** — two B-1 cases failed intermittently on
+   this host, also when the suite ran alone. Measured: PostgreSQL `now()` about
+   250–320 ms behind the host clock. `availableAt` is stamped by the Prisma
+   engine from the host clock (`@default(now())`); the claim compares it with
+   the claiming transaction's start time (`NOW()`). That makes a just-written
+   event briefly not due, which matches the symptom, but the causal link was
+   **not proven** (no run with corrected clocks), and retry, lease, reclaim and
+   dead-letter behaviour under skew was **not tested**. Open; owner: R17-B
+   outbox.
+3. **Parallel interference, local only** — `provider-journey` (11) and
+   `onboarding-review-submit` (1) failed when sharded with other suites and
+   passed alone (15/15, 51/51). The conflicting fixture, row, worker or lock
+   was **not identified**. Passing alone does not make the interference
+   harmless. Open; owner: provider onboarding/verification tests.
+4. **Booking-start error UX** — after the rejected start the provider sees no
+   explicit error message; the screen only does not claim success. Owner: the
+   provider booking job-actions surface (R12 area). Not changed here.
 
 ## Rollout and rollback
 
-- Rollout: dependency change only; regenerate the client (the Dockerfile and
+Change set on this branch: the Prisma pin (`packages/database/package.json`
+and lockfile), the dependency remediation (root `pnpm.overrides` and
+lockfile), the tests, the CI step and these documents.
+
+- Rollout: dependency changes only; regenerate the client (the Dockerfile and
   CI already run `prisma generate`).
-- Rollback: revert the commit and regenerate. No schema or data change to undo.
-  Rolling back restores the silent false-success.
+- Rollback: revert the branch's merge commit (or the individual commits) and
+  regenerate. No schema or data change to undo. Reverting the Prisma pin
+  **reintroduces the silent false success**; reverting the remediation
+  reintroduces the four advisories it removes.
 
 ## Post-merge gate
 
 After the owner merges: fetch `origin/develop`, identify the merge SHA, confirm
-`packages/database/package.json` pins 6.12.0 and the lockfile resolves it, and
-confirm the hosted _Integration & E2E_ job executed
-`platform-transaction-commit.integration.spec.ts` on that SHA. Only then is
-PLATFORM-TX-1 accepted and R17-C may start.
+`packages/database/package.json` pins 6.12.0 and the root overrides are
+present, the lockfile resolves them, and the hosted _Integration & E2E_ and
+_Phase 5 real-route_ jobs on that SHA executed (not skipped)
+`platform-transaction-commit.integration.spec.ts` and
+`platform-transaction-commit.real-api.spec.ts`. Only then is PLATFORM-TX-1
+accepted and R17-C may change production code.

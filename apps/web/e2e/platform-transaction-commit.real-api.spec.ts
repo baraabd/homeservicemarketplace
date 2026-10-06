@@ -35,7 +35,7 @@ const A: Replica = replica('A', Number(process.env.E2E_REPLICA_A_PORT ?? 4011), 
   CORS_ORIGINS: WEB_A,
 });
 
-const bookingState = (bookingId: string, actorEmail: string) =>
+const bookingState = (bookingId: string, actorUserId: string) =>
   withDb(async (db) => {
     const status = (
       await db.query<{ status: string }>('SELECT status FROM "Booking" WHERE id = $1', [bookingId])
@@ -55,13 +55,13 @@ const bookingState = (bookingId: string, actorEmail: string) =>
     ).rows[0].n;
     const announcements = (
       await db.query<{ n: number }>(
-        // Scoped to this test's own (fresh, synthetic) provider as the actor:
-        // other suites share the table.
+        // Scoped to this test's own synthetic provider as the actor: other
+        // suites share the table.
         `SELECT count(*)::int AS n FROM "OutboxEvent" e
           WHERE e."eventType" = 'notification.created'
-            AND e.payload->>'actorUserId' = (SELECT id FROM "User" WHERE email = $1)
+            AND e.payload->>'actorUserId' = $1
             AND NOT EXISTS (SELECT 1 FROM "Notification" x WHERE x.id = e."aggregateId")`,
-        [actorEmail],
+        [actorUserId],
       )
     ).rows[0].n;
     // Non-vacuous: the announcement of the successful start carries this actor.
@@ -69,8 +69,8 @@ const bookingState = (bookingId: string, actorEmail: string) =>
       await db.query<{ n: number }>(
         `SELECT count(*)::int AS n FROM "OutboxEvent" e
           WHERE e."eventType" = 'notification.created'
-            AND e.payload->>'actorUserId' = (SELECT id FROM "User" WHERE email = $1)`,
-        [actorEmail],
+            AND e.payload->>'actorUserId' = $1`,
+        [actorUserId],
       )
     ).rows[0].n;
     return { status, events, notices, orphanAnnouncements: announcements, announced };
@@ -102,7 +102,24 @@ test.describe('PLATFORM-TX-1 — a rejected COMMIT through the real stack', () =
     const seeker = await registerSeeker('ptx');
     const provider = await workingProvider(categoryId, 'ptx');
     const bookingId = await scheduledBooking(seeker, provider, categoryId);
-    const before = await bookingState(bookingId, provider.email);
+    // The actor, resolved before any mutation: the fixture's account must be
+    // exactly the user who owns this booking's provider profile.
+    const actors = await withDb(
+      async (db) =>
+        (
+          await db.query<{ id: string }>(
+            `SELECT u.id FROM "User" u
+               JOIN "ProviderProfile" p ON p."userId" = u.id
+               JOIN "Booking" b ON b."providerId" = p.id
+              WHERE b.id = $1 AND u.email = $2`,
+            [bookingId, provider.email],
+          )
+        ).rows,
+    );
+    expect(actors).toHaveLength(1);
+    const providerUserId = actors[0].id;
+    expect(providerUserId).toMatch(/\S/);
+    const before = await bookingState(bookingId, providerUserId);
     expect(before.status).toBe('SCHEDULED');
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -144,7 +161,7 @@ test.describe('PLATFORM-TX-1 — a rejected COMMIT through the real stack', () =
     }
 
     // Nothing of the start survived: status, history, notice, announcement.
-    expect(await bookingState(bookingId, provider.email)).toEqual(before);
+    expect(await bookingState(bookingId, providerUserId)).toEqual(before);
     // The screen does not claim a started job, before or after a reload.
     await expect(page.getByRole('button', { name: 'Mark Complete', exact: true })).toHaveCount(0);
     await page.reload();
@@ -162,7 +179,7 @@ test.describe('PLATFORM-TX-1 — a rejected COMMIT through the real stack', () =
     );
     await page.getByRole('button', { name: 'Start Job', exact: true }).click();
     expect((await accepted).status()).toBeLessThan(300);
-    const after = await bookingState(bookingId, provider.email);
+    const after = await bookingState(bookingId, providerUserId);
     expect(after.status).toBe('IN_PROGRESS');
     expect(after.notices).toBe(1);
     expect(after.orphanAnnouncements).toBe(0);
