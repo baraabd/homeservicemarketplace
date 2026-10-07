@@ -1,183 +1,200 @@
-import { AppConfigService } from '../../../config/app-config.service';
-import type { BookingRepository } from '../../../infrastructure/persistence/bookings/booking.repository';
 import type { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+import type {
+  AdminAnalyticsQueries,
+  CurrencyDay,
+  CurrencyLifetime,
+} from './admin-analytics.queries';
 import { AdminAnalyticsService } from './admin-analytics.service';
 
-// Sprint 6.4 — service spec for the analytics overview + revenue
-// methods. The legacy summary() path is exercised end-to-end by the
-// existing Postman folder (50 — Analytics) and the harness; this
-// spec focuses on the new date-range methods + their fee math.
-
-function makeConfig(feeBps = 1000): AppConfigService {
-  return {
-    get: (k: string) => (k === 'PROVIDER_PLATFORM_FEE_BPS' ? feeBps : undefined),
-  } as unknown as AppConfigService;
-}
+// Sprint 6.4 / R17-D — unit spec for how the analytics service composes its
+// read model. The SQL itself (event-dated completions, per-currency grouping)
+// is proven against real PostgreSQL in
+// test/integration/r17-admin-operations.integration.spec.ts.
 
 function makePrisma(counts: Record<string, number> = {}): PrismaService {
-  // Stub the few `c.<model>.count(...)` calls overview() makes. The
-  // shared `dispute` count uses the as-unknown cast so the model
-  // doesn't need to be on the Prisma type itself.
   const c = {
     user: { count: jest.fn().mockResolvedValue(counts.users ?? 0) },
     providerProfile: { count: jest.fn().mockResolvedValue(counts.providers ?? 0) },
     serviceRequest: { count: jest.fn().mockResolvedValue(counts.requests ?? 0) },
+    booking: { count: jest.fn().mockResolvedValue(0) },
     dispute: { count: jest.fn().mockResolvedValue(counts.disputesOpen ?? 0) },
   };
   return { client: c } as unknown as PrismaService;
 }
 
-function makeBookings(
+function makeQueries(
   over: {
-    aggregate?: ReturnType<typeof makeAggregate>;
-    chartRows?: Array<{ day: Date; gross: number; completedCount: number }>;
+    lifetime?: CurrencyLifetime[];
+    days?: CurrencyDay[];
+    undated?: number;
+    cancelled?: number;
   } = {},
-): BookingRepository {
+): AdminAnalyticsQueries {
   return {
-    aggregateGrossRevenueForMarketplace: jest
-      .fn()
-      .mockResolvedValue(over.aggregate ?? makeAggregate({ dominantCurrency: 'USD' })),
-    aggregateEarningsByDayForMarketplace: jest.fn().mockResolvedValue(over.chartRows ?? []),
-  } as unknown as BookingRepository;
+    lifetimeByCurrency: jest.fn().mockResolvedValue(over.lifetime ?? []),
+    completionsByCurrencyDay: jest.fn().mockResolvedValue(over.days ?? []),
+    undatedCompletions: jest.fn().mockResolvedValue(over.undated ?? 0),
+    cancellationsWithin: jest.fn().mockResolvedValue(over.cancelled ?? 0),
+  } as unknown as AdminAnalyticsQueries;
 }
 
-function makeAggregate(
-  over: Partial<{
-    grossLifetime: number;
-    grossWithinRange: number;
-    completedLifetime: number;
-    completedWithinRange: number;
-    cancelledWithinRange: number;
-    pendingAmount: number;
-    dominantCurrency: string | null;
-  }> = {},
-) {
-  return {
-    grossLifetime: 0,
-    grossWithinRange: 0,
-    completedLifetime: 0,
-    completedWithinRange: 0,
-    cancelledWithinRange: 0,
-    pendingAmount: 0,
-    dominantCurrency: null,
-    ...over,
-  };
-}
+const service = (q = makeQueries(), p = makePrisma()) => new AdminAnalyticsService(p, q);
 
 describe('AdminAnalyticsService.overview', () => {
-  it('rolls up counts + revenue + fees for a custom date range', async () => {
-    const bookings = makeBookings({
-      aggregate: makeAggregate({
-        grossLifetime: 12_000,
-        grossWithinRange: 4_000,
-        completedLifetime: 17,
-        completedWithinRange: 6,
-        cancelledWithinRange: 1,
-        dominantCurrency: 'USD',
-      }),
+  it('reports a single total only for a single currency, and never a fee', async () => {
+    const q = makeQueries({
+      lifetime: [{ currency: 'USD', bookedValue: 12_000, completed: 17 }],
+      days: [{ currency: 'USD', day: '2026-04-02', bookedValue: 4_000, completed: 6 }],
+      undated: 2,
+      cancelled: 1,
     });
-    const prisma = makePrisma({
+    const out = await service(q, makePrisma({ users: 100, providers: 9 })).overview(
+      '2026-04-01',
+      '2026-04-30',
+    );
+    expect(out.range).toEqual({ from: '2026-04-01', to: '2026-04-30' });
+    expect(out.counts).toMatchObject({
       users: 100,
-      providers: 25,
-      requests: 50,
-      disputesOpen: 2,
-    });
-    const svc = new AdminAnalyticsService(prisma, bookings, makeConfig(1000));
-    const out = await svc.overview('2026-04-01', '2026-04-30');
-    expect(out.range.from).toBe('2026-04-01');
-    expect(out.range.to).toBe('2026-04-30');
-    expect(out.counts).toEqual({
-      users: 100,
-      providers: 25,
-      requests: 50,
+      providers: 9,
       bookingsCompleted: 6,
       bookingsCancelled: 1,
-      disputesOpen: 2,
+      undatedCompletions: 2,
     });
-    expect(out.revenue.grossWithinRange).toBe(4_000);
-    expect(out.revenue.platformFeesWithinRange).toBe(400); // 10%
-    expect(out.revenue.netProviderEarningsWithinRange).toBe(3_600);
-    expect(out.revenue.grossLifetime).toBe(12_000);
-    expect(out.platformFeeRateBps).toBe(1000);
+    expect(out.revenue).toEqual({
+      grossWithinRange: 4_000,
+      platformFeesWithinRange: null,
+      netProviderEarningsWithinRange: null,
+      grossLifetime: 12_000,
+    });
+    expect(out.currency).toBe('USD');
+    expect(out.platformFeeRateBps).toBeNull();
+    expect(out.feeStatus).toBe('NOT_APPROVED');
+  });
+
+  it('never adds two currencies together', async () => {
+    const q = makeQueries({
+      lifetime: [
+        { currency: 'EUR', bookedValue: 500, completed: 1 },
+        { currency: 'USD', bookedValue: 900, completed: 2 },
+      ],
+      days: [
+        { currency: 'EUR', day: '2026-04-02', bookedValue: 500, completed: 1 },
+        { currency: 'USD', day: '2026-04-03', bookedValue: 400, completed: 1 },
+      ],
+    });
+    const out = await service(q).overview('2026-04-01', '2026-04-30');
+    expect(out.revenue.grossWithinRange).toBeNull();
+    expect(out.revenue.grossLifetime).toBeNull();
+    expect(out.currency).toBeNull();
+    expect(out.revenueByCurrency).toEqual([
+      {
+        currency: 'EUR',
+        bookedValueLifetime: 500,
+        completedLifetime: 1,
+        bookedValueWithinRange: 500,
+        completedWithinRange: 1,
+      },
+      {
+        currency: 'USD',
+        bookedValueLifetime: 900,
+        completedLifetime: 2,
+        bookedValueWithinRange: 400,
+        completedWithinRange: 1,
+      },
+    ]);
   });
 
   it('defaults to the last 30 days when from/to missing', async () => {
-    const bookings = makeBookings();
-    const svc = new AdminAnalyticsService(makePrisma(), bookings, makeConfig());
-    await svc.overview();
-    const args = (bookings.aggregateGrossRevenueForMarketplace as unknown as jest.Mock).mock
-      .calls[0][0];
-    const span = args.to.getTime() - args.from.getTime();
-    expect(Math.round(span / (24 * 60 * 60 * 1000))).toBe(30);
+    const out = await service().overview();
+    const from = new Date(`${out.range.from}T00:00:00Z`).getTime();
+    const to = new Date(`${out.range.to}T00:00:00Z`).getTime();
+    expect(Math.round((to - from) / 86_400_000) + 1).toBe(30);
   });
 
   it('rejects ranges longer than 365 days', async () => {
-    const bookings = makeBookings();
-    const svc = new AdminAnalyticsService(makePrisma(), bookings, makeConfig());
-    await expect(svc.overview('2025-01-01', '2026-12-31')).rejects.toMatchObject({
+    await expect(service().overview('2025-01-01', '2026-12-31')).rejects.toMatchObject({
       status: 400,
-      code: 'VALIDATION_ERROR',
     });
   });
 
   it('rejects an inverted range (from >= to)', async () => {
-    const bookings = makeBookings();
-    const svc = new AdminAnalyticsService(makePrisma(), bookings, makeConfig());
-    await expect(svc.overview('2026-04-30', '2026-04-01')).rejects.toMatchObject({
+    await expect(service().overview('2026-05-01', '2026-04-01')).rejects.toMatchObject({
       status: 400,
-      code: 'VALIDATION_ERROR',
     });
   });
 
-  it('rejects malformed dates', async () => {
-    const bookings = makeBookings();
-    const svc = new AdminAnalyticsService(makePrisma(), bookings, makeConfig());
-    await expect(svc.overview('not-a-date', '2026-04-30')).rejects.toMatchObject({
-      status: 400,
-      code: 'VALIDATION_ERROR',
-    });
+  it('rejects malformed and non-existent dates', async () => {
+    for (const bad of ['2026/04/01', '2026-02-31', 'yesterday'])
+      await expect(service().overview(bad, '2026-04-30')).rejects.toMatchObject({ status: 400 });
   });
 });
 
 describe('AdminAnalyticsService.revenue', () => {
-  it('returns one bucket per UTC day, zero-filled', async () => {
-    const bookings = makeBookings({
-      aggregate: makeAggregate({ dominantCurrency: 'USD' }),
-      chartRows: [],
-    });
-    const svc = new AdminAnalyticsService(makePrisma(), bookings, makeConfig());
-    const out = await svc.revenue('2026-04-01', '2026-04-07'); // 7 days inclusive
-    expect(out.buckets).toHaveLength(7);
-    expect(out.buckets[0].date).toBe('2026-04-01');
-    expect(out.buckets[6].date).toBe('2026-04-07');
-    expect(out.buckets.every((b) => b.grossEarnings === 0)).toBe(true);
-  });
-
-  it('honours non-zero buckets and applies fee math per row', async () => {
-    const bookings = makeBookings({
-      aggregate: makeAggregate({ dominantCurrency: 'USD' }),
-      chartRows: [
-        {
-          day: new Date('2026-04-03T00:00:00Z'),
-          gross: 5_000,
-          completedCount: 2,
-        },
+  it('zero-fills one series per currency and leaves fees uncalculated', async () => {
+    const q = makeQueries({
+      days: [
+        { currency: 'EUR', day: '2026-04-02', bookedValue: 500, completed: 1 },
+        { currency: 'USD', day: '2026-04-02', bookedValue: 400, completed: 1 },
+        { currency: 'USD', day: '2026-04-03', bookedValue: 100, completed: 1 },
       ],
     });
-    const svc = new AdminAnalyticsService(makePrisma(), bookings, makeConfig(1000));
-    const out = await svc.revenue('2026-04-01', '2026-04-07');
-    const apr3 = out.buckets.find((b) => b.date === '2026-04-03')!;
-    expect(apr3.grossEarnings).toBe(5_000);
-    expect(apr3.platformFees).toBe(500);
-    expect(apr3.netProviderEarnings).toBe(4_500);
-    expect(apr3.completedBookings).toBe(2);
+    const out = await service(q).revenue('2026-04-01', '2026-04-03');
+    expect(out.series).toEqual([
+      {
+        currency: 'EUR',
+        buckets: [
+          { date: '2026-04-01', bookedValue: 0, completedBookings: 0 },
+          { date: '2026-04-02', bookedValue: 500, completedBookings: 1 },
+          { date: '2026-04-03', bookedValue: 0, completedBookings: 0 },
+        ],
+      },
+      {
+        currency: 'USD',
+        buckets: [
+          { date: '2026-04-01', bookedValue: 0, completedBookings: 0 },
+          { date: '2026-04-02', bookedValue: 400, completedBookings: 1 },
+          { date: '2026-04-03', bookedValue: 100, completedBookings: 1 },
+        ],
+      },
+    ]);
+    // Back-compat buckets: a figure only for a one-currency day.
+    expect(out.buckets.map((b) => b.grossEarnings)).toEqual([0, null, 100]);
+    expect(out.buckets.map((b) => b.completedBookings)).toEqual([0, 2, 1]);
+    for (const b of out.buckets) {
+      expect(b.platformFees).toBeNull();
+      expect(b.netProviderEarnings).toBeNull();
+    }
+    expect(out.currency).toBeNull();
+    expect(out.feeStatus).toBe('NOT_APPROVED');
   });
 
   it('inherits the same date validation as overview()', async () => {
-    const bookings = makeBookings();
-    const svc = new AdminAnalyticsService(makePrisma(), bookings, makeConfig());
-    await expect(svc.revenue('2025-01-01', '2026-12-31')).rejects.toMatchObject({
-      status: 400,
+    await expect(service().revenue('bad', '2026-04-30')).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe('AdminAnalyticsService.summary', () => {
+  it('counts canonical workspace closures as resolved and separates currencies', async () => {
+    const prisma = makePrisma();
+    const q = makeQueries({
+      lifetime: [
+        { currency: 'EUR', bookedValue: 500, completed: 1 },
+        { currency: 'USD', bookedValue: 900, completed: 2 },
+      ],
+      undated: 1,
+    });
+    const out = (await service(q, prisma).summary()).summary;
+    expect(out.bookings.grossLifetimeAmount).toBeNull();
+    expect(out.bookings.currency).toBeNull();
+    expect(out.bookings.undatedCompletions).toBe(1);
+    expect(out.bookings.bookedValueByCurrency.map((r) => r.currency)).toEqual(['EUR', 'USD']);
+    const disputeCount = (prisma.client as unknown as { dispute: { count: jest.Mock } }).dispute
+      .count;
+    const resolvedQuery = disputeCount.mock.calls
+      .map(([args]) => args as { where: { status: unknown } })
+      .find((args) => typeof args.where.status === 'object');
+    expect(resolvedQuery?.where.status).toEqual({
+      in: ['RESOLVED', 'RESOLVED_REFUND', 'RESOLVED_PARTIAL', 'RESOLVED_DENIED'],
     });
   });
 });

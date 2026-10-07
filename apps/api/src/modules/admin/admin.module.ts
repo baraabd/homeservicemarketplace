@@ -29,6 +29,7 @@ import { AdminVerificationService } from './verification/admin-verification.serv
 import { AdminVerificationCaseService } from './verification/admin-verification-case.service';
 import { AdminAnalyticsController } from './analytics/admin-analytics.controller';
 import { AdminAnalyticsService } from './analytics/admin-analytics.service';
+import { AdminAnalyticsQueries } from './analytics/admin-analytics.queries';
 import { AdminDisputesController } from './disputes/admin-disputes.controller';
 import { AdminDisputesService } from './disputes/admin-disputes.service';
 import { AdminFinancialsController } from './financials/admin-financials.controller';
@@ -134,6 +135,7 @@ import { PortfolioMediaModule } from '../media/portfolio-media.module';
     VerificationSettingsService,
     AdminDisputesService,
     AdminAnalyticsService,
+    AdminAnalyticsQueries,
     AdminFinancialsService,
     AdminSettingsService,
     AdminCategoryApplicationsService,
