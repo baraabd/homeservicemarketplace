@@ -37,7 +37,7 @@ export function AuditLogsSection({ lang }: { lang: string }) {
   );
 
   const auditQuery = useAdminAuditLogs(filters);
-  const items = auditQuery.data?.items ?? [];
+  const items = auditQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
   const L = {
     title: isAr ? 'سجل التدقيق' : 'Audit Logs',
@@ -53,6 +53,12 @@ export function AuditLogsSection({ lang }: { lang: string }) {
     loading: isAr ? 'جارٍ التحميل…' : 'Loading…',
     failed: isAr ? 'تعذّر تحميل السجل.' : 'Could not load audit log.',
     empty: isAr ? 'لا توجد سجلات مطابقة.' : 'No audit events match the current filter.',
+    more: isAr ? 'تحميل المزيد' : 'Load more',
+    loadingMore: isAr ? 'جارٍ تحميل المزيد…' : 'Loading more…',
+    moreFailed: isAr
+      ? 'تعذّر تحميل الصفحة التالية. المعروض أعلاه ما زال صحيحاً.'
+      : 'Could not load the next page. The events above are still accurate.',
+    end: isAr ? 'نهاية السجل.' : 'End of the log.',
   };
 
   return (
@@ -170,6 +176,30 @@ export function AuditLogsSection({ lang }: { lang: string }) {
           </table>
         )}
       </div>
+      {items.length > 0 ? (
+        <div className="flex flex-col items-center gap-2">
+          {auditQuery.isFetchNextPageError ? (
+            <p className="text-rose-600" role="alert" style={{ fontSize: '12px' }}>
+              {L.moreFailed}
+            </p>
+          ) : null}
+          {auditQuery.hasNextPage ? (
+            <button
+              type="button"
+              onClick={() => void auditQuery.fetchNextPage()}
+              disabled={auditQuery.isFetchingNextPage}
+              className="px-3 py-1.5 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-50"
+              style={{ fontSize: '12px', fontWeight: 700, minHeight: 44 }}
+            >
+              {auditQuery.isFetchingNextPage ? L.loadingMore : L.more}
+            </button>
+          ) : (
+            <p className="text-slate-400" role="status" style={{ fontSize: '11px' }}>
+              {L.end}
+            </p>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

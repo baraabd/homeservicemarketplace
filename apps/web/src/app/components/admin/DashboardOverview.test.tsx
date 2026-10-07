@@ -30,6 +30,7 @@ const ADMIN_ME = {
   roles: ['admin' as const],
 };
 
+// R17-D contract: booked value per currency, no fee, event-dated completions.
 const OVERVIEW = {
   range: { from: '2026-04-01', to: '2026-04-30' },
   counts: {
@@ -39,31 +40,73 @@ const OVERVIEW = {
     bookingsCompleted: 19,
     bookingsCancelled: 3,
     disputesOpen: 2,
+    undatedCompletions: 0,
   },
   revenue: {
     grossWithinRange: 8_400_00, // $8,400 in cents-equivalent
-    platformFeesWithinRange: 840_00,
-    netProviderEarningsWithinRange: 7_560_00,
+    platformFeesWithinRange: null,
+    netProviderEarningsWithinRange: null,
     grossLifetime: 21_000_00,
   },
+  revenueByCurrency: [
+    {
+      currency: 'USD',
+      bookedValueLifetime: 21_000_00,
+      completedLifetime: 40,
+      bookedValueWithinRange: 8_400_00,
+      completedWithinRange: 19,
+    },
+  ],
   currency: 'USD',
-  platformFeeRateBps: 1000,
+  platformFeeRateBps: null,
+  feeStatus: 'NOT_APPROVED',
   generatedAt: '2026-05-02T00:00:00.000Z',
 };
 
 const REVENUE = {
   range: { from: '2026-04-01', to: '2026-04-30' },
   currency: 'USD',
-  platformFeeRateBps: 1000,
+  platformFeeRateBps: null,
+  feeStatus: 'NOT_APPROVED',
   buckets: [
     {
       date: '2026-04-15',
       grossEarnings: 4_500_00,
-      platformFees: 450_00,
-      netProviderEarnings: 4_050_00,
+      platformFees: null,
+      netProviderEarnings: null,
       completedBookings: 1,
     },
   ],
+  series: [
+    {
+      currency: 'USD',
+      buckets: [{ date: '2026-04-15', bookedValue: 4_500_00, completedBookings: 1 }],
+    },
+  ],
+};
+
+/** Two currencies in range: there is no honest single total. */
+const MIXED = {
+  ...OVERVIEW,
+  counts: { ...OVERVIEW.counts, undatedCompletions: 2 },
+  revenue: { ...OVERVIEW.revenue, grossWithinRange: null, grossLifetime: null },
+  revenueByCurrency: [
+    {
+      currency: 'EUR',
+      bookedValueLifetime: 700_00,
+      completedLifetime: 1,
+      bookedValueWithinRange: 700_00,
+      completedWithinRange: 1,
+    },
+    {
+      currency: 'USD',
+      bookedValueLifetime: 1_500_00,
+      completedLifetime: 2,
+      bookedValueWithinRange: 1_500_00,
+      completedWithinRange: 2,
+    },
+  ],
+  currency: null,
 };
 
 function renderAdmin() {
@@ -109,6 +152,32 @@ afterEach(() => {
 });
 
 describe('AdminDashboard — DashboardOverview (Sprint 6.4)', () => {
+  it('R17-D: shows each currency separately and never a cross-currency sum', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    mock.onGet('/v1/admin/analytics/overview').reply(200, MIXED);
+    mock.onGet('/v1/admin/analytics/revenue').reply(200, REVENUE);
+
+    renderAdmin();
+
+    const inRange = await screen.findByTestId('kpi-value-in-range');
+    await waitFor(() => expect(inRange).toHaveTextContent('€700'));
+    expect(inRange).toHaveTextContent('$1,500');
+    // 700 + 1500 must never appear as one number.
+    expect(document.body.textContent).not.toMatch(/2,200/);
+    expect(screen.getByTestId('analytics-value-note')).toHaveTextContent(/2 completed booking/);
+  });
+
+  it('R17-D: a failed analytics load shows a dash, never a zero', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    mock.onGet('/v1/admin/analytics/overview').reply(500, {});
+    mock.onGet('/v1/admin/analytics/revenue').reply(500, {});
+
+    renderAdmin();
+
+    await waitFor(() => expect(kpi('Users').getByText('—')).toBeInTheDocument());
+    expect(kpi('Completed booking value (in range)').getByText('—')).toBeInTheDocument();
+  });
+
   it('renders KPI values from /v1/admin/analytics/overview', async () => {
     mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
     mock.onGet('/v1/admin/analytics/overview').reply(200, OVERVIEW);
@@ -118,14 +187,17 @@ describe('AdminDashboard — DashboardOverview (Sprint 6.4)', () => {
 
     // Scope each assertion to its labelled analytics card. In particular, the
     // approval guide's second step must never satisfy the open-disputes KPI.
-    await waitFor(() => expect(kpi('Lifetime revenue').getByText('$21,000')).toBeInTheDocument());
-    expect(kpi('Revenue (in range)').getByText('$8,400')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(kpi('Completed booking value (lifetime)').getByText('$21,000')).toBeInTheDocument(),
+    );
+    expect(kpi('Completed booking value (in range)').getByText('$8,400')).toBeInTheDocument();
     expect(kpi('Users').getByText('142')).toBeInTheDocument();
-    expect(kpi('Active providers').getByText('27')).toBeInTheDocument();
+    expect(kpi('Providers').getByText('27')).toBeInTheDocument();
     expect(kpi('Bookings completed').getByText('19')).toBeInTheDocument();
     expect(kpi('Open disputes').getByText('2')).toBeInTheDocument();
-    // Fee footnote computed from platformFeeRateBps.
-    expect(kpi('Lifetime revenue').getByText(/After 10% platform fee/i)).toBeInTheDocument();
+    // R17-D: no fee is claimed; the note says what the figures are.
+    expect(document.body.textContent).not.toMatch(/platform fee d|After d+%/i);
+    expect(screen.getByTestId('analytics-value-note')).toHaveTextContent(/not payments/i);
   });
 
   it('range chip toggle triggers another /overview request with new from/to', async () => {
@@ -155,7 +227,9 @@ describe('AdminDashboard — DashboardOverview (Sprint 6.4)', () => {
     mock.onGet('/v1/admin/analytics/revenue').reply(200, REVENUE);
 
     renderAdmin();
-    await waitFor(() => expect(kpi('Lifetime revenue').getByText('$21,000')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(kpi('Completed booking value (lifetime)').getByText('$21,000')).toBeInTheDocument(),
+    );
     const dom = document.body.textContent ?? '';
     expect(dom).not.toContain('passwordHash');
     expect(dom).not.toContain('STRIPE_SECRET');

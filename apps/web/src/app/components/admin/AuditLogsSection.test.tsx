@@ -200,3 +200,35 @@ describe('AdminDashboard — Notifications bell (Sprint 6.6)', () => {
     expect(posted).toContain('/v1/admin/notifications/n-1/read');
   });
 });
+
+describe('AdminDashboard — Audit Logs paging (R17-D)', () => {
+  it('pages past the first 50 events with the server cursor', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    mock.onGet('/v1/admin/notifications').reply(200, { items: [], nextCursor: null });
+    mock.onGet('/v1/me/notifications/unread-count').reply(200, { count: 0 });
+    const cursors: Array<string | undefined> = [];
+    mock.onGet('/v1/admin/audit-logs').reply((config) => {
+      const cursor = (config.params as { cursor?: string } | undefined)?.cursor;
+      cursors.push(cursor);
+      return cursor === 'ae-1'
+        ? [
+            200,
+            {
+              items: [{ ...AUDIT_LOG, id: 'ae-older', action: 'ADMIN_SETTING_UPDATED' }],
+              nextCursor: null,
+            },
+          ]
+        : [200, { items: [AUDIT_LOG], nextCursor: 'ae-1' }];
+    });
+
+    renderAdmin();
+    openAuditTab();
+
+    const more = await screen.findByRole('button', { name: /Load more|تحميل المزيد/ });
+    fireEvent.click(more);
+    await waitFor(() => expect(cursors).toContain('ae-1'));
+    expect(await screen.findByText(/End of the log|نهاية السجل/)).toBeInTheDocument();
+    expect(screen.getByText('ADMIN_PROVIDER_APPROVED')).toBeInTheDocument();
+    expect(screen.getByText('ADMIN_SETTING_UPDATED')).toBeInTheDocument();
+  });
+});
