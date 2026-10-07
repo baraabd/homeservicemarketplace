@@ -236,3 +236,18 @@ describe('AdminDashboard — DashboardOverview (Sprint 6.4)', () => {
     expect(dom).not.toContain('JWT_SECRET');
   });
 });
+
+describe('AdminDashboard — DashboardOverview resilience (R17-D)', () => {
+  it('shows a dash, not a crash, when the per-currency breakdown is missing', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    const { revenueByCurrency: _omit, ...legacy } = OVERVIEW;
+    void _omit;
+    mock.onGet('/v1/admin/analytics/overview').reply(200, legacy);
+    mock.onGet('/v1/admin/analytics/revenue').reply(200, { ...REVENUE, series: undefined });
+
+    renderAdmin();
+
+    await waitFor(() => expect(kpi('Users').getByText('142')).toBeInTheDocument());
+    expect(kpi('Completed booking value (in range)').getByText('—')).toBeInTheDocument();
+  });
+});

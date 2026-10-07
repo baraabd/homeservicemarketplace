@@ -1769,6 +1769,10 @@ jobs:
           RUN_ADMIN_BROWSER: '1'
           R17D_BROWSER_OUTPUT: ${{ github.workspace }}/apps/web/test-results/r17d-admin-operations
         run: |
+          # Admin permissions come from the seeded role/permission baseline, which
+          # the earlier dispute steps never needed. Idempotent; seeded only here so
+          # C-7 and R17-C keep running against exactly the database they did.
+          pnpm --filter @homeservicemarketplace/database seed
           set +e
           pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
             test/integration/r17-admin-operations-browser.integration.spec.ts \

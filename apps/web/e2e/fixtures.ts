@@ -267,21 +267,32 @@ export async function stubApi(page: Page, options: StubOptions = {}): Promise<vo
       return json({
         range: RANGE,
         currency: 'SAR',
-        platformFeeRateBps: 1000,
+        // R17-D contract: no fee is approved; booked value per currency.
+        platformFeeRateBps: null,
+        feeStatus: 'NOT_APPROVED',
         buckets: [
           {
             date: '2026-08-01',
             grossEarnings: 100,
-            platformFees: 10,
-            netProviderEarnings: 90,
+            platformFees: null,
+            netProviderEarnings: null,
             completedBookings: 1,
           },
           {
             date: '2026-08-02',
             grossEarnings: 250,
-            platformFees: 25,
-            netProviderEarnings: 225,
+            platformFees: null,
+            netProviderEarnings: null,
             completedBookings: 2,
+          },
+        ],
+        series: [
+          {
+            currency: 'SAR',
+            buckets: [
+              { date: '2026-08-01', bookedValue: 100, completedBookings: 1 },
+              { date: '2026-08-02', bookedValue: 250, completedBookings: 2 },
+            ],
           },
         ],
       });
@@ -304,15 +315,26 @@ const ANALYTICS_OVERVIEW = {
     bookingsCompleted: 5,
     bookingsCancelled: 1,
     disputesOpen: 0,
+    undatedCompletions: 0,
   },
   revenue: {
     grossWithinRange: 350,
-    platformFeesWithinRange: 35,
-    netProviderEarningsWithinRange: 315,
+    platformFeesWithinRange: null,
+    netProviderEarningsWithinRange: null,
     grossLifetime: 1200,
   },
+  revenueByCurrency: [
+    {
+      currency: 'SAR',
+      bookedValueLifetime: 1200,
+      completedLifetime: 12,
+      bookedValueWithinRange: 350,
+      completedWithinRange: 5,
+    },
+  ],
   currency: 'SAR',
-  platformFeeRateBps: 1000,
+  platformFeeRateBps: null,
+  feeStatus: 'NOT_APPROVED',
   generatedAt: RANGE.to,
 };
 

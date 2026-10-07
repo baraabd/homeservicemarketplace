@@ -93,6 +93,9 @@ export function DashboardOverview({ lang }: { lang: string }) {
   // One figure per currency; never a sum across currencies.
   const perCurrency = (pick: 'bookedValueWithinRange' | 'bookedValueLifetime') => {
     if (!overview) return overviewQuery.isError ? '—' : '…';
+    // A payload without the breakdown is unknown, not zero, and must not crash
+    // the admin shell.
+    if (!Array.isArray(overview.revenueByCurrency)) return '—';
     const rows = overview.revenueByCurrency.filter((r) => r[pick] > 0);
     if (rows.length === 0) return L.noCompletions;
     if (rows.length === 1) return money(rows[0][pick], rows[0].currency);
