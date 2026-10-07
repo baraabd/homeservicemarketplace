@@ -32,13 +32,13 @@ database, who decides, and what currently proves it. Evidence levels:
 
 ## C — Disputes
 
-| Capability           | Path                                                                                                         | Authority                                                      | Evidence                           |
-| -------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------- |
-| Intake               | `dispute-intake.service` (booking lock, one active dispute per booking)                                      | Server; policy key `disputes.self_service.intake` (not seeded) | I                                  |
-| Workspace commands   | `/v1/{me,admin}/dispute-workspaces` → `workspace-commands.service` (row locks, `expectedRevision`, receipts) | Server; fresh `dispute:*` permissions in the transaction       | I, H, B (dispute-workspace CI job) |
-| Evidence             | encrypted restricted storage, streamed through the API, ClamAV                                               | Server; reads audited                                          | I with real ClamAV                 |
-| Legacy admin tickets | `/v1/admin/disputes` → `admin-disputes.service`                                                              | `@Roles('admin')` only                                         | U (mocked), E (service stubbed)    |
-| Money                | none — decisions are intent; `RESOLVED_REFUND/PARTIAL` are display labels (R15 matrix)                       | —                                                              | —                                  |
+| Capability           | Path                                                                                                                                         | Authority                                                      | Evidence                           |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------- |
+| Intake               | `dispute-intake.service` (booking lock, one active dispute per booking)                                                                      | Server; policy key `disputes.self_service.intake` (not seeded) | I                                  |
+| Workspace commands   | `/v1/me/disputes/:id/workspace/*`, `/v1/admin/dispute-workspaces/*` → `workspace-commands.service` (row locks, `expectedRevision`, receipts) | Server; fresh `dispute:*` permissions in the transaction       | I, H, B (dispute-workspace CI job) |
+| Evidence             | encrypted restricted storage, streamed through the API, ClamAV                                                                               | Server; reads audited                                          | I with real ClamAV                 |
+| Legacy admin tickets | `/v1/admin/disputes` → `admin-disputes.service`                                                                                              | `@Roles('admin')` only                                         | U (mocked), E (service stubbed)    |
+| Money                | none — decisions are intent; `RESOLVED_REFUND/PARTIAL` are display labels (R15 matrix)                                                       | —                                                              | —                                  |
 
 ## D — Admin operations
 

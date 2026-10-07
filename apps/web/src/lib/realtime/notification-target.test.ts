@@ -206,3 +206,39 @@ describe('resolveNotificationTarget — unresolvable inputs', () => {
     expect(resolveNotificationTarget(input({ resourceType: 'REQUEST' }), 'seeker')).toBeNull();
   });
 });
+
+describe('resolveNotificationTarget — R17-C legacy dispute decision notices', () => {
+  // The legacy admin dispute service writes BOOKING notices whose deepLink names
+  // the opener's own experience. Each experience must open its booking detail.
+  it('a provider opener lands on the provider booking detail', () => {
+    const target = resolveNotificationTarget(
+      {
+        type: 'SYSTEM',
+        resourceType: 'BOOKING',
+        resourceId: 'bk-1',
+        deepLink: '/provider/bookings/bk-1',
+        metadata: { disputeId: 'dp-1', status: 'RESOLVED_PARTIAL' },
+      },
+      'provider',
+    );
+    expect(target).toEqual({
+      kind: 'provider-booking-detail',
+      bookingId: 'bk-1',
+      deepLink: '/provider/bookings/bk-1',
+    });
+  });
+
+  it('a seeker opener lands on the seeker booking detail', () => {
+    const target = resolveNotificationTarget(
+      {
+        type: 'SYSTEM',
+        resourceType: 'BOOKING',
+        resourceId: 'bk-1',
+        deepLink: '/home/bookings/bk-1',
+        metadata: { disputeId: 'dp-1', status: 'RESOLVED_DENIED' },
+      },
+      'seeker',
+    );
+    expect(target).toMatchObject({ kind: 'seeker-booking-detail', bookingId: 'bk-1' });
+  });
+});

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaTx } from '@homeservicemarketplace/database';
+import { Prisma, type PrismaTx } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -91,6 +91,42 @@ export class DisputeRepository {
     return this.db(tx).dispute.findFirst({
       where: { id, deletedAt: null, workspace: { is: null } },
     });
+  }
+
+  /**
+   * R17-C — read a legacy ticket for a decision, holding its row locks.
+   *
+   * Without these locks two admins both read OPEN and both "resolve": the
+   * second overwrites the first and every side effect is written twice. The
+   * order is the one intake and the dispute workspace already use — Booking,
+   * then the case — so no path takes the two in the opposite order.
+   */
+  async lockForDecision(id: string, tx: PrismaTx): Promise<DisputeRow | null> {
+    const target = await tx.dispute.findFirst({
+      where: { id, deletedAt: null, workspace: { is: null } },
+      select: { bookingId: true },
+    });
+    if (!target) return null;
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "Booking" WHERE "id" = ${target.bookingId} FOR UPDATE`,
+    );
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Dispute" WHERE "id" = ${id} FOR UPDATE`);
+    // Re-read under the lock: this is the state the decision is based on.
+    return this.findById(id, tx);
+  }
+
+  /** The booking's two participants (a pooled profile may have no user), or null. */
+  async bookingParticipants(
+    bookingId: string,
+    tx?: PrismaTx,
+  ): Promise<{ seekerUserId: string; providerUserId: string | null } | null> {
+    const booking = await (tx ?? this.prisma.client).booking.findFirst({
+      where: { id: bookingId, deletedAt: null },
+      select: { seekerUserId: true, provider: { select: { userId: true } } },
+    });
+    return booking
+      ? { seekerUserId: booking.seekerUserId, providerUserId: booking.provider.userId }
+      : null;
   }
 
   create(

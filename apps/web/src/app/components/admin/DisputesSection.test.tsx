@@ -126,7 +126,8 @@ describe('AdminDashboard — legacy dispute compatibility (Sprint 6.3)', () => {
     await openDisputesTab();
 
     await waitFor(() => expect(screen.getByText('Provider was late')).toBeInTheDocument());
-    expect(screen.getAllByText('OPEN').length).toBeGreaterThan(0);
+    // R17-C: statuses are shown as localized labels, not raw enum names.
+    expect(screen.getAllByText(/^(Open|مفتوح)$/).length).toBeGreaterThan(0);
     expect(screen.getAllByText('MEDIUM').length).toBeGreaterThan(0);
   });
 
@@ -220,10 +221,66 @@ describe('AdminDashboard — legacy dispute compatibility (Sprint 6.3)', () => {
     const resolutionField = await screen.findByLabelText(/^Resolution|^النص/i);
     fireEvent.change(resolutionField, { target: { value: 'full refund' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /^Resolve|^تسوية/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Record decision|^تسجيل القرار/i }));
     await waitFor(() => expect(resolveBody).not.toBeNull());
     expect(resolveBody?.resolution).toBe('full refund');
     expect(resolveBody?.status).toBe('RESOLVED_REFUND');
+  });
+
+  it('R17-C: labels decision outcomes as intent, never as an executed refund', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    mock.onGet('/v1/admin/disputes').reply(200, { items: [DISPUTE], nextCursor: null });
+    mock.onGet('/v1/admin/disputes/dp-1').reply(200, DISPUTE_DETAIL);
+
+    renderAdmin();
+    await openDisputesTab();
+    await waitFor(() => expect(screen.getByText('Provider was late')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Provider was late').closest('tr')!);
+    await screen.findByLabelText(/^Resolution|^النص/i);
+
+    const dom = document.body.textContent ?? '';
+    // The stored enum names never reach the admin as text.
+    expect(dom).not.toMatch(/RESOLVED_REFUND|RESOLVED_PARTIAL|RESOLVED_DENIED/);
+    expect(
+      screen.getAllByText(/refund intent \(not executed\)|نيّة استرداد \(لم يُنفَّذ\)/).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        /does not refund, pay or move any money|لا ينفّذ أي استرداد أو دفع أو تحويل مالي/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('R17-C: a 409 from a concurrent admin is shown as a conflict and the dispute is re-read', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    mock.onGet('/v1/admin/disputes').reply(200, { items: [DISPUTE], nextCursor: null });
+    let detailReads = 0;
+    mock.onGet('/v1/admin/disputes/dp-1').reply(() => {
+      detailReads += 1;
+      return [200, detailReads === 1 ? DISPUTE_DETAIL : RESOLVED_DISPUTE_DETAIL];
+    });
+    mock.onPost('/v1/admin/disputes/dp-1/resolve').reply(409, {
+      error: { code: 'CONFLICT', message: 'Dispute is not in a resolvable state.' },
+    });
+
+    renderAdmin();
+    await openDisputesTab();
+    await waitFor(() => expect(screen.getByText('Provider was late')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Provider was late').closest('tr')!);
+    const field = await screen.findByLabelText(/^Resolution|^النص/i);
+    fireEvent.change(field, { target: { value: 'my decision' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Record decision|^تسجيل القرار/i }));
+
+    // The authoritative read-back shows the other admin's terminal decision.
+    await waitFor(() => expect(detailReads).toBeGreaterThan(1));
+    await waitFor(() =>
+      expect(screen.getByText(/terminal state|نهائية ولا يمكن تعديله/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/Saved|تم الحفظ/)).toBeNull();
+    // The explanation survives the read-back that made the dispute terminal.
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /Another admin changed this dispute first|غيّر مسؤول آخر/,
+    );
   });
 
   it('shows terminal-state copy and hides the editors for resolved disputes', async () => {

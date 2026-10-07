@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isAxiosError } from 'axios';
 import { AlertTriangle, ChevronRight, Clock, FileText, MessageSquare, X } from 'lucide-react';
 import type {
   DisputeEvent,
@@ -43,6 +44,38 @@ const STATUS_VALUES: DisputeStatusValue[] = [
 const PRIORITY_VALUES: DisputePriorityValue[] = ['URGENT', 'HIGH', 'MEDIUM', 'LOW'];
 
 const RESOLVE_STATUSES = ['RESOLVED_REFUND', 'RESOLVED_PARTIAL', 'RESOLVED_DENIED'] as const;
+
+// R17-C (C-2): the legacy enum names say "refund", but recording one of these
+// outcomes executes nothing — no refund, payment or ledger movement exists
+// (R16). The stored values stay as they are; only what an admin reads changes.
+const STATUS_TEXT: Record<'en' | 'ar', Record<string, string>> = {
+  en: {
+    OPEN: 'Open',
+    IN_REVIEW: 'In review',
+    RESOLVED: 'Decision recorded',
+    RESOLVED_REFUND: 'Decision: refund intent (not executed)',
+    RESOLVED_PARTIAL: 'Decision: partial refund intent (not executed)',
+    RESOLVED_DENIED: 'Decision: declined',
+    CANCELLED: 'Cancelled',
+  },
+  ar: {
+    OPEN: 'مفتوح',
+    IN_REVIEW: 'قيد المراجعة',
+    RESOLVED: 'سُجّل قرار',
+    RESOLVED_REFUND: 'قرار: نيّة استرداد (لم يُنفَّذ)',
+    RESOLVED_PARTIAL: 'قرار: نيّة استرداد جزئي (لم يُنفَّذ)',
+    RESOLVED_DENIED: 'قرار: مرفوض',
+    CANCELLED: 'ملغى',
+  },
+};
+
+function statusText(status: string, isAr: boolean): string {
+  return STATUS_TEXT[isAr ? 'ar' : 'en'][status] ?? status;
+}
+
+function isConflict(error: unknown): boolean {
+  return isAxiosError(error) && error.response?.status === 409;
+}
 
 function statusBadgeClass(status: string): string {
   switch (status) {
@@ -121,6 +154,7 @@ export function DisputeSection({ lang }: { lang: string }) {
             selected={statusFilter}
             onSelect={(v) => setStatusFilter(v)}
             badgeClass={statusBadgeClass}
+            format={(v) => statusText(v, isAr)}
           />
           <FilterChips
             label={L.priorityFilter}
@@ -196,7 +230,7 @@ export function DisputeSection({ lang }: { lang: string }) {
                       className={`px-2 py-1 rounded-full ${statusBadgeClass(d.status)}`}
                       style={{ fontSize: '10px', fontWeight: 700 }}
                     >
-                      {d.status}
+                      {statusText(d.status, isAr)}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -238,6 +272,7 @@ function FilterChips<V extends string>({
   selected,
   onSelect,
   badgeClass,
+  format = (v) => v,
 }: {
   label: string;
   allLabel: string;
@@ -245,6 +280,7 @@ function FilterChips<V extends string>({
   selected: V | undefined;
   onSelect: (v: V | undefined) => void;
   badgeClass: (v: string) => string;
+  format?: (v: V) => string;
 }) {
   return (
     <div className="flex flex-wrap gap-2 items-center" role="tablist" aria-label={label}>
@@ -277,7 +313,7 @@ function FilterChips<V extends string>({
           }`}
           style={{ fontSize: '11px', fontWeight: 700 }}
         >
-          {v}
+          {format(v)}
         </button>
       ))}
     </div>
@@ -334,10 +370,16 @@ function DisputeDetailDrawer({
     saved: isAr ? 'تم الحفظ' : 'Saved',
     timeline: isAr ? 'سجل الأحداث' : 'Event timeline',
     timelineEmpty: isAr ? 'لا توجد أحداث.' : 'No events.',
-    resolveTitle: isAr ? 'تسوية النزاع' : 'Resolve dispute',
+    resolveTitle: isAr ? 'تسجيل قرار' : 'Record a decision',
     resolveLabel: isAr ? 'النص' : 'Resolution',
-    resolvePlaceholder: isAr ? 'كيف تم حلها…' : 'How was it resolved…',
-    resolveAction: isAr ? 'تسوية' : 'Resolve',
+    resolvePlaceholder: isAr ? 'أسباب القرار…' : 'Reasons for the decision…',
+    resolveAction: isAr ? 'تسجيل القرار' : 'Record decision',
+    resolveNote: isAr
+      ? 'تسجيل القرار لا ينفّذ أي استرداد أو دفع أو تحويل مالي.'
+      : 'Recording a decision does not refund, pay or move any money.',
+    conflict: isAr
+      ? 'غيّر مسؤول آخر هذا النزاع أولاً. تظهر الآن أحدث حالة؛ راجعها قبل المحاولة مجدداً.'
+      : 'Another admin changed this dispute first. The latest state is now shown; review it before trying again.',
     resolveTerminal: isAr
       ? 'النزاع في حالة نهائية ولا يمكن تعديله.'
       : 'Dispute is in a terminal state and cannot be edited.',
@@ -362,6 +404,8 @@ function DisputeDetailDrawer({
     update.mutate({ disputeId: dispute.id, body });
   };
 
+  const mutationError = resolve.isError ? resolve.error : update.isError ? update.error : null;
+
   const onResolve = () => {
     if (!dispute) return;
     if (!resolveText.trim()) return;
@@ -371,7 +415,8 @@ function DisputeDetailDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-label={L.close} />
+      {/* Decorative backdrop; the labelled close button is the accessible control. */}
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
       <div className="relative ms-auto w-full max-w-lg bg-white dark:bg-slate-800 h-full overflow-y-auto p-6 flex flex-col gap-5">
         <div className="flex items-center justify-between">
           <h3
@@ -399,6 +444,17 @@ function DisputeDetailDrawer({
           </p>
         ) : (
           <>
+            {/* R17-C: outside the editable branches, so the explanation stays
+                visible after the read-back turns the dispute terminal. */}
+            {mutationError ? (
+              <p
+                className="text-rose-700 dark:text-rose-300 px-3 py-2 rounded-2xl bg-rose-50 dark:bg-rose-900/30"
+                role="alert"
+                style={{ fontSize: '12px' }}
+              >
+                {isConflict(mutationError) ? L.conflict : L.saveFailed}
+              </p>
+            ) : null}
             <div className="flex flex-col gap-1">
               <p
                 className="text-slate-900 dark:text-white"
@@ -414,7 +470,7 @@ function DisputeDetailDrawer({
                   className={`px-2 py-1 rounded-full ${statusBadgeClass(dispute.status)}`}
                   style={{ fontSize: '10px', fontWeight: 700 }}
                 >
-                  {dispute.status}
+                  {statusText(dispute.status, isAr)}
                 </span>
                 <span
                   className={`px-2 py-1 rounded-full ${priorityBadgeClass(dispute.priority)}`}
@@ -459,11 +515,6 @@ function DisputeDetailDrawer({
                       ✓ {L.saved}
                     </span>
                   ) : null}
-                  {update.isError ? (
-                    <span className="text-rose-600" role="status" style={{ fontSize: '11px' }}>
-                      {L.saveFailed}
-                    </span>
-                  ) : null}
                 </div>
               </>
             )}
@@ -478,7 +529,7 @@ function DisputeDetailDrawer({
                 setResolveText={setResolveText}
                 onResolve={onResolve}
                 isPending={resolve.isPending}
-                isError={resolve.isError}
+                formatStatus={(s) => statusText(s, isAr)}
                 labels={L}
               />
             ) : null}
@@ -613,7 +664,7 @@ function Timeline({
                 >
                   {evt.type}
                 </p>
-                <p className="text-slate-400" style={{ fontSize: '11px' }}>
+                <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: '11px' }}>
                   {new Date(evt.createdAt).toLocaleString()}
                 </p>
                 {evt.message ? (
@@ -640,7 +691,7 @@ function ResolveBlock({
   setResolveText,
   onResolve,
   isPending,
-  isError,
+  formatStatus,
   labels,
 }: {
   resolveStatus: (typeof RESOLVE_STATUSES)[number];
@@ -649,13 +700,13 @@ function ResolveBlock({
   setResolveText: (s: string) => void;
   onResolve: () => void;
   isPending: boolean;
-  isError: boolean;
+  formatStatus: (s: string) => string;
   labels: {
     resolveTitle: string;
     resolveLabel: string;
     resolvePlaceholder: string;
     resolveAction: string;
-    saveFailed: string;
+    resolveNote: string;
     saving: string;
   };
 }) {
@@ -663,6 +714,9 @@ function ResolveBlock({
     <div className="flex flex-col gap-2 mt-2 pt-3 border-t border-slate-100 dark:border-slate-700">
       <p className="text-slate-500" style={{ fontSize: '11px', fontWeight: 700 }}>
         {labels.resolveTitle}
+      </p>
+      <p className="text-slate-500" style={{ fontSize: '11px' }}>
+        {labels.resolveNote}
       </p>
       <select
         value={resolveStatus}
@@ -672,7 +726,7 @@ function ResolveBlock({
       >
         {RESOLVE_STATUSES.map((s) => (
           <option key={s} value={s}>
-            {s}
+            {formatStatus(s)}
           </option>
         ))}
       </select>
@@ -695,11 +749,6 @@ function ResolveBlock({
       >
         {isPending ? labels.saving : labels.resolveAction}
       </button>
-      {isError ? (
-        <span className="text-rose-600" role="status" style={{ fontSize: '11px' }}>
-          {labels.saveFailed}
-        </span>
-      ) : null}
     </div>
   );
 }

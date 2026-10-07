@@ -128,10 +128,22 @@ export function httpSession(h: DisputeHttpApp) {
     },
     async login(id: string) {
       const email = `${id}@example.test`;
-      const start = await this.request<{ challengeId: string }>('/v1/auth/login', {
+      // The login route allows 10 attempts per minute per client IP, and every
+      // suite connects from 127.0.0.1 against one Redis. When suites in parallel
+      // workers share that budget, behave like a real client: wait for the
+      // server's Retry-After (bounded) instead of weakening the limit.
+      let start = await this.request<{ challengeId: string }>('/v1/auth/login', {
         method: 'POST',
         body: { email, password: h.fixture.password },
       });
+      for (let attempt = 1; start.status === 429 && attempt < 3; attempt++) {
+        const seconds = Math.min(Number(start.headers.get('retry-after')) || 60, 65);
+        await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+        start = await this.request<{ challengeId: string }>('/v1/auth/login', {
+          method: 'POST',
+          body: { email, password: h.fixture.password },
+        });
+      }
       if (start.status !== 200) throw new Error(`Login HTTP ${start.status}`);
       const verified = await this.request('/v1/auth/verify-otp', {
         method: 'POST',

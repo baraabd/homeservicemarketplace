@@ -86,6 +86,25 @@ New during R17-B:
 | C-6 | Intake and workflow policies are not seeded; dispute windows unapproved (R16 P6).                                                                             | POLICY_BLOCKED                             | reported                                |
 | C-7 | Workspace journey (intake → decision → appeal → closure, EN/AR, 6 widths, axe, real ClamAV).                                                                  | ALREADY_ACCEPTED                           | CI `dispute-workspace` job on `460b9ee` |
 
+### R17-C results (base `a8dc1a2`; details in `R17_C_DISPUTES.md`)
+
+The rows above are the inventory at `460b9ee`, kept for provenance.
+
+| ID            | Result                                                                                                                              | How it was established                                                    |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| C-1           | REPRODUCED_DEFECT → FIXED (resolve/resolve and resolve/PATCH races)                                                                 | real PostgreSQL with a read gate + `pg_blocking_pids`; real HTTP; browser |
+| C-2           | REPRODUCED_DEFECT → FIXED (notice wording, admin EN/AR labels); stored enum values unchanged                                        | real PostgreSQL; web unit; browser                                        |
+| C-3           | forged opener REPRODUCED_DEFECT → FIXED; role-only legacy authority POLICY_BLOCKED (R17-C decision 1)                               | real PostgreSQL; real HTTP guards (401/403/CSRF/revoked session)          |
+| C-4           | free text in audit metadata REPRODUCED_DEFECT → FIXED; workspace audit ALREADY_CORRECT; DB immutability POLICY_BLOCKED (decision 4) | real PostgreSQL; source                                                   |
+| C-5           | POLICY_BLOCKED (assignment scope, decision 2); participant/foreign/unscanned/erased reads ALREADY_CORRECT                           | existing ClamAV integration; source                                       |
+| C-6           | POLICY_BLOCKED (decision 3)                                                                                                         | settings fail closed                                                      |
+| C-7           | ALREADY_CORRECT; unchanged and still executed                                                                                       | CI `dispute-workspace` job                                                |
+| B-4           | legacy admin-dispute deep link REPRODUCED_DEFECT → FIXED (opener's experience)                                                      | real PostgreSQL; real HTTP experience scope; resolver unit                |
+| B-13          | POLICY_BLOCKED (R17-C decision 5)                                                                                                   | unchanged                                                                 |
+| C-8           | New: duplicate active admin ticket surfaced the unique-index error as a 500 → FIXED (409)                                           | real PostgreSQL; real HTTP                                                |
+| C-9           | New: legacy admin drawer axe violations (backdrop `aria-label`, timestamp contrast) → FIXED                                         | browser axe, six widths, Arabic                                           |
+| PLATFORM-TX-1 | merged (#144); dispute-specific COMMIT regression added (legacy and workspace)                                                      | real PostgreSQL + real HTTP                                               |
+
 ## R17-D — Admin operations
 
 | ID  | Finding                                                                                                                                                                                                                    | Class                                           | Evidence                                         |

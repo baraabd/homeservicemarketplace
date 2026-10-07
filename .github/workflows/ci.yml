@@ -1639,7 +1639,8 @@ jobs:
     name: Dispute journey / real HTTP, browser, Postgres and ClamAV
     runs-on: ubuntu-latest
     needs: verify
-    timeout-minutes: 20
+    # R17-C adds its own real-service step (about five minutes) after C-7's.
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16-alpine
@@ -1717,6 +1718,46 @@ jobs:
           path: |
             apps/api/dispute-workspace-ci.json
             apps/web/test-results/dispute-real-workspace/
+          retention-days: 14
+          if-no-files-found: error
+      - name: R17-C dispute authority (concurrency, COMMIT, real HTTP, legacy admin browser)
+        env:
+          R17C_BROWSER_OUTPUT: ${{ github.workspace }}/apps/web/test-results/r17c-dispute-legacy
+        # Two invocations, browser first: login is rate-limited per client IP
+        # and both suites log in from 127.0.0.1, so their bursts must not
+        # overlap. Each step reports separately; both must run.
+        run: |
+          set +e
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/r17-dispute-legacy-browser.integration.spec.ts \
+            --json --outputFile=r17c-disputes-browser-ci.json
+          browser=$?
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/r17-disputes.integration.spec.ts \
+            test/integration/r17-dispute-legacy-http.integration.spec.ts \
+            --json --outputFile=r17c-disputes-ci.json
+          service=$?
+          set -e
+          # Fail closed: every R17-C case must have executed; none may be skipped.
+          node -e "
+            const runs = ['r17c-disputes-browser-ci.json', 'r17c-disputes-ci.json'].map((f) => require('./apps/api/' + f));
+            const sum = (k) => runs.reduce((n, r) => n + r[k], 0);
+            const expected = 23;
+            console.log('R17-C passed', sum('numPassedTests'), 'failed', sum('numFailedTests'), 'pending', sum('numPendingTests'), 'todo', sum('numTodoTests'));
+            if (sum('numFailedTests') || sum('numPendingTests') || sum('numTodoTests') || sum('numPassedTests') !== expected) {
+              console.error('::error::R17-C acceptance did not execute all ' + expected + ' cases');
+              process.exit(1);
+            }"
+          test "$browser" -eq 0 && test "$service" -eq 0
+      - name: Upload R17-C evidence (no credentials, cookies or private evidence)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r17c-dispute-real-evidence
+          path: |
+            apps/api/r17c-disputes-browser-ci.json
+            apps/api/r17c-disputes-ci.json
+            apps/web/test-results/r17c-dispute-legacy/
           retention-days: 14
           if-no-files-found: error
       - name: Stop the dedicated scanner
