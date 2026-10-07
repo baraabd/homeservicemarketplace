@@ -55,8 +55,8 @@ Security (not cleared by a green workflow): 8 open CodeQL alerts on develop —
 | ----- | --------------------------------------- | ------------------------------------------------------------- | ----- | ------------------------------------------------------------ |
 | R17-A | `feat/r17-a-messaging-authority`        | Messaging read position, cross-instance acceptance            | 1     | `R17_A_MERGED` (#142, `e1f7f51`; post-merge push runs green) |
 | R17-B | `feat/r17-b-notification-authority`     | Notification lifecycle, scoping, commit-safe live push        | 2     | `R17_B_MERGED` (#143, `7642513`)                             |
-| R17-C | `feat/r17-c-dispute-authority`          | Legacy admin dispute race and copy; journey acceptance        | 3     | `R17_C_IN_REVIEW` (base `a8dc1a2`, after PLATFORM-TX-1 #144) |
-| R17-D | `feat/r17-d-admin-operations`           | Admin settings authority, users safeguards, analytics honesty | 4     | analysis only                                                |
+| R17-C | `feat/r17-c-dispute-authority`          | Legacy admin dispute race and copy; journey acceptance        | 3     | `R17_C_POSTMERGE_ACCEPTED` (#145, `aaf30aa`)                 |
+| R17-D | `feat/r17-d-admin-operations`           | Admin settings authority, users safeguards, analytics honesty | 4     | `R17_D_IN_REVIEW` (base `aaf30aa`)                           |
 | R17-E | `feat/r17-e-provider-surface-authority` | Feed/detail/bid agreement, booking actions, stale capability  | 5     | analysis only                                                |
 
 One unit = one branch = one PR = one report. A dependent unit starts after
@@ -81,6 +81,17 @@ merge is pending, only read-only analysis and test design continue.
 
 R17-C changed no schema, migration, contract, `AppModule`, permission or audit
 allowlist. Its shared edit is the CI step above.
+
+R17-D shared edits (no schema, migration or `AppModule` change):
+
+| Shared authority                                        | Change                                                                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `packages/contracts` admin settings                     | additive optional `inEffect` on the field schema; four inert fields marked                                             |
+| `packages/contracts` admin analytics                    | breaking for analytics clients: money fields nullable, per-currency fields added (consumers: admin dashboard, Postman) |
+| `iam/authorization/guards/permissions.guard.ts`         | `user:write:any` resolved fresh, like `user:read:any`                                                                  |
+| `apps/api/src/modules/admin/admin.module.ts`            | registers `AdminAnalyticsQueries`                                                                                      |
+| `apps/api/test/support/dispute-http-app.ts` (unchanged) | reused as the real-AppModule harness                                                                                   |
+| `.github/workflows/ci.yml` (`dispute-workspace` job)    | one R17-D step + one upload after R17-C's, own gate `RUN_ADMIN_BROWSER`                                                |
 
 ## R17-B coordination
 
