@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
   ADMIN_SETTINGS_SCHEMA,
-  type AdminSettingFieldSchema,
   type AdminSettingsBulkResponse,
   type AdminSettingValue,
   type AdminSettingsValues,
@@ -11,7 +10,7 @@ import {
   type SettingMutationResponse,
   type UpdateAdminSettingsResponse,
 } from '@homeservicemarketplace/contracts';
-import type { AuditEventType, Prisma } from '@homeservicemarketplace/database';
+import type { AuditEventType, Prisma, PrismaTx } from '@homeservicemarketplace/database';
 
 import {
   PlatformSettingRepository,
@@ -24,9 +23,7 @@ import {
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
 import { AdminAuditService } from '../admin-audit.service';
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const CURRENCY_RE = /^[A-Z]{3}$/;
+import { assertWritable, settingEntry, validateSettingValue } from './setting-registry';
 
 // Sprint 6.5 — admin platform settings service.
 //
@@ -70,7 +67,11 @@ export class AdminSettingsService {
     return {
       values,
       defaults,
-      schema: ADMIN_SETTINGS_SCHEMA,
+      // R17-D: every field states whether the platform reads it.
+      schema: ADMIN_SETTINGS_SCHEMA.map((field) => ({
+        ...field,
+        inEffect: field.inEffect !== false,
+      })),
       lastUpdatedAt: lastUpdatedAt ? lastUpdatedAt.toISOString() : null,
     };
   }
@@ -83,23 +84,23 @@ export class AdminSettingsService {
     if (keys.length === 0) {
       throw new AppError('VALIDATION_ERROR', 'At least one setting must be provided.', 400);
     }
-    // Whitelist + per-key type validation. Both errors surface as
-    // VALIDATION_ERROR so the wire shape doesn't differ between
-    // "unknown key" and "wrong type".
-    const normalised: Record<string, unknown> = {};
+    // R17-D: one registry decides key, type, range and writability for both
+    // the bulk and the keyed surface. The bulk surface is the Settings screen,
+    // so it accepts its scalar fields only. A Map holds the result: a key is
+    // never used as a property name on a plain object.
+    const normalised = new Map<string, unknown>();
     for (const key of keys) {
-      const field = ADMIN_SETTINGS_SCHEMA.find((f) => f.key === key);
-      if (!field) {
-        throw new AppError('VALIDATION_ERROR', `Unknown setting: ${key}`, 400);
-      }
-      normalised[key] = validateAndNormalise(field, incoming[key]);
+      const entry = settingEntry(key);
+      if (entry.kind !== 'scalar') throw new AppError('VALIDATION_ERROR', 'Unknown setting.', 400);
+      assertWritable(entry);
+      normalised.set(key, validateSettingValue(entry, incoming[key]));
     }
     const changedKeys: string[] = [];
     await this.tx.run(async (tx) => {
-      for (const key of Object.keys(normalised)) {
+      await this.lockKeys([...normalised.keys()], tx);
+      for (const [key, newValue] of normalised) {
         const previous = await this.settings.findByKey(key, tx);
         const previousValue = previous ? previous.value : null;
-        const newValue = normalised[key];
         // Idempotent: same value → skip the write but still emit
         // the audit row so the operator's intent is captured.
         const changed = !deepEqual(previousValue, newValue);
@@ -194,49 +195,52 @@ export class AdminSettingsService {
     };
   }
 
+  // Legacy keyed surface (R17-D): the same registry as the bulk surface,
+  // plus the structured operator policies whose consumers own a parser
+  // (dispute intake/workflow, supported markets). Unknown keys, wrong types,
+  // out-of-range values and inert settings are refused before any write.
   async upsert(adminUserId: string, key: string, value: unknown): Promise<SettingMutationResponse> {
+    const entry = settingEntry(key);
+    assertWritable(entry);
+    const newValue = validateSettingValue(entry, value) as Prisma.JsonValue;
     const result = await this.tx.run(async (tx) => {
+      await this.lockKeys([key], tx);
       const previous = await this.settings.findByKey(key, tx);
-      const next = await this.settings.upsert(
-        { key, value: value as Prisma.JsonValue, updatedBy: adminUserId },
-        tx,
-      );
-      await this.history.append(
-        {
-          key,
-          previousValue: previous?.value ?? null,
-          newValue: value as Prisma.JsonValue,
-          changedBy: adminUserId,
-          reason: null,
-        },
-        tx,
-      );
+      const previousValue = previous ? previous.value : null;
+      const changed = !previous || !deepEqual(previousValue, newValue);
+      const row = changed
+        ? await this.settings.upsert({ key, value: newValue, updatedBy: adminUserId }, tx)
+        : previous;
+      if (changed)
+        await this.history.append(
+          { key, previousValue, newValue, changedBy: adminUserId, reason: null },
+          tx,
+        );
       await this.audit.record(
         {
           adminUserId,
           type: 'ADMIN_SETTING_UPDATED' as AuditEventType,
-          metadata: {
-            key,
-            previousValue: previous?.value ?? null,
-            newValue: value as Prisma.JsonValue,
-            source: 'keyed',
-          },
+          metadata: { key, previousValue, newValue, source: 'keyed', changed },
         },
         tx,
       );
-      return next;
+      return row;
     });
     return { setting: toSummary(result) };
   }
 
   async remove(adminUserId: string, key: string): Promise<void> {
+    // Deleting reverts a registered setting to its default (or, for a policy,
+    // to absent, which its consumer treats as disabled). A key outside the
+    // registry is not this surface's to delete.
+    assertWritable(settingEntry(key));
     await this.tx.run(async (tx) => {
+      await this.lockKeys([key], tx);
       const previous = await this.settings.findByKey(key, tx);
       if (!previous) throw new AppError('NOT_FOUND', 'Setting not found.', 404);
       await this.settings.delete(key, tx);
       // A deletion is a change of value, so it belongs in the trail. `null`
-      // records "reverted to the schema default", which is what deleting a
-      // row actually does — the read path falls back to the default.
+      // records "reverted to the default".
       await this.history.append(
         {
           key,
@@ -263,6 +267,16 @@ export class AdminSettingsService {
       );
     });
   }
+
+  /**
+   * Serialises writers of the same keys for the rest of the transaction, so
+   * each history row's previousValue is what the earlier write left. Sorted,
+   * so two multi-key writes always lock in the same order.
+   */
+  private async lockKeys(keys: string[], tx: PrismaTx): Promise<void> {
+    for (const key of [...keys].sort())
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`platform_setting:${key}`}))`;
+  }
 }
 
 function toHistoryEntry(row: PlatformSettingHistoryRow): AdminSettingHistoryEntry {
@@ -284,79 +298,6 @@ function toSummary(row: PlatformSettingRow): AdminSettingValue {
     updatedAt: row.updatedAt.toISOString(),
     updatedBy: row.updatedBy,
   };
-}
-
-// ─── per-type validation ────────────────────────────────────────
-
-function validateAndNormalise(field: AdminSettingFieldSchema, value: unknown): unknown {
-  switch (field.type) {
-    case 'integer': {
-      if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) {
-        throw new AppError('VALIDATION_ERROR', `\`${field.key}\` must be an integer.`, 400);
-      }
-      if (field.min !== undefined && value < field.min) {
-        throw new AppError('VALIDATION_ERROR', `\`${field.key}\` must be ≥ ${field.min}.`, 400);
-      }
-      if (field.max !== undefined && value > field.max) {
-        throw new AppError('VALIDATION_ERROR', `\`${field.key}\` must be ≤ ${field.max}.`, 400);
-      }
-      return value;
-    }
-    case 'string': {
-      if (typeof value !== 'string') {
-        throw new AppError('VALIDATION_ERROR', `\`${field.key}\` must be a string.`, 400);
-      }
-      const trimmed = value.trim();
-      if (trimmed.length === 0) {
-        throw new AppError('VALIDATION_ERROR', `\`${field.key}\` must not be empty.`, 400);
-      }
-      if (trimmed.length > 1000) {
-        throw new AppError('VALIDATION_ERROR', `\`${field.key}\` exceeds 1000 chars.`, 400);
-      }
-      return trimmed;
-    }
-    case 'boolean': {
-      if (typeof value !== 'boolean') {
-        throw new AppError('VALIDATION_ERROR', `\`${field.key}\` must be true or false.`, 400);
-      }
-      return value;
-    }
-    case 'email': {
-      if (typeof value !== 'string') {
-        throw new AppError(
-          'VALIDATION_ERROR',
-          `\`${field.key}\` must be a valid email address.`,
-          400,
-        );
-      }
-      const normalised = value.trim().toLowerCase();
-      if (!EMAIL_RE.test(normalised)) {
-        throw new AppError(
-          'VALIDATION_ERROR',
-          `\`${field.key}\` must be a valid email address.`,
-          400,
-        );
-      }
-      return normalised;
-    }
-    case 'currency': {
-      if (typeof value !== 'string' || !CURRENCY_RE.test(value)) {
-        throw new AppError(
-          'VALIDATION_ERROR',
-          `\`${field.key}\` must be an ISO-4217 3-letter uppercase code.`,
-          400,
-        );
-      }
-      return value;
-    }
-    default: {
-      // Exhaustiveness check — TS will complain if a new
-      // AdminSettingType is added without a case here.
-      const _exhaustive: never = field.type;
-      void _exhaustive;
-      throw new AppError('VALIDATION_ERROR', `Unsupported setting type.`, 400);
-    }
-  }
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {

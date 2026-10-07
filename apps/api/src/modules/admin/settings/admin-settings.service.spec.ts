@@ -11,7 +11,8 @@ import type { AdminAuditService } from '../admin-audit.service';
 import { AdminSettingsService } from './admin-settings.service';
 
 const tx: TransactionRunner = {
-  run: <T>(fn: (t: undefined) => Promise<T>) => fn(undefined),
+  // R17-D: writers of one key are serialised with a transaction advisory lock.
+  run: <T>(fn: (t: never) => Promise<T>) => fn({ $executeRaw: jest.fn() } as never),
 } as unknown as TransactionRunner;
 
 function makeRow(over: Partial<PlatformSettingRow> = {}): PlatformSettingRow {
@@ -120,22 +121,24 @@ describe('AdminSettingsService.getBulk', () => {
 describe('AdminSettingsService.updateBulk', () => {
   it('persists a valid integer + writes audit row + emits changedKeys', async () => {
     const m = makeMocks([]);
-    const out = await makeService(m).updateBulk('admin-1', { platform_fee_bps: 1200 });
-    expect(out.changedKeys).toEqual(['platform_fee_bps']);
-    expect(out.values.platform_fee_bps).toBe(1200);
+    const out = await makeService(m).updateBulk('admin-1', {
+      verification_policy_max_documents: 12,
+    });
+    expect(out.changedKeys).toEqual(['verification_policy_max_documents']);
+    expect(out.values.verification_policy_max_documents).toBe(12);
     expect(m.audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
         adminUserId: 'admin-1',
         type: 'ADMIN_SETTING_UPDATED',
         metadata: expect.objectContaining({
-          key: 'platform_fee_bps',
+          key: 'verification_policy_max_documents',
           previousValue: null,
-          newValue: 1200,
+          newValue: 12,
           source: 'bulk',
           changed: true,
         }),
       }),
-      undefined,
+      expect.anything(),
     );
   });
 
@@ -146,62 +149,58 @@ describe('AdminSettingsService.updateBulk', () => {
     ).rejects.toMatchObject({ status: 400, code: 'VALIDATION_ERROR' });
   });
 
-  it('rejects out-of-range integer (platform_fee_bps > 10000)', async () => {
+  it('rejects out-of-range integer (above its max of 20)', async () => {
     const m = makeMocks([]);
     await expect(
-      makeService(m).updateBulk('admin-1', { platform_fee_bps: 12_000 }),
+      makeService(m).updateBulk('admin-1', { verification_policy_max_documents: 21 }),
     ).rejects.toMatchObject({ status: 400 });
   });
 
-  it('rejects negative integer (platform_fee_bps < 0)', async () => {
+  it('rejects negative integer (below its min of 1)', async () => {
     const m = makeMocks([]);
     await expect(
-      makeService(m).updateBulk('admin-1', { platform_fee_bps: -1 }),
+      makeService(m).updateBulk('admin-1', { verification_policy_max_documents: 0 }),
     ).rejects.toMatchObject({ status: 400 });
   });
 
   it('rejects non-integer for an integer field', async () => {
     const m = makeMocks([]);
     await expect(
-      makeService(m).updateBulk('admin-1', { platform_fee_bps: 1000.5 }),
+      makeService(m).updateBulk('admin-1', { verification_policy_max_documents: 10.5 }),
     ).rejects.toMatchObject({ status: 400 });
     await expect(
       makeService(m).updateBulk('admin-1', {
-        platform_fee_bps: 'not a number' as unknown as number,
+        verification_policy_max_documents: 'not a number' as unknown as number,
       }),
     ).rejects.toMatchObject({ status: 400 });
   });
 
-  it('rejects malformed email', async () => {
+  it('R17-D refuses settings no product code reads, even with a valid value', async () => {
     const m = makeMocks([]);
-    await expect(
-      makeService(m).updateBulk('admin-1', { support_email: 'not-an-email' }),
-    ).rejects.toMatchObject({ status: 400 });
+    for (const values of [
+      { platform_fee_bps: 1200 },
+      { default_currency: 'EUR' },
+      { support_email: 'help@example.com' },
+      { feature_show_hourly_rate: true },
+    ])
+      await expect(makeService(m).updateBulk('admin-1', values)).rejects.toMatchObject({
+        status: 400,
+      });
+    expect(m.settings.upsert).not.toHaveBeenCalled();
   });
 
-  it('normalises email to trimmed lowercase', async () => {
-    const m = makeMocks([]);
-    const out = await makeService(m).updateBulk('admin-1', {
-      support_email: '  Help@Example.COM  ',
-    });
-    expect(out.values.support_email).toBe('help@example.com');
-  });
-
-  it('rejects bad ISO currency code', async () => {
-    const m = makeMocks([]);
-    await expect(
-      makeService(m).updateBulk('admin-1', { default_currency: 'usd' }),
-    ).rejects.toMatchObject({ status: 400 });
-    await expect(
-      makeService(m).updateBulk('admin-1', { default_currency: 'TOO_LONG' }),
-    ).rejects.toMatchObject({ status: 400 });
+  it('R17-D reports which settings are in effect', async () => {
+    const out = await makeService(makeMocks([])).getBulk();
+    const inEffect = Object.fromEntries(out.schema.map((f) => [f.key, f.inEffect]));
+    expect(inEffect.platform_fee_bps).toBe(false);
+    expect(inEffect.verification_policy_max_documents).toBe(true);
   });
 
   it('rejects non-boolean for a boolean field', async () => {
     const m = makeMocks([]);
     await expect(
       makeService(m).updateBulk('admin-1', {
-        feature_show_hourly_rate: 'true' as unknown as boolean,
+        marketplace_preview_enabled: 'true' as unknown as boolean,
       }),
     ).rejects.toMatchObject({ status: 400 });
   });
@@ -214,29 +213,31 @@ describe('AdminSettingsService.updateBulk', () => {
   });
 
   it('skips the DB write when value is unchanged (idempotent), still audits', async () => {
-    const m = makeMocks([makeRow({ key: 'platform_fee_bps', value: 1500 })]);
-    const out = await makeService(m).updateBulk('admin-1', { platform_fee_bps: 1500 });
+    const m = makeMocks([makeRow({ key: 'verification_policy_max_documents', value: 15 })]);
+    const out = await makeService(m).updateBulk('admin-1', {
+      verification_policy_max_documents: 15,
+    });
     expect(out.changedKeys).toEqual([]);
     expect(m.settings.upsert).not.toHaveBeenCalled();
     expect(m.audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({ changed: false }),
       }),
-      undefined,
+      expect.anything(),
     );
   });
 
   it('handles a multi-key bulk update transactionally', async () => {
     const m = makeMocks([]);
     const out = await makeService(m).updateBulk('admin-1', {
-      platform_fee_bps: 750,
-      default_currency: 'EUR',
-      feature_show_hourly_rate: true,
+      verification_policy_max_documents: 7,
+      marketplace_preview_enabled: true,
+      provider_consent_policy_version: 'v2',
     });
     expect(out.changedKeys.sort()).toEqual([
-      'default_currency',
-      'feature_show_hourly_rate',
-      'platform_fee_bps',
+      'marketplace_preview_enabled',
+      'provider_consent_policy_version',
+      'verification_policy_max_documents',
     ]);
     expect(m.audit.record).toHaveBeenCalledTimes(3);
   });
@@ -245,8 +246,8 @@ describe('AdminSettingsService.updateBulk', () => {
     const m = makeMocks([]);
     await expect(
       makeService(m).updateBulk('admin-1', {
-        platform_fee_bps: 750,
-        support_email: 'not-an-email',
+        verification_policy_max_documents: 7,
+        provider_onboarding_max_service_areas: 0,
       }),
     ).rejects.toMatchObject({ status: 400 });
     // No upsert should have run because validation aborted before
@@ -264,17 +265,17 @@ describe('AdminSettingsService.updateBulk', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('AdminSettingsService — setting history', () => {
   it('records the before and after of a change', async () => {
-    const m = makeMocks([makeRow({ key: 'platform_fee_bps', value: 1000 })]);
-    await makeService(m).updateBulk('admin-9', { platform_fee_bps: 750 });
+    const m = makeMocks([makeRow({ key: 'verification_policy_max_documents', value: 10 })]);
+    await makeService(m).updateBulk('admin-9', { verification_policy_max_documents: 7 });
 
     expect(m.history.append).toHaveBeenCalledWith(
       expect.objectContaining({
-        key: 'platform_fee_bps',
-        previousValue: 1000,
-        newValue: 750,
+        key: 'verification_policy_max_documents',
+        previousValue: 10,
+        newValue: 7,
         changedBy: 'admin-9',
       }),
-      undefined,
+      expect.anything(),
     );
   });
 
@@ -282,11 +283,11 @@ describe('AdminSettingsService — setting history', () => {
     // Not "0", not the schema default. The distinction between "was unset" and
     // "was explicitly the default" is the whole point of keeping a trail.
     const m = makeMocks([]);
-    await makeService(m).updateBulk('admin-9', { platform_fee_bps: 750 });
+    await makeService(m).updateBulk('admin-9', { verification_policy_max_documents: 7 });
 
     expect(m.history.append).toHaveBeenCalledWith(
-      expect.objectContaining({ previousValue: null, newValue: 750 }),
-      undefined,
+      expect.objectContaining({ previousValue: null, newValue: 7 }),
+      expect.anything(),
     );
   });
 
@@ -294,8 +295,8 @@ describe('AdminSettingsService — setting history', () => {
     // An idempotent write still gets an audit row — the operator's intent is
     // worth recording — but not a history row. A history of non-changes buries
     // the changes it exists to surface.
-    const m = makeMocks([makeRow({ key: 'platform_fee_bps', value: 1000 })]);
-    await makeService(m).updateBulk('admin-9', { platform_fee_bps: 1000 });
+    const m = makeMocks([makeRow({ key: 'verification_policy_max_documents', value: 10 })]);
+    await makeService(m).updateBulk('admin-9', { verification_policy_max_documents: 10 });
 
     expect(m.history.append).not.toHaveBeenCalled();
     expect(m.audit.record).toHaveBeenCalled();
@@ -305,7 +306,7 @@ describe('AdminSettingsService — setting history', () => {
     // A history that commits separately from the value it describes grows
     // holes exactly where someone had a reason to want one.
     const m = makeMocks([]);
-    await makeService(m).updateBulk('admin-9', { platform_fee_bps: 750 });
+    await makeService(m).updateBulk('admin-9', { verification_policy_max_documents: 7 });
 
     const settingTx = (m.settings.upsert as jest.Mock).mock.calls[0][1];
     const historyTx = (m.history.append as jest.Mock).mock.calls[0][1];
@@ -315,24 +316,24 @@ describe('AdminSettingsService — setting history', () => {
   it('records a deletion as a change to null', async () => {
     // Deleting the row reverts the read path to the schema default, so the
     // trail says so rather than going silent at the moment of a real change.
-    const m = makeMocks([makeRow({ key: 'platform_fee_bps', value: 1000 })]);
-    await makeService(m).remove('admin-9', 'platform_fee_bps');
+    const m = makeMocks([makeRow({ key: 'verification_policy_max_documents', value: 10 })]);
+    await makeService(m).remove('admin-9', 'verification_policy_max_documents');
 
     expect(m.history.append).toHaveBeenCalledWith(
-      expect.objectContaining({ previousValue: 1000, newValue: null, reason: 'deleted' }),
-      undefined,
+      expect.objectContaining({ previousValue: 10, newValue: null, reason: 'deleted' }),
+      expect.anything(),
     );
   });
 
   it('reads a key history newest-first and reports no next page when exhausted', async () => {
     const m = makeMocks([]);
     const service = makeService(m);
-    await service.updateBulk('admin-9', { platform_fee_bps: 750 });
-    await service.updateBulk('admin-9', { platform_fee_bps: 800 });
+    await service.updateBulk('admin-9', { verification_policy_max_documents: 7 });
+    await service.updateBulk('admin-9', { verification_policy_max_documents: 8 });
 
-    const out = await service.historyForKey('platform_fee_bps', { limit: 20 });
+    const out = await service.historyForKey('verification_policy_max_documents', { limit: 20 });
 
-    expect(out.key).toBe('platform_fee_bps');
+    expect(out.key).toBe('verification_policy_max_documents');
     expect(out.items).toHaveLength(2);
     expect(out.nextCursor).toBeNull();
   });
