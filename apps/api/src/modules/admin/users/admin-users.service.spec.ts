@@ -33,7 +33,8 @@ function makeUser(over: Partial<User> = {}): User {
 }
 
 const tx: TransactionRunner = {
-  run: <T>(fn: (t: undefined) => Promise<T>) => fn(undefined),
+  // R17-D: the service row-locks the target user through the transaction.
+  run: <T>(fn: (t: never) => Promise<T>) => fn({ $queryRaw: jest.fn() } as never),
 } as unknown as TransactionRunner;
 
 interface Mocks {
@@ -164,7 +165,10 @@ describe('AdminUsersService', () => {
     // Add a `tx?.user.update` shim onto our makeMocks transaction
     const txWithUser = {
       run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
-        fn({ user: { update: jest.fn().mockResolvedValue(makeUser()) } }),
+        fn({
+          $queryRaw: jest.fn(),
+          user: { update: jest.fn().mockResolvedValue(makeUser()) },
+        } as never),
     } as unknown as TransactionRunner;
     const svc = new AdminUsersService(
       m.users,
@@ -194,7 +198,10 @@ describe('AdminUsersService', () => {
     const m = makeMocks();
     const txWithUser = {
       run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
-        fn({ user: { update: jest.fn().mockResolvedValue(makeUser()) } }),
+        fn({
+          $queryRaw: jest.fn(),
+          user: { update: jest.fn().mockResolvedValue(makeUser()) },
+        } as never),
     } as unknown as TransactionRunner;
     const svc = new AdminUsersService(
       m.users,
@@ -225,7 +232,10 @@ describe('AdminUsersService', () => {
     function makeTxWithUserUpdate() {
       return {
         run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
-          fn({ user: { update: jest.fn().mockResolvedValue(makeUser()) } }),
+          fn({
+            $queryRaw: jest.fn(),
+            user: { update: jest.fn().mockResolvedValue(makeUser()) },
+          } as never),
       } as unknown as TransactionRunner;
     }
 
@@ -251,7 +261,8 @@ describe('AdminUsersService', () => {
             targetUserId: 'u-1',
             targetStatus: 'SUSPENDED',
             previousStatus: 'ACTIVE',
-            reason: 'fraud',
+            // R17-D: the length is audited, never the free text.
+            reasonLength: 5,
           }),
         }),
         expect.anything(),
@@ -350,7 +361,10 @@ describe('AdminUsersService', () => {
     function makeTxWithUserUpdate() {
       return {
         run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
-          fn({ user: { update: jest.fn().mockResolvedValue(makeUser()) } }),
+          fn({
+            $queryRaw: jest.fn(),
+            user: { update: jest.fn().mockResolvedValue(makeUser()) },
+          } as never),
       } as unknown as TransactionRunner;
     }
 
@@ -451,7 +465,10 @@ describe('AdminUsersService', () => {
       const m = makeMocks();
       const txWithUser = {
         run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
-          fn({ user: { update: jest.fn().mockResolvedValue(makeUser()) } }),
+          fn({
+            $queryRaw: jest.fn(),
+            user: { update: jest.fn().mockResolvedValue(makeUser()) },
+          } as never),
       } as unknown as TransactionRunner;
       const svc = new AdminUsersService(
         m.users,

@@ -7,7 +7,12 @@ import type {
   ListAdminUsersResponse,
   UpdateUserStatusRequest,
 } from '@homeservicemarketplace/contracts';
-import type { AccountStatus, AuditEventType, User } from '@homeservicemarketplace/database';
+import type {
+  AccountStatus,
+  AuditEventType,
+  PrismaTx,
+  User,
+} from '@homeservicemarketplace/database';
 
 import { AdminAccessRequestRepository } from '../../../infrastructure/persistence/iam/admin-access-request.repository';
 import { RoleRepository } from '../../../infrastructure/persistence/iam/role.repository';
@@ -93,6 +98,7 @@ export class AdminUsersService {
     }
     const isActive = nextStatus === 'ACTIVE';
     const updated = await this.tx.run(async (tx) => {
+      await this.lockUser(targetUserId, tx);
       const existing = await this.users.findById(targetUserId, tx);
       if (!existing) throw new AppError('NOT_FOUND', 'User not found.', 404);
       // Idempotent: if the target already has the requested status,
@@ -139,7 +145,9 @@ export class AdminUsersService {
             previousStatus: existing.status,
             previousIsActive: existing.isActive,
             ...(revokedSessionCount !== undefined ? { revokedSessionCount } : {}),
-            ...(body.reason ? { reason: body.reason } : {}),
+            // R17-D: no approved reason model exists, and audit metadata
+            // carries identifiers, not free text. Record only that one was given.
+            ...(body.reason ? { reasonLength: body.reason.length } : {}),
           },
         },
         tx,
@@ -167,6 +175,7 @@ export class AdminUsersService {
       throw new AppError('VALIDATION_ERROR', 'Admins cannot suspend themselves.', 400);
     }
     const updated = await this.tx.run(async (tx) => {
+      await this.lockUser(targetUserId, tx);
       const existing = await this.users.findById(targetUserId, tx);
       if (!existing) throw new AppError('NOT_FOUND', 'User not found.', 404);
       const next = await this.users.update(targetUserId, { isActive: false }, tx);
@@ -203,6 +212,7 @@ export class AdminUsersService {
 
   async restore(adminUserId: string, targetUserId: string): Promise<AdminUserMutationResponse> {
     const updated = await this.tx.run(async (tx) => {
+      await this.lockUser(targetUserId, tx);
       const existing = await this.users.findById(targetUserId, tx);
       if (!existing) throw new AppError('NOT_FOUND', 'User not found.', 404);
       const next = await this.users.update(targetUserId, { isActive: true }, tx);
@@ -228,6 +238,15 @@ export class AdminUsersService {
     // was suspended and stay revoked. The user signs in again, which is the
     // correct outcome — nothing to publish here.
     return { user: await this.toSummary(updated) };
+  }
+
+  /**
+   * R17-D (D-4): status changes on one user run one at a time, so each sees
+   * the state the previous one left and its audit row's previousStatus is
+   * true. Sessions and audit rows are written under the same lock.
+   */
+  private async lockUser(userId: string, tx: PrismaTx): Promise<void> {
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
   }
 
   private async toSummary(u: User): Promise<AdminUserSummary> {
