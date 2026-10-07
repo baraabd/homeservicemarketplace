@@ -61,16 +61,17 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     const { db } = h.fixture;
     const since = new Date();
     const restore = await preserveSetting('provider_onboarding_max_service_areas');
+    const unknownKey = `${h.fixture.prefix}unknown-setting`;
     const intakeBefore = await db.platformSetting.findUnique({
       where: { key: 'disputes.self_service.intake' },
     });
     try {
-      const unknown = await admin.request('/v1/admin/settings/r17d_unknown_key', {
+      const unknown = await admin.request(`/v1/admin/settings/${encodeURIComponent(unknownKey)}`, {
         method: 'PUT',
         body: { value: { anything: true } },
       });
       expect(unknown.status).toBe(400);
-      expect(await db.platformSetting.count({ where: { key: 'r17d_unknown_key' } })).toBe(0);
+      expect(await db.platformSetting.count({ where: { key: unknownKey } })).toBe(0);
 
       for (const value of ['lots', 100000, 0, 2.5, null]) {
         const bad = await admin.request(
@@ -142,7 +143,11 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
 
   it('D-3 hostile property names select nothing, write nothing and pollute nothing', async () => {
     const { db } = h.fixture;
-    for (const key of ['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty']) {
+    const hostile = ['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty'];
+    // No real setting can carry these names; clear any a pre-fix run wrote,
+    // so the zero-row assertions below are about THIS run.
+    await db.platformSetting.deleteMany({ where: { key: { in: hostile } } });
+    for (const key of hostile) {
       const put = await admin.request(`/v1/admin/settings/${key}`, {
         method: 'PUT',
         body: { value: 1 },
