@@ -66,12 +66,21 @@ export async function disputeHttpApp() {
     await app.listen(0, '127.0.0.1');
     const url = await app.getUrl();
     const mailbox = app.get(InMemoryMailAdapter);
+    // Suites that need more synthetic accounts than the fixture's six (R17-E
+    // creates several providers) enrol them here; OTPs stay readable only for
+    // explicitly synthetic, prefixed recipients.
+    const enrolled = new Set<string>();
     return {
       app,
       url,
       fixture,
+      enrol(id: string) {
+        if (!id.startsWith('it-')) throw new Error('Only prefixed synthetic accounts');
+        enrolled.add(id);
+      },
       otp(email: string) {
-        if (!Object.values(fixture.users).some((id) => `${id}@example.test` === email))
+        const known = [...Object.values(fixture.users), ...enrolled];
+        if (!known.some((id) => `${id}@example.test` === email))
           throw new Error('Unknown synthetic recipient');
         const code = mailbox.lastSentTo(email)?.text?.match(/\b\d{6}\b/)?.[0];
         if (!code) throw new Error('Real login did not deliver an OTP to the test mailbox');
