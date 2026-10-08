@@ -27,6 +27,9 @@ import {
 // Cancelled bookings are shown alongside the completed count for
 // operator context but do not count toward revenue.
 
+/** Intl puts a no-break space between a currency code and its amount. */
+const NBSP = String.fromCharCode(0xa0);
+
 const RANGE_OPTIONS: ReadonlyArray<{ key: string; days: number; en: string; ar: string }> = [
   { key: '7d', days: 7, en: '7d', ar: '٧ أيام' },
   { key: '30d', days: 30, en: '30d', ar: '٣٠ يوم' },
@@ -52,40 +55,75 @@ export function DashboardOverview({ lang }: { lang: string }) {
   const revenueQuery = useAdminAnalyticsRevenue(range);
 
   const overview = overviewQuery.data;
-  const buckets = revenueQuery.data?.buckets ?? [];
+  const series = useMemo(() => revenueQuery.data?.series ?? [], [revenueQuery.data]);
+  const [chartCurrency, setChartCurrency] = useState<string | null>(null);
 
   const L = {
     title: isAr ? 'لوحة التحكم' : 'Dashboard',
     range: isAr ? 'النطاق' : 'Range',
     kpis: {
-      revenue: isAr ? 'الإيرادات (في النطاق)' : 'Revenue (in range)',
-      lifetime: isAr ? 'الإيرادات الإجمالية' : 'Lifetime revenue',
-      providers: isAr ? 'مزودون نشطون' : 'Active providers',
+      // R17-D: booked value of completed bookings — not payments, not revenue.
+      revenue: isAr ? 'قيمة الحجوزات المنجزة (في النطاق)' : 'Completed booking value (in range)',
+      lifetime: isAr ? 'قيمة الحجوزات المنجزة (الإجمالي)' : 'Completed booking value (lifetime)',
+      providers: isAr ? 'المزودون' : 'Providers',
       users: isAr ? 'المستخدمون' : 'Users',
       completed: isAr ? 'حجوزات منجزة' : 'Bookings completed',
       disputes: isAr ? 'نزاعات مفتوحة' : 'Open disputes',
     },
-    revenueChart: isAr ? 'الإيرادات اليومية' : 'Daily revenue',
+    revenueChart: isAr ? 'قيمة الحجوزات المنجزة يومياً' : 'Daily completed booking value',
+    chartCurrency: isAr ? 'العملة' : 'Currency',
     loading: isAr ? 'جارٍ التحميل…' : 'Loading…',
     failed: isAr ? 'تعذّر تحميل البيانات.' : 'Could not load analytics.',
-    feeFootnote: (bps: number) =>
+    noCompletions: isAr ? 'لا توجد حجوزات منجزة' : 'No completed bookings',
+    valueNote: isAr
+      ? 'قيم الحجوزات وليست مدفوعات. لا توجد عمولة منصة معتمدة، ولا تُجمع العملات المختلفة معاً.'
+      : 'Booking values, not payments. No platform fee is approved, and currencies are never added together.',
+    undated: (n: number) =>
       isAr
-        ? `بعد عمولة المنصة ${(bps / 100).toFixed(0)}٪`
-        : `After ${(bps / 100).toFixed(0)}% platform fee`,
+        ? `${n} حجز منجز بلا سجل إنجاز مؤرَّخ، فلا يُحتسب ضمن النطاق.`
+        : `${n} completed booking(s) have no dated completion record and are not counted in a range.`,
   };
 
-  const currency = overview?.currency ?? 'USD';
-  const fmt = (amount: number) =>
+  const money = (amount: number, currency: string) =>
     new Intl.NumberFormat(isAr ? 'ar' : 'en', {
       style: 'currency',
       currency,
       maximumFractionDigits: 0,
     }).format(amount / 100);
+  // One figure per currency; never a sum across currencies.
+  const perCurrency = (pick: 'bookedValueWithinRange' | 'bookedValueLifetime') => {
+    if (!overview) return overviewQuery.isError ? '—' : '…';
+    // A payload without the breakdown is unknown, not zero, and must not crash
+    // the admin shell.
+    if (!Array.isArray(overview.revenueByCurrency)) return '—';
+    const rows = overview.revenueByCurrency.filter((r) => r[pick] > 0);
+    if (rows.length === 0) return L.noCompletions;
+    if (rows.length === 1) return money(rows[0][pick], rows[0].currency);
+    // Several currencies: one isolated line each, so nothing reads as a sum
+    // and nothing overflows a narrow card.
+    return (
+      <ul className="flex flex-col" style={{ fontSize: '14px', overflowWrap: 'normal' }}>
+        {rows.map((r) => (
+          <li key={r.currency}>
+            {/* A breakable space between code and amount: on a narrow card the
+                line may wrap there, never inside the code or the number. */}
+            <bdi>{money(r[pick], r.currency).split(NBSP).join(' ')}</bdi>
+          </li>
+        ))}
+      </ul>
+    );
+  };
+  const count = (n: number | undefined) =>
+    overview && n !== undefined ? String(n) : overviewQuery.isError ? '—' : '…';
 
-  const chartData = buckets.map((b) => ({
+  // Honour reduced motion: the chart must not animate its values in.
+  const reduceMotion =
+    typeof window !== 'undefined' &&
+    !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const activeSeries = series.find((s) => s.currency === chartCurrency) ?? series[0] ?? null;
+  const chartData = (activeSeries?.buckets ?? []).map((b) => ({
     date: b.date.slice(5), // 'MM-DD'
-    gross: b.grossEarnings / 100,
-    net: b.netProviderEarnings / 100,
+    value: b.bookedValue / 100,
   }));
 
   return (
@@ -137,51 +175,75 @@ export function DashboardOverview({ lang }: { lang: string }) {
         <KpiCard
           icon={<DollarSign size={16} />}
           label={L.kpis.revenue}
-          value={
-            overview ? fmt(overview.revenue.grossWithinRange) : overviewQuery.isError ? '—' : '…'
-          }
+          value={perCurrency('bookedValueWithinRange')}
           tone="green"
+          testId="kpi-value-in-range"
         />
         <KpiCard
           icon={<TrendingUp size={16} />}
           label={L.kpis.lifetime}
-          value={overview ? fmt(overview.revenue.grossLifetime) : '…'}
+          value={perCurrency('bookedValueLifetime')}
           tone="indigo"
-          footnote={overview ? L.feeFootnote(overview.platformFeeRateBps) : undefined}
+          testId="kpi-value-lifetime"
         />
         <KpiCard
           icon={<ShieldCheck size={16} />}
           label={L.kpis.providers}
-          value={overview ? String(overview.counts.providers) : '…'}
+          value={count(overview?.counts.providers)}
           tone="blue"
         />
         <KpiCard
           icon={<Users size={16} />}
           label={L.kpis.users}
-          value={overview ? String(overview.counts.users) : '…'}
+          value={count(overview?.counts.users)}
           tone="slate"
         />
         <KpiCard
           icon={<Activity size={16} />}
           label={L.kpis.completed}
-          value={overview ? String(overview.counts.bookingsCompleted) : '…'}
+          value={count(overview?.counts.bookingsCompleted)}
           tone="emerald"
         />
         <KpiCard
           icon={<AlertTriangle size={16} />}
           label={L.kpis.disputes}
-          value={overview ? String(overview.counts.disputesOpen) : '…'}
+          value={count(overview?.counts.disputesOpen)}
           tone="amber"
         />
       </div>
+      <p className="text-slate-500" style={{ fontSize: '11px' }} data-testid="analytics-value-note">
+        {L.valueNote}
+        {overview && overview.counts.undatedCompletions > 0
+          ? ` ${L.undated(overview.counts.undatedCompletions)}`
+          : ''}
+      </p>
 
       <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4">
-        <p
-          className="text-slate-900 dark:text-white mb-3"
-          style={{ fontSize: '14px', fontWeight: 700 }}
-        >
-          {L.revenueChart}
-        </p>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <p
+            className="text-slate-900 dark:text-white"
+            style={{ fontSize: '14px', fontWeight: 700 }}
+          >
+            {L.revenueChart}
+            {activeSeries ? ` (${activeSeries.currency})` : ''}
+          </p>
+          {series.length > 1 ? (
+            <label className="flex items-center gap-1.5" style={{ fontSize: '11px' }}>
+              <span className="text-slate-500">{L.chartCurrency}</span>
+              <select
+                value={activeSeries?.currency ?? ''}
+                onChange={(e) => setChartCurrency(e.target.value)}
+                className="px-2 py-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+              >
+                {series.map((s) => (
+                  <option key={s.currency} value={s.currency}>
+                    {s.currency}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
         {revenueQuery.isPending ? (
           <p
             className="text-slate-400 py-12 text-center"
@@ -193,6 +255,14 @@ export function DashboardOverview({ lang }: { lang: string }) {
         ) : revenueQuery.isError ? (
           <p className="text-rose-600 py-12 text-center" role="status" style={{ fontSize: '12px' }}>
             {L.failed}
+          </p>
+        ) : !activeSeries ? (
+          <p
+            className="text-slate-400 py-12 text-center"
+            role="status"
+            style={{ fontSize: '12px' }}
+          >
+            {L.noCompletions}
           </p>
         ) : (
           <ResponsiveContainer width="100%" height={180}>
@@ -220,11 +290,12 @@ export function DashboardOverview({ lang }: { lang: string }) {
                   boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
                   fontSize: '12px',
                 }}
-                formatter={(v: number) => [fmt(v * 100), 'Gross']}
+                formatter={(v: number) => [money(v * 100, activeSeries.currency), L.revenueChart]}
               />
               <Area
                 type="monotone"
-                dataKey="gross"
+                dataKey="value"
+                isAnimationActive={!reduceMotion}
                 stroke="#3b82f6"
                 strokeWidth={2.5}
                 fill="url(#adminRevenueGrad)"
@@ -253,15 +324,20 @@ function KpiCard({
   value,
   tone,
   footnote,
+  testId,
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string | number;
+  value: React.ReactNode;
   tone: keyof typeof TONE_BG;
   footnote?: string;
+  testId?: string;
 }) {
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 flex items-start gap-3">
+    <div
+      className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 flex items-start gap-3"
+      data-testid={testId}
+    >
       <div
         className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${TONE_BG[tone]}`}
       >
@@ -271,12 +347,17 @@ function KpiCard({
         <p className="text-slate-500" style={{ fontSize: '11px', fontWeight: 700 }}>
           {label}
         </p>
-        <p
+        <div
           className="text-slate-900 dark:text-white"
-          style={{ fontSize: '22px', fontWeight: 800, letterSpacing: '-0.01em' }}
+          style={{
+            fontSize: '22px',
+            fontWeight: 800,
+            letterSpacing: '-0.01em',
+            overflowWrap: 'anywhere',
+          }}
         >
           {value}
-        </p>
+        </div>
         {footnote ? (
           <p className="text-slate-400 mt-0.5" style={{ fontSize: '10px' }}>
             {footnote}

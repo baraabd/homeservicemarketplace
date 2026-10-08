@@ -60,7 +60,9 @@ export function useUpdateAdminUserStatus() {
   return useMutation({
     mutationFn: ({ userId, body }: { userId: string; body: UpdateUserStatusRequest }) =>
       updateAdminUserStatus(userId, body),
-    onSuccess: (_data, vars) => {
+    // R17-D: read back after ANY outcome — a refused or conflicting change
+    // must show the server's current status, not the stale one.
+    onSettled: (_data, _error, vars) => {
       // The list view + the detail drawer for THIS user both need to
       // refresh; invalidating the root catches every cached filter
       // permutation in one call.

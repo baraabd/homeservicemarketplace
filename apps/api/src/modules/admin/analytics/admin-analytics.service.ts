@@ -1,43 +1,52 @@
 import { Injectable } from '@nestjs/common';
 import type {
+  AdminAnalyticsCurrencySeries,
   AdminAnalyticsOverview,
+  AdminAnalyticsRangeCurrencyTotals,
   AdminAnalyticsResponse,
   AdminAnalyticsRevenue,
   AdminAnalyticsSummary,
   RevenueChartBucket,
 } from '@homeservicemarketplace/contracts';
 
-import { AppConfigService } from '../../../config/app-config.service';
-import { BookingRepository } from '../../../infrastructure/persistence/bookings/booking.repository';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import { AppError } from '../../../shared/errors/app-error';
+import { AdminAnalyticsQueries, type CurrencyDay } from './admin-analytics.queries';
 
-const DEFAULT_CURRENCY = 'USD';
-const BPS_DENOMINATOR = 10_000;
 const DEFAULT_RANGE_DAYS = 30;
 const MAX_RANGE_DAYS = 365;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/** Every dispute state that records an outcome, legacy and workspace closure. */
+const RESOLVED_DISPUTE_STATUSES = [
+  'RESOLVED',
+  'RESOLVED_REFUND',
+  'RESOLVED_PARTIAL',
+  'RESOLVED_DENIED',
+] as const;
+
 // Sprint 6.4 — admin KPI surface. Three endpoints, all read-only:
-//   summary()  — KPI cards (lifetime + last-30-days; existing)
-//   overview() — date-range KPIs + revenue rollup + lifetime gross
-//   revenue()  — daily revenue / fee / net buckets in the request range
+//   summary()  — KPI cards (lifetime + last-30-days)
+//   overview() — date-range KPIs + booked value
+//   revenue()  — daily booked value in the request range
 //
-// All counts run in parallel so the response time tracks the slowest
-// single COUNT, not their sum. Platform-fee math is shared with the
-// provider-side wallet (env-driven `PROVIDER_PLATFORM_FEE_BPS`).
+// R17-D (D-6): money figures are booked values per currency (never summed
+// across currencies), completions are dated by their event (never by
+// `updatedAt`), and no fee is computed: none is approved (R16 P10). See the
+// contract (`@homeservicemarketplace/contracts` admin/analytics) for the rules.
 @Injectable()
 export class AdminAnalyticsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly bookings: BookingRepository,
-    private readonly config: AppConfigService,
+    private readonly queries: AdminAnalyticsQueries,
   ) {}
 
   async summary(): Promise<AdminAnalyticsResponse> {
     const c = this.prisma.client;
-    const sevenDaysAgo = new Date(Date.now() - 7 * MS_PER_DAY);
-    const thirtyDaysAgo = new Date(Date.now() - 30 * MS_PER_DAY);
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * MS_PER_DAY);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * MS_PER_DAY);
+    const disputes = c as unknown as { dispute: { count: (a: unknown) => Promise<number> } };
     const [
       usersTotal,
       usersActive,
@@ -56,9 +65,9 @@ export class AdminAnalyticsService {
       bkInProgress,
       bkCompleted,
       bkCancelled,
-      bkGrossLifetime,
-      bkGross30d,
-      bkDominantCurrency,
+      lifetime,
+      last30,
+      undated,
       disputesOpen,
       disputesInReview,
       disputesResolved,
@@ -80,35 +89,24 @@ export class AdminAnalyticsService {
       c.booking.count({ where: { deletedAt: null, status: 'IN_PROGRESS' } }),
       c.booking.count({ where: { deletedAt: null, status: 'COMPLETED' } }),
       c.booking.count({ where: { deletedAt: null, status: 'CANCELLED' } }),
-      c.booking.aggregate({
-        where: { deletedAt: null, status: 'COMPLETED' },
-        _sum: { priceAmount: true },
-      }),
-      c.booking.aggregate({
-        where: { deletedAt: null, status: 'COMPLETED', updatedAt: { gte: thirtyDaysAgo } },
-        _sum: { priceAmount: true },
-      }),
-      c.booking.groupBy({
-        by: ['currency'],
-        where: { deletedAt: null, status: 'COMPLETED' },
-        _count: { currency: true },
-        orderBy: { _count: { currency: 'desc' } },
-        take: 1,
-      }),
-      (c as unknown as { dispute: { count: (a: unknown) => Promise<number> } }).dispute.count({
-        where: { deletedAt: null, status: 'OPEN' },
-      }),
-      (c as unknown as { dispute: { count: (a: unknown) => Promise<number> } }).dispute.count({
-        where: { deletedAt: null, status: 'IN_REVIEW' },
-      }),
-      (c as unknown as { dispute: { count: (a: unknown) => Promise<number> } }).dispute.count({
-        where: {
-          deletedAt: null,
-          status: { in: ['RESOLVED_REFUND', 'RESOLVED_PARTIAL', 'RESOLVED_DENIED'] },
-        },
+      this.queries.lifetimeByCurrency(),
+      this.queries.completionsByCurrencyDay(thirtyDaysAgo, now),
+      this.queries.undatedCompletions(),
+      disputes.dispute.count({ where: { deletedAt: null, status: 'OPEN' } }),
+      disputes.dispute.count({ where: { deletedAt: null, status: 'IN_REVIEW' } }),
+      disputes.dispute.count({
+        where: { deletedAt: null, status: { in: [...RESOLVED_DISPUTE_STATUSES] } },
       }),
     ]);
 
+    const recent = sumByCurrency(last30);
+    const byCurrency = lifetime.map((row) => ({
+      currency: row.currency,
+      bookedValueLifetime: row.bookedValue,
+      completedLifetime: row.completed,
+      bookedValueLast30Days: recent.get(row.currency)?.bookedValue ?? 0,
+    }));
+    const single = byCurrency.length === 1 ? byCurrency[0] : null;
     const summary: AdminAnalyticsSummary = {
       users: {
         total: usersTotal,
@@ -134,16 +132,20 @@ export class AdminAnalyticsService {
         inProgress: bkInProgress,
         completed: bkCompleted,
         cancelled: bkCancelled,
-        grossLifetimeAmount: bkGrossLifetime._sum.priceAmount ?? 0,
-        grossLast30DaysAmount: bkGross30d._sum.priceAmount ?? 0,
-        currency: bkDominantCurrency[0]?.currency ?? DEFAULT_CURRENCY,
+        // A single figure only when there is a single currency to state.
+        grossLifetimeAmount: byCurrency.length === 0 ? 0 : (single?.bookedValueLifetime ?? null),
+        grossLast30DaysAmount:
+          byCurrency.length === 0 ? 0 : (single?.bookedValueLast30Days ?? null),
+        currency: single?.currency ?? null,
+        bookedValueByCurrency: byCurrency,
+        undatedCompletions: undated,
       },
       disputes: {
         open: disputesOpen,
         inReview: disputesInReview,
         resolvedLifetime: disputesResolved,
       },
-      generatedAt: new Date().toISOString(),
+      generatedAt: now.toISOString(),
     };
     return { summary };
   }
@@ -151,9 +153,20 @@ export class AdminAnalyticsService {
   async overview(rawFrom?: string, rawTo?: string): Promise<AdminAnalyticsOverview> {
     const { from, to } = resolveRange(rawFrom, rawTo);
     const c = this.prisma.client;
-    const feeBps = this.platformFeeBps();
-    const [revenue, usersTotal, providersTotal, requestsTotal, disputesOpen] = await Promise.all([
-      this.bookings.aggregateGrossRevenueForMarketplace({ from, to }),
+    const [
+      lifetime,
+      inRange,
+      undated,
+      cancelled,
+      usersTotal,
+      providersTotal,
+      requestsTotal,
+      disputesOpen,
+    ] = await Promise.all([
+      this.queries.lifetimeByCurrency(),
+      this.queries.completionsByCurrencyDay(from, to),
+      this.queries.undatedCompletions(),
+      this.queries.cancellationsWithin(from, to),
       c.user.count({ where: { deletedAt: null } }),
       c.providerProfile.count({ where: { deletedAt: null } }),
       c.serviceRequest.count({ where: { deletedAt: null } }),
@@ -161,75 +174,104 @@ export class AdminAnalyticsService {
         where: { deletedAt: null, status: 'OPEN' },
       }),
     ]);
-    const platformFeesWithinRange = applyFee(revenue.grossWithinRange, feeBps);
+    const ranged = sumByCurrency(inRange);
+    const byCurrency: AdminAnalyticsRangeCurrencyTotals[] = [
+      ...new Set([...lifetime.map((r) => r.currency), ...ranged.keys()]),
+    ]
+      .sort()
+      .map((currency) => {
+        const life = lifetime.find((r) => r.currency === currency);
+        const range = ranged.get(currency);
+        return {
+          currency,
+          bookedValueLifetime: life?.bookedValue ?? 0,
+          completedLifetime: life?.completed ?? 0,
+          bookedValueWithinRange: range?.bookedValue ?? 0,
+          completedWithinRange: range?.completed ?? 0,
+        };
+      });
+    const rangeCurrencies = [...ranged.keys()];
     return {
       range: { from: toIsoDay(from), to: toIsoDay(addDays(to, -1)) },
       counts: {
         users: usersTotal,
         providers: providersTotal,
         requests: requestsTotal,
-        bookingsCompleted: revenue.completedWithinRange,
-        bookingsCancelled: revenue.cancelledWithinRange,
+        bookingsCompleted: [...ranged.values()].reduce((n, r) => n + r.completed, 0),
+        bookingsCancelled: cancelled,
         disputesOpen,
+        undatedCompletions: undated,
       },
       revenue: {
-        grossWithinRange: revenue.grossWithinRange,
-        platformFeesWithinRange,
-        netProviderEarningsWithinRange: revenue.grossWithinRange - platformFeesWithinRange,
-        grossLifetime: revenue.grossLifetime,
+        grossWithinRange:
+          rangeCurrencies.length === 0
+            ? 0
+            : rangeCurrencies.length === 1
+              ? ranged.get(rangeCurrencies[0])!.bookedValue
+              : null,
+        platformFeesWithinRange: null,
+        netProviderEarningsWithinRange: null,
+        grossLifetime:
+          lifetime.length === 0 ? 0 : lifetime.length === 1 ? lifetime[0].bookedValue : null,
       },
-      currency: revenue.dominantCurrency ?? DEFAULT_CURRENCY,
-      platformFeeRateBps: feeBps,
+      revenueByCurrency: byCurrency,
+      currency: byCurrency.length === 1 ? byCurrency[0].currency : null,
+      platformFeeRateBps: null,
+      feeStatus: 'NOT_APPROVED',
       generatedAt: new Date().toISOString(),
     };
   }
 
   async revenue(rawFrom?: string, rawTo?: string): Promise<AdminAnalyticsRevenue> {
     const { from, to } = resolveRange(rawFrom, rawTo);
-    const feeBps = this.platformFeeBps();
-    const rows = await this.bookings.aggregateEarningsByDayForMarketplace(from, to);
-    const byKey = new Map<string, { gross: number; completedCount: number }>();
-    for (const row of rows) {
-      byKey.set(toIsoDay(row.day), { gross: row.gross, completedCount: row.completedCount });
-    }
-    // Zero-fill: emit one row per UTC day in [from, to), inclusive of
-    // the start, exclusive of the end. The wire `range.to` is shown
-    // back to the client as the inclusive last day for UX clarity.
-    const buckets: RevenueChartBucket[] = [];
-    for (let d = new Date(from); d < to; d = addDays(d, 1)) {
-      const key = toIsoDay(d);
-      const hit = byKey.get(key);
-      const gross = hit?.gross ?? 0;
-      const platformFees = applyFee(gross, feeBps);
-      buckets.push({
-        date: key,
-        grossEarnings: gross,
-        platformFees,
-        netProviderEarnings: gross - platformFees,
-        completedBookings: hit?.completedCount ?? 0,
-      });
-    }
-    // Pull dominant currency separately so an empty range still
-    // returns the marketplace's prevailing currency.
-    const revenue = await this.bookings.aggregateGrossRevenueForMarketplace();
+    const rows = await this.queries.completionsByCurrencyDay(from, to);
+    const days: string[] = [];
+    for (let d = new Date(from); d < to; d = addDays(d, 1)) days.push(toIsoDay(d));
+    const currencies = [...new Set(rows.map((r) => r.currency))].sort();
+    const series: AdminAnalyticsCurrencySeries[] = currencies.map((currency) => ({
+      currency,
+      buckets: days.map((date) => {
+        const hit = rows.find((r) => r.currency === currency && r.day === date);
+        return { date, bookedValue: hit?.bookedValue ?? 0, completedBookings: hit?.completed ?? 0 };
+      }),
+    }));
+    // Back-compat day buckets: a money figure only where the day has one
+    // currency (or none, which is a genuine 0); counts are currency-free.
+    const buckets: RevenueChartBucket[] = days.map((date) => {
+      const dayRows = rows.filter((r) => r.day === date);
+      return {
+        date,
+        grossEarnings:
+          dayRows.length === 0 ? 0 : dayRows.length === 1 ? dayRows[0].bookedValue : null,
+        platformFees: null,
+        netProviderEarnings: null,
+        completedBookings: dayRows.reduce((n, r) => n + r.completed, 0),
+      };
+    });
     return {
       range: { from: toIsoDay(from), to: toIsoDay(addDays(to, -1)) },
-      currency: revenue.dominantCurrency ?? DEFAULT_CURRENCY,
-      platformFeeRateBps: feeBps,
+      currency: currencies.length === 1 ? currencies[0] : null,
+      platformFeeRateBps: null,
+      feeStatus: 'NOT_APPROVED',
       buckets,
+      series,
     };
-  }
-
-  private platformFeeBps(): number {
-    return this.config.get('PROVIDER_PLATFORM_FEE_BPS');
   }
 }
 
 // ─── helpers ────────────────────────────────────────────────────
 
-function applyFee(amount: number, feeBps: number): number {
-  if (amount <= 0 || feeBps <= 0) return 0;
-  return Math.round((amount * feeBps) / BPS_DENOMINATOR);
+function sumByCurrency(
+  rows: CurrencyDay[],
+): Map<string, { bookedValue: number; completed: number }> {
+  const out = new Map<string, { bookedValue: number; completed: number }>();
+  for (const row of rows) {
+    const acc = out.get(row.currency) ?? { bookedValue: 0, completed: 0 };
+    acc.bookedValue += row.bookedValue;
+    acc.completed += row.completed;
+    out.set(row.currency, acc);
+  }
+  return out;
 }
 
 function toIsoDay(d: Date): string {
@@ -271,7 +313,8 @@ function parseIsoDay(raw: string, field: 'from' | 'to'): Date {
     throw new AppError('VALIDATION_ERROR', `\`${field}\` must be ISO YYYY-MM-DD.`, 400);
   }
   const ms = Date.parse(`${raw}T00:00:00Z`);
-  if (Number.isNaN(ms)) {
+  // Date.parse accepts 2026-02-31 as March 3rd; refuse a day that does not exist.
+  if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== raw) {
     throw new AppError('VALIDATION_ERROR', `\`${field}\` is not a valid date.`, 400);
   }
   return new Date(ms);

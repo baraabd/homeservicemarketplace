@@ -31,35 +31,50 @@ export interface AdminSettingFieldSchema {
   default: unknown;
   min?: number;
   max?: number;
+  /**
+   * R17-D — false when no product code reads this setting. The Settings screen
+   * shows it read-only and the server refuses writes: changing it would report
+   * a platform change that never happens. Absent means in effect.
+   */
+  inEffect?: boolean;
 }
 
 export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
+  // ── R17-D: four settings no product code reads ──────────────────────
+  // Kept (stored values and history stay readable) but marked inert. Wiring
+  // any of them is a product decision; the fee and currency ones are money
+  // authority, which R16 keeps blocked.
   {
     key: 'platform_fee_bps',
     type: 'integer',
     description:
-      'Marketplace platform fee in basis points (1 bp = 0.01%). 1000 = 10% take. 0 = fee-free. Persisted overrides the env-driven default.',
+      'Not read by any fee calculation. No platform fee is approved (R15/R16); admin reports do not use this value.',
     default: 1000,
     min: 0,
     max: 10000,
+    inEffect: false,
   },
   {
     key: 'default_currency',
     type: 'currency',
-    description: 'Default ISO-4217 currency code (e.g., USD, EUR, SAR).',
+    description:
+      'Not read by the platform. Each booking carries its own currency; there is no platform currency or conversion.',
     default: 'USD',
+    inEffect: false,
   },
   {
     key: 'support_email',
     type: 'email',
-    description: 'Customer-facing support email shown on the public site footer.',
+    description: 'Not read by the platform; no page displays it.',
     default: 'support@homeservicemarketplace.local',
+    inEffect: false,
   },
   {
     key: 'feature_show_hourly_rate',
     type: 'boolean',
-    description: 'Show the hourly-rate pricing mode in the seeker request wizard.',
+    description: 'Not read by the seeker request wizard.',
     default: false,
+    inEffect: false,
   },
 
   // ── Sprint 8: settings the provider onboarding wizard actually reads ────

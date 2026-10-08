@@ -11,6 +11,7 @@ import type {
 } from '@homeservicemarketplace/contracts';
 import { useAuth } from '../../../../lib/auth-provider';
 import { useLang } from '../../../i18n/LanguageContext';
+import { extractAuthError } from '../../../../lib/auth-errors';
 import {
   useAdminRoles,
   useAdminUserDetail,
@@ -344,6 +345,12 @@ function UserDetailDrawer({
     error: isAr ? 'تعذّر تحميل التفاصيل.' : 'Could not load user details.',
     saving: isAr ? 'جارٍ الحفظ…' : 'Saving…',
     saveFailed: isAr ? 'فشل التحديث.' : 'Update failed.',
+    forbidden: isAr
+      ? 'لم تعد صلاحياتك تسمح بتغيير حالة الحساب. لم يتغيّر شيء.'
+      : 'Your permissions no longer allow changing account status. Nothing changed.',
+    signedOut: isAr
+      ? 'انتهت جلستك. سجّل الدخول مجدداً؛ لم يتغيّر شيء.'
+      : 'Your session has ended. Sign in again; nothing changed.',
   };
 
   const onFlip = (next: 'ACTIVE' | 'SUSPENDED') => {
@@ -473,8 +480,16 @@ function UserDetailDrawer({
                   </button>
                 )}
                 {setStatus.isError ? (
-                  <p className="text-rose-600 text-sm" role="status">
-                    {L.saveFailed}
+                  <p className="text-rose-600 text-sm" role="alert">
+                    {(() => {
+                      // R17-D: say why, never echo the server text.
+                      const { status } = extractAuthError(setStatus.error);
+                      return status === 403
+                        ? L.forbidden
+                        : status === 401
+                          ? L.signedOut
+                          : L.saveFailed;
+                    })()}
                   </p>
                 ) : null}
               </div>

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListAdminAuditLogsQuery } from '@homeservicemarketplace/contracts';
 
 import {
@@ -21,10 +21,15 @@ export const adminNotificationsQueryKeys = {
   unreadCount: () => ['admin', 'notifications', 'unread-count'] as const,
 };
 
-export function useAdminAuditLogs(filters: ListAdminAuditLogsQuery = {}) {
-  return useQuery({
+// R17-D (D-7): the audit log pages by the server's keyset cursor. The first
+// page alone hid everything older than the newest 50 events.
+export function useAdminAuditLogs(filters: Omit<ListAdminAuditLogsQuery, 'cursor'> = {}) {
+  return useInfiniteQuery({
     queryKey: adminAuditQueryKeys.list(filters),
-    queryFn: () => listAdminAuditLogs(filters),
+    queryFn: ({ pageParam }) =>
+      listAdminAuditLogs({ ...filters, ...(pageParam ? { cursor: pageParam } : {}) }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor ?? null,
     refetchInterval: REFETCH_MS,
     staleTime: 15_000,
   });

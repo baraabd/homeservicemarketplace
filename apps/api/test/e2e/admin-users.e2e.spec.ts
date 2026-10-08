@@ -61,6 +61,8 @@ const adminUsersService = {
 };
 
 let canReadDirectory = true;
+// R17-D: status mutations need the user-write grant, resolved fresh.
+let canWriteUsers = true;
 
 let fakeAuthedUser: { id: string; sessionId: string; jti: string; roles: string[] } | null = null;
 
@@ -93,7 +95,11 @@ async function bootApp(): Promise<INestApplication> {
       {
         provide: PermissionResolverService,
         useValue: {
-          resolveFreshForUser: async () => new Set(canReadDirectory ? ['user:read:any'] : []),
+          resolveFreshForUser: async () =>
+            new Set([
+              ...(canReadDirectory ? ['user:read:any'] : []),
+              ...(canWriteUsers ? ['user:write:any'] : []),
+            ]),
         },
       },
       { provide: AdminUsersService, useValue: adminUsersService },
@@ -156,6 +162,7 @@ describe('AdminUsers + AdminRoles (e2e) — Sprint 6.1', () => {
     jest.clearAllMocks();
     fakeAuthedUser = null;
     canReadDirectory = true;
+    canWriteUsers = true;
   });
 
   describe('auth gating', () => {
@@ -297,6 +304,22 @@ describe('AdminUsers + AdminRoles (e2e) — Sprint 6.1', () => {
   describe('PATCH status (Sprint 6.1 canonical)', () => {
     beforeEach(() => {
       fakeAuthedUser = { id: 'admin-1', sessionId: 's', jti: 'j', roles: ['admin'] };
+    });
+
+    it('R17-D: refuses an admin without the user-write grant (403) before any service call', async () => {
+      canWriteUsers = false;
+      for (const [method, path, body] of [
+        ['patch', '/v1/admin/users/u-1/status', { status: 'SUSPENDED' }],
+        ['post', '/v1/admin/users/u-1/suspend', undefined],
+        ['post', '/v1/admin/users/u-1/restore', undefined],
+      ] as const) {
+        const req = request(app.getHttpServer())[method](path);
+        const res = await (body ? req.send(body) : req);
+        expect(res.status).toBe(403);
+      }
+      expect(adminUsersService.setStatus).not.toHaveBeenCalled();
+      expect(adminUsersService.suspend).not.toHaveBeenCalled();
+      expect(adminUsersService.restore).not.toHaveBeenCalled();
     });
 
     it('returns the post-mutation user envelope for SUSPENDED', async () => {

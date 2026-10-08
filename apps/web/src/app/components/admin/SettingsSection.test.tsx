@@ -219,3 +219,77 @@ describe('AdminDashboard — Settings (Sprint 6.5)', () => {
     expect(dom).not.toContain('passwordHash');
   });
 });
+
+describe('AdminDashboard — Settings honesty (R17-D)', () => {
+  const R17D_BULK = {
+    values: { platform_fee_bps: 1000, verification_policy_max_documents: 10 },
+    defaults: { platform_fee_bps: 1000, verification_policy_max_documents: 10 },
+    schema: [
+      {
+        key: 'platform_fee_bps',
+        type: 'integer' as const,
+        description: 'Not read by any fee calculation.',
+        default: 1000,
+        min: 0,
+        max: 10000,
+        inEffect: false,
+      },
+      {
+        key: 'verification_policy_max_documents',
+        type: 'integer' as const,
+        description: 'Ceiling per policy version.',
+        default: 10,
+        min: 1,
+        max: 20,
+        inEffect: true,
+      },
+    ],
+    lastUpdatedAt: null,
+  };
+
+  it('shows a setting the platform does not read as read-only and never saves it', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    mock.onGet('/v1/admin/settings').reply(200, R17D_BULK);
+    let patched: { values?: Record<string, unknown> } | null = null;
+    mock.onPatch('/v1/admin/settings').reply((config) => {
+      patched = JSON.parse(config.data as string);
+      return [200, { values: R17D_BULK.values, changedKeys: [], lastUpdatedAt: null }];
+    });
+
+    renderAdmin();
+    openSettingsTab();
+
+    const readOnly = await screen.findByTestId('setting-readonly-platform_fee_bps');
+    expect(readOnly).toHaveTextContent(/does not read this setting|لا تقرأ المنصة/);
+    expect(screen.queryByLabelText('platform_fee_bps')).toBeNull();
+
+    const docs = (await screen.findByLabelText(
+      'verification_policy_max_documents',
+    )) as HTMLInputElement;
+    await waitFor(() => expect(docs.value).toBe('10'));
+    fireEvent.change(docs, { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes|حفظ التغييرات/i }));
+    await waitFor(() => expect(patched).not.toBeNull());
+    expect(patched?.values).toEqual({ verification_policy_max_documents: 12 });
+  });
+
+  it('explains a 403 instead of echoing the server text, and does not claim a save', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    mock.onGet('/v1/admin/settings').reply(200, R17D_BULK);
+    mock.onPatch('/v1/admin/settings').reply(403, { error: { code: 'FORBIDDEN', message: 'raw' } });
+
+    renderAdmin();
+    openSettingsTab();
+
+    const docs = (await screen.findByLabelText(
+      'verification_policy_max_documents',
+    )) as HTMLInputElement;
+    await waitFor(() => expect(docs.value).toBe('10'));
+    fireEvent.change(docs, { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes|حفظ التغييرات/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /permissions no longer allow|لم تعد صلاحياتك/,
+    );
+    expect(screen.queryByText(/✓/)).toBeNull();
+  });
+});

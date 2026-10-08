@@ -7,6 +7,7 @@ import type {
 } from '@homeservicemarketplace/contracts';
 
 import { useAdminSettings, useUpdateAdminSettings } from '../../hooks/admin/useAdminSettings';
+import { extractAuthError } from '../../../lib/auth-errors';
 
 // Sprint 6.5 — extracted, real, API-driven Settings section.
 // Replaces the prior PricingSettingsSection that used setTimeout(500)
@@ -39,6 +40,8 @@ export function SettingsSection({ lang }: { lang: string }) {
     if (!data) return [] as string[];
     const keys: string[] = [];
     for (const field of data.schema) {
+      // R17-D: a setting the platform does not read is never part of a save.
+      if (field.inEffect === false) continue;
       if (!shallowEqual(draft[field.key], data.values[field.key])) {
         keys.push(field.key);
       }
@@ -60,6 +63,18 @@ export function SettingsSection({ lang }: { lang: string }) {
     lastUpdated: isAr ? 'آخر تحديث:' : 'Last updated:',
     never: isAr ? 'لم يُعدَّل بعد' : 'never',
     fixErrors: isAr ? 'يرجى تصحيح الأخطاء قبل الحفظ.' : 'Please fix the errors before saving.',
+    refused: isAr
+      ? 'رفض الخادم هذه القيمة. لم يُحفظ شيء.'
+      : 'The server refused this value. Nothing was saved.',
+    forbidden: isAr
+      ? 'لم تعد صلاحياتك تسمح بهذا الإجراء. لم يُحفظ شيء.'
+      : 'Your permissions no longer allow this. Nothing was saved.',
+    signedOut: isAr
+      ? 'انتهت جلستك. سجّل الدخول مجدداً؛ لم يُحفظ شيء.'
+      : 'Your session has ended. Sign in again; nothing was saved.',
+    notInEffect: isAr
+      ? 'لا تقرأ المنصة هذا الإعداد حالياً، لذا لا يمكن تعديله.'
+      : 'The platform does not read this setting, so it cannot be changed.',
   };
 
   const onSave = async () => {
@@ -86,11 +101,17 @@ export function SettingsSection({ lang }: { lang: string }) {
     try {
       await save.mutateAsync({ values: payload });
     } catch (err: unknown) {
-      const message =
-        err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
-          ? err.message
-          : L.saveFailed;
-      setServerError(message);
+      // Fixed copy by outcome; the backend's raw message is never shown.
+      const { status } = extractAuthError(err);
+      setServerError(
+        status === 400
+          ? L.refused
+          : status === 401
+            ? L.signedOut
+            : status === 403
+              ? L.forbidden
+              : L.saveFailed,
+      );
     }
   };
 
@@ -114,14 +135,18 @@ export function SettingsSection({ lang }: { lang: string }) {
           </p>
         </div>
       </Link>
-      <div className="flex items-center justify-between">
+      {/* Wraps on narrow screens: the localized timestamp varies in length. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <h2
           className="text-slate-900 dark:text-white"
           style={{ fontSize: '22px', fontWeight: 800 }}
         >
           {L.title}
         </h2>
-        <p className="text-slate-400" style={{ fontSize: '11px' }}>
+        <p
+          className="text-slate-500 dark:text-slate-400 min-w-0"
+          style={{ fontSize: '11px', overflowWrap: 'anywhere' }}
+        >
           {L.lastUpdated}{' '}
           <strong>
             {data?.lastUpdatedAt
@@ -132,7 +157,11 @@ export function SettingsSection({ lang }: { lang: string }) {
       </div>
 
       {settingsQuery.isPending ? (
-        <p className="text-slate-400 py-12 text-center" role="status" style={{ fontSize: '13px' }}>
+        <p
+          className="text-slate-500 dark:text-slate-400 py-12 text-center"
+          role="status"
+          style={{ fontSize: '13px' }}
+        >
           {L.loading}
         </p>
       ) : settingsQuery.isError ? (
@@ -152,6 +181,7 @@ export function SettingsSection({ lang }: { lang: string }) {
               value={draft[field.key]}
               defaultValue={data.defaults[field.key]}
               error={errors[field.key]}
+              readOnlyNote={field.inEffect === false ? L.notInEffect : null}
               onChange={(v) => setDraft((d) => ({ ...d, [field.key]: v }))}
             />
           ))}
@@ -187,7 +217,7 @@ export function SettingsSection({ lang }: { lang: string }) {
               </span>
             ) : null}
             {serverError ? (
-              <span className="text-rose-600" role="status" style={{ fontSize: '11px' }}>
+              <span className="text-rose-600" role="alert" style={{ fontSize: '11px' }}>
                 {serverError}
               </span>
             ) : null}
@@ -217,13 +247,21 @@ function validateClient(field: AdminSettingFieldSchema, value: unknown): string 
     case 'boolean':
       if (typeof value !== 'boolean') return 'Must be true or false.';
       return null;
-    case 'email':
+    case 'email': {
+      // Linear and bounded (no backtracking pattern); the server decides.
+      const v = typeof value === 'string' ? value.trim() : '';
+      const at = v.indexOf('@');
       if (
-        typeof value !== 'string' ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim().toLowerCase())
+        v.length === 0 ||
+        v.length > 254 ||
+        /\s/.test(v) ||
+        at <= 0 ||
+        at !== v.lastIndexOf('@') ||
+        !v.slice(at + 1).includes('.')
       )
         return 'Must be a valid email address.';
       return null;
+    }
     case 'currency':
       if (typeof value !== 'string' || !/^[A-Z]{3}$/.test(value))
         return 'Must be a 3-letter ISO code (e.g., USD).';
@@ -238,27 +276,50 @@ function FieldEditor({
   value,
   defaultValue,
   error,
+  readOnlyNote,
   onChange,
 }: {
   field: AdminSettingFieldSchema;
   value: unknown;
   defaultValue: unknown;
   error: string | undefined;
+  readOnlyNote: string | null;
   onChange: (v: unknown) => void;
 }) {
   const id = `setting-${field.key}`;
+  // R17-D: a setting no product code reads is shown, never edited.
+  if (readOnlyNote)
+    return (
+      <div className="flex flex-col gap-1.5" data-testid={`setting-readonly-${field.key}`}>
+        <p
+          className="text-slate-700 dark:text-slate-200"
+          style={{ fontSize: '13px', fontWeight: 700, overflowWrap: 'anywhere' }}
+        >
+          {field.key}
+        </p>
+        <p className="text-slate-500" style={{ fontSize: '11px' }}>
+          {field.description}
+        </p>
+        <p className="text-slate-600 dark:text-slate-300" style={{ fontSize: '12px' }}>
+          <code dir="ltr" style={{ overflowWrap: 'anywhere' }}>
+            {String(value ?? defaultValue)}
+          </code>{' '}
+          — {readOnlyNote}
+        </p>
+      </div>
+    );
   return (
     <div className="flex flex-col gap-1.5">
       <label
         htmlFor={id}
         className="text-slate-700 dark:text-slate-200"
-        style={{ fontSize: '13px', fontWeight: 700 }}
+        style={{ fontSize: '13px', fontWeight: 700, overflowWrap: 'anywhere' }}
       >
         {field.key}
       </label>
       <p className="text-slate-500" style={{ fontSize: '11px' }}>
         {field.description}{' '}
-        <span className="text-slate-400">
+        <span className="text-slate-500 dark:text-slate-400">
           (default: <code>{String(defaultValue)}</code>)
         </span>
       </p>

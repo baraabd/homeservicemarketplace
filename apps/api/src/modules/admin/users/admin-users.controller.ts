@@ -58,7 +58,11 @@ export class AdminUsersController {
   // target value (ACTIVE / SUSPENDED / LOCKED). The legacy
   // /suspend and /restore POST routes below stay callable for
   // backward compat with the existing hsm-admin Postman folder 20.
-  @UseGuards(CsrfGuard)
+  // R17-D (D-4): changing who can sign in is a write, so it needs the
+  // existing user-write grant, resolved fresh, not just the admin role that
+  // reading the same user already exceeds.
+  @UseGuards(CsrfGuard, PermissionsGuard)
+  @Permissions('user:write:any')
   @Patch(':userId/status')
   @HttpCode(HttpStatus.OK)
   setStatus(
@@ -69,7 +73,8 @@ export class AdminUsersController {
     return this.users.setStatus(admin.id, userId, body);
   }
 
-  @UseGuards(CsrfGuard)
+  @UseGuards(CsrfGuard, PermissionsGuard)
+  @Permissions('user:write:any')
   @Post(':userId/suspend')
   @HttpCode(HttpStatus.OK)
   suspend(
@@ -79,7 +84,8 @@ export class AdminUsersController {
     return this.users.suspend(admin.id, userId);
   }
 
-  @UseGuards(CsrfGuard)
+  @UseGuards(CsrfGuard, PermissionsGuard)
+  @Permissions('user:write:any')
   @Post(':userId/restore')
   @HttpCode(HttpStatus.OK)
   restore(

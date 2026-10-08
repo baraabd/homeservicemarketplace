@@ -150,9 +150,13 @@ export function AdminDashboard() {
       lang={lang}
       style={{ fontFamily: isAr ? "'Cairo','Inter',sans-serif" : "'Inter',sans-serif" }}
     >
+      {/* R17-D: anchored inside the viewport while hidden. In RTL the static
+          position plus sr-only's -1px margin put it one pixel past the edge,
+          which made narrow Arabic admin pages scroll horizontally. Padding
+          applies only when focused, so the hidden link stays 1px wide. */}
       <a
         href="#admin-content"
-        className="sr-only z-50 rounded-xl bg-amber-500 p-3 text-slate-950 focus:not-sr-only focus:fixed focus:start-3 focus:top-3"
+        className="sr-only start-1 top-1 z-50 rounded-xl bg-amber-500 text-slate-950 focus:not-sr-only focus:fixed focus:start-3 focus:top-3 focus:p-3"
       >
         {isAr ? 'انتقل إلى المحتوى' : 'Skip to content'}
       </a>
