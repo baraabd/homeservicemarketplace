@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Map, Briefcase, Wallet, User, MessageCircle } from 'lucide-react';
+import { Map, Briefcase, Wallet, User, MessageCircle, CalendarCheck } from 'lucide-react';
 import { Navigate, NavLink, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router';
 import type {
   ProviderCapabilitiesResponse,
@@ -11,6 +11,7 @@ import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { isProviderOnboardingV2Enabled } from '../../../lib/feature-flags';
 import { useProviderProfile } from '../../hooks/provider/useProviderProfile';
 import { useProviderCapabilities } from '../../hooks/provider/useProviderCapabilities';
+import { useProviderAuthorityRefresh } from '../../hooks/provider/useProviderAuthorityRefresh';
 import { ProviderAccessUnavailable } from './ProviderAccessUnavailable';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { ProviderStatusState } from './ProviderStatusState';
@@ -76,6 +77,14 @@ const ProviderProfileScreen = lazy(() =>
 const ProviderChatScreen = lazy(() =>
   import('./screens/ProviderChatScreen').then((m) => ({ default: m.ProviderChatScreen })),
 );
+const ProviderBookingsScreen = lazy(() =>
+  import('./screens/ProviderBookingsScreen').then((m) => ({ default: m.ProviderBookingsScreen })),
+);
+const ProviderBookingDetailScreen = lazy(() =>
+  import('./screens/ProviderBookingDetailScreen').then((m) => ({
+    default: m.ProviderBookingDetailScreen,
+  })),
+);
 
 /**
  * The workspace destinations, in bar order.
@@ -88,6 +97,10 @@ const ProviderChatScreen = lazy(() =>
 export const PROVIDER_NAV = [
   { to: '/provider/jobs', icon: Map, labelEn: 'Live Jobs', labelAr: 'الوظائف' },
   { to: '/provider/bids', icon: Briefcase, labelEn: 'My Bids', labelAr: 'عروضي' },
+  // R17-E — shown only to a provider who can manage bookings but not take new
+  // work (navVisible). A working provider reaches bookings from My Bids, and a
+  // sixth tab would not fit a 320px bar.
+  { to: '/provider/bookings', icon: CalendarCheck, labelEn: 'Bookings', labelAr: 'الحجوزات' },
   { to: '/provider/messages', icon: MessageCircle, labelEn: 'Chat', labelAr: 'الدردشة' },
   { to: '/provider/wallet', icon: Wallet, labelEn: 'Wallet', labelAr: 'المحفظة' },
   { to: '/provider/profile', icon: User, labelEn: 'Profile', labelAr: 'ملفي' },
@@ -95,12 +108,24 @@ export const PROVIDER_NAV = [
 
 type AllowedCapabilities = ProviderCapabilitiesResponse['allowed'];
 
-/** Route declarations mirror their API controllers' capability requirements. */
+/** Route declarations mirror their API controllers' capability requirements.
+ *  docs/production-readiness/r17/R17_E_AUTHORITY_MATRIX.md — the server
+ *  refuses the same requests regardless of what this decides. */
 function navigationAllowed(to: string, allowed: AllowedCapabilities): boolean {
   if (to === '/provider/profile') return true; // own profile/activation remains reachable
   if (to === '/provider/wallet') return allowed.includes('VIEW_EARNINGS');
   if (to === '/provider/messages') return allowed.includes('MANAGE_BOOKINGS');
+  // R17-E — existing obligations, separate from new work (GET
+  // /v1/provider/bookings needs MANAGE_BOOKINGS, not VIEW_MARKETPLACE).
+  if (to === '/provider/bookings') return allowed.includes('MANAGE_BOOKINGS');
   return allowed.includes('VIEW_MARKETPLACE');
+}
+
+/** Which destinations the bar lists: every reachable one, except Bookings for
+ *  a provider who can also take new work (they reach it from My Bids). */
+function navVisible(to: string, allowed: AllowedCapabilities): boolean {
+  if (to === '/provider/bookings' && allowed.includes('VIEW_MARKETPLACE')) return false;
+  return navigationAllowed(to, allowed);
 }
 
 /**
@@ -196,7 +221,7 @@ function ProviderBottomNav({ allowed }: { allowed: AllowedCapabilities }) {
       data-testid="provider-bottom-nav"
     >
       <div className="mx-auto flex w-full max-w-2xl items-center justify-around px-2 pt-2 pb-3">
-        {PROVIDER_NAV.filter(({ to }) => navigationAllowed(to, allowed)).map(
+        {PROVIDER_NAV.filter(({ to }) => navVisible(to, allowed)).map(
           ({ to, icon: Icon, labelEn, labelAr }) => (
             <NavLink
               key={to}
@@ -324,6 +349,11 @@ function ProviderAppRoutes({ checksWorkspaceAccess }: { checksWorkspaceAccess: b
   );
   const authIdentity = useAuthIdentity();
   const onboardingV2 = isProviderOnboardingV2Enabled();
+  // R17-E (E-5) — re-ask on any provider 403 and drop reads a withdrawn
+  // capability owned. Called before the early returns below (hook order).
+  useProviderAuthorityRefresh(
+    checksWorkspaceAccess && capsQuery.isSuccess ? capsQuery.data.allowed : null,
+  );
 
   const identity = useMemo(
     () => deriveShellIdentity(profileQuery.data?.profile ?? null, authIdentity),
@@ -384,7 +414,11 @@ function ProviderAppRoutes({ checksWorkspaceAccess }: { checksWorkspaceAccess: b
       ? '/provider/onboarding'
       : hasMarketplace
         ? '/provider/jobs'
-        : '/provider/status';
+        : // R17-E — no new work, but existing bookings to honour (RESTRICTED):
+          // land where those are, with a notice and a way to the status page.
+          allowed.includes('MANAGE_BOOKINGS')
+          ? '/provider/bookings'
+          : '/provider/status';
 
   // Guard the chrome too: forbidden destinations must never briefly display
   // workspace navigation while React Router commits their redirect.
@@ -460,6 +494,21 @@ function ProviderAppRoutes({ checksWorkspaceAccess }: { checksWorkspaceAccess: b
 
       <Route path="jobs" element={workspace('/provider/jobs', <LiveJobsScreen />)} />
       <Route path="bids" element={workspace('/provider/bids', <MyBidsScreen />)} />
+      {/* The BID_ACCEPTED notification links here; the list shows the bid. */}
+      <Route path="bids/:bidId" element={workspace('/provider/bids', <MyBidsScreen />)} />
+      {/* R17-E — the BOOKING_CREATED notification has always linked to
+          /provider/bookings/:id, which used to fall through to the catch-all. */}
+      <Route
+        path="bookings"
+        element={workspace(
+          '/provider/bookings',
+          <ProviderBookingsScreen canTakeNewWork={hasMarketplace} />,
+        )}
+      />
+      <Route
+        path="bookings/:bookingId"
+        element={workspace('/provider/bookings', <ProviderBookingDetailScreen />)}
+      />
       {/* Two paths, one screen. The list and the open thread are the same
           two-pane surface at different widths — on a phone the thread covers
           the list — so splitting them into separate components would duplicate

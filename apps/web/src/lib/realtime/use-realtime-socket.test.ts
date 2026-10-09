@@ -41,6 +41,7 @@ describe('dispatchInvalidations', () => {
     const calls = spy.mock.calls.map((c) => c[0]?.queryKey);
     expect(calls).toContainEqual(seekerQueryKeys.notifications.root);
     expect(calls).toContainEqual(providerQueryKeys.notifications.root);
+    expect(calls).toContainEqual(providerQueryKeys.capabilities.get());
   });
 
   it('message.created with conversationId → invalidates that thread on BOTH sides', () => {
@@ -157,6 +158,8 @@ describe('dispatchInvalidations', () => {
     const calls = spy.mock.calls.map((c) => c[0]?.queryKey);
     expect(calls).toContainEqual(providerQueryKeys.profile.root);
     expect(calls).toContainEqual(['auth', 'me']);
+    // R17-E — and the authority decision the workspace renders from.
+    expect(calls).toContainEqual(providerQueryKeys.capabilities.get());
   });
 
   it('an unknown event type is silently ignored (no throw, no invalidation)', () => {

@@ -24,6 +24,14 @@ vi.mock('./screens/ProviderChatScreen', () => ({
   ProviderChatScreen: () => <div>Existing conversations</div>,
 }));
 vi.mock('./screens/WalletScreen', () => ({ WalletScreen: () => <div>Existing earnings</div> }));
+vi.mock('./screens/ProviderBookingsScreen', () => ({
+  ProviderBookingsScreen: ({ canTakeNewWork }: { canTakeNewWork: boolean }) => (
+    <div>Existing bookings{canTakeNewWork ? '' : ' (no new work)'}</div>
+  ),
+}));
+vi.mock('./screens/ProviderBookingDetailScreen', () => ({
+  ProviderBookingDetailScreen: () => <div>One booking</div>,
+}));
 vi.mock('./screens/ProviderProfileScreen', () => ({
   ProviderProfileScreen: () => <div>Profile editor</div>,
 }));
@@ -344,4 +352,83 @@ describe('ProviderApp — canonical access survives navigation and authenticatio
       expect(screen.getByTestId('provider-nav-messages')).toBeInTheDocument();
     },
   );
+
+  // ── R17-E (E-5) — existing obligations are separate from new work ──────
+  const RESTRICTED = {
+    allowed: ['VIEW_OWN_PROFILE', 'EDIT_OWN_PROFILE', 'MANAGE_BOOKINGS', 'VIEW_EARNINGS'],
+    capabilities: [],
+    primaryReason: 'PROVIDER_RESTRICTED',
+    nextActions: ['APPEAL_DECISION'],
+  };
+
+  it('lands a restricted provider on their bookings, with Bookings in the bar and no marketplace', async () => {
+    mock.onGet(CAPS).reply(200, RESTRICTED);
+    renderProvider('/provider');
+    expect(await screen.findByText('Existing bookings (no new work)')).toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent('/provider/bookings');
+    expect(screen.getByTestId('provider-nav-bookings')).toBeInTheDocument();
+    expect(screen.queryByTestId('provider-nav-jobs')).toBeNull();
+    expect(screen.queryByTestId('provider-nav-bids')).toBeNull();
+  });
+
+  it.each(['/provider/jobs', '/provider/bids'])(
+    'sends a restricted provider away from %s to their bookings',
+    async (path) => {
+      mock.onGet(CAPS).reply(200, RESTRICTED);
+      renderProvider(path);
+      expect(await screen.findByText('Existing bookings (no new work)')).toBeInTheDocument();
+      expect(screen.queryByText('Working marketplace')).toBeNull();
+      expect(screen.queryByText('Working bids')).toBeNull();
+    },
+  );
+
+  it('opens a booking deep link (the BOOKING_CREATED notification target) for a restricted provider', async () => {
+    mock.onGet(CAPS).reply(200, RESTRICTED);
+    renderProvider('/provider/bookings/bk-1');
+    expect(await screen.findByText('One booking')).toBeInTheDocument();
+  });
+
+  it('a working provider reaches bookings without a sixth tab in the bar', async () => {
+    mock.onGet(CAPS).reply(200, WORKING_CAPABILITIES);
+    renderProvider('/provider/bookings');
+    expect(await screen.findByText('Existing bookings')).toBeInTheDocument();
+    expect(screen.queryByTestId('provider-nav-bookings')).toBeNull();
+    expect(screen.getByTestId('provider-nav-bids')).toBeInTheDocument();
+  });
+
+  it('opens the BID_ACCEPTED notification target /provider/bids/:bidId', async () => {
+    mock.onGet(CAPS).reply(200, WORKING_CAPABILITIES);
+    renderProvider('/provider/bids/bid-1');
+    expect(await screen.findByText('Working bids')).toBeInTheDocument();
+  });
+
+  it('keeps bookings closed to a provider whose work access lapsed (server policy: no MANAGE_BOOKINGS)', async () => {
+    mock.onGet(CAPS).reply(200, {
+      allowed: [
+        'VIEW_OWN_PROFILE',
+        'EDIT_OWN_PROFILE',
+        'MANAGE_VERIFICATION',
+        'PREVIEW_MARKETPLACE',
+      ],
+      capabilities: [],
+      primaryReason: 'NO_WORK_ACCESS',
+      nextActions: ['WAIT_FOR_REVIEW'],
+    });
+    renderProvider('/provider/bookings/bk-1');
+    expect(await screen.findByText('Application status centre')).toBeInTheDocument();
+    expect(screen.queryByText('One booking')).toBeNull();
+    expectNoWorkspace();
+  });
+
+  it('moves an open marketplace to bookings when a refetch says the provider was restricted', async () => {
+    mock.onGet(CAPS).reply(200, WORKING_CAPABILITIES);
+    renderProvider('/provider/jobs');
+    expect(await screen.findByText('Working marketplace')).toBeInTheDocument();
+    mock.onGet(CAPS).reply(200, RESTRICTED);
+    await act(async () => {
+      await qc.invalidateQueries({ queryKey: providerQueryKeys.capabilities.get() });
+    });
+    expect(await screen.findByText('Existing bookings (no new work)')).toBeInTheDocument();
+    expect(screen.queryByText('Working marketplace')).toBeNull();
+  });
 });
