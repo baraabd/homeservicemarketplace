@@ -188,7 +188,9 @@ export function ProviderBookingDetailScreen() {
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <dt className="text-pv-label text-pv-muted">{c.customer}</dt>
-              <dd className="break-words text-pv-body font-semibold text-pv-text">
+              {/* User-entered text gets its own direction: a Latin address in an
+                  Arabic page otherwise moves its house number to the end. */}
+              <dd dir="auto" className="break-words text-pv-body font-semibold text-pv-text">
                 {b.seeker.firstName} · {b.seeker.city}
               </dd>
             </div>
@@ -210,13 +212,18 @@ export function ProviderBookingDetailScreen() {
             {place && (
               <div>
                 <dt className="text-pv-label text-pv-muted">{c.where}</dt>
-                <dd className="break-words text-pv-body text-pv-text">{place}</dd>
+                <dd dir="auto" className="break-words text-pv-body text-pv-text">
+                  {place}
+                </dd>
               </div>
             )}
             {b.description && (
               <div className="sm:col-span-2">
                 <dt className="text-pv-label text-pv-muted">{c.description}</dt>
-                <dd className="whitespace-pre-line break-words text-pv-body text-pv-text">
+                <dd
+                  dir="auto"
+                  className="whitespace-pre-line break-words text-pv-body text-pv-text"
+                >
                   {b.description}
                 </dd>
               </div>
@@ -224,7 +231,9 @@ export function ProviderBookingDetailScreen() {
             {b.bidNote && (
               <div className="sm:col-span-2">
                 <dt className="text-pv-label text-pv-muted">{c.note}</dt>
-                <dd className="break-words text-pv-body text-pv-text">{b.bidNote}</dd>
+                <dd dir="auto" className="break-words text-pv-body text-pv-text">
+                  {b.bidNote}
+                </dd>
               </div>
             )}
           </dl>

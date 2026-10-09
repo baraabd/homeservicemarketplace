@@ -70,6 +70,10 @@ export function BookingActions({
     });
   };
 
+  // A finished booking offers nothing; render nothing unless there is an
+  // outcome to report (for example "Booking cancelled." just now).
+  if ((status === 'COMPLETED' || status === 'CANCELLED') && !outcome) return null;
+
   const label = (action: BookingAction) =>
     pending === action ? copy.pending[action] : copy.action[action];
   const icon = (action: BookingAction, Idle: typeof Play) =>

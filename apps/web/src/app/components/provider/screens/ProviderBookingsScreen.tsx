@@ -115,7 +115,10 @@ export function ProviderBookingsScreen({ canTakeNewWork }: { canTakeNewWork: boo
                       <p className="break-words text-pv-heading font-semibold text-pv-text">
                         {service}
                       </p>
-                      <p className="mt-0.5 break-words text-pv-label text-pv-muted">
+                      <p
+                        dir="auto"
+                        className="mt-0.5 break-words text-start text-pv-label text-pv-muted"
+                      >
                         {b.seeker.firstName} · {b.seeker.city}
                       </p>
                       <p className="mt-1 text-pv-label text-pv-text">

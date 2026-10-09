@@ -321,7 +321,7 @@ export function MyBidsScreen() {
                       </span>
                     </div>
                     <p className="text-pv-muted" style={{ fontSize: '12px' }}>
-                      {L.for} {bid.seekerName} · {bid.submittedAt}
+                      {L.for} <bdi>{bid.seekerName}</bdi> · {bid.submittedAt}
                     </p>
                   </div>
                 </div>
@@ -339,8 +339,11 @@ export function MyBidsScreen() {
                       {/* Amount and currency code stay one left-to-right run in
                           Arabic too; the pricing basis follows in the reader's
                           language. */}
-                      <bdi dir="ltr">{bid.offer.value}</bdi>{' '}
-                      <span className="text-pv-muted" style={{ fontSize: '12px', fontWeight: 600 }}>
+                      <bdi dir="ltr">{bid.offer.value}</bdi>
+                      <span
+                        className="block text-pv-muted"
+                        style={{ fontSize: '12px', fontWeight: 600 }}
+                      >
                         {bid.offer.basis}
                       </span>
                     </p>
@@ -353,7 +356,7 @@ export function MyBidsScreen() {
                       className="text-slate-900 dark:text-white"
                       style={{ fontSize: '13px', fontWeight: 700 }}
                     >
-                      {bid.executionTime}
+                      {bid.executionTime || '—'}
                     </p>
                   </div>
                 </div>
@@ -364,7 +367,7 @@ export function MyBidsScreen() {
                       className="break-words text-slate-500 dark:text-slate-400"
                       style={{ fontSize: '12px', lineHeight: '1.4' }}
                     >
-                      “{bid.note}”
+                      <bdi>“{bid.note}”</bdi>
                     </p>
                   </div>
                 )}

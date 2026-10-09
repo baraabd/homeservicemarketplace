@@ -50,8 +50,10 @@ export function ProviderNotificationsBellButton({ onOpen }: { onOpen: () => void
     >
       <Bell size={17} className="text-slate-600 dark:text-slate-300" />
       {count > 0 && (
+        // R17-E — red-600, not red-500: white 8px text on red-500 is 3.8:1, which
+        // axe reports SERIOUS on every workspace screen; red-600 is 4.8:1.
         <span
-          className="absolute -top-1 -end-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white flex items-center justify-center border-2 border-white"
+          className="absolute -top-1 -end-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white flex items-center justify-center border-2 border-white"
           style={{ fontSize: '8px', fontWeight: 800 }}
         >
           {display}
