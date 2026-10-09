@@ -48,7 +48,8 @@ const en = {
     COMPLETED: 'Completed',
     CANCELLED: 'Cancelled',
   } satisfies Record<BookingStatus, string>,
-  action: { start: 'Start job', complete: 'Mark complete', cancel: 'Cancel booking' },
+  // The established labels; real-browser suites (R07, PLATFORM-TX-1) address them.
+  action: { start: 'Start Job', complete: 'Mark Complete', cancel: 'Cancel Booking' },
   pending: { start: 'Starting…', complete: 'Completing…', cancel: 'Cancelling…' },
   done: {
     start: 'Job started.',
