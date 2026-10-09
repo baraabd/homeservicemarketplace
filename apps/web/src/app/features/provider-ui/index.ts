@@ -7,3 +7,4 @@ export * from './status';
 export * from './primitives';
 export * from './feedback';
 export * from './forms';
+export * from './dialog';

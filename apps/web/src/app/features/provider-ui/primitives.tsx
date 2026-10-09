@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 
 // Provider layout and action primitives (Mode B).
 //
@@ -77,29 +77,37 @@ export interface ProviderButtonProps extends ButtonHTMLAttributes<HTMLButtonElem
   shape?: keyof typeof BUTTON_SHAPE;
 }
 
-export function ProviderButton({
-  tone = 'primary',
-  size = 'auto',
-  shape = 'workspace',
-  className = '',
-  type = 'button',
-  children,
-  ...rest
-}: ProviderButtonProps) {
-  return (
-    <button
-      type={type}
-      // Both shapes clear the WCAG 2.2 target size; that is a floor the
-      // geometry has to respect, not a style either of them chose.
-      className={`inline-flex items-center justify-center gap-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent disabled:cursor-not-allowed ${
-        BUTTON_SHAPE[shape]
-      } ${BUTTON_TONE[tone]} ${size === 'block' ? 'w-full' : ''} ${className}`}
-      {...rest}
-    >
-      {children}
-    </button>
-  );
-}
+// forwardRef so the button can be a Radix `asChild` target (R17-E's confirm
+// dialog): focus on open, and focus return on close, need the DOM node.
+export const ProviderButton = forwardRef<HTMLButtonElement, ProviderButtonProps>(
+  function ProviderButton(
+    {
+      tone = 'primary',
+      size = 'auto',
+      shape = 'workspace',
+      className = '',
+      type = 'button',
+      children,
+      ...rest
+    },
+    ref,
+  ) {
+    return (
+      <button
+        ref={ref}
+        type={type}
+        // Both shapes clear the WCAG 2.2 target size; that is a floor the
+        // geometry has to respect, not a style either of them chose.
+        className={`inline-flex items-center justify-center gap-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent disabled:cursor-not-allowed ${
+          BUTTON_SHAPE[shape]
+        } ${BUTTON_TONE[tone]} ${size === 'block' ? 'w-full' : ''} ${className}`}
+        {...rest}
+      >
+        {children}
+      </button>
+    );
+  },
+);
 
 /**
  * The approved sticky action row.

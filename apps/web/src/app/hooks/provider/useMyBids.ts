@@ -30,9 +30,12 @@ export function useSubmitBid() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: SubmitBidRequest) => submitBid(input),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: providerQueryKeys.bids.root });
-      qc.invalidateQueries({ queryKey: providerQueryKeys.jobs.root });
+    // R17-E — settle, not success: a 409 means the bid or request moved, and
+    // the canonical feed (availableRequests) must drop or regain the request.
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: providerQueryKeys.bids.root });
+      void qc.invalidateQueries({ queryKey: providerQueryKeys.jobs.root });
+      void qc.invalidateQueries({ queryKey: providerQueryKeys.availableRequests.root });
     },
   });
 }
@@ -41,9 +44,12 @@ export function useWithdrawBid() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (bidId: string) => withdrawBid(bidId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: providerQueryKeys.bids.root });
-      qc.invalidateQueries({ queryKey: providerQueryKeys.jobs.root });
+    // R17-E — settle, not success: a 409 means the bid or request moved, and
+    // the canonical feed (availableRequests) must drop or regain the request.
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: providerQueryKeys.bids.root });
+      void qc.invalidateQueries({ queryKey: providerQueryKeys.jobs.root });
+      void qc.invalidateQueries({ queryKey: providerQueryKeys.availableRequests.root });
     },
   });
 }
