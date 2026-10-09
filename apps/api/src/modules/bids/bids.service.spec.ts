@@ -345,8 +345,21 @@ describe('BidsService', () => {
       reviewCount: 312,
       completedJobs: 540,
       verified: true,
-      topPro: true,
+      // R17-E (E-8) — the fixture row says true (as seeded demo data does);
+      // nothing authoritative writes it, so the wire never claims it.
+      topPro: false,
     });
+  });
+
+  it('R17-E (E-8): a stored badge with no authoritative writer is never projected', async () => {
+    const m = makeMocks({
+      bids: {
+        listForRequest: jest.fn().mockResolvedValue([makeBid({ badge: 'BEST_MATCH' })]),
+        findOwned: jest.fn(),
+      },
+    });
+    const out = await makeService(m).listForRequest('user-1', 'req-1');
+    expect(out.items[0].badge).toBeNull();
   });
 
   // ─── accept-bid (slice 2.2) ───────────────────────────────────────────

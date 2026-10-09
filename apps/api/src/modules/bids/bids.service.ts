@@ -380,7 +380,10 @@ function toSummary(row: BidWithProvider): BidSummary {
     note: row.note,
     status: row.status,
     responseTimeMinutes: row.responseTimeMinutes,
-    badge: row.badge,
+    // R17-E (E-8) — no product code writes a bid badge; only the dev seed
+    // does. A "Best match" the platform never decided is fabricated, so the
+    // seeker projection carries none until an approved writer exists.
+    badge: null,
     submittedAt: row.submittedAt.toISOString(),
     provider: toProviderSummary(row.provider),
   };
@@ -396,7 +399,8 @@ function toProviderSummary(p: BidWithProvider['provider']): ProviderBidSummary {
     reviewCount: p.reviewCount,
     completedJobs: p.completedJobs,
     verified: p.verified,
-    topPro: p.topPro,
+    // R17-E (E-8) — "Top Pro" has no authoritative writer (seed data only).
+    topPro: false,
   };
 }
 

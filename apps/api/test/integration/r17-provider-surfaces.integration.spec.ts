@@ -924,12 +924,31 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
       pricingType: 'HOURLY',
       badge: null,
     });
-    const accepted = await accept(requestId, bid.body.bid.id);
-    expect(accepted.body.booking).toMatchObject({ priceAmount: 210, currency: 'USD' });
-    const detail = await p3.request<Record<string, unknown>>(
-      `/v1/provider/bookings/${accepted.body.booking.id}`,
-    );
-    expect(detail.body).toMatchObject({ priceAmount: 210, currency: 'USD' });
+    // E-8 — seed-style recognition stored on the rows (the only writer of
+    // either column is the dev seed) never reaches the seeker.
+    const { db } = h.fixture;
+    await db.bid.update({ where: { id: bid.body.bid.id }, data: { badge: 'BEST_MATCH' } });
+    await db.providerProfile.update({ where: { id: prov.p3.profile }, data: { topPro: true } });
+    try {
+      const again = await seeker.request<{
+        items: { badge: unknown; provider: { topPro: boolean } }[];
+      }>(`/v1/me/requests/${requestId}/bids`);
+      expect(again.body.items[0]).toMatchObject({ badge: null, provider: { topPro: false } });
+      const accepted = await accept(requestId, bid.body.bid.id);
+      expect(accepted.body.booking).toMatchObject({ priceAmount: 210, currency: 'USD' });
+      const detail = await p3.request<Record<string, unknown>>(
+        `/v1/provider/bookings/${accepted.body.booking.id}`,
+      );
+      expect(detail.body).toMatchObject({
+        priceAmount: 210,
+        currency: 'USD',
+        pricingType: 'HOURLY',
+      });
+      const seekerBooking = await seeker.request(`/v1/me/bookings/${accepted.body.booking.id}`);
+      expect(JSON.stringify(seekerBooking.body)).not.toContain('"topPro":true');
+    } finally {
+      await db.providerProfile.update({ where: { id: prov.p3.profile }, data: { topPro: false } });
+    }
   });
 
   it('E-6 profile PATCH: omitting categoryIds changes no categories; additions are refused', async () => {

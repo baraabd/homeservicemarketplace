@@ -263,7 +263,8 @@ function toProviderSummary(p: ProviderProfile): ProviderBidSummary {
     reviewCount: p.reviewCount,
     completedJobs: p.completedJobs,
     verified: p.verified,
-    topPro: p.topPro,
+    // R17-E (E-8) — "Top Pro" has no authoritative writer (seed data only).
+    topPro: false,
   };
 }
 
