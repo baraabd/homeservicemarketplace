@@ -7,6 +7,8 @@ import {
   type ProviderCapabilityDecision,
 } from '@homeservicemarketplace/contracts';
 
+import type { PrismaTx } from '@homeservicemarketplace/database';
+
 import { AppConfigService } from '../../../config/app-config.service';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 
@@ -67,6 +69,9 @@ export interface CapabilityContext {
   hasLiveWorkAccessGrant: boolean;
 }
 
+/** The three tables the decision reads, from the pool or a transaction. */
+type CapabilityReader = Pick<PrismaTx, 'user' | 'providerProfile' | 'providerWorkAccessGrant'>;
+
 @Injectable()
 export class ProviderCapabilityService {
   constructor(
@@ -94,13 +99,44 @@ export class ProviderCapabilityService {
     return set.allowed.includes(capability);
   }
 
+  /** R17-E — the same decision, taken inside the caller's transaction.
+   *
+   *  For a write that creates an obligation on someone else's behalf — a
+   *  seeker accepting a provider's bid — the guard on the request cannot
+   *  help: it authorises the seeker, and the provider's standing may have
+   *  changed in the days since they bid. This re-reads the provider's facts
+   *  in the transaction that writes, after locking the account and profile
+   *  rows FOR SHARE. Every writer of standing, legacy status and verification
+   *  updates one of those two rows, so it either committed before this read
+   *  (and is seen) or waits until the caller commits. A grant-only close is
+   *  read at statement time, which orders this write before the close.
+   *
+   *  Callers must already hold any request/booking locks they take first, so
+   *  the order is always request → account → profile. */
+  async canInTransaction(
+    userId: string,
+    capability: ProviderCapability,
+    tx: PrismaTx,
+  ): Promise<boolean> {
+    await tx.$queryRaw`SELECT 1 FROM "User" WHERE "id" = ${userId} FOR SHARE`;
+    await tx.$queryRaw`
+      SELECT 1 FROM "ProviderProfile"
+      WHERE "userId" = ${userId} AND "deletedAt" IS NULL
+      FOR SHARE`;
+    const set = this.decide(await this.load(userId, tx));
+    return set.allowed.includes(capability);
+  }
+
   // ── inputs ───────────────────────────────────────────────────────────────
 
-  private async load(userId: string): Promise<CapabilityContext> {
+  private async load(
+    userId: string,
+    db: CapabilityReader = this.prisma.client,
+  ): Promise<CapabilityContext> {
     // Rank 0 first, and on its own. The account read decides whether the
     // provider read is even relevant, and an ineligible account must produce
     // an all-denied set regardless of what its provider row says.
-    const user = await this.prisma.client.user.findUnique({
+    const user = await db.user.findUnique({
       where: { id: userId },
       select: { status: true, isActive: true, deletedAt: true },
     });
@@ -123,7 +159,7 @@ export class ProviderCapabilityService {
       };
     }
 
-    const profile = await this.prisma.client.providerProfile.findFirst({
+    const profile = await db.providerProfile.findFirst({
       where: { userId, deletedAt: null },
       select: {
         id: true,
@@ -140,7 +176,7 @@ export class ProviderCapabilityService {
     const grant =
       profile === null
         ? null
-        : await this.prisma.client.providerWorkAccessGrant.findFirst({
+        : await db.providerWorkAccessGrant.findFirst({
             where: {
               providerProfileId: profile.id,
               status: 'ACTIVE',

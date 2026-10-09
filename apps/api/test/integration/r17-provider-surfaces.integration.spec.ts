@@ -528,17 +528,32 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     ).toBe(409);
   });
 
-  it('P13 stale pending bid (POLICY_BLOCKED): observes, does not decide, acceptance after restriction', async () => {
-    // No approved rule says whether a PENDING bid survives a loss of new-work
-    // authority (R17_E_PROVIDER_POLICY.md, decision E-3). This records what the
-    // server does today so a future policy change is a visible diff, and pins
-    // the part that IS approved: a booking that exists follows MANAGE_BOOKINGS.
+  /** Assert a refused accept left the request, the bid and bookings untouched. */
+  async function expectUnavailable(requestId: string, bidId: string) {
+    const refused = await accept(requestId, bidId);
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({
+      error: { code: 'CONFLICT', details: { reason: 'PROVIDER_UNAVAILABLE' } },
+    });
+    const { db } = h.fixture;
+    expect(await db.booking.count({ where: { requestId } })).toBe(0);
+    expect((await db.bid.findUniqueOrThrow({ where: { id: bidId } })).status).toBe('PENDING');
+    expect((await db.serviceRequest.findUniqueOrThrow({ where: { id: requestId } })).status).toBe(
+      'OPEN_FOR_BIDS',
+    );
+  }
+
+  it('P13 E-3: a bid placed while eligible cannot become a booking after the provider is restricted', async () => {
+    // On the baseline this accept answered 200 and created a booking. The bid
+    // is left PENDING (no approved rule rejects it; decision E-3), and the
+    // seeker is told why rather than "refresh and try again".
     const requestId = await freshRequest();
     const bid = await submitBid(p3, requestId);
+    expect(bid.status).toBe(201);
     await setStanding('p3', 'RESTRICTED');
     try {
       expect(await allowed(p3)).not.toContain('SUBMIT_BID');
-      // A restricted provider cannot retract the offer (withdraw needs SUBMIT_BID)…
+      // A restricted provider cannot retract the offer (withdraw needs SUBMIT_BID).
       expect(
         (
           await p3.request(`/v1/provider/bids/${bid.body.bid.id}/withdraw`, {
@@ -547,16 +562,112 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
           })
         ).status,
       ).toBe(403);
-      // …and the seeker can still accept it today.
-      const accepted = await accept(requestId, bid.body.bid.id);
-      expect(accepted.status).toBe(200);
-      // The resulting booking is an existing obligation the provider can manage.
-      expect((await p3.request(`/v1/provider/bookings/${accepted.body.booking.id}`)).status).toBe(
-        200,
-      );
+      await expectUnavailable(requestId, bid.body.bid.id);
     } finally {
       await setStanding('p3', 'GOOD');
     }
+    // Refusal is not a verdict on the offer: once authority is back, it books.
+    expect((await accept(requestId, bid.body.bid.id)).status).toBe(200);
+  });
+
+  it('P29 E-3: revoked grant, lapsed verification and a suspended account each block acceptance', async () => {
+    const { db } = h.fixture;
+    const grant = `${prov.p3.profile}-grant`;
+    const cases: [string, () => Promise<unknown>, () => Promise<unknown>][] = [
+      [
+        'grant revoked',
+        () =>
+          db.providerWorkAccessGrant.update({
+            where: { id: grant },
+            data: { status: 'REVOKED', revokedAt: new Date() },
+          }),
+        () =>
+          db.providerWorkAccessGrant.update({
+            where: { id: grant },
+            data: { status: 'ACTIVE', revokedAt: null },
+          }),
+      ],
+      [
+        'verification expired',
+        () =>
+          db.providerProfile.update({
+            where: { id: prov.p3.profile },
+            data: { verificationState: 'EXPIRED' },
+          }),
+        () =>
+          db.providerProfile.update({
+            where: { id: prov.p3.profile },
+            data: { verificationState: 'VERIFIED' },
+          }),
+      ],
+      [
+        'account suspended',
+        () => db.user.update({ where: { id: prov.p3.user }, data: { status: 'SUSPENDED' } }),
+        () => db.user.update({ where: { id: prov.p3.user }, data: { status: 'ACTIVE' } }),
+      ],
+    ];
+    for (const [, lose, restore] of cases) {
+      const requestId = await freshRequest();
+      const bid = await submitBid(p3, requestId);
+      expect(bid.status).toBe(201);
+      await lose();
+      try {
+        await expectUnavailable(requestId, bid.body.bid.id);
+      } finally {
+        await restore();
+      }
+    }
+  });
+
+  it('P30 E-3: an accept that meets an in-flight suspension waits for it, then refuses', async () => {
+    // Deterministic: a real transaction holds the suspension UPDATE open while
+    // the accept runs; the accept must be observed BLOCKED on that backend
+    // (pg_blocking_pids), and must refuse once the suspension commits.
+    const { db } = h.fixture;
+    const requestId = await freshRequest();
+    const bid = await submitBid(p3, requestId);
+    expect(bid.status).toBe(201);
+    let pending: ReturnType<typeof accept> | undefined;
+    try {
+      await db.$transaction(
+        async (t) => {
+          await t.$executeRaw`UPDATE "ProviderProfile" SET "status" = 'SUSPENDED' WHERE "id" = ${prov.p3.profile}`;
+          const [{ pid }] = await t.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+          pending = accept(requestId, bid.body.bid.id);
+          for (let i = 0; ; i++) {
+            const [{ n }] = await t.$queryRaw<{ n: bigint }[]>`
+              SELECT COUNT(*)::bigint AS n FROM pg_stat_activity
+              WHERE ${pid}::int = ANY(pg_blocking_pids(pid))`;
+            if (n > 0n) break;
+            if (i > 200) throw new Error('accept never waited on the in-flight suspension');
+            await new Promise((r) => setTimeout(r, 25));
+          }
+        },
+        { timeout: 30_000 },
+      );
+      const refused = await pending!;
+      expect(refused.status).toBe(409);
+      expect(refused.body).toMatchObject({
+        error: { code: 'CONFLICT', details: { reason: 'PROVIDER_UNAVAILABLE' } },
+      });
+      expect(await db.booking.count({ where: { requestId } })).toBe(0);
+    } finally {
+      await pending?.catch(() => undefined);
+      await setStanding('p3', 'GOOD');
+    }
+  });
+
+  it('P31 double accept and a retried accept after success create exactly one booking', async () => {
+    const requestId = await freshRequest();
+    const bid = await submitBid(p3, requestId);
+    const both = await Promise.all([
+      accept(requestId, bid.body.bid.id),
+      accept(requestId, bid.body.bid.id),
+    ]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 409]);
+    // A client whose response was lost retries: an honest conflict, no copy.
+    expect((await accept(requestId, bid.body.bid.id)).status).toBe(409);
+    expect(await h.fixture.db.booking.count({ where: { requestId } })).toBe(1);
   });
 
   // ─── Bookings ───────────────────────────────────────────────────────────

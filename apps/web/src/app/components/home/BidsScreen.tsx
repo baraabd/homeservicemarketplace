@@ -214,9 +214,28 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
         }, 900);
       },
       onError: (err) => {
-        const status =
-          (err as { response?: { status?: number } } | undefined)?.response?.status ?? null;
-        if (status === 409) {
+        const response = (
+          err as
+            | {
+                response?: {
+                  status?: number;
+                  data?: { error?: { details?: { reason?: string } } };
+                };
+              }
+            | undefined
+        )?.response;
+        const status = response?.status ?? null;
+        // R17-E — the server refused because this provider can no longer take
+        // new work (restricted, suspended, or their access lapsed since they
+        // bid). Retrying would not help; another offer may.
+        if (status === 409 && response?.data?.error?.details?.reason === 'PROVIDER_UNAVAILABLE') {
+          setAcceptError(
+            lang === 'ar'
+              ? 'لا يستطيع مزود الخدمة هذا قبول حجوزات جديدة حالياً. اختر عرضاً آخر.'
+              : 'This provider can’t take new bookings right now. Choose another offer.',
+          );
+          void bidsQuery.refetch();
+        } else if (status === 409) {
           setAcceptError(
             lang === 'ar'
               ? 'لم يعد بالإمكان قبول هذا العرض. حدّث الصفحة وحاول مرة أخرى.'

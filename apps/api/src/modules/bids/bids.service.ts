@@ -9,6 +9,7 @@ import type {
   ListBidsQuery,
   ProviderBidSummary,
 } from '@homeservicemarketplace/contracts';
+import { ProviderCapability } from '@homeservicemarketplace/contracts';
 import {
   BookingEventType,
   NotificationResourceType,
@@ -30,6 +31,7 @@ import { ServiceRequestEventRepository } from '../../infrastructure/persistence/
 import { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../shared/errors/app-error';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ProviderCapabilityService } from '../provider/capability/provider-capability.service';
 import { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 
 @Injectable()
@@ -47,6 +49,9 @@ export class BidsService {
     // is required; it swallows its own errors so a bus outage cannot
     // roll back the REST write.
     private readonly realtime: RealtimeEventsPublisher,
+    // R17-E — the provider's CURRENT authority to take new work, decided by
+    // the one capability service inside the accept transaction.
+    private readonly capabilities: ProviderCapabilityService,
   ) {}
 
   // List active bids on a Seeker-owned request. Ownership is checked
@@ -137,6 +142,28 @@ export class BidsService {
       }
       if (bid.status !== 'PENDING') {
         throw new AppError('CONFLICT', 'This bid is no longer accept-able.', 409);
+      }
+
+      // 1c. R17-E (E-3) — the provider must be able to take NEW work now, not
+      //     merely when they bid. A booking is a new obligation, so this is
+      //     SUBMIT_BID: withheld from a restricted, suspended or terminated
+      //     provider, and from one whose verification or work-access grant has
+      //     lapsed. Decided in this transaction with the provider's rows locked,
+      //     so a concurrent suspension either lands first and refuses this, or
+      //     waits for it (ProviderCapabilityService.canInTransaction). A profile
+      //     with no account cannot hold any capability.
+      //
+      //     The bid is left PENDING: no approved rule says a lost capability
+      //     rejects or expires an offer, and the smallest fail-closed change is
+      //     to refuse the booking. R17_E_PROVIDER_POLICY.md, decision E-3.
+      const bidder = bid.provider.userId;
+      if (
+        !bidder ||
+        !(await this.capabilities.canInTransaction(bidder, ProviderCapability.SubmitBid, tx))
+      ) {
+        throw new AppError('CONFLICT', 'This provider cannot take this booking now.', 409, {
+          reason: 'PROVIDER_UNAVAILABLE',
+        });
       }
 
       // 2. Flip the chosen bid PENDING → ACCEPTED.
