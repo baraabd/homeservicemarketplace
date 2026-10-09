@@ -1805,6 +1805,49 @@ jobs:
             apps/web/test-results/r17d-admin-operations/
           retention-days: 14
           if-no-files-found: error
+      # R17-E — provider surfaces. Same real-AppModule harness, Postgres, Redis,
+      # Chromium and web app as the steps above, behind its own gate. Both
+      # Sprint 9 work-access axes are armed inside the suites. The real-HTTP
+      # spec also runs in "Integration & E2E" automatically.
+      - name: R17-E provider surfaces (feed authority, stale bids, bookings, capability loss)
+        env:
+          RUN_PROVIDER_BROWSER: '1'
+          R17E_BROWSER_OUTPUT: ${{ github.workspace }}/apps/web/test-results/r17e-provider-surfaces
+        run: |
+          # Roles come from the seeded baseline; idempotent, as in the R17-D step.
+          pnpm --filter @homeservicemarketplace/database seed
+          set +e
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/r17-provider-surfaces-browser.integration.spec.ts \
+            --json --outputFile=r17e-provider-browser-ci.json
+          browser=$?
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/r17-provider-surfaces.integration.spec.ts \
+            --json --outputFile=r17e-provider-ci.json
+          service=$?
+          set -e
+          # Fail closed: every R17-E case must have executed; none may be skipped.
+          node -e "
+            const runs = ['r17e-provider-browser-ci.json', 'r17e-provider-ci.json'].map((f) => require('./apps/api/' + f));
+            const sum = (k) => runs.reduce((n, r) => n + r[k], 0);
+            const expected = 31;
+            console.log('R17-E passed', sum('numPassedTests'), 'failed', sum('numFailedTests'), 'pending', sum('numPendingTests'), 'todo', sum('numTodoTests'));
+            if (sum('numFailedTests') || sum('numPendingTests') || sum('numTodoTests') || sum('numPassedTests') !== expected) {
+              console.error('::error::R17-E acceptance did not execute all ' + expected + ' cases');
+              process.exit(1);
+            }"
+          test "$browser" -eq 0 && test "$service" -eq 0
+      - name: Upload R17-E evidence (no credentials, cookies or personal data)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r17e-provider-real-evidence
+          path: |
+            apps/api/r17e-provider-browser-ci.json
+            apps/api/r17e-provider-ci.json
+            apps/web/test-results/r17e-provider-surfaces/
+          retention-days: 14
+          if-no-files-found: error
       - name: Stop the dedicated scanner
         if: always()
         run: docker rm -f dispute-clamd || true
