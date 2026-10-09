@@ -92,6 +92,18 @@ export class RequestAvailableDispatchHandler implements OutboxHandler {
       this.log.log({ msg: 'request.fanout.skipped_not_open', requestId: payload.requestId });
       return { stats: { scanned: 0, matched: 0, batches: 0 } };
     }
+    // R17-E — announce a request only to providers whose feed can show it.
+    // Every provider surface requires the request's category to be one of the
+    // provider's own (feedCategoryScope), so an uncategorised, custom-text
+    // request is visible to nobody: announcing it sent every provider in the
+    // area to a request their detail and bid endpoints refuse. Who may serve
+    // custom-text requests is an open product decision (R17_E_PROVIDER_POLICY).
+    // The live category is used for the same reason: the feed reads the row.
+    const categoryId = live.categoryId;
+    if (!categoryId) {
+      this.log.log({ msg: 'request.fanout.skipped_uncategorised', requestId: payload.requestId });
+      return { stats: { scanned: 0, matched: 0, batches: 0 } };
+    }
     const location: RequestLocation = {
       lat: payload.lat,
       lng: payload.lng,
@@ -139,7 +151,7 @@ export class RequestAvailableDispatchHandler implements OutboxHandler {
     for (;;) {
       const page = await this.providers.listEligibleRecipientsPage(
         {
-          categoryId: payload.categoryId,
+          categoryId,
           location,
           excludeSeekerUserId: payload.seekerUserId,
           take: RequestAvailableDispatchHandler.SCAN_PAGE,

@@ -1,5 +1,6 @@
 import { hash as hashPassword } from 'argon2';
 
+import { RequestAvailableDispatchHandler } from '../../src/modules/requests/outbox/request-available.handler';
 import { normaliseCityKey } from '../../src/shared/geo/service-area';
 import { disputeHttpApp, httpSession, type DisputeHttpApp } from '../support/dispute-http-app';
 
@@ -8,6 +9,10 @@ import { disputeHttpApp, httpSession, type DisputeHttpApp } from '../support/dis
 // PostgreSQL and Redis. Nothing between the HTTP request and the database is
 // stubbed; fixtures are test-owned rows under one prefix, and no assertion
 // counts a whole table.
+//
+// Both Sprint 9 work-access axes are armed (WORK_ACCESS_ENFORCED,
+// VERIFICATION_ENFORCED), as docs/deployment.md requires in production, so
+// every fixture provider works on a live grant and a revoked grant matters.
 //
 // docs/production-readiness/r17/R17_E_PROVIDER_SURFACES.md
 const enabled = process.env.RUN_DB_INTEGRATION === '1';
@@ -57,6 +62,8 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     await db.serviceRequestEvent.deleteMany({ where: { requestId: ids } });
     await db.serviceRequest.deleteMany({ where: { id: ids } });
     await db.auditEvent.deleteMany({ where: { userId: { startsWith: X } } });
+    await db.outboxEvent.deleteMany({ where: { aggregateId: ids } });
+    await db.providerWorkAccessGrant.deleteMany({ where: { providerProfileId: ids } });
     await db.providerProfileServiceCategory.deleteMany({ where: { providerProfileId: ids } });
     await db.providerProfile.deleteMany({ where: { id: ids } });
     await db.serviceCategory.deleteMany({ where: { id: ids } });
@@ -142,7 +149,15 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     (await s.request<{ allowed: string[] }>('/v1/me/provider/capabilities')).body.allowed;
 
   beforeAll(async () => {
-    h = await disputeHttpApp();
+    // The harness fixture already holds, for the whole suite, seed and
+    // providerLifecycle EXCLUSIVE and outbox and serviceRequests SHARED — every
+    // resource this suite produces into (providers, the fan-out case's outbox
+    // rows, open requests). Its grants never fall due (no expiresAt; loss of
+    // access is a revocation), so the grant-expiry sweep never examines them
+    // and the workAccessGrants lock is not needed.
+    h = await disputeHttpApp({
+      env: { WORK_ACCESS_ENFORCED: 'true', VERIFICATION_ENFORCED: 'true' },
+    });
     const { db } = h.fixture;
     await clean();
     const passwordHash = await hashPassword(h.fixture.password!);
@@ -190,6 +205,16 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
         await db.providerProfileServiceCategory.create({
           data: { providerProfileId: p.profile, serviceCategoryId: c },
         });
+      await db.providerWorkAccessGrant.create({
+        data: {
+          id: `${p.profile}-grant`,
+          providerProfileId: p.profile,
+          status: 'ACTIVE',
+          source: 'MANUAL_OVERRIDE',
+          reason: 'R17-E fixture',
+          grantedAt: new Date(Date.now() - 60_000),
+        },
+      });
       h.enrol(p.user);
     }
     await openRequest(req.a, cat.a);
@@ -282,6 +307,144 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     expect((await p0.request(`/v1/provider/available-requests/${req.a}`)).status).toBe(404);
   });
 
+  it('P25 one policy: whatever a feed lists, detail opens and bid accepts; nothing else', async () => {
+    // Agreement across the three surfaces for every fixture request and every
+    // provider shape (none, one, two categories). A bid that is accepted is
+    // withdrawn again, so later cases see untouched requests.
+    for (const [who, s] of [
+      ['p0', p0],
+      ['p1', p1],
+      ['p2', p2],
+    ] as const) {
+      const listed = new Set(
+        [...feedIds((await canonical(s)).body), ...feedIds((await legacy(s)).body)].filter((id) =>
+          ALL_REQ.includes(id),
+        ),
+      );
+      for (const id of ALL_REQ) {
+        const detail = (await s.request(`/v1/provider/available-requests/${id}`)).status;
+        const bid = await submitBid(s, id);
+        if (bid.status === 201)
+          expect(
+            (
+              await s.request(`/v1/provider/bids/${bid.body.bid.id}/withdraw`, {
+                method: 'POST',
+                body: {},
+              })
+            ).status,
+          ).toBe(200);
+        const visible = listed.has(id);
+        expect({ who, id, detail, bid: bid.status }).toEqual({
+          who,
+          id,
+          detail: visible ? 200 : 404,
+          bid: visible ? 201 : 404,
+        });
+      }
+    }
+  });
+
+  it('P26 inactive category: an explicit filter is refused; a held link still agrees on every surface', async () => {
+    const { db } = h.fixture;
+    await db.serviceCategory.update({ where: { id: cat.b }, data: { isActive: false } });
+    try {
+      expect((await canonical(p2, `?category=${cat.b}`)).status).toBe(400);
+      expect((await legacy(p2, `?categoryId=${cat.b}`)).status).toBe(400);
+      // p2 still holds the link; list, detail and bid answer the same way.
+      const listed = feedIds((await canonical(p2)).body).includes(req.b);
+      expect(feedIds((await legacy(p2)).body).includes(req.b)).toBe(listed);
+      expect((await p2.request(`/v1/provider/available-requests/${req.b}`)).status).toBe(
+        listed ? 200 : 404,
+      );
+      // A provider who never held it cannot reach it at all.
+      expect((await p1.request(`/v1/provider/available-requests/${req.b}`)).status).toBe(404);
+      expect((await submitBid(p1, req.b)).status).toBe(404);
+    } finally {
+      await db.serviceCategory.update({ where: { id: cat.b }, data: { isActive: true } });
+    }
+  });
+
+  it('P27 an uncategorised request is on no provider surface and its fan-out notifies nobody', async () => {
+    const id = `${X}req-custom`;
+    await openRequest(id, null);
+    for (const s of [p0, p1, p2]) {
+      expect(feedIds((await canonical(s)).body)).not.toContain(id);
+      expect(feedIds((await legacy(s)).body)).not.toContain(id);
+      expect((await s.request(`/v1/provider/available-requests/${id}`)).status).toBe(404);
+    }
+    // The real dispatcher, in a real transaction: no recipients, no slices.
+    const dispatch = h.app.get(RequestAvailableDispatchHandler);
+    const { db } = h.fixture;
+    const result = await db.$transaction((tx) =>
+      dispatch.handle(
+        {
+          id: `${X}evt-custom`,
+          payload: {
+            requestId: id,
+            seekerUserId: h.fixture.users.seeker,
+            categoryId: null,
+            categoryLabel: 'R17-E custom',
+            city: CITY,
+            cityKey: KEY,
+            lat: null,
+            lng: null,
+          },
+        } as never,
+        tx as never,
+      ),
+    );
+    expect(result.stats).toEqual({ scanned: 0, matched: 0, batches: 0 });
+    expect(
+      await db.outboxEvent.count({
+        where: { aggregateId: id, eventType: 'request.available.batch' },
+      }),
+    ).toBe(0);
+    // A categorised request in the same area still reaches its providers.
+    const covered = await freshRequest();
+    const delivered = await db.$transaction((tx) =>
+      dispatch.handle(
+        {
+          id: `${X}evt-covered`,
+          payload: {
+            requestId: covered,
+            seekerUserId: h.fixture.users.seeker,
+            categoryId: cat.a,
+            categoryLabel: 'R17-E 0',
+            city: CITY,
+            cityKey: KEY,
+            lat: null,
+            lng: null,
+          },
+        } as never,
+        tx as never,
+      ),
+    );
+    expect(delivered.stats?.matched).toBeGreaterThanOrEqual(3); // p1, p2, p3 hold category A
+  });
+
+  it('P28 a request cancelled before or during a bid never yields a booking', async () => {
+    const before = await freshRequest();
+    expect(
+      (await seeker.request(`/v1/me/requests/${before}/cancel`, { method: 'POST', body: {} }))
+        .status,
+    ).toBe(200);
+    expect((await submitBid(p1, before)).status).toBe(404);
+    expect(feedIds((await canonical(p1)).body)).not.toContain(before);
+
+    for (let i = 0; i < 3; i++) {
+      const during = await freshRequest();
+      const [cancelled, bid] = await Promise.all([
+        seeker.request(`/v1/me/requests/${during}/cancel`, { method: 'POST', body: {} }),
+        submitBid(p1, during),
+      ]);
+      expect(cancelled.status).toBe(200);
+      // Either serial order is legitimate: bid first (201) or cancel first (404).
+      expect([201, 404]).toContain(bid.status);
+      if (bid.status === 201) expect((await accept(during, bid.body.bid.id)).status).toBe(409);
+      expect(await h.fixture.db.booking.count({ where: { requestId: during } })).toBe(0);
+    }
+  });
+
   // ─── Capability and bids ────────────────────────────────────────────────
 
   it('P09 a suspended provider is refused feed and bid authority at the server', async () => {
@@ -290,8 +453,11 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
       expect((await legacy(p1)).status).toBe(403);
       expect((await canonical(p1)).status).toBe(403);
       expect((await submitBid(p1, req.a)).status).toBe(403);
+      // P25 left a withdrawn probe bid here; no live bid may appear.
       expect(
-        await h.fixture.db.bid.count({ where: { requestId: req.a, providerId: prov.p1.profile } }),
+        await h.fixture.db.bid.count({
+          where: { requestId: req.a, providerId: prov.p1.profile, status: { not: 'WITHDRAWN' } },
+        }),
       ).toBe(0);
     } finally {
       await setStanding('p1', 'GOOD');
