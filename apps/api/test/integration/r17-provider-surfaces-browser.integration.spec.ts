@@ -36,13 +36,31 @@ const enabled = process.env.RUN_PROVIDER_BROWSER === '1';
   async function clean() {
     const { db } = h.fixture;
     const ids = { startsWith: X };
-    await db.notification.deleteMany({ where: { userId: { startsWith: X } } });
-    await db.notification.deleteMany({
-      where: {
-        userId: h.fixture.users.seeker,
-        metadata: { path: ['requestId'], string_starts_with: X },
-      },
+    // Notifications this suite caused, and the post-commit announce (R17-B)
+    // each one enqueued. The announce is keyed by the notification's cuid, not
+    // by this prefix, so it is found through the notification; left behind, an
+    // exclusive outbox consumer (outbox.integration.spec.ts) would claim it.
+    const notes = {
+      OR: [
+        { userId: { startsWith: X } },
+        {
+          userId: h.fixture.users.seeker,
+          metadata: { path: ['requestId'], string_starts_with: X },
+        },
+      ],
+    };
+    const noteIds = (await db.notification.findMany({ where: notes, select: { id: true } })).map(
+      (n) => n.id,
+    );
+    const announces = await db.outboxEvent.findMany({
+      where: { aggregateType: 'Notification', aggregateId: { in: noteIds } },
+      select: { id: true },
     });
+    await db.outboxHandlerRun.deleteMany({
+      where: { eventId: { in: announces.map((e) => e.id) } },
+    });
+    await db.outboxEvent.deleteMany({ where: { id: { in: announces.map((e) => e.id) } } });
+    await db.notification.deleteMany({ where: notes });
     // Booking conversations are keyed by booking, request ones by request.
     const conversation = { OR: [{ requestId: ids }, { booking: { requestId: ids } }] };
     await db.message.deleteMany({ where: { conversation } });
