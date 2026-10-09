@@ -46,6 +46,16 @@ export function ProviderConfirmDialog({
         <AlertDialog.Content
           dir={dir}
           data-testid={testId}
+          // Escape on the dialog itself always keeps (cancels). Radix also
+          // listens on the document; R17-E CI once saw that listener miss a
+          // keyboard Escape with focus inside the dialog, which would trap a
+          // keyboard user in an irreversible-action prompt.
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && !event.defaultPrevented) {
+              event.preventDefault();
+              onOpenChange(false);
+            }
+          }}
           onCloseAutoFocus={(event) => {
             const target = returnFocusRef?.current;
             if (target && target.isConnected) {
