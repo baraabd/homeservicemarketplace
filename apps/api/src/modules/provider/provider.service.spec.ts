@@ -497,6 +497,40 @@ describe('ProviderService', () => {
       expect(m.providers.removeServiceCategories).toHaveBeenCalled();
     });
 
+    // ── R17-E — CodeQL #4 (js/user-controlled-bypass) disposition ─────────
+    //
+    // The flagged condition was `categoryIds !== undefined` guarding the
+    // authorisation. Omitting the field must authorise to "no change" — never
+    // to skipping the check while a category write still happens.
+    it('omitting categoryIds changes no category, whatever the profile holds', async () => {
+      const held = [makeCategory({ id: 'cat-plumbing' }), makeCategory({ id: 'cat-tiling' })];
+      const m = makeMocks({
+        providers: {
+          findByUserIdWithCategories: jest
+            .fn()
+            .mockResolvedValue(makeProviderWithCategories({}, held)),
+        },
+      });
+      await makeService(m).update('user-1', { headline: 'Only the headline' });
+      expect(m.categories.findById).not.toHaveBeenCalled();
+      expect(m.providers.removeServiceCategories).not.toHaveBeenCalled();
+      expect(m.audit.record).not.toHaveBeenCalled();
+      expect(m.providers.updateById).toHaveBeenCalled();
+    });
+
+    it.each(['__proto__', 'constructor', 'prototype', 'hasOwnProperty'])(
+      'a prototype-like category id (%s) is an unknown category: 400, nothing written',
+      async (id) => {
+        const m = makeMocks({ categories: { findById: jest.fn().mockResolvedValue(null) } });
+        await expect(makeService(m).update('user-1', { categoryIds: [id] })).rejects.toMatchObject({
+          code: 'VALIDATION_ERROR',
+          status: 400,
+        });
+        expect(m.providers.removeServiceCategories).not.toHaveBeenCalled();
+        expect(m.providers.updateById).not.toHaveBeenCalled();
+      },
+    );
+
     // Sprint 7.x — city → coords auto-resolution. The provider feed +
     // LiveJobs map default to Riyadh coordinates regardless of the
     // provider's actual city when lat/lng aren't on the row. Filling
