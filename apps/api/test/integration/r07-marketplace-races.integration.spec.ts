@@ -198,6 +198,9 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
     const {
       ProviderBookingsService,
     } = require('../../src/modules/provider/bookings/provider-bookings.service');
+    const {
+      ProviderCapabilityService,
+    } = require('../../src/modules/provider/capability/provider-capability.service');
 
     // Realtime is a best-effort side channel; it is not what is under test.
     const realtime = new Proxy({}, { get: () => () => undefined });
@@ -273,6 +276,7 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
       notifications,
       tx,
       realtime,
+      new ProviderCapabilityService(prismaSvc, config),
     );
     feed = new AvailableRequestsService(providerRepo, requestRepo, bidRepo, categoryRepo);
     seekerBookings = new BookingsService(bookingRepo, bookingEvents, notifications, tx, realtime);
@@ -320,6 +324,10 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
           passwordHash: 'x',
           firstName: 'R07',
           lastName: 'Fixture',
+          // R17-E — accept re-decides the bidder's capability, which starts
+          // with an eligible account, as every provider who passed the bid
+          // guard has.
+          status: 'ACTIVE',
         },
       });
     }

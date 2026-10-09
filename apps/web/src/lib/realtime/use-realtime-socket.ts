@@ -102,6 +102,9 @@ export function dispatchInvalidations(qc: QueryClient, event: RealtimeEvent): vo
       // Always-on: refresh the drawer + unread badge.
       qc.invalidateQueries({ queryKey: seekerQueryKeys.notifications.root });
       qc.invalidateQueries({ queryKey: providerQueryKeys.notifications.root });
+      // R17-E — verification and account notices announce authority changes;
+      // re-asking costs one GET and only runs while a workspace observes it.
+      qc.invalidateQueries({ queryKey: providerQueryKeys.capabilities.get() });
       // Sprint 7.x universal domain safety net — if the backend
       // forgets to publish a paired domain event, the notification's
       // resourceType still drives the right domain invalidation so
@@ -166,6 +169,9 @@ export function dispatchInvalidations(qc: QueryClient, event: RealtimeEvent): vo
     case 'provider.status_changed':
       qc.invalidateQueries({ queryKey: providerQueryKeys.profile.root });
       qc.invalidateQueries({ queryKey: ['auth', 'me'] });
+      // R17-E — a status change is an authority change. The workspace renders
+      // what the capability decision allows, so that is what must refetch.
+      qc.invalidateQueries({ queryKey: providerQueryKeys.capabilities.get() });
       break;
     default: {
       // Forward-compat: an unknown event MUST NOT crash the bridge.

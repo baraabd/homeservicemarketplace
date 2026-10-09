@@ -223,11 +223,14 @@ export class ProviderService {
       // "check first, then mutate" is the shape that makes the guarantee
       // testable without leaning on rollback — and it keeps a 403 from ever
       // having touched a row.
-      let categoryRemovals: string[] = [];
-      if (input.categoryIds !== undefined) {
-        await this.assertCategoryIdsValid(input.categoryIds, tx);
-        categoryRemovals = this.authorizeCategoryDiff(profile, input.categoryIds);
-      }
+      //
+      // R17-E (CodeQL #4, js/user-controlled-bypass) — the authorisation runs
+      // on every PATCH; it is not behind a condition on the request body. An
+      // omitted list means "keep my categories", expressed as the current set,
+      // which authorises to no additions and no removals. The only category
+      // write below is driven by this result, so no body shape can reach it
+      // without passing the check.
+      const categoryRemovals = await this.planCategoryRemovals(profile, input.categoryIds, tx);
 
       const profileFieldsTouched =
         input.displayName !== undefined ||
@@ -421,6 +424,21 @@ export class ProviderService {
   //   - It is blocked while the profile sits in PENDING_REVIEW, by the same
   //     edit lock that blocks every other profile change (see `update`), so a
   //     reviewer is never looking at a moving target.
+  // The one entry point `update` uses: validate the requested ids, then
+  // authorise the diff. `requested` undefined is "no change requested" and is
+  // planned as the current set, so validation has nothing to look up and the
+  // diff is empty — identical to the previous `if (categoryIds !== undefined)`
+  // branch being skipped, without a body-controlled condition around it.
+  private async planCategoryRemovals(
+    profile: { serviceCategories: { serviceCategoryId: string }[] },
+    requested: string[] | undefined,
+    tx: Parameters<TransactionRunner['run']>[0] extends (tx: infer T) => unknown ? T : never,
+  ): Promise<string[]> {
+    const current = profile.serviceCategories.map((link) => link.serviceCategoryId);
+    await this.assertCategoryIdsValid(requested ?? [], tx);
+    return this.authorizeCategoryDiff(profile, requested ?? current);
+  }
+
   // Pure: throws on an attempted grant, otherwise returns the ids to detach.
   // No writes and no `tx`, so it can be reasoned about — and tested — without
   // a database in the picture at all.

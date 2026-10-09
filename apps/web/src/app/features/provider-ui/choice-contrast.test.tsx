@@ -59,7 +59,14 @@ describe('selected Provider control foregrounds', () => {
   });
 
   it.each([true, false])('choice mark foreground follows checked=%s', (checked) => {
-    render(<ProviderChoiceToggle checked={checked} onToggle={vi.fn()} label="Plumbing" testId="choice" />);
+    render(
+      <ProviderChoiceToggle
+        checked={checked}
+        onToggle={vi.fn()}
+        label="Plumbing"
+        testId="choice"
+      />,
+    );
     const input = screen.getByRole('checkbox', { name: 'Plumbing' });
     expect(input).toHaveProperty('checked', checked);
     const mark = screen.getByTestId('choice').querySelector('span[aria-hidden="true"]');

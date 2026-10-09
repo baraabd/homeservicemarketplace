@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ListProviderBookingsQuery } from '@homeservicemarketplace/contracts';
+import type {
+  ListProviderBookingsQuery,
+  ProviderBookingMutationResponse,
+} from '@homeservicemarketplace/contracts';
 
 import { providerQueryKeys } from '../../../lib/provider/query-keys';
 import {
@@ -48,35 +51,37 @@ export function useProviderBookingTimeline(bookingId: string | null | undefined)
   });
 }
 
-export function useStartProviderBooking() {
+// R17-E — every transition re-reads the server's answer when it SETTLES, not
+// only when it succeeds. A 409 means the booking moved underneath the screen
+// and a lost response may have landed anyway; in both cases the screen must
+// show what the server now holds rather than what the button assumed.
+// Mutations are never retried (the query client sets `retry: false`): a
+// start or cancel is not idempotent, and a repeat is answered with an honest
+// 409 the UI explains.
+function useBookingTransition(
+  run: (bookingId: string) => Promise<ProviderBookingMutationResponse>,
+  extra: readonly (readonly unknown[])[] = [],
+) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (bookingId: string) => startProviderBooking(bookingId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: providerQueryKeys.bookings.root });
-      qc.invalidateQueries({ queryKey: providerQueryKeys.bids.root });
+    mutationFn: run,
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: providerQueryKeys.bookings.root });
+      void qc.invalidateQueries({ queryKey: providerQueryKeys.bids.root });
+      for (const queryKey of extra) void qc.invalidateQueries({ queryKey });
     },
   });
+}
+
+export function useStartProviderBooking() {
+  return useBookingTransition(startProviderBooking);
 }
 
 export function useCompleteProviderBooking() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (bookingId: string) => completeProviderBooking(bookingId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: providerQueryKeys.bookings.root });
-      qc.invalidateQueries({ queryKey: providerQueryKeys.bids.root });
-    },
-  });
+  // Completed bookings feed the booking-derived earnings read model.
+  return useBookingTransition(completeProviderBooking, [providerQueryKeys.wallet.root]);
 }
 
 export function useCancelProviderBooking() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (bookingId: string) => cancelProviderBooking(bookingId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: providerQueryKeys.bookings.root });
-      qc.invalidateQueries({ queryKey: providerQueryKeys.bids.root });
-    },
-  });
+  return useBookingTransition(cancelProviderBooking);
 }

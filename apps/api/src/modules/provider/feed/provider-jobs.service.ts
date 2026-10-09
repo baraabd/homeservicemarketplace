@@ -18,6 +18,7 @@ import {
   constrainsAnything,
   toServiceArea,
 } from '../available-requests/available-requests.service';
+import { feedCategoryScope } from '../available-requests/feed-category-scope';
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -27,9 +28,11 @@ const DEFAULT_PAGE_SIZE = 20;
 //   1. status = OPEN_FOR_BIDS, deletedAt = null (always)
 //   2. seekerUserId != provider.userId — never show a provider their
 //      own request even if they happen to also be a seeker.
-//   3. categoryId filter — explicit query.categoryId wins; otherwise
-//      fall back to the provider's own configured `serviceCategories`
-//      (a provider with no configured skills sees every open request).
+//   3. categories — the provider's own `serviceCategories`, narrowed by
+//      query.categoryId when it is one of them (feedCategoryScope). A
+//      provider with no categories, or a filter outside them, gets an empty
+//      page (R17-E; previously the filter replaced the provider's categories
+//      and zero categories meant every open request).
 //   4. city filter — when query.city is set, exact-match on the
 //      snapshotted address city.
 //
@@ -74,9 +77,8 @@ export class ProviderJobsService {
       }
     }
 
-    const explicitCategoryIds = query.categoryId ? [query.categoryId] : undefined;
     const providerCategoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
-    const categoryIds = explicitCategoryIds ?? providerCategoryIds;
+    const categoryIds = feedCategoryScope(providerCategoryIds, query.categoryId);
 
     // Sprint 6 — the LEGACY feed now applies the same service-area predicate
     // as the canonical one.
@@ -90,7 +92,7 @@ export class ProviderJobsService {
     // provider's configured city, exactly as `near` does on the canonical
     // route.
     const serviceArea = toServiceArea(profile, query.city ?? null);
-    if (!constrainsAnything(serviceArea)) {
+    if (categoryIds.length === 0 || !constrainsAnything(serviceArea)) {
       return { items: [], nextCursor: null };
     }
 

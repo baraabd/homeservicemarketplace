@@ -197,7 +197,9 @@ describe('AvailableRequestsService.list', () => {
     );
   });
 
-  it('uses explicit category filter over the implicit profile categories', async () => {
+  // R17-E — this case used to assert the defect: a filter naming a category
+  // the provider does not hold replaced their categories and opened its feed.
+  it('a foreign category filter yields an empty page and never reaches the repository', async () => {
     const plumbing = makeCategory({ id: 'cat-plumbing' });
     const electrical = makeCategory({
       id: 'cat-electrical',
@@ -209,9 +211,18 @@ describe('AvailableRequestsService.list', () => {
       profile: makeProfile([plumbing]),
       catalog: [plumbing, electrical],
     });
-    await makeService(m).list('user-provider-1', { category: 'cat-electrical' });
+    const out = await makeService(m).list('user-provider-1', { category: 'cat-electrical' });
+    expect(out).toEqual({ items: [], nextCursor: null });
+    expect(m.requests.listAvailableForProvider).not.toHaveBeenCalled();
+  });
+
+  it('a held category filter narrows the provider categories to it', async () => {
+    const a = makeCategory({ id: 'cat-a' });
+    const b = makeCategory({ id: 'cat-b', slug: 'b', labelEn: 'B', labelAr: 'B' });
+    const m = makeMocks({ profile: makeProfile([a, b]), catalog: [a, b] });
+    await makeService(m).list('user-provider-1', { category: 'cat-b' });
     expect(m.requests.listAvailableForProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ categoryIds: ['cat-electrical'] }),
+      expect.objectContaining({ categoryIds: ['cat-b'] }),
     );
   });
 

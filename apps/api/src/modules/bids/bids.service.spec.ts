@@ -19,6 +19,7 @@ import type {
 } from '../../infrastructure/persistence/requests/service-request.repository';
 import type { ServiceRequestEventRepository } from '../../infrastructure/persistence/requests/service-request-event.repository';
 import type { TransactionRunner } from '../../infrastructure/prisma/transaction.runner';
+import type { ProviderCapabilityService } from '../provider/capability/provider-capability.service';
 import type { RealtimeEventsPublisher } from '../realtime/realtime-events.publisher';
 import { AppError } from '../../shared/errors/app-error';
 import { BidsService } from './bids.service';
@@ -155,6 +156,7 @@ interface Mocks {
   bookingEvents: { create: jest.Mock };
   notifications: { createForUser: jest.Mock };
   realtime: { publishFor: jest.Mock; publish: jest.Mock; publishToRoom: jest.Mock };
+  capabilities: { canInTransaction: jest.Mock };
 }
 
 // Deep-partial overrides so a test can replace a single repo method
@@ -215,6 +217,10 @@ function makeMocks(over: MocksOverride = {}): Mocks {
       publishToRoom: jest.fn(),
       ...(over.realtime ?? {}),
     },
+    capabilities: {
+      canInTransaction: jest.fn().mockResolvedValue(true),
+      ...(over.capabilities ?? {}),
+    },
   };
 }
 
@@ -228,6 +234,7 @@ function makeService(m: Mocks) {
     m.notifications as unknown as NotificationsService,
     makeTx(),
     m.realtime as unknown as RealtimeEventsPublisher,
+    m.capabilities as unknown as ProviderCapabilityService,
   );
 }
 
@@ -338,8 +345,21 @@ describe('BidsService', () => {
       reviewCount: 312,
       completedJobs: 540,
       verified: true,
-      topPro: true,
+      // R17-E (E-8) — the fixture row says true (as seeded demo data does);
+      // nothing authoritative writes it, so the wire never claims it.
+      topPro: false,
     });
+  });
+
+  it('R17-E (E-8): a stored badge with no authoritative writer is never projected', async () => {
+    const m = makeMocks({
+      bids: {
+        listForRequest: jest.fn().mockResolvedValue([makeBid({ badge: 'BEST_MATCH' })]),
+        findOwned: jest.fn(),
+      },
+    });
+    const out = await makeService(m).listForRequest('user-1', 'req-1');
+    expect(out.items[0].badge).toBeNull();
   });
 
   // ─── accept-bid (slice 2.2) ───────────────────────────────────────────
@@ -347,11 +367,14 @@ describe('BidsService', () => {
     function ownedRequest(over: Partial<ServiceRequest> = {}) {
       return jest.fn().mockResolvedValue(makeRequest(over));
     }
+    // R17-E — a bidder with an account. A profile without one cannot hold a
+    // capability, so its bids can no longer become bookings (see below).
+    const bidder = makeProvider({ id: 'pp-1', userId: 'user-prov-1' });
     function pendingBid(over: Partial<Bid> = {}) {
       // findOwned is called twice: once before the flip, once after.
       // The post-flip read returns the bid with status ACCEPTED.
-      const pre = makeBid({ status: 'PENDING' as BidStatus, ...over });
-      const post = makeBid({ status: 'ACCEPTED' as BidStatus, ...over });
+      const pre = makeBid({ status: 'PENDING' as BidStatus, ...over }, bidder);
+      const post = makeBid({ status: 'ACCEPTED' as BidStatus, ...over }, bidder);
       return jest.fn().mockResolvedValueOnce(pre).mockResolvedValueOnce(post);
     }
 
@@ -420,13 +443,24 @@ describe('BidsService', () => {
         }),
         undefined,
       );
-      // Sprint 7.6 anti-echo: when the provider profile has NO linked
-      // userId (default fixture), there is no provider notification
-      // recipient. The seeker is the actor, so seeker self-
-      // notifications are NOT written. Net result: zero notifications.
-      // The audit trail of the transition still lives in the
-      // ServiceRequestEvent + BookingEvent timelines asserted above.
-      expect(m.notifications.createForUser).not.toHaveBeenCalled();
+      // R17-E — the bidder's current authority was decided inside the
+      // transaction, after the lifecycle lock and before the first write.
+      expect(m.capabilities.canInTransaction).toHaveBeenCalledWith(
+        'user-prov-1',
+        'SUBMIT_BID',
+        undefined,
+      );
+      const decided = m.capabilities.canInTransaction.mock.invocationCallOrder[0];
+      expect(decided).toBeGreaterThan(lock);
+      expect(decided).toBeLessThan(m.bids.setStatusIf.mock.invocationCallOrder[0]);
+      // Sprint 7.6 anti-echo: the seeker is the actor, so seeker self-
+      // notifications are NOT written; only the provider is notified.
+      expect(m.notifications.createForUser).toHaveBeenCalledTimes(2);
+      expect(
+        m.notifications.createForUser.mock.calls.every(
+          ([input]: [{ userId: string }]) => input.userId === 'user-prov-1',
+        ),
+      ).toBe(true);
       // Response shape.
       expect(out.bid.status).toBe('ACCEPTED');
       expect(out.booking.id).toBe('bk-1');
@@ -580,7 +614,9 @@ describe('BidsService', () => {
         requests: { findOwned: ownedRequest(), setStatusOwned: jest.fn() },
         bids: {
           listForRequest: jest.fn(),
-          findOwned: jest.fn().mockResolvedValue(makeBid({ status: 'PENDING' as BidStatus })),
+          findOwned: jest
+            .fn()
+            .mockResolvedValue(makeBid({ status: 'PENDING' as BidStatus }, bidder)),
           setStatusIf: jest.fn().mockResolvedValue({ count: 0 }),
           rejectSiblings: jest.fn(),
         },
@@ -613,10 +649,9 @@ describe('BidsService', () => {
 
     // ─── Sprint 7.5 — realtime fan-out + Sprint 7.6 — actor envelope ───
 
-    it('SUCCESS: publishes bid.accepted + booking.created for the seeker (unlinked provider) with actor metadata', async () => {
-      // Default provider fixture has userId: null — provider side is
-      // skipped. Seeker still receives both events for cross-tab
-      // cache invalidation; the side-effects bridge silences UX.
+    it('SUCCESS: publishes bid.accepted + booking.created to the seeker first, with actor metadata', async () => {
+      // The seeker receives both events for cross-tab cache invalidation
+      // (the side-effects bridge silences UX); the provider's follow.
       const m = makeMocks({
         requests: {
           findOwned: ownedRequest(),
@@ -630,8 +665,7 @@ describe('BidsService', () => {
         },
       });
       await makeService(m).accept('user-1', 'req-1', 'bid-1');
-      // Exactly two publishes — seeker only.
-      expect(m.realtime.publishFor).toHaveBeenCalledTimes(2);
+      expect(m.realtime.publishFor).toHaveBeenCalledTimes(4);
       // Sprint 7.6 — every publish carries `{ actorUserId }` as the
       // 4th arg so the envelope's `actorUserId` is populated by the
       // publisher.
@@ -766,6 +800,69 @@ describe('BidsService', () => {
         code: 'CONFLICT',
       });
       expect(m.realtime.publishFor).not.toHaveBeenCalled();
+    });
+
+    // ─── R17-E (E-3) — the bidder's CURRENT authority to take new work ───
+
+    it('REFUSES a pending bid whose provider lost new-work authority since bidding; writes nothing', async () => {
+      const m = makeMocks({
+        bids: {
+          listForRequest: jest.fn(),
+          findOwned: pendingBid(),
+          setStatusIf: jest.fn(),
+          rejectSiblings: jest.fn(),
+        },
+        capabilities: { canInTransaction: jest.fn().mockResolvedValue(false) },
+      });
+      await expect(makeService(m).accept('user-1', 'req-1', 'bid-1')).rejects.toMatchObject({
+        code: 'CONFLICT',
+        status: 409,
+        details: { reason: 'PROVIDER_UNAVAILABLE' },
+      });
+      // Fail closed and leave the offer as it was: no bid, sibling, request,
+      // booking, timeline, notification or realtime effect.
+      expect(m.bids.setStatusIf).not.toHaveBeenCalled();
+      expect(m.bids.rejectSiblings).not.toHaveBeenCalled();
+      expect(m.requests.setStatusOwned).not.toHaveBeenCalled();
+      expect(m.bookings.create).not.toHaveBeenCalled();
+      expect(m.events.create).not.toHaveBeenCalled();
+      expect(m.bookingEvents.create).not.toHaveBeenCalled();
+      expect(m.notifications.createForUser).not.toHaveBeenCalled();
+      expect(m.realtime.publishFor).not.toHaveBeenCalled();
+    });
+
+    it('REFUSES a bid from a provider profile with no account, without consulting a capability', async () => {
+      const unlinked = makeProvider({ id: 'pp-9', userId: null });
+      const m = makeMocks({
+        bids: {
+          listForRequest: jest.fn(),
+          findOwned: jest
+            .fn()
+            .mockResolvedValue(makeBid({ status: 'PENDING' as BidStatus }, unlinked)),
+          setStatusIf: jest.fn(),
+          rejectSiblings: jest.fn(),
+        },
+      });
+      await expect(makeService(m).accept('user-1', 'req-1', 'bid-1')).rejects.toMatchObject({
+        code: 'CONFLICT',
+        details: { reason: 'PROVIDER_UNAVAILABLE' },
+      });
+      expect(m.capabilities.canInTransaction).not.toHaveBeenCalled();
+      expect(m.bookings.create).not.toHaveBeenCalled();
+    });
+
+    it('decides request state before provider authority: a cancelled request stays "cancelled"', async () => {
+      const m = makeMocks({
+        requests: {
+          findOwned: ownedRequest({ status: 'CANCELLED' as ServiceRequestStatus }),
+          setStatusOwned: jest.fn(),
+        },
+        capabilities: { canInTransaction: jest.fn().mockResolvedValue(false) },
+      });
+      await expect(makeService(m).accept('user-1', 'req-1', 'bid-1')).rejects.toMatchObject({
+        message: 'This request has been cancelled.',
+      });
+      expect(m.capabilities.canInTransaction).not.toHaveBeenCalled();
     });
 
     it('snapshots priceAmount + currency from the bid (not the request)', async () => {

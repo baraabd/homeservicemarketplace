@@ -155,10 +155,10 @@ export class ServiceRequestRepository {
   // also a seeker should not see their own request in the feed) and
   // away from soft-deleted rows.
   //
-  // `categoryIds`, when non-empty, restricts results to those
-  // categories (used for the provider's own configured skills, or for
-  // an explicit categoryId filter from the query string). When empty,
-  // the feed is global.
+  // `categoryIds` is the caller's already-authorised category scope
+  // (feedCategoryScope). It is REQUIRED and an empty set returns nothing:
+  // R17-E found that "empty means no filter" handed a zero-category
+  // provider every open request through the legacy feed.
   //
   // `city`, when set, filters by the request's snapshotted city. The
   // snapshot is JSON, so we use Prisma's `path` filter on the
@@ -166,7 +166,7 @@ export class ServiceRequestRepository {
   async listAvailableForProvider(
     args: {
       excludeSeekerUserId: string | null;
-      categoryIds?: string[];
+      categoryIds: string[];
       // Sprint 6 — the provider's service area replaces the bare `city`
       // string. The predicate lives in shared/geo so list, detail, and
       // fan-out cannot drift; see docs/adr/0003-service-area-geo-strategy.md.
@@ -187,15 +187,13 @@ export class ServiceRequestRepository {
     // empty feed, never an unfiltered one: omitting the clause would hand
     // them the global request list.
     const geoWhere = serviceAreaWhere(args.serviceArea);
-    if (!geoWhere) return Promise.resolve([]);
+    if (!geoWhere || args.categoryIds.length === 0) return Promise.resolve([]);
 
     const where: Prisma.ServiceRequestWhereInput = {
       status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
       deletedAt: null,
       ...(args.excludeSeekerUserId ? { seekerUserId: { not: args.excludeSeekerUserId } } : {}),
-      ...(args.categoryIds && args.categoryIds.length > 0
-        ? { categoryId: { in: args.categoryIds } }
-        : {}),
+      categoryId: { in: args.categoryIds },
       // Sprint 6 — service-area predicate over the PROMOTED columns.
       //
       // This replaced `addressSnapshot: { path: ['cityKey'], equals }`, a
@@ -257,7 +255,7 @@ export class ServiceRequestRepository {
     requestId: string,
     args: {
       excludeSeekerUserId: string | null;
-      categoryIds?: string[];
+      categoryIds: string[];
       // Sprint 6 — the SAME service-area predicate the list uses. Detail
       // visibility and list visibility must be one rule: a request the feed
       // hides but the detail endpoint serves is an access-control hole that
@@ -268,8 +266,9 @@ export class ServiceRequestRepository {
     tx?: PrismaTx,
   ): Promise<ServiceRequestForProvider | null> {
     const geoWhere = serviceAreaWhere(args.serviceArea);
-    // Constrains nothing → sees nothing. Same rule as the list.
-    if (!geoWhere) return null;
+    // Constrains nothing → sees nothing. Same rule as the list, for both the
+    // area and the category scope.
+    if (!geoWhere || args.categoryIds.length === 0) return null;
 
     const row = (await this.db(tx).serviceRequest.findFirst({
       where: {
@@ -277,9 +276,7 @@ export class ServiceRequestRepository {
         status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
         deletedAt: null,
         ...(args.excludeSeekerUserId ? { seekerUserId: { not: args.excludeSeekerUserId } } : {}),
-        ...(args.categoryIds && args.categoryIds.length > 0
-          ? { categoryId: { in: args.categoryIds } }
-          : {}),
+        categoryId: { in: args.categoryIds },
         ...geoWhere,
         ...(args.excludeBidsByProviderId
           ? {

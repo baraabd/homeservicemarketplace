@@ -24,6 +24,7 @@ import {
   usesRadiusMatching,
   type ServiceArea,
 } from '../../../shared/geo/service-area';
+import { feedCategoryScope } from './feed-category-scope';
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -39,10 +40,10 @@ const DEFAULT_PAGE_SIZE = 20;
 //   1. status = OPEN_FOR_BIDS, deletedAt = null (always)
 //   2. seekerUserId != provider.userId — providers don't see their own
 //      requests in the feed.
-//   3. categoryId — explicit `category` query wins, else strict-filter
-//      by the provider's configured serviceCategories. A provider with
-//      NO categories configured sees an empty feed (was: global feed).
-//      The provider must complete onboarding (skills) to receive jobs.
+//   3. categoryId — the provider's configured serviceCategories, narrowed
+//      by an explicit `category` query only when it is one of them
+//      (feedCategoryScope, R17-E; the query used to REPLACE them). A
+//      provider with NO categories sees an empty feed (was: global feed).
 //   4. city — explicit `near` query wins, else strict-filter by the
 //      provider's `serviceAreaCity`. A provider with no city configured
 //      AND no `near` query sees an empty feed. Same onboarding intent
@@ -93,9 +94,8 @@ export class AvailableRequestsService {
     // the corresponding profile field set; otherwise the feed is empty.
     // This replaces the previous "fall back to global feed" behaviour
     // that surprised providers with mismatched jobs.
-    const explicitCategoryIds = query.category ? [query.category] : null;
     const providerCategoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
-    const effectiveCategoryIds = explicitCategoryIds ?? providerCategoryIds;
+    const effectiveCategoryIds = feedCategoryScope(providerCategoryIds, query.category);
     // Case-insensitive city match: normalise the provider's city
     // (or the explicit `near` override) into the same lowercase
     // trimmed form the snapshot's `cityKey` carries. Without this
@@ -136,7 +136,12 @@ export class AvailableRequestsService {
     if (!profile) {
       throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
     }
-    const providerCategoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
+    // R17-E — no filter on detail: the provider's own categories, through the
+    // same scope function the list uses.
+    const providerCategoryIds = feedCategoryScope(
+      profile.serviceCategories.map((link) => link.serviceCategoryId),
+      null,
+    );
     // Sprint 6 — STRICT detail visibility, driven by the SAME service-area
     // value the list uses. Detail and list must agree exactly: a request the
     // feed hides but the detail endpoint serves is an access-control hole

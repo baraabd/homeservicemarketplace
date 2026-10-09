@@ -25,6 +25,7 @@ import {
   constrainsAnything,
   toServiceArea,
 } from '../available-requests/available-requests.service';
+import { feedCategoryScope } from '../available-requests/feed-category-scope';
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -65,7 +66,10 @@ export class ProviderBidsService {
       if (!(await this.requests.lockForLifecycle(input.requestId, tx))) {
         throw new AppError('NOT_FOUND', 'Request not found.', 404);
       }
-      const categoryIds = profile.serviceCategories.map((link) => link.serviceCategoryId);
+      const categoryIds = feedCategoryScope(
+        profile.serviceCategories.map((link) => link.serviceCategoryId),
+        null,
+      );
       const serviceArea = toServiceArea(profile, null);
       if (categoryIds.length === 0 || !constrainsAnything(serviceArea)) {
         throw new AppError('NOT_FOUND', 'Request not found.', 404);

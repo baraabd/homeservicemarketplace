@@ -56,8 +56,8 @@ Security (not cleared by a green workflow): 8 open CodeQL alerts on develop —
 | R17-A | `feat/r17-a-messaging-authority`        | Messaging read position, cross-instance acceptance            | 1     | `R17_A_MERGED` (#142, `e1f7f51`; post-merge push runs green) |
 | R17-B | `feat/r17-b-notification-authority`     | Notification lifecycle, scoping, commit-safe live push        | 2     | `R17_B_MERGED` (#143, `7642513`)                             |
 | R17-C | `feat/r17-c-dispute-authority`          | Legacy admin dispute race and copy; journey acceptance        | 3     | `R17_C_POSTMERGE_ACCEPTED` (#145, `aaf30aa`)                 |
-| R17-D | `feat/r17-d-admin-operations`           | Admin settings authority, users safeguards, analytics honesty | 4     | `R17_D_IN_REVIEW` (base `aaf30aa`)                           |
-| R17-E | `feat/r17-e-provider-surface-authority` | Feed/detail/bid agreement, booking actions, stale capability  | 5     | analysis only                                                |
+| R17-D | `feat/r17-d-admin-operations`           | Admin settings authority, users safeguards, analytics honesty | 4     | `R17_D_POSTMERGE_ACCEPTED` (#146, `2710d25`)                 |
+| R17-E | `feat/r17-e-provider-surface-authority` | Feed/detail/bid agreement, booking actions, stale capability  | 5     | `R17_E_IN_REVIEW` (base `2710d25`)                           |
 
 One unit = one branch = one PR = one report. A dependent unit starts after
 its predecessor is merged and the post-merge develop SHA is accepted. While a
@@ -92,6 +92,18 @@ R17-D shared edits (no schema, migration or `AppModule` change):
 | `apps/api/src/modules/admin/admin.module.ts`            | registers `AdminAnalyticsQueries`                                                                                      |
 | `apps/api/test/support/dispute-http-app.ts` (unchanged) | reused as the real-AppModule harness                                                                                   |
 | `.github/workflows/ci.yml` (`dispute-workspace` job)    | one R17-D step + one upload after R17-C's, own gate `RUN_ADMIN_BROWSER`                                                |
+
+R17-E shared edits (no schema, migration, contract or permission change):
+
+| Shared authority                                             | Change                                                                                                |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `modules/provider/capability/provider-capability.service.ts` | additive `canInTransaction` (same precedence table, read in the caller's transaction after row locks) |
+| `modules/bids/bids.module.ts`                                | imports `ProviderCapabilityModule` (accept re-decides the bidder's authority)                         |
+| `modules/requests/outbox/request-available.handler.ts`       | fan-out skips uncategorised requests and matches on the live category                                 |
+| `apps/api/test/support/dispute-http-app.ts`                  | additive `enrol()` for extra synthetic accounts and an `env` option for documented production flags   |
+| `apps/web/src/app/features/provider-ui`                      | new `ProviderConfirmDialog`; `ProviderButton` forwards refs                                           |
+| `apps/web/src/lib/realtime/use-realtime-socket.ts`           | status and notification events also invalidate provider capabilities                                  |
+| `.github/workflows/ci.yml` (`dispute-workspace` job)         | one R17-E step + one upload after R17-D's, own gate `RUN_PROVIDER_BROWSER`; no existing step changed  |
 
 ## R17-B coordination
 

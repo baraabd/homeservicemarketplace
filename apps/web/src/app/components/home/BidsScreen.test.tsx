@@ -254,6 +254,34 @@ describe('BidsScreen', () => {
     expect(screen.queryByText(/booking confirmed/i)).toBeNull();
   });
 
+  it('R17-E: says the provider cannot take bookings when the server refuses with PROVIDER_UNAVAILABLE', async () => {
+    mock.onGet('/v1/me/requests/req-test-1/bids').reply(200, {
+      items: [BID_OMAR],
+      nextCursor: null,
+    });
+    mock.onPost(/\/v1\/me\/requests\/.+\/bids\/.+\/accept/).reply(409, {
+      success: false,
+      error: {
+        code: 'CONFLICT',
+        message: 'This provider cannot take this booking now.',
+        details: { reason: 'PROVIDER_UNAVAILABLE' },
+      },
+    });
+    renderScreen(LEAD);
+    await waitFor(() => expect(screen.getAllByText('O. Al-Khalid').length).toBeGreaterThan(0));
+    const listCalls = () => mock.history.get.filter((r) => r.url?.endsWith('/bids')).length;
+    const before = listCalls();
+
+    fireEvent.click(screen.getByRole('button', { name: /book now/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByText(/can’t take new bookings right now/i)).toBeInTheDocument();
+    // Not the generic "refresh and try again": retrying would not help.
+    expect(screen.queryByText(/refresh and try again/i)).toBeNull();
+    expect(screen.queryByText(/booking confirmed/i)).toBeNull();
+    // The list is refetched so it reflects the server's current state.
+    await waitFor(() => expect(listCalls()).toBeGreaterThan(before));
+  });
+
   it('shows a generic friendly message on 500 — no raw backend error rendered', async () => {
     mock.onGet('/v1/me/requests/req-test-1/bids').reply(200, {
       items: [BID_OMAR],

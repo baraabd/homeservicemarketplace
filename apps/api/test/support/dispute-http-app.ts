@@ -11,7 +11,7 @@ import { workspaceFixture } from './dispute-workspace-fixture';
 /** Real AppModule, guards, sessions, database, Redis, storage and HTTP.
  * Only documented NODE_ENV=test adapters are selected; no provider/guard override.
  * OTPs are obtained in-process from the real test mailbox, never a debug route. */
-export async function disputeHttpApp() {
+export async function disputeHttpApp(options: { env?: Record<string, string> } = {}) {
   const fixture = await workspaceFixture({ authentication: true });
   const redis = new URL(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379/0');
   const previous = { ...process.env };
@@ -38,6 +38,10 @@ export async function disputeHttpApp() {
     // This isolated test follows many screen reads from one browser/IP. The
     // existing env validator still refuses an elevated ceiling in hardened envs.
     GLOBAL_THROTTLE_LIMIT: '1000',
+    // A suite may arm documented production flags (R17-E runs with both
+    // Sprint 9 work-access axes on, as deployment.md requires). The env
+    // validator still refuses any combination it would refuse in production.
+    ...options.env,
   });
   delete process.env.SMTP_HOST;
   let app: NestExpressApplication | undefined;
@@ -66,12 +70,21 @@ export async function disputeHttpApp() {
     await app.listen(0, '127.0.0.1');
     const url = await app.getUrl();
     const mailbox = app.get(InMemoryMailAdapter);
+    // Suites that need more synthetic accounts than the fixture's six (R17-E
+    // creates several providers) enrol them here; OTPs stay readable only for
+    // explicitly synthetic, prefixed recipients.
+    const enrolled = new Set<string>();
     return {
       app,
       url,
       fixture,
+      enrol(id: string) {
+        if (!id.startsWith('it-')) throw new Error('Only prefixed synthetic accounts');
+        enrolled.add(id);
+      },
       otp(email: string) {
-        if (!Object.values(fixture.users).some((id) => `${id}@example.test` === email))
+        const known = [...Object.values(fixture.users), ...enrolled];
+        if (!known.some((id) => `${id}@example.test` === email))
           throw new Error('Unknown synthetic recipient');
         const code = mailbox.lastSentTo(email)?.text?.match(/\b\d{6}\b/)?.[0];
         if (!code) throw new Error('Real login did not deliver an OTP to the test mailbox');

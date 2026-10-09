@@ -221,7 +221,9 @@ describe('ProviderJobsService.listAvailable', () => {
     ).rejects.toBeInstanceOf(AppError);
   });
 
-  it('uses the explicit categoryId filter when provided (overrides the implicit profile filter)', async () => {
+  // R17-E — this case used to assert the defect: the filter replaced the
+  // provider's categories, so naming any active category opened its requests.
+  it('a categoryId the provider does not hold yields an empty page, never that category', async () => {
     const plumbing = makeCategory({ id: 'cat-plumbing' });
     const electrical = makeCategory({
       id: 'cat-electrical',
@@ -231,6 +233,29 @@ describe('ProviderJobsService.listAvailable', () => {
     });
     // Profile is configured for plumbing only.
     const profile = makeProviderProfile([plumbing]);
+    const requests = makeRequests([]);
+    const service = new ProviderJobsService(
+      makeProviders(profile),
+      requests,
+      makeBids(),
+      makeCategories([plumbing, electrical]),
+    );
+
+    const out = await service.listAvailable('user-provider-1', { categoryId: 'cat-electrical' });
+
+    expect(out).toEqual({ items: [], nextCursor: null });
+    expect(requests.listAvailableForProvider).not.toHaveBeenCalled();
+  });
+
+  it('a held categoryId narrows the provider categories to it', async () => {
+    const plumbing = makeCategory({ id: 'cat-plumbing' });
+    const electrical = makeCategory({
+      id: 'cat-electrical',
+      slug: 'electrical',
+      labelEn: 'Electrical',
+      labelAr: 'كهرباء',
+    });
+    const profile = makeProviderProfile([plumbing, electrical]);
     const requests = makeRequests([]);
     const service = new ProviderJobsService(
       makeProviders(profile),
