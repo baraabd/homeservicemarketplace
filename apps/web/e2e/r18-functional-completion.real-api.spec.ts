@@ -357,7 +357,28 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
       return rows.map((r) => r.body);
     });
     expect(stored).toEqual([hello, reply]);
+
+    // The chat panel is an in-memory overlay, so a hard reload correctly
+    // closes it. Re-enter through the persisted conversations list and then
+    // reload the actual server-backed message stream; this proves durability
+    // without requiring transient overlay state to survive navigation.
     await seekerPage.reload();
+    const conversationsReloaded = seekerPage.waitForResponse(
+      (r) =>
+        r.url() === CONVERSATIONS && r.request().method() === 'GET' && r.status() === 200,
+    );
+    await seekerPage.goto(`${BASE_URL}/home/messages`);
+    expect((await conversationsReloaded).status()).toBe(200);
+    const conversationRow = seekerPage.getByRole('button').filter({ hasText: reply }).first();
+    await expect(conversationRow).toBeVisible();
+    const messagesReloaded = seekerPage.waitForResponse(
+      (r) =>
+        r.url().startsWith(`${CONVERSATIONS}/${conversationId}/messages`) &&
+        r.request().method() === 'GET' &&
+        r.status() === 200,
+    );
+    await conversationRow.click();
+    expect((await messagesReloaded).status()).toBe(200);
     await expect(seekerPage.getByText(reply).filter({ visible: true }).first()).toBeVisible();
   });
 
