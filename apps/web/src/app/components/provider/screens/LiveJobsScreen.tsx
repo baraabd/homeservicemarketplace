@@ -725,19 +725,23 @@ export function LiveJobsScreen() {
     seenRequestIdsRef.current = new Set(ids);
   }, [availableRequestsQuery.data, lang]);
 
-  // Map status pill: prefer the provider's configured service area; fall
-  // back to a neutral "Online" label when none is set, never hardcoded
-  // city text.
+  // Map status pill: the provider's configured service area. With none
+  // (or before the profile loads) it says so; it is not a presence claim.
   const serviceAreaLabel = (() => {
+    const unset = lang === 'ar' ? 'لم تُحدَّد منطقة الخدمة' : 'No service area set';
     const profile = profileQuery.data?.profile;
-    if (!profile) return lang === 'ar' ? 'متصل' : 'Online';
+    if (!profile) return profileQuery.isPending ? '…' : unset;
     const city = profile.serviceAreaCity?.trim();
     const country = profile.serviceAreaCountry?.trim();
     if (city && country) return `${city}, ${country}`;
     if (city) return city;
     if (country) return country;
-    return lang === 'ar' ? 'متصل' : 'Online';
+    return unset;
   })();
+
+  // R18 — the presence pill reads the server's availability. It used to say
+  // "Online · Ready" whatever the provider had set, including OFFLINE.
+  const availability = profileQuery.data?.profile?.availability;
 
   // The feed only ships OPEN_FOR_BIDS rows (status maps to 'pending'
   // when bidsCount === 0 and 'bidding' otherwise). Sprint 5.4 will add
@@ -848,7 +852,10 @@ export function LiveJobsScreen() {
 
   const L = {
     title: lang === 'ar' ? 'الوظائف النشطة' : 'Live Jobs',
-    online: lang === 'ar' ? 'متصل · جاهز' : 'Online · Ready',
+    online: lang === 'ar' ? 'متصل' : 'Online',
+    offline: lang === 'ar' ? 'غير متصل' : 'Offline',
+    paused: lang === 'ar' ? 'متوقف مؤقتاً' : 'Paused',
+    availabilityUnknown: lang === 'ar' ? 'الحالة غير معروفة' : 'Status unknown',
     all: lang === 'ar' ? 'الكل' : 'All',
     pending: lang === 'ar' ? 'جديد' : 'New',
     bidding: lang === 'ar' ? 'عروض' : 'Bidding',
@@ -981,9 +988,29 @@ export function LiveJobsScreen() {
         {/* Top status bar */}
         <div className="absolute top-4 start-4 end-4 flex items-center justify-between z-[1000]">
           <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md rounded-2xl px-3 py-2 border border-white/10">
-            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-white" style={{ fontSize: '12px', fontWeight: 600 }}>
-              {L.online}
+            <div
+              aria-hidden="true"
+              className={`w-2 h-2 rounded-full ${
+                availability === 'ONLINE'
+                  ? 'bg-green-400 animate-pulse motion-reduce:animate-none'
+                  : availability === 'PAUSED'
+                    ? 'bg-amber-400'
+                    : 'bg-slate-400'
+              }`}
+            />
+            <span
+              className="text-white"
+              style={{ fontSize: '12px', fontWeight: 600 }}
+              data-testid="provider-map-availability"
+              data-availability={availability ?? 'unknown'}
+            >
+              {availability === 'ONLINE'
+                ? L.online
+                : availability === 'PAUSED'
+                  ? L.paused
+                  : availability === 'OFFLINE'
+                    ? L.offline
+                    : L.availabilityUnknown}
             </span>
           </div>
           <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md rounded-2xl px-3 py-2 border border-white/10">

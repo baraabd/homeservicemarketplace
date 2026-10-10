@@ -13,8 +13,13 @@ import {
 //   • /admin/financials/bookings — recent completed bookings table
 //   • /admin/financials/provider-earnings — top providers rollup
 //
-// Cancelled bookings are excluded server-side. Refunds aren't
-// tracked yet (totalRefunds is constant 0 until that flow ships).
+// Cancelled bookings are excluded server-side.
+//
+// R18 — these are booking values, not money the platform holds. No platform
+// fee is approved (R16, R17-D decision 4) and no refund is executed, so the
+// panel shows neither a fee deduction, a "net" provider figure nor a measured
+// "Refunds: $0" (the server field is a constant). It matches the dashboard's
+// own wording.
 
 export function FinancialsSection({ lang }: { lang: string }) {
   const isAr = lang === 'ar';
@@ -34,14 +39,15 @@ export function FinancialsSection({ lang }: { lang: string }) {
 
   const L = {
     title: isAr ? 'التقارير المالية' : 'Financial Reports',
-    revenue: isAr ? 'إجمالي الإيرادات' : 'Total revenue',
-    fees: isAr ? 'عمولات المنصة' : 'Platform fees',
-    providers: isAr ? 'أرباح المزودين' : 'Provider earnings',
-    pending: isAr ? 'معلق' : 'Pending',
-    refunds: isAr ? 'الاستردادات' : 'Refunds',
+    revenue: isAr ? 'قيمة الحجوزات المنجزة' : 'Completed booking value',
+    pending: isAr ? 'محجوز ولم يُنجز' : 'Booked, not completed',
+    refunds: isAr
+      ? 'الاستردادات: غير مُتتبَّعة، ولا يُنفَّذ أي استرداد'
+      : 'Refunds: not tracked; no refund is executed',
+    valueNote: isAr
+      ? 'قيم الحجوزات وليست مدفوعات. لا توجد عمولة منصة معتمدة، ولا تحتفظ المنصة بأي أموال ولا تدفعها.'
+      : 'Booking values, not payments. No platform fee is approved; the platform holds and pays out nothing.',
     completedBookings: isAr ? 'الحجوزات المنجزة' : 'Completed bookings',
-    feeRate: (bps: number) =>
-      isAr ? `معدل العمولة ${(bps / 100).toFixed(0)}٪` : `${(bps / 100).toFixed(0)}% platform fee`,
     bookingsTitle: isAr ? 'الحجوزات الأخيرة' : 'Recent bookings',
     bookingsEmpty: isAr ? 'لا توجد حجوزات منجزة بعد.' : 'No completed bookings yet.',
     providersTitle: isAr ? 'أعلى المزودين دخلاً' : 'Top earners',
@@ -52,12 +58,10 @@ export function FinancialsSection({ lang }: { lang: string }) {
       booking: isAr ? 'الحجز' : 'Booking',
       provider: isAr ? 'المزود' : 'Provider',
       amount: isAr ? 'المبلغ' : 'Amount',
-      net: isAr ? 'الصافي' : 'Net',
       when: isAr ? 'متى' : 'When',
       providerCol: isAr ? 'المزود' : 'Provider',
       bookings: isAr ? 'حجوزات' : 'Bookings',
       gross: isAr ? 'إجمالي' : 'Gross',
-      netCol: isAr ? 'صافي' : 'Net',
     },
   };
 
@@ -84,17 +88,6 @@ export function FinancialsSection({ lang }: { lang: string }) {
           tone="green"
         />
         <SummaryTile
-          label={L.fees}
-          value={summary ? `−${fmt(summary.totalPlatformFees)}` : '…'}
-          tone="amber"
-          footnote={summary ? L.feeRate(summary.platformFeeRateBps) : undefined}
-        />
-        <SummaryTile
-          label={L.providers}
-          value={summary ? fmt(summary.totalProviderEarnings) : '…'}
-          tone="indigo"
-        />
-        <SummaryTile
           label={L.pending}
           value={summary ? fmt(summary.pendingBalance) : '…'}
           tone="blue"
@@ -104,10 +97,15 @@ export function FinancialsSection({ lang }: { lang: string }) {
         <div>
           {L.completedBookings}: <strong>{summary ? summary.completedBookingsCount : '—'}</strong>
         </div>
-        <div>
-          {L.refunds}: <strong>{summary ? fmt(summary.totalRefunds) : '—'}</strong>
-        </div>
+        <div data-testid="admin-financials-refunds">{L.refunds}</div>
       </div>
+      <p
+        className="text-slate-500"
+        style={{ fontSize: '11px' }}
+        data-testid="admin-financials-note"
+      >
+        {L.valueNote}
+      </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BookingsTable
@@ -194,7 +192,7 @@ function BookingsTable({
     bookingsEmpty: string;
     loading: string;
     failed: string;
-    cols: { booking: string; provider: string; amount: string; net: string; when: string };
+    cols: { booking: string; provider: string; amount: string; when: string };
   };
 }) {
   return (
@@ -225,7 +223,6 @@ function BookingsTable({
                 labels.cols.booking,
                 labels.cols.provider,
                 labels.cols.amount,
-                labels.cols.net,
                 labels.cols.when,
               ].map((h) => (
                 <th
@@ -254,12 +251,6 @@ function BookingsTable({
                   </td>
                   <td className="px-3 py-2" style={{ fontSize: '12px', fontWeight: 700 }}>
                     {fmt(r.amount)}
-                  </td>
-                  <td
-                    className="px-3 py-2 text-green-600"
-                    style={{ fontSize: '12px', fontWeight: 700 }}
-                  >
-                    {fmt(r.netAmount)}
                   </td>
                   <td className="px-3 py-2 text-slate-400" style={{ fontSize: '11px' }}>
                     {new Date(r.occurredAt).toLocaleDateString(isAr ? 'ar' : 'en')}
@@ -298,7 +289,7 @@ function ProviderEarningsTable({
     providersEmpty: string;
     loading: string;
     failed: string;
-    cols: { providerCol: string; bookings: string; gross: string; netCol: string };
+    cols: { providerCol: string; bookings: string; gross: string };
   };
 }) {
   return (
@@ -325,12 +316,7 @@ function ProviderEarningsTable({
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-100 dark:border-slate-700">
-              {[
-                labels.cols.providerCol,
-                labels.cols.bookings,
-                labels.cols.gross,
-                labels.cols.netCol,
-              ].map((h) => (
+              {[labels.cols.providerCol, labels.cols.bookings, labels.cols.gross].map((h) => (
                 <th
                   key={h}
                   className="px-3 py-2 text-slate-500 text-start"
@@ -352,12 +338,6 @@ function ProviderEarningsTable({
                 </td>
                 <td className="px-3 py-2" style={{ fontSize: '12px', fontWeight: 700 }}>
                   {fmt(r.grossEarnings)}
-                </td>
-                <td
-                  className="px-3 py-2 text-green-600"
-                  style={{ fontSize: '12px', fontWeight: 700 }}
-                >
-                  {fmt(r.netEarnings)}
                 </td>
               </tr>
             ))}

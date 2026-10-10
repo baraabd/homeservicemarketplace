@@ -64,12 +64,12 @@ export function WalletScreen() {
 
   const L = {
     title: lang === 'ar' ? 'المحفظة والأرباح' : 'Wallet & Earnings',
-    available: lang === 'ar' ? 'الرصيد المتاح' : 'Available Balance',
+    available: lang === 'ar' ? 'قيمة الحجوزات المنجزة' : 'Completed booking value',
     gross: lang === 'ar' ? 'إجمالي' : 'Gross',
     fees: lang === 'ar' ? 'العمولة' : 'Platform Fees',
-    pending: lang === 'ar' ? 'معلق' : 'Pending',
+    pending: lang === 'ar' ? 'محجوز ولم يُنجز' : 'Booked, not completed',
     completed: lang === 'ar' ? 'مهام منجزة' : 'Jobs Done',
-    payoutCta: lang === 'ar' ? 'السحب البنكي قريباً' : 'Bank withdrawals — coming soon',
+    payoutCta: lang === 'ar' ? 'السحب غير متاح' : 'Withdrawals are not available',
     history: lang === 'ar' ? 'سجل المعاملات' : 'Transaction History',
     historyEmpty:
       lang === 'ar'
@@ -84,10 +84,12 @@ export function WalletScreen() {
       lang === 'ar'
         ? 'تعذّر تحميل الأرباح. حاول مرة أخرى لاحقاً.'
         : 'Could not load earnings. Try again later.',
-    feeFootnote: (bps: number) =>
+    // R18 — booking values, not a balance: no platform fee is approved, and
+    // the platform neither holds nor pays out money (R16).
+    valueNote:
       lang === 'ar'
-        ? `بعد عمولة المنصة ${(bps / 100).toFixed(0)}٪`
-        : `After ${(bps / 100).toFixed(0)}% platform fee`,
+        ? 'قيم الحجوزات وليست رصيداً. لا توجد عمولة منصة معتمدة، ولا تحتفظ المنصة بأي أموال ولا تدفعها.'
+        : 'Booking values, not a balance. No platform fee is approved; the platform holds and pays out nothing.',
   };
 
   // Format an integer marketplace currency unit (cents-equivalent in
@@ -107,8 +109,8 @@ export function WalletScreen() {
       className="absolute inset-0 flex flex-col bg-slate-50 dark:bg-slate-900 overflow-y-auto"
       style={{ scrollbarWidth: 'none' }}
     >
-      {/* Header card — Available Balance is the headline value. Gross,
-         platform fees, and pending sit underneath as supporting tiles. */}
+      {/* Header card — the value of completed bookings is the headline. It is
+         not a balance: nothing is held, deducted or paid out. */}
       <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 mx-4 mt-4 rounded-3xl p-6 relative overflow-hidden">
         <div className="absolute -top-8 -end-8 w-36 h-36 rounded-full bg-white/10" />
         <div className="absolute -bottom-6 start-0 w-24 h-24 rounded-full bg-purple-500/20" />
@@ -120,30 +122,14 @@ export function WalletScreen() {
             className="text-white"
             style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '-0.02em' }}
           >
-            {summary ? formatAmount(summary.availableBalance) : summaryError ? '—' : '…'}
+            {summary ? formatAmount(summary.grossEarnings) : summaryError ? '—' : '…'}
           </p>
           {summary ? (
             <p className="text-white/60 mt-1" style={{ fontSize: '11px' }}>
-              {L.feeFootnote(summary.platformFeeRateBps)}
+              {L.valueNote}
             </p>
           ) : null}
           <div className="flex gap-3 mt-4 flex-wrap">
-            <div className="bg-white/15 rounded-2xl px-3 py-2 flex-1 min-w-[80px]">
-              <p className="text-white/60" style={{ fontSize: '10px' }}>
-                {L.gross}
-              </p>
-              <p className="text-white" style={{ fontSize: '14px', fontWeight: 700 }}>
-                {summary ? formatAmount(summary.grossEarnings) : '…'}
-              </p>
-            </div>
-            <div className="bg-white/15 rounded-2xl px-3 py-2 flex-1 min-w-[80px]">
-              <p className="text-white/60" style={{ fontSize: '10px' }}>
-                {L.fees}
-              </p>
-              <p className="text-white" style={{ fontSize: '14px', fontWeight: 700 }}>
-                {summary ? `−${formatAmount(summary.platformFees)}` : '…'}
-              </p>
-            </div>
             <div className="bg-white/15 rounded-2xl px-3 py-2 flex-1 min-w-[80px]">
               <p className="text-white/60" style={{ fontSize: '10px' }}>
                 {L.pending}
@@ -170,9 +156,8 @@ export function WalletScreen() {
         </div>
       ) : null}
 
-      {/* Payout placeholder — withdrawals are out of scope until the
-         payouts module ships. Disabled to make the affordance honest;
-         no fake setTimeout success. */}
+      {/* Withdrawals do not exist (R16_POLICY_BLOCKED). The control stays
+         disabled and promises no date. */}
       <div className="px-4 mt-3">
         <button
           disabled
@@ -314,10 +299,7 @@ export function WalletScreen() {
                   </div>
                   <div className="text-end">
                     <p style={{ fontSize: '14px', fontWeight: 700, color: '#16a34a' }}>
-                      +{formatAmount(tx.netAmount)}
-                    </p>
-                    <p className="text-slate-400" style={{ fontSize: '10px' }}>
-                      {formatAmount(tx.amount)} − {formatAmount(tx.platformFee)}
+                      {formatAmount(tx.amount)}
                     </p>
                   </div>
                 </div>

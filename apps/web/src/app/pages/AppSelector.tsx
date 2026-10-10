@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router';
-import { Smartphone, Monitor, Wrench, ArrowRight, Zap, Shield, Globe } from 'lucide-react';
+import { Smartphone, Monitor, Wrench, ArrowRight, Zap, Globe } from 'lucide-react';
 import { type IntendedApp, INTENDED_APP_PATHS, setIntendedApp } from '../../lib/intended-app';
 
 interface AppCard {
@@ -215,9 +215,9 @@ export function AppSelector() {
           {/* Global badges */}
           <div className="flex items-center justify-center gap-3 mt-5">
             {[
+              // R18 — only what the product does; the old "real-time" and
+              // "connected state" badges described the retired demo context.
               { icon: <Globe size={13} />, label: 'Bilingual AR/EN + RTL' },
-              { icon: <Zap size={13} />, label: 'Real-time Ecosystem Flow' },
-              { icon: <Shield size={13} />, label: 'Connected State' },
             ].map((b) => (
               <div
                 key={b.label}
@@ -261,16 +261,6 @@ export function AppSelector() {
         })()}
 
         {/* Footer note */}
-        <motion.p
-          className="text-center text-slate-500 mt-10"
-          style={{ fontSize: '12px' }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.8 }}
-        >
-          Cross-app state is shared in real-time — actions in one app reflect instantly in all
-          others
-        </motion.p>
       </div>
     </div>
   );

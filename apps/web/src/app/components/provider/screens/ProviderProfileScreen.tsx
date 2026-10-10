@@ -22,18 +22,7 @@ import { useAuth } from '../../../../lib/auth-provider';
 import { clearIntendedApp } from '../../../../lib/intended-app';
 import { EditProfilePage } from '../../profile/EditProfilePage';
 import type { ProviderAvailability } from '@homeservicemarketplace/contracts';
-import {
-  User,
-  ChevronRight,
-  Star,
-  CheckCircle2,
-  Bell,
-  WifiOff,
-  Award,
-  BarChart2,
-  Clock,
-  LogOut,
-} from 'lucide-react';
+import { User, ChevronRight, CheckCircle2, WifiOff, Award, Clock, LogOut } from 'lucide-react';
 
 // ─── Provider Profile ─────────────────────────────────────────────────────────
 // Tailwind palette for skill chips. Cycled by index so the chip colours
@@ -418,21 +407,16 @@ export function ProviderProfileScreen() {
         {/* Menu */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden mb-4">
           {[
-            // Phase 5 Feature 5 — Edit Profile is now the only wired
-            // menu row. The other rows are placeholders pending future
-            // sprints; their non-interactivity is unchanged.
+            // R18 — Edit Profile is the only row with a destination. "My
+            // Analytics", "Notifications" and "My Reviews" looked enabled and
+            // did nothing; they are gone (notifications have the header bell,
+            // and the rating is shown on this screen).
             {
               icon: <User size={16} />,
               label: L.editProfile,
               onClick: () => setView('editProfile'),
               testId: 'provider-menu-edit-profile',
             },
-            {
-              icon: <BarChart2 size={16} />,
-              label: lang === 'ar' ? 'إحصائياتي' : 'My Analytics',
-            },
-            { icon: <Bell size={16} />, label: lang === 'ar' ? 'الإشعارات' : 'Notifications' },
-            { icon: <Star size={16} />, label: lang === 'ar' ? 'تقييماتي' : 'My Reviews' },
           ].map(({ icon, label, onClick, testId }, i) => (
             <button
               key={i}
