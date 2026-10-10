@@ -178,7 +178,7 @@ export const TRANSLATIONS: Record<Lang, Record<string, string>> = {
     chatTitle: 'Chat',
 
     // ── Offline ───────────────────────────────────────────────────────────────
-    offlineBanner: "You're offline. Changes will sync when reconnected.",
+    offlineBanner: "You're offline. Nothing is saved until you reconnect.",
     retry: 'RETRY',
 
     // ── Misc ──────────────────────────────────────────────────────────────────
@@ -399,7 +399,7 @@ export const TRANSLATIONS: Record<Lang, Record<string, string>> = {
     chatTitle: 'المحادثة',
 
     // ── Offline ───────────────────────────────────────────────────────────────
-    offlineBanner: 'أنت غير متصل. ستتزامن التغييرات عند الاتصال.',
+    offlineBanner: 'أنت غير متصل. لن يُحفظ أي شيء حتى تعود للاتصال.',
     retry: 'إعادة المحاولة',
 
     // ── Misc ──────────────────────────────────────────────────────────────────

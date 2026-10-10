@@ -54,6 +54,7 @@ import {
 } from '../../hooks/shared/useOpenBookingConversation';
 import { getOrCreateConversation } from '../../../lib/seeker/chat-api';
 import { seekerQueryKeys } from '../../../lib/seeker/query-keys';
+import { formatOffer } from '../provider/bookings/booking-copy';
 
 // ─── Source discriminator ────────────────────────────────────────────────────
 // Slice 2.4: JobDetailView is opened with a request id (for OPEN_FOR_BIDS /
@@ -491,6 +492,7 @@ interface RenderState {
   provider: ProviderBidSummary | null;
   priceAmount: number | null;
   pricingType: 'HOURLY' | 'FIXED' | null;
+  currency: string | null;
   description: string | null;
   // Timeline payload
   steps: StepInfo[];
@@ -565,6 +567,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
         provider: null,
         priceAmount: null,
         pricingType: null,
+        currency: null,
         description: r.description,
         steps,
       };
@@ -600,6 +603,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
       provider: b.provider ?? null,
       priceAmount: b.priceAmount,
       pricingType: b.pricingType,
+      currency: b.currency,
       description: b.description,
       steps,
     };
@@ -871,16 +875,38 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                         </div>
                       )}
                     </div>
-                    {showHourlyRate && render.priceAmount !== null && (
-                      <div className="text-end">
-                        <p className="text-slate-900" style={{ fontSize: '20px', fontWeight: 800 }}>
-                          ${render.priceAmount}
-                        </p>
-                        <p className="text-slate-400" style={{ fontSize: '10px' }}>
-                          {render.pricingType === 'HOURLY' ? '/hr' : '/job'}
-                        </p>
-                      </div>
-                    )}
+                    {showHourlyRate &&
+                      render.priceAmount !== null &&
+                      render.currency &&
+                      render.pricingType && (
+                        <div className="text-end">
+                          <p
+                            className="text-slate-900"
+                            style={{ fontSize: '20px', fontWeight: 800 }}
+                          >
+                            <bdi dir="ltr">
+                              {
+                                formatOffer(
+                                  render.priceAmount,
+                                  render.currency,
+                                  render.pricingType,
+                                  langKey,
+                                ).value
+                              }
+                            </bdi>
+                          </p>
+                          <p className="text-slate-400" style={{ fontSize: '10px' }}>
+                            {
+                              formatOffer(
+                                render.priceAmount,
+                                render.currency,
+                                render.pricingType,
+                                langKey,
+                              ).basis
+                            }
+                          </p>
+                        </div>
+                      )}
                   </div>
 
                   {/* Verified / Top Pro pills — only render when API confirms,
@@ -1122,14 +1148,15 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                   {[
                     {
                       label: langKey === 'ar' ? 'السعر' : 'Rate',
+                      // The amount, currency and basis the booking stores.
                       val:
-                        render.pricingType === 'HOURLY'
-                          ? `$${render.priceAmount}/hr`
-                          : `$${render.priceAmount}`,
+                        render.currency && render.pricingType
+                          ? `${formatOffer(render.priceAmount, render.currency, render.pricingType, langKey).value} · ${formatOffer(render.priceAmount, render.currency, render.pricingType, langKey).basis}`
+                          : '—',
                     },
                     {
                       label: langKey === 'ar' ? 'العملة' : 'Currency',
-                      val: 'USD',
+                      val: render.currency ?? '—',
                     },
                   ].map((row, i) => (
                     <div

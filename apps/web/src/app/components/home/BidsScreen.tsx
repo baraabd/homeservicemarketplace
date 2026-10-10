@@ -12,6 +12,7 @@ import {
 import type { BidBadge, BidSortKey, BidSummary } from '@homeservicemarketplace/contracts';
 import { ProBidCard } from '../ds/ProBidCard';
 import { LeadCardProps } from './LeadCard';
+import { formatOffer } from '../provider/bookings/booking-copy';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useLang } from '../../i18n/LanguageContext';
 import { useEcosystem } from '../../context/EcosystemContext';
@@ -65,8 +66,15 @@ function responseTimeText(
 // ─── Price Range Chart ────────────────────────────────────────────────────────
 // Takes API bids; visual identical to the slice-1 mock.
 function PriceChart({ bids, selectedId }: { bids: BidSummary[]; selectedId: string | null }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   if (bids.length === 0) return null;
+  // Amounts in different currencies or on different bases (hourly vs fixed)
+  // cannot be averaged or ranked; the chart is shown only when they agree.
+  const { currency, pricingType } = bids[0];
+  if (bids.some((b) => b.currency !== currency || b.pricingType !== pricingType)) return null;
+  const money = (n: number) =>
+    formatOffer(n, currency, pricingType, lang === 'ar' ? 'ar' : 'en').value;
+  const basis = formatOffer(0, currency, pricingType, lang === 'ar' ? 'ar' : 'en').basis;
   const prices = bids.map((b) => b.amount);
   const min = Math.min(...prices);
   const max = Math.max(...prices);
@@ -80,7 +88,10 @@ function PriceChart({ bids, selectedId }: { bids: BidSummary[]; selectedId: stri
           {t('priceComparison')}
         </span>
         <span className="text-slate-400" style={{ fontSize: '11px' }}>
-          Avg: <strong className="text-slate-700">${avg}/hr</strong>
+          Avg:{' '}
+          <strong className="text-slate-700">
+            <bdi dir="ltr">{money(avg)}</bdi> {basis}
+          </strong>
         </span>
       </div>
 
@@ -118,13 +129,13 @@ function PriceChart({ bids, selectedId }: { bids: BidSummary[]; selectedId: stri
 
       <div className="flex justify-between mt-2">
         <span className="text-green-600" style={{ fontSize: '11px', fontWeight: 700 }}>
-          ${min} low
+          <bdi dir="ltr">{money(min)}</bdi> low
         </span>
         <span className="text-slate-400" style={{ fontSize: '10px' }}>
-          avg ${avg}
+          avg <bdi dir="ltr">{money(avg)}</bdi>
         </span>
         <span className="text-red-400" style={{ fontSize: '11px', fontWeight: 700 }}>
-          ${max} high
+          <bdi dir="ltr">{money(max)}</bdi> high
         </span>
       </div>
     </div>
@@ -426,15 +437,28 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                         reviewCount={bid.provider?.reviewCount ?? 0}
                         jobCount={bid.provider?.completedJobs ?? 0}
                         lang={lang === 'ar' ? 'ar' : 'en'}
-                        price={bid.amount}
-                        unit={bid.pricingType === 'HOURLY' ? '/hr' : '/job'}
+                        price={
+                          formatOffer(
+                            bid.amount,
+                            bid.currency,
+                            bid.pricingType,
+                            lang === 'ar' ? 'ar' : 'en',
+                          ).value
+                        }
+                        unit={
+                          formatOffer(
+                            bid.amount,
+                            bid.currency,
+                            bid.pricingType,
+                            lang === 'ar' ? 'ar' : 'en',
+                          ).basis
+                        }
                         tags={[]}
                         verified={bid.provider?.verified ?? false}
                         topPro={bid.provider?.topPro ?? false}
                         responseTime={respText}
                         showPrice={showHourlyRate}
                         onBook={() => handleBook(bid)}
-                        onMessage={() => {}}
                       />
                     </div>
                   </div>
@@ -506,7 +530,16 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                           </td>
                           {showHourlyRate && (
                             <td className="text-center py-2 px-2">
-                              <span className="text-slate-900 font-bold">${bid.amount}</span>
+                              <bdi dir="ltr" className="text-slate-900 font-bold">
+                                {
+                                  formatOffer(
+                                    bid.amount,
+                                    bid.currency,
+                                    bid.pricingType,
+                                    lang === 'ar' ? 'ar' : 'en',
+                                  ).value
+                                }
+                              </bdi>
                             </td>
                           )}
                           <td className="text-center py-2 px-2 text-slate-500">

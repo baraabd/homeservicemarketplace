@@ -27,7 +27,7 @@ const APPS: AppCard[] = [
     icon: <Smartphone size={28} className="text-white" />,
     badge: 'Mobile PWA',
     badgeBg: 'bg-amber-400/20 text-amber-200',
-    tags: ['Post Jobs', 'Compare Bids', 'Track Pro', 'Payments'],
+    tags: ['Post Jobs', 'Compare Bids', 'Bookings', 'Messages'],
   },
   {
     id: 'provider',
@@ -39,7 +39,7 @@ const APPS: AppCard[] = [
     icon: <Wrench size={28} className="text-white" />,
     badge: 'Map-Centric',
     badgeBg: 'bg-blue-400/20 text-blue-200',
-    tags: ['Live Job Map', 'Bid Engine', 'Wallet', 'Analytics'],
+    tags: ['Live Job Map', 'Bid Engine', 'Bookings', 'Earnings'],
   },
   {
     id: 'admin',

@@ -5,7 +5,6 @@ import {
   Bell,
   WifiOff,
   Sparkles,
-  Mic,
   ChevronRight,
   Home,
   Briefcase,
@@ -16,7 +15,6 @@ import {
   Zap,
   Wind,
   Hammer,
-  Search,
   PaintBucket,
 } from 'lucide-react';
 import type {
@@ -38,6 +36,7 @@ import { TabSkeleton } from '../ui/SkeletonLoader';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { formatServiceAddressForDisplay } from '../../../lib/address-display';
 import { formatPrivacyDisplayName } from '../../../lib/privacy-name';
+import { formatOffer } from '../provider/bookings/booking-copy';
 import { useEcosystem } from '../../context/EcosystemContext';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { useServiceCategories } from '../../../lib/use-service-categories';
@@ -111,6 +110,8 @@ interface BookingItem {
   proAr: string;
   proInitials?: string;
   price: number;
+  currency: string;
+  pricingType: BookingListItem['pricingType'];
   address?: string;
   addressAr?: string;
 }
@@ -163,6 +164,8 @@ function apiBookingToItem(row: BookingListItem, lang: 'en' | 'ar'): BookingItem 
     ),
     proInitials: row.provider?.initials ?? '',
     price: row.priceAmount,
+    currency: row.currency,
+    pricingType: row.pricingType,
     // Sprint 7.13 — compact, display-only address (raw snapshot untouched).
     address: formatServiceAddressForDisplay(row.addressSnapshot) || undefined,
     addressAr: formatServiceAddressForDisplay(row.addressSnapshot) || undefined,
@@ -266,11 +269,10 @@ interface HomeScreenProps {
   // post a curated-category request; null when triggered from the
   // free-form CTAs.
   onServiceSelect: (service: string, categoryId?: string | null) => void;
-  onToggleOffline: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: HomeScreenProps) {
+export function HomeScreen({ isOffline, onServiceSelect }: HomeScreenProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { t, lang } = useLang();
@@ -289,7 +291,6 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
   const identity = useAuthIdentity();
   const activeTab = tabFromPath(location.pathname);
   const prevTab = useRef(activeTab);
-  const micTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Sprint 7.14 — Active Leads carousel. Touch (touch-action: pan-x) and
   // trackpad-horizontal (overflow-x-auto) already scroll it; this ref
   // adds desktop mouse-wheel support (a vertical wheel can't scroll a
@@ -298,7 +299,6 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
 
   // ── Core state ─────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
-  const [micActive, setMicActive] = useState(false);
 
   // Slice 3.1 stabilization: notifications are loaded from the API
   // and read state is persisted server-side. The drawer receives a
@@ -476,17 +476,6 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
       return () => clearTimeout(timer);
     }
   }, [activeTab]);
-
-  // ── Mic auto-off ────────────────────────────────────────────────────────────
-  const toggleMic = () => {
-    if (micActive) {
-      setMicActive(false);
-      if (micTimerRef.current) clearTimeout(micTimerRef.current);
-    } else {
-      setMicActive(true);
-      micTimerRef.current = setTimeout(() => setMicActive(false), 5000);
-    }
-  };
 
   // ── Notification tap ────────────────────────────────────────────────────────
   // Sprint 7.12 — delegates to the shared `resolveNotificationTarget`
@@ -737,9 +726,7 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                 <p className="text-white/70 mb-4" style={{ fontSize: '12px' }}>
                   {t('searchDesc')}
                 </p>
-                <div
-                  className={`bg-white rounded-2xl px-4 py-3 flex items-center gap-3 shadow-lg transition-all ${micActive ? 'ring-2 ring-red-400' : ''}`}
-                >
+                <div className="bg-white rounded-2xl px-4 py-3 flex items-center gap-3 shadow-lg transition-all">
                   <Sparkles size={16} className="text-amber-500 flex-shrink-0" />
                   <input
                     value={search}
@@ -761,70 +748,8 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                       </span>
                     </button>
                   )}
-                  <button
-                    onClick={toggleMic}
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 ${micActive ? 'bg-red-500 shadow-md shadow-red-300' : 'bg-amber-50'}`}
-                  >
-                    <Mic size={15} className={micActive ? 'text-white' : 'text-amber-600'} />
-                  </button>
                 </div>
-                {micActive && (
-                  <div className="flex items-center justify-center gap-2 mt-3">
-                    {[0, 1, 2, 3, 4].map((i) => (
-                      <div
-                        key={i}
-                        className="w-1 bg-white/80 rounded-full animate-bounce"
-                        style={{
-                          height: `${10 + Math.abs(Math.sin(i * 1.2)) * 12}px`,
-                          animationDelay: `${i * 0.1}s`,
-                        }}
-                      />
-                    ))}
-                    <span className="text-white/80 ms-2" style={{ fontSize: '12px' }}>
-                      {lang === 'ar' ? 'جارٍ الاستماع…' : 'Listening…'}
-                    </span>
-                  </div>
-                )}
               </div>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-2 mx-4 mt-3">
-              {[
-                {
-                  val: '4.9★',
-                  labelKey: 'avgRating',
-                  color: 'text-amber-600',
-                  bg: 'bg-amber-50',
-                  border: 'border-amber-100',
-                },
-                {
-                  val: '500+',
-                  labelKey: 'prosOnline',
-                  color: 'text-blue-600',
-                  bg: 'bg-blue-50',
-                  border: 'border-blue-100',
-                },
-                {
-                  val: '~1h',
-                  labelKey: 'response',
-                  color: 'text-green-600',
-                  bg: 'bg-green-50',
-                  border: 'border-green-100',
-                },
-              ].map((s) => (
-                <div
-                  key={s.labelKey}
-                  className={`flex flex-col items-center py-3 rounded-2xl border ${s.bg} ${s.border}`}
-                >
-                  <span className={s.color} style={{ fontSize: '14px', fontWeight: 800 }}>
-                    {s.val}
-                  </span>
-                  <span className="text-slate-400 mt-0.5" style={{ fontSize: '10px' }}>
-                    {t(s.labelKey)}
-                  </span>
-                </div>
-              ))}
             </div>
 
             {/* Services */}
@@ -836,12 +761,6 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                 >
                   {t('services')}
                 </h3>
-                <button
-                  className="flex items-center gap-1 text-amber-600 active:opacity-70"
-                  style={{ fontSize: '13px', fontWeight: 600 }}
-                >
-                  {t('viewAll')} <ChevronRight size={14} className="rtl:rotate-180" />
-                </button>
               </div>
               <div className="grid grid-cols-3 gap-3" data-testid="service-categories-grid">
                 {(serviceCategories ?? []).map((c) => {
@@ -1117,7 +1036,29 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
                           className="text-slate-900 dark:text-white"
                           style={{ fontSize: '15px', fontWeight: 800 }}
                         >
-                          ${b.price}/hr
+                          <bdi dir="ltr">
+                            {
+                              formatOffer(
+                                b.price,
+                                b.currency,
+                                b.pricingType,
+                                lang === 'ar' ? 'ar' : 'en',
+                              ).value
+                            }
+                          </bdi>{' '}
+                          <span
+                            className="text-slate-400"
+                            style={{ fontSize: '11px', fontWeight: 600 }}
+                          >
+                            {
+                              formatOffer(
+                                b.price,
+                                b.currency,
+                                b.pricingType,
+                                lang === 'ar' ? 'ar' : 'en',
+                              ).basis
+                            }
+                          </span>
                         </span>
                       )}
                       <ChevronRight size={14} className="text-slate-300 rtl:rotate-180" />
@@ -1147,14 +1088,6 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
             >
               {t('chat')}
             </h2>
-            <div className="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-200 dark:border-slate-700 mb-4">
-              <Search size={15} className="text-slate-400" />
-              <input
-                placeholder={t('searchConversations')}
-                className="flex-1 bg-transparent outline-none text-slate-700 dark:text-slate-200 placeholder-slate-400"
-                style={{ fontSize: '13px' }}
-              />
-            </div>
             {/* Slice 3.3: Conversations are loaded from /v1/me/conversations.
                 The slice-2 MESSAGES_LIST seed (Omar K. / Sara M. / FixNow
                 Support) was removed entirely from the production path.
@@ -1278,8 +1211,6 @@ export function HomeScreen({ isOffline, onServiceSelect, onToggleOffline }: Home
             transition={{ duration: 0.18 }}
           >
             <ProfileTab
-              isOffline={isOffline}
-              onToggleOffline={onToggleOffline}
               notifications={notifications}
               onMarkAllRead={markAllRead}
               onMarkRead={markRead}

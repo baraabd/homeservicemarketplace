@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth-provider';
 // @ts-ignore – motion/react is the correct package path
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, Info, LogOut, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut, AlertTriangle } from 'lucide-react';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 
 // ─── Reusable Toggle ──────────────────────────────────────────────────────────
@@ -82,8 +82,6 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const navigate = useNavigate();
   const { logout } = useAuth();
 
-  const [locationSvc, setLocationSvc] = useState(true);
-  const [dataSharing, setDataSharing] = useState(false);
   const [signOutModal, setSignOutModal] = useState(false);
 
   const L = {
@@ -206,54 +204,10 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             </div>
           </Section>
 
-          {/* ── Privacy ── */}
-          <Section title={L.privacy}>
-            <SettingsToggle
-              enabled={locationSvc}
-              onChange={() => setLocationSvc((v) => !v)}
-              label={L.location}
-              sub={L.locationSub}
-            />
-            <SettingsToggle
-              enabled={dataSharing}
-              onChange={() => setDataSharing((v) => !v)}
-              label={L.dataShare}
-              sub={L.dataShareSub}
-            />
-          </Section>
-
-          {/* ── About ── */}
-          <Section title={L.about}>
-            {/* Version */}
-            <div className="flex items-center justify-between px-4 py-3.5">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                  <Info size={15} className="text-slate-500" />
-                </div>
-                <span className="text-slate-800 dark:text-slate-100" style={{ fontSize: '14px' }}>
-                  {L.version}
-                </span>
-              </div>
-              <span
-                className="text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 px-2.5 py-1 rounded-lg"
-                style={{ fontSize: '12px', fontWeight: 600 }}
-              >
-                v2.4.1
-              </span>
-            </div>
-
-            {[L.terms, L.privacy2, L.rateApp].map((item, i) => (
-              <button
-                key={i}
-                className="w-full flex items-center justify-between px-4 py-3.5 active:bg-slate-50 dark:active:bg-slate-700/50 transition-all text-start"
-              >
-                <span className="text-slate-700 dark:text-slate-200" style={{ fontSize: '14px' }}>
-                  {item}
-                </span>
-                <ChevronRight size={16} className="text-slate-300 rtl:rotate-180" />
-              </button>
-            ))}
-          </Section>
+          {/* Privacy toggles (location, usage data) and the About rows (version,
+              terms, privacy policy, rate the app) were removed: nothing stored
+              or enforced the toggles, the version was a literal and the rows
+              had no destination. */}
 
           {/* ── Sign Out ── */}
           <button

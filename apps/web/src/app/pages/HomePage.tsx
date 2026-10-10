@@ -10,18 +10,14 @@ import { HomeScreen } from '../components/home/HomeScreen';
 // tab from the URL via useLocation internally.
 // ─────────────────────────────────────────────────────────────────────────────
 export function HomePage() {
-  const { isOffline, openWizard, toggleOffline } = useRootContext();
+  const { isOffline, openWizard } = useRootContext();
 
   const location = useLocation();
 
   return (
     <>
       {location.pathname === '/home/bookings' && <DisputeEntry />}
-    <HomeScreen
-      isOffline={isOffline}
-      onServiceSelect={openWizard}
-      onToggleOffline={toggleOffline}
-    />
+      <HomeScreen isOffline={isOffline} onServiceSelect={openWizard} />
     </>
   );
 }
