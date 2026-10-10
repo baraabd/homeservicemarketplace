@@ -137,8 +137,8 @@ describe('ProviderBookingsScreen pagination', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
 
     const alert = await screen.findByTestId('provider-bookings-more-error');
-    expect(alert).toHaveAttribute('role', 'alert');
-    expect(alert).toHaveTextContent('Couldn’t load more bookings.');
+    // Announced once, next to the control that failed.
+    expect(within(alert).getByRole('alert')).toHaveTextContent('Couldn’t load more bookings.');
     // The first page is still on screen and still links to each booking.
     expect(rows()).toHaveLength(PAGE);
     expect(screen.getByTestId('provider-booking-row-bk-a-000')).toHaveAttribute(

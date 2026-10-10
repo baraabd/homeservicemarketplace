@@ -18,6 +18,7 @@ import { api } from '../api';
 
 export async function listProviderBookings(
   query: ListProviderBookingsQuery = {},
+  signal?: AbortSignal,
 ): Promise<ListProviderBookingsResponse> {
   const params: Record<string, string | number> = {};
   if (query.status) params.status = query.status;
@@ -25,6 +26,7 @@ export async function listProviderBookings(
   if (query.cursor) params.cursor = query.cursor;
   const { data } = await api.get<ListProviderBookingsResponse>('/v1/provider/bookings', {
     params,
+    signal,
   });
   return data;
 }

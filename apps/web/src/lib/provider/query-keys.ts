@@ -76,6 +76,10 @@ export const providerQueryKeys = {
     // (rendered on ACCEPTED bids) reflects the new booking state.
     root: ['provider', 'bookings'] as const,
     list: (filters: { status?: string } = {}) => ['provider', 'bookings', 'list', filters] as const,
+    // R17-E closure — every page loaded so far, cursor by cursor. Under the
+    // same root, so a transition's invalidation refetches these pages too.
+    pages: (filters: { status?: string } = {}) =>
+      ['provider', 'bookings', 'pages', filters] as const,
     detail: (bookingId: string) => ['provider', 'bookings', 'detail', bookingId] as const,
     timeline: (bookingId: string) => ['provider', 'bookings', 'timeline', bookingId] as const,
   },

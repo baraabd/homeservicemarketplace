@@ -178,6 +178,20 @@ export class BookingRepository {
     }) as Promise<BookingWithProviderRelations[]>;
   }
 
+  // R17-E closure — is this id a booking of this provider (deleted or not)?
+  // Guards listForProvider's cursor, which Prisma resolves by id alone.
+  async isCursorOwnedByProvider(
+    bookingId: string,
+    providerId: string,
+    tx?: PrismaTx,
+  ): Promise<boolean> {
+    const row = await this.db(tx).booking.findFirst({
+      where: { id: bookingId, providerId },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   // Provider-scoped detail finder. Returns null when the booking
   // doesn't exist OR doesn't belong to the calling provider — same
   // 404-or-existence pattern the seeker side uses.
