@@ -1748,7 +1748,7 @@ jobs:
               console.error('::error::R17-C acceptance did not execute all ' + expected + ' cases');
               process.exit(1);
             }"
-          test "$browser" -eq 0 && test "$service" -eq 0 && test "$closureBrowser" -eq 0 && test "$closure" -eq 0
+          test "$browser" -eq 0 && test "$service" -eq 0
       - name: Upload R17-C evidence (no credentials, cookies or private evidence)
         if: always()
         uses: actions/upload-artifact@v6
@@ -1828,9 +1828,13 @@ jobs:
             test/integration/r17-provider-surfaces.integration.spec.ts \
             --json --outputFile=r17e-provider-ci.json
           service=$?
-          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath             test/integration/r17-e-closure-browser.integration.spec.ts             --json --outputFile=r17e-closure-browser-ci.json
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/r17-e-closure-browser.integration.spec.ts \
+            --json --outputFile=r17e-closure-browser-ci.json
           closureBrowser=$?
-          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath             test/integration/r17-e-closure.integration.spec.ts             --json --outputFile=r17e-closure-ci.json
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/r17-e-closure.integration.spec.ts \
+            --json --outputFile=r17e-closure-ci.json
           closure=$?
           set -e
           # Fail closed: every R17-E case must have executed; none may be skipped.
@@ -1845,7 +1849,7 @@ jobs:
               console.error('::error::R17-E acceptance did not execute all ' + expected + ' cases');
               process.exit(1);
             }"
-          test "$browser" -eq 0 && test "$service" -eq 0
+          test "$browser" -eq 0 && test "$service" -eq 0 && test "$closureBrowser" -eq 0 && test "$closure" -eq 0
       - name: Upload R17-E evidence (no credentials, cookies or personal data)
         if: always()
         uses: actions/upload-artifact@v6
