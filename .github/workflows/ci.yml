@@ -1838,8 +1838,8 @@ jobs:
             const files = ['r17e-provider-browser-ci.json', 'r17e-provider-ci.json', 'r17e-closure-browser-ci.json', 'r17e-closure-ci.json'];
             const runs = files.map((f) => require('./apps/api/' + f));
             const sum = (k) => runs.reduce((n, r) => n + r[k], 0);
-            // 1 browser + 30 HTTP (R17-E), 1 browser + 11 HTTP (closure).
-            const expected = 43;
+            // 1 browser + 30 HTTP (R17-E), 1 browser + 12 HTTP (closure).
+            const expected = 44;
             console.log('R17-E passed', sum('numPassedTests'), 'failed', sum('numFailedTests'), 'pending', sum('numPendingTests'), 'todo', sum('numTodoTests'));
             if (sum('numFailedTests') || sum('numPendingTests') || sum('numTodoTests') || sum('numPassedTests') !== expected) {
               console.error('::error::R17-E acceptance did not execute all ' + expected + ' cases');

@@ -601,4 +601,19 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     expect((await detail('noGrant', requestId)).status).toBe(403);
     expect((await detail('wrongCat', requestId)).status).toBe(404);
   });
+
+  it('C16 a provider who bid before the slice is written is not pointed at a request their detail now hides', async () => {
+    const requestId = await openRequest(prov.dual.user);
+    await deliver(await enqueueAvailable(requestId, prov.dual.user));
+    expect(await recipientsOf(requestId)).toEqual(users('ok', 'ok2'));
+    // ok found the job in the feed and bid before the slice ran.
+    const bid = await s('ok').request('/v1/provider/bids', {
+      method: 'POST',
+      body: { requestId, amount: 140, pricingType: 'FIXED' },
+    });
+    expect(bid.status).toBe(201);
+    expect((await detail('ok', requestId)).status).toBe(404);
+    for (const batch of await batchesOf(requestId)) await deliver(batch.id);
+    expect(await notifiedFor(requestId)).toEqual(users('ok2'));
+  });
 });
