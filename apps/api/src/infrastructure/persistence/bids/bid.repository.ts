@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type {
   Bid,
   BidStatus,
+  BookingStatus,
   Prisma,
   PrismaTx,
   ProviderProfile,
@@ -192,6 +193,7 @@ export class BidRepository {
         addressSnapshot: Prisma.JsonValue;
         category: { id: string; slug: string; labelEn: string; labelAr: string } | null;
       };
+      booking: { id: string; status: BookingStatus; deletedAt: Date | null } | null;
     })[]
   > {
     const where: Prisma.BidWhereInput = {
@@ -218,6 +220,8 @@ export class BidRepository {
             },
           },
         },
+        // Booking.bidId is unique: one indexed lookup per row, in this query.
+        booking: { select: { id: true, status: true, deletedAt: true } },
       },
     }) as Promise<
       (BidWithProvider & {
@@ -229,8 +233,24 @@ export class BidRepository {
           addressSnapshot: Prisma.JsonValue;
           category: { id: string; slug: string; labelEn: string; labelAr: string } | null;
         };
+        booking: { id: string; status: BookingStatus; deletedAt: Date | null } | null;
       })[]
     >;
+  }
+
+  /** True when `bidId` is one of the provider's own bids (deleted or not).
+   *  A list cursor is a position in the caller's own list; one naming any
+   *  other row is refused rather than used to position the page. */
+  async isCursorOwnedByProvider(
+    bidId: string,
+    providerId: string,
+    tx?: PrismaTx,
+  ): Promise<boolean> {
+    const row = await this.db(tx).bid.findFirst({
+      where: { id: bidId, providerId },
+      select: { id: true },
+    });
+    return row !== null;
   }
 
   // Insert a new PENDING bid. Caller is responsible for validating

@@ -149,6 +149,11 @@ export class ProviderBidsService {
     if (!profile) {
       throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
     }
+    // A cursor names a position in this provider's own list. Prisma resolves
+    // it by id alone, so a foreign or invented id would position the page.
+    if (query.cursor && !(await this.bids.isCursorOwnedByProvider(query.cursor, profile.id))) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid cursor.', 400);
+    }
     const take = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), 100);
     const rows = await this.bids.listForProvider({
       providerId: profile.id,
@@ -245,6 +250,9 @@ export class ProviderBidsService {
         city: snapshot.city ?? '',
         country: snapshot.country ?? '',
       },
+      // Composed after submit (PENDING) or withdraw (WITHDRAWN): neither
+      // state has a booking.
+      booking: null,
     };
   }
 }
@@ -279,5 +287,9 @@ function myBidSummaryFromListRow(
       city: snapshot.city ?? '',
       country: snapshot.country ?? '',
     },
+    booking:
+      row.booking && row.booking.deletedAt === null
+        ? { id: row.booking.id, status: row.booking.status }
+        : null,
   };
 }

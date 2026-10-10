@@ -22,6 +22,8 @@ const bid = (id: string, status: 'PENDING' | 'ACCEPTED') => ({
   status,
   responseTimeMinutes: 30,
   submittedAt: '2026-10-03T09:00:00.000Z',
+  // The server links an accepted bid to its booking (E-18).
+  booking: status === 'ACCEPTED' ? { id: 'bk-1', status: 'SCHEDULED' } : null,
   request: {
     id: `req-${id}`,
     category: { id: 'c', slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة' },

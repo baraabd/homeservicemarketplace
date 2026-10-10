@@ -147,21 +147,21 @@ function makeMocks(
       findOwnedByProvider: jest.fn().mockResolvedValue(ownedBid ?? null),
       setStatusIf: jest.fn().mockResolvedValue({ count: setStatusCount }),
       listForProvider: jest.fn().mockResolvedValue([]),
+      isCursorOwnedByProvider: jest.fn().mockResolvedValue(true),
     } as unknown as BidRepository,
     requests: {
       findById: jest.fn().mockResolvedValue(request),
       lockForLifecycle: jest.fn().mockResolvedValue(request !== null),
       findAvailableForProvider: jest
         .fn()
-        .mockImplementation(
-          (_requestId: string, args: { excludeSeekerUserId: string | null }) =>
-            Promise.resolve(
-              visibleRequest &&
-                (!args.excludeSeekerUserId ||
-                  visibleRequest.seekerUserId !== args.excludeSeekerUserId)
-                ? visibleRequest
-                : null,
-            ),
+        .mockImplementation((_requestId: string, args: { excludeSeekerUserId: string | null }) =>
+          Promise.resolve(
+            visibleRequest &&
+              (!args.excludeSeekerUserId ||
+                visibleRequest.seekerUserId !== args.excludeSeekerUserId)
+              ? visibleRequest
+              : null,
+          ),
         ),
     } as unknown as ServiceRequestRepository,
     events: {
@@ -285,9 +285,7 @@ describe('ProviderBidsService.submit', () => {
     });
     expect(mocks.requests.lockForLifecycle).toHaveBeenCalledWith('req-1', undefined);
     expect(mocks.requests.findAvailableForProvider).toHaveBeenCalled();
-    expect(
-      (mocks.requests.lockForLifecycle as jest.Mock).mock.invocationCallOrder[0],
-    ).toBeLessThan(
+    expect((mocks.requests.lockForLifecycle as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
       (mocks.requests.findAvailableForProvider as jest.Mock).mock.invocationCallOrder[0],
     );
   });
@@ -443,5 +441,57 @@ describe('ProviderBidsService.list', () => {
     const out = await makeService(mocks).list('user-provider-1', { limit: 2 });
     expect(out.items.map((i) => i.id)).toEqual(['a', 'b']);
     expect(out.nextCursor).toBe('b');
+  });
+
+  // E-18 — My Bids pages through every bid; a cursor is the caller's own.
+  it('refuses a cursor that is not one of the provider’s own bids (400) and never lists', async () => {
+    const mocks = makeMocks({});
+    (mocks.bids.isCursorOwnedByProvider as jest.Mock).mockResolvedValue(false);
+    await expect(
+      makeService(mocks).list('user-provider-1', { cursor: 'someone-elses-bid' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+    expect(mocks.bids.isCursorOwnedByProvider).toHaveBeenCalledWith('someone-elses-bid', 'pp-1');
+    expect(mocks.bids.listForProvider).not.toHaveBeenCalled();
+  });
+
+  it('passes an owned cursor through to the repository', async () => {
+    const mocks = makeMocks({});
+    await makeService(mocks).list('user-provider-1', { cursor: 'mine' });
+    expect(mocks.bids.listForProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: 'pp-1', cursor: 'mine' }),
+    );
+  });
+
+  it('links an accepted bid to its live booking, and a deleted booking to none', async () => {
+    const mocks = makeMocks({});
+    const request = {
+      id: 'req',
+      categoryId: null,
+      customServiceText: null,
+      description: null,
+      addressSnapshot: { city: 'Riyadh', country: 'SA' },
+      category: null,
+    };
+    (mocks.bids.listForProvider as jest.Mock).mockResolvedValue([
+      {
+        ...makeBid({ id: 'live', status: 'ACCEPTED' }),
+        provider: makeProfile(),
+        request,
+        booking: { id: 'bk-live', status: 'IN_PROGRESS', deletedAt: null },
+      },
+      {
+        ...makeBid({ id: 'gone', status: 'ACCEPTED' }),
+        provider: makeProfile(),
+        request,
+        booking: { id: 'bk-gone', status: 'SCHEDULED', deletedAt: new Date() },
+      },
+      { ...makeBid({ id: 'pending' }), provider: makeProfile(), request, booking: null },
+    ]);
+    const out = await makeService(mocks).list('user-provider-1', {});
+    expect(out.items.map((i) => i.booking)).toEqual([
+      { id: 'bk-live', status: 'IN_PROGRESS' },
+      null,
+      null,
+    ]);
   });
 });

@@ -21,12 +21,15 @@ export async function submitBid(input: SubmitBidRequest): Promise<SubmitBidRespo
   return data;
 }
 
-export async function listMyBids(query: ListMyBidsQuery = {}): Promise<ListMyBidsResponse> {
+export async function listMyBids(
+  query: ListMyBidsQuery = {},
+  signal?: AbortSignal,
+): Promise<ListMyBidsResponse> {
   const params: Record<string, string | number> = {};
   if (query.status) params.status = query.status;
   if (query.limit !== undefined) params.limit = query.limit;
   if (query.cursor) params.cursor = query.cursor;
-  const { data } = await api.get<ListMyBidsResponse>('/v1/provider/bids', { params });
+  const { data } = await api.get<ListMyBidsResponse>('/v1/provider/bids', { params, signal });
   return data;
 }
 

@@ -12,24 +12,32 @@
 //   - Start / Complete / Cancel are the shared BookingActions, which confirm a
 //     cancellation and report every failure, and each booking opens its own
 //     detail page.
+//
+// E-18 — and it reaches every bid, not only the first page. The list reads
+// the server's cursor pages (useMyBidPages) with the bookings list's "Load
+// more" pattern; each accepted bid carries its own booking from the server,
+// so a card on any page links to it (before, a booking beyond the first
+// bookings page left its card saying "Waiting for booking…"). The status
+// counts are counts of the bids loaded so far, marked "+" while more exist.
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { BookingStatus, MyBidSummary } from '@homeservicemarketplace/contracts';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { Briefcase, ChevronRight, Loader2 } from 'lucide-react';
 
 import { useLang } from '../../../i18n/LanguageContext';
-import { useMyBids, useWithdrawBid } from '../../../hooks/provider/useMyBids';
-import { useProviderBookings } from '../../../hooks/provider/useProviderBookings';
+import { flattenBidPages, useMyBidPages, useWithdrawBid } from '../../../hooks/provider/useMyBids';
 import {
   formatRelativeTime,
   formatResponseTime,
   iconForCategorySlug,
 } from '../../../../lib/provider/available-jobs-adapter';
 import {
+  ProviderButton,
   ProviderConfirmDialog,
   ProviderErrorState,
+  ProviderNotice,
   ProviderSkeleton,
   ProviderStatusBadge,
 } from '../../../features/provider-ui';
@@ -121,25 +129,21 @@ function WithdrawBid({ bidId, lang }: { bidId: string; lang: 'en' | 'ar' }) {
 export function MyBidsScreen() {
   const { lang } = useLang();
   const language: 'en' | 'ar' = lang === 'ar' ? 'ar' : 'en';
-  const myBidsQuery = useMyBids();
-  // Each ACCEPTED bid maps to its booking, whose server state decides which
-  // transition the card offers.
-  const bookingsQuery = useProviderBookings();
-
-  const bookingByBidId = useMemo(() => {
-    const map = new Map<string, { bookingId: string; status: BookingStatus }>();
-    for (const b of bookingsQuery.data?.items ?? []) {
-      map.set(b.bidId, { bookingId: b.id, status: b.status });
-    }
-    return map;
-  }, [bookingsQuery.data]);
+  const myBidsQuery = useMyBidPages();
+  // Cards fade in unless the reader asked for reduced motion.
+  const reduceMotion = useReducedMotion();
+  const loadingMore = myBidsQuery.isFetchingNextPage;
+  const moreFailed = myBidsQuery.isFetchNextPageError;
+  const hasMore = myBidsQuery.hasNextPage;
 
   const myBids = useMemo(() => {
-    const items: MyBidSummary[] = myBidsQuery.data?.items ?? [];
+    const items: MyBidSummary[] = flattenBidPages(myBidsQuery.data?.pages);
     return items.map((b) => {
       const labelEn = b.request.category?.labelEn ?? b.request.customServiceText ?? '';
       const labelAr = b.request.category?.labelAr ?? b.request.customServiceText ?? '';
-      const linkedBooking = bookingByBidId.get(b.id) ?? null;
+      // Each ACCEPTED bid carries its booking, whose server state decides
+      // which transition the card offers.
+      const linkedBooking: { id: string; status: BookingStatus } | null = b.booking ?? null;
       return {
         id: b.id,
         requestService: labelEn,
@@ -150,7 +154,7 @@ export function MyBidsScreen() {
         // which the booking surfaces the seeker's first name.
         seekerName: b.request.city,
         status: b.status.toLowerCase() as BidView,
-        bookingId: linkedBooking?.bookingId ?? null,
+        bookingId: linkedBooking?.id ?? null,
         bookingStatus: linkedBooking?.status ?? null,
         offer: formatOffer(b.amount, b.currency, b.pricingType, language),
         executionTime: formatResponseTime(b.responseTimeMinutes, language),
@@ -158,7 +162,25 @@ export function MyBidsScreen() {
         submittedAt: formatRelativeTime(b.submittedAt, language),
       };
     });
-  }, [myBidsQuery.data, bookingByBidId, language]);
+  }, [myBidsQuery.data, language]);
+
+  // Where focus goes once the requested page lands: the first new card.
+  const firstNewIndex = useRef<number | null>(null);
+  const cardRefs = useRef(new Map<string, HTMLDivElement>());
+  useEffect(() => {
+    const index = firstNewIndex.current;
+    if (index === null || loadingMore) return;
+    firstNewIndex.current = null;
+    const next = myBids[index];
+    if (next) cardRefs.current.get(next.id)?.focus();
+  }, [myBids, loadingMore]);
+
+  const loadMore = () => {
+    // One page at a time: never a second request while one is in flight.
+    if (!hasMore || loadingMore) return;
+    firstNewIndex.current = myBids.length;
+    void myBidsQuery.fetchNextPage({ cancelRefetch: false });
+  };
 
   const L = {
     title: lang === 'ar' ? 'عروضي' : 'My Bids',
@@ -180,6 +202,16 @@ export function MyBidsScreen() {
     loadFailed: lang === 'ar' ? 'تعذّر تحميل عروضك.' : 'Couldn’t load your bids.',
     retry: lang === 'ar' ? 'إعادة المحاولة' : 'Try again',
     for: lang === 'ar' ? 'من' : 'for',
+    loadMore: lang === 'ar' ? 'عرض المزيد' : 'Load more',
+    loadingMore: lang === 'ar' ? 'جارٍ تحميل المزيد من العروض…' : 'Loading more bids…',
+    moreFailed: lang === 'ar' ? 'تعذّر تحميل المزيد من العروض.' : 'Couldn’t load more bids.',
+    moreFailedBody:
+      lang === 'ar'
+        ? 'العروض المعروضة أعلاه لا تزال محدّثة.'
+        : 'The bids above are still up to date.',
+    allShown: lang === 'ar' ? 'تم عرض كل العروض' : 'All bids shown',
+    showing: (n: number) => (lang === 'ar' ? `عدد العروض المعروضة: ${n}` : `Showing ${n} bids`),
+    atLeast: (n: number) => (lang === 'ar' ? `${n} على الأقل` : `at least ${n}`),
   };
 
   const STATUS_STYLE: Record<BidView, { bg: string; text: string; label: string }> = {
@@ -239,6 +271,7 @@ export function MyBidsScreen() {
               <div
                 key={s}
                 className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 ${STATUS_STYLE[s].bg}`}
+                data-testid={`provider-bids-count-${s}`}
               >
                 <span
                   className={STATUS_STYLE[s].text}
@@ -246,11 +279,22 @@ export function MyBidsScreen() {
                 >
                   {STATUS_STYLE[s].label}
                 </span>
+                {/* While more pages exist this counts the bids loaded so far,
+                    not a total: "+" says so, and so does the hidden text. */}
                 <span
-                  className={`w-4 h-4 rounded-full flex items-center justify-center ${STATUS_STYLE[s].text}`}
-                  style={{ fontSize: '9px', fontWeight: 800, background: 'rgba(0,0,0,0.08)' }}
+                  className={`min-w-4 h-4 px-1 rounded-full flex items-center justify-center ${STATUS_STYLE[s].text}`}
+                  // A light pill keeps the count's text at AA contrast on the tinted chip
+                  // (a dark overlay pushed it below 4.5:1).
+                  style={{ fontSize: '9px', fontWeight: 800, background: 'rgba(255,255,255,0.7)' }}
                 >
-                  {cnt}
+                  {hasMore ? (
+                    <>
+                      <span aria-hidden="true">{cnt}+</span>
+                      <span className="sr-only">{L.atLeast(cnt)}</span>
+                    </>
+                  ) : (
+                    cnt
+                  )}
                 </span>
               </div>
             );
@@ -286,131 +330,170 @@ export function MyBidsScreen() {
             </div>
           </div>
         ) : (
-          myBids.map((bid) => {
-            const ss = STATUS_STYLE[bid.status] ?? STATUS_STYLE.pending;
-            return (
-              <motion.div
-                key={bid.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 mb-3"
-                data-testid={`provider-bid-${bid.id}`}
-                data-status={bid.status}
-              >
-                <div className="flex items-start gap-3 mb-3">
-                  <div
-                    className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-2xl flex-shrink-0"
-                    aria-hidden="true"
-                  >
-                    {bid.requestIcon}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p
-                        className="min-w-0 break-words text-slate-900 dark:text-white"
-                        style={{ fontSize: '14px', fontWeight: 700 }}
-                      >
-                        {lang === 'ar' ? bid.requestServiceAr : bid.requestService}
-                      </p>
-                      <span
-                        className={`px-2 py-0.5 rounded-lg ${ss.bg} ${ss.text}`}
-                        style={{ fontSize: '10px', fontWeight: 700 }}
-                        data-testid={`provider-bid-status-${bid.id}`}
-                      >
-                        {ss.label}
-                      </span>
-                    </div>
-                    <p className="text-pv-muted" style={{ fontSize: '12px' }}>
-                      {L.for} <bdi>{bid.seekerName}</bdi> · {bid.submittedAt}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 mb-3">
-                  <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
-                    <p className="text-pv-muted" style={{ fontSize: '10px' }}>
-                      {L.price}
-                    </p>
-                    <p
-                      className="text-slate-900 dark:text-white"
-                      style={{ fontSize: '16px', fontWeight: 800 }}
-                      data-testid={`provider-bid-price-${bid.id}`}
+          <>
+            {myBids.map((bid) => {
+              const ss = STATUS_STYLE[bid.status] ?? STATUS_STYLE.pending;
+              return (
+                <motion.div
+                  key={bid.id}
+                  ref={(node: HTMLDivElement | null) => {
+                    if (node) cardRefs.current.set(bid.id, node);
+                    else cardRefs.current.delete(bid.id);
+                  }}
+                  tabIndex={-1}
+                  initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4 mb-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pv-accent"
+                  data-testid={`provider-bid-${bid.id}`}
+                  data-status={bid.status}
+                >
+                  <div className="flex items-start gap-3 mb-3">
+                    <div
+                      className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-2xl flex-shrink-0"
+                      aria-hidden="true"
                     >
-                      {/* Amount and currency code stay one left-to-right run in
+                      {bid.requestIcon}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p
+                          className="min-w-0 break-words text-slate-900 dark:text-white"
+                          style={{ fontSize: '14px', fontWeight: 700 }}
+                        >
+                          {lang === 'ar' ? bid.requestServiceAr : bid.requestService}
+                        </p>
+                        <span
+                          className={`px-2 py-0.5 rounded-lg ${ss.bg} ${ss.text}`}
+                          style={{ fontSize: '10px', fontWeight: 700 }}
+                          data-testid={`provider-bid-status-${bid.id}`}
+                        >
+                          {ss.label}
+                        </span>
+                      </div>
+                      <p className="text-pv-muted" style={{ fontSize: '12px' }}>
+                        {L.for} <bdi>{bid.seekerName}</bdi> · {bid.submittedAt}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 mb-3">
+                    <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
+                      <p className="text-pv-muted" style={{ fontSize: '10px' }}>
+                        {L.price}
+                      </p>
+                      <p
+                        className="text-slate-900 dark:text-white"
+                        style={{ fontSize: '16px', fontWeight: 800 }}
+                        data-testid={`provider-bid-price-${bid.id}`}
+                      >
+                        {/* Amount and currency code stay one left-to-right run in
                           Arabic too; the pricing basis follows in the reader's
                           language. */}
-                      <bdi dir="ltr">{bid.offer.value}</bdi>
-                      <span
-                        className="block text-pv-muted"
-                        style={{ fontSize: '12px', fontWeight: 600 }}
-                      >
-                        {bid.offer.basis}
-                      </span>
-                    </p>
-                  </div>
-                  <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
-                    <p className="text-pv-muted" style={{ fontSize: '10px' }}>
-                      {L.time}
-                    </p>
-                    <p
-                      className="text-slate-900 dark:text-white"
-                      style={{ fontSize: '13px', fontWeight: 700 }}
-                    >
-                      {bid.executionTime || '—'}
-                    </p>
-                  </div>
-                </div>
-
-                {bid.note && (
-                  <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2 mb-3">
-                    <p
-                      className="break-words text-slate-500 dark:text-slate-400"
-                      style={{ fontSize: '12px', lineHeight: '1.4' }}
-                    >
-                      <bdi>“{bid.note}”</bdi>
-                    </p>
-                  </div>
-                )}
-
-                {bid.status === 'pending' && <WithdrawBid bidId={bid.id} lang={language} />}
-
-                {bid.status === 'accepted' &&
-                  (bid.bookingId && bid.bookingStatus ? (
-                    <div className="flex flex-col gap-2">
-                      <span
-                        className="self-start"
-                        data-testid={`provider-bid-booking-status-${bid.id}`}
-                        data-status={bid.bookingStatus}
-                      >
-                        <ProviderStatusBadge
-                          tone={BOOKING_STATUS_TONE[bid.bookingStatus]}
-                          label={BOOKING_COPY[language].status[bid.bookingStatus]}
-                        />
-                      </span>
-                      <BookingActions bookingId={bid.bookingId} status={bid.bookingStatus} />
-                      <Link
-                        to={`/provider/bookings/${bid.bookingId}`}
-                        data-testid={`provider-bid-open-booking-${bid.id}`}
-                        className="inline-flex min-h-[44px] w-full items-center justify-center gap-1 rounded-2xl text-pv-accent hover:bg-pv-accent-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-pv-accent"
+                        <bdi dir="ltr">{bid.offer.value}</bdi>
+                        <span
+                          className="block text-pv-muted"
+                          style={{ fontSize: '12px', fontWeight: 600 }}
+                        >
+                          {bid.offer.basis}
+                        </span>
+                      </p>
+                    </div>
+                    <div className="flex-1 bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2.5">
+                      <p className="text-pv-muted" style={{ fontSize: '10px' }}>
+                        {L.time}
+                      </p>
+                      <p
+                        className="text-slate-900 dark:text-white"
                         style={{ fontSize: '13px', fontWeight: 700 }}
                       >
-                        {L.openBooking}
-                        <ChevronRight size={16} aria-hidden="true" className="rtl:rotate-180" />
-                      </Link>
-                      <BookingMessageButton bookingId={bid.bookingId} lang={language} />
+                        {bid.executionTime || '—'}
+                      </p>
                     </div>
-                  ) : (
-                    <p
-                      role="status"
-                      className="text-pv-muted text-center py-2"
-                      style={{ fontSize: '12px' }}
-                    >
-                      {L.bookingPending}
-                    </p>
-                  ))}
-              </motion.div>
-            );
-          })
+                  </div>
+
+                  {bid.note && (
+                    <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl px-3 py-2 mb-3">
+                      <p
+                        className="break-words text-slate-500 dark:text-slate-400"
+                        style={{ fontSize: '12px', lineHeight: '1.4' }}
+                      >
+                        <bdi>“{bid.note}”</bdi>
+                      </p>
+                    </div>
+                  )}
+
+                  {bid.status === 'pending' && <WithdrawBid bidId={bid.id} lang={language} />}
+
+                  {bid.status === 'accepted' &&
+                    (bid.bookingId && bid.bookingStatus ? (
+                      <div className="flex flex-col gap-2">
+                        <span
+                          className="self-start"
+                          data-testid={`provider-bid-booking-status-${bid.id}`}
+                          data-status={bid.bookingStatus}
+                        >
+                          <ProviderStatusBadge
+                            tone={BOOKING_STATUS_TONE[bid.bookingStatus]}
+                            label={BOOKING_COPY[language].status[bid.bookingStatus]}
+                          />
+                        </span>
+                        <BookingActions bookingId={bid.bookingId} status={bid.bookingStatus} />
+                        <Link
+                          to={`/provider/bookings/${bid.bookingId}`}
+                          data-testid={`provider-bid-open-booking-${bid.id}`}
+                          className="inline-flex min-h-[44px] w-full items-center justify-center gap-1 rounded-2xl text-pv-accent hover:bg-pv-accent-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-pv-accent"
+                          style={{ fontSize: '13px', fontWeight: 700 }}
+                        >
+                          {L.openBooking}
+                          <ChevronRight size={16} aria-hidden="true" className="rtl:rotate-180" />
+                        </Link>
+                        <BookingMessageButton bookingId={bid.bookingId} lang={language} />
+                      </div>
+                    ) : (
+                      <p
+                        role="status"
+                        className="text-pv-muted text-center py-2"
+                        style={{ fontSize: '12px' }}
+                      >
+                        {L.bookingPending}
+                      </p>
+                    ))}
+                </motion.div>
+              );
+            })}
+            <p className="sr-only" aria-live="polite" data-testid="provider-bids-shown">
+              {L.showing(myBids.length)}
+            </p>
+            {moreFailed && (
+              <div className="flex flex-col gap-2 mb-3" data-testid="provider-bids-more-error">
+                <ProviderNotice tone="danger" title={L.moreFailed} description={L.moreFailedBody} />
+                <ProviderButton tone="secondary" onClick={loadMore} disabled={loadingMore}>
+                  {L.retry}
+                </ProviderButton>
+              </div>
+            )}
+            {hasMore && !moreFailed ? (
+              <ProviderButton
+                tone="secondary"
+                size="block"
+                onClick={loadMore}
+                disabled={loadingMore}
+                aria-busy={loadingMore}
+                data-testid="provider-bids-load-more"
+              >
+                {loadingMore ? L.loadingMore : L.loadMore}
+              </ProviderButton>
+            ) : null}
+            {!hasMore && (myBidsQuery.data?.pages.length ?? 0) > 1 ? (
+              <p
+                className="text-center text-pv-muted"
+                style={{ fontSize: '13px' }}
+                data-testid="provider-bids-end"
+              >
+                {L.allShown}
+              </p>
+            ) : null}
+          </>
         )}
       </div>
     </div>

@@ -1,4 +1,5 @@
 import type { BidStatus } from '../../../seeker/bids/enums/bid-status';
+import type { BookingStatus } from '../../../seeker/bookings/enums/booking-status';
 import type { PricingType } from '../../../seeker/bids/enums/pricing-type';
 
 // Lightweight ref to the bidded request, embedded inside MyBidSummary
@@ -25,4 +26,14 @@ export interface MyBidSummary {
   responseTimeMinutes: number | null;
   submittedAt: string;
   request: MyBidRequestRef;
+  // The booking an ACCEPTED bid created, read with the bid, so a card on any
+  // page links to its booking without paging the bookings list. Null when
+  // the bid has no live booking (pending, rejected, withdrawn, or the
+  // booking was deleted).
+  booking: MyBidBookingRef | null;
+}
+
+export interface MyBidBookingRef {
+  id: string;
+  status: BookingStatus;
 }
