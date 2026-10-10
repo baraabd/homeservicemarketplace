@@ -14,7 +14,8 @@ export interface ProBidCardProps {
   jobCount: number;
   /** Language of the rating line. */
   lang?: 'en' | 'ar';
-  price: number;
+  /** Already formatted with its currency (formatOffer). */
+  price: string;
   unit?: string; // "/hr", "/job", etc.
   tags?: string[];
   verified?: boolean;
@@ -125,7 +126,7 @@ export function ProBidCard({
                 className="text-slate-900"
                 style={{ fontSize: '20px', fontWeight: 800, lineHeight: '1.1' }}
               >
-                ${price}
+                <bdi dir="ltr">{price}</bdi>
               </p>
               <p className="text-slate-400" style={{ fontSize: '11px' }}>
                 {unit}

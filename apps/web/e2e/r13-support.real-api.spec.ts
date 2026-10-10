@@ -150,8 +150,8 @@ test.describe('R13 durable help and support — real browser, API and PostgreSQL
     await openSupport(page);
 
     // The static FAQ is not a conversation and no assistant is pretended.
-    // Scoped to the support page: the profile screen beneath it carries its
-    // own, real network-status card ("Online · Connected & synced").
+    // Scoped to the support page, so nothing on the profile screen beneath it
+    // can satisfy or break the check.
     const support = page.getByTestId('help-support-page');
     await expect(support.getByText('No support tickets yet.')).toBeVisible();
     await expect(support.getByText(/\bonline\b|under 5 minutes|typing/i)).toHaveCount(0);

@@ -8,7 +8,6 @@ import {
   Settings,
   ChevronRight,
   ChevronLeft,
-  WifiOff,
   CheckCircle2,
   BellOff,
   Wrench,
@@ -307,19 +306,16 @@ function MenuItem({
 
 // ─── Profile list ─────────────────────────────────────────────────────────────
 function ProfileList({
-  isOffline,
-  onToggleOffline,
   unreadCount,
   onNavigate,
 }: {
-  isOffline: boolean;
-  onToggleOffline: () => void;
   unreadCount: number | undefined;
   onNavigate: (v: ProfileView) => void;
 }) {
   const { lang, t } = useLang();
-  // Bind the hero card's avatar/name/email to the authenticated user.
-  // Stats (ratings, counts) remain as demo data per the task scope.
+  // Bind the hero card's avatar/name/email to the authenticated user. The
+  // demo stats grid ("12 jobs · 3 active · $420 spent" for everyone) is gone:
+  // no server figure stood behind it.
   const identity = useAuthIdentity();
 
   return (
@@ -355,30 +351,6 @@ function ProfileList({
             </p>
           </div>
         </div>
-      </div>
-
-      {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        {[
-          { val: '12', labelKey: 'totalJobs' },
-          { val: '3', labelKey: 'active' },
-          { val: '$420', labelKey: 'spent' },
-        ].map((s) => (
-          <div
-            key={s.labelKey}
-            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm py-3 flex flex-col items-center"
-          >
-            <span
-              className="text-slate-900 dark:text-white"
-              style={{ fontSize: '16px', fontWeight: 800 }}
-            >
-              {s.val}
-            </span>
-            <span className="text-slate-400" style={{ fontSize: '10px' }}>
-              {t(s.labelKey)}
-            </span>
-          </div>
-        ))}
       </div>
 
       {/* Menu */}
@@ -419,44 +391,6 @@ function ProfileList({
           onClick={() => onNavigate('settings')}
         />
       </div>
-
-      {/* Offline toggle */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-9 h-9 rounded-xl flex items-center justify-center ${isOffline ? 'bg-amber-100' : 'bg-green-100'}`}
-            >
-              {isOffline ? (
-                <WifiOff size={16} className="text-amber-600" />
-              ) : (
-                <CheckCircle2 size={16} className="text-green-600" />
-              )}
-            </div>
-            <div>
-              <p
-                className="text-slate-900 dark:text-white"
-                style={{ fontSize: '14px', fontWeight: 700 }}
-              >
-                {isOffline ? t('offlineMode') : t('online')}
-              </p>
-              <p className="text-slate-400" style={{ fontSize: '11px' }}>
-                {isOffline ? t('syncDesc') : t('connectedDesc')}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onToggleOffline}
-            className={`w-12 h-7 rounded-full border-2 transition-all duration-300 flex items-center px-0.5 ${
-              isOffline ? 'bg-amber-500 border-amber-500' : 'bg-green-500 border-green-500'
-            }`}
-          >
-            <div
-              className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-300 ${isOffline ? 'translate-x-5' : 'translate-x-0'}`}
-            />
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -473,8 +407,6 @@ export type ProfileView =
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface ProfileTabProps {
-  isOffline: boolean;
-  onToggleOffline: () => void;
   notifications: AppNotification[];
   onMarkAllRead: () => void;
   onMarkRead: (id: string) => void;
@@ -491,8 +423,6 @@ interface ProfileTabProps {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 export function ProfileTab({
-  isOffline,
-  onToggleOffline,
   notifications,
   onMarkAllRead,
   onMarkRead,
@@ -512,12 +442,7 @@ export function ProfileTab({
         transition={{ duration: 0.18 }}
         style={{ scrollbarWidth: 'none' }}
       >
-        <ProfileList
-          isOffline={isOffline}
-          onToggleOffline={onToggleOffline}
-          unreadCount={unreadCount}
-          onNavigate={setView}
-        />
+        <ProfileList unreadCount={unreadCount} onNavigate={setView} />
       </motion.div>
 
       {/* Sub-pages slide over the list */}

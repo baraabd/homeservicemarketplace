@@ -13,7 +13,6 @@ import {
   Wind,
   Hammer,
   Sparkles,
-  WifiOff,
   Image as ImageIcon,
   FileText,
   ArrowRight,
@@ -248,17 +247,10 @@ interface JobWizardModalProps {
   categoryId?: string | null;
   isOpen: boolean;
   onClose: () => void;
-  isOffline: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-export function JobWizardModal({
-  service,
-  categoryId,
-  isOpen,
-  onClose,
-  isOffline,
-}: JobWizardModalProps) {
+export function JobWizardModal({ service, categoryId, isOpen, onClose }: JobWizardModalProps) {
   const { t, dir, lang } = useLang();
   const langKey: 'en' | 'ar' = lang === 'ar' ? 'ar' : 'en';
 
@@ -680,7 +672,12 @@ export function JobWizardModal({
     if (!createIdempotencyKeyRef.current) {
       createIdempotencyKeyRef.current =
         globalThis.crypto?.randomUUID?.() ??
-        'req-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '-' + Math.random().toString(36).slice(2);
+        'req-' +
+          Date.now() +
+          '-' +
+          Math.random().toString(36).slice(2) +
+          '-' +
+          Math.random().toString(36).slice(2);
     }
 
     createMut.mutate(
@@ -1227,26 +1224,6 @@ export function JobWizardModal({
         {/* ── STEP 3: SUCCESS ───────────────────────────────────────────────── */}
         {step === 3 && (
           <div className="flex-1 flex flex-col bg-white" style={{ minHeight: '100svh' }}>
-            {isOffline && (
-              <div className="flex items-center gap-3 bg-slate-900 px-5 py-3.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
-                  <WifiOff size={14} className="text-amber-400" />
-                </div>
-                <p
-                  className="flex-1 text-white"
-                  style={{ fontSize: '12px', fontWeight: 500, lineHeight: '1.4' }}
-                >
-                  {t('savedLocally')}
-                </p>
-                <button
-                  onClick={handleClose}
-                  className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
-                >
-                  <X size={10} className="text-white" />
-                </button>
-              </div>
-            )}
-
             <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 text-center">
               {/* Success icon */}
               <div className="relative mb-6">
@@ -1311,7 +1288,7 @@ export function JobWizardModal({
                   { label: t('scheduleLabel'), val: successScheduleLabel },
                   {
                     label: t('statusLabel'),
-                    val: isOffline ? t('savedLocally') : t('postedAndLive'),
+                    val: t('postedAndLive'),
                   },
                 ].map((row) => (
                   <div

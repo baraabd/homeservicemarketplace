@@ -23,7 +23,7 @@ function renderHomeOnBookings() {
       <LanguageProvider>
         <EcosystemProvider>
           <MemoryRouter initialEntries={['/home/bookings']}>
-            <HomeScreen isOffline={false} onServiceSelect={() => {}} onToggleOffline={() => {}} />
+            <HomeScreen isOffline={false} onServiceSelect={() => {}} />
           </MemoryRouter>
         </EcosystemProvider>
       </LanguageProvider>

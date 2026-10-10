@@ -22,7 +22,7 @@ function renderHome() {
       <LanguageProvider>
         <EcosystemProvider>
           <MemoryRouter initialEntries={['/home']}>
-            <HomeScreen isOffline={false} onServiceSelect={() => {}} onToggleOffline={() => {}} />
+            <HomeScreen isOffline={false} onServiceSelect={() => {}} />
           </MemoryRouter>
         </EcosystemProvider>
       </LanguageProvider>

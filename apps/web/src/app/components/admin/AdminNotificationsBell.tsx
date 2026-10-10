@@ -23,6 +23,9 @@ export function AdminNotificationsBell({ lang }: { lang: string }) {
   const markRead = useMarkAdminNotificationRead();
 
   const unreadCount = unreadQuery.data?.count ?? 0;
+  // As on the provider bell (R17-B B-5): a count that could not be read is
+  // not "nothing unread", and the button says so.
+  const unknown = unreadQuery.data === undefined && unreadQuery.isError;
   const items = allQuery.data?.items ?? [];
 
   const L = {
@@ -32,6 +35,17 @@ export function AdminNotificationsBell({ lang }: { lang: string }) {
     loading: isAr ? 'جارٍ التحميل…' : 'Loading…',
     failed: isAr ? 'تعذّر تحميل الإشعارات.' : 'Could not load notifications.',
     markRead: isAr ? 'تم القراءة' : 'Mark read',
+    button: unknown
+      ? isAr
+        ? 'إشعارات الإدارة، تعذّر تحميل عدد غير المقروء'
+        : 'Admin notifications, unread count couldn’t be loaded'
+      : unreadCount > 0
+        ? isAr
+          ? `إشعارات الإدارة، ${unreadCount} غير مقروءة`
+          : `Admin notifications, ${unreadCount} unread`
+        : isAr
+          ? 'إشعارات الإدارة'
+          : 'Admin notifications',
   };
 
   return (
@@ -39,7 +53,8 @@ export function AdminNotificationsBell({ lang }: { lang: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={L.title}
+        aria-label={L.button}
+        data-count-state={unknown ? 'unknown' : 'known'}
         className="relative w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition-all"
       >
         <Bell size={17} className="text-slate-600 dark:text-slate-300" />

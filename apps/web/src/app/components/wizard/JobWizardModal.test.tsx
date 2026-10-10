@@ -96,7 +96,7 @@ import { JobWizardModal } from './JobWizardModal';
 //   • Legacy hardcoded "Mar 15, 2026" / "10:00 AM" strings never appear
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderWizard(opts?: { categoryId?: string | null; isOffline?: boolean }) {
+function renderWizard(opts?: { categoryId?: string | null }) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -108,7 +108,6 @@ function renderWizard(opts?: { categoryId?: string | null; isOffline?: boolean }
           categoryId={opts?.categoryId ?? null}
           isOpen
           onClose={() => {}}
-          isOffline={opts?.isOffline ?? false}
         />
       </LanguageProvider>
     </QueryClientProvider>,

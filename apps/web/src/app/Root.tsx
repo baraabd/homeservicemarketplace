@@ -22,7 +22,6 @@ export interface RootContext {
   // free-form CTAs (search bar, "Post a new job" etc.) so the
   // resulting request is created with customServiceText.
   openWizard: (service: string, categoryId?: string | null) => void;
-  toggleOffline: () => void;
 }
 
 export function useRootContext() {
@@ -101,12 +100,7 @@ function RootInner() {
   const openWizard = (service: string, categoryId: string | null = null) => {
     setWizard({ service, categoryId, open: true });
   };
-  const toggleOffline = () => {
-    const next = !isOffline;
-    setIsOffline(next);
-    if (next) setOfflineSnack(true);
-  };
-  const ctx: RootContext = { isOffline, openWizard, toggleOffline };
+  const ctx: RootContext = { isOffline, openWizard };
 
   const fontFamily =
     lang === 'ar'
@@ -213,7 +207,6 @@ function RootInner() {
               categoryId={wizard.categoryId}
               isOpen={wizard.open && !!user}
               onClose={() => setWizard((value) => ({ ...value, open: false }))}
-              isOffline={isOffline}
             />
           )}
 
@@ -221,7 +214,6 @@ function RootInner() {
             visible={offlineSnack}
             variant="offline"
             message={t('offlineBanner')}
-            action={{ label: t('retry'), onClick: () => setOfflineSnack(false) }}
             onDismiss={() => setOfflineSnack(false)}
             duration={5000}
           />
