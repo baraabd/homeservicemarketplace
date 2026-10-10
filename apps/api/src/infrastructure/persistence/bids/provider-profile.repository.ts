@@ -173,11 +173,22 @@ export class ProviderProfileRepository {
   // providers whose centre lies within the widest permitted radius of the
   // request, plus same-city providers — and the caller applies
   // `matchServiceArea` per row for the exact answer.
+  //
+  // R17-E closure (E-13) — WHO may work is not this query's decision. It used
+  // to read `status: 'ACTIVE'`, the legacy column, while the feed and detail
+  // routes enforce VIEW_MARKETPLACE; a suspended account, a RESTRICTED or
+  // unverified provider, or one without a live grant was notified about work
+  // the feed refused them. The caller now passes `authority`, the capability
+  // service's superset predicate (marketplaceCandidateWhere), and decides
+  // every returned row exactly (holdersAmong) before notifying anyone.
+  // `onlyUserIds` re-reads a known slice of recipients (the batch stage).
   async listEligibleRecipientsPage(
     args: {
       categoryId: string | null;
       location: RequestLocation;
       excludeSeekerUserId: string;
+      authority: Prisma.ProviderProfileWhereInput;
+      onlyUserIds?: readonly string[];
       take: number;
       cursorId?: string;
     },
@@ -216,13 +227,20 @@ export class ProviderProfileRepository {
 
     return (await this.db(tx).providerProfile.findMany({
       where: {
-        status: 'ACTIVE',
-        deletedAt: null,
-        userId: { not: null, notIn: [args.excludeSeekerUserId] },
-        OR: geoCandidates,
-        ...(args.categoryId
-          ? { serviceCategories: { some: { serviceCategoryId: args.categoryId } } }
-          : {}),
+        AND: [
+          args.authority,
+          {
+            userId: {
+              not: null,
+              notIn: [args.excludeSeekerUserId],
+              ...(args.onlyUserIds ? { in: [...args.onlyUserIds] } : {}),
+            },
+          },
+          { OR: geoCandidates },
+          ...(args.categoryId
+            ? [{ serviceCategories: { some: { serviceCategoryId: args.categoryId } } }]
+            : []),
+        ],
       },
       select: {
         id: true,

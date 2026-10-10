@@ -7,7 +7,7 @@ import {
   type ProviderCapabilityDecision,
 } from '@homeservicemarketplace/contracts';
 
-import type { PrismaTx } from '@homeservicemarketplace/database';
+import type { Prisma, PrismaTx } from '@homeservicemarketplace/database';
 
 import { AppConfigService } from '../../../config/app-config.service';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
@@ -72,6 +72,109 @@ export interface CapabilityContext {
 /** The three tables the decision reads, from the pool or a transaction. */
 type CapabilityReader = Pick<PrismaTx, 'user' | 'providerProfile' | 'providerWorkAccessGrant'>;
 
+type AccountFacts = { status: string; isActive: boolean; deletedAt: Date | null };
+type ProfileFacts = {
+  id: string;
+  status: string;
+  onboardingState: string | null;
+  standingState: string | null;
+  verificationState: string | null;
+};
+
+/** "Live" grant, evaluated by the database at statement time (docs/adr/0005
+ *  axis 4): one definition for the single and the bulk read. */
+function liveGrantWhere(now: Date): Prisma.ProviderWorkAccessGrantWhereInput {
+  return {
+    status: 'ACTIVE',
+    revokedAt: null,
+    grantedAt: { lte: now },
+    OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+  };
+}
+
+/** The facts the rules read, from rows already loaded. Shared by the single
+ *  and the bulk read so the two cannot assemble a context differently. */
+function contextFrom(
+  user: AccountFacts | null,
+  profile: ProfileFacts | null,
+  hasLiveWorkAccessGrant: boolean,
+): CapabilityContext {
+  const accountEligible =
+    user !== null && user.deletedAt === null && user.isActive && user.status === 'ACTIVE';
+  if (!accountEligible) {
+    return {
+      accountEligible: false,
+      hasProfile: false,
+      onboardingState: null,
+      standingState: null,
+      legacyStatus: null,
+      verificationState: null,
+      hasLiveWorkAccessGrant: false,
+    };
+  }
+  return {
+    accountEligible: true,
+    hasProfile: profile !== null,
+    onboardingState: profile?.onboardingState ?? null,
+    standingState: profile?.standingState ?? null,
+    legacyStatus: profile?.status ?? null,
+    verificationState: profile?.verificationState ?? null,
+    hasLiveWorkAccessGrant: profile !== null && hasLiveWorkAccessGrant,
+  };
+}
+
+/** R17-E closure (E-13) — conditions WITHOUT which the precedence table can
+ *  never grant VIEW_MARKETPLACE, as data. A bulk reader (the request-available
+ *  fan-out) turns it into a SQL predicate to narrow candidates on indexed
+ *  columns; the exact decision is still `decide()`, run on every candidate.
+ *  The narrowing may only drop rows `decide()` would deny, which the matrix
+ *  spec checks by comparing `marketplaceCandidateAdmits` with `decide` over
+ *  every context.
+ *
+ *    account eligible   rank 0
+ *    legacy status      rank 3 denies SUSPENDED (listed positively so the
+ *                       (status, deletedAt, …) indexes stay usable); with
+ *                       WORK_ACCESS_ENFORCED off, rank 7 needs ACTIVE
+ *    standing           ranks 2–4 deny TERMINATED, SUSPENDED, RESTRICTED
+ *    verification       rank 6, when VERIFICATION_ENFORCED
+ *    live grant         rank 7, when WORK_ACCESS_ENFORCED */
+export interface MarketplaceCandidateRule {
+  legacyStatuses: readonly ('DRAFT' | 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED')[];
+  standingStates: readonly (null | 'GOOD' | 'UNDER_REVIEW')[];
+  requireVerified: boolean;
+  requireLiveGrant: boolean;
+}
+
+export function marketplaceCandidateRule(flags: {
+  workAccessEnforced: boolean;
+  verificationEnforced: boolean;
+}): MarketplaceCandidateRule {
+  return {
+    legacyStatuses: flags.workAccessEnforced
+      ? ['DRAFT', 'PENDING_REVIEW', 'ACTIVE', 'REJECTED']
+      : ['ACTIVE'],
+    standingStates: [null, 'GOOD', 'UNDER_REVIEW'],
+    requireVerified: flags.verificationEnforced,
+    requireLiveGrant: flags.workAccessEnforced,
+  };
+}
+
+/** Does a context satisfy the rule? The JS reading of the same data the SQL
+ *  predicate is built from; the matrix spec holds it against `decide`. */
+export function marketplaceCandidateAdmits(
+  rule: MarketplaceCandidateRule,
+  ctx: CapabilityContext,
+): boolean {
+  return (
+    ctx.accountEligible &&
+    ctx.hasProfile &&
+    (rule.legacyStatuses as readonly (string | null)[]).includes(ctx.legacyStatus) &&
+    (rule.standingStates as readonly (string | null)[]).includes(ctx.standingState) &&
+    (!rule.requireVerified || ctx.verificationState === 'VERIFIED') &&
+    (!rule.requireLiveGrant || ctx.hasLiveWorkAccessGrant)
+  );
+}
+
 @Injectable()
 export class ProviderCapabilityService {
   constructor(
@@ -91,6 +194,95 @@ export class ProviderCapabilityService {
    * a server-only projection helper; mutation guards still load fresh facts. */
   forContext(context: CapabilityContext): ProviderCapabilitiesResponse {
     return this.decide(context);
+  }
+
+  /** R17-E closure (E-13) — which of these users hold `capability` now.
+   *
+   *  The same decision as `for()`, for a page of users at once: three reads
+   *  in total (accounts, profiles, live grants), never one per user, through
+   *  `contextFrom` and `decide`. Pass `db` to read inside a transaction. */
+  async holdersAmong(
+    userIds: readonly string[],
+    capability: ProviderCapability,
+    db: CapabilityReader = this.prisma.client,
+  ): Promise<Set<string>> {
+    const ids = [...new Set(userIds)];
+    if (ids.length === 0) return new Set();
+    const now = new Date();
+    const accounts = await db.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, status: true, isActive: true, deletedAt: true },
+    });
+    const eligible = accounts
+      .filter((u) => contextFrom(u, null, false).accountEligible)
+      .map((u) => u.id);
+    const profiles =
+      eligible.length === 0
+        ? []
+        : await db.providerProfile.findMany({
+            where: { userId: { in: eligible }, deletedAt: null },
+            select: {
+              id: true,
+              userId: true,
+              status: true,
+              onboardingState: true,
+              standingState: true,
+              verificationState: true,
+            },
+          });
+    const granted =
+      profiles.length === 0
+        ? []
+        : await db.providerWorkAccessGrant.findMany({
+            where: { providerProfileId: { in: profiles.map((p) => p.id) }, ...liveGrantWhere(now) },
+            select: { providerProfileId: true },
+          });
+    const accountById = new Map(accounts.map((u) => [u.id, u]));
+    const profileByUser = new Map(profiles.map((p) => [p.userId, p]));
+    const grantedProfiles = new Set(granted.map((g) => g.providerProfileId));
+    const holders = new Set<string>();
+    for (const id of ids) {
+      const profile = profileByUser.get(id) ?? null;
+      const ctx = contextFrom(
+        accountById.get(id) ?? null,
+        profile,
+        profile !== null && grantedProfiles.has(profile.id),
+      );
+      if (this.decide(ctx).allowed.includes(capability)) holders.add(id);
+    }
+    return holders;
+  }
+
+  /** The candidate rule under the flags in force (see MarketplaceCandidateRule). */
+  marketplaceCandidateRule(): MarketplaceCandidateRule {
+    return marketplaceCandidateRule({
+      workAccessEnforced: this.config.get('WORK_ACCESS_ENFORCED'),
+      verificationEnforced: this.config.get('VERIFICATION_ENFORCED'),
+    });
+  }
+
+  /** The candidate rule as a ProviderProfile predicate. A SUPERSET of the
+   *  providers holding VIEW_MARKETPLACE: callers must still decide each one
+   *  (holdersAmong) before acting on it. */
+  marketplaceCandidateWhere(now = new Date()): Prisma.ProviderProfileWhereInput {
+    const rule = this.marketplaceCandidateRule();
+    const standing = rule.standingStates.filter((s): s is 'GOOD' | 'UNDER_REVIEW' => s !== null);
+    return {
+      deletedAt: null,
+      userId: { not: null },
+      status: { in: [...rule.legacyStatuses] },
+      user: { status: 'ACTIVE', isActive: true, deletedAt: null },
+      AND: [
+        {
+          OR: [
+            ...(rule.standingStates.includes(null) ? [{ standingState: null }] : []),
+            { standingState: { in: standing } },
+          ],
+        },
+        ...(rule.requireVerified ? [{ verificationState: 'VERIFIED' as const }] : []),
+        ...(rule.requireLiveGrant ? [{ workAccessGrants: { some: liveGrantWhere(now) } }] : []),
+      ],
+    };
   }
 
   /** True when the user holds this capability. The form guards use. */
@@ -127,6 +319,23 @@ export class ProviderCapabilityService {
     return set.allowed.includes(capability);
   }
 
+  /** R17-E closure — canInTransaction's locks, for a slice of users at once:
+   *  their account rows, then their live profile rows, FOR SHARE, each in id
+   *  order so two slices can never wait on each other. Two statements however
+   *  many users. A writer of standing, legacy status or verification then
+   *  either committed before the caller's next read or waits for its commit.
+   *  Same lock order as canInTransaction: request → account → profile. */
+  async lockProvidersForShare(userIds: readonly string[], tx: PrismaTx): Promise<void> {
+    const ids = [...new Set(userIds)];
+    if (ids.length === 0) return;
+    await tx.$queryRaw`
+      SELECT 1 FROM "User" WHERE "id" = ANY(${ids}::text[]) ORDER BY "id" FOR SHARE`;
+    await tx.$queryRaw`
+      SELECT 1 FROM "ProviderProfile"
+      WHERE "userId" = ANY(${ids}::text[]) AND "deletedAt" IS NULL
+      ORDER BY "id" FOR SHARE`;
+  }
+
   // ── inputs ───────────────────────────────────────────────────────────────
 
   private async load(
@@ -141,22 +350,11 @@ export class ProviderCapabilityService {
       select: { status: true, isActive: true, deletedAt: true },
     });
 
-    const accountEligible =
-      user !== null && user.deletedAt === null && user.isActive && user.status === 'ACTIVE';
-
-    if (!accountEligible) {
+    if (!contextFrom(user, null, false).accountEligible) {
       // Deliberately does NOT load the profile. Nothing downstream can grant
       // anything, and not reading it keeps the ineligible path cheap and
       // impossible to accidentally make conditional on provider state.
-      return {
-        accountEligible: false,
-        hasProfile: false,
-        onboardingState: null,
-        standingState: null,
-        legacyStatus: null,
-        verificationState: null,
-        hasLiveWorkAccessGrant: false,
-      };
+      return contextFrom(null, null, false);
     }
 
     const profile = await db.providerProfile.findFirst({
@@ -177,29 +375,15 @@ export class ProviderCapabilityService {
       profile === null
         ? null
         : await db.providerWorkAccessGrant.findFirst({
-            where: {
-              providerProfileId: profile.id,
-              status: 'ACTIVE',
-              revokedAt: null,
-              // "Live" is a time predicate evaluated by the database, not a
-              // status column maintained by a job. A nightly sweep that fails
-              // would otherwise leave access granted that nobody authorised
-              // (docs/adr/0005 axis 4).
-              grantedAt: { lte: new Date() },
-              OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-            },
+            // "Live" is a time predicate evaluated by the database, not a
+            // status column maintained by a job. A nightly sweep that fails
+            // would otherwise leave access granted that nobody authorised
+            // (docs/adr/0005 axis 4).
+            where: { providerProfileId: profile.id, ...liveGrantWhere(new Date()) },
             select: { id: true },
           });
 
-    return {
-      accountEligible: true,
-      hasProfile: profile !== null,
-      onboardingState: profile?.onboardingState ?? null,
-      standingState: profile?.standingState ?? null,
-      legacyStatus: profile?.status ?? null,
-      verificationState: profile?.verificationState ?? null,
-      hasLiveWorkAccessGrant: grant !== null,
-    };
+    return contextFrom(user, profile, grant !== null);
   }
 
   // ── the precedence table ─────────────────────────────────────────────────

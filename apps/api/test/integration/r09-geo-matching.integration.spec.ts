@@ -236,9 +236,13 @@ d('R09 — geographic matching is one rule on every path (real Postgres)', () =>
     const { RequestsService } = require('../../src/modules/requests/requests.service');
     const { RequestMediaService } = require('../../src/modules/media/request-media.service');
     const {
+      RequestAvailableAudience,
       RequestAvailableBatchHandler,
       RequestAvailableDispatchHandler,
     } = require('../../src/modules/requests/outbox/request-available.handler');
+    const {
+      ProviderCapabilityService,
+    } = require('../../src/modules/provider/capability/provider-capability.service');
     const {
       NotificationsService,
     } = require('../../src/modules/notifications/notifications.service');
@@ -312,10 +316,21 @@ d('R09 — geographic matching is one rule on every path (real Postgres)', () =>
       tx,
     );
     feed = new AvailableRequestsService(providerRepo, requestRepo, bidRepo, categoryRepo);
+    // R17-E closure — recipients are decided by the provider capability
+    // service, as the feed is (E-13).
+    const capabilities = new ProviderCapabilityService(prismaSvc, config);
+    const audience = new RequestAvailableAudience(providerRepo, capabilities);
     makeWorker = () =>
       new OutboxWorker(outbox, prismaSvc, config, metrics(), [
-        new RequestAvailableDispatchHandler(providerRepo, outbox, config, requestRepo),
-        new RequestAvailableBatchHandler(notificationRepo, realtime, requestRepo),
+        new RequestAvailableDispatchHandler(audience, outbox, config, requestRepo),
+        new RequestAvailableBatchHandler(
+          notificationRepo,
+          realtime,
+          requestRepo,
+          audience,
+          capabilities,
+          bidRepo,
+        ),
       ]);
 
     await wipe();
@@ -327,6 +342,10 @@ d('R09 — geographic matching is one rule on every path (real Postgres)', () =>
           passwordHash: 'x',
           firstName: 'R09',
           lastName: 'Fixture',
+          // A provider with a PENDING_VERIFICATION account holds no provider
+          // capability (rank 0), so the feed refuses it and, since R17-E's
+          // closure, so does the fan-out.
+          status: 'ACTIVE',
         },
       });
     }

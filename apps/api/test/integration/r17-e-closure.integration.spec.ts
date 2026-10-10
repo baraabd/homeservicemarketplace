@@ -141,7 +141,7 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
   const listPage = (who: Session, q: Record<string, string | number> = {}) =>
     who.request<Page>(
       `/v1/provider/bookings?${new URLSearchParams(
-        Object.entries(q).map(([k, v]) => [k, String(v)]),
+        Object.entries(q).map(([k, v]): [string, string] => [k, String(v)]),
       )}`,
     );
 

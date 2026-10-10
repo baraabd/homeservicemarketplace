@@ -114,6 +114,28 @@ export class BidRepository {
     return new Set(rows.map((r) => r.requestId));
   }
 
+  // R17-E closure — of these providers, which already hold a non-WITHDRAWN,
+  // non-deleted bid on this request? The provider detail route answers 404
+  // for exactly those (findAvailableForProvider's excludeBidsByProviderId),
+  // so the fan-out must not point them at it. One query per slice.
+  async findProviderIdsWithActiveBid(
+    requestId: string,
+    providerIds: readonly string[],
+    tx?: PrismaTx,
+  ): Promise<Set<string>> {
+    if (providerIds.length === 0) return new Set();
+    const rows = await this.db(tx).bid.findMany({
+      where: {
+        requestId,
+        providerId: { in: [...providerIds] },
+        deletedAt: null,
+        status: { not: 'WITHDRAWN' },
+      },
+      select: { providerId: true },
+    });
+    return new Set(rows.map((r) => r.providerId));
+  }
+
   // The provider's existing non-WITHDRAWN bid on a specific request,
   // if any. Used by the submit-bid path to enforce the
   // one-active-bid-per-(provider, request) invariant before insert —
