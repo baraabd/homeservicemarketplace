@@ -23,6 +23,7 @@ const accepted = {
   status: 'ACCEPTED',
   responseTimeMinutes: 30,
   submittedAt: '2026-10-03T09:00:00.000Z',
+  booking: { id: 'bk-1', status: 'SCHEDULED' },
   request: {
     id: 'req-1',
     category: { id: 'c', slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة' },

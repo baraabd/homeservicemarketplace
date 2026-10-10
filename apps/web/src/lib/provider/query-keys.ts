@@ -68,6 +68,9 @@ export const providerQueryKeys = {
     // hasOwnBid flag flips correctly without a manual refetch.
     root: ['provider', 'bids'] as const,
     list: (filters: { status?: string } = {}) => ['provider', 'bids', 'list', filters] as const,
+    // E-18 — every page of My Bids loaded so far, cursor by cursor. Under the
+    // same root, so submit, withdraw and booking transitions refetch them.
+    pages: (filters: { status?: string } = {}) => ['provider', 'bids', 'pages', filters] as const,
   },
   bookings: {
     // Provider-side bookings (Sprint 5.4). Start / complete / cancel
