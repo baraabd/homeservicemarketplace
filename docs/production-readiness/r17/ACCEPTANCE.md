@@ -67,7 +67,7 @@ Open policy decisions (do not block merges; keep release blockers open):
   request whose category changed is re-announced (`R17_E_PROVIDER_POLICY.md`).
 
 Overall: `R17_INTEGRATED_ACCEPTED` on `develop@cc2dff1` (recorded in R18
-Phase 0, `docs/production-readiness/r18/ACCEPTANCE.md`). Every unit is merged
+Phase 0, `docs/production-readiness/r18/FUNCTIONAL_ACCEPTANCE.md`). Every unit is merged
 and its acceptance executed on that one source in hosted CI run 38051847277:
 R17-A, R17-B, R17-C, R17-D, R17-E with its closure, and PLATFORM-TX-1
 (`platform-transaction-commit.integration.spec.ts` in Integration & E2E).
@@ -76,3 +76,8 @@ low-memory Windows host. It certifies engineering acceptance, not the open
 policy decisions above, and not E-18 (My Bids), which is repaired separately
 in #149. R16 remains `R16_POLICY_BLOCKED` and
 `R16_FUNDING_AUTHORITY_BLOCKED`; nothing in R17 closes it.
+
+E-18 (2026-10-10): #149 merged by the owner as `fabeb07`. The six post-merge
+workflows on `fabeb07` are green (CI 38076416877, attempt 1), including the
+fail-closed E-18 step (7/7) and R17-C 23, R17-D 14, R17-E 44. R17 stays
+`R17_INTEGRATED_ACCEPTED`, now on `develop@fabeb07`.

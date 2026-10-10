@@ -1,0 +1,58 @@
+# R18 — Product truth inventory
+
+Scope: the web runtime (`apps/web/src`, excluding tests, mocks and stories) at
+`fabeb07`, searched for: coming soon, TODO/FIXME, placeholder, mock, demo,
+fake, `setTimeout`, `Math.random`, `localStorage`/`sessionStorage`,
+`isPlaceholderAction`, `topPro`, badge, withdraw, payout, payment, refund,
+track, call, seeded messages and ratings. Every match was read in context and
+its reachability checked before classification. No match was deleted
+mechanically.
+
+Classes: `AUTHORITATIVE_RUNTIME`, `STATIC_CONTENT`, `TEST_ONLY`,
+`DEVELOPMENT_ONLY`, `HONESTLY_DISABLED`, `RELEASE_BLOCKER`, `OUT_OF_SCOPE`,
+`DEAD_CODE_SAFE_TO_REMOVE`.
+
+## Release blockers found and where they are fixed
+
+| Location                                                                                       | Finding                                                                               | Fix                                |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------- |
+| seeker profile, home, settings, request success, bids, booking cards, app selector, admin bell | demo figures, no-op controls, `$`/`/hr` regardless of record, fake offline sync       | #151 (merged `a2acf38`)            |
+| `provider/screens/WalletScreen.tsx`                                                            | "Available Balance" after an unapproved fee; "Bank withdrawals — coming soon"         | #152 (Draft)                       |
+| `admin/FinancialsSection.tsx`                                                                  | fee and net figures; "Refunds: $0" from a constant field                              | #152                               |
+| `provider/screens/LiveJobsScreen.tsx`                                                          | availability pill not bound to the provider's availability; invented city fallback    | #152                               |
+| `provider/screens/ProviderProfileScreen.tsx`                                                   | Analytics, Notifications, Reviews rows with no destination                            | #152                               |
+| `pages/AppSelector.tsx:219-220, 271-272` (`/select`)                                           | "Real-time Ecosystem Flow", "Connected State", "actions in one app reflect instantly" | #152                               |
+| `components/home/LeadCard.tsx:195`                                                             | "Track" on an active lead; no tracking exists                                         | #152 ("Progress")                  |
+| `components/profile/HelpSupportPage.tsx:24`                                                    | "Follow the payment details shown for the booking"; none is shown                     | #152                               |
+| bid, booking, wallet and admin amounts                                                         | two scales for one integer (whole units vs `/100`)                                    | owner decision D-2 (`BLOCKERS.md`) |
+
+## Classified occurrences (after #151; #152 rows marked)
+
+| Location                                                                                                                                                  | Indicator                                                                             | Class                                  | Note                                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `context/EcosystemContext.tsx:89-284, 287-426, 452-453, 456-563`                                                                                          | seed requests, bids, ratings, fake KPIs, `WALLET_TRANSACTIONS`, client-only mutations | DEAD_CODE_SAFE_TO_REMOVE               | provider mounted (`Root.tsx`, `AdminPage.tsx`) but every `useEcosystem()` caller reads only `showHourlyRate`; removal is a follow-up (P3) |
+| `EcosystemContext.tsx:454, 565`                                                                                                                           | `showHourlyRate` / unused setter                                                      | STATIC_CONTENT                         | always `true`; the admin setting `feature_show_hourly_rate` is inert (D-11)                                                               |
+| `i18n/translations.ts:222-223`                                                                                                                            | `availableBalance`, `withdrawEarnings` keys                                           | DEAD_CODE_SAFE_TO_REMOVE               | no reference                                                                                                                              |
+| `home/JobDetailView.tsx:439-454, 966-980`; `chat/ChatScreen.tsx:240-252`                                                                                  | Call                                                                                  | HONESTLY_DISABLED                      | disabled, "Calls aren't available in the app"                                                                                             |
+| `JobDetailView.tsx:915-931`; `ds/ProBidCard.tsx:53,99`; `home/BidsScreen.tsx:458`; `features/provider-verification/*`                                     | Verified / Top Pro badges                                                             | AUTHORITATIVE_RUNTIME                  | rendered only when the API sends `true`; the API sends `false`/`null` (D-16)                                                              |
+| `ProviderProfileScreen.tsx:268-269`                                                                                                                       | rating, review count                                                                  | AUTHORITATIVE_RUNTIME                  | `ratingAvg`, `reviewCount` from the reputation projection (R11)                                                                           |
+| `profile/HelpSupportPage.tsx`                                                                                                                             | FAQ, tickets, replies                                                                 | STATIC_CONTENT / AUTHORITATIVE_RUNTIME | tickets and replies from `/v1/me/support/tickets` (R13); FAQ fixed in #152                                                                |
+| `admin/DisputesSection.tsx:48-66`; `features/disputes/copy.ts`; `workspace/copy.ts:198`                                                                   | refund                                                                                | STATIC_CONTENT                         | "refund intent (not executed)"                                                                                                            |
+| `admin/DashboardOverview.tsx:65,80`                                                                                                                       | KPI copy                                                                              | AUTHORITATIVE_RUNTIME                  | "Booking values, not payments"                                                                                                            |
+| provider bid and application withdrawal (`provider-bids-api.ts`, `useMyBids.ts`, `MyBidsScreen.tsx`, `ProviderStatusCentreScreen.tsx`, onboarding wizard) | withdraw                                                                              | AUTHORITATIVE_RUNTIME                  | real POST endpoints; success only after the server answers                                                                                |
+| about 20 `setTimeout` sites (debounce, scroll, animation, abort, expiry, autosave scheduling)                                                             | timers                                                                                | AUTHORITATIVE_RUNTIME                  | none fakes a success; each runs after a real response or only schedules UI                                                                |
+| `wizard/JobWizardModal.tsx:233, 678-680`; `ui/sidebar.tsx:580`                                                                                            | `Math.random`                                                                         | STATIC_CONTENT                         | client ids and skeleton widths                                                                                                            |
+| `LanguageContext.tsx`, `feature-flags.ts:39`, `auth-session-boundary.ts`, `intended-app.ts`, `realtime/notification-*.ts`, `AdminDisputeInbox.tsx`        | browser storage                                                                       | STATIC_CONTENT                         | language, flag override, auth intent, notification baseline, an admin filter; no business data                                            |
+| notification icon maps (`HomeScreen.tsx:208,214`, `NotificationDrawer.tsx`, `ProfileTab.tsx`)                                                             | "tracking", "payment" types                                                           | STATIC_CONTENT                         | icons for server notification types                                                                                                       |
+| comments naming removed mocks, "seed the cache"                                                                                                           | mock / seed                                                                           | STATIC_CONTENT                         | comments; React Query cache seeding                                                                                                       |
+| `test-setup.ts`                                                                                                                                           | setup                                                                                 | TEST_ONLY                              |                                                                                                                                           |
+| `imports/pasted_text/*.md`                                                                                                                                | notes                                                                                 | OUT_OF_SCOPE                           | not runtime                                                                                                                               |
+
+No `TODO`, `FIXME` or `isPlaceholderAction` remains in the runtime tree.
+
+## Action-to-authority proof
+
+The chain "UI action → real API → server authorization → persistence →
+reload/relogin → audit/event → failure handling" is proven per capability in
+`ACCEPTANCE_MATRIX.md`, which cites the suite that executes it. A component in
+source is not counted as evidence.

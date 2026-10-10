@@ -131,3 +131,8 @@ re-runs its acceptance on the integrated tree.
 Payouts, withdrawals, capture, escrow, refund execution, checkout, payment
 provider activation, background GPS, calling, a new admin application, a V2
 visual redesign, realtime production cutover, and R18.
+
+## After R17
+
+E-18 merged as `fabeb07` (#149). R18 (`docs/production-readiness/r18/`)
+starts from that SHA.
