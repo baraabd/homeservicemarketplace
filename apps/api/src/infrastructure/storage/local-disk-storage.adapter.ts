@@ -293,6 +293,8 @@ export function signToken(args: SignArgs): string {
  *  lengths; we early-return false on mismatch to keep the contract
  *  intuitive. */
 function timingSafeStringEquals(a: string, b: string): boolean {
+  // Defence in depth: the controller already refuses non-string parameters.
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
   if (a.length !== b.length) return false;
   return timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
 }

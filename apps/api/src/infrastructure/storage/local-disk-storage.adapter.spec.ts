@@ -178,6 +178,29 @@ describe('LocalDiskStorageAdapter', () => {
     ).rejects.toThrow('signature-mismatch');
   });
 
+  it('acceptUpload treats a non-string signature as a mismatch, never a comparison', async () => {
+    const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
+    const key = 'r/array-sig.jpg';
+    const presign = await adapter.presignUpload({ key, contentType: 'image/jpeg', sizeBytes: 4 });
+    const url = new URL(presign.uploadUrl);
+    const sig = url.searchParams.get('sig')!;
+    // What Express hands over for a repeated ?sig=…: an array. One with as
+    // many elements as the hex digest has characters passes a length check.
+    const repeated = Array.from({ length: sig.length }, () => sig) as unknown as string;
+    await expect(
+      adapter.acceptUpload({
+        key,
+        sig: repeated,
+        exp: Number(url.searchParams.get('exp')),
+        contentType: 'image/jpeg',
+        sizeBytes: 4,
+        body: Buffer.from('JPG!'),
+        actualContentType: 'image/jpeg',
+      }),
+    ).rejects.toThrow('signature-mismatch');
+    await expect(readFile(join(ROOT, key))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('acceptUpload rejects an expired token', async () => {
     const adapter = new LocalDiskStorageAdapter(makeConfig({ LOCAL_STORAGE_DIR: ROOT }));
     const expired = Math.floor(Date.now() / 1000) - 60;

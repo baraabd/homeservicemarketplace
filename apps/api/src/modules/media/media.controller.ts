@@ -255,10 +255,10 @@ export class MediaController {
   async acceptUpload(
     @Req() req: Request,
     @Headers('content-type') actualContentType: string | undefined,
-    @Query('sig') sig: string,
-    @Query('exp') exp: string,
-    @Query('ct') ct: string,
-    @Query('sz') sz: string,
+    @Query('sig') sig: unknown,
+    @Query('exp') exp: unknown,
+    @Query('ct') ct: unknown,
+    @Query('sz') sz: unknown,
   ): Promise<void> {
     // Recover the key from the request URL — Nest's wildcard `*`
     // matching is unreliable across versions, so we slice the prefix
@@ -281,7 +281,15 @@ export class MediaController {
       throw new AppError('VALIDATION_ERROR', 'Upload rejected.', 400);
     }
 
-    if (!sig || !exp || !ct || !sz) {
+    // Each presign parameter must be exactly one string. A repeated
+    // parameter (`?sig=a&sig=b`) arrives as an array, and must not reach
+    // the signature comparison or the number parsing as anything else.
+    if (
+      !isPresignParam(sig) ||
+      !isPresignParam(exp) ||
+      !isPresignParam(ct) ||
+      !isPresignParam(sz)
+    ) {
       throw new AppError('VALIDATION_ERROR', 'Missing presign parameters.', 400);
     }
     if (!(ALLOWED_CONTENT_TYPES as readonly string[]).includes(ct)) {
@@ -378,4 +386,10 @@ export class MediaController {
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     createReadStream(absPath).pipe(res);
   }
+}
+
+/** One non-empty query value. Express parses a repeated parameter into an
+ *  array and `a[b]=c` into an object; neither is a presign parameter. */
+function isPresignParam(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
 }
