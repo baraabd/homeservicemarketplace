@@ -522,6 +522,41 @@ describe('Media upload pipeline (e2e) — Sprint 7.x', () => {
       expect(res.body.error.code).toBe('UNAUTHORIZED');
     });
 
+    it('rejects a repeated or nested presign parameter (400) and stores nothing (CodeQL #3)', async () => {
+      fakeAuthedUser = { id: 'u-5', sessionId: 's', jti: 'j', roles: ['customer'] };
+      const presign = await request(app.getHttpServer())
+        .post('/v1/media/presigned-url')
+        .send({ items: [{ contentType: 'image/png', sizeBytes: 4 }] });
+      const item = presign.body.items[0] as { uploadUrl: string; fileUrl: string };
+      const uploadPath = item.uploadUrl.replace(/^https?:\/\/[^/]+/, '');
+      const sig = /sig=([0-9a-f]+)/.exec(uploadPath)![1];
+      for (const variant of [
+        // The valid signature twice: an array, not a string.
+        uploadPath.replace(`sig=${sig}`, `sig=${sig}&sig=${sig}`),
+        // An object through qs bracket syntax.
+        uploadPath.replace(`sig=${sig}`, `sig[a]=${sig}`),
+        uploadPath.replace(/ct=[^&]+/, (m) => `${m}&${m}`),
+      ]) {
+        const res = await request(app.getHttpServer())
+          .put(variant)
+          .set('Content-Type', 'image/png')
+          .send(Buffer.from('PNG!'));
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      }
+      // Nothing was stored under the key.
+      const fetched = await request(app.getHttpServer()).get(
+        item.fileUrl.replace(/^https?:\/\/[^/]+/, ''),
+      );
+      expect(fetched.status).toBe(404);
+      // Positive control: the untouched URL still uploads.
+      const ok = await request(app.getHttpServer())
+        .put(uploadPath)
+        .set('Content-Type', 'image/png')
+        .send(Buffer.from('PNG!'));
+      expect(ok.status).toBe(204);
+    });
+
     it('rejects PUT when the uploaded body length disagrees with the signed sizeBytes (400)', async () => {
       fakeAuthedUser = { id: 'u-4', sessionId: 's', jti: 'j', roles: ['customer'] };
       const presign = await request(app.getHttpServer())
