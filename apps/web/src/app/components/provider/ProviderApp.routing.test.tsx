@@ -215,7 +215,7 @@ describe('provider workspace — every screen has an address', () => {
     renderAt('/provider/wallet');
 
     expect(
-      await screen.findByText(/Available Balance/i, undefined, { timeout: 10_000 }),
+      await screen.findByText(/Completed booking value/i, undefined, { timeout: 10_000 }),
     ).toBeInTheDocument();
     expect(screen.getByTestId('url')).toHaveTextContent('/provider/wallet');
   });

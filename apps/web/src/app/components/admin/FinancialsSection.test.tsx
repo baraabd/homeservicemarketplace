@@ -159,19 +159,27 @@ describe('AdminDashboard — Financials (Sprint 6.4)', () => {
 
     // Summary tiles.
     await waitFor(() => expect(screen.getByText('$21,000')).toBeInTheDocument());
-    expect(screen.getByText('−$2,100')).toBeInTheDocument();
-    expect(screen.getByText('$18,900')).toBeInTheDocument();
     expect(screen.getByText('$800')).toBeInTheDocument();
+    // R18 — booking values only: no unapproved fee, no "net" figure, and no
+    // measured-looking "Refunds: $0" (the server field is a constant).
+    expect(screen.queryByText('−$2,100')).toBeNull();
+    expect(screen.queryByText('$18,900')).toBeNull();
+    expect(screen.getByTestId('admin-financials-refunds')).toHaveTextContent(
+      'Refunds: not tracked; no refund is executed',
+    );
+    expect(screen.getByTestId('admin-financials-note')).toHaveTextContent(
+      'Booking values, not payments. No platform fee is approved',
+    );
 
     // Bookings table — Plumbing row appears (provider Ada).
     expect(screen.getByText('Plumbing')).toBeInTheDocument();
     expect(screen.getAllByText('Ada Lovelace').length).toBeGreaterThan(0);
     expect(screen.getByText('$4,500')).toBeInTheDocument(); // gross
-    expect(screen.getByText('$4,050')).toBeInTheDocument(); // net
+    expect(screen.queryByText('$4,050')).toBeNull(); // no net column
 
     // Provider-earnings table — top earner row.
     expect(screen.getByText('$22,500')).toBeInTheDocument(); // gross
-    expect(screen.getByText('$20,250')).toBeInTheDocument(); // net
+    expect(screen.queryByText('$20,250')).toBeNull(); // no net column
     expect(screen.getByText('5')).toBeInTheDocument(); // completed bookings
   });
 
