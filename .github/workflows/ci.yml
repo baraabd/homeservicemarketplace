@@ -1864,6 +1864,47 @@ jobs:
             apps/web/test-results/r17e-closure/
           retention-days: 14
           if-no-files-found: error
+      # E-18 — My Bids reaches every bid, and every accepted bid its booking.
+      # Same harness and gate variable as the R17-E step; counted on its own.
+      - name: E-18 provider My Bids pagination (browser + HTTP)
+        env:
+          RUN_PROVIDER_BROWSER: '1'
+          MYBIDS_BROWSER_OUTPUT: ${{ github.workspace }}/apps/web/test-results/e18-my-bids
+        run: |
+          set +e
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/provider-my-bids-browser.integration.spec.ts \
+            --json --outputFile=e18-my-bids-browser-ci.json
+          browser=$?
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/provider-my-bids.integration.spec.ts \
+            --json --outputFile=e18-my-bids-ci.json
+          service=$?
+          set -e
+          # Fail closed: every E-18 case must have executed; none may be skipped.
+          node -e "
+            const files = ['e18-my-bids-browser-ci.json', 'e18-my-bids-ci.json'];
+            const runs = files.map((f) => require('./apps/api/' + f));
+            const sum = (k) => runs.reduce((n, r) => n + r[k], 0);
+            // 1 browser (8 steps) + 6 HTTP.
+            const expected = 7;
+            console.log('E-18 passed', sum('numPassedTests'), 'failed', sum('numFailedTests'), 'pending', sum('numPendingTests'), 'todo', sum('numTodoTests'));
+            if (sum('numFailedTests') || sum('numPendingTests') || sum('numTodoTests') || sum('numPassedTests') !== expected) {
+              console.error('::error::E-18 acceptance did not execute all ' + expected + ' cases');
+              process.exit(1);
+            }"
+          test "$browser" -eq 0 && test "$service" -eq 0
+      - name: Upload E-18 evidence (no credentials, cookies or personal data)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: e18-my-bids-real-evidence
+          path: |
+            apps/api/e18-my-bids-browser-ci.json
+            apps/api/e18-my-bids-ci.json
+            apps/web/test-results/e18-my-bids/
+          retention-days: 14
+          if-no-files-found: error
       - name: Stop the dedicated scanner
         if: always()
         run: docker rm -f dispute-clamd || true
