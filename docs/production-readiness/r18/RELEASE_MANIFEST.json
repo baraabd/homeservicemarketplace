@@ -1,0 +1,62 @@
+{
+  "schema": "hsm-release-manifest/r18-draft",
+  "status": "NOT_BUILT",
+  "statusReason": "No release candidate is built: no approved registry, no hosted target, GO_NO_GO is NO-GO. Null fields are unknown, not empty.",
+  "candidateName": "v1.0.0-rc.1",
+  "existingTags": [],
+  "source": {
+    "baseSha": "fabeb0765689131025208f8dca2e7a4fae924118",
+    "releaseSha": null,
+    "branch": "release/r18-functional-completion-rc1"
+  },
+  "artifacts": {
+    "webArtifactSha256": null,
+    "apiImageDigest": null,
+    "migratorImageDigest": null,
+    "webImageDigest": null,
+    "workerImageDigest": "same image as the API (workers are entrypoints of the API image)"
+  },
+  "database": {
+    "migrationCount": 67,
+    "latestMigration": "20261004150000_r15_ledger_foundation",
+    "migrationSetSha256": "dcab94c6a7a52249c232eeaad258c964be325cf9291168c8009c295179deecf7",
+    "hashMethod": "find packages/database/prisma/migrations -name migration.sql | sort | xargs cat | sha256sum"
+  },
+  "packages": {
+    "@homeservicemarketplace/contracts": "0.1.0",
+    "@homeservicemarketplace/database": "0.1.0",
+    "@homeservicemarketplace/api": "0.1.0",
+    "@homeservicemarketplace/web": "0.0.1"
+  },
+  "toolchain": {
+    "node": "24.21.0",
+    "pnpm": "10.32.1",
+    "postgresInCi": "postgres:16-alpine",
+    "redisInCi": "redis:7-alpine",
+    "playwright": "1.62.1"
+  },
+  "buildTimestamp": null,
+  "featureFlags": {
+    "VITE_PROVIDER_ONBOARDING_V2": "required explicit value at build (infra/production/STAGING.md)",
+    "VITE_DISPUTE_INTAKE_V1": "UNDECIDED (D-3)",
+    "WORK_ACCESS_ENFORCED": "UNDECIDED (D-19); default false",
+    "VERIFICATION_ENFORCED": "UNDECIDED (D-19); default false",
+    "REALTIME_SOCKET_IO": "default false (polling); production cutover ENVIRONMENT_DEPENDENT",
+    "DISPUTE_WORKER_ENABLED": "UNDECIDED (D-3); default false"
+  },
+  "configurationSchema": "apps/api/src/config/env.schema.ts at the release SHA",
+  "sbom": null,
+  "securityScanRefs": {
+    "ciRunOnBase": 38076416877,
+    "codeqlRunOnBase": 38076416622,
+    "openCodeqlHighOrCritical": [2]
+  },
+  "money": {
+    "LIVE_MONEY": false,
+    "paymentCapture": "absent",
+    "refundExecution": "absent",
+    "payoutAndWithdrawal": "absent (R16 policy- and funding-blocked)"
+  },
+  "releaseScopeSha256": "854d0cc58990891e47f214e49e7ad212565c7142e8e2369636743e078ad2686f",
+  "releaseScopeHashOf": "docs/production-readiness/r18/RELEASE_SCOPE.md at this commit"
+}

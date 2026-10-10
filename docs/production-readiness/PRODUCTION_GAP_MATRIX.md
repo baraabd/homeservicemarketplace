@@ -12,31 +12,31 @@ Statuses classify the currently verified release state: IMPLEMENTED_NOT_PRODUCTI
 
 ## Capability matrix
 
-| Track | Capabilities | Current release state | Evidence profile | Work assignment |
-| --- | --- | --- | --- | --- |
-| Seeker | signup/login/logout; email verification; password recovery | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | auth | S04 |
-| Seeker | user profile; saved addresses; service catalog; job/request creation; bids; booking lifecycle; account settings | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | seeker | S05 for request creation; later for other Seeker surfaces |
-| Seeker | request media | PARTIALLY_IMPLEMENTED | media | S05 |
-| Seeker | messages/chat; notifications | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | communication | later |
-| Seeker | disputes | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | disputes | later |
-| Seeker | mobile/RTL/Arabic/English | PARTIALLY_IMPLEMENTED | seeker | S04/S05 |
-| Provider | account upgrade; onboarding V1; public profile; marketplace feed; bids; bookings; status center | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | provider | S06 for upgrade/onboarding; later for feed/bids/bookings |
-| Provider | onboarding V2; BASICS_IDENTITY; SERVICES_EXPERIENCE; PORTFOLIO; REVIEW_SUBMISSION; avatar; specialties/services; portfolio | IMPLEMENTED_FEATURE_GATED | v2 | S06 |
-| Provider | WORK_AREA; service area | IMPLEMENTED_FEATURE_GATED | v2 | S07 |
-| Provider | WORKING_HOURS; working hours | IMPLEMENTED_FEATURE_GATED | v2 | S08 |
-| Provider | identity verification; review corrections; work-access grant | IMPLEMENTED_FEATURE_GATED | verification | S09 |
-| Provider | chat; notifications | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | communication | later |
-| Provider | wallet/earnings | PARTIALLY_IMPLEMENTED | money | S10 |
-| Admin | admin auth/access; dashboard; users; provider directory; suspensions/reactivation; analytics; settings; notifications; audit logs | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | admin | S09 for provider directory/review; later for other Admin sections |
-| Admin | review queue; six-section provider dossier; identity verification; portfolio moderation; specialty/category review; final provider approval | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | verification | S09 |
-| Admin | verification policies | PARTIALLY_IMPLEMENTED | verification | S09 |
-| Admin | disputes | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | disputes | later |
-| Admin | financials | PARTIALLY_IMPLEMENTED | money | S10 |
-| Platform | PostgreSQL; Prisma migrations; Redis; S3/local storage; restricted evidence; ClamAV; email; outbox; metrics; logs; health/readiness; Docker; CI; CodeQL; secret scanning; container scanning | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | platform | S03 |
-| Platform | Socket.IO; evidence/retention/dispute/public-media workers | IMPLEMENTED_FEATURE_GATED | platform | later |
-| Platform | staging/prod deployment path | BLOCKED | platform | S03 |
-| Platform | protected develop | BLOCKED | platform | S02 |
-| Money | authoritative financial persistence | MISSING | money | S10 |
+| Track    | Capabilities                                                                                                                                                                                 | Current release state                 | Evidence profile | Work assignment                                                   |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | ---------------- | ----------------------------------------------------------------- |
+| Seeker   | signup/login/logout; email verification; password recovery                                                                                                                                   | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | auth             | S04                                                               |
+| Seeker   | user profile; saved addresses; service catalog; job/request creation; bids; booking lifecycle; account settings                                                                              | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | seeker           | S05 for request creation; later for other Seeker surfaces         |
+| Seeker   | request media                                                                                                                                                                                | PARTIALLY_IMPLEMENTED                 | media            | S05                                                               |
+| Seeker   | messages/chat; notifications                                                                                                                                                                 | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | communication    | later                                                             |
+| Seeker   | disputes                                                                                                                                                                                     | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | disputes         | later                                                             |
+| Seeker   | mobile/RTL/Arabic/English                                                                                                                                                                    | PARTIALLY_IMPLEMENTED                 | seeker           | S04/S05                                                           |
+| Provider | account upgrade; onboarding V1; public profile; marketplace feed; bids; bookings; status center                                                                                              | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | provider         | S06 for upgrade/onboarding; later for feed/bids/bookings          |
+| Provider | onboarding V2; BASICS_IDENTITY; SERVICES_EXPERIENCE; PORTFOLIO; REVIEW_SUBMISSION; avatar; specialties/services; portfolio                                                                   | IMPLEMENTED_FEATURE_GATED             | v2               | S06                                                               |
+| Provider | WORK_AREA; service area                                                                                                                                                                      | IMPLEMENTED_FEATURE_GATED             | v2               | S07                                                               |
+| Provider | WORKING_HOURS; working hours                                                                                                                                                                 | IMPLEMENTED_FEATURE_GATED             | v2               | S08                                                               |
+| Provider | identity verification; review corrections; work-access grant                                                                                                                                 | IMPLEMENTED_FEATURE_GATED             | verification     | S09                                                               |
+| Provider | chat; notifications                                                                                                                                                                          | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | communication    | later                                                             |
+| Provider | wallet/earnings                                                                                                                                                                              | PARTIALLY_IMPLEMENTED                 | money            | S10                                                               |
+| Admin    | admin auth/access; dashboard; users; provider directory; suspensions/reactivation; analytics; settings; notifications; audit logs                                                            | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | admin            | S09 for provider directory/review; later for other Admin sections |
+| Admin    | review queue; six-section provider dossier; identity verification; portfolio moderation; specialty/category review; final provider approval                                                  | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | verification     | S09                                                               |
+| Admin    | verification policies                                                                                                                                                                        | PARTIALLY_IMPLEMENTED                 | verification     | S09                                                               |
+| Admin    | disputes                                                                                                                                                                                     | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | disputes         | later                                                             |
+| Admin    | financials                                                                                                                                                                                   | PARTIALLY_IMPLEMENTED                 | money            | S10                                                               |
+| Platform | PostgreSQL; Prisma migrations; Redis; S3/local storage; restricted evidence; ClamAV; email; outbox; metrics; logs; health/readiness; Docker; CI; CodeQL; secret scanning; container scanning | IMPLEMENTED_NOT_PRODUCTION_CONFIGURED | platform         | S03                                                               |
+| Platform | Socket.IO; evidence/retention/dispute/public-media workers                                                                                                                                   | IMPLEMENTED_FEATURE_GATED             | platform         | later                                                             |
+| Platform | staging/prod deployment path                                                                                                                                                                 | BLOCKED                               | platform         | S03                                                               |
+| Platform | protected develop                                                                                                                                                                            | BLOCKED                               | platform         | S02                                                               |
+| Money    | authoritative financial persistence                                                                                                                                                          | MISSING                               | money            | S10                                                               |
 
 ## What the baseline actually proves
 
@@ -59,3 +59,10 @@ Backend source defaults keep work-access and verification enforcement OFF; scann
 ## Scope and limitations
 
 Source paths and model/migration references were checked for existence and consistency. Controller declarations and key implementations were inspected; this is not a formal proof of every line of the repository. Not every test result was extracted individually. Configuration-dependent capabilities remain uncertified until the owning sprint supplies exact final-head acceptance. The matrix must be refreshed after integration; it must not overwrite another sprint's own acceptance report.
+
+## R18 status (2026-10-11)
+
+R18 certification of version 1 is recorded in `r18/` against
+`develop@fabeb07`. Decision: NO-GO, `R18_BLOCKED` (`r18/GO_NO_GO.md`).
+Open release blockers and owner decisions: `r18/BLOCKERS.md`. This file's
+earlier content is historical and unchanged.

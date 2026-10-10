@@ -48,16 +48,16 @@ export class BidRepository {
     return tx ?? this.prisma.client;
   }
 
-  // List bids for a request. Always filters soft-deleted rows; status
-  // filter is optional so future call sites can ask for "all but
-  // WITHDRAWN" by passing a specific status. Sort orderings are
-  // pinned here so the BidsScreen sort tabs and any backend caller
-  // see identical ordering.
+  // List seeker-visible bids for a request. Soft-deleted, rejected and
+  // withdrawn rows are not active offers and must never render a Book Now
+  // action. A caller may still narrow the active set to one explicit status.
+  // Sort orderings are pinned here so the BidsScreen sort tabs and any backend
+  // caller see identical ordering.
   listForRequest(args: ListBidsArgs, tx?: PrismaTx): Promise<BidWithProvider[]> {
     const where: Prisma.BidWhereInput = {
       requestId: args.requestId,
       deletedAt: null,
-      ...(args.status ? { status: args.status } : {}),
+      status: args.status ?? { in: ['PENDING', 'ACCEPTED'] },
     };
     const orderBy = orderByForSort(args.sort);
     return this.db(tx).bid.findMany({

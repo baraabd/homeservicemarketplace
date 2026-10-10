@@ -396,3 +396,10 @@ Only after R07/R09/R11 data is authoritative:
 R06 is first because it is a confirmed server-side ownership gap on the primary Seeker
 request path. UI redesign, new ratings, support polish or V2 visual work must not precede
 fixing attachment authority for newly created service requests.
+
+## R18 status (2026-10-11)
+
+R18 certification of version 1 is recorded in `r18/` against
+`develop@fabeb07`. Decision: NO-GO, `R18_BLOCKED` (`r18/GO_NO_GO.md`).
+Open release blockers and owner decisions: `r18/BLOCKERS.md`. This file's
+earlier content is historical and unchanged.
