@@ -47,17 +47,17 @@ covered 0 commits (known scope gap, not adequate on its own).
 Security (not cleared by a green workflow): 8 open CodeQL alerts on develop —
 #3 critical, #1 #2 #4 #5 high, #13 #16 #20 medium. R17 touches the paths of
 #1 and #5 (admin settings, R17-D) and #4 (provider profile, R17-E); see
-`GAP_REGISTER.md`. `develop` has no branch protection.
+`GAP_REGISTER.md`. `develop` has no branch protection. On `489541a` (after R17-E) 5 remain open: #3 critical, #2 high, #13 #16 #20 medium.
 
 ## Units
 
-| Unit  | Branch                                  | Scope                                                         | Order | State                                                        |
-| ----- | --------------------------------------- | ------------------------------------------------------------- | ----- | ------------------------------------------------------------ |
-| R17-A | `feat/r17-a-messaging-authority`        | Messaging read position, cross-instance acceptance            | 1     | `R17_A_MERGED` (#142, `e1f7f51`; post-merge push runs green) |
-| R17-B | `feat/r17-b-notification-authority`     | Notification lifecycle, scoping, commit-safe live push        | 2     | `R17_B_MERGED` (#143, `7642513`)                             |
-| R17-C | `feat/r17-c-dispute-authority`          | Legacy admin dispute race and copy; journey acceptance        | 3     | `R17_C_POSTMERGE_ACCEPTED` (#145, `aaf30aa`)                 |
-| R17-D | `feat/r17-d-admin-operations`           | Admin settings authority, users safeguards, analytics honesty | 4     | `R17_D_POSTMERGE_ACCEPTED` (#146, `2710d25`)                 |
-| R17-E | `feat/r17-e-provider-surface-authority` | Feed/detail/bid agreement, booking actions, stale capability  | 5     | `R17_E_IN_REVIEW` (base `2710d25`)                           |
+| Unit  | Branch                                  | Scope                                                         | Order | State                                                                                                           |
+| ----- | --------------------------------------- | ------------------------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------- |
+| R17-A | `feat/r17-a-messaging-authority`        | Messaging read position, cross-instance acceptance            | 1     | `R17_A_MERGED` (#142, `e1f7f51`; post-merge push runs green)                                                    |
+| R17-B | `feat/r17-b-notification-authority`     | Notification lifecycle, scoping, commit-safe live push        | 2     | `R17_B_MERGED` (#143, `7642513`)                                                                                |
+| R17-C | `feat/r17-c-dispute-authority`          | Legacy admin dispute race and copy; journey acceptance        | 3     | `R17_C_POSTMERGE_ACCEPTED` (#145, `aaf30aa`)                                                                    |
+| R17-D | `feat/r17-d-admin-operations`           | Admin settings authority, users safeguards, analytics honesty | 4     | `R17_D_POSTMERGE_ACCEPTED` (#146, `2710d25`)                                                                    |
+| R17-E | `feat/r17-e-provider-surface-authority` | Feed/detail/bid agreement, booking actions, stale capability  | 5     | `R17_E_POSTMERGE_ACCEPTED_WITH_OPEN_FOLLOW_UPS` (#147, `489541a`); follow-up `R17_E_FOLLOW_UP_IN_REVIEW` (#148) |
 
 One unit = one branch = one PR = one report. A dependent unit starts after
 its predecessor is merged and the post-merge develop SHA is accepted. While a
@@ -104,6 +104,18 @@ R17-E shared edits (no schema, migration, contract or permission change):
 | `apps/web/src/app/features/provider-ui`                      | new `ProviderConfirmDialog`; `ProviderButton` forwards refs                                           |
 | `apps/web/src/lib/realtime/use-realtime-socket.ts`           | status and notification events also invalidate provider capabilities                                  |
 | `.github/workflows/ci.yml` (`dispute-workspace` job)         | one R17-E step + one upload after R17-D's, own gate `RUN_PROVIDER_BROWSER`; no existing step changed  |
+
+R17-E post-merge closure (#148) shared edits (no schema, migration or permission change):
+
+| Shared authority                                                       | Change                                                                                                                                         |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modules/provider/capability/provider-capability.service.ts`           | additive `holdersAmong`, `lockProvidersForShare`, `marketplaceCandidateRule/Where`; `load` reads through shared `contextFrom`/`liveGrantWhere` |
+| `infrastructure/persistence/bids/provider-profile.repository.ts`       | `listEligibleRecipientsPage` takes the authority predicate from its caller (and an optional slice of user ids)                                 |
+| `infrastructure/persistence/{bids/bid,bookings/booking}.repository.ts` | one additive lookup each (active bids of a slice; cursor ownership)                                                                            |
+| `modules/requests/outbox/request-outbox.module.ts`                     | provides `RequestAvailableAudience`; imports and re-exports `ProviderCapabilityModule` for `OutboxModule.forRoot`                              |
+| `GET /v1/provider/bookings`                                            | a cursor that is not one of the caller's bookings is 400 (response shape unchanged)                                                            |
+| R07, R09, geo fan-out specs                                            | construct the new collaborators; R09 fixture accounts ACTIVE                                                                                   |
+| `.github/workflows/ci.yml` (`dispute-workspace` job)                   | the R17-E step also runs the two closure suites; expected 31 → 44; artifact adds their evidence                                                |
 
 ## R17-B coordination
 
