@@ -40,8 +40,6 @@ export function FinancialsSection({ lang }: { lang: string }) {
   const L = {
     title: isAr ? 'التقارير المالية' : 'Financial Reports',
     revenue: isAr ? 'قيمة الحجوزات المنجزة' : 'Completed booking value',
-    fees: isAr ? 'عمولات المنصة' : 'Platform fees',
-    providers: isAr ? 'أرباح المزودين' : 'Provider earnings',
     pending: isAr ? 'محجوز ولم يُنجز' : 'Booked, not completed',
     refunds: isAr
       ? 'الاستردادات: غير مُتتبَّعة، ولا يُنفَّذ أي استرداد'
@@ -50,8 +48,6 @@ export function FinancialsSection({ lang }: { lang: string }) {
       ? 'قيم الحجوزات وليست مدفوعات. لا توجد عمولة منصة معتمدة، ولا تحتفظ المنصة بأي أموال ولا تدفعها.'
       : 'Booking values, not payments. No platform fee is approved; the platform holds and pays out nothing.',
     completedBookings: isAr ? 'الحجوزات المنجزة' : 'Completed bookings',
-    feeRate: (bps: number) =>
-      isAr ? `معدل العمولة ${(bps / 100).toFixed(0)}٪` : `${(bps / 100).toFixed(0)}% platform fee`,
     bookingsTitle: isAr ? 'الحجوزات الأخيرة' : 'Recent bookings',
     bookingsEmpty: isAr ? 'لا توجد حجوزات منجزة بعد.' : 'No completed bookings yet.',
     providersTitle: isAr ? 'أعلى المزودين دخلاً' : 'Top earners',
@@ -62,12 +58,10 @@ export function FinancialsSection({ lang }: { lang: string }) {
       booking: isAr ? 'الحجز' : 'Booking',
       provider: isAr ? 'المزود' : 'Provider',
       amount: isAr ? 'المبلغ' : 'Amount',
-      net: isAr ? 'الصافي' : 'Net',
       when: isAr ? 'متى' : 'When',
       providerCol: isAr ? 'المزود' : 'Provider',
       bookings: isAr ? 'حجوزات' : 'Bookings',
       gross: isAr ? 'إجمالي' : 'Gross',
-      netCol: isAr ? 'صافي' : 'Net',
     },
   };
 
@@ -198,7 +192,7 @@ function BookingsTable({
     bookingsEmpty: string;
     loading: string;
     failed: string;
-    cols: { booking: string; provider: string; amount: string; net: string; when: string };
+    cols: { booking: string; provider: string; amount: string; when: string };
   };
 }) {
   return (
@@ -295,7 +289,7 @@ function ProviderEarningsTable({
     providersEmpty: string;
     loading: string;
     failed: string;
-    cols: { providerCol: string; bookings: string; gross: string; netCol: string };
+    cols: { providerCol: string; bookings: string; gross: string };
   };
 }) {
   return (
