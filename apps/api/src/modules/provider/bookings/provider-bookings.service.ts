@@ -80,6 +80,14 @@ export class ProviderBookingsService {
       throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
     }
     const take = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), 100);
+    // R17-E closure — a cursor is a position in the caller's OWN list. Prisma
+    // resolves it by id alone, so a foreign or invented id would otherwise
+    // be accepted and position this provider's page relative to a booking
+    // they cannot read. A soft-deleted own booking still counts: it may have
+    // been the last row of a page the provider already holds.
+    if (query.cursor && !(await this.bookings.isCursorOwnedByProvider(query.cursor, profile.id))) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid cursor.', 400);
+    }
     const rows = await this.bookings.listForProvider({
       providerId: profile.id,
       status: query.status,

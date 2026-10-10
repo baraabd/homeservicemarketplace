@@ -150,6 +150,7 @@ function makeMocks(
     setStatusCount?: number;
     reloadedRow?: BookingWithProviderRelations | null;
     listRows?: BookingWithProviderRelations[];
+    cursorOwned?: boolean;
   } = {},
 ): Mocks {
   const profile = args.profile === undefined ? makeProfile() : args.profile;
@@ -166,6 +167,7 @@ function makeMocks(
     } as unknown as ProviderProfileRepository,
     bookings: {
       listForProvider: jest.fn().mockResolvedValue(args.listRows ?? []),
+      isCursorOwnedByProvider: jest.fn().mockResolvedValue(args.cursorOwned ?? true),
       findOwnedByProvider: jest.fn().mockImplementation(() => {
         call += 1;
         return Promise.resolve(call === 1 ? owned : reload);
@@ -218,6 +220,29 @@ describe('ProviderBookingsService', () => {
       const out = await makeService(mocks).list('user-provider-1', { limit: 2 });
       expect(out.items.map((i) => i.id)).toEqual(['a', 'b']);
       expect(out.nextCursor).toBe('b');
+    });
+
+    it('R17-E closure: passes an owned cursor through, checked against the caller', async () => {
+      const mocks = makeMocks({ listRows: [makeBookingRow('SCHEDULED', { id: 'c' })] });
+      await makeService(mocks).list('user-provider-1', { cursor: 'b' });
+      expect(mocks.bookings.isCursorOwnedByProvider).toHaveBeenCalledWith('b', makeProfile().id);
+      expect(mocks.bookings.listForProvider).toHaveBeenCalledWith(
+        expect.objectContaining({ cursor: 'b', providerId: makeProfile().id }),
+      );
+    });
+
+    it('R17-E closure: refuses a cursor that is not one of the caller’s bookings', async () => {
+      const mocks = makeMocks({ cursorOwned: false });
+      await expect(
+        makeService(mocks).list('user-provider-1', { cursor: 'someone-elses' }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+      expect(mocks.bookings.listForProvider).not.toHaveBeenCalled();
+    });
+
+    it('does not look up a cursor on the first page', async () => {
+      const mocks = makeMocks();
+      await makeService(mocks).list('user-provider-1', {});
+      expect(mocks.bookings.isCursorOwnedByProvider).not.toHaveBeenCalled();
     });
 
     it('returns 404 if the provider profile vanished', async () => {

@@ -450,6 +450,8 @@ d('Service-area matching and fan-out (real Postgres)', () => {
           categoryId: null,
           location: { lat: CENTRE.lat, lng: CENTRE.lng, cityKey: 'aleppo' },
           excludeSeekerUserId: seekerUserId,
+          // Geo superset under test; authority is decided by the caller (E-13).
+          authority: { status: 'ACTIVE', deletedAt: null },
           take: 100,
           cursorId,
         });
@@ -482,6 +484,8 @@ d('Service-area matching and fan-out (real Postgres)', () => {
           categoryId: null,
           location,
           excludeSeekerUserId: seekerUserId,
+          // Geo superset under test; authority is decided by the caller (E-13).
+          authority: { status: 'ACTIVE', deletedAt: null },
           take: 200,
           cursorId,
         });
@@ -520,6 +524,8 @@ d('Service-area matching and fan-out (real Postgres)', () => {
           categoryId: null,
           location: { lat: CENTRE.lat, lng: CENTRE.lng, cityKey: 'aleppo' },
           excludeSeekerUserId: seekerUserId,
+          // Geo superset under test; authority is decided by the caller (E-13).
+          authority: { status: 'ACTIVE', deletedAt: null },
           take: 500,
           cursorId,
         });

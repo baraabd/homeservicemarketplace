@@ -1808,11 +1808,14 @@ jobs:
       # R17-E — provider surfaces. Same real-AppModule harness, Postgres, Redis,
       # Chromium and web app as the steps above, behind its own gate. Both
       # Sprint 9 work-access axes are armed inside the suites. The real-HTTP
-      # spec also runs in "Integration & E2E" automatically.
-      - name: R17-E provider surfaces (feed authority, stale bids, bookings, capability loss)
+      # specs also run in "Integration & E2E" automatically.
+      # Post-merge closure: provider bookings pagination (browser + HTTP) and
+      # request fan-out capability authority (E-13), counted in the same gate.
+      - name: R17-E provider surfaces (feed authority, stale bids, bookings, capability loss, pagination, fan-out)
         env:
           RUN_PROVIDER_BROWSER: '1'
           R17E_BROWSER_OUTPUT: ${{ github.workspace }}/apps/web/test-results/r17e-provider-surfaces
+          R17X_BROWSER_OUTPUT: ${{ github.workspace }}/apps/web/test-results/r17e-closure
         run: |
           # Roles come from the seeded baseline; idempotent, as in the R17-D step.
           pnpm --filter @homeservicemarketplace/database seed
@@ -1825,18 +1828,28 @@ jobs:
             test/integration/r17-provider-surfaces.integration.spec.ts \
             --json --outputFile=r17e-provider-ci.json
           service=$?
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/r17-e-closure-browser.integration.spec.ts \
+            --json --outputFile=r17e-closure-browser-ci.json
+          closureBrowser=$?
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/r17-e-closure.integration.spec.ts \
+            --json --outputFile=r17e-closure-ci.json
+          closure=$?
           set -e
           # Fail closed: every R17-E case must have executed; none may be skipped.
           node -e "
-            const runs = ['r17e-provider-browser-ci.json', 'r17e-provider-ci.json'].map((f) => require('./apps/api/' + f));
+            const files = ['r17e-provider-browser-ci.json', 'r17e-provider-ci.json', 'r17e-closure-browser-ci.json', 'r17e-closure-ci.json'];
+            const runs = files.map((f) => require('./apps/api/' + f));
             const sum = (k) => runs.reduce((n, r) => n + r[k], 0);
-            const expected = 31;
+            // 1 browser + 30 HTTP (R17-E), 1 browser + 12 HTTP (closure).
+            const expected = 44;
             console.log('R17-E passed', sum('numPassedTests'), 'failed', sum('numFailedTests'), 'pending', sum('numPendingTests'), 'todo', sum('numTodoTests'));
             if (sum('numFailedTests') || sum('numPendingTests') || sum('numTodoTests') || sum('numPassedTests') !== expected) {
               console.error('::error::R17-E acceptance did not execute all ' + expected + ' cases');
               process.exit(1);
             }"
-          test "$browser" -eq 0 && test "$service" -eq 0
+          test "$browser" -eq 0 && test "$service" -eq 0 && test "$closureBrowser" -eq 0 && test "$closure" -eq 0
       - name: Upload R17-E evidence (no credentials, cookies or personal data)
         if: always()
         uses: actions/upload-artifact@v6
@@ -1845,7 +1858,10 @@ jobs:
           path: |
             apps/api/r17e-provider-browser-ci.json
             apps/api/r17e-provider-ci.json
+            apps/api/r17e-closure-browser-ci.json
+            apps/api/r17e-closure-ci.json
             apps/web/test-results/r17e-provider-surfaces/
+            apps/web/test-results/r17e-closure/
           retention-days: 14
           if-no-files-found: error
       - name: Stop the dedicated scanner

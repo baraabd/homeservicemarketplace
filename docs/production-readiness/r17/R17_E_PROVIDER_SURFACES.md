@@ -5,6 +5,11 @@ Branch `feat/r17-e-provider-surface-authority`. Base
 sources: `R17_E_PROVIDER_POLICY.md`. Per-route and per-mutation matrix:
 `R17_E_AUTHORITY_MATRIX.md`.
 
+Post-merge (added after #147 merged as `489541a`; the sections below are
+the PR-head record and are left as written): a review on #147 found that the
+new bookings list never reads `nextCursor`, and E-13 stayed open. Both are
+reproduced and repaired in PR #148 — see `R17_E_POSTMERGE_CLOSURE.md`.
+
 Delivery mode: Integration and Bug-Fix (server authority, contracts, tests),
 with local Product Feature work on the provider bookings surfaces (a list and
 a detail route that did not exist). No unrelated screen was redesigned.
@@ -211,7 +216,9 @@ Revert the R17-E commits. There is no migration and no data rewrite.
   transaction. A suspension committing between the two orders after the write;
   only acceptance needed the stronger lock (see the matrix).
 - **Fan-out audience** (E-13) and the provider bell button's 36 px target are
-  recorded, not changed.
+  recorded, not changed. (E-13 is repaired by the post-merge follow-up #148.)
+- **Bookings beyond the first page** were unreachable from the new list (review
+  on #147, found after this report was written); repaired by #148.
 - **Realtime production cutover, calling and live GPS** are not part of R17-E.
 - **Mechanical formatting.** The pre-commit hook reflowed two untouched
   provider-ui files (`forms.tsx`, `choice-contrast.test.tsx`; whitespace only).

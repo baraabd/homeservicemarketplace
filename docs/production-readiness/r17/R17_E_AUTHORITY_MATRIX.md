@@ -50,6 +50,14 @@ but not `VIEW_MARKETPLACE` sees Bookings in place of Jobs and Bids.
 | `…/complete`                             | as above          | as above                    | as above                                                                      | `IN_PROGRESS → COMPLETED`; reputation count in the same transaction              | as above                                                                     |
 | `…/cancel`                               | as above          | as above                    | as above                                                                      | `SCHEDULED → CANCELLED`                                                          | as above                                                                     |
 
+## Post-merge closure (#148)
+
+| Path                                             | Authority                                                                                                                                                                                                                | Evidence                   |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- |
+| `GET /v1/provider/bookings?cursor=`              | guard `MANAGE_BOOKINGS`; the cursor must be one of the caller's own bookings (deleted or not), else 400; pages owner-scoped, `status` filter on every page                                                               | closure H C01–C05; browser |
+| `request.available` dispatcher                   | candidates: geo superset + category + `marketplaceCandidateWhere`; each decided by the feed's geo function and `holdersAmong(VIEW_MARKETPLACE)`; own request excluded; live category, `OPEN_FOR_BIDS`                    | closure H C10              |
+| `request.available.batch` (writes notifications) | request lifecycle lock → slice accounts → slice profiles `FOR SHARE`; the same candidate query and decision limited to the slice, live category; providers with an active bid dropped; realtime only to the rows written | closure H C11–C14, C16     |
+
 Provider-initiated writes check capability in the guard, then decide state in
 the transaction. A suspension that commits between the two is ordered after
 the write (serialisable); unlike acceptance, no stale offer can be turned into

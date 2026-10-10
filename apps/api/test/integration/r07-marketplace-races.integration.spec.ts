@@ -181,6 +181,7 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
     const { RequestsService } = require('../../src/modules/requests/requests.service');
     const { RequestMediaService } = require('../../src/modules/media/request-media.service');
     const {
+      RequestAvailableAudience,
       RequestAvailableBatchHandler,
       RequestAvailableDispatchHandler,
     } = require('../../src/modules/requests/outbox/request-available.handler');
@@ -267,6 +268,9 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
       notifications,
       tx,
     );
+    const capabilities = new ProviderCapabilityService(prismaSvc, config);
+    // R17-E closure — the fan-out decides recipients with the same service.
+    const audience = new RequestAvailableAudience(providerRepo, capabilities);
     seekerBids = new BidsService(
       bidRepo,
       requestRepo,
@@ -276,7 +280,7 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
       notifications,
       tx,
       realtime,
-      new ProviderCapabilityService(prismaSvc, config),
+      capabilities,
     );
     feed = new AvailableRequestsService(providerRepo, requestRepo, bidRepo, categoryRepo);
     seekerBookings = new BookingsService(bookingRepo, bookingEvents, notifications, tx, realtime);
@@ -291,13 +295,15 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
 
     makeWorker = (over = {}) => {
       let failures = over.failBatchTimes ?? 0;
-      const dispatch = new RequestAvailableDispatchHandler(
-        providerRepo,
-        outbox,
-        config,
+      const dispatch = new RequestAvailableDispatchHandler(audience, outbox, config, requestRepo);
+      const realBatch = new RequestAvailableBatchHandler(
+        notificationRepo,
+        realtime,
         requestRepo,
+        audience,
+        capabilities,
+        bidRepo,
       );
-      const realBatch = new RequestAvailableBatchHandler(notificationRepo, realtime, requestRepo);
       const batch = {
         name: realBatch.name,
         eventTypes: realBatch.eventTypes,

@@ -1,7 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ListProviderBookingsQuery,
+  ListProviderBookingsResponse,
   ProviderBookingMutationResponse,
+  ProviderBookingSummary,
 } from '@homeservicemarketplace/contracts';
 
 import { providerQueryKeys } from '../../../lib/provider/query-keys';
@@ -33,6 +35,57 @@ export function useProviderBookings(filters: ListProviderBookingsQuery = {}) {
     refetchInterval: LIST_REFETCH_INTERVAL_MS,
     staleTime: 5_000,
   });
+}
+
+/** R17-E closure — the whole list, one server page at a time.
+ *
+ *  The API pages by cursor (50 a page, `nextCursor` = the last id served, null
+ *  on the last page). The first request carries no cursor; each later one
+ *  carries the previous page's `nextCursor`, so the server's order and owner
+ *  scope hold on every page. A refetch (poll, focus, a transition's
+ *  invalidation) re-walks the loaded pages from the first, deriving each
+ *  cursor from the fresh page before it, so a booking that moved cannot be
+ *  skipped or shown twice.
+ *
+ *  The key carries the filters, so another filter is another list. The
+ *  `signal` lets a sign-out cancel a page in flight (clearAuthSession); a
+ *  cancelled page is never written to the cache. */
+export function useProviderBookingPages(filters: Pick<ListProviderBookingsQuery, 'status'> = {}) {
+  return useInfiniteQuery({
+    queryKey: providerQueryKeys.bookings.pages({ status: filters.status }),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam, signal }) =>
+      listProviderBookings({ status: filters.status, cursor: pageParam }, signal),
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    refetchInterval: LIST_REFETCH_INTERVAL_MS,
+    staleTime: 5_000,
+  });
+}
+
+/** Pages flattened in server order. A booking id the server returns on two
+ *  pages is shown once and reported: the cursor contract (owner-scoped,
+ *  id-keyed, stable order — r17-e-closure.integration.spec.ts C01) says it
+ *  cannot happen, so it is a defect to surface, not a case to absorb. */
+export function flattenBookingPages(
+  pages: readonly ListProviderBookingsResponse[] | undefined,
+): ProviderBookingSummary[] {
+  const seen = new Set<string>();
+  const items: ProviderBookingSummary[] = [];
+  let duplicates = 0;
+  for (const page of pages ?? []) {
+    for (const item of page.items) {
+      if (seen.has(item.id)) {
+        duplicates += 1;
+        continue;
+      }
+      seen.add(item.id);
+      items.push(item);
+    }
+  }
+  if (duplicates > 0) {
+    console.error('provider bookings: the server returned overlapping pages', { duplicates });
+  }
+  return items;
 }
 
 export function useProviderBookingDetail(bookingId: string | null | undefined) {

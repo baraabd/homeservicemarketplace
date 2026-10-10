@@ -4,13 +4,14 @@ R17 is accepted only when every unit is merged and the combined applicable
 R17 acceptance passes on the final integrated develop SHA
 (`EXECUTION_PLAN.md`). A set of green unit branches is not that proof.
 
-| Unit  | State                                         | Branch / PR                             | Evidence report              |
-| ----- | --------------------------------------------- | --------------------------------------- | ---------------------------- |
-| R17-A | `R17_A_MERGED` (#142 → `e1f7f51`)             | `feat/r17-a-messaging-authority`        | `R17_A_MESSAGING.md`         |
-| R17-B | `R17_B_MERGED` (#143 → `7642513`)             | `feat/r17-b-notification-authority`     | `R17_B_NOTIFICATIONS.md`     |
-| R17-C | `R17_C_POSTMERGE_ACCEPTED` (#145 → `aaf30aa`) | `feat/r17-c-dispute-authority`          | `R17_C_DISPUTES.md`          |
-| R17-D | `R17_D_POSTMERGE_ACCEPTED` (#146 → `2710d25`) | `feat/r17-d-admin-operations`           | `R17_D_ADMIN_OPERATIONS.md`  |
-| R17-E | `R17_E_IN_REVIEW` (PR pending)                | `feat/r17-e-provider-surface-authority` | `R17_E_PROVIDER_SURFACES.md` |
+| Unit            | State                                                              | Branch / PR                             | Evidence report              |
+| --------------- | ------------------------------------------------------------------ | --------------------------------------- | ---------------------------- |
+| R17-A           | `R17_A_MERGED` (#142 → `e1f7f51`)                                  | `feat/r17-a-messaging-authority`        | `R17_A_MESSAGING.md`         |
+| R17-B           | `R17_B_MERGED` (#143 → `7642513`)                                  | `feat/r17-b-notification-authority`     | `R17_B_NOTIFICATIONS.md`     |
+| R17-C           | `R17_C_POSTMERGE_ACCEPTED` (#145 → `aaf30aa`)                      | `feat/r17-c-dispute-authority`          | `R17_C_DISPUTES.md`          |
+| R17-D           | `R17_D_POSTMERGE_ACCEPTED` (#146 → `2710d25`)                      | `feat/r17-d-admin-operations`           | `R17_D_ADMIN_OPERATIONS.md`  |
+| R17-E           | `R17_E_POSTMERGE_ACCEPTED_WITH_OPEN_FOLLOW_UPS` (#147 → `489541a`) | `feat/r17-e-provider-surface-authority` | `R17_E_PROVIDER_SURFACES.md` |
+| R17-E follow-up | `R17_E_FOLLOW_UP_IN_REVIEW` (#148)                                 | `fix/r17-e-postmerge-closure`           | `R17_E_POSTMERGE_CLOSURE.md` |
 
 Platform prerequisite PLATFORM-TX-1: merged (#144 → `a8dc1a2`), post-merge
 push runs green (`R17_C_DISPUTES.md`, baseline gate).
@@ -30,6 +31,18 @@ startup 37717935521, Authentication lifecycle 37717935461, Staging release
 boundary 37717935502 — all success. The R17-D review observations that still
 reproduce are recorded as carry-over in `R17_E_PROVIDER_SURFACES.md`.
 
+R17-E: PR #147, head `6a371991c593cd2093b1feae8cf6c25cfec24397`, merged as
+`489541ad6bf4c001091ecdf8be07f6871ac7af45` (merge commit, tree identical to the
+head). Post-merge push runs on `489541a`: CI 37986992524 (17/17 jobs; R17-E
+31/31, R17-C 23/23, R17-D 14/14 executed; Integration & E2E 5550 passed, 36
+skipped), CodeQL 37986992340, Production governance 37986992342, Web
+development startup 37986992295, Authentication lifecycle 37986992315,
+Staging release boundary 37986992353 — all success. Accepted with two open
+follow-ups (bookings pagination, E-13), both reproduced on `489541a` and
+repaired in #148, which is not merged. The R17-E state becomes
+`R17_E_POSTMERGE_ACCEPTED` only after #148 merges and its post-merge gate
+passes.
+
 Open policy decisions (do not block merges; keep release blockers open):
 
 - R17-C: legacy admin permission, evidence access vs assignment, dispute
@@ -40,7 +53,9 @@ Open policy decisions (do not block merges; keep release blockers open):
   (`R17_D_ADMIN_POLICY.md`).
 - R17-E: custom-text requests, pending bids after a capability loss, booking
   obligations after lapsed access or suspension, recognition (badges, "Top
-  Pro"), money unit, deactivated categories (`R17_E_PROVIDER_POLICY.md`).
+  Pro"), money unit, deactivated categories, and (post-merge) whether a
+  request whose category changed is re-announced (`R17_E_PROVIDER_POLICY.md`).
 
-Overall: not accepted. R16 remains `R16_POLICY_BLOCKED` and
+Overall: not accepted. `R17_INTEGRATED_ACCEPTED` needs #148 merged, its
+post-merge gate green, and the combined R17 acceptance on one develop SHA. R16 remains `R16_POLICY_BLOCKED` and
 `R16_FUNDING_AUTHORITY_BLOCKED`; nothing in R17 closes it.

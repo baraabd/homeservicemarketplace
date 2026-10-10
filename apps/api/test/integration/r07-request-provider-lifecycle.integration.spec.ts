@@ -143,8 +143,12 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
       ProviderBookingsService,
     } = require('../../src/modules/provider/bookings/provider-bookings.service');
     const {
+      RequestAvailableAudience,
       RequestAvailableBatchHandler,
     } = require('../../src/modules/requests/outbox/request-available.handler');
+    const {
+      ProviderCapabilityService,
+    } = require('../../src/modules/provider/capability/provider-capability.service');
 
     const addresses = new AddressRepository(prismaSvc);
     const categories = new ServiceCategoryRepository(prismaSvc);
@@ -192,10 +196,14 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
     );
 
     notificationCreateMany = jest.fn().mockResolvedValue(0);
+    const capabilities = new ProviderCapabilityService(prismaSvc, { get: () => false });
     batchHandler = new RequestAvailableBatchHandler(
       { createMany: notificationCreateMany },
       { publishFor: jest.fn() },
       requestRepo,
+      new RequestAvailableAudience(providers, capabilities),
+      capabilities,
+      bids,
     );
 
     await cleanup();
