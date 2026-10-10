@@ -118,10 +118,11 @@ interface AcceptResponse {
   requestStatus: string;
 }
 interface MyBidsResponse {
-  items: Array<{ id: string; status: string }>;
-}
-interface ProviderBookingsResponse {
-  items: Array<{ id: string; bidId: string; status: string }>;
+  items: Array<{
+    id: string;
+    status: string;
+    booking: { id: string; status: string } | null;
+  }>;
 }
 
 async function feedLoadedByApp(page: Page, action: () => Promise<unknown>): Promise<FeedResponse> {
@@ -260,25 +261,21 @@ test.describe('R07 request-to-provider lifecycle — real browsers, API and Post
       expect(accepted.body.requestStatus).toBe('BID_ACCEPTED');
       expect(accepted.body.booking.bidId).toBe(bid.bid.id);
 
+      // My Bids now carries the authoritative booking projection with every
+      // accepted bid. It deliberately no longer reads the bookings-list API,
+      // so waiting for that old request would hang until this test timed out.
       const bidsLoaded = providerPage.waitForResponse(
         (r) =>
           r.url().startsWith(`${REAL_API}/v1/provider/bids`) &&
           r.request().method() === 'GET' &&
           r.status() === 200,
       );
-      const bookingsLoaded = providerPage.waitForResponse(
-        (r) =>
-          r.url().startsWith(`${REAL_API}/v1/provider/bookings`) &&
-          r.request().method() === 'GET' &&
-          r.status() === 200,
-      );
       await providerPage.goto(`${BASE_URL}/provider/bids`);
       const bids = (await (await bidsLoaded).json()) as MyBidsResponse;
-      const bookings = (await (await bookingsLoaded).json()) as ProviderBookingsResponse;
-      expect(bids.items.find((item) => item.id === bid.bid.id)?.status).toBe('ACCEPTED');
-      expect(bookings.items.find((item) => item.id === accepted.body.booking.id)).toMatchObject({
-        bidId: bid.bid.id,
-        status: 'SCHEDULED',
+      const acceptedBid = bids.items.find((item) => item.id === bid.bid.id);
+      expect(acceptedBid).toMatchObject({
+        status: 'ACCEPTED',
+        booking: { id: accepted.body.booking.id, status: 'SCHEDULED' },
       });
       await expect(providerPage.getByText('Accepted', { exact: true }).first()).toBeVisible();
       await expect(
@@ -286,30 +283,22 @@ test.describe('R07 request-to-provider lifecycle — real browsers, API and Post
       ).toBeVisible();
 
       // Hard reload proves the provider workspace is server-derived, not a
-      // mutation cache illusion.
+      // mutation cache illusion. The same bid projection must still point to
+      // the same persisted booking after a fresh HTTP read.
       const bidsAfterReload = providerPage.waitForResponse(
         (r) =>
           r.url().startsWith(`${REAL_API}/v1/provider/bids`) &&
           r.request().method() === 'GET' &&
           r.status() === 200,
       );
-      const bookingsAfterReload = providerPage.waitForResponse(
-        (r) =>
-          r.url().startsWith(`${REAL_API}/v1/provider/bookings`) &&
-          r.request().method() === 'GET' &&
-          r.status() === 200,
-      );
       await providerPage.reload();
-      expect(
-        ((await (await bidsAfterReload).json()) as MyBidsResponse).items.find(
-          (item) => item.id === bid.bid.id,
-        )?.status,
-      ).toBe('ACCEPTED');
-      expect(
-        ((await (await bookingsAfterReload).json()) as ProviderBookingsResponse).items.find(
-          (item) => item.id === accepted.body.booking.id,
-        )?.status,
-      ).toBe('SCHEDULED');
+      const reloadedBid = ((await (await bidsAfterReload).json()) as MyBidsResponse).items.find(
+        (item) => item.id === bid.bid.id,
+      );
+      expect(reloadedBid).toMatchObject({
+        status: 'ACCEPTED',
+        booking: { id: accepted.body.booking.id, status: 'SCHEDULED' },
+      });
 
       await testInfo.attach('r07-provider-booking-after-reload.png', {
         body: await providerPage.screenshot({ fullPage: true }),
