@@ -172,6 +172,38 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
       404,
     );
 
+    // One active bid per request; a withdrawn bid does not count. An HTTP
+    // bid, a refused duplicate and a withdrawal come first; the replacement
+    // is then made in the UI below.
+    const first = await api<{ bid: { id: string; status: string } }>(
+      provider.jar,
+      '/v1/provider/bids',
+      {
+        method: 'POST',
+        body: { requestId, amount: 150, pricingType: 'FIXED', note: 'R18 first offer' },
+      },
+    );
+    expect(first.status).toBe(201);
+    const duplicate = await api(provider.jar, '/v1/provider/bids', {
+      method: 'POST',
+      body: { requestId, amount: 151, pricingType: 'FIXED' },
+    });
+    expect(duplicate.status).toBe(409);
+    const withdrawn = await api<{ bid: { status: string } }>(
+      provider.jar,
+      `/v1/provider/bids/${first.body.bid.id}/withdraw`,
+      { method: 'POST' },
+    );
+    expect(withdrawn.status).toBe(200);
+    expect(withdrawn.body.bid.status).toBe('WITHDRAWN');
+    expect(
+      (
+        await api(provider.jar, `/v1/provider/bids/${first.body.bid.id}/withdraw`, {
+          method: 'POST',
+        })
+      ).status,
+    ).toBe(409);
+
     await signIn(providerPage, provider);
     const loaded = providerPage.waitForResponse(
       (r) =>
@@ -196,14 +228,19 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
     bidId = ((await bidHttp.json()) as { bid: { id: string } }).bid.id;
     const bids = await withDb(async (db) => {
       const { rows } = await db.query<{ id: string; status: string }>(
-        `SELECT id, status FROM "Bid" WHERE "requestId" = $1 AND "deletedAt" IS NULL`,
+        `SELECT id, status FROM "Bid" WHERE "requestId" = $1 AND "deletedAt" IS NULL
+          ORDER BY "createdAt", id`,
         [requestId],
       );
       return rows;
     });
-    expect(bids).toEqual([{ id: bidId, status: 'PENDING' }]);
-    // The seeker was told, once.
-    expect(counts(await notificationTypes(seeker.userId))).toMatchObject({ BID_RECEIVED: 1 });
+    expect(bids).toEqual([
+      { id: first.body.bid.id, status: 'WITHDRAWN' },
+      { id: bidId, status: 'PENDING' },
+    ]);
+    // The seeker was told once per submitted bid; the refused duplicate and
+    // the withdrawal told nobody.
+    expect(counts(await notificationTypes(seeker.userId))).toMatchObject({ BID_RECEIVED: 2 });
   });
 
   test('3 the seeker accepts the bid in the UI: exactly one booking, and both roles see it', async () => {
@@ -228,6 +265,15 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
     bookingId = accept.booking.id;
     // The confirmation appears only after the server's answer.
     await expect(seekerPage.getByText('Booking confirmed!')).toBeVisible();
+
+    // A retry after a lost response (same bid) is refused and creates no
+    // second booking (the durable check below sees exactly one).
+    seeker.jar.clear();
+    for (const cookie of await seekerContext.cookies()) seeker.jar.set(cookie.name, cookie.value);
+    const retry = await api(seeker.jar, `/v1/me/requests/${requestId}/bids/${bidId}/accept`, {
+      method: 'POST',
+    });
+    expect(retry.status).toBe(409);
 
     const durable = await withDb(async (db) => {
       const { rows } = await db.query<{ id: string; status: string; request: string; bid: string }>(

@@ -802,6 +802,53 @@ jobs:
             apps/web/test-results/r14-budget-authority-report/
           retention-days: 14
           if-no-files-found: warn
+      - name: Self-test the R18 fail-closed counter
+        run: node --test scripts/ci/assert-playwright-run.test.cjs
+      - name: Accept R18 cross-role functional completion in real browsers
+        # The primary journey in one flow, every business step a user action in
+        # its own browser context: the seeker posts a request; an eligible
+        # provider sees it while one outside the area does not; a duplicate bid
+        # is refused, a bid withdrawn and replaced in the UI; the seeker
+        # accepts in the UI and a retried accept creates no second booking;
+        # they message; the provider starts and completes; the seeker reviews
+        # once; reputation counts it; reload and fresh logins keep it; another
+        # seeker sees none of it and every foreign or anonymous read is
+        # refused. Checked in the browser, over HTTP and in PostgreSQL. No
+        # business route is intercepted. Synthetic people; no trace or video.
+        # The counter fails the step unless all 7 tests ran and passed once.
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_HTML_OUTPUT_DIR: test-results/r18-functional-completion-report
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/r18-functional-completion.json
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node scripts/runtime/reset-ci-browser-rate-limits.cjs
+          mkdir -p apps/web/test-results/r18-summary
+          set +e
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r18-functional-completion.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --retries=0 \
+            --reporter=list,json,html \
+            --output=test-results/r18-functional-completion
+          run=$?
+          set -e
+          node scripts/ci/assert-playwright-run.cjs \
+            apps/web/test-results/r18-functional-completion.json 7 R18-cross-role \
+            apps/web/test-results/r18-summary/r18-cross-role.json
+          test "$run" -eq 0
+      - name: Upload R18 cross-role evidence (counts and failure artifacts only)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r18-functional-completion-evidence
+          path: |
+            apps/web/test-results/r18-summary/
+            apps/web/test-results/r18-functional-completion/
+            apps/web/test-results/r18-functional-completion-report/
+          retention-days: 14
+          if-no-files-found: error
       - name: Build and serve one web app per R17 API replica
         # R17-A: two copies of the same build-flagged web app, each with its
         # own API address baked in, so a browser on web A can only reach
@@ -1909,6 +1956,58 @@ jobs:
         if: always()
         run: docker rm -f dispute-clamd || true
 
+  # R18 — one fail-closed aggregate for the release certification. It needs
+  # every job the CI gate needs, and re-reads the R18 summary written by the
+  # real-route job: the cross-role journey must have run on THIS source SHA
+  # with exactly its expected count. A job that was skipped, cancelled or
+  # failed, or a summary from another SHA, fails it.
+  r18-acceptance:
+    name: R18 functional completion acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: always()
+    needs:
+      - verify
+      - integration-e2e
+      - evidence-retention
+      - dispute-workspace
+      - browser-e2e
+      - phase5-visual
+      - phase5-real-api
+      - admin-review-real-api
+      - browser-auth-e2e
+      - docker-image
+      - compose-smoke
+      - security-scan
+    steps:
+      - name: Require every release job to have succeeded
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if echo '${{ toJSON(needs) }}' | grep -q '"result": *"\(failure\|cancelled\|skipped\)"'; then
+            echo "::error::a job R18 depends on did not succeed"
+            exit 1
+          fi
+      - name: Fetch the R18 cross-role summary
+        uses: actions/download-artifact@v6
+        with:
+          name: r18-functional-completion-evidence
+          path: r18-evidence
+      - name: Re-check the summary against this source SHA
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node -e "
+            const s = require('./r18-evidence/r18-summary/r18-cross-role.json');
+            console.log(JSON.stringify(s));
+            const bad = [];
+            if (s.sourceSha !== process.env.SOURCE_SHA) bad.push('summary is for ' + s.sourceSha);
+            if (s.accepted !== true) bad.push('not accepted');
+            if (s.expected !== 7 || s.passed !== 7) bad.push('expected 7 passed, got ' + s.passed);
+            if (s.failed || s.flaky || s.skipped) bad.push('failed/flaky/skipped present');
+            if (bad.length) { for (const b of bad) console.error('::error::R18 ' + b); process.exit(1); }
+            console.log('R18 cross-role acceptance: 7/7 on ' + s.sourceSha);
+          "
+
   ci-gate:
     name: CI gate
     runs-on: ubuntu-latest
@@ -1934,6 +2033,8 @@ jobs:
       - docker-image
       - compose-smoke
       - security-scan
+      # R18 release certification (fail-closed counts on this SHA).
+      - r18-acceptance
     steps:
       - name: Fail if any required job did not succeed
         run: |
