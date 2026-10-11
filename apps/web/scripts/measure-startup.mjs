@@ -40,11 +40,17 @@
 import { chromium } from '@playwright/test';
 import { readFile, mkdir, writeFile, rename } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { performance } from 'node:perf_hooks';
 import { createStartupErrorPolicy, validateExpectedHttpErrors } from './startup-error-policy.mjs';
 
+const invokedAsCli =
+  Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 const { values: cli } = parseArgs({
+  // Importing the interaction helpers for unit tests must neither consume the
+  // test runner's arguments nor launch Chromium or write a measurement report.
+  args: invokedAsCli ? undefined : [],
   options: {
     help: { type: 'boolean', short: 'h' },
     config: { type: 'string' },
@@ -419,28 +425,61 @@ async function waitForContent(page, route, timeoutMs) {
   await afterPaint(page);
 }
 
-async function performInteraction(page, action, timeoutMs) {
+class StartupInteractionError extends Error {
+  constructor(phase) {
+    // Browser errors can contain selectors, session identifiers and URLs.
+    // Retain a controlled phase only, without the raw error or its cause.
+    super(`Startup interaction failed at ${phase}`);
+    this.name = 'StartupInteractionError';
+    this.phase = phase;
+  }
+}
+
+export async function performInteraction(page, action, timeoutMs) {
   const started = performance.now();
-  const target = page.locator(action.selector);
-  if (action.type === 'click') await target.click();
-  if (action.type === 'press') await target.press(action.key);
-  if (action.type === 'fill') {
-    await target.fill(action.value);
-    requireSetting((await target.inputValue()) === action.value, 'Input did not acknowledge value');
+  let phase = 'target-selection';
+  try {
+    const target = page.locator(action.selector);
+    if (action.type === 'press') {
+      // Native keyboard activation is valid for a continuously animated
+      // button, but Locator.press does not supply click's actionability gates.
+      // Require a displayed, fully opaque, unclipped and enabled target first.
+      phase = 'target-presentation';
+      await waitForPresentedContent(page, [action.selector], timeoutMs, true);
+      phase = 'target-enabled';
+      requireSetting(await target.isEnabled(), 'Keyboard target is disabled');
+    }
+    phase = 'action-dispatch';
+    if (action.type === 'click') await target.click();
+    if (action.type === 'press') await target.press(action.key);
+    if (action.type === 'fill') {
+      await target.fill(action.value);
+      phase = 'input-value-acknowledgment';
+      requireSetting(
+        (await target.inputValue()) === action.value,
+        'Input did not acknowledge value',
+      );
+    }
+    if (action.acknowledge) {
+      phase = 'acknowledgment-match';
+      await page
+        .locator(action.acknowledge.selector)
+        .waitFor({ state: action.acknowledge.state ?? 'visible' });
+      if ((action.acknowledge.state ?? 'visible') === 'visible') {
+        phase = 'acknowledgment-presentation';
+        await waitForPresentedContent(page, [action.acknowledge.selector], timeoutMs, true);
+      }
+    }
+    phase = 'acknowledgment-paint';
+    await afterPaint(page);
+    return {
+      type: action.type,
+      acknowledged: true,
+      driverActionToAcknowledgedPaintMs: performance.now() - started,
+    };
+  } catch {
+    throw new StartupInteractionError(phase);
   }
-  if (action.acknowledge) {
-    await page
-      .locator(action.acknowledge.selector)
-      .waitFor({ state: action.acknowledge.state ?? 'visible' });
-    if ((action.acknowledge.state ?? 'visible') === 'visible')
-      await waitForPresentedContent(page, [action.acknowledge.selector], timeoutMs, true);
-  }
-  await afterPaint(page);
-  return {
-    type: action.type,
-    acknowledged: true,
-    driverActionToAcknowledgedPaintMs: performance.now() - started,
-  };
 }
 
 function networkCollector(cdp, page, expectedHttpErrors) {
@@ -568,8 +607,17 @@ async function measure(page, route, mode, repetition, network, config) {
     stage = 'failed-network-request';
     requireSetting(network.read().counts.failedRequests === 0, 'Failed network request');
     result.status = 'passed';
-  } catch {
+  } catch (error) {
     result.failureStage = stage;
+    if (stage === 'interaction' && error instanceof StartupInteractionError) {
+      result.interactionFailure = {
+        // One-based index of the first action that did not finish. Completed
+        // actions remain in the interactions array, never padded or replaced.
+        actionIndex: result.interactions.length + 1,
+        actionType: route.interactions[result.interactions.length].type,
+        phase: error.phase,
+      };
+    }
   }
   result.networkIncludingInteractions = network.read();
   return result;
@@ -738,11 +786,13 @@ async function run() {
   if (report.status !== 'completed') process.exitCode = 1;
 }
 
-try {
-  await run();
-} catch {
-  console.error(
-    'Startup measurement could not start. Check the configuration, paths and installed Playwright/browser; no raw error data is printed.',
-  );
-  process.exitCode = 1;
+if (invokedAsCli) {
+  try {
+    await run();
+  } catch {
+    console.error(
+      'Startup measurement could not start. Check the configuration, paths and installed Playwright/browser; no raw error data is printed.',
+    );
+    process.exitCode = 1;
+  }
 }

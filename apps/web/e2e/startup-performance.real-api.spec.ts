@@ -26,11 +26,9 @@ const runFile = promisify(execFile);
 const routeNames = ['public-selector', 'login', 'seeker-home', 'provider-jobs', 'admin-dashboard'];
 
 type Interaction = {
-  type: 'click' | 'fill';
   selector: string;
-  value?: string;
   acknowledge?: { selector: string; state: 'visible' | 'hidden' };
-};
+} & ({ type: 'click' } | { type: 'fill'; value: string } | { type: 'press'; key: string });
 type Scenario = {
   name: string;
   path: string;
@@ -199,6 +197,8 @@ test('real Seeker, Provider and Admin startup: five cold/warm pairs on desktop a
       sessionTtlSeconds: 1800,
       anonymousException:
         'At most one GET /v1/auth/me 401 per public-page navigation; exact URL and native console resource message only',
+      providerSheetInteraction:
+        'Native Enter on the presented, enabled pull-up button; its perpetual animation remains enabled. The actual job card and detail overlay must acknowledge the actions.',
       limitations:
         'Small synthetic data on one GitHub-hosted runner. Mobile means a 390px viewport plus CPU/network simulation, not a physical mobile device. No production capacity or field Core Web Vitals claim. Actual public map tiles remain external network requests.',
     },
@@ -267,7 +267,9 @@ test('real Seeker, Provider and Admin startup: five cold/warm pairs on desktop a
               type: 'click',
               selector: '[data-testid="service-categories-grid"] > button:first-child',
               acknowledge: {
-                selector: 'button:text-is("Next Step · Location & Time")',
+                // The shared Button wraps its exact label in a span. A
+                // button:text-is selector cannot match that descendant text.
+                selector: 'button:has(> span:text-is("Next Step · Location & Time"))',
                 state: 'visible',
               },
             },
@@ -286,8 +288,12 @@ test('real Seeker, Provider and Admin startup: five cold/warm pairs on desktop a
           ],
           interactions: [
             {
-              type: 'click',
+              // A native keyboard activation does not require the continuously
+              // animated button to become geometrically stable. The harness
+              // still checks presentation/enabled state and the real outcome.
+              type: 'press',
               selector: '[data-testid="pull-up-control"]',
+              key: 'Enter',
               acknowledge: {
                 selector: `[data-testid="job-card-${request.body.id}"]`,
                 state: 'visible',

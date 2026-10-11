@@ -82,8 +82,8 @@ jobs:
           echo "::add-mask::$secret"
           echo "JWT_ACCESS_SECRET=$secret" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
-      - name: Verify strict browser error classification
-        run: node --test apps/web/scripts/startup-error-policy.test.mjs
+      - name: Verify browser error classification and interaction gates
+        run: node --test apps/web/scripts/startup-error-policy.test.mjs apps/web/scripts/startup-interaction.test.mjs
       - name: Generate, migrate and seed the disposable database
         run: |
           set -euo pipefail
