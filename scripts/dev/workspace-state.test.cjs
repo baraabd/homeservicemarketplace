@@ -56,10 +56,15 @@ test('current generated client and consumer dependencies pass without evaluating
 test('a schema change is detected even when timestamps and file size match', async (t) => {
   const root = await fixture(t);
   const schemaPath = path.join(root, 'packages/database/prisma/schema.prisma');
-  const before = await fs.stat(schemaPath);
-  await fs.writeFile(schemaPath, SCHEMA.replace('generator client', 'generator newerx'));
-  await fs.utimes(schemaPath, before.atime, before.mtime);
-  assert.equal((await fs.stat(schemaPath)).size, before.size);
+  const schemaHandle = await fs.open(schemaPath, 'r+');
+  try {
+    const before = await schemaHandle.stat();
+    await schemaHandle.writeFile(SCHEMA.replace('generator client', 'generator newerx'));
+    await schemaHandle.utimes(before.atime, before.mtime);
+    assert.equal((await schemaHandle.stat()).size, before.size);
+  } finally {
+    await schemaHandle.close();
+  }
   const problems = await workspaceStateProblems(root);
   assert.equal(problems.length, 1);
   assert.match(problems[0], /Generated Prisma client is stale/u);
