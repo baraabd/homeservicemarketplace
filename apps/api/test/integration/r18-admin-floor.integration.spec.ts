@@ -39,16 +39,26 @@ dbDescribe('R18 last active administrator floor (real PostgreSQL)', () => {
     await lock?.release();
   });
 
+  // Runs `work` and always rolls back. A failure inside is rethrown as
+  // itself, so the report names the assertion, not the rollback.
   async function rolledBack(work: (tx: PrismaTx) => Promise<void>): Promise<void> {
-    await expect(
-      prisma.$transaction(
+    let failure: unknown;
+    await prisma
+      .$transaction(
         async (tx) => {
-          await work(tx as PrismaTx);
+          try {
+            await work(tx as PrismaTx);
+          } catch (error) {
+            failure = error;
+          }
           throw new Rollback();
         },
         { timeout: 60_000 },
-      ),
-    ).rejects.toBeInstanceOf(Rollback);
+      )
+      .catch((error: unknown) => {
+        if (!(error instanceof Rollback)) throw error;
+      });
+    if (failure) throw failure;
   }
 
   async function admin(tx: PrismaTx, tag: string, data: Record<string, unknown> = {}) {

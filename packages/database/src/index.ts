@@ -55,3 +55,16 @@ export type {
   AdminGrantSummary,
   ProviderGrantSummary,
 } from './admin-access-grant';
+
+// R18 (D-19) — the ADR 0013 live-grant count and bounded, logged backfill
+// that must pass immediately before WORK_ACCESS_ENFORCED is switched on.
+export {
+  readWorkAccessReadiness,
+  backfillMissingGrantsWithTx,
+  resolveBackfillLimit,
+  assertBackfillNotProductionUnsafe,
+  BACKFILL_MIGRATION_TAG,
+  DEFAULT_BACKFILL_LIMIT,
+  MAX_BACKFILL_LIMIT,
+} from './work-access-readiness';
+export type { WorkAccessReadiness, BackfillResult } from './work-access-readiness';

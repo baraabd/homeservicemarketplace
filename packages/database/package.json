@@ -32,7 +32,8 @@
     "grant:provider": "dotenv -e ../../.env -- node dist/admin-access-grant.js --provider",
     "verify:migrations": "node scripts/verify-constraint-migrations.mjs",
     "backfill:provider-lifecycle": "dotenv -e ../../.env -- node scripts/backfill-provider-lifecycle.mjs",
-    "catalog:group": "dotenv -e ../../.env -- node scripts/group-flat-categories.mjs"
+    "catalog:group": "dotenv -e ../../.env -- node scripts/group-flat-categories.mjs",
+    "work-access:readiness": "dotenv -e ../../.env -- node dist/work-access-readiness.js"
   },
   "dependencies": {
     "@prisma/client": "6.12.0",
