@@ -42,7 +42,7 @@ jobs:
       - name: Verify exact runtime and safe-start regressions
         run: |
           node scripts/runtime/toolchain.cjs
-          node --test scripts/runtime/toolchain.test.cjs scripts/dev/preflight.test.cjs scripts/dev/compose-smoke-context.test.cjs .github/scripts/merge-integrity.test.mjs
+          node --test scripts/runtime/toolchain.test.cjs scripts/dev/preflight.test.cjs scripts/dev/workspace-state.test.cjs scripts/dev/compose-smoke-context.test.cjs .github/scripts/merge-integrity.test.mjs
       - run: pnpm install --frozen-lockfile
       - name: Assert lockfile remains unchanged
         run: git diff --exit-code -- pnpm-lock.yaml
@@ -51,6 +51,7 @@ jobs:
       - name: Compile real API outputs and reproduce missing env.schema recovery
         run: |
           pnpm --filter @homeservicemarketplace/database exec prisma generate
+          node scripts/dev/workspace-state.cjs
           pnpm --filter @homeservicemarketplace/database build
           pnpm --filter @homeservicemarketplace/api exec tsc -p tsconfig.dev.json
           node scripts/dev/api-output-check.cjs verify

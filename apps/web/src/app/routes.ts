@@ -1,25 +1,65 @@
 import { createBrowserRouter, redirect } from 'react-router';
-import { DisputesPage } from './pages/DisputesPage';
 import { Root } from './Root';
-import {
-  LoginPage,
-  SignUpPage,
-  ForgotPasswordPage,
-  CheckEmailPage,
-  VerifyEmailPage,
-  ResetPasswordPage,
-} from './pages/AuthPages';
-import { HomePage } from './pages/HomePage';
 import { AppSelector } from './pages/AppSelector';
-import { ProviderPage } from './pages/ProviderPage';
-import { AdminPage } from './pages/AdminPage';
-import {
-  ProviderOnboardingHubPage,
-  ProviderOnboardingTaskPage,
-  ProviderOnboardingLayout,
-  ProviderVerificationPage,
-} from './pages/ProviderOnboardingPage';
 import { RequireAuth, RequireAdmin, GuestOnly } from '../lib/route-guards';
+import { lazyPage } from './lazy-page';
+
+// The selector and shared shell are the initial graph. Each experience loads
+// only when its existing guard permits it to mount. Keep these wrappers stable:
+// the four seeker tab paths share one component, and onboarding keeps its
+// autosave layout above the hub/task routes throughout navigation.
+const DisputesPage = lazyPage(
+  () => import('./pages/DisputesPage').then((module) => ({ default: module.DisputesPage })),
+  { standalone: true },
+);
+const HomePage = lazyPage(() =>
+  import('./pages/HomePage').then((module) => ({ default: module.HomePage })),
+);
+const ProviderPage = lazyPage(() =>
+  import('./pages/ProviderPage').then((module) => ({ default: module.ProviderPage })),
+);
+const AdminPage = lazyPage(
+  () => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })),
+  { standalone: true },
+);
+const LoginPage = lazyPage(() =>
+  import('./pages/AuthPages').then((module) => ({ default: module.LoginPage })),
+);
+const SignUpPage = lazyPage(() =>
+  import('./pages/AuthPages').then((module) => ({ default: module.SignUpPage })),
+);
+const ForgotPasswordPage = lazyPage(() =>
+  import('./pages/AuthPages').then((module) => ({ default: module.ForgotPasswordPage })),
+);
+const CheckEmailPage = lazyPage(() =>
+  import('./pages/AuthPages').then((module) => ({ default: module.CheckEmailPage })),
+);
+const VerifyEmailPage = lazyPage(() =>
+  import('./pages/AuthPages').then((module) => ({ default: module.VerifyEmailPage })),
+);
+const ResetPasswordPage = lazyPage(() =>
+  import('./pages/AuthPages').then((module) => ({ default: module.ResetPasswordPage })),
+);
+const ProviderOnboardingHubPage = lazyPage(() =>
+  import('./pages/ProviderOnboardingPage').then((module) => ({
+    default: module.ProviderOnboardingHubPage,
+  })),
+);
+const ProviderOnboardingTaskPage = lazyPage(() =>
+  import('./pages/ProviderOnboardingPage').then((module) => ({
+    default: module.ProviderOnboardingTaskPage,
+  })),
+);
+const ProviderOnboardingLayout = lazyPage(() =>
+  import('./pages/ProviderOnboardingPage').then((module) => ({
+    default: module.ProviderOnboardingLayout,
+  })),
+);
+const ProviderVerificationPage = lazyPage(() =>
+  import('./pages/ProviderOnboardingPage').then((module) => ({
+    default: module.ProviderVerificationPage,
+  })),
+);
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 //
