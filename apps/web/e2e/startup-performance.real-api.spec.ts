@@ -321,7 +321,13 @@ test('real Seeker, Provider and Admin startup: five cold/warm pairs on desktop a
             {
               type: 'click',
               selector: `[data-testid="approval-preview-${pending.profileId}"] a`,
-              acknowledge: { selector: '[data-testid="review-task-tabs"]', state: 'visible' },
+              acknowledge: {
+                // On mobile the task tabs are below the loaded profile header.
+                // Keep their presence required, but measure presentation of the
+                // real response's heading, bound to this exact account's email.
+                selector: `[data-testid="admin-provider-review-workspace"]:has([data-testid="review-task-tabs"]) > header.ar-header:has(.ar-meta bdi:text-is(${JSON.stringify(pending.email)})) h1`,
+                state: 'visible',
+              },
             },
           ],
         },
