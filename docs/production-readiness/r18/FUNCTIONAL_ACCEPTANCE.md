@@ -90,6 +90,15 @@ check results and the source-bound seven-case summary are recorded on
   two `BID_RECEIVED` notices, while each booking transition remains exactly
   once. Same-browser account switching waits for successful empty
   server-owned lists before asserting that the previous user's UI is absent.
+- Run `38126279520` (`d8d4007`) passed 5, failed 1 and skipped 1. The repaired
+  persisted-review and fresh-login assertions passed; the final provider
+  notification map omitted a legitimate `REQUEST_AVAILABLE` notice. Provider
+  approval now precedes publication of the category selected from the real
+  UI catalog response. The test waits for durable availability delivery
+  before bidding, because the worker rechecks live eligibility and excludes
+  providers who already bid. Availability is checked exactly once for this
+  request and never for the outsider, separately from strict bid/booking
+  maps; announcements for other requests cannot contaminate this assertion.
 
 These historical runs remain failures. They do not certify the repaired
 head; the seven-case counter, R18 aggregate and every required CI job must

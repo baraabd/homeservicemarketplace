@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import type { ServiceCategoryListResponse } from '@homeservicemarketplace/contracts';
 
 import { seedLanguage } from './fixtures';
 import { api, loginViaUi, REAL_API, registerProvider, type Account } from './real-api';
@@ -126,6 +127,20 @@ const notificationTypes = (userId: string) =>
     );
     return rows.map((r) => r.type);
   });
+/** Availability is asynchronous and scoped to a request. Other suites may have
+ *  eligible requests still in the outbox when these providers are approved. */
+const requestAvailabilityRecipients = (requestId: string, userIds: string[]) =>
+  withDb(async (db) => {
+    const { rows } = await db.query<{ userId: string }>(
+      `SELECT "userId" FROM "Notification"
+        WHERE type = 'REQUEST_AVAILABLE' AND "resourceType" = 'REQUEST'
+          AND "resourceId" = $1 AND "userId" = ANY($2::text[])
+          AND "deletedAt" IS NULL
+        ORDER BY "userId", id`,
+      [requestId, userIds],
+    );
+    return rows.map((r) => r.userId);
+  });
 const userIdOf = (profileId: string) =>
   withDb(async (db) => {
     const { rows } = await db.query<{ userId: string }>(
@@ -146,6 +161,7 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
   let provider: Account;
   let outsider: Account;
   let providerUserId = '';
+  let outsiderUserId = '';
   let seekerContext: BrowserContext;
   let providerContext: BrowserContext;
   let seekerPage: Page;
@@ -161,6 +177,7 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
     provider = await registerProvider();
     outsider = await registerProvider();
     providerUserId = await userIdOf(provider.profileId);
+    outsiderUserId = await userIdOf(outsider.profileId);
     seekerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
     providerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
     seekerPage = await seekerContext.newPage();
@@ -175,8 +192,27 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
 
   test('1 the seeker signs in and posts a request through the UI; it commits once', async () => {
     await signIn(seekerPage, seeker);
+    // Settle the catalog started by the login redirect before observing the
+    // next document's response, so an unloading document cannot satisfy it.
+    await expect(
+      seekerPage.getByTestId('service-categories-grid').getByRole('button').first(),
+    ).toBeVisible();
+    const catalogLoaded = seekerPage.waitForResponse(isCall('GET', `${REAL_API}/v1/services`));
     await seekerPage.goto(`${BASE_URL}/home`);
-    await seekerPage.getByTestId('service-categories-grid').getByRole('button').first().click();
+    const catalogHttp = await catalogLoaded;
+    expect(catalogHttp.status()).toBe(200);
+    const catalog = (await catalogHttp.json()) as ServiceCategoryListResponse;
+    const category = catalog.items.find((item) => item.isLeaf);
+    if (!category) throw new Error('The real service catalog has no selectable category');
+    categoryId = category.id;
+    // Establish the real fan-out audience before publication. Approving after
+    // POST makes delivery depend on when the outbox worker observes the grant.
+    await approveForWork(provider, categoryId, 'Aleppo');
+    await approveForWork(outsider, categoryId, 'Damascus');
+    await seekerPage
+      .getByTestId('service-categories-grid')
+      .getByRole('button', { name: category.labelEn, exact: true })
+      .click();
     await seekerPage.getByRole('button', { name: /next step/i }).click();
     const created = seekerPage.waitForResponse(isCall('POST', `${REAL_API}/v1/me/requests`));
     await seekerPage.getByRole('button', { name: /confirm job/i }).click();
@@ -191,8 +227,24 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
       return rows;
     });
     expect(row).toHaveLength(1);
-    expect(row[0]).toMatchObject({ status: 'OPEN_FOR_BIDS', seekerUserId: seeker.userId });
-    categoryId = row[0].categoryId;
+    expect(row[0]).toMatchObject({
+      status: 'OPEN_FOR_BIDS',
+      seekerUserId: seeker.userId,
+      categoryId,
+    });
+    // Observe committed delivery before bidding: the live batch correctly
+    // excludes a provider who already bid. This is bounded read polling, not
+    // a retry of a business action or an invocation of the worker by the test.
+    await expect
+      .poll(
+        () =>
+          requestAvailabilityRecipients(requestId, [providerUserId, outsiderUserId, seeker.userId]),
+        {
+          message: 'Only the eligible provider receives this request announcement, exactly once',
+          timeout: 30_000,
+        },
+      )
+      .toEqual([providerUserId]);
     // Reload: the request is the server's, not a cached optimistic row.
     const listed = seekerPage.waitForResponse(
       (r) => r.url().startsWith(`${REAL_API}/v1/me/requests`) && r.request().method() === 'GET',
@@ -203,8 +255,6 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
   });
 
   test('2 an eligible provider signs in, sees the request, opens it and bids; another does not see it', async () => {
-    await approveForWork(provider, categoryId, 'Aleppo');
-    await approveForWork(outsider, categoryId, 'Damascus');
     const feed = (account: Account) =>
       api<{ items: { id: string }[] }>(account.jar, '/v1/provider/available-requests');
     // Outside the service area: the feed omits it and the detail is 404.
@@ -536,8 +586,14 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
     // Step 2 submitted two distinct bids (the first was withdrawn), so both
     // legitimate BID_RECEIVED notifications remain. Refused retries and
     // reloads add nothing; exact maps also catch missing or unexpected events.
+    // Request announcements are checked separately by resource: delayed
+    // availability for another suite's request is not a duplicate R18 event.
     const businessNotifications = async (userId: string) =>
-      counts((await notificationTypes(userId)).filter((type) => type !== 'MESSAGE_RECEIVED'));
+      counts(
+        (await notificationTypes(userId)).filter(
+          (type) => type !== 'MESSAGE_RECEIVED' && type !== 'REQUEST_AVAILABLE',
+        ),
+      );
     expect(await businessNotifications(seeker.userId)).toEqual({
       BID_RECEIVED: 2,
       BOOKING_IN_PROGRESS: 1,
@@ -547,6 +603,13 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
       BID_ACCEPTED: 1,
       BOOKING_CREATED: 1,
     });
+    expect(
+      await requestAvailabilityRecipients(requestId, [
+        providerUserId,
+        outsiderUserId,
+        seeker.userId,
+      ]),
+    ).toEqual([providerUserId]);
   });
 
   test('7 another seeker in the same browser sees none of it, and every foreign resource is refused', async () => {
@@ -567,26 +630,41 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
     await seekerPage.getByRole('button', { name: 'Sign Out' }).last().click();
     expect((await loggedOut).status()).toBe(204);
     await expect(seekerPage).toHaveURL(/\/(login|select)/);
+    // Home starts all three reads on mount. Observe and consume them together
+    // before another document load, instead of racing a response from the
+    // document being unloaded. Repeat all three reads on the explicit reload.
+    const emptyListsLoaded = () =>
+      Promise.all(
+        [`${REAL_API}/v1/me/bookings`, `${REAL_API}/v1/me/requests`, CONVERSATIONS].map(
+          async (url) => {
+            // Match a newly issued request, never a late response to an
+            // owner's request already in flight when sign-out completed.
+            const request = await seekerPage.waitForRequest(
+              (r) => r.url() === url && r.method() === 'GET',
+            );
+            const response = await request.response();
+            if (!response) throw new Error(`The account-scoped list request failed: ${url}`);
+            expect(response.status(), url).toBe(200);
+            expect(await response.json(), url).toMatchObject({ items: [] });
+          },
+        ),
+      );
+    const switchedLists = emptyListsLoaded();
     await signIn(seekerPage, other);
-    await seekerPage.goto(`${BASE_URL}/home/bookings`);
-    const bookingsLoaded = seekerPage.waitForResponse(isCall('GET', `${REAL_API}/v1/me/bookings`));
+    await switchedLists;
+    await seekerPage.getByRole('button', { name: 'Bookings', exact: true }).click();
+    await expect(seekerPage).toHaveURL(`${BASE_URL}/home/bookings`);
+    await expect(seekerPage.getByText('No bookings yet', { exact: true })).toBeVisible();
+    const reloadedLists = emptyListsLoaded();
     await seekerPage.reload();
-    const otherBookings = await bookingsLoaded;
-    expect(otherBookings.status()).toBe(200);
-    expect(await otherBookings.json()).toMatchObject({ items: [] });
+    await reloadedLists;
     await expect(seekerPage.getByText('No bookings yet', { exact: true })).toBeVisible();
     await expect(seekerPage.getByTestId(`booking-card-${bookingId}`)).toHaveCount(0);
-    const requestsLoaded = seekerPage.waitForResponse(isCall('GET', `${REAL_API}/v1/me/requests`));
-    await seekerPage.goto(`${BASE_URL}/home`);
-    const otherRequests = await requestsLoaded;
-    expect(otherRequests.status()).toBe(200);
-    expect(await otherRequests.json()).toMatchObject({ items: [] });
+    await seekerPage.getByRole('button', { name: 'Home', exact: true }).click();
+    await expect(seekerPage).toHaveURL(`${BASE_URL}/home`);
     await expect(seekerPage.getByTestId('lead-card')).toHaveCount(0);
-    const conversationsLoaded = seekerPage.waitForResponse(isCall('GET', CONVERSATIONS));
-    await seekerPage.goto(`${BASE_URL}/home/messages`);
-    const otherConversations = await conversationsLoaded;
-    expect(otherConversations.status()).toBe(200);
-    expect(await otherConversations.json()).toMatchObject({ items: [] });
+    await seekerPage.getByRole('button', { name: 'Chat', exact: true }).click();
+    await expect(seekerPage).toHaveURL(`${BASE_URL}/home/messages`);
     await expect(seekerPage.getByText('No conversations yet', { exact: true })).toBeVisible();
     await expect(seekerPage.getByText('R18 reply: on my way')).toHaveCount(0);
 
