@@ -1,4 +1,4 @@
-import { HealthService } from './health.service';
+import { HealthService, runtimeSourceSha } from './health.service';
 import type { AppConfigService } from '../../config/app-config.service';
 import type { MongoService } from '../mongo/mongo.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -41,6 +41,37 @@ describe('HealthService', () => {
     expect(l.status).toBe('ok');
     expect(typeof l.uptimeSeconds).toBe('number');
     expect(typeof l.timestamp).toBe('string');
+  });
+
+  it('reports only a full Git SHA as the runtime source revision', () => {
+    const sha = 'a'.repeat(40);
+    expect(runtimeSourceSha(sha)).toBe(sha);
+    for (const value of [
+      undefined,
+      '',
+      'unknown',
+      'a'.repeat(39),
+      'A'.repeat(40),
+      `${sha}
+`,
+    ]) {
+      expect(runtimeSourceSha(value)).toBeNull();
+    }
+  });
+
+  it('liveness carries the image revision from HSM_SOURCE_SHA', () => {
+    const previous = process.env.HSM_SOURCE_SHA;
+    try {
+      process.env.HSM_SOURCE_SHA = 'b'.repeat(40);
+      expect(mkService(mkDep(true), mkDep(true), mkDep(true)).liveness().sourceSha).toBe(
+        'b'.repeat(40),
+      );
+      process.env.HSM_SOURCE_SHA = 'unknown';
+      expect(mkService(mkDep(true), mkDep(true), mkDep(true)).liveness().sourceSha).toBeNull();
+    } finally {
+      if (previous === undefined) delete process.env.HSM_SOURCE_SHA;
+      else process.env.HSM_SOURCE_SHA = previous;
+    }
   });
 
   it('readiness is true when all deps report up', async () => {

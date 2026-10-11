@@ -21,6 +21,17 @@ export interface ReadinessReport {
 // ambiguous failure modes instead of a clean 503.
 const PING_TIMEOUT_MS = 2_000;
 
+// R18-O3 — the source revision this process was built from. The runner image
+// copies its SOURCE_SHA build argument into HSM_SOURCE_SHA, so an operator can
+// confirm which build answers on an origin. Anything but a full lowercase Git
+// SHA (an unset variable, the Dockerfile's "unknown" default, a local run)
+// reports null: an unknown revision is never presented as an identity.
+const SOURCE_SHA = /^[0-9a-f]{40}$/u;
+
+export function runtimeSourceSha(value = process.env.HSM_SOURCE_SHA): string | null {
+  return value && SOURCE_SHA.test(value) ? value : null;
+}
+
 @Injectable()
 export class HealthService {
   constructor(
@@ -30,11 +41,12 @@ export class HealthService {
     private readonly config: AppConfigService,
   ) {}
 
-  liveness(): { status: 'ok'; uptimeSeconds: number; timestamp: string } {
+  liveness(): { status: 'ok'; uptimeSeconds: number; timestamp: string; sourceSha: string | null } {
     return {
       status: 'ok',
       uptimeSeconds: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
+      sourceSha: runtimeSourceSha(),
     };
   }
 

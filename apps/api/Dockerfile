@@ -153,7 +153,8 @@ CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
 FROM node:${NODE_VERSION} AS runner
 ARG SOURCE_SHA=unknown
 LABEL org.opencontainers.image.revision=${SOURCE_SHA}
-ENV NODE_ENV=production \
+# R18-O3 — /health/live reports this revision (null unless a full Git SHA).
+ENV HSM_SOURCE_SHA=${SOURCE_SHA}     NODE_ENV=production \
     NPM_CONFIG_UPDATE_NOTIFIER=false \
     NODE_OPTIONS="--enable-source-maps"
 WORKDIR /app
