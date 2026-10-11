@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { lazy, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Outlet, useLocation, useNavigate, useNavigation, useOutletContext } from 'react-router';
-import { JobWizardModal } from './components/wizard/JobWizardModal';
+import { AsyncBoundary } from './AsyncBoundary';
+import { ASYNC_COPY } from './async-copy';
+import { Button } from './components/ui/button';
 import { Snackbar } from './components/ds/Snackbar';
 import { Toaster } from './components/ui/sonner';
 import { LanguageProvider, useLang } from './i18n/LanguageContext';
@@ -13,6 +15,49 @@ import { setRealtimeLang } from '../lib/realtime/realtime-i18n';
 import { setRealtimeNavigator } from '../lib/realtime/realtime-navigator';
 import { setRealtimeExperience } from '../lib/realtime/realtime-experience';
 import './styles/toast-theme.css';
+
+const JobWizardModal = lazy(() =>
+  import('./components/wizard/JobWizardModal').then((module) => ({
+    default: module.JobWizardModal,
+  })),
+);
+
+// A nonmodal notice keeps the page usable while the requested form loads.
+// Dismissal clears only the open intent; it does not claim to cancel import().
+function WizardLoadNotice({
+  open,
+  onClose,
+  failed = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  failed?: boolean;
+}) {
+  const { lang, dir } = useLang();
+  const copy = ASYNC_COPY[lang];
+  if (!open) return null;
+  return (
+    <aside
+      className="absolute inset-x-4 bottom-24 z-50 space-y-3 rounded-lg border border-border bg-background p-4 text-foreground shadow-lg"
+      lang={lang}
+      dir={dir}
+    >
+      <div role={failed ? 'alert' : 'status'}>
+        <p>{failed ? copy.wizardError : copy.loadingWizard}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {failed && (
+          <Button type="button" className="min-h-11" onClick={() => window.location.reload()}>
+            {copy.reloadPage}
+          </Button>
+        )}
+        <Button type="button" variant="outline" className="min-h-11" onClick={onClose}>
+          {copy.close}
+        </Button>
+      </div>
+    </aside>
+  );
+}
 
 // ─── Shared outlet-context type ───────────────────────────────────────────────
 export interface RootContext {
@@ -37,9 +82,15 @@ function RootInner() {
   const { user } = useAuth();
   const [wizard, setWizard] = useIdentityState<{
     open: boolean;
+    loaded: boolean;
     service: string;
     categoryId: string | null;
-  }>(user?.id ?? 'signed-out', { open: false, service: 'General', categoryId: null });
+  }>(user?.id ?? 'signed-out', {
+    open: false,
+    loaded: false,
+    service: 'General',
+    categoryId: null,
+  });
 
   const location = useLocation();
   const navigation = useNavigation();
@@ -98,8 +149,9 @@ function RootInner() {
   }, [navigate]);
 
   const openWizard = (service: string, categoryId: string | null = null) => {
-    setWizard({ service, categoryId, open: true });
+    setWizard({ service, categoryId, open: true, loaded: true });
   };
+  const closeWizard = () => setWizard((value) => ({ ...value, open: false }));
   const ctx: RootContext = { isOffline, openWizard };
 
   const fontFamily =
@@ -200,14 +252,19 @@ function RootInner() {
             <Outlet context={ctx} />
           </div>
 
-          {isHome && (
-            <JobWizardModal
-              key={user?.id ?? 'signed-out'}
-              service={wizard.service}
-              categoryId={wizard.categoryId}
-              isOpen={wizard.open && !!user}
-              onClose={() => setWizard((value) => ({ ...value, open: false }))}
-            />
+          {isHome && wizard.loaded && user && (
+            <AsyncBoundary
+              key={user.id}
+              loading={<WizardLoadNotice open={wizard.open} onClose={closeWizard} />}
+              error={<WizardLoadNotice open={wizard.open} onClose={closeWizard} failed />}
+            >
+              <JobWizardModal
+                service={wizard.service}
+                categoryId={wizard.categoryId}
+                isOpen={wizard.open}
+                onClose={closeWizard}
+              />
+            </AsyncBoundary>
           )}
 
           <Snackbar

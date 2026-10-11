@@ -49,12 +49,24 @@ export default defineConfig({
 `;
 
 const omitted = new Set([
-  'node_modules', 'dist', '.turbo', '.git', 'test-results',
-  'playwright-report', 'coverage', 'vite.config.js', 'vite.config.d.ts',
+  'node_modules',
+  'dist',
+  '.turbo',
+  '.git',
+  'test-results',
+  'playwright-report',
+  'coverage',
+  'vite.config.js',
+  'vite.config.d.ts',
 ]);
 
 async function exists(file: string): Promise<boolean> {
-  try { await access(file); return true; } catch { return false; }
+  try {
+    await access(file);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Keep caches/build-info LOCAL to the scratch directory. Linking the entire
@@ -80,12 +92,20 @@ async function stop(child: ChildProcess): Promise<void> {
     // Only the process tree THIS test created, never other Node processes.
     spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
   } else {
-    try { process.kill(-child.pid, 'SIGTERM'); } catch { /* Already exited. */ }
+    try {
+      process.kill(-child.pid, 'SIGTERM');
+    } catch {
+      /* Already exited. */
+    }
     for (let i = 0; i < 50 && child.exitCode === null; i++) {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     if (child.exitCode === null) {
-      try { process.kill(-child.pid, 'SIGKILL'); } catch { /* Already exited. */ }
+      try {
+        process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        /* Already exited. */
+      }
     }
   }
   children.delete(child);
@@ -102,9 +122,15 @@ async function serve(args: string[], port: number, info: TestInfo, name: string)
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   children.add(child);
-  child.stdout?.on('data', (data) => { output += data.toString(); });
-  child.stderr?.on('data', (data) => { output += data.toString(); });
-  child.on('error', (error) => { failure = error; });
+  child.stdout?.on('data', (data) => {
+    output += data.toString();
+  });
+  child.stderr?.on('data', (data) => {
+    output += data.toString();
+  });
+  child.on('error', (error) => {
+    failure = error;
+  });
   const baseURL = `http://127.0.0.1:${port}`;
   const close = async () => {
     await stop(child);
@@ -113,13 +139,20 @@ async function serve(args: string[], port: number, info: TestInfo, name: string)
     await info.attach(name, { path: log, contentType: 'text/plain' });
   };
   try {
-    await expect.poll(async () => {
-      if (failure) throw failure;
-      if (child.exitCode !== null) throw new Error(`Server exited: ${output}`);
-      try {
-        return (await fetch(baseURL, { signal: AbortSignal.timeout(1000) })).ok;
-      } catch { return false; }
-    }, { timeout: 90_000, message: `Waiting for ${name}` }).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          if (failure) throw failure;
+          if (child.exitCode !== null) throw new Error(`Server exited: ${output}`);
+          try {
+            return (await fetch(baseURL, { signal: AbortSignal.timeout(1000) })).ok;
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 90_000, message: `Waiting for ${name}` },
+      )
+      .toBe(true);
     return { baseURL, close, spawnedAt };
   } catch (error) {
     await close();
@@ -128,7 +161,12 @@ async function serve(args: string[], port: number, info: TestInfo, name: string)
 }
 
 const cliFlags = (port: number) => [
-  '--host', '127.0.0.1', '--port', String(port), '--strictPort', '--force',
+  '--host',
+  '127.0.0.1',
+  '--port',
+  String(port),
+  '--strictPort',
+  '--force',
 ];
 
 test.beforeAll(async () => {
@@ -148,7 +186,9 @@ test.beforeAll(async () => {
     await copyFile(path.join(repoRoot, file), path.join(scratch, file));
   }
   for (const [from, to] of [
-    [repoRoot, scratch], [webRoot, web], [path.join(repoRoot, 'packages/contracts'), contracts],
+    [repoRoot, scratch],
+    [webRoot, web],
+    [path.join(repoRoot, 'packages/contracts'), contracts],
   ]) {
     await linkDependencies(path.join(from, 'node_modules'), path.join(to, 'node_modules'));
   }
@@ -167,24 +207,29 @@ test('commands pin the source config and typechecking emits no shadow config', a
   const config = JSON.parse(await readFile(path.join(web, 'tsconfig.node.json'), 'utf8'));
   expect(config.compilerOptions.noEmit).toBe(true);
   const check = spawnSync(process.execPath, [tscCli, '-b', 'tsconfig.node.json', '--force'], {
-    cwd: web, encoding: 'utf8', timeout: 90_000,
+    cwd: web,
+    encoding: 'utf8',
+    timeout: 90_000,
   });
   expect(check.status, `${check.stdout}\n${check.stderr}`).toBe(0);
   expect(await exists(path.join(web, 'vite.config.js'))).toBe(false);
   expect(await exists(path.join(web, 'vite.config.d.ts'))).toBe(false);
   // A freshly rebuilt CommonJS entry DOES contain this value in Node. Merely
   // rebuilding it cannot make raw CommonJS into browser ESM.
-  expect(loadCommonJs('@homeservicemarketplace/contracts').LEGACY_PUBLICATION_ACK_TEXT)
-    .toBe('PROVIDER_CONFIRMED_RIGHT_TO_PUBLISH');
+  expect(loadCommonJs('@homeservicemarketplace/contracts').LEGACY_PUBLICATION_ACK_TEXT).toBe(
+    'PROVIDER_CONFIRMED_RIGHT_TO_PUBLISH',
+  );
 });
 
-test('reproduces the contracts failure and preserves recovery when an old config is auto-discovered', async ({ page }, info) => {
+test('isolates the selector and recovers the affected admin route when an old config is auto-discovered', async ({
+  page,
+}, info) => {
   await writeFile(path.join(web, 'vite.config.js'), legacyConfig);
   const server = await serve([viteCli, ...cliFlags(5197)], 5197, info, 'legacy-dev');
   const errors: string[] = [];
   const contractRequests: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  // The bootstrap from merged #100 now catches module failures. Inspect the
+  // Both bootstrap and route boundaries handle module failures. Inspect the
   // handled console error as well as unexpected unhandled exceptions.
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
@@ -195,21 +240,31 @@ test('reproduces the contracts failure and preserves recovery when an old config
     }
   });
   try {
-    await stubApi(page);
+    await seedLanguage(page, 'en');
+    await stubApi(page, { me: signedInAdmin() });
     await page.goto(server.baseURL);
-    await expect.poll(() => errors.some((message) =>
-      /does not provide an export named 'LEGACY_PUBLICATION_ACK_TEXT'/.test(message),
-    )).toBe(true);
+    // Admin's ReviewDossier imports the affected value. Splitting routes must
+    // keep this old configuration defect out of an unrelated public entry.
+    await expect(page.getByTestId('app-card-seeker')).toBeVisible();
+    expect(contractRequests).toEqual([]);
+    await page.getByTestId('app-card-admin').click();
+    await expect
+      .poll(() =>
+        errors.some((message) =>
+          /does not provide an export named 'LEGACY_PUBLICATION_ACK_TEXT'/.test(message),
+        ),
+      )
+      .toBe(true);
     expect(contractRequests.length).toBeGreaterThan(0);
-    await expect(page.getByRole('alert')).toContainText('The application could not start');
-    await expect(page.getByRole('alert')).toContainText('تعذّر بدء التطبيق');
-    await expect(page.getByRole('button', { name: 'إعادة المحاولة / Retry' })).toBeVisible();
+    await expect(page.getByRole('alert')).toContainText('The page could not load');
+    await expect(page.getByRole('button', { name: 'Reload page', exact: true })).toBeVisible();
     await expect(page.getByTestId('app-card-seeker')).toHaveCount(0);
     const screenshot = info.outputPath('before-legacy-recovery.png');
     await page.screenshot({ path: screenshot, fullPage: true });
     await info.attach('before-legacy-recovery', { path: screenshot, contentType: 'image/png' });
     await info.attach('legacy-errors', {
-      body: JSON.stringify({ errors, contractRequests }, null, 2), contentType: 'application/json',
+      body: JSON.stringify({ errors, contractRequests }, null, 2),
+      contentType: 'application/json',
     });
     console.log('REPRODUCED', JSON.stringify(errors));
   } finally {
@@ -217,7 +272,9 @@ test('reproduces the contracts failure and preserves recovery when an old config
   }
 });
 
-test('real pnpm dev renders public and Admin routes with the stale config still present', async ({ browser }, info) => {
+test('real pnpm dev renders public and Admin routes with the stale config still present', async ({
+  browser,
+}, info) => {
   // Write it here too: this positive test is independently executable.
   await writeFile(path.join(web, 'vite.config.js'), legacyConfig);
   const pnpm = process.env.npm_execpath;
@@ -227,7 +284,8 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
   try {
     for (const lang of ['en', 'ar'] as const) {
       for (const [size, viewport] of Object.entries({
-        desktop: { width: 1440, height: 900 }, mobile: { width: 390, height: 844 },
+        desktop: { width: 1440, height: 900 },
+        mobile: { width: 390, height: 844 },
       })) {
         for (const admin of [false, true]) {
           const context = await browser.newContext({ viewport });
@@ -263,9 +321,13 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
             await expectNoHorizontalPageOverflow(page);
             await capture(`after-${label}`);
             if (admin) {
-              await page.getByTestId('admin-approval-center').getByRole('link', {
-                name: lang === 'ar' ? 'مراجعة طلبات التسجيل' : 'Review applications', exact: true,
-              }).click();
+              await page
+                .getByTestId('admin-approval-center')
+                .getByRole('link', {
+                  name: lang === 'ar' ? 'مراجعة طلبات التسجيل' : 'Review applications',
+                  exact: true,
+                })
+                .click();
               await expect(page.getByTestId('admin-review-directory')).toBeVisible();
               await capture(`after-reviews-${lang}-${size}`);
             }
@@ -276,8 +338,17 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
             await expect(page.locator('vite-error-overlay')).toHaveCount(0);
             expect(errors, label).toEqual([]);
             expect(distRequests, label).toEqual([]);
-            expect(sourceContractRequests, label).toBeGreaterThan(0);
-            evidence.push({ label, errors, distRequests, sourceContractRequests, elapsedMs: Date.now() - started });
+            // Only the selected private experience imports runtime contracts.
+            // The public route must not silently regain that eager graph.
+            if (admin) expect(sourceContractRequests, label).toBeGreaterThan(0);
+            else expect(sourceContractRequests, label).toBe(0);
+            evidence.push({
+              label,
+              errors,
+              distRequests,
+              sourceContractRequests,
+              elapsedMs: Date.now() - started,
+            });
           } catch (error) {
             await capture(`failure-${label}`);
             throw new Error(`${label}: ${String(error)}; page errors: ${JSON.stringify(errors)}`, {
@@ -291,7 +362,11 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
     }
     expect(await readFile(path.join(web, 'vite.config.js'), 'utf8')).toBe(legacyConfig);
     await info.attach('fixed-startup-evidence', {
-      body: JSON.stringify({ api: 'deterministic HTTP fixtures, not a real backend', evidence }, null, 2),
+      body: JSON.stringify(
+        { api: 'deterministic HTTP fixtures, not a real backend', evidence },
+        null,
+        2,
+      ),
       contentType: 'application/json',
     });
     console.log('FIXED_STARTUP', JSON.stringify(evidence));
@@ -300,7 +375,6 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
   }
 });
 
-
 for (const mode of ['dev', 'production-preview'] as const) {
   test(`${mode} stays interactive when API transport is unavailable`, async ({ page }, info) => {
     const pnpm = process.env.npm_execpath;
@@ -308,18 +382,32 @@ for (const mode of ['dev', 'production-preview'] as const) {
     if (mode === 'production-preview') {
       // Build the isolated current source, never reuse a developer's old dist.
       const build = spawnSync(process.execPath, [viteCli, 'build', '--config', 'vite.config.ts'], {
-        cwd: web, encoding: 'utf8', timeout: 120_000,
+        cwd: web,
+        encoding: 'utf8',
+        timeout: 120_000,
         env: { ...process.env, VITE_API_URL: 'https://api.example.test' },
       });
       await info.attach('r02-production-build', {
-        body: `${build.stdout}\n${build.stderr}`, contentType: 'text/plain',
+        body: `${build.stdout}\n${build.stderr}`,
+        contentType: 'text/plain',
       });
       expect(build.status, 'Production source must build before preview').toBe(0);
     }
     const port = mode === 'dev' ? 5199 : 5200;
-    const args = mode === 'dev'
-      ? [pnpm!, 'run', 'dev', ...cliFlags(port)]
-      : [viteCli, 'preview', '--config', 'vite.config.ts', '--host', '127.0.0.1', '--port', String(port), '--strictPort'];
+    const args =
+      mode === 'dev'
+        ? [pnpm!, 'run', 'dev', ...cliFlags(port)]
+        : [
+            viteCli,
+            'preview',
+            '--config',
+            'vite.config.ts',
+            '--host',
+            '127.0.0.1',
+            '--port',
+            String(port),
+            '--strictPort',
+          ];
     const errors: string[] = [];
     let failedApiRequests = 0;
     page.on('pageerror', (error) => errors.push(error.message));
@@ -343,44 +431,81 @@ for (const mode of ['dev', 'production-preview'] as const) {
       expect(errors).toEqual([]);
       expect(failedApiRequests).toBeGreaterThan(0);
       await info.attach('r02-interactive-readiness', {
-        body: JSON.stringify({
-          mode, node: process.version, platform: process.platform, interactiveMs,
-          start: 'owned server process spawn', end: 'navigation and editable input acknowledged',
-          api: 'controlled browser transport failure; no backend success claimed',
-          failedApiRequests, errors,
-        }, null, 2), contentType: 'application/json',
+        body: JSON.stringify(
+          {
+            mode,
+            node: process.version,
+            platform: process.platform,
+            interactiveMs,
+            start: 'owned server process spawn',
+            end: 'navigation and editable input acknowledged',
+            api: 'controlled browser transport failure; no backend success claimed',
+            failedApiRequests,
+            errors,
+          },
+          null,
+          2,
+        ),
+        contentType: 'application/json',
       });
       const screenshot = info.outputPath(`r02-${mode}-interactive.png`);
       await page.screenshot({ path: screenshot, fullPage: true });
       await info.attach(`r02-${mode}-interactive`, { path: screenshot, contentType: 'image/png' });
-    } finally { await server.close(); }
+    } finally {
+      await server.close();
+    }
   });
 }
 
-test('occupied web port fails without killing or reusing its existing server', async ({ page }, info) => {
+test('occupied web port fails without killing or reusing its existing server', async ({
+  page,
+}, info) => {
   const occupied = createServer((_request, response) => response.end('unrelated-listener'));
   await new Promise<void>((resolve) => occupied.listen(0, '127.0.0.1', resolve));
   const address = occupied.address();
   if (!address || typeof address === 'string') throw new Error('Expected a TCP test listener');
   let output = '';
   let failure: Error | undefined;
-  const child = spawn(process.execPath, [viteCli, '--config', 'vite.config.ts', ...cliFlags(address.port)], {
-    cwd: web, detached: process.platform !== 'win32',
-    env: { ...process.env, VITE_API_URL: 'https://api.example.test', BROWSER: 'none' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const child = spawn(
+    process.execPath,
+    [viteCli, '--config', 'vite.config.ts', ...cliFlags(address.port)],
+    {
+      cwd: web,
+      detached: process.platform !== 'win32',
+      env: { ...process.env, VITE_API_URL: 'https://api.example.test', BROWSER: 'none' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
   children.add(child);
-  child.stdout?.on('data', (data) => { output += data.toString(); });
-  child.stderr?.on('data', (data) => { output += data.toString(); });
-  child.on('error', (error) => { failure = error; });
+  child.stdout?.on('data', (data) => {
+    output += data.toString();
+  });
+  child.stderr?.on('data', (data) => {
+    output += data.toString();
+  });
+  child.on('error', (error) => {
+    failure = error;
+  });
   try {
-    await expect.poll(() => { if (failure) throw failure; return child.exitCode; }, { timeout: 30_000 }).not.toBeNull();
+    await expect
+      .poll(
+        () => {
+          if (failure) throw failure;
+          return child.exitCode;
+        },
+        { timeout: 30_000 },
+      )
+      .not.toBeNull();
     expect(child.exitCode).not.toBe(0);
     expect(output).toMatch(/port .*already in use/i);
-    expect(await (await page.request.get(`http://127.0.0.1:${address.port}`)).text()).toBe('unrelated-listener');
+    expect(await (await page.request.get(`http://127.0.0.1:${address.port}`)).text()).toBe(
+      'unrelated-listener',
+    );
     await info.attach('r02-occupied-port', { body: output, contentType: 'text/plain' });
   } finally {
     await stop(child);
-    await new Promise<void>((resolve, reject) => occupied.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) =>
+      occupied.close((error) => (error ? reject(error) : resolve())),
+    );
   }
 });
