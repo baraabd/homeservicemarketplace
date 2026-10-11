@@ -20,9 +20,8 @@ export const HELP_FAQS = [
   {
     en: 'How do payments work?',
     ar: 'كيف تعمل المدفوعات؟',
-    answerEn:
-      'The current product does not process or hold customer funds. Follow the payment details shown for the booking.',
-    answerAr: 'المنتج الحالي لا يعالج أموال العميل أو يحتفظ بها. اتبع تفاصيل الدفع المعروضة للحجز.',
+    answerEn: 'The current product does not process or hold customer funds.',
+    answerAr: 'المنتج الحالي لا يعالج أموال العميل أو يحتفظ بها.',
   },
   {
     en: 'What if I have a problem with a job?',

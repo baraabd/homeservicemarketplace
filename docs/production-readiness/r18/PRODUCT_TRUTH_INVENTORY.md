@@ -17,7 +17,7 @@ Classes: `AUTHORITATIVE_RUNTIME`, `STATIC_CONTENT`, `TEST_ONLY`,
 | Location                                                                                       | Finding                                                                               | Fix                                |
 | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------- |
 | seeker profile, home, settings, request success, bids, booking cards, app selector, admin bell | demo figures, no-op controls, `$`/`/hr` regardless of record, fake offline sync       | #151 (merged `a2acf38`)            |
-| `provider/screens/WalletScreen.tsx`                                                            | "Available Balance" after an unapproved fee; "Bank withdrawals — coming soon"         | #152 (Draft)                       |
+| `provider/screens/WalletScreen.tsx`                                                            | "Available Balance" after an unapproved fee; "Bank withdrawals — coming soon"         | #152 (merged `ab7e473`)            |
 | `admin/FinancialsSection.tsx`                                                                  | fee and net figures; "Refunds: $0" from a constant field                              | #152                               |
 | `provider/screens/LiveJobsScreen.tsx`                                                          | availability pill not bound to the provider's availability; invented city fallback    | #152                               |
 | `provider/screens/ProviderProfileScreen.tsx`                                                   | Analytics, Notifications, Reviews rows with no destination                            | #152                               |
@@ -26,7 +26,7 @@ Classes: `AUTHORITATIVE_RUNTIME`, `STATIC_CONTENT`, `TEST_ONLY`,
 | `components/profile/HelpSupportPage.tsx:24`                                                    | "Follow the payment details shown for the booking"; none is shown                     | #152                               |
 | bid, booking, wallet and admin amounts                                                         | two scales for one integer (whole units vs `/100`)                                    | owner decision D-2 (`BLOCKERS.md`) |
 
-## Classified occurrences (after #151; #152 rows marked)
+## Classified occurrences (historical source inventory; #151 and #152 now merged)
 
 | Location                                                                                                                                                  | Indicator                                                                             | Class                                  | Note                                                                                                                                      |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |

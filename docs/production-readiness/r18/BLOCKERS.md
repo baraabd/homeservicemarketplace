@@ -1,8 +1,9 @@
 # R18 — Blockers and open decisions
 
-Base: `develop@fabeb0765689131025208f8dca2e7a4fae924118` (R18 baseline,
-`GO_NO_GO.md`). Every row cites its source. A decision is not resolved
-because the sprint that recorded it merged, and R18 resolves none of them.
+Historical base: `develop@fabeb0765689131025208f8dca2e7a4fae924118` (R18
+baseline, `GO_NO_GO.md`). PR #152 is merged as `ab7e473` and integrated into
+this branch. Every row cites its source. A policy decision is not resolved
+because the sprint that recorded it merged.
 
 Classification:
 
@@ -18,19 +19,20 @@ records the engineering view: what the code does today and whether it is safe.
 
 ## 1. Engineering and release blockers
 
-Read from GitHub on 2026-10-10 against `fabeb07`.
+Originally read from GitHub on 2026-10-10 against `fabeb07`; the F2 closure
+was rechecked on 2026-10-11 against the merged PR and integrated source.
 
-| ID     | Blocker                                                                                    | Evidence                                                                                                          | Class                       | Closure                                                                                                 |
-| ------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------- |
-| R18-G1 | `develop` has no branch protection and no rulesets                                         | `GET /branches/develop/protection` → 404 "Branch not protected"; `GET /rulesets` → `[]`                           | P1 RELEASE_BLOCKER          | `RELEASE_BLOCKER_BRANCH_PROTECTION`; payload in `BRANCH_PROTECTION_EVIDENCE.md`, applied by the owner   |
-| R18-S1 | CodeQL #3 critical `js/type-confusion-through-parameter-tampering`                         | fixed by #150 (`31d73a0`); GitHub marks the alert `fixed` at 2026-10-10T17:58:58Z                                 | RESOLVED                    | —                                                                                                       |
-| R18-S2 | CodeQL #2 high `js/xss-through-dom` (`JobWizardModal.tsx:913`)                             | open on develop                                                                                                   | P1 RELEASE_BLOCKER          | evidence in § 3; the owner dismisses it as a false positive or asks for a code change                   |
-| R18-F1 | E-18: My Bids read only its first page                                                     | #149 merged as `fabeb07`; the E-18 step (7 cases, fail-closed) passed in the post-merge CI run 38076416877        | RESOLVED                    | —                                                                                                       |
-| R18-F2 | Provider wallet and admin financials show an unapproved fee, a "balance" and "Refunds: $0" | reproduced from source on `fabeb07`                                                                               | P1 RELEASE_BLOCKER          | prerequisite PR #152 (Draft), then refresh R18 on its merge                                             |
-| R18-H1 | No hosted staging or production target                                                     | GitHub environment `staging` has no secrets, variables or protection rules; the repository has no Actions secrets | P1 RELEASE_BLOCKER (launch) | `HOSTED_ENVIRONMENT_BLOCKED`: the owner supplies an authorized target (`infra/production/STAGING.md`)   |
-| R18-O1 | No executed backup restore, rollback rehearsal or alert test                               | depends on R18-H1                                                                                                 | P1 RELEASE_BLOCKER (launch) | `BACKUP_RESTORE_EVIDENCE.md`, `ROLLBACK_RUNBOOK.md`                                                     |
-| R18-O2 | GitHub secret scanning is disabled for the repository                                      | `GET /secret-scanning/alerts` → "Secret scanning is disabled on this repository."                                 | P2                          | gitleaks runs on history and on the exact tracked tree in CI; the owner may also enable GitHub scanning |
-| R18-O3 | No build SHA or version is exposed by the API                                              | `/health/live` and `/health/ready` report health only                                                             | P2                          | `OBSERVABILITY_AND_ALERTS.md`                                                                           |
+| ID     | Blocker                                                                                      | Evidence                                                                                                          | Class                       | Closure                                                                                                 |
+| ------ | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------- |
+| R18-G1 | `develop` has no branch protection and no rulesets                                           | `GET /branches/develop/protection` → 404 "Branch not protected"; `GET /rulesets` → `[]`                           | P1 RELEASE_BLOCKER          | `RELEASE_BLOCKER_BRANCH_PROTECTION`; payload in `BRANCH_PROTECTION_EVIDENCE.md`, applied by the owner   |
+| R18-S1 | CodeQL #3 critical `js/type-confusion-through-parameter-tampering`                           | fixed by #150 (`31d73a0`); GitHub marks the alert `fixed` at 2026-10-10T17:58:58Z                                 | RESOLVED                    | —                                                                                                       |
+| R18-S2 | CodeQL #2 high `js/xss-through-dom` (`JobWizardModal.tsx:913`)                               | open on develop                                                                                                   | P1 RELEASE_BLOCKER          | evidence in § 3; the owner dismisses it as a false positive or asks for a code change                   |
+| R18-F1 | E-18: My Bids read only its first page                                                       | #149 merged as `fabeb07`; the E-18 step (7 cases, fail-closed) passed in the post-merge CI run 38076416877        | RESOLVED                    | —                                                                                                       |
+| R18-F2 | Provider wallet and admin financials showed an unapproved fee, a "balance" and "Refunds: $0" | #152 merged as `ab7e473a66601545b5cd0d616b9d315163b619bf`, 2026-10-10T21:26:17Z; integrated in this branch        | RESOLVED                    | wording and read-model repair from #152; D-2 is not resolved by this fix                                |
+| R18-H1 | No hosted staging or production target                                                       | GitHub environment `staging` has no secrets, variables or protection rules; the repository has no Actions secrets | P1 RELEASE_BLOCKER (launch) | `HOSTED_ENVIRONMENT_BLOCKED`: the owner supplies an authorized target (`infra/production/STAGING.md`)   |
+| R18-O1 | No executed backup restore, rollback rehearsal or alert test                                 | depends on R18-H1                                                                                                 | P1 RELEASE_BLOCKER (launch) | `BACKUP_RESTORE_EVIDENCE.md`, `ROLLBACK_RUNBOOK.md`                                                     |
+| R18-O2 | GitHub secret scanning is disabled for the repository                                        | `GET /secret-scanning/alerts` → "Secret scanning is disabled on this repository."                                 | P2                          | gitleaks runs on history and on the exact tracked tree in CI; the owner may also enable GitHub scanning |
+| R18-O3 | No build SHA or version is exposed by the API                                                | `/health/live` and `/health/ready` report health only                                                             | P2                          | `OBSERVABILITY_AND_ALERTS.md`                                                                           |
 
 ## 2. Open product decisions
 

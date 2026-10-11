@@ -1,6 +1,7 @@
 # R18 — First-release scope
 
-Base: `develop@fabeb0765689131025208f8dca2e7a4fae924118` (R18_BASE_SHA). This file
+Historical base: `develop@fabeb0765689131025208f8dca2e7a4fae924118`
+(R18_BASE_SHA); prerequisite #152 is merged as `ab7e473` and integrated. This file
 classifies what version 1 contains. It approves no policy: where a
 capability waits on a decision, the decision is named (`BLOCKERS.md`).
 
@@ -9,42 +10,42 @@ Classes: `IN_RELEASE_SCOPE`, `INTENTIONALLY_ABSENT`, `POLICY_BLOCKED`,
 
 ## In release scope
 
-| Experience | Capability                                                                             | Authority (server)                                         |
-| ---------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Seeker     | Register, OTP verification, login, refresh, logout, password reset                     | `iam/authentication`                                       |
-| Seeker     | Profile and saved addresses                                                            | `/v1/me`, `/v1/me/addresses` (R05)                         |
-| Seeker     | Active catalog                                                                         | service categories (R05)                                   |
-| Seeker     | Create a request, with verified media                                                  | `/v1/me/requests`, request media authority (R06, R07)      |
-| Seeker     | Request lifecycle (cancel, timeline)                                                   | R07                                                        |
-| Seeker     | Compare bids; accept one; exactly one booking                                          | bid acceptance (R07, PLATFORM-TX-1)                        |
-| Seeker     | Bookings list and detail, cancel where allowed                                         | `/v1/me/bookings` (R12)                                    |
-| Seeker     | Review a completed booking once                                                        | R11                                                        |
-| Seeker     | Booking messaging                                                                      | R12, R17-A                                                 |
-| Seeker     | Notifications (in-app)                                                                 | R17-B                                                      |
-| Seeker     | Disputes (pilot-gated; see D-3)                                                        | R17-C                                                      |
-| Seeker     | Help & support tickets                                                                 | R13                                                        |
-| Provider   | Upgrade, onboarding V2, work area, working hours                                       | R08, R09, R10                                              |
-| Provider   | Identity verification, correction and resubmission, portfolio                          | Sprint 9, R08, admin review                                |
-| Provider   | Capabilities and status centre                                                         | `ProviderCapabilityService` (R17-E)                        |
-| Provider   | Feed, request detail, submit and withdraw a bid                                        | R07, R09, R17-E                                            |
-| Provider   | My Bids (every page; E-18, #149 merged) and bookings (every page)                      | R17-E, closure #148                                        |
-| Provider   | Booking detail, timeline, start, complete, cancel                                      | R12, R17-E, PLATFORM-TX-1                                  |
-| Provider   | Messaging, notifications                                                               | R12, R17-A, R17-B                                          |
-| Provider   | Own reviews and rating                                                                 | R11                                                        |
-| Provider   | Earnings **read model** (booking values; no balance, no payout)                        | `provider/wallet` read model; wording fixed in #152 (open) |
-| Admin      | Provider review, evidence review, correction, approval/activation                      | admin review (Sprint 9)                                    |
-| Admin      | Users and user status, settings and history, analytics, audit, notifications, disputes | R17-D, R17-C                                               |
+| Experience | Capability                                                                             | Authority (server)                                                     |
+| ---------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Seeker     | Register, OTP verification, login, refresh, logout, password reset                     | `iam/authentication`                                                   |
+| Seeker     | Profile and saved addresses                                                            | `/v1/me`, `/v1/me/addresses` (R05)                                     |
+| Seeker     | Active catalog                                                                         | service categories (R05)                                               |
+| Seeker     | Create a request, with verified media                                                  | `/v1/me/requests`, request media authority (R06, R07)                  |
+| Seeker     | Request lifecycle (cancel, timeline)                                                   | R07                                                                    |
+| Seeker     | Compare bids; accept one; exactly one booking                                          | bid acceptance (R07, PLATFORM-TX-1)                                    |
+| Seeker     | Bookings list and detail, cancel where allowed                                         | `/v1/me/bookings` (R12)                                                |
+| Seeker     | Review a completed booking once                                                        | R11                                                                    |
+| Seeker     | Booking messaging                                                                      | R12, R17-A                                                             |
+| Seeker     | Notifications (in-app)                                                                 | R17-B                                                                  |
+| Seeker     | Disputes (pilot-gated; see D-3)                                                        | R17-C                                                                  |
+| Seeker     | Help & support tickets                                                                 | R13                                                                    |
+| Provider   | Upgrade, onboarding V2, work area, working hours                                       | R08, R09, R10                                                          |
+| Provider   | Identity verification, correction and resubmission, portfolio                          | Sprint 9, R08, admin review                                            |
+| Provider   | Capabilities and status centre                                                         | `ProviderCapabilityService` (R17-E)                                    |
+| Provider   | Feed, request detail, submit and withdraw a bid                                        | R07, R09, R17-E                                                        |
+| Provider   | My Bids (every page; E-18, #149 merged) and bookings (every page)                      | R17-E, closure #148                                                    |
+| Provider   | Booking detail, timeline, start, complete, cancel                                      | R12, R17-E, PLATFORM-TX-1                                              |
+| Provider   | Messaging, notifications                                                               | R12, R17-A, R17-B                                                      |
+| Provider   | Own reviews and rating                                                                 | R11                                                                    |
+| Provider   | Earnings **read model** (booking values; no balance, no payout)                        | `provider/wallet` read model; wording fixed in #152 (merged `ab7e473`) |
+| Admin      | Provider review, evidence review, correction, approval/activation                      | admin review (Sprint 9)                                                |
+| Admin      | Users and user status, settings and history, analytics, audit, notifications, disputes | R17-D, R17-C                                                           |
 
 ## Not in release scope
 
 | Capability                                                                 | Class                        | Policy source                                                                  | UI today                                                                                        | API today                                                   | Writes | Wording truthful                 | Blocks first release |
 | -------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------ | -------------------------------- | -------------------- |
-| Provider payout / withdrawal                                               | POLICY_BLOCKED               | `r16/PAYOUT_POLICY.md` (`R16_POLICY_BLOCKED`, `R16_FUNDING_AUTHORITY_BLOCKED`) | wallet control disabled; "coming soon" → "Withdrawals are not available" in #152                | no endpoint                                                 | none   | yes after #152                   | no                   |
-| Customer payment execution                                                 | POLICY_BLOCKED               | `docs/money/README.md`, R15 matrix (NO_PERSISTENCE)                            | no payment step; help copy points to booking details (EVIDENCE_MISSING, see matrix)             | no endpoint                                                 | none   | see matrix row S-PAY             | no                   |
-| Refund execution                                                           | POLICY_BLOCKED               | R16, R17-C P11                                                                 | dispute outcomes say "refund intent (not executed)"; admin "Refunds $0" → "not tracked" in #152 | no endpoint                                                 | none   | yes after #152                   | no                   |
+| Provider payout / withdrawal                                               | POLICY_BLOCKED               | `r16/PAYOUT_POLICY.md` (`R16_POLICY_BLOCKED`, `R16_FUNDING_AUTHORITY_BLOCKED`) | wallet control disabled; "coming soon" → "Withdrawals are not available" in #152                | no endpoint                                                 | none   | yes (#152 merged)                | no                   |
+| Customer payment execution                                                 | POLICY_BLOCKED               | `docs/money/README.md`, R15 matrix (NO_PERSISTENCE)                            | no payment step; help says the app does not process or hold customer funds (#152 merged)        | no endpoint                                                 | none   | yes (#152 merged)                | no                   |
+| Refund execution                                                           | POLICY_BLOCKED               | R16, R17-C P11                                                                 | dispute outcomes say "refund intent (not executed)"; admin "Refunds $0" → "not tracked" in #152 | no endpoint                                                 | none   | yes (#152 merged)                | no                   |
 | Escrow                                                                     | POLICY_BLOCKED               | R16 P1                                                                         | none                                                                                            | none                                                        | none   | n/a                              | no                   |
 | Live calling                                                               | INTENTIONALLY_ABSENT         | roadmap "Chat calling"                                                         | booking Call disabled, `PhoneOff` with a note                                                   | none                                                        | none   | yes                              | no                   |
-| Live GPS / tracking                                                        | INTENTIONALLY_ABSENT         | roadmap; R18 boundary                                                          | no Track control; launcher "Track Pro" removed in #151                                          | none                                                        | none   | yes after #151                   | no                   |
+| Live GPS / tracking                                                        | INTENTIONALLY_ABSENT         | roadmap; R18 boundary                                                          | no Track control; launcher "Track Pro" removed in #151                                          | none                                                        | none   | yes (#151 merged)                | no                   |
 | Public Provider profile                                                    | FUTURE_V2                    | R17-E (`public-profile` module not exposed to seekers)                         | seekers see provider name, rating, verified on bids/bookings only                               | `modules/provider/public-profile` (owner preview)           | none   | yes                              | no                   |
 | Realtime production cutover                                                | ENVIRONMENT_DEPENDENT        | R17-B (`REALTIME_SOCKET_IO`)                                                   | polling by default; socket path accepted in CI                                                  | outbox + socket.io behind the flag                          | none   | yes                              | no                   |
 | "Top Pro" / bid badges                                                     | UNKNOWN_DECISION (D-16)      | R17-E P16                                                                      | rendered only when the server sends them; the server sends `false` / `null`                     | not written by product code                                 | none   | yes                              | no                   |

@@ -68,10 +68,33 @@ No Playwright step reported a skip, flake or failure.
 acceptance` job needs every CI job and re-checks that summary; `CI gate`
   needs it.
 
-Local execution: NOT RUN (host with about 0.7 GB free memory; earlier
-attempts to run the API, a preview server and Chromium together were stopped
-by the harness). The hosted run on this PR is the evidence; the result is
-recorded in the PR once it has run.
+The original local browser run was memory-blocked. The repair workspace has
+no Docker runtime, so the full journey is verified in hosted CI. Local
+checks use the pinned Node 24.21.0 and pnpm 10.32.1 toolchain. Current-head
+check results and the source-bound seven-case summary are recorded on
+[PR #153](https://github.com/baraabd/homeservicemarketplace/pull/153).
+
+## Hosted failures and focused repairs
+
+- Run `38086513475` (`6696e0c`) passed 2 cases, failed 1 and skipped 4:
+  withdrawn offers were still returned beside their replacement. The
+  seeker-facing repository now lists active `PENDING`/`ACCEPTED` offers.
+- Run `38088576770` (`a33de28`) passed 3, failed 1 and skipped 3: the chat
+  overlay closed on reload. The journey now reopens the persisted
+  conversation through `/home/messages` and waits for the real messages GET.
+- Run `38090023789` (`daf005c`) passed 5, failed 1 and skipped 1: the booking
+  details overlay likewise closed on reload, so the rating locator was not
+  mounted. The repair reopens the completed booking after reload and fresh
+  login, and checks the real booking/review responses and persisted rating.
+- The final notification check now expects the two successful bids to create
+  two `BID_RECEIVED` notices, while each booking transition remains exactly
+  once. Same-browser account switching waits for successful empty
+  server-owned lists before asserting that the previous user's UI is absent.
+
+These historical runs remain failures. They do not certify the repaired
+head; the seven-case counter, R18 aggregate and every required CI job must
+pass on that head. No retry, skip, interception or acceptance-count reduction
+was added.
 
 ## Not covered by R18 and why
 
@@ -85,5 +108,7 @@ recorded in the PR once it has run.
 
 ## Status
 
-`R18_FUNCTIONAL_ACCEPTED` is **not** claimed. Open: #152 (P1 truth fix),
-D-2, D-3, D-8, D-13, D-19 (owner decisions), and the R18 journey's first hosted run.
+`R18_FUNCTIONAL_ACCEPTED` is **not** claimed. PR #152 is merged as `ab7e473`
+and integrated. D-2, D-3, D-8, D-13 and D-19 remain owner decisions. The R18
+journey is a separate current-head CI gate; a green result does not approve
+these policies or establish hosted production readiness.

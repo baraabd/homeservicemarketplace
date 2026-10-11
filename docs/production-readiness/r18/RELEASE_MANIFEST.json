@@ -57,6 +57,6 @@
     "refundExecution": "absent",
     "payoutAndWithdrawal": "absent (R16 policy- and funding-blocked)"
   },
-  "releaseScopeSha256": "854d0cc58990891e47f214e49e7ad212565c7142e8e2369636743e078ad2686f",
+  "releaseScopeSha256": "bdf703ed340e51c544702ed877e7da02ed949da282de69cf7b182a4c1e316269",
   "releaseScopeHashOf": "docs/production-readiness/r18/RELEASE_SCOPE.md at this commit"
 }

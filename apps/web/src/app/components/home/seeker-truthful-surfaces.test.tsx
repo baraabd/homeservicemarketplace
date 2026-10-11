@@ -11,7 +11,9 @@ import { EcosystemProvider } from '../../context/EcosystemContext';
 import { AppSelector } from '../../pages/AppSelector';
 import { AdminNotificationsBell } from '../admin/AdminNotificationsBell';
 import { SettingsPage } from '../profile/SettingsPage';
+import { HelpSupportPage } from '../profile/HelpSupportPage';
 import { BidsScreen } from './BidsScreen';
+import { LeadCard } from './LeadCard';
 import { HomeScreen } from './HomeScreen';
 
 // R18 fake-success inventory — every figure and control on these seeker
@@ -218,6 +220,34 @@ describe('settings, launcher and admin bell', () => {
       expect(screen.queryByText(literal)).toBeNull();
     }
     expect(screen.getAllByText('Bookings').length).toBeGreaterThan(0);
+    // R18 product-truth inventory: no claim of instant cross-app state.
+    expect(screen.queryByText('Real-time Ecosystem Flow')).toBeNull();
+    expect(screen.queryByText('Connected State')).toBeNull();
+    expect(screen.queryByText(/reflect instantly/)).toBeNull();
+  });
+
+  it('an active lead offers its progress, not tracking', () => {
+    render(
+      <LanguageProvider>
+        <LeadCard id="r1" service="Plumbing" status="active" postedAt="now" />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText('Progress')).toBeInTheDocument();
+    expect(screen.queryByText('Track')).toBeNull();
+  });
+
+  it('help: the payments answer points to no payment details that do not exist', () => {
+    mock.onGet('/v1/me/support/tickets').reply(200, { items: [] });
+    render(
+      <LanguageProvider>
+        <HelpSupportPage onBack={() => {}} />
+      </LanguageProvider>,
+    );
+    fireEvent.click(screen.getByText('How do payments work?'));
+    expect(
+      screen.getByText('The current product does not process or hold customer funds.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/payment details shown/)).toBeNull();
   });
 
   it('admin bell: a count that failed to load is not "nothing unread"', async () => {

@@ -180,7 +180,9 @@ async function openWalletTab() {
   // screen ITSELF rather than giving the value assertions a longer timeout —
   // waiting on the thing that has to happen is deterministic, whereas a bigger
   // timeout just makes a race take longer to lose.
-  await screen.findByText(/Available Balance|الرصيد المتاح/i, undefined, { timeout: 5000 });
+  await screen.findByText(/Completed booking value|قيمة الحجوزات المنجزة/i, undefined, {
+    timeout: 5000,
+  });
 }
 
 describe('WalletScreen — Sprint 5.6 (refined)', () => {
@@ -194,15 +196,19 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     renderProvider();
     await openWalletTab();
 
-    // Available balance: 10_800_00 cents → $10,800 (no fractional digits).
-    await waitFor(() => expect(screen.getByText('$10,800')).toBeInTheDocument());
-    // Gross + fees + pending + jobs done — all derived from the API.
-    expect(screen.getByText('$12,000')).toBeInTheDocument();
-    expect(screen.getByText('−$1,200')).toBeInTheDocument();
+    // R18 — the headline is the value of completed bookings (gross), not a
+    // balance: no fee is approved and nothing is held or paid out.
+    await waitFor(() => expect(screen.getByText('$12,000')).toBeInTheDocument());
     expect(screen.getByText('$800')).toBeInTheDocument();
     expect(screen.getByText('17')).toBeInTheDocument();
-    // Fee footnote is computed from platformFeeRateBps (1000 → 10%), not hardcoded.
-    expect(screen.getByText(/After 10% platform fee/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Booking values, not a balance. No platform fee is approved/),
+    ).toBeInTheDocument();
+    // The env-default fee projection is not presented as money.
+    expect(screen.queryByText('$10,800')).toBeNull();
+    expect(screen.queryByText('−$1,200')).toBeNull();
+    expect(screen.queryByText(/platform fee$/i)).toBeNull();
+    expect(screen.queryByText(/Available Balance/i)).toBeNull();
   });
 
   it('renders the empty-transactions state when /transactions returns []', async () => {
@@ -228,7 +234,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     );
   });
 
-  it('renders transactions with netAmount and the amount − fee breakdown', async () => {
+  it('renders each transaction at its booking amount, with no fee deducted', async () => {
     mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
     mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
     mock.onGet('/v1/provider/earnings/summary').reply(200, SUMMARY);
@@ -242,10 +248,9 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     await openWalletTab();
 
     await waitFor(() => expect(screen.getByText('Plumbing')).toBeInTheDocument());
-    // Net is the +-prefixed headline value.
-    expect(screen.getByText('+$4,050')).toBeInTheDocument();
-    // Gross − fee breakdown.
-    expect(screen.getByText('$4,500 − $450')).toBeInTheDocument();
+    expect(screen.getByText('$4,500')).toBeInTheDocument();
+    expect(screen.queryByText('+$4,050')).toBeNull();
+    expect(screen.queryByText('$4,500 − $450')).toBeNull();
   });
 
   it('keeps the withdraw CTA disabled (no fake success)', async () => {
@@ -258,9 +263,9 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     renderProvider();
     await openWalletTab();
 
-    await waitFor(() => expect(screen.getByText('$10,800')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('$12,000')).toBeInTheDocument());
 
-    const withdraw = screen.getByRole('button', { name: /Bank withdrawals — coming soon/i });
+    const withdraw = screen.getByRole('button', { name: /Withdrawals are not available/i });
     expect(withdraw).toBeDisabled();
     // Click should not raise an exception, change state, or invoke any
     // POST handler — there is no withdraw endpoint yet.
@@ -332,7 +337,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     renderProvider();
     await openWalletTab();
 
-    const headline = await screen.findByText('$10,800');
+    const headline = await screen.findByText('$12,000');
     expect(headline).toBeInTheDocument();
     const card = headline.closest('div');
     expect(card).not.toBeNull();

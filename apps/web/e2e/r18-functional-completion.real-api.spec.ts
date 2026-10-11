@@ -22,7 +22,7 @@ import { registerSeeker, withDb, type Seeker } from './booking-fixtures';
 // work-access grant), which the admin review suites accept separately; the
 // approval itself is not under test here (as in R07, R11 and R12).
 //
-// docs/production-readiness/r18/CROSS_ROLE_ACCEPTANCE.md
+// docs/production-readiness/r18/FUNCTIONAL_ACCEPTANCE.md
 
 test.use({ trace: 'off', video: 'off' });
 
@@ -75,6 +75,47 @@ async function signIn(page: Page, account: Account): Promise<void> {
   await expect(page.getByTestId('otp-input')).toHaveCount(0, { timeout: 30_000 });
   account.jar.clear();
   for (const cookie of await page.context().cookies()) account.jar.set(cookie.name, cookie.value);
+}
+
+/** Re-enter a completed booking from Profile after a document load. The detail
+ *  is a transient overlay; the booking, review and reputation come from HTTP. */
+async function openReviewedBooking(
+  page: Page,
+  bookingId: string,
+  profileId: string,
+): Promise<void> {
+  const detailLoaded = page.waitForResponse(
+    isCall('GET', `${REAL_API}/v1/me/bookings/${bookingId}`),
+  );
+  const reviewLoaded = page.waitForResponse(
+    isCall('GET', `${REAL_API}/v1/me/bookings/${bookingId}/review`),
+  );
+  await page.getByRole('button', { name: 'Completed Posts', exact: true }).click();
+  await page.getByTestId(`completed-post-${bookingId}`).click();
+  const detail = await detailLoaded;
+  expect(detail.status()).toBe(200);
+  expect(await detail.json()).toMatchObject({
+    id: bookingId,
+    status: 'COMPLETED',
+    provider: { id: profileId, ratingAvg: 5, reviewCount: 1 },
+  });
+  const review = await reviewLoaded;
+  expect(review.status()).toBe(200);
+  expect(await review.json()).toMatchObject({
+    bookingId,
+    eligibility: 'ALREADY_REVIEWED',
+    review: { bookingId, rating: 5, comment: 'R18: punctual and tidy', state: 'PUBLISHED' },
+  });
+  await expect(page.getByTestId('provider-rating')).toHaveAttribute('data-review-count', '1');
+  await expect(page.getByTestId('provider-rating')).toHaveAccessibleName(
+    'Rated 5.0 out of 5, 1 review',
+  );
+  await expect(page.getByTestId('booking-review-saved-comment')).toHaveText(
+    'R18: punctual and tidy',
+  );
+  await expect(page.getByTestId('booking-review-saved-rating')).toHaveAttribute('data-rating', '5');
+  await expect(page.getByTestId('booking-review-open')).toHaveCount(0);
+  await expect(page.getByTestId('booking-review-thanks')).toHaveCount(0);
 }
 
 const notificationTypes = (userId: string) =>
@@ -364,8 +405,7 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
     // without requiring transient overlay state to survive navigation.
     await seekerPage.reload();
     const conversationsReloaded = seekerPage.waitForResponse(
-      (r) =>
-        r.url() === CONVERSATIONS && r.request().method() === 'GET' && r.status() === 200,
+      (r) => r.url() === CONVERSATIONS && r.request().method() === 'GET' && r.status() === 200,
     );
     await seekerPage.goto(`${BASE_URL}/home/messages`);
     expect((await conversationsReloaded).status()).toBe(200);
@@ -463,11 +503,12 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
     expect(reputation.reviews).toBe('1');
     expect(reputation.reviewCount).toBe(1);
     expect(Number(reputation.ratingAvg)).toBe(5);
+
+    // Reload closes the in-memory detail overlay. Reopen it from the persisted
+    // Completed Posts list and assert fresh HTTP data as well as the rendered
+    // review and rating, instead of requiring overlay state to survive reload.
     await seekerPage.reload();
-    await expect(seekerPage.getByTestId('provider-rating')).toHaveAttribute(
-      'data-review-count',
-      '1',
-    );
+    await openReviewedBooking(seekerPage, bookingId, provider.profileId);
 
     // Fresh browser contexts, fresh real logins: everything is the server's.
     const freshSeeker = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -477,12 +518,7 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
       await seedLanguage(s, 'en');
       await signIn(s, seeker);
       await s.goto(`${BASE_URL}/home/profile`);
-      await s.getByRole('button', { name: 'Completed Posts' }).click();
-      await s.getByTestId(`completed-post-${bookingId}`).click();
-      await expect(s.getByTestId('booking-review-saved-comment')).toHaveText(
-        'R18: punctual and tidy',
-      );
-      await expect(s.getByTestId('booking-review-open')).toHaveCount(0);
+      await openReviewedBooking(s, bookingId, provider.profileId);
 
       const p = await freshProvider.newPage();
       await seedLanguage(p, 'en');
@@ -496,10 +532,21 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
       await freshSeeker.close();
       await freshProvider.close();
     }
-    // No side effect was duplicated across the whole journey.
-    for (const userId of [seeker.userId, providerUserId])
-      for (const [type, n] of Object.entries(counts(await notificationTypes(userId))))
-        if (type !== 'MESSAGE_RECEIVED') expect(n, `${type} for ${userId}`).toBe(1);
+    // Each successful business event notified its recipient exactly once.
+    // Step 2 submitted two distinct bids (the first was withdrawn), so both
+    // legitimate BID_RECEIVED notifications remain. Refused retries and
+    // reloads add nothing; exact maps also catch missing or unexpected events.
+    const businessNotifications = async (userId: string) =>
+      counts((await notificationTypes(userId)).filter((type) => type !== 'MESSAGE_RECEIVED'));
+    expect(await businessNotifications(seeker.userId)).toEqual({
+      BID_RECEIVED: 2,
+      BOOKING_IN_PROGRESS: 1,
+      BOOKING_COMPLETED: 1,
+    });
+    expect(await businessNotifications(providerUserId)).toEqual({
+      BID_ACCEPTED: 1,
+      BOOKING_CREATED: 1,
+    });
   });
 
   test('7 another seeker in the same browser sees none of it, and every foreign resource is refused', async () => {
@@ -522,11 +569,25 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
     await expect(seekerPage).toHaveURL(/\/(login|select)/);
     await signIn(seekerPage, other);
     await seekerPage.goto(`${BASE_URL}/home/bookings`);
+    const bookingsLoaded = seekerPage.waitForResponse(isCall('GET', `${REAL_API}/v1/me/bookings`));
     await seekerPage.reload();
+    const otherBookings = await bookingsLoaded;
+    expect(otherBookings.status()).toBe(200);
+    expect(await otherBookings.json()).toMatchObject({ items: [] });
+    await expect(seekerPage.getByText('No bookings yet', { exact: true })).toBeVisible();
     await expect(seekerPage.getByTestId(`booking-card-${bookingId}`)).toHaveCount(0);
+    const requestsLoaded = seekerPage.waitForResponse(isCall('GET', `${REAL_API}/v1/me/requests`));
     await seekerPage.goto(`${BASE_URL}/home`);
+    const otherRequests = await requestsLoaded;
+    expect(otherRequests.status()).toBe(200);
+    expect(await otherRequests.json()).toMatchObject({ items: [] });
     await expect(seekerPage.getByTestId('lead-card')).toHaveCount(0);
+    const conversationsLoaded = seekerPage.waitForResponse(isCall('GET', CONVERSATIONS));
     await seekerPage.goto(`${BASE_URL}/home/messages`);
+    const otherConversations = await conversationsLoaded;
+    expect(otherConversations.status()).toBe(200);
+    expect(await otherConversations.json()).toMatchObject({ items: [] });
+    await expect(seekerPage.getByText('No conversations yet', { exact: true })).toBeVisible();
     await expect(seekerPage.getByText('R18 reply: on my way')).toHaveCount(0);
 
     // HTTP: a foreign request, booking, bid and conversation are refused, and

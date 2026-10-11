@@ -35,7 +35,8 @@ AppModule's global guard is the application throttler, not a global JwtAuthGuard
 
 ## R18 status (2026-10-11)
 
-R18 certification of version 1 is recorded in `r18/` against
-`develop@fabeb07`. Decision: NO-GO, `R18_BLOCKED` (`r18/GO_NO_GO.md`).
-Open release blockers and owner decisions: `r18/BLOCKERS.md`. This file's
-earlier content is historical and unchanged.
+R18 certification of version 1 is recorded in `r18/`. The historical
+baseline is `develop@fabeb07`; merged prerequisite #152 (`ab7e473`) is now
+integrated into PR #153. Decision: NO-GO, `R18_BLOCKED` (`r18/GO_NO_GO.md`).
+The current-head CI result is recorded on PR #153. Open release blockers and
+owner decisions: `r18/BLOCKERS.md`. This file's earlier content remains historical.

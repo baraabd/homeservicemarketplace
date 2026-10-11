@@ -29,7 +29,7 @@ export interface LeadCardProps {
 //   1 → "1 Bid received" / "لديك عرض واحد"
 //   2+ → "{count} Bids received" / "لديك {count} عروض"
 //
-// CTA copy (Bids/Track/View) stays in the parent — this only drives
+// CTA copy (Bids/Progress/View) stays in the parent — this only drives
 // the status badge label when status === 'pending'.
 export function pendingBidsLabel(bids: number | undefined, lang: 'en' | 'ar'): string {
   const n = typeof bids === 'number' && bids > 0 ? bids : 0;
@@ -192,7 +192,9 @@ export function LeadCard({
               {status === 'completed'
                 ? 'View'
                 : status === 'active'
-                  ? 'Track'
+                  ? // The destination is the booking's recorded progress;
+                    // there is no live tracking.
+                    'Progress'
                   : typeof bids === 'number' && bids > 0
                     ? `Bids (${bids})`
                     : 'Bids'}
