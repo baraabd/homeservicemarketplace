@@ -54,6 +54,21 @@ describe('AuditService', () => {
     expect(JSON.stringify(written.metadata)).not.toContain('should-never-land-here');
   });
 
+  it('keeps who decided an admin-access request and which one (R18)', async () => {
+    const repo = { write: jest.fn().mockResolvedValue(undefined) };
+    const svc = new AuditService(repo as never);
+    await svc.record({
+      type: 'ADMIN_ACCESS_APPROVED' as never,
+      userId: 'u-applicant',
+      metadata: { adminAccessRequestId: 'aar-1', reviewerUserId: 'admin-1', reason: 'vouched' },
+    });
+    expect(repo.write.mock.calls[0][0].metadata).toEqual({
+      adminAccessRequestId: 'aar-1',
+      reviewerUserId: 'admin-1',
+      reason: 'vouched',
+    });
+  });
+
   it('drops non-primitive values even when the key is allowlisted', async () => {
     const h = makeHarness();
     await h.svc.record({

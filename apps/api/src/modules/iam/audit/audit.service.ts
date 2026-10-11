@@ -78,6 +78,11 @@ const ALLOWED_METADATA_KEYS = new Set<string>([
   // reached DRAFT but not whether it was pulled back from review or from a
   // documents-required state, which is the only part a reader needs.
   'previousState',
+  // R18 — admin-access decisions. The approval row is written under the
+  // applicant's userId; without these two the trail could not say which
+  // request was decided or who decided it (only AdminAccessRequest did).
+  'adminAccessRequestId',
+  'reviewerUserId',
 ]);
 
 export interface AuditInput {
