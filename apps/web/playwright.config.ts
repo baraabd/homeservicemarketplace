@@ -95,6 +95,11 @@ export default defineConfig({
   testIgnore: [
     // Requires native Vite dev transforms; owned by playwright.dev.config.ts.
     '**/dev-startup.spec.ts',
+    // Own disposable services and credential-free metric artifacts; never run
+    // it accidentally as part of the mocked or general real-API suites.
+    ...(process.env.HSM_STARTUP_PERFORMANCE === 'isolated-ci'
+      ? []
+      : ['**/startup-performance.real-api.spec.ts']),
     // Platform-specific baselines; see VISUAL_REFERENCE_RUN above.
     ...(VISUAL_REFERENCE_RUN ? [] : ['**/prototype-reference.spec.ts']),
     // Evidence-writing visual gate; see PHASE5_RUN above.
