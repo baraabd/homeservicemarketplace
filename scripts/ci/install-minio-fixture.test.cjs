@@ -10,7 +10,7 @@ const { spawnSync } = require('node:child_process');
 const script = path.resolve(__dirname, 'install-minio-fixture.sh');
 const resolvedVersion = 'v0.0.0-20251015172955-fixturecommit';
 
-function fixture(t, mode, version = 'go1.24.8') {
+function fixture(t, mode, version = 'go1.24.8', { slowLog = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hsm-minio-fixture-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const bin = path.join(root, 'bin');
@@ -84,6 +84,20 @@ chmod +x "$GOBIN/minio"
 `;
   fs.writeFileSync(path.join(bin, 'go'), fakeGo, { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'sleep'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
+  if (slowLog) {
+    // Drain the command promptly, but delay writing its diagnostic. An
+    // asynchronous process-substitution logger must not race classification.
+    fs.writeFileSync(
+      path.join(bin, 'tee'),
+      `#!/usr/bin/env bash
+set -euo pipefail
+diagnostic="$(cat)"
+PATH="$FIXTURE_ORIGINAL_PATH" sleep 0.15
+printf '%s\\n' "$diagnostic" | PATH="$FIXTURE_ORIGINAL_PATH" tee "$@"
+`,
+      { mode: 0o755 },
+    );
+  }
 
   return {
     root,
@@ -97,12 +111,13 @@ chmod +x "$GOBIN/minio"
       FAKE_GO_MODE: mode,
       FAKE_GO_VERSION: version,
       RESOLVED_VERSION: resolvedVersion,
+      FIXTURE_ORIGINAL_PATH: process.env.PATH,
     },
   };
 }
 
-function run(t, mode, version) {
-  const f = fixture(t, mode, version);
+function run(t, mode, version, options) {
+  const f = fixture(t, mode, version, options);
   const result = spawnSync('bash', [script, f.dest], {
     env: f.env,
     encoding: 'utf8',
@@ -136,9 +151,25 @@ test('a recognized module-resolution transport failure may retry and then succee
 
 test('recognized transport failures remain bounded to three install attempts', (t) => {
   const { result, attempts } = run(t, 'transient-always');
-  assert.equal(result.status, 1);
-  assert.equal(attempts, 3);
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(attempts, 3, result.stderr);
   assert.match(result.stderr, /after three checksum-verified network attempts/);
+});
+
+test('delayed install diagnostics are complete before bounded retry classification', (t) => {
+  const { result, attempts } = run(t, 'transient-always', undefined, { slowLog: true });
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(attempts, 3, result.stderr);
+  assert.match(result.stderr, /after three checksum-verified network attempts/);
+});
+
+test('delayed resolution diagnostics still allow a recognized transport retry', (t) => {
+  const { result, attempts, count } = run(t, 'transient-list-then-success', undefined, {
+    slowLog: true,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(attempts, 1, result.stderr);
+  assert.equal(Number(fs.readFileSync(`${count}.list`, 'utf8')), 2);
 });
 
 test('a successful build with mismatched embedded module metadata still fails', (t) => {

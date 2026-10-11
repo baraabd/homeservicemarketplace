@@ -51,13 +51,13 @@ Security (not cleared by a green workflow): 8 open CodeQL alerts on develop —
 
 ## Units
 
-| Unit  | Branch                                  | Scope                                                         | Order | State                                                                                                           |
-| ----- | --------------------------------------- | ------------------------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------- |
-| R17-A | `feat/r17-a-messaging-authority`        | Messaging read position, cross-instance acceptance            | 1     | `R17_A_MERGED` (#142, `e1f7f51`; post-merge push runs green)                                                    |
-| R17-B | `feat/r17-b-notification-authority`     | Notification lifecycle, scoping, commit-safe live push        | 2     | `R17_B_MERGED` (#143, `7642513`)                                                                                |
-| R17-C | `feat/r17-c-dispute-authority`          | Legacy admin dispute race and copy; journey acceptance        | 3     | `R17_C_POSTMERGE_ACCEPTED` (#145, `aaf30aa`)                                                                    |
-| R17-D | `feat/r17-d-admin-operations`           | Admin settings authority, users safeguards, analytics honesty | 4     | `R17_D_POSTMERGE_ACCEPTED` (#146, `2710d25`)                                                                    |
-| R17-E | `feat/r17-e-provider-surface-authority` | Feed/detail/bid agreement, booking actions, stale capability  | 5     | `R17_E_POSTMERGE_ACCEPTED_WITH_OPEN_FOLLOW_UPS` (#147, `489541a`); follow-up `R17_E_FOLLOW_UP_IN_REVIEW` (#148) |
+| Unit  | Branch                                  | Scope                                                         | Order | State                                                                   |
+| ----- | --------------------------------------- | ------------------------------------------------------------- | ----- | ----------------------------------------------------------------------- |
+| R17-A | `feat/r17-a-messaging-authority`        | Messaging read position, cross-instance acceptance            | 1     | `R17_A_MERGED` (#142, `e1f7f51`; post-merge push runs green)            |
+| R17-B | `feat/r17-b-notification-authority`     | Notification lifecycle, scoping, commit-safe live push        | 2     | `R17_B_MERGED` (#143, `7642513`)                                        |
+| R17-C | `feat/r17-c-dispute-authority`          | Legacy admin dispute race and copy; journey acceptance        | 3     | `R17_C_POSTMERGE_ACCEPTED` (#145, `aaf30aa`)                            |
+| R17-D | `feat/r17-d-admin-operations`           | Admin settings authority, users safeguards, analytics honesty | 4     | `R17_D_POSTMERGE_ACCEPTED` (#146, `2710d25`)                            |
+| R17-E | `feat/r17-e-provider-surface-authority` | Feed/detail/bid agreement, booking actions, stale capability  | 5     | `R17_E_POSTMERGE_ACCEPTED` (#147, `489541a`; follow-up #148, `cc2dff1`) |
 
 One unit = one branch = one PR = one report. A dependent unit starts after
 its predecessor is merged and the post-merge develop SHA is accepted. While a
@@ -131,3 +131,8 @@ re-runs its acceptance on the integrated tree.
 Payouts, withdrawals, capture, escrow, refund execution, checkout, payment
 provider activation, background GPS, calling, a new admin application, a V2
 visual redesign, realtime production cutover, and R18.
+
+## After R17
+
+E-18 merged as `fabeb07` (#149). R18 (`docs/production-readiness/r18/`)
+starts from that SHA.

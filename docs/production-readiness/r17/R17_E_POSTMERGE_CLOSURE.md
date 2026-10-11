@@ -6,9 +6,36 @@ Follow-up to PR #147. Branch `fix/r17-e-postmerge-closure`, PR #148. Base
 Delivery mode: Integration and Bug-Fix. The provider bookings list gains the
 pagination control its API already supported; no other screen changed.
 
-State: R17-E is `R17_E_POSTMERGE_ACCEPTED_WITH_OPEN_FOLLOW_UPS`; this repair
-is `R17_E_FOLLOW_UP_IN_REVIEW`. Neither becomes final until #148 is merged
-and the post-merge develop gate on its merge SHA is green.
+State: `R17_E_FOLLOW_UP_POSTMERGE_ACCEPTED` and `R17_E_POSTMERGE_ACCEPTED`
+(recorded during R18 Phase 0; see "Post-merge acceptance" below). The states
+written while #148 was in review are kept in the sections that follow.
+
+## Post-merge acceptance (`cc2dff1`)
+
+PR #148 head `a633c82d122b090f36d7b3831b39f3cd4d599b17` was merged as
+`cc2dff103112c524e1d13f73ee92d1608db61410` (merge commit; tree
+`4d65dbbe78bfc5d823b8eda99cdd020f74fe7a2b`, identical to the head's).
+
+Push runs on `cc2dff1`, all `success`, attempt 1: CI 38051847277 (17/17
+jobs), CodeQL 38051846991, Production governance 38051847026, Web development
+startup 38051846999, Authentication lifecycle 38051846988, Staging release
+boundary 38051847059. Executed, read from the job logs rather than the run
+conclusion:
+
+| Gate (job)                                | Executed                                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------------------- |
+| R17-E step (dispute journey job)          | `R17-E passed 44 failed 0 pending 0 todo 0` (31 R17-E + 1 + 12 closure)         |
+| R17-C / R17-D steps (same job)            | 23/23 and 14/14                                                                 |
+| Integration & E2E (real Postgres / Redis) | 294 suites passed, 8 skipped; 5573 tests passed, 37 skipped                     |
+| The 8 suites skipped there                | each passed in its own job of the same run (dispute job, retention job)         |
+| Phase 5 real-route job                    | R17-A messaging across two replicas 4/4; R17-B notifications 5/5                |
+| Dependency, secret and container scans    | full and production audits 0 findings; tracked-tree gitleaks on `cc2dff1` clean |
+
+The #147 review thread on pagination (Codex, comment 4234163493) was answered
+with the merged repair and resolved after the merge.
+
+What remains is E-18 (My Bids first page), which #148 did not change; it is
+reproduced and repaired in its own prerequisite PR (#149).
 
 ## PR #147 source identity (historical, unchanged)
 

@@ -24,13 +24,21 @@ for attempt in 1 2 3; do
   : > "$LOG_FILE"
 
   set +e
+  # Complete diagnostic writes before classifying a failure. Bash does not
+  # wait for process-substitution tee writers when the Go command exits.
   expected_module_version="$(
-    go list -m -f '{{.Version}}' "${MODULE}@${MINIO_VERSION}"       2> >(tee -a "$LOG_FILE" >&2)
+    go list -m -f '{{.Version}}' "${MODULE}@${MINIO_VERSION}" 2> "$LOG_FILE"
   )"
   status=$?
+  cat "$LOG_FILE" >&2 || exit 1
   if [[ $status -eq 0 ]]; then
-    GOBIN="$DEST_DIR" go install "${MODULE}@${MINIO_VERSION}"       > >(tee -a "$LOG_FILE") 2> >(tee -a "$LOG_FILE" >&2)
-    status=$?
+    GOBIN="$DEST_DIR" go install "${MODULE}@${MINIO_VERSION}" 2>&1 | tee -a "$LOG_FILE"
+    pipeline_status=("${PIPESTATUS[@]}")
+    status=${pipeline_status[0]}
+    if [[ ${pipeline_status[1]} -ne 0 ]]; then
+      echo "Could not write the MinIO build log; refusing to retry." >&2
+      exit "${pipeline_status[1]}"
+    fi
   fi
   set -e
 
