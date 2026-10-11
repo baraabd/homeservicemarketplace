@@ -77,3 +77,24 @@ Items the task names and where they are enforced:
 - Production default credentials: refused by the runtime policy (tested in CI); not verifiable on a hosted target.
 
 Status: `SECURITY_ACCEPTANCE_BLOCKED` on CodeQL #2's owner disposition.
+
+## Re-read on 2026-10-11 (`develop@ffe9a39`, PR #155)
+
+- Repository inventory: 4 open alerts on `refs/heads/develop`, all most
+  recently seen on `ffe9a39` (#2 high, #13, #16, #20 medium). CodeQL analysis
+  1931590552 on `9bc4181` and the post-merge CodeQL run 38152627072 on
+  `ffe9a39` both succeeded. A successful analysis run is not a disposition.
+- PR #154's official CodeQL results check reported zero annotations because
+  its diff introduced none (its own `js/file-system-race` was repaired in the
+  test). That does not change the four repository alerts above.
+- Dispositions proposed for the owner, none applied: #2 false positive (§
+  above); #20 accepted as development-only (production refuses the local
+  driver); #13 and #16 accepted as test/CI tooling. No alert was dismissed
+  and no analysis was narrowed.
+- New on this branch: last-active-admin floor (D-8), attributable audit of
+  admin-access decisions and operator admin grants, demo providers never
+  seeded in production, launcher refusal of a foreign API build, and
+  `nosniff` kept on every nginx location.
+- Secret scanning and Dependabot alerts: both disabled in repository
+  settings (`GET /secret-scanning/alerts` → disabled; `GET
+/dependabot/alerts` → 403 disabled).

@@ -404,3 +404,14 @@ baseline is `develop@fabeb07`; merged prerequisite #152 (`ab7e473`) is now
 integrated into PR #153. Decision: NO-GO, `R18_BLOCKED` (`r18/GO_NO_GO.md`).
 The current-head CI result is recorded on PR #153. Open release blockers and
 owner decisions: `r18/BLOCKERS.md`. This file's earlier content remains historical.
+
+## R18 closure status (2026-10-11)
+
+PR #154 (startup repair) merged as `ffe9a39` with all seven post-merge
+workflows green. PR #155 (`release/r18-closure-rc1`, Draft) adds the
+last-active-admin floor, attributable admin-grant audit, the production-safe
+seed, the work-access readiness check, API build identity, honest request
+success copy and nginx asset caching. The decision remains **NO-GO /
+`R18_BLOCKED`**: owner decisions D-2, D-3, D-8 (minimum), D-13 and D-19
+(`r18/OWNER_DECISIONS.md`), CodeQL dispositions, branch protection and a
+hosted target. The gate model is `r18/RELEASE_GATES.md`.

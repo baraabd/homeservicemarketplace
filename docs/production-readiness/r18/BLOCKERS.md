@@ -79,3 +79,24 @@ here.
 
 See `BRANCH_PROTECTION_EVIDENCE.md` for the exact check names read from
 GitHub and the payload. Functional acceptance does not close this risk.
+
+## 5. Closure update (2026-10-11, `develop@ffe9a39`, PR #155)
+
+Read again from GitHub and the source on 2026-10-11. Earlier rows above are
+kept as recorded; this section supersedes their state where it differs.
+
+| ID       | State now                                                                                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R18-G1   | unchanged: `develop` and `main` report `protected: false`; rulesets `[]`. Payload updated with the startup check (`BRANCH_PROTECTION_EVIDENCE.md` § Re-read)                    |
+| R18-S2   | unchanged: 4 open alerts on `develop@ffe9a39` (#2 high, #13, #16, #20 medium). PR #154's own CodeQL result had zero findings; that is diff-scoped, not the repository inventory |
+| R18-H1   | unchanged: GitHub environments `staging` and `production` hold no secrets or variables; repository secrets 0; no registry named. Vercel's last deployment was 2026-04-23        |
+| R18-O3   | **RESOLVED** on this branch (`9c17a31`): `/health/live` reports `sourceSha`; the launcher refuses an API of a different build                                                   |
+| R18-I1   | **RESOLVED** (new): the production seed upserted five invented ACTIVE provider profiles; skipped in production since `eb3431b` (`PRODUCTION_INITIALIZATION.md`)                 |
+| R18-A1   | **RESOLVED** (new): admin-access decisions dropped `reviewerUserId` in the audit sanitizer; operator admin grants wrote no audit row (`64ccdb2`, `711fd92`)                     |
+| R18-W1   | **RESOLVED** (new): nginx served `/assets/*` with no cache header and no compression (`c35a1cf`)                                                                                |
+| R18-T1   | P2 (new): real-API browser journeys run on `chromium-desktop` only (`SKIPPED_COVERAGE.md`)                                                                                      |
+| R18-C1   | P2 (new): Vercel CSP is `Report-Only` and its `font-src`/`style-src` refuse the Google Fonts `@import` in `fonts.css`                                                           |
+| D-8      | safety floor implemented (last active admin cannot be suspended or locked; platform-wide lock); minimum count and break-glass remain the owner's decision                       |
+| D-13     | the success step now tells the seeker a custom-text request is not shown to providers; limiting intake remains the owner's decision                                             |
+| D-19     | `work-access:readiness` (read-only count, bounded logged backfill) added; the decision on production values remains the owner's                                                 |
+| D-2, D-3 | unchanged; proposals in `OWNER_DECISIONS.md`. Correction: `DISPUTE_WORKER_ENABLED` is read by nothing; the worker is governed by `DISPUTE_WORKER_MODE` (off/shadow/enforce)     |

@@ -39,3 +39,11 @@ active-offer repair reproduced by its real-service journey.
 4. Approve `RELEASE_SCOPE.md`.
 5. Supply a staging target (`infra/production/STAGING.md`); then build the
    RC once, deploy to staging, and run `HOSTED_STAGING_ACCEPTANCE.md`.
+
+## R18 closure (2026-10-11, PR #155)
+
+Work done and evidence: `GO_NO_GO.md` (findings), `RELEASE_GATES.md` (gates
+A–D replacing the circular GO precondition), `OWNER_DECISIONS.md`
+(proposals), `PRODUCTION_INITIALIZATION.md` (empty-database rehearsal and
+first-admin bootstrap), `SKIPPED_COVERAGE.md` (every skipped case and the
+job that runs it).
