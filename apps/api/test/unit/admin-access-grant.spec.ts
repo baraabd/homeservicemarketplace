@@ -98,6 +98,9 @@ function makeFakeTx(
         return { userId: args.create.userId, roleId: args.create.roleId };
       }),
     },
+    auditEvent: {
+      create: jest.fn(async (args: { data: Record<string, unknown> }) => args.data),
+    },
     providerProfile: {
       findUnique: jest.fn(
         async (args: { where: { userId: string } }) =>
@@ -167,6 +170,26 @@ describe('grantAdminWithTx — admin axis only', () => {
     expect(tx._state.providerProfiles).toHaveLength(0);
     expect(tx.providerProfile.create).not.toHaveBeenCalled();
     expect(tx.providerProfile.update).not.toHaveBeenCalled();
+  });
+
+  it('audits the admin role it attaches, once, with the operator CLI as actor (R18)', async () => {
+    const tx = withUser();
+    await grantAdminWithTx(tx as never, 'operator@example.com', false);
+    expect(tx.auditEvent.create).toHaveBeenCalledTimes(1);
+    expect(tx.auditEvent.create).toHaveBeenCalledWith({
+      data: {
+        userId: 'u-1',
+        type: 'ROLE_ASSIGNED',
+        metadata: {
+          roleName: 'admin',
+          actorSystem: 'operator-cli:grant-admin',
+          userCreated: false,
+        },
+      },
+    });
+    // A re-run attaches nothing and so records nothing.
+    await grantAdminWithTx(tx as never, 'operator@example.com', false);
+    expect(tx.auditEvent.create).toHaveBeenCalledTimes(1);
   });
 
   it('leaves an EXISTING provider profile untouched — it never approves one', async () => {
