@@ -252,6 +252,23 @@ describe('seedWithTx (unit)', () => {
     }
   });
 
+  it('never seeds the development provider pool in production (R18)', async () => {
+    const previous = process.env.NODE_ENV;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      process.env.NODE_ENV = 'production';
+      const tx = makeFakeTx();
+      await seedWithTx(tx as never);
+      // Reference data still lands; invented sellers do not.
+      expect([...tx._rolesByName.keys()].sort()).toEqual(['admin', 'customer', 'provider']);
+      expect(tx._calls.providerProfile).toHaveLength(0);
+      expect(tx._providerProfilesById.size).toBe(0);
+    } finally {
+      warn.mockRestore();
+      process.env.NODE_ENV = previous;
+    }
+  });
+
   it('seeds the service-category catalog (Sprint 1 slice 1)', async () => {
     const tx = makeFakeTx();
     await seedWithTx(tx as never);

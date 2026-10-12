@@ -240,6 +240,19 @@ async function syncRolePermissions(
 }
 
 async function upsertProviderProfiles(tx: Prisma.TransactionClient): Promise<void> {
+  // R18 — never in production, whatever ALLOW_PROD_SEED says. These are
+  // invented marketplace sellers (names, cities, categories, ACTIVE status and
+  // some "verified"/"Top Pro" flags) that no person applied for and no admin
+  // reviewed. In production they would be offered to real seekers as real
+  // providers. Roles, permissions and the catalogue above are the reference
+  // data production needs; providers arrive only through onboarding and review.
+  if (isProductionSeedTarget()) {
+    console.warn(
+      '[seed] SKIPPING the development provider pool: NODE_ENV=production. ' +
+        'Providers join through onboarding and admin review.',
+    );
+    return;
+  }
   // Phase 6 Step 3 — resolve category slugs → ids ONCE per call.
   // upsertServiceCategories has already run above so this lookup is
   // guaranteed to find every slug listed in PROVIDER_PROFILES.
@@ -709,7 +722,8 @@ async function main(): Promise<void> {
     [
       'Seed complete:',
       '  - system roles + permissions + role↔permission mappings',
-      '  - service category catalog + static ProviderProfile pool',
+      '  - service category catalog',
+      '  - static ProviderProfile pool (NODE_ENV != production)',
       '  - dev users (NODE_ENV != production):',
       '      test1@admin.com           / DevAdmin123!     (admin)',
       '      test@admin.com            / 1qaz2wsx3edc!!   (admin)',

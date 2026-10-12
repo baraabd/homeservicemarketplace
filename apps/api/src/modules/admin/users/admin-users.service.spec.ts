@@ -34,7 +34,8 @@ function makeUser(over: Partial<User> = {}): User {
 
 const tx: TransactionRunner = {
   // R17-D: the service row-locks the target user through the transaction.
-  run: <T>(fn: (t: never) => Promise<T>) => fn({ $queryRaw: jest.fn() } as never),
+  run: <T>(fn: (t: never) => Promise<T>) =>
+    fn({ $queryRaw: jest.fn().mockResolvedValue([]), $executeRaw: jest.fn() } as never),
 } as unknown as TransactionRunner;
 
 interface Mocks {
@@ -91,7 +92,7 @@ function makeMocks(
     audit: {
       record: jest.fn().mockResolvedValue(undefined),
     } as unknown as AdminAuditService,
-    // Phase 4 — axis 3. Default: this user has never asked for admin access.
+    // Phase 4 â€” axis 3. Default: this user has never asked for admin access.
     adminAccessRequests: {
       findLatestByUserId: jest.fn().mockResolvedValue(null),
     } as unknown as AdminAccessRequestRepository,
@@ -111,7 +112,7 @@ function makeService(m: Mocks): AdminUsersService {
 }
 
 describe('AdminUsersService', () => {
-  // Phase 4 — the dashboard must be able to render THREE separate columns.
+  // Phase 4 â€” the dashboard must be able to render THREE separate columns.
   // These tests pin that the summary reports them independently, so no screen
   // has to infer admin standing from the account status.
   describe('the three account axes are reported separately', () => {
@@ -166,7 +167,8 @@ describe('AdminUsersService', () => {
     const txWithUser = {
       run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
         fn({
-          $queryRaw: jest.fn(),
+          $queryRaw: jest.fn().mockResolvedValue([]),
+          $executeRaw: jest.fn(),
           user: { update: jest.fn().mockResolvedValue(makeUser()) },
         } as never),
     } as unknown as TransactionRunner;
@@ -199,7 +201,8 @@ describe('AdminUsersService', () => {
     const txWithUser = {
       run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
         fn({
-          $queryRaw: jest.fn(),
+          $queryRaw: jest.fn().mockResolvedValue([]),
+          $executeRaw: jest.fn(),
           user: { update: jest.fn().mockResolvedValue(makeUser()) },
         } as never),
     } as unknown as TransactionRunner;
@@ -226,20 +229,21 @@ describe('AdminUsersService', () => {
     expect(JSON.stringify(out)).not.toContain('mfaSecret');
   });
 
-  // ── Sprint 6.1 — canonical PATCH path ────────────────────────────
+  // â”€â”€ Sprint 6.1 â€” canonical PATCH path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   describe('setStatus (Sprint 6.1)', () => {
     function makeTxWithUserUpdate() {
       return {
         run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
           fn({
-            $queryRaw: jest.fn(),
+            $queryRaw: jest.fn().mockResolvedValue([]),
+            $executeRaw: jest.fn(),
             user: { update: jest.fn().mockResolvedValue(makeUser()) },
           } as never),
       } as unknown as TransactionRunner;
     }
 
-    it('flips ACTIVE → SUSPENDED + audits + sets isActive=false', async () => {
+    it('flips ACTIVE â†’ SUSPENDED + audits + sets isActive=false', async () => {
       const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
       const svc = new AdminUsersService(
         m.users,
@@ -270,7 +274,7 @@ describe('AdminUsersService', () => {
       expect(m.users.update).toHaveBeenCalledWith('u-1', { isActive: false }, expect.anything());
     });
 
-    it('flips SUSPENDED → ACTIVE + records the RESTORED audit type', async () => {
+    it('flips SUSPENDED â†’ ACTIVE + records the RESTORED audit type', async () => {
       const m = makeMocks({ user: makeUser({ status: 'SUSPENDED', isActive: false }) });
       const svc = new AdminUsersService(
         m.users,
@@ -290,7 +294,7 @@ describe('AdminUsersService', () => {
       );
     });
 
-    it('refuses to disable self (admin-1 → SUSPENDED on own row)', async () => {
+    it('refuses to disable self (admin-1 â†’ SUSPENDED on own row)', async () => {
       const m = makeMocks();
       const svc = new AdminUsersService(
         m.users,
@@ -308,7 +312,7 @@ describe('AdminUsersService', () => {
       expect(m.audit.record).not.toHaveBeenCalled();
     });
 
-    it('lets self → ACTIVE pass (no-op idempotent self-restore)', async () => {
+    it('lets self â†’ ACTIVE pass (no-op idempotent self-restore)', async () => {
       const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
       const svc = new AdminUsersService(
         m.users,
@@ -356,19 +360,20 @@ describe('AdminUsersService', () => {
     });
   });
 
-  // ── Sprint 01 — revoke sessions on suspend / lock (one transaction) ──
+  // â”€â”€ Sprint 01 â€” revoke sessions on suspend / lock (one transaction) â”€â”€
   describe('session revocation on suspend / lock', () => {
     function makeTxWithUserUpdate() {
       return {
         run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
           fn({
-            $queryRaw: jest.fn(),
+            $queryRaw: jest.fn().mockResolvedValue([]),
+            $executeRaw: jest.fn(),
             user: { update: jest.fn().mockResolvedValue(makeUser()) },
           } as never),
       } as unknown as TransactionRunner;
     }
 
-    it('setStatus → SUSPENDED revokes every session inside the same transaction', async () => {
+    it('setStatus â†’ SUSPENDED revokes every session inside the same transaction', async () => {
       const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
       const tx = makeTxWithUserUpdate();
       const svc = new AdminUsersService(
@@ -389,7 +394,7 @@ describe('AdminUsersService', () => {
       expect(txArg).toBeDefined();
     });
 
-    it('setStatus → LOCKED revokes every session', async () => {
+    it('setStatus â†’ LOCKED revokes every session', async () => {
       const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
       const svc = new AdminUsersService(
         m.users,
@@ -404,7 +409,7 @@ describe('AdminUsersService', () => {
       expect(m.sessions.revokeAllForUser).toHaveBeenCalledWith('u-1', expect.anything());
     });
 
-    it('setStatus → ACTIVE (restore) does NOT revoke sessions', async () => {
+    it('setStatus â†’ ACTIVE (restore) does NOT revoke sessions', async () => {
       const m = makeMocks({ user: makeUser({ status: 'SUSPENDED', isActive: false }) });
       const svc = new AdminUsersService(
         m.users,
@@ -419,7 +424,7 @@ describe('AdminUsersService', () => {
       expect(m.sessions.revokeAllForUser).not.toHaveBeenCalled();
     });
 
-    it('setStatus → SUSPENDED invalidates the session-standing cache for immediate blocking', async () => {
+    it('setStatus â†’ SUSPENDED invalidates the session-standing cache for immediate blocking', async () => {
       const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
       const svc = new AdminUsersService(
         m.users,
@@ -466,7 +471,8 @@ describe('AdminUsersService', () => {
       const txWithUser = {
         run: <T>(fn: (t: { user: { update: jest.Mock } }) => Promise<T>) =>
           fn({
-            $queryRaw: jest.fn(),
+            $queryRaw: jest.fn().mockResolvedValue([]),
+            $executeRaw: jest.fn(),
             user: { update: jest.fn().mockResolvedValue(makeUser()) },
           } as never),
       } as unknown as TransactionRunner;
@@ -499,7 +505,7 @@ describe('AdminUsersService', () => {
     });
   });
 
-  describe('list — query alias (Sprint 6.1)', () => {
+  describe('list â€” query alias (Sprint 6.1)', () => {
     it('prefers `query` over the legacy `q` when both are present', async () => {
       const m = makeMocks({ rows: [makeUser()] });
       await makeService(m).list({ q: 'old', query: 'new' });
@@ -510,6 +516,93 @@ describe('AdminUsersService', () => {
       const m = makeMocks({ rows: [makeUser()] });
       await makeService(m).list({ q: 'legacy' });
       expect(m.users.searchForAdmin).toHaveBeenCalledWith(expect.objectContaining({ q: 'legacy' }));
+    });
+  });
+  // R18 (D-8 safety floor) â€” the platform must keep one administrator in good
+  // standing. The SQL itself runs against Postgres in
+  // test/integration/r18-admin-floor.integration.spec.ts; these pin the order
+  // of locks and the refusal before any write.
+  describe('last active administrator', () => {
+    function floorTx(row: { target: boolean; others: number }) {
+      const calls: string[] = [];
+      const client = {
+        $executeRaw: jest.fn(async (sql: TemplateStringsArray) => {
+          calls.push(sql.join('?').includes('pg_advisory_xact_lock') ? 'floor-lock' : 'execute');
+        }),
+        $queryRaw: jest.fn(async (sql: TemplateStringsArray) => {
+          const text = sql.join('?');
+          if (text.includes('FOR UPDATE')) {
+            calls.push('row-lock');
+            return [];
+          }
+          calls.push('floor-count');
+          return [row];
+        }),
+        user: { update: jest.fn().mockResolvedValue(makeUser()) },
+      };
+      const runner = { run: <T>(fn: (t: never) => Promise<T>) => fn(client as never) };
+      return { runner: runner as unknown as TransactionRunner, client, calls };
+    }
+
+    function service(m: Mocks, runner: TransactionRunner) {
+      return new AdminUsersService(
+        m.users,
+        m.roles,
+        m.audit,
+        runner,
+        m.sessions,
+        m.adminAccessRequests,
+        m.securityEvents,
+      );
+    }
+
+    for (const status of ['SUSPENDED', 'LOCKED'] as const) {
+      it(`refuses ${status} for the last active admin before writing anything`, async () => {
+        const m = makeMocks();
+        const { runner, client, calls } = floorTx({ target: true, others: 0 });
+        await expect(
+          service(m, runner).setStatus('admin-1', 'u-1', { status }),
+        ).rejects.toMatchObject({ status: 409, code: 'CONFLICT' });
+        expect(calls).toEqual(['floor-lock', 'row-lock', 'floor-count']);
+        expect(m.users.update).not.toHaveBeenCalled();
+        expect(client.user.update).not.toHaveBeenCalled();
+        expect(m.sessions.revokeAllForUser).not.toHaveBeenCalled();
+        expect(m.audit.record).not.toHaveBeenCalled();
+        expect(m.securityEvents.emitAllSessionsRevoked).not.toHaveBeenCalled();
+      });
+    }
+
+    it('legacy suspend refuses the last active admin too', async () => {
+      const m = makeMocks();
+      const { runner, calls } = floorTx({ target: true, others: 0 });
+      await expect(service(m, runner).suspend('admin-1', 'u-1')).rejects.toMatchObject({
+        status: 409,
+      });
+      expect(calls).toEqual(['floor-lock', 'row-lock', 'floor-count']);
+      expect(m.sessions.revokeAllForUser).not.toHaveBeenCalled();
+    });
+
+    it('suspends an admin while another active admin remains', async () => {
+      const m = makeMocks();
+      const { runner, calls } = floorTx({ target: true, others: 1 });
+      await service(m, runner).setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
+      expect(calls.slice(0, 3)).toEqual(['floor-lock', 'row-lock', 'floor-count']);
+      expect(m.sessions.revokeAllForUser).toHaveBeenCalled();
+    });
+
+    it('a non-admin target is unaffected by the floor', async () => {
+      const m = makeMocks();
+      const { runner } = floorTx({ target: false, others: 0 });
+      await service(m, runner).setStatus('admin-1', 'u-1', { status: 'SUSPENDED' });
+      expect(m.audit.record).toHaveBeenCalled();
+    });
+
+    it('a restore never takes the floor lock', async () => {
+      const m = makeMocks({ user: makeUser({ status: 'SUSPENDED', isActive: false }) });
+      const { runner, calls } = floorTx({ target: false, others: 0 });
+      await service(m, runner).setStatus('admin-1', 'u-1', { status: 'ACTIVE' });
+      expect(calls).not.toContain('floor-lock');
+      expect(calls).not.toContain('floor-count');
     });
   });
 });

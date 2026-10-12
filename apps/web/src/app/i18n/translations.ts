@@ -142,7 +142,8 @@ export const TRANSLATIONS: Record<Lang, Record<string, string>> = {
     whenDoYouNeed: 'When do you need it?',
     asap: 'ASAP',
     scheduleLater: 'Schedule Later',
-    asapContext: 'Pros near you are available now. Average response time is under 1 hour.',
+    asapContext:
+      'Providers who offer this service in your area can respond as soon as they see your request.',
     confirmJob: 'Confirm Job · Post Now',
     jobPosted: 'Job Posted! 🎉',
     jobSummary: 'Job Summary',
@@ -155,7 +156,11 @@ export const TRANSLATIONS: Record<Lang, Record<string, string>> = {
     savedLocally: 'Saved locally (offline)',
     backToHome: 'Back to Home',
     viewMyJobs: 'View My Jobs',
-    bidsEta: "You'll start receiving bids within 15–30 minutes",
+    bidsEta:
+      "Providers who offer this service in your area can now see your request. We'll notify you when an offer arrives.",
+    postedNotVisible: 'Saved · not shown to providers yet',
+    uncategorisedNotice:
+      "Providers don't see requests without a listed service yet, so this one won't receive offers. To reach providers, post it under one of the listed services.",
     gpsDetected: 'GPS location detected',
     swipeUp: 'Swipe up to expand',
     swipeDown: 'Swipe down to collapse',
@@ -363,7 +368,7 @@ export const TRANSLATIONS: Record<Lang, Record<string, string>> = {
     whenDoYouNeed: 'متى تحتاج إليه؟',
     asap: 'فوراً',
     scheduleLater: 'جدولة لاحقاً',
-    asapContext: 'المحترفون القريبون منك متاحون الآن. متوسط وقت الاستجابة أقل من ساعة.',
+    asapContext: 'يستطيع مقدمو هذه الخدمة في منطقتك الرد فور رؤية طلبك.',
     confirmJob: 'تأكيد الطلب · نشر الآن',
     jobPosted: 'تم نشر الطلب! 🎉',
     jobSummary: 'ملخص الطلب',
@@ -376,7 +381,10 @@ export const TRANSLATIONS: Record<Lang, Record<string, string>> = {
     savedLocally: 'محفوظ محلياً (غير متصل)',
     backToHome: 'العودة للرئيسية',
     viewMyJobs: 'عرض طلباتي',
-    bidsEta: 'ستبدأ في استلام العروض خلال 15–30 دقيقة',
+    bidsEta: 'أصبح بإمكان مقدمي هذه الخدمة في منطقتك رؤية طلبك. سنُعلمك عند وصول أي عرض.',
+    postedNotVisible: 'محفوظ · لا يظهر لمقدمي الخدمة بعد',
+    uncategorisedNotice:
+      'لا يرى مقدمو الخدمة بعدُ الطلبات التي لا تتبع خدمة من القائمة، لذلك لن تصل عروض إلى هذا الطلب. للوصول إلى مقدمي الخدمة، انشر طلبك ضمن إحدى الخدمات المدرجة.',
     gpsDetected: 'تم تحديد موقعك',
     swipeUp: 'اسحب لأعلى للتوسيع',
     swipeDown: 'اسحب لأسفل للطي',

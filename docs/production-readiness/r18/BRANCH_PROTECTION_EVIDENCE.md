@@ -94,3 +94,29 @@ node -e "import('./.github/scripts/production-governance.mjs').then(m => console
 ```
 
 An empty problem list is the closure evidence for R18-G1.
+
+## Re-read on 2026-10-11 (`develop@ffe9a39`)
+
+| Read                                  | Result                                               |
+| ------------------------------------- | ---------------------------------------------------- |
+| `GET /branches/develop/protection`    | `404` "Branch not protected"                         |
+| `GET /branches/main`                  | `protected: false`                                   |
+| `GET /rulesets?includes_parents=true` | `[]`                                                 |
+| `GET /rules/branches/develop`         | `[]`                                                 |
+| Token permission                      | `admin: true`; authorization to apply: **not given** |
+
+PR #154 added the workflow `Real application startup performance`, whose
+check run on every push and pull request to `develop` is named
+**`Real Seeker Provider Admin startup`** (observed on `ffe9a39`, check run
+114509024339). It is proposed as an additional required context:
+
+```json
+{ "context": "Real Seeker Provider Admin startup" }
+```
+
+Recommended owner choices (`OWNER_DECISIONS.md`):
+`required_approving_review_count: 0` (one maintainer; a required review
+would block every merge by the owner), `enforce_admins: true`,
+`dismiss_stale_reviews: true`, `required_conversation_resolution: true`,
+force-push and deletion disallowed. A Markdown policy or CODEOWNERS file
+does not enforce any of this; only the read-back above changes R18-G1.

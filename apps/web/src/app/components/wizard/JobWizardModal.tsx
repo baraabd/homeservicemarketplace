@@ -1288,7 +1288,9 @@ export function JobWizardModal({ service, categoryId, isOpen, onClose }: JobWiza
                   { label: t('scheduleLabel'), val: successScheduleLabel },
                   {
                     label: t('statusLabel'),
-                    val: t('postedAndLive'),
+                    // R18 (D-13) — a request without a catalogue category
+                    // reaches no provider feed or notification today.
+                    val: categoryId ? t('postedAndLive') : t('postedNotVisible'),
                   },
                 ].map((row) => (
                   <div
@@ -1314,10 +1316,13 @@ export function JobWizardModal({ service, categoryId, isOpen, onClose }: JobWiza
                 </Button>
               </div>
 
-              <div className="flex items-center gap-2 mt-6 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
-                <Clock size={14} className="text-amber-600 flex-shrink-0" />
+              <div
+                role="status"
+                className="flex items-center gap-2 mt-6 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3"
+              >
+                <Clock size={14} className="text-amber-600 flex-shrink-0" aria-hidden="true" />
                 <p className="text-amber-700" style={{ fontSize: '12px', lineHeight: '1.4' }}>
-                  {t('bidsEta')}
+                  {categoryId ? t('bidsEta') : t('uncategorisedNotice')}
                 </p>
               </div>
             </div>

@@ -145,7 +145,7 @@ export class AdminAccessService {
         {
           type: 'ADMIN_ACCESS_REQUESTED',
           userId,
-          metadata: { requestId: row.id },
+          metadata: { adminAccessRequestId: row.id },
         },
         trx,
       );
@@ -176,7 +176,7 @@ export class AdminAccessService {
         throw new AppError('CONFLICT', 'This request has already been decided.', 409);
       }
       await this.audit.record(
-        { type: 'ADMIN_ACCESS_CANCELLED', userId, metadata: { requestId: pending.id } },
+        { type: 'ADMIN_ACCESS_CANCELLED', userId, metadata: { adminAccessRequestId: pending.id } },
         trx,
       );
       const fresh = await this.requests.findById(pending.id, trx);
@@ -310,7 +310,7 @@ export class AdminAccessService {
           type: decision === 'APPROVED' ? 'ADMIN_ACCESS_APPROVED' : 'ADMIN_ACCESS_REJECTED',
           userId: existing.userId,
           metadata: {
-            requestId,
+            adminAccessRequestId: requestId,
             reviewerUserId,
             ...(note ? { reason: note } : {}),
           },

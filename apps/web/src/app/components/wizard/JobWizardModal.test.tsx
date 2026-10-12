@@ -752,6 +752,35 @@ describe('JobWizardModal — backend response', () => {
     );
   });
 
+  // R18 (D-13) — the success step promises only what the platform does. A
+  // custom-text request (no category) reaches no provider feed or
+  // notification, so it must not be shown as live or promise offers.
+  for (const [name, categoryId] of [
+    ['a catalogue request', 'cat-plumbing'],
+    ['a custom-text request', null],
+  ] as const) {
+    it(`success copy for ${name} makes no invented promise`, async () => {
+      mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
+      mock.onPost('/v1/me/requests').reply(201, { id: 'req-copy-1', status: 'PENDING' });
+      renderWizard({ categoryId });
+      await advanceToStep2();
+      await awaitDefaultAddressFilled();
+      fireEvent.click(screen.getByRole('button', { name: /confirm job/i }));
+      await screen.findByRole('heading', { name: /job posted/i });
+      const notice = screen.getByRole('status');
+      expect(document.body.textContent).not.toMatch(/15.30 minutes|under 1 hour/i);
+      if (categoryId) {
+        expect(screen.getByText('Posted & live')).toBeInTheDocument();
+        expect(notice).toHaveTextContent(/can now see your request/i);
+      } else {
+        expect(screen.queryByText('Posted & live')).toBeNull();
+        expect(screen.getByText('Saved · not shown to providers yet')).toBeInTheDocument();
+        expect(notice).toHaveTextContent(/won't receive offers/i);
+        expect(notice).not.toHaveTextContent(/can now see/i);
+      }
+    });
+  }
+
   it('shows a safe error on 400 (no raw backend payload in DOM)', async () => {
     mock.onGet('/v1/me/addresses').reply(200, { items: [DEFAULT_ADDRESS] });
     mock.onPost('/v1/me/requests').reply(400, {

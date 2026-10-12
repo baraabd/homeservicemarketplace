@@ -40,3 +40,11 @@ selected here.
 Telemetry must not carry tokens, passwords, OTPs, message bodies, identity
 bytes or precise private location; the logger's redaction is unit-tested
 (`logger.module.spec.ts`).
+
+## Update 2026-10-11 (PR #155)
+
+R18-O3 is resolved in code: the runner image sets `HSM_SOURCE_SHA` from its
+`SOURCE_SHA` build argument, `/health/live` reports it as `sourceSha` (null
+unless it is a full Git SHA), and the staging launcher refuses an API whose
+`sourceSha` differs from the manifest. The web image already served
+`/build-info.json`. Hosted log, metric and alert backends remain absent.

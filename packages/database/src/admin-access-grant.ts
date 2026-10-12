@@ -153,6 +153,25 @@ export async function grantAdminWithTx(
   if (!resolved) return summary;
 
   await attachRoles(tx, resolved.userId, ADMIN_ROLES, summary, 'grant-admin-access');
+  // R18 (D-8) — the operator path is the only way the first administrator of
+  // an empty production database can exist, so it must leave the same kind of
+  // trail as the reviewed AdminAccessRequest flow. One row, only when the admin
+  // role was actually attached; a re-run that changes nothing writes nothing.
+  // The actor is the operator CLI, not a person: no human is recorded as
+  // having approved this.
+  if (summary.rolesAttached.includes('admin')) {
+    await tx.auditEvent.create({
+      data: {
+        userId: resolved.userId,
+        type: 'ROLE_ASSIGNED',
+        metadata: {
+          roleName: 'admin',
+          actorSystem: 'operator-cli:grant-admin',
+          userCreated: summary.userCreated,
+        },
+      },
+    });
+  }
   // No ProviderProfile work here, by design. Granting administration must not
   // create a marketplace seller.
   return summary;

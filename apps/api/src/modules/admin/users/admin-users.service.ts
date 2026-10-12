@@ -98,9 +98,11 @@ export class AdminUsersService {
     }
     const isActive = nextStatus === 'ACTIVE';
     const updated = await this.tx.run(async (tx) => {
+      if (!isActive) await this.lockAdminFloor(tx);
       await this.lockUser(targetUserId, tx);
       const existing = await this.users.findById(targetUserId, tx);
       if (!existing) throw new AppError('NOT_FOUND', 'User not found.', 404);
+      if (!isActive) await this.assertNotLastActiveAdmin(targetUserId, tx);
       // Idempotent: if the target already has the requested status,
       // skip the write but still emit an audit row so the operator's
       // intent is captured. This stops an accidental double-click
@@ -175,9 +177,11 @@ export class AdminUsersService {
       throw new AppError('VALIDATION_ERROR', 'Admins cannot suspend themselves.', 400);
     }
     const updated = await this.tx.run(async (tx) => {
+      await this.lockAdminFloor(tx);
       await this.lockUser(targetUserId, tx);
       const existing = await this.users.findById(targetUserId, tx);
       if (!existing) throw new AppError('NOT_FOUND', 'User not found.', 404);
+      await this.assertNotLastActiveAdmin(targetUserId, tx);
       const next = await this.users.update(targetUserId, { isActive: false }, tx);
       // status flip via raw update — `status` isn't on UpdateUserInput.
       await tx?.user.update({
@@ -247,6 +251,50 @@ export class AdminUsersService {
    */
   private async lockUser(userId: string, tx: PrismaTx): Promise<void> {
     await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+  }
+
+  /**
+   * R18 (D-8 safety floor) — every change that takes an account out of good
+   * standing runs one at a time across the platform, so two admins suspending
+   * each other cannot both see the other as the remaining admin. Taken before
+   * the target row lock on every such path, so the lock order is always the
+   * same. Restores do not take it: they never reduce the admin set.
+   */
+  private async lockAdminFloor(tx: PrismaTx): Promise<void> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('admin_users:active_admin_floor'))`;
+  }
+
+  /**
+   * Refuses to take the last active administrator out of good standing.
+   * "Active" is the same standing the fresh permission read requires
+   * (ACTIVE status, isActive, not deleted) on a live `admin` role. This is a
+   * floor of one, not the owner's minimum or break-glass policy (D-8), which
+   * remain open decisions.
+   */
+  private async assertNotLastActiveAdmin(targetUserId: string, tx: PrismaTx): Promise<void> {
+    const [row] = await tx.$queryRaw<Array<{ target: boolean; others: number }>>`
+      SELECT
+        EXISTS (
+          SELECT 1 FROM "User" u
+          JOIN "UserRole" ur ON ur."userId" = u."id"
+          JOIN "Role" r ON r."id" = ur."roleId"
+          WHERE u."id" = ${targetUserId} AND r."name" = 'admin' AND r."deletedAt" IS NULL
+            AND u."deletedAt" IS NULL AND u."isActive" = true AND u."status" = 'ACTIVE'
+        ) AS "target",
+        (
+          SELECT count(DISTINCT u."id")::int FROM "User" u
+          JOIN "UserRole" ur ON ur."userId" = u."id"
+          JOIN "Role" r ON r."id" = ur."roleId"
+          WHERE u."id" <> ${targetUserId} AND r."name" = 'admin' AND r."deletedAt" IS NULL
+            AND u."deletedAt" IS NULL AND u."isActive" = true AND u."status" = 'ACTIVE'
+        ) AS "others"`;
+    if (row?.target && row.others < 1) {
+      throw new AppError(
+        'CONFLICT',
+        'This is the last active administrator. Restore or approve another administrator first.',
+        409,
+      );
+    }
   }
 
   private async toSummary(u: User): Promise<AdminUserSummary> {

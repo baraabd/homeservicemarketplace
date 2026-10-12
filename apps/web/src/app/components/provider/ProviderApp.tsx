@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Map, Briefcase, Wallet, User, MessageCircle, CalendarCheck } from 'lucide-react';
 import { Navigate, NavLink, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router';
 import type {
@@ -278,6 +278,7 @@ function WorkspaceChrome({
 }) {
   const { lang, dir, darkMode } = useLang();
   const location = useLocation();
+  const reduceMotion = useReducedMotion();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const fontFamily = lang === 'ar' ? "'Cairo', 'Inter', sans-serif" : "'Inter', sans-serif";
 
@@ -308,10 +309,10 @@ function WorkspaceChrome({
           <motion.div
             key={location.pathname}
             className="absolute inset-0"
-            initial={{ opacity: 0 }}
+            initial={reduceMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            exit={{ opacity: reduceMotion ? 1 : 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.18 }}
           >
             <Suspense fallback={<ShellSpinner testId="provider-route-loading" />}>
               {children}

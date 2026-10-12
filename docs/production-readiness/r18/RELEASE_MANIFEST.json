@@ -1,13 +1,15 @@
 {
   "schema": "hsm-release-manifest/r18-draft",
   "status": "NOT_BUILT",
-  "statusReason": "No release candidate is built: no approved registry, no hosted target, GO_NO_GO is NO-GO. Null fields are unknown, not empty.",
+  "statusReason": "No release candidate is built: gate A (RELEASE_GATES.md) is not met, no registry or hosted target is named, GO_NO_GO is NO-GO. Null fields are unknown, not empty.",
   "candidateName": "v1.0.0-rc.1",
   "existingTags": [],
   "source": {
-    "baseSha": "fabeb0765689131025208f8dca2e7a4fae924118",
+    "baseSha": "ffe9a398c777a892ba1227989a84c2a60fe8a041",
+    "historicalBaseSha": "fabeb0765689131025208f8dca2e7a4fae924118",
     "releaseSha": null,
-    "branch": "release/r18-functional-completion-rc1"
+    "branch": "release/r18-closure-rc1",
+    "pullRequest": 155
   },
   "artifacts": {
     "webArtifactSha256": null,
@@ -38,18 +40,24 @@
   "buildTimestamp": null,
   "featureFlags": {
     "VITE_PROVIDER_ONBOARDING_V2": "required explicit value at build (infra/production/STAGING.md)",
-    "VITE_DISPUTE_INTAKE_V1": "UNDECIDED (D-3)",
-    "WORK_ACCESS_ENFORCED": "UNDECIDED (D-19); default false",
-    "VERIFICATION_ENFORCED": "UNDECIDED (D-19); default false",
+    "VITE_DISPUTE_INTAKE_V1": "UNDECIDED (D-3); navigation only, the API enforces the pilot",
+    "WORK_ACCESS_ENFORCED": "UNDECIDED (D-19); default false; run work-access:readiness before enabling",
+    "VERIFICATION_ENFORCED": "UNDECIDED (D-19); default false; hardened runtime then requires ClamAV and the scan worker",
     "REALTIME_SOCKET_IO": "default false (polling); production cutover ENVIRONMENT_DEPENDENT",
-    "DISPUTE_WORKER_ENABLED": "UNDECIDED (D-3); default false"
+    "DISPUTE_WORKER_MODE": "UNDECIDED (D-3); default off; enforce requires DISPUTE_WORKER_APPROVAL_REF and DISPUTE_WORKER_INFRA_REF"
   },
   "configurationSchema": "apps/api/src/config/env.schema.ts at the release SHA",
   "sbom": null,
   "securityScanRefs": {
-    "ciRunOnBase": 38076416877,
-    "codeqlRunOnBase": 38076416622,
-    "openCodeqlHighOrCritical": [2]
+    "ciRunOnBase": 38152627363,
+    "codeqlRunOnBase": 38152627072,
+    "openCodeqlOnBase": {
+      "high": [2],
+      "medium": [13, 16, 20],
+      "critical": []
+    },
+    "secretScanning": "disabled in repository settings",
+    "dependabotAlerts": "disabled in repository settings"
   },
   "money": {
     "LIVE_MONEY": false,
@@ -58,5 +66,23 @@
     "payoutAndWithdrawal": "absent (R16 policy- and funding-blocked)"
   },
   "releaseScopeSha256": "bdf703ed340e51c544702ed877e7da02ed949da282de69cf7b182a4c1e316269",
-  "releaseScopeHashOf": "docs/production-readiness/r18/RELEASE_SCOPE.md at this commit"
+  "releaseScopeHashOf": "docs/production-readiness/r18/RELEASE_SCOPE.md at this commit",
+  "runtimeIdentity": {
+    "api": "GET /health/live -> sourceSha (HSM_SOURCE_SHA from the SOURCE_SHA build argument; null unless a full Git SHA)",
+    "web": "GET /build-info.json -> {sourceSha, apiUrl, onboardingV2}",
+    "launcherCheck": "infra/production/staging.cjs verifyHttps refuses a sourceSha that differs from the manifest"
+  },
+  "featureFlagCorrections": [
+    "DISPUTE_WORKER_ENABLED is declared in env.schema.ts but read by nothing; the previous manifest listed it in error"
+  ],
+  "postMergeRunsOnBase": {
+    "ci": 38152627363,
+    "codeql": 38152627072,
+    "productionGovernance": 38152627114,
+    "startupPerformance": 38152627102,
+    "webDevelopmentStartup": 38152627071,
+    "authLifecycle": 38152627089,
+    "stagingBoundary": 38152627142,
+    "allConclusions": "success"
+  }
 }
