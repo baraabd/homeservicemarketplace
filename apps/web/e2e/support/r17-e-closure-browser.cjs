@@ -166,6 +166,26 @@ async function run(data) {
       id: v.id,
       impact: v.impact,
       nodes: v.nodes.map((n) => n.target.join(' ')).slice(0, 5),
+      // Keep the sampled colours when contrast fails. A later screenshot can
+      // show a settled transition rather than the state axe actually measured.
+      // Only retain styling data, never page HTML, text or session information.
+      ...(v.id === 'color-contrast'
+        ? {
+            contrast: v.nodes.slice(0, 5).map((n) => ({
+              target: n.target.join(' '),
+              checks: n.any
+                .filter((check) => check.id === 'color-contrast')
+                .map(({ data }) => ({
+                  fgColor: data?.fgColor,
+                  bgColor: data?.bgColor,
+                  contrastRatio: data?.contrastRatio,
+                  expectedContrastRatio: data?.expectedContrastRatio,
+                  fontSize: data?.fontSize,
+                  fontWeight: data?.fontWeight,
+                })),
+            })),
+          }
+        : {}),
     }));
     // The control, when present, keeps the project's 44px touch target and
     // is not hidden behind the bottom navigation.

@@ -1914,6 +1914,7 @@ jobs:
       # E-18 — My Bids reaches every bid, and every accepted bid its booking.
       # Same harness and gate variable as the R17-E step; counted on its own.
       - name: E-18 provider My Bids pagination (browser + HTTP)
+        id: e18_my_bids
         env:
           RUN_PROVIDER_BROWSER: '1'
           MYBIDS_BROWSER_OUTPUT: ${{ github.workspace }}/apps/web/test-results/e18-my-bids
@@ -1942,7 +1943,7 @@ jobs:
             }"
           test "$browser" -eq 0 && test "$service" -eq 0
       - name: Upload E-18 evidence (no credentials, cookies or personal data)
-        if: always()
+        if: ${{ always() && steps.e18_my_bids.outcome != 'skipped' }}
         uses: actions/upload-artifact@v6
         with:
           name: e18-my-bids-real-evidence
