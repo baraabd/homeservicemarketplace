@@ -1,0 +1,11 @@
+{
+  "_fixture": "NON_PRODUCTION synthetic; XTS is the ISO 4217 test currency",
+  "contractVersion": "hsm.money.v1",
+  "planVersionId": "fixture-plan-version",
+  "paymentMethod": "STRIPE",
+  "subtotal": { "amountMinor": "1000", "currency": "XTS" },
+  "discount": { "amountMinor": "0", "currency": "XTS" },
+  "total": { "amountMinor": "1000", "currency": "XTS" },
+  "couponId": null,
+  "expiresAt": "2026-10-14T12:00:00.000Z"
+}

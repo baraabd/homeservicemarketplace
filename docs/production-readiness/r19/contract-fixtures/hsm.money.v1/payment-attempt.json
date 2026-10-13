@@ -1,0 +1,10 @@
+{
+  "_fixture": "NON_PRODUCTION synthetic",
+  "contractVersion": "hsm.money.v1",
+  "id": "fixture-attempt",
+  "paymentIntentId": "fixture-intent",
+  "attemptNo": 1,
+  "status": "STARTED",
+  "externalAttemptId": null,
+  "createdAt": "2026-10-14T11:01:00.000Z"
+}
