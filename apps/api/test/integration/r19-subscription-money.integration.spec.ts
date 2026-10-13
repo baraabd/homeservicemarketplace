@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Test } from '@nestjs/testing';
 
-import { fixturePrefix } from '../support/db-isolation';
+import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,6 +37,7 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
   let ledger: any;
   let outbox: any;
   let close: () => Promise<void>;
+  let locks: HeldLock | undefined;
 
   const RUN = randomUUID().replace(/-/g, '').slice(0, 10);
   const P = `${fixturePrefix('r19money')}${RUN}-`;
@@ -153,6 +154,9 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
   }
 
   beforeAll(async () => {
+    // A producer of outbox rows: shared, so the queue-consumer suite (exclusive)
+    // never claims this suite's activation events (db-isolation LOCK_KEYS).
+    locks = await acquireAdvisoryLocks([{ resource: 'outbox', mode: 'shared' }]);
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
     prisma = db.prisma;
@@ -267,7 +271,22 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
   });
 
   afterAll(async () => {
+    // Outbox rows are not money history: remove only this run's activation
+    // events before the queue lock is released.
+    if (prisma) {
+      const subscriptions = await prisma.providerSubscription.findMany({
+        where: { providerProfileId: { in: [PROVIDER, OTHER_PROVIDER] } },
+        select: { id: true },
+      });
+      await prisma.outboxEvent.deleteMany({
+        where: {
+          eventType: 'money.subscription.activated.v1',
+          aggregateId: { in: subscriptions.map((row: { id: string }) => row.id) },
+        },
+      });
+    }
     await close?.();
+    await locks?.release();
   });
 
   // ─── Atomic unit ──────────────────────────────────────────────────────
@@ -523,8 +542,13 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
       },
     });
     expect(moneyPermissions).toEqual([]);
+    // No live role holds the ledger capabilities. The R15 suite grants them to
+    // its own fixture role (an it- id) while it runs, in the same database.
     const ledgerGrants = await prisma.rolePermission.count({
-      where: { permission: { key: { in: ['ledger:read', 'ledger:post'] } } },
+      where: {
+        permission: { key: { in: ['ledger:read', 'ledger:post'] } },
+        NOT: { roleId: { startsWith: 'it-' } },
+      },
     });
     expect(ledgerGrants).toBe(0);
     // No subscription row exists unless this suite created it.

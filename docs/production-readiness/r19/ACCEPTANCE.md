@@ -29,11 +29,19 @@ Windows 11 and Node 24.21.0; pnpm 10.32.1 from the frozen base.
 | 10  | R15 no-backfill case on `r19_cr001` with one non-fixture ledger account inserted                                                              | failed as intended (found 1 foreign account)                                                                                  |
 | 11  | Compile-time contract binding: one key removed from a fixture key set                                                                         | `tsc` exit 2 on that file (restored afterwards)                                                                               |
 
+| 12 | CI on `f3a7c6b`: integration job (outbox consumer suite claimed R19's pending activation events) and security job (gitleaks: one synthetic fixture idempotency key) failed | fixed: R19 takes the `outbox` advisory lock (shared) and removes its own events; fixture keys changed and one reviewed fingerprint added (`docs/security/gitleaks-historical-baseline.md` §9) |
+| 13 | `npx jest test/integration/outbox.integration.spec.ts test/integration/r19-subscription-money.integration.spec.ts test/integration/r15-ledger.integration.spec.ts --maxWorkers=3`, two runs | 76 passed, then 76 passed (parallel, one shared database) |
+| 14 | local gitleaks 8.24.3: PR history range with the new entry; the current R19 tree; a fresh-repository canary | exit 0; no leaks; canary detected (exit 2) |
+
 Two defects in R19's own suite were found by the sabotage run and fixed:
 
 - an amount check matched digits inside a cuid;
 - an overlap check accepted a uniqueness error in place of the overlap
   refusal.
+
+Two more were found by CI and by the parallel run, and fixed: R19 left pending
+outbox events for the queue-consumer suite to claim, and asserted zero ledger
+grants while R15's fixture role legitimately holds them during its run.
 
 ## Required behaviors and where each is proven
 
