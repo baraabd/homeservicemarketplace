@@ -1,0 +1,62 @@
+name: Native development workspace recovery
+
+on:
+  pull_request:
+    branches: ['main', 'develop']
+    paths:
+      - 'scripts/dev/**'
+      - 'scripts/runtime/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.npmrc'
+      - '.nvmrc'
+      - 'apps/api/**'
+      - 'packages/database/**'
+      - 'packages/contracts/**'
+      - '.github/workflows/dev-workspace-recovery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-workspace-recovery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recovery:
+    name: Recovery and native Sharp (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      NODE_ENV: development
+      APP_ENV: test
+      # Schema-loader placeholder only; this job never connects to a database.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_db
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          cache: pnpm
+      - name: Exercise recovery and read-only preflight regressions
+        run: node --test scripts/dev/repair.test.cjs scripts/dev/workspace-state.test.cjs
+      - name: Recover a clean checkout using actual locked dependencies
+        run: pnpm dev:repair
+      - name: Load the actual native Sharp binary and encode a tiny image
+        run: >-
+          pnpm --filter @homeservicemarketplace/api exec node -e
+          "const sharp = require('sharp');
+          sharp({ create: { width: 1, height: 1, channels: 3, background: '#000' } })
+          .png().toBuffer()
+          .then(() => console.log('PASS native Sharp encoding'), () => process.exit(1));"
+      - name: Assert dependency declarations and lockfile remain unchanged
+        run: git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml apps/api/package.json packages/database/package.json
