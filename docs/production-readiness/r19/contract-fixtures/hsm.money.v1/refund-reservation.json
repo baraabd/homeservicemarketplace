@@ -1,7 +1,7 @@
 {
   "_fixture": "NON_PRODUCTION synthetic; refund policy undecided",
   "contractVersion": "hsm.money.v1",
-  "idempotencyKey": "fixture_refund_key_00001",
+  "idempotencyKey": "fixture-0000000000000003",
   "paymentConfirmationId": "fixture-confirmation",
   "amount": { "amountMinor": "300", "currency": "XTS" },
   "reasonCode": "FIXTURE_REASON"

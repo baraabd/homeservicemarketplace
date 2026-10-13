@@ -60,3 +60,7 @@ b876db762045bf70ee7d1fb3eea9eb00ac4bbb97:apps/api/src/modules/disputes/dispute-i
 # credential: a readable JWT_ACCESS_SECRET for a disposable CI job, in a
 # diagnostic workflow that was deleted on the same branch.
 d316a2f46270024b301c78bfa86d15e94e2350c9:.github/workflows/r13-validation.yml:generic-api-key:39
+
+# R19 — one synthetic contract-fixture idempotency key, individually reviewed
+# in §9. Not a credential. The fixture now uses a low-entropy placeholder.
+f3a7c6b5f87c8ed330e4775d258a2de89b214715:docs/production-readiness/r19/contract-fixtures/hsm.money.v1/refund-reservation.json:generic-api-key:4

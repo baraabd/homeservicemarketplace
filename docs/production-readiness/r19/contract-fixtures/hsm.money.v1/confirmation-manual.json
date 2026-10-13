@@ -1,7 +1,7 @@
 {
   "_fixture": "NON_PRODUCTION synthetic; no real receipt",
   "contractVersion": "hsm.money.v1",
-  "idempotencyKey": "fixture_manual_key_00001",
+  "idempotencyKey": "fixture-0000000000000002",
   "paymentIntentId": "fixture-intent",
   "source": "MANUAL_REVIEW",
   "externalConfirmationId": "receipt_fixture_0001",

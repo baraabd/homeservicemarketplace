@@ -1,7 +1,7 @@
 {
   "_fixture": "NON_PRODUCTION synthetic; no real webhook payload",
   "contractVersion": "hsm.money.v1",
-  "idempotencyKey": "fixture_webhook_key_0001",
+  "idempotencyKey": "fixture-0000000000000001",
   "paymentIntentId": "fixture-intent",
   "source": "PROVIDER_WEBHOOK",
   "externalConfirmationId": "evt_fixture_0001",
