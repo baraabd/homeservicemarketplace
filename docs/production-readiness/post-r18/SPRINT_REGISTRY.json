@@ -33,7 +33,7 @@
         "lane": "R19 lane session",
         "coordinator": "repository owner (baraabd)"
       },
-      "status": "IMPLEMENTED",
+      "status": "INTEGRATION_PENDING",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P36", "P42-foundation"],
@@ -106,7 +106,12 @@
           "state": "APPLIED",
           "path": "docs/production-readiness/post-r18/SPRINT_REGISTRY.json"
         }
-      ]
+      ],
+      "laneEvidence": {
+        "head": "fcdf1deb1a34044b9253ebac8e0e308a69e7a667",
+        "ci": "run 38475791098: 29/29 checks success",
+        "note": "Lane evidence only; acceptance needs the Wave 1 gate (G1)."
+      }
     },
     {
       "id": "R20",
