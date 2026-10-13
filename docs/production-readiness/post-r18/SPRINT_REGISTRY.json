@@ -431,5 +431,19 @@
       "pr": null,
       "scopeNote": "Release tooling; final sign-off cannot precede R34-R37 results (coordinator prompt, Mode 4)."
     }
+  ],
+  "observations": [
+    {
+      "observedAt": "2026-10-14",
+      "by": "coordinator session",
+      "note": "Lanes R20-R23 are running in other sessions on this machine from the same frozen base 059c018. Their records stay RESERVED_PENDING_PACKAGE until the owner supplies SPRINT_PLAN.json titles and allowlists; branch names alone are not used as titles.",
+      "worktrees": {
+        "R20": "feat/r20-storage-production (no commits yet)",
+        "R21": "feat/r21-email-production (no commits yet)",
+        "R22": "feat/r22-worker-outbox-reliability (pushed; 2 commits)",
+        "R23": "feat/r23-observability-incidents (1 commit, not pushed)"
+      },
+      "collisionCheck": "R22 and R23 change no Prisma schema, migration, manifest, lockfile, AppModule, config or CI file; no conflict with the R19 schema lease. R22 adds infra/production/workers/* (coordinator-owned by default; its lease is not visible here). R22 keeps OutboxRepository.enqueue unchanged (R19 depends on it); R19 CR-002 (outbox.tokens.ts) should be resolved with R22 at G1."
+    }
   ]
 }
