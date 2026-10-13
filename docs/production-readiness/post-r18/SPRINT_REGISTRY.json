@@ -33,7 +33,7 @@
         "lane": "R19 lane session",
         "coordinator": "repository owner (baraabd)"
       },
-      "status": "READY_TO_START",
+      "status": "IMPLEMENTED",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P36", "P42-foundation"],
@@ -55,7 +55,9 @@
           "packages/contracts/src/money/",
           "apps/api/test/integration/r19-",
           "apps/api/test/support/r19-",
-          "docs/production-readiness/r19/"
+          "docs/production-readiness/r19/",
+          "apps/api/src/modules/money/domain/",
+          "apps/api/test/unit/r19-"
         ],
         "leases": [
           {
@@ -67,6 +69,13 @@
             "grantedBy": "coordinator",
             "expires": "Wave 1 integration gate (G1)",
             "rules": "additive only; fresh migration names; never edit an applied migration"
+          },
+          {
+            "paths": ["apps/api/test/integration/r15-ledger.integration.spec.ts"],
+            "kind": "SINGLE_CASE_LEASE",
+            "scope": "the \"ships no historical financial backfill\" case only (r19 CR-001)",
+            "grantedBy": "coordinator",
+            "expires": "Wave 1 integration gate (G1)"
           }
         ],
         "readOnlyNotes": "apps/api/test/integration/r15-ledger.integration.spec.ts and apps/api/test/support/ledger-caller-transaction.cases.ts are read and run unchanged; edits need a change request."
@@ -80,8 +89,24 @@
         "contract catalog with consumer fixtures",
         "final-PR CI and CodeQL"
       ],
-      "pr": null,
-      "scopeNote": "Provider subscriptions paid to HSM only. R16 customer funds and payouts stay policy-blocked; no prices, currencies, taxes or account purposes are invented."
+      "pr": 159,
+      "scopeNote": "Provider subscriptions paid to HSM only. R16 customer funds and payouts stay policy-blocked; no prices, currencies, taxes or account purposes are invented.",
+      "changeRequests": [
+        {
+          "id": "CR-001",
+          "state": "APPLIED_UNDER_LEASE"
+        },
+        {
+          "id": "CR-002",
+          "state": "REQUESTED",
+          "path": "apps/api/src/infrastructure/outbox/outbox.tokens.ts"
+        },
+        {
+          "id": "CR-003",
+          "state": "APPLIED",
+          "path": "docs/production-readiness/post-r18/SPRINT_REGISTRY.json"
+        }
+      ]
     },
     {
       "id": "R20",

@@ -11,28 +11,28 @@ number says the R18 work merged; the R18 release decision is still
 **NO-GO / `R18_BLOCKED`** (`../r18/GO_NO_GO.md`). PR #156 is an
 unnumbered native-development hotfix, open and not merged.
 
-| ID  | Title                                                                              | Wave | Status                   | Branch                             | PR  |
-| --- | ---------------------------------------------------------------------------------- | ---- | ------------------------ | ---------------------------------- | --- |
-| R19 | Extend and certify the existing money authority; freeze shared financial contracts | 1    | READY_TO_START           | feat/r19-money-authority-contracts | —   |
-| R20 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R21 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R22 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R23 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R24 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R25 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R26 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R27 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R28 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R29 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R30 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R31 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R32 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R33 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R34 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R35 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R36 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R37 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —   |
-| R38 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —   |
+| ID  | Title                                                                              | Wave | Status                   | Branch                             | PR   |
+| --- | ---------------------------------------------------------------------------------- | ---- | ------------------------ | ---------------------------------- | ---- |
+| R19 | Extend and certify the existing money authority; freeze shared financial contracts | 1    | IMPLEMENTED              | feat/r19-money-authority-contracts | #159 |
+| R20 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R21 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R22 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R23 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R24 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R25 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R26 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R27 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R28 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R29 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R30 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R31 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R32 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R33 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R34 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R35 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R36 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R37 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R38 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
 
 `RESERVED_PENDING_PACKAGE`: the ID and its wave are fixed, but the
 package's `SPRINT_PLAN.json` and lane prompt were not provided, so no
