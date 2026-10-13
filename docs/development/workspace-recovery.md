@@ -108,3 +108,99 @@ against actual dependencies on hosted Windows and Linux runners.
 - [pnpm 10 installation options](https://pnpm.io/10.x/cli/install)
 - [Prisma Client generation](https://www.prisma.io/docs/orm/prisma-client/setup-and-configuration/generating-prisma-client)
 - [Sharp installation and optional dependencies](https://sharp.pixelplumbing.com/install/)
+
+## Windows: `EPERM ... rename query_engine-windows.dll.node.tmp<N>`
+
+### What it means
+
+`prisma generate` writes the JavaScript client (`index.js`, `index.d.ts`,
+`schema.prisma`, `package.json`) first. It then copies the query engine to
+`query_engine-windows.dll.node.tmp<N>` and renames that over the engine.
+Windows refuses the rename while any process has the engine **loaded**, so
+generation fails after the JavaScript client was already rewritten. The
+number in the temporary name is not the PID of the holder.
+
+Reproduced on the affected machine (2026-10-13):
+
+- The API dev server's `node --enable-source-maps apps\api\dist\main` child
+  had `packages\database\generated\prisma\query_engine-windows.dll.node`
+  loaded while generation ran.
+- With a loaded engine, opening it for write fails with `EBUSY`, and renaming
+  over it fails with `EPERM`.
+- Once the holder exits, the same rename succeeds.
+
+A permission problem looks different: `EACCES` or `EPERM` on the open itself.
+A security scanner can also hold the file briefly.
+
+Before this fix, dev preflight only checked those four JavaScript files and
+their versions. It therefore passed with an engine older than the client.
+
+### What the tooling does now
+
+The `generate` script (`packages/database/scripts/generate-client.cjs`) is
+the only generation path: `dev:repair`, CI and the API image all use it.
+Each run:
+
+1. Takes a per-checkout lock. A concurrent run waits up to 2 minutes, then
+   stops; a lock left by a process that no longer exists is reclaimed.
+2. Removes the previous completion record before anything is written.
+3. Refuses before generating if the engine is loaded, and names the
+   processes that have it loaded (a read-only module listing).
+4. Runs the pinned Prisma CLI without a shell and propagates its exit code.
+   It refuses to run Prisma when `@prisma/client` is not installed for the
+   schema, because Prisma would otherwise npm-install packages into a
+   directory it chooses.
+5. Checks the native engine. It must be byte-identical to the installed
+   `@prisma/engines` copy, and it must load in a separate short-lived process
+   and report the commit the client expects. That process exits first.
+6. Only then writes `generated/prisma/.hsm-generation.json`, which records
+   the schema, versions, platform, architecture and engine hashes.
+
+Dev preflight and `dev:doctor` stay read-only. They require that record to
+match the schema, the installed version, this platform and the engine bytes
+on disk, so a failed or interrupted generation is never accepted.
+
+### Release a loaded engine and recover
+
+Read-only: list the processes that have this checkout's engine loaded.
+
+```powershell
+$engine = (Resolve-Path 'packages\database\generated\prisma\query_engine-windows.dll.node').Path
+Get-Process | ForEach-Object { $p = $_; try { if ($p.Modules.FileName -contains $engine) { '{0} {1}' -f $p.Id, $p.ProcessName } } catch {} }
+```
+
+1. Stop each of them where it runs: Ctrl+C in the API dev terminal, close
+   Prisma Studio, and finish or stop test runs that use this checkout.
+2. Do not end every `node.exe`, close handles by force, turn off security
+   software or run the project as administrator.
+3. A process that appears in no listing is not proof that nothing holds the
+   file, for example an elevated process or a scanner. Wait and retry.
+
+Then generate and start, stopping at the first failure:
+
+```powershell
+pnpm --filter @homeservicemarketplace/database generate
+if ($LASTEXITCODE -ne 0) { return }
+powershell -ExecutionPolicy Bypass -File scripts\dev\start-api.ps1
+```
+
+## Start the API with one command (PowerShell 5.1 and 7)
+
+`scripts/dev/start-api.ps1` runs these stages and stops at the first
+non-zero exit code. It checks `$LASTEXITCODE` itself, because
+`$ErrorActionPreference` does not see native exit codes.
+
+1. The read-only preflight: runtime, port and a complete generated client.
+2. The database build.
+3. The contracts build.
+4. The API typecheck (`-SkipTypecheck` to omit it).
+5. `scripts/dev/run-api.cjs`, which starts Nest watch mode.
+
+`run-api.cjs` reports two separate milestones, each printed only when true:
+
+- `MILESTONE listening`: the port accepts connections.
+- `MILESTONE ready`: `GET /health/ready` returned 200, with its
+  dependencies listed.
+
+Neither milestone means the browser journeys work; those are a separate
+test.

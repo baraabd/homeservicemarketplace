@@ -28,7 +28,9 @@ jobs:
   recovery:
     name: Recovery and native Sharp (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    # Real Prisma generations (three on Windows, including a locked-engine
+    # attempt) run in addition to the recovery itself.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -48,9 +50,13 @@ jobs:
           node-version: '24.21.0'
           cache: pnpm
       - name: Exercise recovery and read-only preflight regressions
-        run: node --test scripts/dev/repair.test.cjs scripts/dev/workspace-state.test.cjs
+        run: node --test --test-reporter=spec scripts/dev/repair.test.cjs scripts/dev/workspace-state.test.cjs scripts/dev/preflight.test.cjs scripts/dev/start-api.test.cjs
       - name: Recover a clean checkout using actual locked dependencies
         run: pnpm dev:repair
+      - name: Guarded generation wrote a completion record that the read-only check accepts
+        run: node scripts/dev/workspace-state.cjs && node -e "const r=require('./packages/database/generated/prisma/.hsm-generation.json'); if (r.state !== 'complete' || r.platform !== process.platform) process.exit(1); console.log('PASS completion record for', r.nativeEngine)"
+      - name: Guarded generator with the real Prisma CLI (Windows - a loaded engine refused, then recovered; Linux - its own native engine)
+        run: node --test --test-reporter=spec packages/database/scripts/generate-client.test.cjs
       - name: Load the actual native Sharp binary and encode a tiny image
         run: >-
           pnpm --filter @homeservicemarketplace/api exec node -e
@@ -60,3 +66,8 @@ jobs:
           .then(() => console.log('PASS native Sharp encoding'), () => process.exit(1));"
       - name: Assert dependency declarations and lockfile remain unchanged
         run: git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml apps/api/package.json packages/database/package.json
+      - name: Assert the tests left no fixture or file outside ignored outputs
+        shell: bash
+        run: |
+          test -z "$(git status --porcelain)"
+          test ! -e packages/database/.test-fixtures || test -z "$(ls -A packages/database/.test-fixtures)"
