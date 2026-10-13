@@ -40,8 +40,10 @@ COPY . .
 # argon2 `install` (node-gyp-build), @prisma/engines `postinstall`.
 RUN node scripts/runtime/toolchain.cjs && pnpm install --frozen-lockfile
 
-# Prisma client codegen — schema lives in packages/database/prisma.
-RUN pnpm --filter @homeservicemarketplace/database exec prisma generate
+# Prisma client codegen — schema lives in packages/database/prisma. The
+# guarded script is the same path as local development and CI: it loads the
+# musl engine in a separate process and writes the completion record.
+RUN pnpm --filter @homeservicemarketplace/database generate
 
 # Build in dependency order: contracts → database → api. `nest build` is
 # invoked directly rather than via the api's `build` script (which re-runs

@@ -11,7 +11,8 @@ const { RepairError, pnpmInvocation, executePnpm, repairWorkspace } = require('.
 const { workspaceStateProblems } = require('./workspace-state.cjs');
 
 const PRIVATE = 'private-fixture-value-must-not-appear';
-const SCHEMA = 'generator client {\n provider = "prisma-client-js"\n output = "../generated/prisma"\n}\n';
+const SCHEMA =
+  'generator client {\n provider = "prisma-client-js"\n output = "../generated/prisma"\n}\n';
 const GENERATED = 'packages/database/generated/prisma';
 const EXPECTED = [
   ['install', '--frozen-lockfile', '--prod=false'],
@@ -40,27 +41,47 @@ async function fixture(t) {
     ['apps/api', 'sharp', '0.35.4'],
   ]) {
     await write(root, `${consumer}/node_modules/${name}/package.json`, {
-      name, version, main: './index.js',
+      name,
+      version,
+      main: './index.js',
     });
-    await write(root, `${consumer}/node_modules/${name}/index.js`, `throw new Error('${PRIVATE}');\n`);
+    await write(
+      root,
+      `${consumer}/node_modules/${name}/index.js`,
+      `throw new Error('${PRIVATE}');\n`,
+    );
   }
   await write(root, `${GENERATED}/index.js`, `throw new Error('${PRIVATE}');\n`);
   await write(root, `${GENERATED}/index.d.ts`, 'export declare class PrismaClient {}\n');
   await write(root, `${GENERATED}/package.json`, { version: '6.11.0' });
   await write(root, `${GENERATED}/schema.prisma`, SCHEMA.replace('client {', 'old {'));
-  for (const file of ['.env', 'apps/api/.media-uploads/photo', 'apps/api/.restricted-uploads/evidence']) {
+  for (const file of [
+    '.env',
+    'apps/api/.media-uploads/photo',
+    'apps/api/.restricted-uploads/evidence',
+  ]) {
     await write(root, file, PRIVATE);
   }
   for (const file of ['repair.cjs', 'workspace-state.cjs']) {
     await write(root, `scripts/dev/${file}`, await fs.readFile(path.join(__dirname, file), 'utf8'));
   }
+  for (const file of ['prisma-generation.cjs', 'generation-fixture.cjs']) {
+    const source = path.join(__dirname, '../../packages/database/scripts', file);
+    await write(root, `packages/database/scripts/${file}`, await fs.readFile(source, 'utf8'));
+  }
   // Only the runtime validator is stubbed; recovery orchestration, process
   // launching and the workspace-state checker below are the real sources.
-  await write(root, 'scripts/runtime/toolchain.cjs',
+  await write(
+    root,
+    'scripts/runtime/toolchain.cjs',
     `exports.ROOT = require('node:path').resolve(__dirname, '../..');\n` +
-    `exports.PNPM_VERSION = ${JSON.stringify(PNPM_VERSION)};\n` +
-    'exports.toolchainProblems = async () => [];\n');
-  await write(root, 'pnpm shim (fixture).cjs', `
+      `exports.PNPM_VERSION = ${JSON.stringify(PNPM_VERSION)};\n` +
+      'exports.toolchainProblems = async () => [];\n',
+  );
+  await write(
+    root,
+    'pnpm shim (fixture).cjs',
+    `
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -81,19 +102,20 @@ if (stage === 'install') {
     }
   }
 } else if (stage === 'generate') {
-  const output = '${GENERATED}';
-  fs.mkdirSync(output, { recursive: true });
-  fs.copyFileSync('packages/database/prisma/schema.prisma', path.join(output, 'schema.prisma'));
-  fs.writeFileSync(path.join(output, 'package.json'), JSON.stringify({ version: '6.12.0' }));
-  fs.writeFileSync(path.join(output, 'index.d.ts'), 'export declare class PrismaClient {}\\n');
-  fs.writeFileSync(path.join(output, 'index.js'), "throw new Error('${PRIVATE}');\\n");
+  // A complete client plus the guarded generator's record (fixture engine).
+  require('./packages/database/scripts/generation-fixture.cjs').writeGeneratedClient(
+    '${GENERATED}',
+    fs.readFileSync('packages/database/prisma/schema.prisma', 'utf8'),
+    { indexPrefix: "throw new Error('${PRIVATE}');\\n" },
+  );
 } else if (stage === 'verify') {
   const child = spawnSync(process.execPath, args.slice(2), { stdio: 'inherit', shell: false });
   process.exit(child.status ?? 1);
 } else if (stage !== 'typecheck') {
   process.exit(20);
 }
-`);
+`,
+  );
   return {
     root,
     environment: {
@@ -102,7 +124,9 @@ if (stage === 'install') {
       APP_ENV: 'test',
       npm_execpath: path.join(root, 'pnpm shim (fixture).cjs'),
       npm_config_user_agent: `pnpm/${PNPM_VERSION} npm/? node/${process.versions.node}`,
-      FAIL_STAGE: '', CHANGE_LOCK: '', KEEP_STALE: '',
+      FAIL_STAGE: '',
+      CHANGE_LOCK: '',
+      KEEP_STALE: '',
     },
   };
 }
@@ -119,7 +143,9 @@ function cli(options, args = []) {
 async function commands(root) {
   try {
     return (await fs.readFile(path.join(root, 'commands.jsonl'), 'utf8'))
-      .trim().split('\n').map((line) => JSON.parse(line));
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
   } catch (error) {
     if (error.code === 'ENOENT') return [];
     throw error;
@@ -129,23 +155,42 @@ async function commands(root) {
 test('real CLI repairs all four reported failures with ordered commands and preserves private files', async (t) => {
   const options = await fixture(t);
   const before = (await workspaceStateProblems(options.root)).join('\n');
-  for (const message of ['Installed Prisma client does not match', 'client is stale',
-    'client version does not match', 'API sharp dependency']) {
+  for (const message of [
+    'Installed Prisma client does not match',
+    'client is stale',
+    'client version does not match',
+    'API sharp dependency',
+  ]) {
     assert.ok(before.includes(message), before);
   }
-  const protectedFiles = ['pnpm-lock.yaml', '.env', 'packages/database/prisma/schema.prisma',
-    'apps/api/.media-uploads/photo', 'apps/api/.restricted-uploads/evidence'];
-  const protectedBefore = await Promise.all(protectedFiles.map((file) => fs.readFile(path.join(options.root, file))));
+  const protectedFiles = [
+    'pnpm-lock.yaml',
+    '.env',
+    'packages/database/prisma/schema.prisma',
+    'apps/api/.media-uploads/photo',
+    'apps/api/.restricted-uploads/evidence',
+  ];
+  const protectedBefore = await Promise.all(
+    protectedFiles.map((file) => fs.readFile(path.join(options.root, file))),
+  );
   const result = cli(options);
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /PASS workspace recovery and API typecheck/u);
   assert.ok(!(result.stdout + result.stderr).includes(PRIVATE));
   assert.deepEqual(await commands(options.root), EXPECTED);
   assert.deepEqual(await workspaceStateProblems(options.root), []);
-  assert.deepEqual(await Promise.all(protectedFiles.map((file) => fs.readFile(path.join(options.root, file)))), protectedBefore);
+  assert.deepEqual(
+    await Promise.all(protectedFiles.map((file) => fs.readFile(path.join(options.root, file)))),
+    protectedBefore,
+  );
 });
 
-for (const [stage, count] of [['install', 1], ['generate', 2], ['verify', 3], ['typecheck', 4]]) {
+for (const [stage, count] of [
+  ['install', 1],
+  ['generate', 2],
+  ['verify', 3],
+  ['typecheck', 4],
+]) {
   test(`${stage} failure retains its exit status and prevents every later command`, async (t) => {
     const options = await fixture(t);
     options.environment.FAIL_STAGE = stage;
@@ -214,7 +259,10 @@ test('unknown or duplicate flags cannot be passed through to install', async (t)
 test('production environment refuses local repair', async (t) => {
   const options = await fixture(t);
   for (const variable of ['NODE_ENV', 'APP_ENV']) {
-    const result = cli({ ...options, environment: { ...options.environment, [variable]: 'production' } });
+    const result = cli({
+      ...options,
+      environment: { ...options.environment, [variable]: 'production' },
+    });
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stderr, /must not run in a production environment/u);
   }
@@ -223,16 +271,24 @@ test('production environment refuses local repair', async (t) => {
 
 test('toolchain mismatch is checked before install', async (t) => {
   const options = await fixture(t);
-  await assert.rejects(repairWorkspace({ ...options, log: () => {},
-    checkToolchain: async () => ['Node pin mismatch'],
-  }), /Node pin mismatch/u);
+  await assert.rejects(
+    repairWorkspace({
+      ...options,
+      log: () => {},
+      checkToolchain: async () => ['Node pin mismatch'],
+    }),
+    /Node pin mismatch/u,
+  );
   assert.deepEqual(await commands(options.root), []);
 });
 
 test('the real runtime guard is not bypassed by normal CLI operation', async (t) => {
   const options = await fixture(t);
-  await write(options.root, 'scripts/runtime/toolchain.cjs',
-    await fs.readFile(path.join(__dirname, '../runtime/toolchain.cjs'), 'utf8'));
+  await write(
+    options.root,
+    'scripts/runtime/toolchain.cjs',
+    await fs.readFile(path.join(__dirname, '../runtime/toolchain.cjs'), 'utf8'),
+  );
   const result = cli(options);
   assert.equal(result.status, 1, result.stderr);
   assert.deepEqual(await commands(options.root), []);
@@ -240,13 +296,19 @@ test('the real runtime guard is not bypassed by normal CLI operation', async (t)
 
 test('Windows JS entry paths with spaces use Node and retain one exact path argument', () => {
   const entry = 'C:\\Program Files\\pnpm\\bin\\pnpm.cjs';
-  const invocation = pnpmInvocation({ npm_execpath: entry, npm_config_user_agent: `pnpm/${PNPM_VERSION} npm/?` }, 'win32');
+  const invocation = pnpmInvocation(
+    { npm_execpath: entry, npm_config_user_agent: `pnpm/${PNPM_VERSION} npm/?` },
+    'win32',
+  );
   assert.deepEqual(invocation, { file: process.execPath, prefix: [entry] });
 });
 
 test('standalone Windows pnpm executable does not go through Node or a shell', () => {
   const entry = 'C:\\Program Files\\pnpm\\pnpm.exe';
-  assert.deepEqual(pnpmInvocation({ npm_execpath: entry, npm_config_user_agent: `pnpm/${PNPM_VERSION}` }, 'win32'), { file: entry, prefix: [] });
+  assert.deepEqual(
+    pnpmInvocation({ npm_execpath: entry, npm_config_user_agent: `pnpm/${PNPM_VERSION}` }, 'win32'),
+    { file: entry, prefix: [] },
+  );
 });
 
 test('wrong pnpm versions, relative entry points and command shims are rejected', () => {
@@ -256,22 +318,34 @@ test('wrong pnpm versions, relative entry points and command shims are rejected'
     ['pnpm.cjs', `pnpm/${PNPM_VERSION}`, 'linux'],
     ['C:\\pnpm\\pnpm.cmd', `pnpm/${PNPM_VERSION}`, 'win32'],
   ]) {
-    assert.throws(() => pnpmInvocation({ npm_execpath: entry, npm_config_user_agent: agent }, platform), RepairError);
+    assert.throws(
+      () => pnpmInvocation({ npm_execpath: entry, npm_config_user_agent: agent }, platform),
+      RepairError,
+    );
   }
 });
 
 test('spawn failures have controlled diagnostics rather than leaking local paths', () => {
-  assert.throws(() => executePnpm({ file: path.join(os.tmpdir(), PRIVATE, 'missing-executable'), prefix: [] }, [], {
-    root: os.tmpdir(), environment: process.env,
-  }), (error) => error instanceof RepairError && error.exitCode === 1 && !error.message.includes(PRIVATE));
+  assert.throws(
+    () =>
+      executePnpm({ file: path.join(os.tmpdir(), PRIVATE, 'missing-executable'), prefix: [] }, [], {
+        root: os.tmpdir(),
+        environment: process.env,
+      }),
+    (error) =>
+      error instanceof RepairError && error.exitCode === 1 && !error.message.includes(PRIVATE),
+  );
 });
 
 test('unexpected filesystem exceptions have controlled CLI diagnostics', async (t) => {
   const options = await fixture(t);
-  await write(options.root, 'scripts/runtime/toolchain.cjs',
+  await write(
+    options.root,
+    'scripts/runtime/toolchain.cjs',
     `exports.ROOT = require('node:path').resolve(__dirname, '../..');\n` +
-    `exports.PNPM_VERSION = ${JSON.stringify(PNPM_VERSION)};\n` +
-    `exports.toolchainProblems = async () => { throw new Error('${PRIVATE}'); };\n`);
+      `exports.PNPM_VERSION = ${JSON.stringify(PNPM_VERSION)};\n` +
+      `exports.toolchainProblems = async () => { throw new Error('${PRIVATE}'); };\n`,
+  );
   const result = cli(options);
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /Workspace recovery failed/u);
@@ -280,9 +354,102 @@ test('unexpected filesystem exceptions have controlled CLI diagnostics', async (
 });
 
 test('the recovery command is available from the root manifest and preflight diagnostics', async () => {
-  const manifest = JSON.parse(await fs.readFile(path.join(__dirname, '../../package.json'), 'utf8'));
+  const manifest = JSON.parse(
+    await fs.readFile(path.join(__dirname, '../../package.json'), 'utf8'),
+  );
   assert.equal(manifest.scripts['dev:repair'], 'node scripts/dev/repair.cjs');
   const preflight = await fs.readFile(path.join(__dirname, 'preflight.cjs'), 'utf8');
   assert.match(preflight, /run pnpm dev:repair from the repository root/u);
   assert.match(preflight, /workspaceStateProblems\(ROOT\)/u);
 });
+
+// ── Loaded query engine (reported Windows EPERM) ────────────────────────────
+
+test('MOCK a loaded engine stops recovery before any command runs', async (t) => {
+  const options = await fixture(t);
+  const executed = [];
+  await assert.rejects(
+    repairWorkspace({
+      root: options.root,
+      environment: options.environment,
+      checkToolchain: async () => [],
+      execute: async (_invocation, command) => executed.push(command),
+      log: () => {},
+      findBusyEngines: async () => [
+        path.join(options.root, GENERATED, 'query_engine-windows.dll.node'),
+      ],
+      listHolders: () => [{ pid: 4242, name: 'node' }],
+    }),
+    (error) =>
+      error instanceof RepairError &&
+      /is loaded by a running process/u.test(error.message) &&
+      /node \(PID 4242\)/u.test(error.message) &&
+      /Nothing was changed/u.test(error.message),
+  );
+  assert.deepEqual(executed, []);
+});
+
+test(
+  'REAL Windows: an engine loaded by another process is detected before install, and released after it exits',
+  { skip: process.platform !== 'win32' && 'needs Windows image-file locking', timeout: 120_000 },
+  async (t) => {
+    const options = await fixture(t);
+    const prismaPackage = require.resolve('prisma/package.json', {
+      paths: [path.join(__dirname, '../../packages/database')],
+    });
+    const source = path.join(
+      path.dirname(
+        require.resolve('@prisma/engines/package.json', { paths: [path.dirname(prismaPackage)] }),
+      ),
+      'query_engine-windows.dll.node',
+    );
+    const engine = path.join(options.root, GENERATED, 'query_engine-windows.dll.node');
+    await fs.copyFile(source, engine);
+    const { spawn } = require('node:child_process');
+    const holder = spawn(
+      process.execPath,
+      [
+        '-e',
+        "require(process.argv[1]); console.log('LOADED'); setInterval(() => {}, 1000)",
+        engine,
+      ],
+      { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true },
+    );
+    const gone = new Promise((resolve) => holder.once('exit', resolve));
+    // The fixture's directory removal cannot delete a loaded engine, so the
+    // holder is always stopped (and awaited) inside the test, never in a hook.
+    const stopHolder = async () => {
+      if (holder.exitCode === null && holder.signalCode === null) holder.kill();
+      await gone;
+    };
+    try {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('holder did not load the engine')), 30_000);
+        holder.stdout.on('data', (chunk) => {
+          if (chunk.toString().includes('LOADED')) {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+      });
+      const executed = [];
+      const run = () =>
+        repairWorkspace({
+          root: options.root,
+          environment: options.environment,
+          checkToolchain: async () => [],
+          execute: async (_invocation, command) => executed.push(command),
+          log: () => {},
+        });
+      await assert.rejects(run(), (error) => error.message.includes(`node (PID ${holder.pid})`));
+      assert.deepEqual(executed, []);
+      await stopHolder();
+      // With the lock released the pre-check passes and recovery proceeds to
+      // its first command (the fake executor records it).
+      await run().catch(() => {});
+      assert.deepEqual(executed[0], EXPECTED[0]);
+    } finally {
+      await stopHolder();
+    }
+  },
+);

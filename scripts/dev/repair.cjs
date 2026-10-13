@@ -4,6 +4,10 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { ROOT, PNPM_VERSION, toolchainProblems } = require('../runtime/toolchain.cjs');
+const {
+  generatorOutput,
+  engineAccess,
+} = require('../../packages/database/scripts/prisma-generation.cjs');
 
 class RepairError extends Error {
   constructor(message, exitCode = 1) {
@@ -50,6 +54,42 @@ function executePnpm(invocation, args, { root, environment }) {
   }
 }
 
+/**
+ * Refuse before any install if this checkout's generated query engine is
+ * loaded by a running process: install and generation would both fail part-way
+ * on Windows. Read-only; it opens the engine for writing and closes it.
+ */
+async function busyEngines(root) {
+  const schemaPath = path.join(root, 'packages/database/prisma/schema.prisma');
+  let output;
+  try {
+    output = generatorOutput(schemaPath, await fs.readFile(schemaPath, 'utf8'));
+  } catch {
+    return [];
+  }
+  let names;
+  try {
+    names = (await fs.readdir(output)).filter((name) =>
+      /^(?:lib)?query_engine-[A-Za-z0-9._-]+\.node$/u.test(name),
+    );
+  } catch {
+    return [];
+  }
+  const busy = [];
+  for (const name of names) {
+    if ((await engineAccess(path.join(output, name))) === 'busy')
+      busy.push(path.join(output, name));
+  }
+  return busy;
+}
+
+function engineHolders(engine) {
+  // Loaded lazily: only needed for the message, and only on Windows.
+  return require('../../packages/database/scripts/generate-client.cjs').windowsEngineHolders(
+    engine,
+  );
+}
+
 async function repairWorkspace({
   root = ROOT,
   environment = process.env,
@@ -57,6 +97,8 @@ async function repairWorkspace({
   checkToolchain = toolchainProblems,
   execute = executePnpm,
   log = console.log,
+  findBusyEngines = busyEngines,
+  listHolders = engineHolders,
 } = {}) {
   if (args.length > 1 || (args.length === 1 && args[0] !== '--force')) {
     throw new RepairError('Usage: pnpm dev:repair [--force]');
@@ -91,6 +133,21 @@ async function repairWorkspace({
     log(label);
     await execute(invocation, command, { root, environment });
     await assertLockfile();
+  }
+  const busy = await findBusyEngines(root);
+  if (busy.length) {
+    const holders = listHolders(busy[0]);
+    throw new RepairError(
+      [
+        `The Prisma query engine ${path.relative(root, busy[0])} is loaded by a running process, so recovery would fail part-way.`,
+        ...(holders?.length
+          ? [
+              `Processes that have it loaded: ${holders.map((h) => `${h.name} (PID ${h.pid})`).join(', ')}.`,
+            ]
+          : []),
+        'Stop the API dev server (Ctrl+C in its terminal), Prisma Studio and test runs that use this checkout, then run pnpm dev:repair again. Nothing was changed.',
+      ].join('\n'),
+    );
   }
   log('Stop API and web watchers before recovery, especially on Windows.');
   log(
