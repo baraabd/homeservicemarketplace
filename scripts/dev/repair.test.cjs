@@ -393,10 +393,24 @@ test(
   'REAL Windows: an engine loaded by another process is detected before install, and released after it exits',
   { skip: process.platform !== 'win32' && 'needs Windows image-file locking', timeout: 120_000 },
   async (t) => {
+    // Needs the installed Prisma engine. Before install it is reported as a
+    // skip; CI re-runs this file after install with HSM_REQUIRE_REAL_TESTS=1,
+    // where a missing engine is a failure, so the case cannot silently vanish.
+    let prismaPackage;
+    try {
+      prismaPackage = require.resolve('prisma/package.json', {
+        paths: [path.join(__dirname, '../../packages/database')],
+      });
+    } catch {
+      assert.notEqual(
+        process.env.HSM_REQUIRE_REAL_TESTS,
+        '1',
+        'the installed Prisma engine is required',
+      );
+      t.skip('dependencies are not installed yet');
+      return;
+    }
     const options = await fixture(t);
-    const prismaPackage = require.resolve('prisma/package.json', {
-      paths: [path.join(__dirname, '../../packages/database')],
-    });
     const source = path.join(
       path.dirname(
         require.resolve('@prisma/engines/package.json', { paths: [path.dirname(prismaPackage)] }),
