@@ -13,7 +13,7 @@ unnumbered native-development hotfix, open and not merged.
 
 | ID  | Title                                                                              | Wave | Status                   | Branch                             | PR   |
 | --- | ---------------------------------------------------------------------------------- | ---- | ------------------------ | ---------------------------------- | ---- |
-| R19 | Extend and certify the existing money authority; freeze shared financial contracts | 1    | IMPLEMENTED              | feat/r19-money-authority-contracts | #159 |
+| R19 | Extend and certify the existing money authority; freeze shared financial contracts | 1    | INTEGRATION_PENDING      | feat/r19-money-authority-contracts | #159 |
 | R20 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —    |
 | R21 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —    |
 | R22 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —    |
