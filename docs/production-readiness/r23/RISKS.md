@@ -56,6 +56,13 @@ producer and stay silent. They do not page falsely; they also do not protect.
    fails 1 of 7 on this Windows host at base and with R23 (storage code
    identical). Not caused or masked by R23; reported for the owning lane.
 
+9. **The end-to-end synthetic alert path has not completed.** The local run
+   was killed for host memory after its healthy phase (ACCEPTANCE.md § 4).
+   Rules, routing and recovery are proven by promtool and amtool only, not by
+   a delivered notification.
+10. **Not rebased onto the post-G0 develop.** R19–R22 merged after G0; any
+    conflict or behavioural interaction is found at the wave gate.
+
 ## Not claimed
 
 No SLA, no production incident readiness, no hosted acceptance, no zero
