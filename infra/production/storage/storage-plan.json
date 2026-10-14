@@ -1,0 +1,69 @@
+{
+  "schema": "hsm.storage-plan/v1",
+  "vendorReference": "aws-s3",
+  "note": "Reviewable plan only. No account, region, bucket name, KMS key or CDN is chosen here; every ${PLACEHOLDER} is supplied by the owner-authorized target. Apply nothing outside a separately authorized test account.",
+  "placeholders": [
+    "PUBLIC_BUCKET",
+    "PORTFOLIO_STAGING_BUCKET",
+    "RESTRICTED_BUCKET",
+    "PRIVATE_KMS_KEY_ARN",
+    "WEB_ORIGIN",
+    "CDN_DISTRIBUTION_ARN",
+    "API_ROLE_ARN",
+    "WORKER_ROLE_ARN",
+    "INVENTORY_ROLE_ARN",
+    "BREAK_GLASS_ROLE_ARN"
+  ],
+  "namespaces": {
+    "public": {
+      "envBucket": "S3_BUCKET",
+      "bucket": "${PUBLIC_BUCKET}",
+      "rootMarker": "public",
+      "publicReadPrefixes": ["requests/", "avatars/"],
+      "apiMediatedPrefixes": ["portfolio/"],
+      "versioning": "Enabled",
+      "objectLock": false,
+      "encryption": "aws/encryption.public.json",
+      "publicAccessBlock": "aws/public-access-block.json",
+      "bucketPolicy": "aws/bucket-policy.public.json",
+      "cors": "aws/cors.upload.json",
+      "lifecycle": "aws/lifecycle.public.json",
+      "cdn": { "originEnv": "S3_PUBLIC_BASE_URL", "pathPatterns": ["requests/*", "avatars/*"] }
+    },
+    "portfolio-staging": {
+      "envBucket": "S3_PORTFOLIO_BUCKET",
+      "bucket": "${PORTFOLIO_STAGING_BUCKET}",
+      "rootMarker": "portfolio-staging",
+      "publicReadPrefixes": [],
+      "apiMediatedPrefixes": ["portfolio-staging/"],
+      "versioning": "Enabled",
+      "objectLock": false,
+      "encryption": "aws/encryption.private.json",
+      "publicAccessBlock": "aws/public-access-block.json",
+      "bucketPolicy": "aws/bucket-policy.private.json",
+      "cors": "aws/cors.upload.json",
+      "lifecycle": "aws/lifecycle.portfolio-staging.json",
+      "cdn": null
+    },
+    "restricted": {
+      "envBucket": "S3_RESTRICTED_BUCKET",
+      "bucket": "${RESTRICTED_BUCKET}",
+      "rootMarker": "restricted",
+      "publicReadPrefixes": [],
+      "apiMediatedPrefixes": ["verification/"],
+      "versioning": "Enabled",
+      "objectLock": "OWNER_DECISION",
+      "encryption": "aws/encryption.private.json",
+      "publicAccessBlock": "aws/public-access-block.json",
+      "bucketPolicy": "aws/bucket-policy.private.json",
+      "cors": null,
+      "lifecycle": "aws/lifecycle.restricted.json",
+      "cdn": null
+    }
+  },
+  "principals": {
+    "api": { "policy": "aws/iam-api.json", "arnPlaceholder": "API_ROLE_ARN" },
+    "worker": { "policy": "aws/iam-worker.json", "arnPlaceholder": "WORKER_ROLE_ARN" },
+    "inventory": { "policy": "aws/iam-inventory.json", "arnPlaceholder": "INVENTORY_ROLE_ARN" }
+  }
+}

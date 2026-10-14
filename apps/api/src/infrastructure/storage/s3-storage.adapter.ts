@@ -14,6 +14,14 @@ import { AppConfigService } from '../../config/app-config.service';
 import { PresignUploadInput, PresignedUpload, StoragePort } from './storage.port';
 import { isStagedPortfolioKey } from './portfolio-storage-policy';
 import { isRequestAttachmentKey } from './request-attachment-storage-policy';
+import { S3BucketRootGuard } from './s3-storage-root';
+import {
+  StorageFaultError,
+  classifyStorageFault,
+  keyFingerprint,
+  storageFaultEvent,
+  type StorageNamespace,
+} from './storage-diagnostics';
 
 // Production storage backend. Used when STORAGE_DRIVER=s3 (set via
 // .env in production / preview deploys). Hits S3-compatible storage
@@ -39,6 +47,8 @@ const PRESIGN_TTL_SECONDS = 5 * 60;
 export class S3StorageAdapter extends StoragePort {
   private readonly log = new Logger(S3StorageAdapter.name);
   private readonly client: S3Client;
+  /** R20 — refuses a bucket marked for another namespace (storage-root.ts). */
+  private readonly root = new S3BucketRootGuard(() => this.client);
 
   constructor(private readonly config: AppConfigService) {
     super();
@@ -75,6 +85,9 @@ export class S3StorageAdapter extends StoragePort {
       throw new Error('S3_BUCKET is required when STORAGE_DRIVER=s3');
     }
 
+    // R20 — never hand out a PUT into a bucket provisioned for another
+    // namespace (for example the restricted bucket via a copied env value).
+    await this.root.check(bucket, namespaceForKey(input.key));
     if (isStagedPortfolioKey(input.key)) await this.assertPrivatePortfolioBucket(bucket);
     const cmd = new PutObjectCommand({
       Bucket: bucket,
@@ -87,13 +100,25 @@ export class S3StorageAdapter extends StoragePort {
         ? { IfNoneMatch: '*' }
         : {}),
     });
-    const uploadUrl = await getSignedUrl(this.client, cmd, { expiresIn: PRESIGN_TTL_SECONDS });
+    // R20 — `content-type` must be SIGNED. By default the presigner signs only
+    // host, content-length and if-none-match, so the browser could store any
+    // Content-Type on the object (text/html on a PNG/HTML polyglot, served
+    // publicly from the CDN). The local driver already binds the type into its
+    // HMAC; this restores parity. Every web client PUTs with exactly the type
+    // it presigned (verified against real S3-compatible storage in
+    // test/integration/r20-storage).
+    const uploadUrl = await getSignedUrl(this.client, cmd, {
+      expiresIn: PRESIGN_TTL_SECONDS,
+      signableHeaders: new Set(['content-type']),
+    });
     const fileUrl = this.publicUrlForKey(input.key);
     const expiresAt = new Date(Date.now() + PRESIGN_TTL_SECONDS * 1000).toISOString();
+    // R20 — namespace and key fingerprint only. The bucket name and the key
+    // (which for staging is a private object) no longer enter logs.
     this.log.log({
       msg: 'storage.s3.presigned',
-      bucket,
-      key: input.key,
+      namespace: namespaceForKey(input.key),
+      keyFp: keyFingerprint(input.key),
       bytes: input.sizeBytes,
     });
     return { uploadUrl, fileUrl, expiresAt };
@@ -121,7 +146,15 @@ export class S3StorageAdapter extends StoragePort {
       ) {
         return null;
       }
-      throw error;
+      // R20 — classified and stripped. A raw SDK error names the bucket.
+      const event = storageFaultEvent({
+        operation: 'read',
+        namespace: namespaceForKey(key),
+        key,
+        err: error,
+      });
+      this.log.error(event);
+      throw new StorageFaultError(event.outcome === 'missing' ? 'unavailable' : event.outcome);
     }
   }
 
@@ -201,10 +234,19 @@ export class S3StorageAdapter extends StoragePort {
       const total = res.ContentRange?.split('/')[1];
       const parsed = total ? Number.parseInt(total, 10) : (res.ContentLength ?? head.byteLength);
       return { sizeBytes: Number.isFinite(parsed) ? parsed : head.byteLength, head };
-    } catch {
+    } catch (err) {
       // Missing key, no permission, or a transient fault. All read as "nothing
       // usable is there", which is the answer finalize needs: it refuses rather
       // than linking an object it could not inspect.
+      //
+      // R20 — the CALLER still gets null for all of them, but the operator is
+      // told which one it was. Distinguishing them to the caller is change
+      // request CR-05 (the avatar finalize route owns that response).
+      if (classifyStorageFault(err) !== 'missing') {
+        this.log.warn(
+          storageFaultEvent({ operation: 'head', namespace: namespaceForKey(key), key, err }),
+        );
+      }
       return null;
     }
   }
@@ -250,15 +292,21 @@ export class S3StorageAdapter extends StoragePort {
         ?.httpStatusCode;
       // Absent is the end state this asked for.
       if (name === 'NoSuchKey' || name === 'NotFound' || status === 404) {
-        this.log.log({ msg: 'storage.s3.delete.absent', key });
+        this.log.log({ msg: 'storage.s3.delete.absent', keyFp: keyFingerprint(key) });
         return;
       }
-      // The KEY only, and no URL: this runs on every cleanup pass, and both
-      // the signed and the public URL are things that must not reach a log.
-      this.log.warn({ msg: 'storage.s3.delete.failed', key, error: name ?? 'unknown' });
+      // A key FINGERPRINT, and no URL: this runs on every cleanup pass, and
+      // the signed URL, the public URL and (R20) a staged key must not reach a
+      // log.
+      this.log.warn({
+        ...storageFaultEvent({ operation: 'delete', namespace: namespaceForKey(key), key, err }),
+        msg: 'storage.s3.delete.failed',
+      });
+      // Still a failure, and still the original error for the cleanup worker's
+      // retry classification; it is never serialized to a client.
       throw err;
     }
-    this.log.log({ msg: 'storage.s3.delete', key });
+    this.log.log({ msg: 'storage.s3.delete', keyFp: keyFingerprint(key) });
   }
 
   /** Compose the canonical read URL for an uploaded object.
@@ -272,4 +320,9 @@ export class S3StorageAdapter extends StoragePort {
     const region = this.config.get('S3_REGION');
     return `https://${bucket}.s3.${region}.amazonaws.com/${encodedKey}`;
   }
+}
+
+/** Which provisioned bucket a server-minted key belongs to. */
+function namespaceForKey(key: string): StorageNamespace {
+  return isStagedPortfolioKey(key) ? 'portfolio-staging' : 'public';
 }
