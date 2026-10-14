@@ -17,10 +17,10 @@ and the coordinator has to resolve it at G1.
 
 The two changes are semantically disjoint:
 
-| Lane            | Change to `schema.prisma`                                                                                                                               | Migration directory                                |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| R19 (`fcdf1de`) | relations on `User`, `SupportTicket`, `ProviderProfile`, `MediaAsset`, `LedgerTransaction`; 9 `Money*` enums and 11 models appended after `LedgerEntry` | `20261014090000_r19_subscription_money_foundation` |
-| R21             | 4 `Email*` enums and 3 `Email*` models appended after `LedgerEntry`; no relation to any existing model                                                  | `20261013120000_r21_email_delivery`                |
+| Lane            | Change to `schema.prisma`                                                                                                                               | Migration directory                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| R19 (`fcdf1de`) | relations on `User`, `SupportTicket`, `ProviderProfile`, `MediaAsset`, `LedgerTransaction`; 9 `Money*` enums and 11 models appended after `LedgerEntry` | `20261014090000_r19_subscription_money_foundation`           |
+| R21             | 4 `Email*` enums and 3 `Email*` models appended after `LedgerEntry`; no relation to any existing model                                                  | `20261014100000_r21_email_delivery` (was `20261013120000_…`) |
 
 No model, enum, table, index or constraint name is shared. R21's tables do
 not reference `User` or any money table.
@@ -60,3 +60,10 @@ The `account.payment_status` email template has no producer at base. R19
 introduces payment intents and subscriptions. Wiring a payment-status
 notification to R21's outbox handler is a separate, later change that the
 owner must authorize. R21 does not consume R19 code.
+
+## Status (2026-10-14)
+
+R19 was merged into `develop` as `4d04e91` (#159). R21 merged `develop`
+into its branch, resolved the textual conflict and renamed its migration to
+sort after R19's (see `OWNERSHIP.md` › Integration with develop). For the
+coordinator, only verification step 4 remains, on the final candidate.

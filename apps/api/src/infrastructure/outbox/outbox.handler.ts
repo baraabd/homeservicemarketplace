@@ -17,6 +17,28 @@ import type { OutboxEvent, PrismaTx } from '@homeservicemarketplace/database';
  *  3. Handlers must tolerate being called for an event they have already
  *     partially processed. The marker prevents a *completed* run from
  *     repeating; it cannot prevent a run that died halfway from being retried.
+ *
+ *  4. (R22) Classify failures. Throw `OutboxPermanentError` when retrying can
+ *     never help — the event is dead-lettered at once instead of burning its
+ *     budget. Anything else, including `OutboxTransientError` (which may carry
+ *     a bounded retry-after hint), is retried with capped exponential backoff.
+ *
+ *  5. (R22) Stay inside the delivery deadline. Each delivery runs under a
+ *     transaction timeout and a worker deadline (OUTBOX_DELIVERY_DEADLINE_MS in
+ *     outbox.worker.ts). Work that cannot finish in that window belongs in a
+ *     chunked follow-up event (see request-available.batch), not a longer
+ *     transaction.
+ *
+ *  6. (R22) The worker commits PROCESSED in the SAME transaction as the
+ *     handler's effects, fenced on its lease. A delivery whose lease was lost
+ *     rolls back entirely; handlers never check ownership themselves.
+ *
+ *  The registration contract for money, webhook and subscription handlers is
+ *  docs/production-readiness/r22/HANDLER_REGISTRATION_CONTRACT.md. In short:
+ *  the domain's own idempotency key (ledger posting key, provider webhook
+ *  event id, subscription period) is enforced by a unique constraint written
+ *  in `handle`'s `tx`. The outbox marker is a second line of defence, never
+ *  the only one, because a renamed handler or a replayed event re-runs it.
  */
 export interface OutboxHandler {
   /** Stable identity, persisted in OutboxHandlerRun. Renaming it re-runs every
@@ -48,4 +70,39 @@ export interface OutboxHandlerResult {
 
   /** Free-form counters for the worker log line, e.g. `{ recipients: 42 }`. */
   stats?: Record<string, number>;
+}
+
+/** Handler names are persisted marker keys: `<domain>.<purpose>[.vN]`, lower
+ *  case. Bounded so they stay low-cardinality metric/log values too. */
+const HANDLER_NAME = /^[a-z0-9][a-z0-9._-]{2,79}$/;
+
+/** R22 — reject a handler set that would silently lose work.
+ *
+ *  Run once when the worker is constructed, so a bad registration fails the
+ *  boot instead of failing quietly in production:
+ *
+ *    * Two handlers with the SAME name share one idempotency marker, so for an
+ *      event both consume, whichever runs second is skipped forever.
+ *    * A handler with no event types never runs.
+ *    * A name outside the pattern is either a typo or a value that would leak
+ *      unbounded cardinality into logs and metrics.
+ *
+ *  Returns the problems rather than throwing, so tests can assert on them. */
+export function validateHandlerRegistry(handlers: readonly OutboxHandler[]): string[] {
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const handler of handlers) {
+    if (!HANDLER_NAME.test(handler.name)) {
+      problems.push(`handler name "${handler.name}" does not match ${HANDLER_NAME}`);
+    }
+    if (seen.has(handler.name)) problems.push(`duplicate handler name "${handler.name}"`);
+    seen.add(handler.name);
+    if (handler.eventTypes.length === 0) {
+      problems.push(`handler "${handler.name}" consumes no event types`);
+    }
+    if (new Set(handler.eventTypes).size !== handler.eventTypes.length) {
+      problems.push(`handler "${handler.name}" lists an event type twice`);
+    }
+  }
+  return problems;
 }

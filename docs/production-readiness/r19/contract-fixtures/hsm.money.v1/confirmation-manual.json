@@ -1,0 +1,12 @@
+{
+  "_fixture": "NON_PRODUCTION synthetic; no real receipt",
+  "contractVersion": "hsm.money.v1",
+  "idempotencyKey": "fixture-0000000000000002",
+  "paymentIntentId": "fixture-intent",
+  "source": "MANUAL_REVIEW",
+  "externalConfirmationId": "receipt_fixture_0001",
+  "amount": { "amountMinor": "1000", "currency": "XTS" },
+  "confirmedAt": "2026-10-14T11:05:00.000Z",
+  "receiptMediaAssetId": "fixture-media-asset",
+  "reviewerUserId": "fixture-reviewer"
+}

@@ -13,6 +13,14 @@ export interface RetryPolicy {
   jitter: number;
 }
 
+/** R22 — an absolute ceiling on any event's retry budget.
+ *
+ *  `maxAttempts` is producer-supplied per row. Without a ceiling a producer
+ *  that writes `maxAttempts: 1_000_000` creates an event that can never reach
+ *  the dead-letter state, and a poison event like that retries every capped
+ *  interval forever. The default budget (8) is far below this. */
+export const MAX_ATTEMPTS_CEILING = 25;
+
 export const DEFAULT_RETRY_POLICY: RetryPolicy = {
   baseMs: 1_000,
   capMs: 300_000, // 5 minutes
@@ -41,8 +49,11 @@ export function nextAttemptDelayMs(
   maxAttempts: number,
   policy: RetryPolicy = DEFAULT_RETRY_POLICY,
   random: () => number = Math.random,
+  /** R22 — a handler's Retry-After style hint. It can only LENGTHEN the delay
+   *  and never past the cap, so a handler cannot park an event indefinitely. */
+  minDelayMs?: number,
 ): number | null {
-  if (attempts >= maxAttempts) return null;
+  if (attempts >= effectiveMaxAttempts(maxAttempts)) return null;
 
   const exponential = policy.baseMs * 2 ** Math.max(0, attempts - 1);
   const capped = Math.min(exponential, policy.capMs);
@@ -52,7 +63,18 @@ export function nextAttemptDelayMs(
   // would make the event immediately claimable and spin the worker.
   const spread = capped * policy.jitter;
   const delta = (random() * 2 - 1) * spread;
-  return Math.max(0, Math.round(capped + delta));
+  const jittered = Math.max(0, Math.round(capped + delta));
+  if (minDelayMs === undefined || !(minDelayMs > 0)) return jittered;
+  return Math.max(jittered, Math.min(Math.round(minDelayMs), policy.capMs));
+}
+
+/** The budget actually enforced: the row's own `maxAttempts`, bounded to
+ *  [1, MAX_ATTEMPTS_CEILING]. A non-finite or non-positive value (a corrupt or
+ *  hand-edited row) is treated as 1 — one try, then dead — never as
+ *  "unlimited". */
+export function effectiveMaxAttempts(maxAttempts: number): number {
+  if (!Number.isFinite(maxAttempts) || maxAttempts < 1) return 1;
+  return Math.min(Math.floor(maxAttempts), MAX_ATTEMPTS_CEILING);
 }
 
 /** The absolute time an event becomes claimable again, or null for dead. */
@@ -62,7 +84,8 @@ export function nextAttemptAt(
   now: Date,
   policy: RetryPolicy = DEFAULT_RETRY_POLICY,
   random: () => number = Math.random,
+  minDelayMs?: number,
 ): Date | null {
-  const delay = nextAttemptDelayMs(attempts, maxAttempts, policy, random);
+  const delay = nextAttemptDelayMs(attempts, maxAttempts, policy, random, minDelayMs);
   return delay === null ? null : new Date(now.getTime() + delay);
 }

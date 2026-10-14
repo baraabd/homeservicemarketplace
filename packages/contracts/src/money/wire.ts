@@ -1,0 +1,143 @@
+// R19 — money at JSON boundaries and in idempotency payloads.
+//
+// In code, money is `bigint` minor units plus an uppercase three-letter
+// currency (ADR 0014 decision 1). JSON cannot carry a bigint, and a JS number
+// loses precision above 2^53 - 1, so every amount on the wire is a decimal
+// string. The range is PostgreSQL BIGINT, which the ledger stores.
+//
+// Which currencies are supported, and each one's minor-unit scale, are not
+// decided (R18 D-2 / R16 P8). These helpers check shape only and never assume
+// two decimal places; a display layer must not divide by 100 on its own.
+
+export const MONEY_CONTRACT_VERSION = 'hsm.money.v1' as const;
+
+export const MAX_MINOR_AMOUNT = 9223372036854775807n; // PostgreSQL BIGINT max
+
+/** A non-negative integer amount in minor units, as a canonical decimal string. */
+export type MinorAmountString = string & { readonly __minorAmount: unique symbol };
+
+const AMOUNT_PATTERN = /^(0|[1-9][0-9]{0,18})$/u;
+const CURRENCY_PATTERN = /^[A-Z]{3}$/u;
+
+export class MoneyWireError extends Error {
+  constructor(
+    public readonly code:
+      | 'INVALID_AMOUNT'
+      | 'AMOUNT_OUT_OF_RANGE'
+      | 'INVALID_CURRENCY'
+      | 'NOT_CANONICAL',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'MoneyWireError';
+  }
+}
+
+export function toMinorAmountString(amountMinor: bigint): MinorAmountString {
+  if (typeof amountMinor !== 'bigint') {
+    throw new MoneyWireError('INVALID_AMOUNT', 'Amounts are bigint minor units');
+  }
+  if (amountMinor < 0n || amountMinor > MAX_MINOR_AMOUNT) {
+    throw new MoneyWireError('AMOUNT_OUT_OF_RANGE', 'Amount is outside the stored range');
+  }
+  return amountMinor.toString() as MinorAmountString;
+}
+
+/**
+ * Strict parse: digits only, no sign, no leading zeros, no exponent, no
+ * fraction, no whitespace. "1.0", "01", "1e3", " 5" and numbers are refused;
+ * a value is never rounded or truncated.
+ */
+export function parseMinorAmountString(value: unknown): bigint {
+  if (typeof value !== 'string' || !AMOUNT_PATTERN.test(value)) {
+    throw new MoneyWireError(
+      'INVALID_AMOUNT',
+      'Amount must be a canonical non-negative integer string',
+    );
+  }
+  const amount = BigInt(value);
+  if (amount > MAX_MINOR_AMOUNT) {
+    throw new MoneyWireError('AMOUNT_OUT_OF_RANGE', 'Amount is outside the stored range');
+  }
+  return amount;
+}
+
+/** Shape only. Never trims or upper-cases a value that arrives over the wire. */
+export function assertCurrencyShape(value: unknown): string {
+  if (typeof value !== 'string' || !CURRENCY_PATTERN.test(value)) {
+    throw new MoneyWireError('INVALID_CURRENCY', 'Currency must be three uppercase letters');
+  }
+  return value;
+}
+
+export type MoneyWire = Readonly<{ amountMinor: MinorAmountString; currency: string }>;
+
+export function toMoneyWire(money: { amountMinor: bigint; currency: string }): MoneyWire {
+  return Object.freeze({
+    amountMinor: toMinorAmountString(money.amountMinor),
+    currency: assertCurrencyShape(money.currency),
+  });
+}
+
+export function fromMoneyWire(value: unknown): { amountMinor: bigint; currency: string } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new MoneyWireError('INVALID_AMOUNT', 'Money must be an object');
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  if (keys.length !== 2 || keys[0] !== 'amountMinor' || keys[1] !== 'currency') {
+    throw new MoneyWireError('NOT_CANONICAL', 'Money has exactly amountMinor and currency');
+  }
+  return {
+    amountMinor: parseMinorAmountString(record.amountMinor),
+    currency: assertCurrencyShape(record.currency),
+  };
+}
+
+/**
+ * Canonical JSON for idempotency digests: object keys sorted, no
+ * insignificant whitespace, bigint encoded as {"$bigint":"<decimal>"} so it
+ * can never collide with a string or number. undefined, functions, symbols,
+ * non-finite numbers, non-plain objects and cycles are refused, so two
+ * commands that differ in any field never share a payload.
+ */
+export function canonicalJson(value: unknown): string {
+  const seen = new Set<object>();
+  const encode = (input: unknown): string => {
+    if (input === null) return 'null';
+    switch (typeof input) {
+      case 'string':
+        return JSON.stringify(input);
+      case 'boolean':
+        return input ? 'true' : 'false';
+      case 'number':
+        if (!Number.isFinite(input)) throw new MoneyWireError('NOT_CANONICAL', 'Non-finite number');
+        return JSON.stringify(input);
+      case 'bigint':
+        return `{"$bigint":${JSON.stringify(input.toString())}}`;
+      case 'object': {
+        if (seen.has(input as object)) throw new MoneyWireError('NOT_CANONICAL', 'Cyclic value');
+        seen.add(input as object);
+        let out: string;
+        if (Array.isArray(input)) {
+          out = `[${input.map(encode).join(',')}]`;
+        } else {
+          const prototype = Object.getPrototypeOf(input);
+          if (prototype !== Object.prototype && prototype !== null) {
+            throw new MoneyWireError('NOT_CANONICAL', 'Only plain objects are canonical');
+          }
+          const record = input as Record<string, unknown>;
+          out = `{${Object.keys(record)
+            .sort()
+            .map((key) => `${JSON.stringify(key)}:${encode(record[key])}`)
+            .join(',')}}`;
+        }
+        seen.delete(input as object);
+        return out;
+      }
+      default:
+        throw new MoneyWireError('NOT_CANONICAL', `Unsupported value of type ${typeof input}`);
+    }
+  };
+  return encode(value);
+}

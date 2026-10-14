@@ -28,13 +28,13 @@ not a G0 acceptance certificate.
 Each lease is single-writer for this wave, minimal in scope and listed in
 `IMPLEMENTATION.md` with its exact diff.
 
-| Path                                                                              | Scope of lease                                                                  |
-| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `packages/database/prisma/schema.prisma`                                          | add EmailDelivery / EmailSuppression / EmailFeedbackEvent models and enums only |
-| `packages/database/prisma/migrations/20261013120000_r21_email_delivery/`          | one new forward migration                                                       |
-| `apps/api/src/config/env.schema.ts`                                               | mail keys only (`SMTP_*` timeouts, `MAIL_*`)                                    |
-| `apps/api/src/modules/iam/authentication/services/authentication.service.ts`      | record a durable mail intent instead of sending inline                          |
-| `apps/api/src/modules/iam/authentication/services/authentication.service.spec.ts` | follow the above                                                                |
+| Path                                                                                                                  | Scope of lease                                                                  |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `packages/database/prisma/schema.prisma`                                                                              | add EmailDelivery / EmailSuppression / EmailFeedbackEvent models and enums only |
+| `packages/database/prisma/migrations/20261014100000_r21_email_delivery/` (renamed from `20261013120000_…`, see below) | one new forward migration                                                       |
+| `apps/api/src/config/env.schema.ts`                                                                                   | mail keys only (`SMTP_*` timeouts, `MAIL_*`)                                    |
+| `apps/api/src/modules/iam/authentication/services/authentication.service.ts`                                          | record a durable mail intent instead of sending inline                          |
+| `apps/api/src/modules/iam/authentication/services/authentication.service.spec.ts`                                     | follow the above                                                                |
 
 Not leased, therefore requested through `shared-change-requests/`:
 `apps/api/src/main.ts` (raw body for the signed feedback route) and
@@ -49,3 +49,21 @@ branch and to treat the overlap as a G1 merge item, not to withdraw them.
 The overlap is additive and disjoint; see
 `shared-change-requests/CR-R21-04-g1-schema-overlap-with-r19.md`. R21 does
 not import or depend on R19's branch.
+
+## Integration with develop (2026-10-14)
+
+After R21 was pushed, PR #157 (G0), #156, #158 (R22) and #159 (R19) were
+merged into `develop`. Draft PR #160 then reported `mergeable_state: dirty`,
+and GitHub started no `pull_request` workflow. R21 therefore merged
+`origin/develop@4d04e91` into the lane branch with a merge commit. There was
+no rebase and no force-push. R19 and R22 are merged, so they are no longer
+unmerged peers.
+
+- The only conflict was `schema.prisma`, at the end of the file. Resolution:
+  R19's block unchanged, then R21's block unchanged. Against `develop`, the
+  R21 schema diff is still exactly +110/−0 lines.
+- `20261013120000_r21_email_delivery` was renamed to
+  `20261014100000_r21_email_delivery` so it sorts after R19's
+  `20261014090000_r19_subscription_money_foundation`. The SQL is unchanged.
+  Neither name had been applied to any shared or hosted database. This
+  carries out CR-R21-04's ordering request inside R21's own lease.

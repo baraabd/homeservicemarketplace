@@ -1,5 +1,7 @@
 # Sprint 13 implementation slices
 
+> **Numbering note (2026-10-13).** "Sprint 13" here is the earlier money-plan numbering, not R13 (help and support). The current sequence and its status live in [`docs/production-readiness/post-r18/`](../production-readiness/post-r18/ACTIVE_STATUS.md); this file is kept unchanged as history.
+
 S13.1 architecture: ADR, threat model, state machines, live-money gate.
 S13.2 contracts/domain: integer money, quote calculation, plan/version semantics, entitlements, calendar periods, ledger balance.
 S13.3 persistence: additive Prisma schema + migration, constraints, indexes, immutable ledger, migration/drift tests.

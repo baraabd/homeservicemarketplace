@@ -10,6 +10,10 @@
 **/.cache
 **/*.tsbuildinfo
 **/.env*
+# A host-generated Prisma client (another platform's engine, its completion
+# record, leftover temp engines) must not enter the image; the build generates.
+packages/database/generated
+packages/database/.test-fixtures
 **/test-results
 **/playwright-report
 **/vite.config.js

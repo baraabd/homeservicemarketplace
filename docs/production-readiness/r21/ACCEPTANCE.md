@@ -67,6 +67,23 @@ under `infrastructure/outbox` or `modules/notifications` (`git diff
 web package and Playwright. R21 changes no web file. Hosted CI on the PR is
 the gate for the full gated suite (`RISKS.md` 13).
 
+### 2b. Re-run after merging develop (2026-10-14)
+
+Tree: R21 merged with `origin/develop@4d04e91`, which includes R19 #159,
+R22 #158, G0 #157 and #156; see `OWNERSHIP.md` › Integration with develop.
+A fresh lane stack was created, and every migration on the merged tree was
+applied to an empty database.
+
+| #   | Command                                                                                                                                                                                                                                              | Result                                                                                                                                          |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1  | `pnpm install --frozen-lockfile` (lockfile unchanged between `059c018` and `develop`)                                                                                                                                                                | exit 0                                                                                                                                          |
+| M2  | `prisma validate`; `prisma format --check`; `prisma generate`                                                                                                                                                                                        | valid; formatted; generated                                                                                                                     |
+| M3  | `prisma migrate diff --from-migrations … --to-schema-datamodel … --shadow-database-url <lane shadow>`; `migrate deploy`; seed                                                                                                                        | empty migration; all applied; exit 0                                                                                                            |
+| M4  | `pnpm --filter @homeservicemarketplace/api typecheck`; `… lint`; `eslint test/integration/r21-*.spec.ts`                                                                                                                                             | exit 0 each                                                                                                                                     |
+| M5  | `jest src/infrastructure/mail src/modules/iam src/infrastructure/outbox src/config src/modules/money`                                                                                                                                                | 35/35 suites, **489/489**                                                                                                                       |
+| M6  | `jest test/integration/r21- --runInBand` (real Postgres + Mailpit)                                                                                                                                                                                   | 2/2 suites, **26/26**, 0 skipped                                                                                                                |
+| M7  | `jest` on `auth-flow`, `password-reset`, `r04-auth-lifecycle`, `provider-upgrade-session`, `outbox.integration`, `r22-outbox-reliability`, `r22-outbox-replay`, `r19-subscription-money`, `r15-ledger`, `verification-case-workflow` (real Postgres) | 10/10 suites; 190 passed, 4 skipped, 0 failed. The 4 skips are R22's own CR-01-conditional replay cases (`applyCr01 ? it.skip : it`), not R21's |
+
 ## 3. Behaviour → evidence map
 
 | Required behaviour                                | Evidence                                                                                                                                                                                                               | Level                     |
