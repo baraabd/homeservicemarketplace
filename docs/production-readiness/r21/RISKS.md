@@ -16,42 +16,39 @@
 1. **No hosted delivery evidence.** No sender credentials, domain or test
    inbox were provided. Mailpit proves local transport and composition only.
    HOSTED_ENVIRONMENT_BLOCKED (owner: operator/owner, see ACCEPTANCE.md H-1…H-6).
-2. **Feedback not reachable in the running app** until CR-R21-01 lands (the
-   route returns 400 for every request; fail-closed by design).
-3. **No vendor feedback adapter.** A real provider's callbacks (e.g. signed
+2. **No vendor feedback adapter.** A real provider's callbacks (e.g. signed
    SNS notifications or a signed event webhook) must be verified with the
    vendor's own mechanism and translated to `generic-hmac-v1`. Until then no
    bounce/complaint reaches the system.
-4. **Provider-status email not wired** until CR-R21-02 lands.
-5. **Payment-status email has no producer.** The `account.payment_status`
+3. **Payment-status email has no producer.** The `account.payment_status`
    template exists and is tested; no payment notification is emitted
    anywhere at base, and none was invented (R15/R16/R18 money policy is
    unchanged). INTEGRATION_PENDING on the payment lane.
-6. **At-least-once duplicates.** A crash between relay acceptance and the
+4. **At-least-once duplicates.** A crash between relay acceptance and the
    ACCEPTED write re-sends after the lease (same Message-ID). A user may
    then hold two copies of the same code/link; both are the same secret.
-7. **Superseded codes.** If an OTP is resent while an earlier mail for the
+5. **Superseded codes.** If an OTP is resent while an earlier mail for the
    same challenge is still queued for retry, the earlier (now invalid) code
    may arrive late. It cannot authenticate; it can confuse. Bounded by the
    5-minute OTP lifetime.
-8. **Synchronous first attempt latency.** A hung relay can hold an auth
+6. **Synchronous first attempt latency.** A hung relay can hold an auth
    request for up to the timeout sum (15 + 30 + 30 s). Before R21 the bound
    was Nodemailer's defaults (minutes).
-9. **Derived-key coupling.** With no dedicated key, rotating
+7. **Derived-key coupling.** With no dedicated key, rotating
    `JWT_ACCESS_SECRET` makes in-flight queued envelopes undecryptable (they
    close as FAILED/undecryptable; the user re-requests). Compromise of the
    JWT secret already implies account takeover, so the marginal exposure is
    small, but P-4 is the clean fix.
-10. **Recipient hash is pseudonymous, not anonymous.** Unsalted SHA-256 of a
-    normalised address can be confirmed by anyone who already knows the
-    address. It is never exposed outside the database.
-11. **Clock skew.** Retry backoff uses the app clock; the first-attempt claim
-    deliberately ignores it (`attempts = 0`), so skew cannot delay first
-    delivery (observed ~0.3 s app-ahead-of-DB on the Docker VM).
-12. **Template wording** (EN/AR) has not been reviewed by a native Arabic
+8. **Recipient hash is pseudonymous, not anonymous.** Unsalted SHA-256 of a
+   normalised address can be confirmed by anyone who already knows the
+   address. It is never exposed outside the database.
+9. **Clock skew.** Retry backoff uses the app clock; the first-attempt claim
+   deliberately ignores it (`attempts = 0`), so skew cannot delay first
+   delivery (observed ~0.3 s app-ahead-of-DB on the Docker VM).
+10. **Template wording** (EN/AR) has not been reviewed by a native Arabic
     copy owner or legal; it is functional, generic and deliberately
     detail-free.
-13. **Local full-suite run was contention-limited** on a host shared with
+11. **Local full-suite run was contention-limited** on a host shared with
     other lanes; see ACCEPTANCE.md for which suites were re-run in isolation.
 
 ## Not done (out of scope or not authorized)

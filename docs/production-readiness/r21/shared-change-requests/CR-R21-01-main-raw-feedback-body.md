@@ -4,6 +4,7 @@
 | --------- | ------------------------------------------------------------- |
 | Path      | `apps/api/src/main.ts` (coordinator-owned; not leased to R21) |
 | Requested | 2026-10-13, R21 (`feat/r21-email-production`)                 |
+| Status    | applied during PR repair on 2026-10-14                        |
 | Blocks    | runtime acceptance of `POST /v1/mail/feedback`                |
 | Migration | none · Dependency: none (express is already a dependency)     |
 
@@ -11,9 +12,9 @@
 
 `MailFeedbackController` authenticates provider feedback with an HMAC over
 the **exact request bytes**. `main.ts` mounts `express.json()` globally, so
-the controller receives a parsed object and — by design — refuses every
-request with 400 (it never verifies a re-serialisation). The route is
-therefore mounted and safe but unusable until this one line lands.
+the controller would receive a parsed object and — by design — refuse every
+request with 400 (it never verifies a re-serialisation). The route is now
+mounted with `express.raw()` before the JSON parser.
 
 ## Minimal patch
 

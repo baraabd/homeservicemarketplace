@@ -36,7 +36,8 @@ Each lease is single-writer for this wave, minimal in scope and listed in
 | `apps/api/src/modules/iam/authentication/services/authentication.service.ts`                                          | record a durable mail intent instead of sending inline                          |
 | `apps/api/src/modules/iam/authentication/services/authentication.service.spec.ts`                                     | follow the above                                                                |
 
-Not leased, therefore requested through `shared-change-requests/`:
+Originally not leased, therefore requested through `shared-change-requests/`;
+both were applied during PR repair:
 `apps/api/src/main.ts` (raw body for the signed feedback route) and
 `apps/api/src/app.module.ts` (register the provider-status email outbox handler).
 

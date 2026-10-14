@@ -7,8 +7,8 @@
 // exercised (no email service has been selected).
 //
 // The app mounts `express.raw()` on /v1/mail/feedback ahead of the JSON
-// parser, mirroring coordinator change request CR-R21-01 for main.ts. Without
-// that patch the production route fails closed (400) — asserted below.
+// parser, matching main.ts. Without that parser the production route fails
+// closed (400) — asserted below.
 export {};
 import { randomUUID } from 'node:crypto';
 import { withAdvisoryLock } from '../support/db-isolation';

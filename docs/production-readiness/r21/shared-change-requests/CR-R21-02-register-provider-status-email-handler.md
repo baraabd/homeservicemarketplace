@@ -4,6 +4,7 @@
 | --------- | ------------------------------------------------------------------- |
 | Path      | `apps/api/src/app.module.ts` (coordinator-owned; not leased to R21) |
 | Requested | 2026-10-13, R21                                                     |
+| Status    | applied during PR repair on 2026-10-14                              |
 | Blocks    | email for provider verification correction / outcome                |
 | Migration | none (uses R21's EmailDelivery tables) · Dependency: none           |
 
@@ -13,8 +14,8 @@
 the existing `verification.case.action_required | rejected | approved`
 outbox events and records a durable, generic email intent in the worker's
 transaction. AppModule is the only place allowed to list outbox handlers.
-Until registered, the handler is implemented and integration-tested but
-**not wired**: providers receive the in-app notification only.
+It is now registered, so providers receive the durable email intent in the
+same worker pass as the in-app notification.
 
 The handler name `provider-status.email.v1` is new, so already-processed
 historical events are not replayed (markers are per handler and processed

@@ -1,7 +1,7 @@
 # R21 — acceptance evidence and instructions
 
 Overall: **SOURCE_VERIFIED + local real-service verified; INTEGRATION_PENDING
-(CR-R21-01/02); HOSTED_ENVIRONMENT_BLOCKED; POLICY_BLOCKED (service choice).**
+(CR-R21-03); HOSTED_ENVIRONMENT_BLOCKED; POLICY_BLOCKED (service choice).**
 Not SANDBOX_ACCEPTED, HOSTED_ACCEPTED or RELEASE_ACCEPTED.
 
 A constructed SMTP client is not delivery evidence, and neither is Mailpit:
@@ -122,7 +122,7 @@ credentials, tokens or full addresses.
 | H-3  | Load SMTP settings from the secret mechanism into one process; run `node scripts/production/email/send-acceptance-probe.cjs --to <authorized inbox> --confirm-authorized-inbox` | exit 0, `accepted=1`, `smtp-reply=250`, TLS mode not plaintext                                                                        |
 | H-4  | Open the probe in the independent inbox (a different provider from the sender)                                                                                                  | `Authentication-Results`: `spf=pass`, `dkim=pass` (d= sending domain), `dmarc=pass`; record the probe id and these three results only |
 | H-5  | On the hosted API: register with the authorized inbox, receive OTP, verify; forgot-password, receive link, reset                                                                | both messages arrive, bilingual, links open the hosted web origin, `EmailDelivery` rows ACCEPTED                                      |
-| H-6  | After a vendor feedback adapter exists and CR-R21-01 is deployed: trigger the vendor's bounce/complaint simulator                                                               | rows move to BOUNCED/COMPLAINED; suppression row created; account unchanged                                                           |
+| H-6  | After a vendor feedback adapter exists: trigger the vendor's bounce/complaint simulator                                                                                         | rows move to BOUNCED/COMPLAINED; suppression row created; account unchanged                                                           |
 
 Until H-1…H-5 are recorded, hosted delivery is **not evidenced**.
 
@@ -139,7 +139,7 @@ was exercised over HTTP on 2026-10-14:
 | `EmailDelivery` row                                              | `auth.registration_otp`, `ACCEPTED`, `attempts=1`, envelope cleared                                                                                                         |
 | `POST /v1/mail/feedback` without `MAIL_FEEDBACK_SIGNING_SECRET`  | HTTP 404; `mail_feedback_rejected_total{reason="disabled"} 1`                                                                                                               |
 | `/metrics`                                                       | `mail_delivery_attempts_total{category="AUTH",outcome="accepted"} 1`; `mail_delivery_queue_depth{status=…}` gauges present                                                  |
-| Restart with a signing secret, unsigned `POST /v1/mail/feedback` | HTTP 400, fail closed (no raw-body mount before CR-R21-01); log `mail.feedback.raw_body_unavailable`; metric `reason="malformed"`                                           |
+| Restart with a signing secret, unsigned `POST /v1/mail/feedback` | HTTP 401, fail closed; raw body mount is active; metric `mail_feedback_rejected_total{reason="signature"} 1`                                                                |
 
 Correction: the first attempt at the second boot hit `EADDRINUSE` because
 the first API process had not exited, so its response came from the old

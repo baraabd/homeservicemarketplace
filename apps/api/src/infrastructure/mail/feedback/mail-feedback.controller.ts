@@ -22,10 +22,10 @@ import { feedbackBody, MailFeedbackService } from './mail-feedback.service';
  *
  * Public by necessity (the caller is the mail provider, not a user) and
  * therefore authenticated by signature alone. The signature covers the exact
- * request bytes, so this route needs the RAW body: main.ts must mount
- * `express.raw()` for /v1/mail/feedback ahead of the JSON parser (coordinator
- * change request CR-R21-01). Without it the body arrives pre-parsed and every
- * request is refused — fail closed, never "verify a re-serialisation".
+ * request bytes, so this route needs the RAW body: main.ts mounts
+ * `express.raw()` for /v1/mail/feedback ahead of the JSON parser. Without it
+ * the body arrives pre-parsed and every request is refused — fail closed, never
+ * "verify a re-serialisation".
  *
  * Responses are deliberately uninformative: 404 when disabled, 401 for any
  * authentication failure, 400 for a malformed authenticated body.

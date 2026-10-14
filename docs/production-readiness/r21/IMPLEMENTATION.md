@@ -115,7 +115,7 @@ Sprint-owned (`apps/api/src/infrastructure/mail/`):
 | `mail.metrics.ts`, `mail.tokens.ts` | new                                                                                                                                                       |
 | `templates/*`                       | new: bilingual templates, escaping, URL builder                                                                                                           |
 | `feedback/*`                        | new: signature, controller, service                                                                                                                       |
-| `provider-status-email.handler.ts`  | new: outbox handler (registration = CR-R21-02)                                                                                                            |
+| `provider-status-email.handler.ts`  | new: outbox handler registered in `OutboxModule.forRoot`                                                                                                  |
 | `*.spec.ts` (7 files)               | new/updated unit specs                                                                                                                                    |
 
 Leased (see `OWNERSHIP.md`):
@@ -149,11 +149,11 @@ this directory.
   anti-enumeration timing are unchanged.
 - Shared contracts barrel: untouched.
 
-## 5. Coordinator integration requests
+## 5. Coordinator integration request status
 
-| CR        | Path                                                                     | Needed for                                                      |
-| --------- | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| CR-R21-01 | `apps/api/src/main.ts`                                                   | raw body on `/v1/mail/feedback` (route fails closed until then) |
-| CR-R21-02 | `apps/api/src/app.module.ts`                                             | register `ProviderStatusEmailHandler`                           |
-| CR-R21-03 | runtime policy, `.env.example`, STAGING.md, local-mail doc, ADR 0004, CI | dedicated key policy, docs, Mailpit cases in CI                 |
-| CR-R21-04 | `schema.prisma`, `migrations/`                                           | G1 merge of the R19/R21 schema leases and migration order       |
+| CR        | Path                                                                     | Status                                                               |
+| --------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| CR-R21-01 | `apps/api/src/main.ts`                                                   | applied: raw body mounted on `/v1/mail/feedback` before JSON         |
+| CR-R21-02 | `apps/api/src/app.module.ts`                                             | applied: `ProviderStatusEmailHandler` registered with `OutboxModule` |
+| CR-R21-03 | runtime policy, `.env.example`, STAGING.md, local-mail doc, ADR 0004, CI | pending owner/operator policy and CI documentation choices           |
+| CR-R21-04 | `schema.prisma`, `migrations/`                                           | applied: R19 schema retained; R21 migration renamed after R19        |

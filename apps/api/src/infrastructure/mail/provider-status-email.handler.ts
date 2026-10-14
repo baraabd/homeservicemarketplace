@@ -27,9 +27,8 @@ const NOTICE_VALIDITY_MS = 3 * 24 * 60 * 60_000;
  * view, whose owner check is the server's. No reason code, reviewer note,
  * document, image or number enters the email.
  *
- * Registered through OutboxModule.forRoot in AppModule — coordinator change
- * request CR-R21-02. Until that lands this handler is implemented and tested
- * but not wired.
+ * Registered through OutboxModule.forRoot in AppModule so verification-case
+ * events create durable email delivery intents in the same worker pass.
  */
 @Injectable()
 export class ProviderStatusEmailHandler implements OutboxHandler {

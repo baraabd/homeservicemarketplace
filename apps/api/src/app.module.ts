@@ -9,6 +9,7 @@ import { DeprecatedRouteMiddleware } from './infrastructure/http/deprecated-rout
 import { RequestIdMiddleware } from './infrastructure/http/request-id.middleware';
 import { LoggerModule } from './infrastructure/logger/logger.module';
 import { MailModule } from './infrastructure/mail/mail.module';
+import { ProviderStatusEmailHandler } from './infrastructure/mail/provider-status-email.handler';
 import { MongoModule } from './infrastructure/mongo/mongo.module';
 import { OutboxModule } from './infrastructure/outbox/outbox.module';
 import { PrismaModule } from './infrastructure/prisma/prisma.module';
@@ -97,6 +98,7 @@ import { SupportModule } from './modules/support/support.module';
         DisputeIntakeEventsHandler,
         WorkspaceEventsHandler,
         NotificationCreatedHandler,
+        ProviderStatusEmailHandler,
       ],
     }),
     // Global, transport-agnostic post-commit security notifications
