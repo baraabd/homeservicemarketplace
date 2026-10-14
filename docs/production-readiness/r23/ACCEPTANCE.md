@@ -93,8 +93,23 @@ clean checkout of the PR head and attach `synthetic-alert-result.json`
 (it records `sourceSha`, `configVersion`, image ids and the timeline). The
 coordinator may instead run it in CI (CR-05).
 
-## 5. Not established
+## 5. Secret scan finding and fix
 
-No hosted evidence. No production receiver. No approved objectives. Database-gated
+Hosted CI on `ba173e6` (run `38534564439`) failed both secret-scan steps on
+three synthetic values in `logger.privacy.spec.ts` at `4c438f0`. They were
+reproduced locally with gitleaks 8.24.3, classified as fixtures, and handled
+by the repository's baseline procedure
+(`docs/security/gitleaks-historical-baseline.md` § 11):
+
+- the spec now builds the values at runtime;
+- three exact fingerprints were appended to `.gitleaksignore`;
+- the range scan now exits 0, and a runtime canary is still detected (exit 1).
+
+These two files are outside the allowlist; see ALLOWLIST.md for the lease
+request.
+
+## 6. Not established
+
+No hosted runtime or alerting evidence (PR CI is build and test evidence only). No production receiver. No approved objectives. Database-gated
 suites not run locally. Integration with R19–R22, now on develop, has not been
 tested. No claim of zero defects or production readiness.

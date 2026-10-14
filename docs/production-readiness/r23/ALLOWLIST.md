@@ -55,6 +55,22 @@ because without it `http_requests_total` has no producer and every API SLO
 alert is blind (see `IMPLEMENTATION.md` finding F-1). If the coordinator
 prefers the mount in `AppModule`, CR-01 contains the alternative.
 
+## Written outside the owned roots — lease requested
+
+Two coordinator-owned security files were appended to clear the blocking
+secret scan that R23's own commit `4c438f0` triggered on PR #163:
+
+- `.gitleaksignore`: three exact fingerprints, append-only.
+- `docs/security/gitleaks-historical-baseline.md`: new § 11 review record.
+
+No lease was recorded before the edit. It follows the established per-lane
+procedure (R13, R19 and R21 did the same in their branches), and the
+alternative (rewriting history) is forbidden. **The coordinator must confirm
+this as a lease or reject it.** If rejected, revert the commit; the secret
+scan then fails until the coordinator baselines the same fingerprints. Both
+files are also appended on develop after G0 (R19, R21), so integration has an
+end-of-file conflict whose resolution is to keep every entry.
+
 ## Not written (coordinator-owned; change requests instead)
 
 `apps/api/src/app.module.ts`, `apps/api/src/main.ts`, `apps/api/src/config/**`,

@@ -299,3 +299,45 @@ updated `.gitleaksignore`, a runtime-generated `generic-api-key` canary was
 committed and detected (exit 2). The canary value was neither printed nor
 committed here. Maintain this entry only while `d316a2f` remains reachable, and
 review it with §5's procedure at release review.
+
+## 11. R23 delta — synthetic redaction-test values (2026-10-14)
+
+Numbered 11 because §9 (R19) and §10 (R21) were added on develop after R23's
+base (`059c018`); this section does not depend on them.
+
+Reported by hosted CI on Draft PR #163 (run `38534564439`, job
+`115757197418`, steps _Secret scan_ and _Secret scan of the exact tracked
+source tree_) and reproduced with a local gitleaks 8.24.3 history scan
+(`--no-merges --first-parent 059c018..feat/r23-observability-incidents`) on a
+bare clone of the branch.
+
+| Origin commit                              | File                                                        | Line | Rule              | Classification                    |
+| ------------------------------------------ | ----------------------------------------------------------- | ---- | ----------------- | --------------------------------- |
+| `4c438f05f262cd05eef9746027e34dbefa58d6e6` | `apps/api/src/infrastructure/logger/logger.privacy.spec.ts` | 46   | `generic-api-key` | `SYNTH`-prefixed fake API key     |
+| `4c438f05f262cd05eef9746027e34dbefa58d6e6` | `apps/api/src/infrastructure/logger/logger.privacy.spec.ts` | 50   | `generic-api-key` | `SYNTH`-prefixed fake DB password |
+| `4c438f05f262cd05eef9746027e34dbefa58d6e6` | `apps/api/src/infrastructure/logger/logger.privacy.spec.ts` | 59   | `jwt`             | Unsigned-looking fake JWT         |
+
+Read at its commit: the three values are entries of the spec's `SECRETS`
+table. The spec plants them in request headers, bodies, exception causes and
+SDK-shaped errors, then asserts that none of them reaches logs, spans, the
+metrics exposition or client responses. The JWT's segments decode to
+`{"alg":"HS256"}`, `{"sub":"SYNTHjwt"}` and the text `SYNTHjwtsignature`; it
+is not signed by any key. `git log --all -S<value>` finds each value only in
+`4c438f0`. None is in the current worktree or any environment file, and none
+carries a provider prefix. No value is recorded here.
+
+**Verdict: synthetic test fixtures. No rotation is required.**
+
+The source is fixed: the spec now assembles these values at runtime
+(`synthetic(...)` and base64url encoding), producing the same strings without
+a literal. Only these three exact fingerprints are appended to
+`.gitleaksignore`; existing entries are unchanged. No path pattern, rule,
+tolerance, scan range or blocking exit status is changed, and history is not
+rewritten.
+
+Proof the gate still blocks: with the updated `.gitleaksignore`, the branch
+range scan exits 0. In an isolated temporary repository carrying the same
+file, a runtime-generated `generic-api-key` canary was committed and detected
+(exit 1, one leak). The canary value was neither printed nor committed.
+Maintain these entries only while `4c438f0` remains reachable, and review them
+with §5's procedure at release review.

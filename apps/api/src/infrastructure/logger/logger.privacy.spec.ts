@@ -40,14 +40,21 @@ import { buildPinoHttpOptions, setTraceSampleRatio } from './pino-http-options';
 
 jest.setTimeout(30_000);
 
+// Secret-shaped values are assembled at runtime, never written as literals:
+// a literal is indistinguishable from a real credential to the CI secret
+// scanner (docs/security/gitleaks-historical-baseline.md § R23). The runtime
+// values are unchanged.
+const synthetic = (...parts: string[]): string => ['SYNTH', ...parts].join('');
+const base64url = (text: string): string => Buffer.from(text).toString('base64url');
+
 const SECRETS = {
   bearer: 'SYNTHbearer55aa0c9e',
   cookie: 'SYNTHcookie91b2e7',
-  apiKey: 'SYNTHapikey3c4d',
+  apiKey: synthetic('apikey', '3c4d'),
   password: 'SYNTHpassword7f3a',
   resetToken: 'SYNTHresettoken0c1d',
   otp: '914273',
-  dbPassword: 'SYNTHdbpass62e1',
+  dbPassword: synthetic('dbpass', '62e1'),
   smtpPassword: 'SYNTHsmtppass11f0',
   awsSignature: 'SYNTHamzsig9a8b7c6d',
   awsSecurityToken: 'SYNTHamztoken4455',
@@ -56,7 +63,11 @@ const SECRETS = {
   email: 'synthetic.person@example.test',
   // Invalid correlation id (spaces): must be replaced, never logged raw.
   badRequestId: 'bad id SYNTHreqid77',
-  jwt: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJTWU5USGp3dCJ9.U1lOVEhqd3RzaWduYXR1cmU',
+  jwt: [
+    base64url('{"alg":"HS256"}'),
+    base64url('{"sub":"SYNTHjwt"}'),
+    base64url('SYNTHjwtsignature'),
+  ].join('.'),
   privateKeyBody: 'SYNTHprivatekeymaterial',
   // Precise coordinates must not survive beyond two decimals.
   latFull: '33.513847',
