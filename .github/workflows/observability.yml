@@ -1,0 +1,63 @@
+name: R23 synthetic alert delivery
+
+on:
+  pull_request:
+    branches: ['main', 'develop']
+    paths:
+      - 'apps/api/**'
+      - 'packages/**'
+      - 'scripts/production/observability/**'
+      - 'infra/production/observability/**'
+      - '.github/workflows/observability.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.dockerignore'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r23-observability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-alert:
+    name: R23 Linux firing and recovery delivery
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Validate bounded test receiver
+        run: node --test scripts/production/observability/test-receiver.test.cjs
+      - name: Validate Compose, rules and test routing
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose -p hsm-r23-obs -f infra/production/observability/compose.alert-test.yml config --quiet
+          docker run --rm --network none --entrypoint /bin/promtool \
+            -v "$PWD/infra/production/observability/prometheus:/work:ro" -w /work \
+            prom/prometheus:v3.5.0 test rules tests/api-slo.test.yml tests/platform.test.yml
+          docker run --rm --network none --entrypoint /bin/amtool \
+            -v "$PWD/infra/production/observability/alertmanager:/work:ro" \
+            prom/alertmanager:v0.28.1 check-config /work/alertmanager.test.yml
+      - name: Prove native Linux scrape, firing delivery and resolved delivery
+        run: node scripts/production/observability/run-synthetic-alert.cjs "$RUNNER_TEMP/r23-alert-evidence"
+      - name: Clean only the disposable test project
+        if: always()
+        run: docker compose -p hsm-r23-obs -f infra/production/observability/compose.alert-test.yml down -v --remove-orphans
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r23-synthetic-alert-evidence
+          path: ${{ runner.temp }}/r23-alert-evidence/
+          if-no-files-found: warn
+          retention-days: 7

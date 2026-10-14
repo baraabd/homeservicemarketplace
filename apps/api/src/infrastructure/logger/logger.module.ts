@@ -1,12 +1,10 @@
 import { Logger, Module } from '@nestjs/common';
 import { createRequire } from 'node:module';
-import { randomUUID } from 'node:crypto';
 import { LoggerModule as PinoLoggerModule } from 'nestjs-pino';
-import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { AppConfigService } from '../../config/app-config.service';
 import { ConfigModule } from '../../config/config.module';
-import { REQUEST_ID_HEADER } from '../http/request-id.middleware';
+import { buildPinoHttpOptions } from './pino-http-options';
 
 // Resolve a module to its absolute entry path, or return null if it isn't
 // installed. pino's transport loader runs in a worker thread and uses
@@ -26,30 +24,6 @@ function tryResolve(moduleId: string): string | null {
     return null;
   }
 }
-
-const REDACT_PATHS = [
-  'req.headers.authorization',
-  'req.headers.cookie',
-  'req.headers["x-api-key"]',
-  'req.headers["x-csrf-token"]',
-  'req.headers["x-refresh-token"]',
-  'req.body.password',
-  'req.body.currentPassword',
-  'req.body.newPassword',
-  'req.body.token',
-  'req.body.refreshToken',
-  'req.body.otp',
-  // GDPR PII: emails and names must not appear in request-body logs even
-  // on validation failures or unhandled exceptions. Audit rows are written
-  // through AuditService which already strips these — pino is the gap.
-  'req.body.email',
-  'req.body.newEmail',
-  'req.body.firstName',
-  'req.body.lastName',
-  'res.headers["set-cookie"]',
-];
-
-type WithId = IncomingMessage & { id?: string };
 
 @Module({
   imports: [
@@ -82,23 +56,7 @@ type WithId = IncomingMessage & { id?: string };
           }
         }
 
-        return {
-          pinoHttp: {
-            level: config.get('LOG_LEVEL'),
-            genReqId: (req: IncomingMessage, res: ServerResponse) => {
-              const r = req as WithId;
-              const headerVal = req.headers[REQUEST_ID_HEADER];
-              const fromHeader = Array.isArray(headerVal) ? headerVal[0] : headerVal;
-              const id = r.id || fromHeader || randomUUID();
-              r.id = id;
-              if (!res.getHeader(REQUEST_ID_HEADER)) res.setHeader(REQUEST_ID_HEADER, id);
-              return id;
-            },
-            customProps: (req: IncomingMessage) => ({ requestId: (req as WithId).id }),
-            redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
-            transport,
-          },
-        };
+        return { pinoHttp: { ...buildPinoHttpOptions(config.get('LOG_LEVEL')), transport } };
       },
     }),
   ],

@@ -300,72 +300,44 @@ committed and detected (exit 2). The canary value was neither printed nor
 committed here. Maintain this entry only while `d316a2f` remains reachable, and
 review it with §5's procedure at release review.
 
-## 9. R19 delta — synthetic contract-fixture idempotency key (2026-10-14)
+## 11. R23 delta — synthetic redaction-test values (2026-10-14)
 
-CI security job `115556387596` on PR #159 head
-`f3a7c6b5f87c8ed330e4775d258a2de89b214715` stopped on exactly one
-`generic-api-key` finding. The fingerprint is copied from that job's log, and
-a local gitleaks 8.24.3 scan of the same range (`--no-merges --first-parent
-cf1e321^..HEAD`) found the same single finding.
+Numbered 11 because §9 (R19) and §10 (R21) were added on develop after R23's
+base (`059c018`); this section does not depend on them.
 
-| Origin commit                              | File                                                                                   | Line | Classification                                                            |
-| ------------------------------------------ | -------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------- |
-| `f3a7c6b5f87c8ed330e4775d258a2de89b214715` | `docs/production-readiness/r19/contract-fixtures/hsm.money.v1/refund-reservation.json` | 4    | A readable synthetic idempotency key in a NON_PRODUCTION contract fixture |
+Reported by hosted CI on Draft PR #163 (run `38534564439`, job
+`115757197418`, steps _Secret scan_ and _Secret scan of the exact tracked
+source tree_) and reproduced with a local gitleaks 8.24.3 history scan
+(`--no-merges --first-parent 059c018..feat/r23-observability-incidents`) on a
+bare clone of the branch.
 
-Read at its commit: a 24-character readable placeholder (a fixed word, a
-noun and a counter) as the `idempotencyKey` of a synthetic refund-reservation
-fixture. Its siblings in the same directory are equally synthetic and were
-not flagged. An idempotency key is a replay identifier, not an authorization
-token, and the fixture is documentation read only by a unit test.
+| Origin commit                              | File                                                        | Line | Rule              | Classification                    |
+| ------------------------------------------ | ----------------------------------------------------------- | ---- | ----------------- | --------------------------------- |
+| `4c438f05f262cd05eef9746027e34dbefa58d6e6` | `apps/api/src/infrastructure/logger/logger.privacy.spec.ts` | 46   | `generic-api-key` | `SYNTH`-prefixed fake API key     |
+| `4c438f05f262cd05eef9746027e34dbefa58d6e6` | `apps/api/src/infrastructure/logger/logger.privacy.spec.ts` | 50   | `generic-api-key` | `SYNTH`-prefixed fake DB password |
+| `4c438f05f262cd05eef9746027e34dbefa58d6e6` | `apps/api/src/infrastructure/logger/logger.privacy.spec.ts` | 59   | `jwt`             | Unsigned-looking fake JWT         |
 
-`git log --all -S<value>` finds the value only in `f3a7c6b`. It appears in no
-environment, workflow, deployment or application source file, and it carries
-no provider prefix. No value is recorded here.
+Read at its commit: the three values are entries of the spec's `SECRETS`
+table. The spec plants them in request headers, bodies, exception causes and
+SDK-shaped errors, then asserts that none of them reaches logs, spans, the
+metrics exposition or client responses. The JWT's segments decode to
+`{"alg":"HS256"}`, `{"sub":"SYNTHjwt"}` and the text `SYNTHjwtsignature`; it
+is not signed by any key. `git log --all -S<value>` finds each value only in
+`4c438f0`. None is in the current worktree or any environment file, and none
+carries a provider prefix. No value is recorded here.
 
-**Verdict: synthetic fixture value. No rotation is required.**
+**Verdict: synthetic test fixtures. No rotation is required.**
 
-The source is fixed in the same change: every fixture idempotency key is now
-a low-entropy placeholder (`fixture-000…`), and the current tree scans clean.
-Only this one exact fingerprint is appended to `.gitleaksignore`; the existing
-entries are unchanged. No path pattern, rule, tolerance, scan range, workflow
-or blocking exit status is changed, and history is not rewritten.
+The source is fixed: the spec now assembles these values at runtime
+(`synthetic(...)` and base64url encoding), producing the same strings without
+a literal. Only these three exact fingerprints are appended to
+`.gitleaksignore`; existing entries are unchanged. No path pattern, rule,
+tolerance, scan range or blocking exit status is changed, and history is not
+rewritten.
 
-Proof the gate still blocks:
-
-- In an isolated temporary repository carrying the updated
-  `.gitleaksignore`, a runtime-generated `idempotencyKey` canary was committed
-  and detected (exit 2). The canary was neither printed nor committed here.
-- The PR's range with the new entry scans clean (exit 0).
-
-Maintain this entry only while `f3a7c6b` remains reachable, and review it
+Proof the gate still blocks: with the updated `.gitleaksignore`, the branch
+range scan exits 0. In an isolated temporary repository carrying the same
+file, a runtime-generated `generic-api-key` canary was committed and detected
+(exit 1, one leak). The canary value was neither printed nor committed.
+Maintain these entries only while `4c438f0` remains reachable, and review them
 with §5's procedure at release review.
-
-## 10. R21 delta — synthetic password-reset placeholder (2026-10-14)
-
-CI security job `115734805826` on PR #160 head
-`67e2d35897e8440861b3825836e138329cb90920` stopped on exactly one
-`generic-api-key` finding. The fingerprint is copied from that job's log; the
-same job's tracked-tree scan reported the same file and line in the merge tree.
-
-| Origin commit                              | File                                                             | Line | Classification                                       |
-| ------------------------------------------ | ---------------------------------------------------------------- | ---- | ---------------------------------------------------- |
-| `9dba54f539c558c18ea8fa418a2e891504576021` | `apps/api/test/integration/r21-durable-mail.integration.spec.ts` | 315  | A readable synthetic password-reset test placeholder |
-
-Read at its commit: a sentence-like password placeholder passed directly to
-`AuthenticationService.resetPassword()` in an integration test that first
-expires the reset token, then asserts the call is rejected. The value is not an
-API key, provider credential, signing secret, environment value or deployment
-input; it is local test data that is hashed only inside the rejected service
-path. No value is recorded here.
-
-**Verdict: synthetic test fixture. No rotation is required.**
-
-The source is fixed in the same change: the R21 integration spec now uses
-lower-entropy placeholder passwords for the reset-password assertions. Only
-this one exact historical fingerprint is appended to `.gitleaksignore`; the
-existing entries are unchanged. No path pattern, rule, tolerance, scan range,
-workflow or blocking exit status is changed, and history is not rewritten.
-
-Final proof is the hosted PR security job on the next head. Maintain this
-entry only while `9dba54f` remains reachable, and review it with §5's
-procedure at release review.
