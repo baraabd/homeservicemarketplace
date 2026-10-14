@@ -1,0 +1,55 @@
+# R22 — outbox worker alerts. Uses only series MetricsService exports at base
+# 059c018; labels stay low-cardinality (event_type is a closed set of persisted
+# event names, outcome a closed set of five values). Runbook:
+# infra/production/workers/OUTBOX_PLAYBOOKS.md
+groups:
+  - name: outbox-worker
+    rules:
+      - alert: OutboxDeliveryStalled
+        expr: max(outbox_oldest_pending_age_seconds) > 300
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: The oldest due outbox event has waited over five minutes
+          runbook: OUTBOX_PLAYBOOKS.md#34-database-unavailable
+      - alert: OutboxDeadLetters
+        expr: max(outbox_queue_depth{status="DEAD"}) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Dead-lettered outbox events need an authorized operator review
+          runbook: OUTBOX_PLAYBOOKS.md#39-dead-letters-and-replay
+      - alert: OutboxLeaseLost
+        expr: sum(increase(outbox_events_processed_total{outcome="lease-lost"}[15m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: A worker lost its lease mid-delivery (stall, partition or slow handler)
+          runbook: OUTBOX_PLAYBOOKS.md#33-long-handler-execution
+      - alert: OutboxReclaimLoop
+        expr: sum(increase(outbox_reclaimed_total[30m])) > 10
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: Outbox claims keep expiring; a worker is crash-looping or stalling
+          runbook: OUTBOX_PLAYBOOKS.md#310-deploys-and-graceful-shutdown
+      - alert: OutboxRetryStorm
+        expr: sum by (event_type) (rate(outbox_events_processed_total{outcome="retried"}[10m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: One event type is failing continuously and burning its retry budget
+          runbook: OUTBOX_PLAYBOOKS.md#33-long-handler-execution
+      - alert: OutboxHandlerNearTimeout
+        expr: histogram_quantile(0.99, sum by (le, event_type) (rate(outbox_event_duration_seconds_bucket[15m]))) > 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Handler p99 is approaching the 15 s delivery transaction timeout
+          runbook: OUTBOX_PLAYBOOKS.md#33-long-handler-execution
