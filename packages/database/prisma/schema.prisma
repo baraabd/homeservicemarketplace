@@ -3175,3 +3175,113 @@ model MoneyReconciliationException {
   @@unique([kind, subjectType, subjectId])
   @@index([resolvedAt, detectedAt])
 }
+
+// R21 — durable outbound email.
+//
+// The business transaction records an EmailDelivery row (the intent) together
+// with the state change it describes, so a rolled-back transaction produces no
+// message. Delivery happens afterwards, outside any transaction, and is retried
+// against this row until the provider accepts it, the attempt budget is spent
+// or the message's own validity window closes. Provider ACCEPTANCE is not
+// DELIVERY: DELIVERED / BOUNCED / COMPLAINED only come from signed provider
+// feedback (EmailFeedbackEvent).
+//
+// No foreign key to User on purpose: this is an operational delivery log that
+// is purged on a bounded schedule, and the recipient is addressed by a hash.
+enum EmailDeliveryStatus {
+  QUEUED
+  SENDING
+  ACCEPTED
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+  SUPPRESSED
+  FAILED
+  EXPIRED
+}
+
+enum EmailCategory {
+  // Requested by the recipient and needed to reach their account (OTP,
+  // verification link, password reset). Never suppressed by feedback.
+  AUTH
+  // Account/status notices the recipient did not just ask for.
+  NOTIFICATION
+}
+
+enum EmailSuppressionReason {
+  HARD_BOUNCE
+  COMPLAINT
+}
+
+enum EmailFeedbackKind {
+  DELIVERED
+  BOUNCE_PERMANENT
+  BOUNCE_TRANSIENT
+  COMPLAINT
+}
+
+model EmailDelivery {
+  id             String              @id @default(cuid())
+  // Stable message key: the producer's idempotency key and the Message-ID
+  // local part, so retries of one intent are one logical message.
+  messageKey     String              @unique
+  category       EmailCategory
+  // Template id, e.g. "auth.password_reset". A database value: add, never rename.
+  template       String
+  userId         String?
+  // SHA-256 of the normalised address. Suppression and feedback join on this.
+  recipientHash  String
+  // AES-256-GCM sealed {to, vars}. Holds one-time secrets for AUTH mail, so it
+  // is cleared on every terminal transition and at expiry.
+  envelope       Bytes?
+  status         EmailDeliveryStatus @default(QUEUED)
+  attempts       Int                 @default(0)
+  maxAttempts    Int                 @default(6)
+  nextAttemptAt  DateTime            @default(now())
+  leaseUntil     DateTime?
+  leasedBy       String?
+  // Low-cardinality class, never a driver message: transient | permanent |
+  // config | suppressed | expired | undecryptable.
+  lastErrorClass String?
+  lastSmtpCode   Int?
+  acceptedAt     DateTime?
+  outcomeAt      DateTime?
+  expiresAt      DateTime
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  feedback EmailFeedbackEvent[]
+
+  @@index([status, nextAttemptAt])
+  @@index([status, leaseUntil])
+  @@index([recipientHash, template, createdAt])
+  @@index([createdAt])
+}
+
+model EmailSuppression {
+  id            String                 @id @default(cuid())
+  recipientHash String
+  reason        EmailSuppressionReason
+  feedbackId    String?
+  createdAt     DateTime               @default(now())
+  liftedAt      DateTime?
+
+  @@unique([recipientHash, reason])
+}
+
+model EmailFeedbackEvent {
+  id         String            @id @default(cuid())
+  // Feedback channel id (e.g. "generic-hmac-v1"); with externalId, the replay key.
+  source     String
+  externalId String
+  kind       EmailFeedbackKind
+  deliveryId String
+  occurredAt DateTime
+  receivedAt DateTime          @default(now())
+
+  delivery EmailDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@unique([source, externalId])
+  @@index([receivedAt])
+  @@index([deliveryId])
+}

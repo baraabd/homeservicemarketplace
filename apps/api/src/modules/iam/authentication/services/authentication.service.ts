@@ -11,7 +11,7 @@ import { lockAuthAccount } from '../../../../infrastructure/persistence/iam/auth
 import type { User } from '@homeservicemarketplace/database';
 
 import { AppConfigService } from '../../../../config/app-config.service';
-import { MAIL_PORT, MailPort } from '../../../../infrastructure/mail/mail.port';
+import { MAIL_PORT, MailPort, type MailIntent } from '../../../../infrastructure/mail/mail.port';
 import { RoleRepository } from '../../../../infrastructure/persistence/iam/role.repository';
 import { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
 import { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
@@ -161,12 +161,24 @@ export class AuthenticationService {
           },
           trx,
         );
-        return { challenge, email: user.email };
+        // R21 — the mail intent commits with the account and challenge; a
+        // rollback leaves no message behind.
+        const mail = await this.mail.enqueue(
+          otpIntent(
+            user.email,
+            user.id,
+            challenge.rawCode,
+            'REGISTRATION_OTP',
+            challenge.expiresAt,
+          ),
+          trx,
+        );
+        return { challenge, mail };
       });
 
       if (result) {
         try {
-          await this.sendOtpEmail(result.email, result.challenge.rawCode, 'REGISTRATION_OTP');
+          await this.mail.dispatch(result.mail);
         } catch {
           // The committed challenge remains usable through resend. Do not
           // expose account existence through a mail-provider error response.
@@ -200,16 +212,26 @@ export class AuthenticationService {
       const userId = await this.verification.consume(rawToken, 'EMAIL_VERIFICATION', trx);
       if (!userId) throw new BadRequestException({ code: 'AUTH_INVALID_CREDENTIALS' });
       const user = await this.users.findById(userId, trx);
-      if (!user || user.deletedAt || !user.isActive ||
-          !['PENDING_VERIFICATION', 'ACTIVE'].includes(user.status)) {
+      if (
+        !user ||
+        user.deletedAt ||
+        !user.isActive ||
+        !['PENDING_VERIFICATION', 'ACTIVE'].includes(user.status)
+      ) {
         throw new BadRequestException({ code: 'AUTH_INVALID_CREDENTIALS' });
       }
       if (user.emailVerifiedAt) return; // idempotent
       const activated = await trx.user.updateMany({
-        where: { id: user.id, deletedAt: null, isActive: true, status: { in: ['PENDING_VERIFICATION', 'ACTIVE'] } },
+        where: {
+          id: user.id,
+          deletedAt: null,
+          isActive: true,
+          status: { in: ['PENDING_VERIFICATION', 'ACTIVE'] },
+        },
         data: { emailVerifiedAt: new Date(), status: 'ACTIVE' },
       });
-      if (activated.count !== 1) throw new BadRequestException({ code: 'AUTH_INVALID_CREDENTIALS' });
+      if (activated.count !== 1)
+        throw new BadRequestException({ code: 'AUTH_INVALID_CREDENTIALS' });
       await this.audit.record(
         {
           type: 'EMAIL_VERIFIED',
@@ -231,8 +253,14 @@ export class AuthenticationService {
       // escape a transaction that subsequently rolls its token back.
       const delivery = await this.tx.run(async (trx) => {
         const user = await this.users.findByEmail(normalized, trx);
-        if (!user || user.emailVerifiedAt || user.deletedAt || !user.isActive ||
-            !['PENDING_VERIFICATION', 'ACTIVE'].includes(user.status)) return null;
+        if (
+          !user ||
+          user.emailVerifiedAt ||
+          user.deletedAt ||
+          !user.isActive ||
+          !['PENDING_VERIFICATION', 'ACTIVE'].includes(user.status)
+        )
+          return null;
         const token = await this.verification.issue(user.id, 'EMAIL_VERIFICATION', trx);
         await this.audit.record(
           {
@@ -244,9 +272,18 @@ export class AuthenticationService {
           },
           trx,
         );
-        return { email: user.email, raw: token.raw };
+        return this.mail.enqueue(
+          {
+            template: 'auth.email_verification',
+            to: user.email,
+            userId: user.id,
+            vars: { token: token.raw },
+            expiresAt: token.expiresAt,
+          },
+          trx,
+        );
       });
-      if (delivery) await this.sendVerificationEmail(delivery.email, delivery.raw);
+      if (delivery) await this.mail.dispatch(delivery);
     } catch {
       // Keep the same public response for unknown accounts and delivery/DB
       // failures. Driver errors can contain tokens/DSNs and are not logged.
@@ -316,7 +353,8 @@ export class AuthenticationService {
       if (this.attempts.isLocked(found))
         throw new UnauthorizedException({ code: 'AUTH_ACCOUNT_LOCKED' });
       if (!found.emailVerifiedAt) throw new ForbiddenException({ code: 'AUTH_ACCOUNT_UNVERIFIED' });
-      if (!isInGoodStanding(found)) throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
+      if (!isInGoodStanding(found))
+        throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
 
       // Credentials are valid: reset the failure counter NOW so a legitimate
       // user isn't locked out by having typed the password correctly but
@@ -324,21 +362,28 @@ export class AuthenticationService {
       await this.attempts.recordSuccess(found.id, trx);
 
       const challenge = await this.otp.issue(found.id, 'LOGIN_OTP', trx);
-      await this.audit.record({
-        type: 'LOGIN_FAILED', // challenge issued, not an authenticated login
-        userId: found.id,
-        ipAddress: ctx.device.ipAddress,
-        userAgent: ctx.device.userAgent,
-        requestId: ctx.requestId,
-        metadata: { reason: 'otp_challenge_issued' },
-      }, trx);
-      return { user: found, otpChallenge: challenge };
+      await this.audit.record(
+        {
+          type: 'LOGIN_FAILED', // challenge issued, not an authenticated login
+          userId: found.id,
+          ipAddress: ctx.device.ipAddress,
+          userAgent: ctx.device.userAgent,
+          requestId: ctx.requestId,
+          metadata: { reason: 'otp_challenge_issued' },
+        },
+        trx,
+      );
+      const mail = await this.mail.enqueue(
+        otpIntent(found.email, found.id, challenge.rawCode, 'LOGIN_OTP', challenge.expiresAt),
+        trx,
+      );
+      return { otpChallenge: challenge, mail };
     });
 
     if (!result) throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
-    const { user, otpChallenge } = result;
+    const { otpChallenge, mail } = result;
     try {
-      await this.sendOtpEmail(user.email, otpChallenge.rawCode, 'LOGIN_OTP');
+      await this.mail.dispatch(mail);
     } catch {
       // The challenge is committed. Keep its ID available for the resend UI;
       // this response does not claim delivery or successful authentication.
@@ -385,10 +430,16 @@ export class AuthenticationService {
         // The conditional write also fences suspension/deactivation between
         // the read above and activation. Verification never grants work access.
         const activated = await trx.user.updateMany({
-          where: { id: user.id, deletedAt: null, isActive: true, status: { in: ['PENDING_VERIFICATION', 'ACTIVE'] } },
+          where: {
+            id: user.id,
+            deletedAt: null,
+            isActive: true,
+            status: { in: ['PENDING_VERIFICATION', 'ACTIVE'] },
+          },
           data: { emailVerifiedAt: new Date(), status: 'ACTIVE' },
         });
-        if (activated.count !== 1) throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
+        if (activated.count !== 1)
+          throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
         await this.audit.record(
           {
             type: 'EMAIL_VERIFIED',
@@ -406,20 +457,26 @@ export class AuthenticationService {
       }
       const roleRows = await this.users.listRoles(user.id, trx);
       const roles = roleRows.map((r) => r.role.name);
-      const issued = await this.sessions.createForLogin({
-        userId: user.id,
-        roles,
-        device: ctx.device,
-        requestId: ctx.requestId,
-      }, trx);
-      await this.audit.record({
-        type: 'LOGIN_SUCCESS',
-        userId: user.id,
-        ipAddress: ctx.device.ipAddress,
-        userAgent: ctx.device.userAgent,
-        requestId: ctx.requestId,
-        metadata: { sessionId: issued.session.id, via: 'otp' },
-      }, trx);
+      const issued = await this.sessions.createForLogin(
+        {
+          userId: user.id,
+          roles,
+          device: ctx.device,
+          requestId: ctx.requestId,
+        },
+        trx,
+      );
+      await this.audit.record(
+        {
+          type: 'LOGIN_SUCCESS',
+          userId: user.id,
+          ipAddress: ctx.device.ipAddress,
+          userAgent: ctx.device.userAgent,
+          requestId: ctx.requestId,
+          metadata: { sessionId: issued.session.id, via: 'otp' },
+        },
+        trx,
+      );
       return { value: { user, roles, issued } };
     });
     // A negative OTP verdict committed its attempt counter on this connection.
@@ -437,22 +494,39 @@ export class AuthenticationService {
       const delivery = await this.tx.run(async (trx) => {
         const challenge = await this.otp.resend(challengeId, trx);
         const user = await this.users.findById(challenge.userId, trx);
-        if (!user || user.deletedAt || !user.isActive ||
-            !['PENDING_VERIFICATION', 'ACTIVE'].includes(user.status)) {
+        if (
+          !user ||
+          user.deletedAt ||
+          !user.isActive ||
+          !['PENDING_VERIFICATION', 'ACTIVE'].includes(user.status)
+        ) {
           throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
         }
-        await this.audit.record({
-          type: 'EMAIL_VERIFICATION_RESENT',
-          userId: user.id,
-          ipAddress: ctx.device.ipAddress,
-          userAgent: ctx.device.userAgent,
-          requestId: ctx.requestId,
-          metadata: { channel: 'email-otp', purpose: challenge.purpose },
-        }, trx);
-        return { ...challenge, email: user.email };
+        await this.audit.record(
+          {
+            type: 'EMAIL_VERIFICATION_RESENT',
+            userId: user.id,
+            ipAddress: ctx.device.ipAddress,
+            userAgent: ctx.device.userAgent,
+            requestId: ctx.requestId,
+            metadata: { channel: 'email-otp', purpose: challenge.purpose },
+          },
+          trx,
+        );
+        const mail = await this.mail.enqueue(
+          otpIntent(
+            user.email,
+            user.id,
+            challenge.rawCode,
+            challenge.purpose,
+            new Date(Date.now() + challenge.expiresInSeconds * 1000),
+          ),
+          trx,
+        );
+        return { expiresInSeconds: challenge.expiresInSeconds, mail };
       });
       try {
-        await this.sendOtpEmail(delivery.email, delivery.rawCode, delivery.purpose);
+        await this.mail.dispatch(delivery.mail);
       } catch {
         this.logger.error({ msg: 'otp-resend.delivery.failed', requestId: ctx.requestId });
       }
@@ -505,16 +579,21 @@ export class AuthenticationService {
   async logout(userId: string, sessionId: string, ctx: ClientContext): Promise<void> {
     const revokedIds = await this.tx.run(async (trx) => {
       const revoked = await this.sessions.revokeById(sessionId, trx);
-      await this.audit.record({
-        type: 'LOGOUT', userId,
-        ipAddress: ctx.device.ipAddress,
-        userAgent: ctx.device.userAgent,
-        requestId: ctx.requestId,
-        metadata: { sessionId },
-      }, trx);
+      await this.audit.record(
+        {
+          type: 'LOGOUT',
+          userId,
+          ipAddress: ctx.device.ipAddress,
+          userAgent: ctx.device.userAgent,
+          requestId: ctx.requestId,
+          metadata: { sessionId },
+        },
+        trx,
+      );
       return revoked;
     });
-    for (const revokedId of revokedIds) this.securityEvents.emitSessionRevoked({ userId, sessionId: revokedId });
+    for (const revokedId of revokedIds)
+      this.securityEvents.emitSessionRevoked({ userId, sessionId: revokedId });
   }
 
   // D-2 — logout-all kills EVERY session for the user, so every access token
@@ -560,9 +639,9 @@ export class AuthenticationService {
     const startedAt = Date.now();
     const normalized = normalizeEmail(email);
     try {
-      // Phase 1 — DB only, no external I/O. Returns the minimum delivery
-      // payload (recipient + raw token) needed AFTER commit, or null for the
-      // unknown-email / anti-enum path.
+      // Phase 1 — DB only, no external I/O. Records the sealed mail intent
+      // with the token (R21), or returns null for the unknown-email /
+      // anti-enum path.
       const delivery = await this.tx.run(async (trx) => {
         const user = await this.users.findByEmail(normalized, trx);
         if (!user) return null; // silent anti-enum
@@ -577,15 +656,24 @@ export class AuthenticationService {
           },
           trx,
         );
-        return { email: user.email, rawToken: token.raw };
+        return this.mail.enqueue(
+          {
+            template: 'auth.password_reset',
+            to: user.email,
+            userId: user.id,
+            vars: { token: token.raw },
+            expiresAt: token.expiresAt,
+          },
+          trx,
+        );
       });
 
-      // Phase 2 — deliver the (now committed) token out-of-transaction. A
-      // delivery failure here leaves a valid committed token behind, so a
-      // retry can re-send; it must not change the public response.
+      // Phase 2 — first delivery attempt for the (now committed) intent,
+      // out-of-transaction. A failure leaves it queued for the dispatcher; it
+      // must not change the public response.
       if (delivery) {
         try {
-          await this.sendPasswordResetEmail(delivery.email, delivery.rawToken);
+          await this.mail.dispatch(delivery);
         } catch {
           this.logger.error({
             msg: 'password-reset.delivery.failed',
@@ -664,43 +752,6 @@ export class AuthenticationService {
   }
 
   // --- Helpers ------------------------------------------------------------
-  private async sendVerificationEmail(to: string, rawToken: string): Promise<void> {
-    const base = this.config.get('FRONTEND_URL') ?? '';
-    const link = base ? `${base}/verify-email?token=${rawToken}` : `token=${rawToken}`;
-    await this.mail.send({
-      to,
-      subject: 'Verify your email',
-      text: `Confirm your address: ${link}`,
-    });
-  }
-
-  private async sendOtpEmail(
-    to: string,
-    rawCode: string,
-    purpose: 'REGISTRATION_OTP' | 'LOGIN_OTP',
-  ): Promise<void> {
-    const minutes = OTP_TTL_MINUTES;
-    const subject =
-      purpose === 'REGISTRATION_OTP'
-        ? 'Confirm your email to finish signing up'
-        : 'Your sign-in code';
-    const text =
-      purpose === 'REGISTRATION_OTP'
-        ? `Your registration code is ${rawCode}. It expires in ${minutes} minutes.`
-        : `Your sign-in code is ${rawCode}. It expires in ${minutes} minutes.`;
-    await this.mail.send({ to, subject, text });
-  }
-
-  private async sendPasswordResetEmail(to: string, rawToken: string): Promise<void> {
-    const base = this.config.get('FRONTEND_URL') ?? '';
-    const link = base ? `${base}/reset-password?token=${rawToken}` : `token=${rawToken}`;
-    await this.mail.send({
-      to,
-      subject: 'Reset your password',
-      text: `Reset link (valid briefly): ${link}`,
-    });
-  }
-
   // Sleep until the elapsed time since `startedAt` reaches the configured
   // floor. Closes the timing side-channel between the existing-user and
   // unknown-user paths in register / forgot-password / resend-verification.
@@ -710,6 +761,24 @@ export class AuthenticationService {
     const remaining = floor - (Date.now() - startedAt);
     if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
   }
+}
+
+// R21 — wording, escaping and both languages live in the mail template layer;
+// this service only says which message, to whom, and until when it is useful.
+function otpIntent(
+  to: string,
+  userId: string,
+  rawCode: string,
+  purpose: 'REGISTRATION_OTP' | 'LOGIN_OTP',
+  expiresAt: Date,
+): MailIntent {
+  return {
+    template: purpose === 'REGISTRATION_OTP' ? 'auth.registration_otp' : 'auth.login_otp',
+    to,
+    userId,
+    vars: { code: rawCode, minutes: OTP_TTL_MINUTES },
+    expiresAt,
+  };
 }
 
 function normalizeEmail(raw: string): string {
@@ -729,8 +798,17 @@ function fakeOtpEnvelope(): OtpChallengeIssuance {
 }
 
 function isDuplicateEmail(error: unknown): boolean {
-  if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'P2002' ||
-      !('meta' in error) || !error.meta || typeof error.meta !== 'object' || !('target' in error.meta)) return false;
+  if (
+    !error ||
+    typeof error !== 'object' ||
+    !('code' in error) ||
+    error.code !== 'P2002' ||
+    !('meta' in error) ||
+    !error.meta ||
+    typeof error.meta !== 'object' ||
+    !('target' in error.meta)
+  )
+    return false;
   const target = error.meta.target;
   return Array.isArray(target) && target.length === 1 && target[0] === 'email';
 }

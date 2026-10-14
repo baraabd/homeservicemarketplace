@@ -11,7 +11,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import type { Role, User, UserRole } from '@homeservicemarketplace/database';
 
 import type { AppConfigService } from '../../../../config/app-config.service';
-import type { MailPort } from '../../../../infrastructure/mail/mail.port';
+import { MailPort } from '../../../../infrastructure/mail/mail.port';
 import type { RoleRepository } from '../../../../infrastructure/persistence/iam/role.repository';
 import type { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
 import type { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
@@ -73,7 +73,11 @@ function makeHarness() {
   const verification = {
     issue: jest
       .fn()
-      .mockResolvedValue({ raw: 'tok-raw', expiresAt: new Date(Date.now() + 60_000) }),
+      // Shape of a real mintOpaqueToken(32) value: 43 base64url characters.
+      .mockResolvedValue({
+        raw: 'tok-raw-'.padEnd(43, 'x'),
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
     consume: jest.fn(),
     revokeOutstandingForUser: jest.fn().mockResolvedValue({ count: 0 }),
   } as unknown as jest.Mocked<VerificationService>;
@@ -105,10 +109,13 @@ function makeHarness() {
     recordFailure: jest.fn().mockResolvedValue({ locked: false }),
   } as unknown as jest.Mocked<LoginAttemptService>;
 
-  const fakeTx: FakeTx = { $queryRaw: jest.fn().mockResolvedValue([]), user: {
-    update: jest.fn().mockResolvedValue(undefined),
-    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-  } };
+  const fakeTx: FakeTx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    user: {
+      update: jest.fn().mockResolvedValue(undefined),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+  };
   const tx = {
     run: jest.fn(async <T>(fn: (t: unknown) => Promise<T>) => fn(fakeTx)),
   } as unknown as TransactionRunner;
@@ -128,7 +135,16 @@ function makeHarness() {
     },
   } as unknown as AppConfigService;
 
-  const mail = { send: jest.fn().mockResolvedValue(undefined) } as unknown as jest.Mocked<MailPort>;
+  // R21 — a transport-only MailPort: the base enqueue/dispatch render the
+  // intent after commit and hand it to `send`, the spy every assertion reads.
+  class SpyMail extends MailPort {
+    send(): Promise<void> {
+      return Promise.resolve();
+    }
+  }
+  const mail = Object.assign(new SpyMail(), {
+    send: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as jest.Mocked<MailPort>;
 
   // D-2/D-4: post-commit socket teardown. Publishing is fire-and-forget, so
   // the double is a plain spy the assertions below read back.
@@ -432,7 +448,9 @@ describe('AuthenticationService', () => {
     it('LOGIN_OTP success: issues session without touching the user row', async () => {
       const h = makeHarness();
       const user = makeUser({ id: 'u-10' });
-      (h.otp.verifyForLogin as jest.Mock).mockResolvedValueOnce({ consumed: { userId: 'u-10', purpose: 'LOGIN_OTP' } });
+      (h.otp.verifyForLogin as jest.Mock).mockResolvedValueOnce({
+        consumed: { userId: 'u-10', purpose: 'LOGIN_OTP' },
+      });
       h.users.findById.mockResolvedValueOnce(user);
       h.users.listRoles.mockResolvedValueOnce([] as never);
       h.sessions.createForLogin.mockResolvedValueOnce({
@@ -755,7 +773,6 @@ describe('AuthenticationService', () => {
   });
 });
 
-
 describe('R04 authentication transaction boundaries', () => {
   it('returns credential failure only AFTER its bookkeeping transaction commits', async () => {
     const h = makeHarness();
@@ -767,18 +784,25 @@ describe('R04 authentication transaction boundaries', () => {
       committed = true;
       return result;
     });
-    await expect(h.svc.login({ email: 'ada@example.com', password: 'wrong' }, ctx)).rejects.toThrow(UnauthorizedException);
+    await expect(h.svc.login({ email: 'ada@example.com', password: 'wrong' }, ctx)).rejects.toThrow(
+      UnauthorizedException,
+    );
     expect(committed).toBe(true);
     expect(h.attempts.recordFailure).toHaveBeenCalledWith('u-1', h.fakeTx);
   });
 
   it.each([
-    { status: 'SUSPENDED' as const }, { status: 'LOCKED' as const },
-    { status: 'DELETED' as const }, { deletedAt: new Date() }, { isActive: false },
+    { status: 'SUSPENDED' as const },
+    { status: 'LOCKED' as const },
+    { status: 'DELETED' as const },
+    { deletedAt: new Date() },
+    { isActive: false },
   ])('verification cannot reactivate a restricted account: %p', async (override) => {
     const h = makeHarness();
     h.verification.consume.mockResolvedValue('u-1');
-    h.otp.verifyForLogin.mockResolvedValue({ consumed: { userId: 'u-1', purpose: 'REGISTRATION_OTP' } });
+    h.otp.verifyForLogin.mockResolvedValue({
+      consumed: { userId: 'u-1', purpose: 'REGISTRATION_OTP' },
+    });
     h.users.findById.mockResolvedValue(makeUser({ emailVerifiedAt: null, ...override }));
     await expect(h.svc.verifyEmail('t'.repeat(32), ctx)).rejects.toThrow();
     await expect(h.svc.verifyOtp('challenge', '123456', ctx)).rejects.toThrow();
@@ -805,7 +829,9 @@ describe('R04 authentication transaction boundaries', () => {
       return result;
     });
     let committedAtDelivery = false;
-    h.mail.send.mockImplementation(async () => { committedAtDelivery = committed; });
+    h.mail.send.mockImplementation(async () => {
+      committedAtDelivery = committed;
+    });
     await h.svc.resendVerification('ada@example.com', ctx);
     expect(h.mail.send).toHaveBeenCalledTimes(1);
     expect(committedAtDelivery).toBe(true);
@@ -819,10 +845,14 @@ describe('R04 authentication transaction boundaries', () => {
   });
 });
 
-
 describe('R04 concurrent identity and error boundaries', () => {
   it('only the email uniqueness constraint gets a neutral duplicate envelope', async () => {
-    const input = { email: 'reserved@example.test', password: 'test-password-long', firstName: 'A', lastName: 'B' };
+    const input = {
+      email: 'reserved@example.test',
+      password: 'test-password-long',
+      firstName: 'A',
+      lastName: 'B',
+    };
     const h = makeHarness();
     h.users.findByEmail.mockResolvedValue(null);
     h.users.create.mockRejectedValue({ code: 'P2002', meta: { target: ['email'] } });
@@ -834,10 +864,13 @@ describe('R04 concurrent identity and error boundaries', () => {
 
   it('re-reads the account after locking before checking its password', async () => {
     const h = makeHarness();
-    h.users.findByEmail.mockResolvedValueOnce(makeUser({ passwordHash: 'old-hash' }))
+    h.users.findByEmail
+      .mockResolvedValueOnce(makeUser({ passwordHash: 'old-hash' }))
       .mockResolvedValueOnce(makeUser({ passwordHash: 'new-hash' }));
     h.passwords.verify.mockResolvedValue(false);
-    await expect(h.svc.login({ email: 'ada@example.com', password: 'old-password' }, ctx)).rejects.toThrow();
+    await expect(
+      h.svc.login({ email: 'ada@example.com', password: 'old-password' }, ctx),
+    ).rejects.toThrow();
     expect(h.passwords.verify).toHaveBeenCalledWith('new-hash', 'old-password');
     expect(h.fakeTx.$queryRaw).toHaveBeenCalledTimes(1);
   });
@@ -854,14 +887,18 @@ describe('R04 concurrent identity and error boundaries', () => {
 it('R04 commits an OTP rejection verdict before returning its public error', async () => {
   const h = makeHarness();
   const { BadRequestException } = await import('@nestjs/common');
-  h.otp.verifyForLogin.mockResolvedValue({ rejection: new BadRequestException({ code: 'AUTH_OTP_INVALID' }) });
+  h.otp.verifyForLogin.mockResolvedValue({
+    rejection: new BadRequestException({ code: 'AUTH_OTP_INVALID' }),
+  });
   let committed = false;
   jest.spyOn(h.tx, 'run').mockImplementation(async (fn) => {
     const result = await fn(h.fakeTx as never);
     committed = true;
     return result;
   });
-  await expect(h.svc.verifyOtp('fixture-challenge', '123456', ctx)).rejects.toMatchObject({ response: { code: 'AUTH_OTP_INVALID' } });
+  await expect(h.svc.verifyOtp('fixture-challenge', '123456', ctx)).rejects.toMatchObject({
+    response: { code: 'AUTH_OTP_INVALID' },
+  });
   expect(committed).toBe(true);
   expect(h.sessions.createForLogin).not.toHaveBeenCalled();
 });

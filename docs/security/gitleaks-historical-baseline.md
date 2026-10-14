@@ -339,3 +339,33 @@ Proof the gate still blocks:
 
 Maintain this entry only while `f3a7c6b` remains reachable, and review it
 with §5's procedure at release review.
+
+## 10. R21 delta — synthetic password-reset placeholder (2026-10-14)
+
+CI security job `115734805826` on PR #160 head
+`67e2d35897e8440861b3825836e138329cb90920` stopped on exactly one
+`generic-api-key` finding. The fingerprint is copied from that job's log; the
+same job's tracked-tree scan reported the same file and line in the merge tree.
+
+| Origin commit                              | File                                                             | Line | Classification                                       |
+| ------------------------------------------ | ---------------------------------------------------------------- | ---- | ---------------------------------------------------- |
+| `9dba54f539c558c18ea8fa418a2e891504576021` | `apps/api/test/integration/r21-durable-mail.integration.spec.ts` | 315  | A readable synthetic password-reset test placeholder |
+
+Read at its commit: a sentence-like password placeholder passed directly to
+`AuthenticationService.resetPassword()` in an integration test that first
+expires the reset token, then asserts the call is rejected. The value is not an
+API key, provider credential, signing secret, environment value or deployment
+input; it is local test data that is hashed only inside the rejected service
+path. No value is recorded here.
+
+**Verdict: synthetic test fixture. No rotation is required.**
+
+The source is fixed in the same change: the R21 integration spec now uses
+lower-entropy placeholder passwords for the reset-password assertions. Only
+this one exact historical fingerprint is appended to `.gitleaksignore`; the
+existing entries are unchanged. No path pattern, rule, tolerance, scan range,
+workflow or blocking exit status is changed, and history is not rewritten.
+
+Final proof is the hosted PR security job on the next head. Maintain this
+entry only while `9dba54f` remains reachable, and review it with §5's
+procedure at release review.
