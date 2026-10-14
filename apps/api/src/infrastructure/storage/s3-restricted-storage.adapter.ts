@@ -14,10 +14,14 @@ import { AppConfigService } from '../../config/app-config.service';
 import {
   RestrictedObjectStoragePort,
   RestrictedObjectAlreadyExistsError,
+  RestrictedObjectIntegrityError,
   type RestrictedObjectMetadata,
   type RestrictedErasureReceipt,
+  type RestrictedReadExpectation,
 } from './restricted-object-storage.port';
 import { validateKey } from './local-disk-storage.adapter';
+import { S3BucketRootGuard } from './s3-storage-root';
+import { keyFingerprint, storageFaultEvent } from './storage-diagnostics';
 
 // Sprint 9B.3 — restricted evidence on S3-compatible storage. Production.
 //
@@ -39,10 +43,35 @@ import { validateKey } from './local-disk-storage.adapter';
 export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
   private readonly log = new Logger(S3RestrictedStorageAdapter.name);
   private readonly client: S3Client;
+  /** R20 — refuses a bucket marked for another namespace (storage-root.ts). */
+  private readonly root = new S3BucketRootGuard(() => this.client);
 
   constructor(private readonly config: AppConfigService) {
     super();
     this.client = this.createClient();
+  }
+
+  /**
+   * The marker state of the restricted bucket, for diagnostics and the
+   * same-root check across processes. Throws on a namespace mismatch.
+   */
+  async describeRoot(): Promise<{ rootId: string | null; state: string }> {
+    const found = await this.root.check(this.bucket(), 'restricted');
+    return {
+      rootId: found.state === 'verified' ? found.marker.rootId : null,
+      state: found.state,
+    };
+  }
+
+  /** Mismatch is a misconfiguration; it leaves this class as the same opaque
+   *  failure as any other backend fault. */
+  private async assertRestrictedBucket(): Promise<void> {
+    try {
+      await this.root.check(this.bucket(), 'restricted');
+    } catch (err) {
+      this.log.error(storageFaultEvent({ operation: 'root', namespace: 'restricted', err }));
+      throw backendFailure();
+    }
   }
 
   /**
@@ -77,6 +106,7 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
     sizeBytes: number;
   }): Promise<void> {
     validateKey(input.key);
+    await this.assertRestrictedBucket();
 
     // The stream is named, and this method owns it for its whole life.
     //
@@ -126,6 +156,8 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
             }),
           ),
         true,
+        input.key,
+        'put',
       );
     } finally {
       // Settled on BOTH paths. On success the SDK has already consumed and
@@ -136,13 +168,27 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
     this.log.log({ msg: 'restricted.storage.put', bytes: input.sizeBytes });
   }
 
-  async openReadStream(key: string): Promise<Readable> {
+  async openReadStream(key: string, expected?: RestrictedReadExpectation): Promise<Readable> {
     validateKey(key);
-    const out = await this.guarded(() =>
-      this.client.send(new GetObjectCommand({ Bucket: this.bucket(), Key: key })),
+    const out = await this.guarded(
+      () => this.client.send(new GetObjectCommand({ Bucket: this.bucket(), Key: key })),
+      false,
+      key,
+      'read',
     );
     const body = out.Body as Readable | undefined;
     if (!body) throw new Error('empty-body');
+    // ContentLength of the response we are about to stream, not of a separate
+    // HEAD that a concurrent writer could race.
+    if (expected && Number(out.ContentLength) !== expected.sizeBytes) {
+      body.destroy();
+      this.log.error({
+        msg: 'storage.integrity_mismatch',
+        namespace: 'restricted',
+        keyFp: keyFingerprint(key),
+      });
+      throw new RestrictedObjectIntegrityError();
+    }
     return body;
   }
 
@@ -158,6 +204,7 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
       // real backend fault and must not be flattened into "missing", or a
       // credentials outage would read as "the provider never uploaded".
       if (isNotFound(err)) return null;
+      this.log.error(storageFaultEvent({ operation: 'head', namespace: 'restricted', key, err }));
       throw backendFailure();
     }
   }
@@ -172,6 +219,8 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
     const Bucket = this.bucket();
     const abortSignal = AbortSignal.timeout(45_000);
     try {
+      // R20 — a bucket marked for another namespace cannot certify anything.
+      await this.root.check(Bucket, 'restricted');
       // A current-object 404 is NOT a versioned-bucket erasure receipt.
       // List permission is mandatory even if versioning currently is disabled.
       await this.client.send(new DeleteObjectCommand({ Bucket, Key: key }), { abortSignal });
@@ -213,9 +262,11 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
         }
       }
       throw new Error('version-budget-exhausted');
-    } catch {
+    } catch (err) {
+      this.log.error(storageFaultEvent({ operation: 'erase', namespace: 'restricted', key, err }));
       // Includes AccessDenied, Object Lock and transport timeouts. Never
       // bypass a legal hold and never print raw storage exception details.
+      // eslint-disable-next-line preserve-caught-error -- Privacy boundary: SDK causes name the bucket and key.
       throw new Error('restricted-erasure-unconfirmed');
     }
   }
@@ -223,8 +274,11 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
   async deleteObject(key: string): Promise<void> {
     validateKey(key);
     // S3 DELETE is already idempotent — deleting a missing key succeeds.
-    await this.guarded(() =>
-      this.client.send(new DeleteObjectCommand({ Bucket: this.bucket(), Key: key })),
+    await this.guarded(
+      () => this.client.send(new DeleteObjectCommand({ Bucket: this.bucket(), Key: key })),
+      false,
+      key,
+      'delete',
     );
     this.log.log({ msg: 'restricted.storage.delete' });
   }
@@ -242,7 +296,12 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
    * containing a bucket name and a credential-shaped token, then checking
    * neither survives.
    */
-  private async guarded<T>(run: () => Promise<T>, immutableWrite = false): Promise<T> {
+  private async guarded<T>(
+    run: () => Promise<T>,
+    immutableWrite = false,
+    key?: string,
+    operation = 'call',
+  ): Promise<T> {
     try {
       return await run();
     } catch (err) {
@@ -255,11 +314,12 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
           error?.$metadata?.httpStatusCode === 409)
       )
         throw new RestrictedObjectAlreadyExistsError();
+      // R20 — classified (missing / denied / misconfigured / unavailable) and
+      // keyed by fingerprint. The error NAME is a stable, non-sensitive
+      // classifier; the message is deliberately never logged.
       this.log.error({
+        ...storageFaultEvent({ operation, namespace: 'restricted', key, err }),
         msg: 'restricted.storage.backend_error',
-        // The error NAME is a stable, non-sensitive classifier. The message is
-        // deliberately not logged.
-        kind: (err as { name?: string })?.name ?? 'Unknown',
       });
       throw backendFailure();
     }

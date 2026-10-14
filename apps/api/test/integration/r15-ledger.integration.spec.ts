@@ -263,15 +263,28 @@ d('R15 - authoritative double-entry ledger (real Postgres)', () => {
   // ─── Migration state ───────────────────────────────────────────────────
 
   it('ships no historical financial backfill and grants the capabilities to no live role', async () => {
-    // Only this suite writes the ledger. Every row is ours: nothing was
-    // imported from bookings or earnings summaries.
-    const foreignTx = await prisma.ledgerTransaction.count({
-      where: { NOT: { idempotencyKey: { startsWith: KP } } },
-    });
+    // Only integration fixtures write the ledger, and every fixture account
+    // key starts with "it-" (fixturePrefix). R19's suite is a second
+    // legitimate writer sharing this database in CI, so "every row is this
+    // suite's" no longer holds; "no row outside the fixture namespace" does.
+    // A migration backfill from bookings or earnings would create accounts
+    // and postings outside it (r19 change request CR-001).
     const foreignAccounts = await prisma.ledgerAccount.count({
-      where: { NOT: { key: { startsWith: AP } } },
+      where: { NOT: { key: { startsWith: 'it-' } } },
+    });
+    const foreignTx = await prisma.ledgerTransaction.count({
+      where: { entries: { some: { account: { NOT: { key: { startsWith: 'it-' } } } } } },
     });
     expect([foreignTx, foreignAccounts]).toEqual([0, 0]);
+    // And this suite's own rows are all in its namespace.
+    expect(
+      await prisma.ledgerTransaction.count({
+        where: {
+          idempotencyKey: { startsWith: KP },
+          entries: { some: { account: { NOT: { key: { startsWith: AP } } } } },
+        },
+      }),
+    ).toBe(0);
 
     const grants = await prisma.rolePermission.findMany({
       where: { permission: { key: { in: ['ledger:post', 'ledger:read'] } } },

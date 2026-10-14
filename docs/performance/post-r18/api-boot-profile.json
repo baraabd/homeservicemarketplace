@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "kind": "r27-api-boot-profile",
+  "measuredAt": "2026-10-14T06:32:44.497Z",
+  "source": {
+    "commit": "059c018576a75837d4dfb262ee49168d9217d881",
+    "tree": "2bb84da84ab42f4f8da2776b4916e242e2355f21",
+    "branch": "feat/r27-performance-capacity",
+    "dirtyPaths": ["docs/performance/", "docs/production-readiness/r27/", "scripts/perf/post-r18/"],
+    "lockfileSha256": "724b826ea09da6e070f4721a30f5dd9145a333606fac124e0249b5ef7fe18222"
+  },
+  "host": {
+    "platform": "win32 10.0.26300",
+    "arch": "x64",
+    "cpuModel": "12th Gen Intel(R) Core(TM) i5-12450H",
+    "logicalCpus": 12,
+    "totalMemoryGiB": 15.8,
+    "freeMemoryGiBAtStart": 0.4,
+    "loadAverage": null,
+    "node": "v24.21.0",
+    "ci": "local"
+  },
+  "note": "sampling profile of one production-profile boot; overhead included; shares, not timings",
+  "readyMsUnderProfiler": 7790,
+  "profiledMs": 7422,
+  "idleMs": 464,
+  "moduleLoadingMs": 6402,
+  "moduleLoadingShareOfBusy": 92,
+  "attribution": "loader/native frames charged to the nearest non-internal JavaScript caller",
+  "top": [
+    {
+      "area": "mongoose",
+      "selfMs": 487,
+      "shareOfBusy": 7
+    },
+    {
+      "area": "class-validator",
+      "selfMs": 472,
+      "shareOfBusy": 6.8
+    },
+    {
+      "area": "@nestjs/core",
+      "selfMs": 447,
+      "shareOfBusy": 6.4
+    },
+    {
+      "area": "mongodb",
+      "selfMs": 400,
+      "shareOfBusy": 5.7
+    },
+    {
+      "area": "other",
+      "selfMs": 294,
+      "shareOfBusy": 4.2
+    },
+    {
+      "area": "@nestjs/common",
+      "selfMs": 287,
+      "shareOfBusy": 4.1
+    },
+    {
+      "area": "rxjs",
+      "selfMs": 277,
+      "shareOfBusy": 4
+    },
+    {
+      "area": "api:modules/provider",
+      "selfMs": 269,
+      "shareOfBusy": 3.9
+    },
+    {
+      "area": "api:modules/admin",
+      "selfMs": 179,
+      "shareOfBusy": 2.6
+    },
+    {
+      "area": "ioredis",
+      "selfMs": 178,
+      "shareOfBusy": 2.6
+    },
+    {
+      "area": "@nestjs/platform-express",
+      "selfMs": 155,
+      "shareOfBusy": 2.2
+    },
+    {
+      "area": "express",
+      "selfMs": 137,
+      "shareOfBusy": 2
+    },
+    {
+      "area": "prisma-generated-client",
+      "selfMs": 132,
+      "shareOfBusy": 1.9
+    },
+    {
+      "area": "nodemailer",
+      "selfMs": 125,
+      "shareOfBusy": 1.8
+    },
+    {
+      "area": "libphonenumber-js",
+      "selfMs": 125,
+      "shareOfBusy": 1.8
+    },
+    {
+      "area": "@opentelemetry/api",
+      "selfMs": 112,
+      "shareOfBusy": 1.6
+    },
+    {
+      "area": "@nestjs/websockets",
+      "selfMs": 108,
+      "shareOfBusy": 1.6
+    },
+    {
+      "area": "api:modules/iam",
+      "selfMs": 99,
+      "shareOfBusy": 1.4
+    },
+    {
+      "area": "pino",
+      "selfMs": 88,
+      "shareOfBusy": 1.3
+    },
+    {
+      "area": "api:app.module.js",
+      "selfMs": 84,
+      "shareOfBusy": 1.2
+    },
+    {
+      "area": "lodash",
+      "selfMs": 82,
+      "shareOfBusy": 1.2
+    },
+    {
+      "area": "get-intrinsic",
+      "selfMs": 81,
+      "shareOfBusy": 1.2
+    },
+    {
+      "area": "semver",
+      "selfMs": 78,
+      "shareOfBusy": 1.1
+    },
+    {
+      "area": "validator",
+      "selfMs": 76,
+      "shareOfBusy": 1.1
+    },
+    {
+      "area": "api:modules/disputes",
+      "selfMs": 76,
+      "shareOfBusy": 1.1
+    }
+  ]
+}

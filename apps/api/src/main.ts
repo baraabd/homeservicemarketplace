@@ -92,6 +92,9 @@ async function bootstrap(): Promise<void> {
     );
 
     app.use(cookieParser());
+    // R21 — signed delivery feedback is verified over the exact provider
+    // bytes, so the JSON parser must not touch this route first.
+    app.use('/v1/mail/feedback', express.raw({ type: '*/*', limit: '256kb' }));
     // Sprint 7.x — media-upload PUT route. The body is the binary
     // file, not JSON, so the default body-parser would reject it.
     // express.raw() captures it as a Buffer for the LocalDiskStorage
@@ -100,7 +103,7 @@ async function bootstrap(): Promise<void> {
     // signed-URL contract and the body parser stay in sync.
     app.use('/v1/media/uploads', express.raw({ type: '*/*', limit: '10mb' }));
     // JSON parser for everything else. Mounted AFTER the raw parser
-    // so the raw mount wins for upload paths.
+    // so the raw mounts win for upload and feedback paths.
     app.use(express.json({ limit: '1mb' }));
 
     // Production with no explicit allowlist → block all cross-origin requests.

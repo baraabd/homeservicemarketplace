@@ -50,7 +50,7 @@ jobs:
         run: pnpm --filter @homeservicemarketplace/contracts build
       - name: Compile real API outputs and reproduce missing env.schema recovery
         run: |
-          pnpm --filter @homeservicemarketplace/database exec prisma generate
+          pnpm --filter @homeservicemarketplace/database generate
           node scripts/dev/workspace-state.cjs
           pnpm --filter @homeservicemarketplace/database build
           pnpm --filter @homeservicemarketplace/api exec tsc -p tsconfig.dev.json

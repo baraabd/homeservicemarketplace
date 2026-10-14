@@ -7,10 +7,24 @@ export type BillingInterval = (typeof BILLING_INTERVALS)[number];
 export const PAYMENT_METHODS = ['STRIPE', 'SHAM_CASH', 'SYRIATEL_CASH', 'CASH_OFFICE'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-export const PAYMENT_INTENT_STATUSES = ['CREATED','AWAITING_PAYMENT','PROCESSING','SUCCEEDED','FAILED','CANCELLED','EXPIRED'] as const;
+export const PAYMENT_INTENT_STATUSES = [
+  'CREATED',
+  'AWAITING_PAYMENT',
+  'PROCESSING',
+  'SUCCEEDED',
+  'FAILED',
+  'CANCELLED',
+  'EXPIRED',
+] as const;
 export type PaymentIntentStatus = (typeof PAYMENT_INTENT_STATUSES)[number];
 
-export const SUBSCRIPTION_STATUSES = ['PENDING_PAYMENT','ACTIVE','EXPIRED','SUSPENDED','CANCELLED'] as const;
+export const SUBSCRIPTION_STATUSES = [
+  'PENDING_PAYMENT',
+  'ACTIVE',
+  'EXPIRED',
+  'SUSPENDED',
+  'CANCELLED',
+] as const;
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
 export type EntitlementValue =
@@ -81,3 +95,10 @@ export interface LedgerEntryContract {
   amountMinor: bigint;
   currency: CurrencyCode;
 }
+
+// R19 — hsm.money.v1 wire helpers and frozen financial contracts.
+// wire.ts holds runtime functions (bigint parsing, canonical JSON). The web
+// app must not import runtime values from contracts (CJS/Rollup boundary);
+// it may import the types.
+export * from './wire';
+export * from './financial-contracts';

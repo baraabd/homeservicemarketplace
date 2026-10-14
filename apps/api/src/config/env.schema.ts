@@ -378,6 +378,26 @@ const baseEnvSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().default('noreply@homeservicemarketplace.local'),
+  // R21 — bounded SMTP waits. A hung relay must not hold a dispatcher lease or
+  // a request's post-commit delivery attempt for Nodemailer's multi-minute
+  // defaults. Their sum stays below MAIL_DISPATCH_LEASE_MS.
+  SMTP_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(15_000),
+  SMTP_GREETING_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(30_000),
+  SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(30_000),
+  // R21 — durable delivery. Base64 of 32 random bytes; seals the one-time
+  // code/link of a queued message at rest. Unset in production → a subkey
+  // derived from JWT_ACCESS_SECRET (warned at boot); unset elsewhere → a
+  // process-local key. Must decode to exactly 32 bytes when set.
+  MAIL_INTENT_ENCRYPTION_KEY: z.string().optional(),
+  // R21 — retry loop for queued mail. Off is a supported state for tests and
+  // one-shot processes; the post-commit first attempt still runs.
+  MAIL_DISPATCHER_ENABLED: trueish.default(true),
+  MAIL_DISPATCH_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(5_000),
+  MAIL_DISPATCH_LEASE_MS: z.coerce.number().int().min(60_000).max(600_000).default(90_000),
+  // R21 — shared secret for the signed delivery-feedback endpoint
+  // (POST /v1/mail/feedback). Unset → the endpoint answers 404 and no
+  // feedback is accepted. At least 32 characters when set.
+  MAIL_FEEDBACK_SIGNING_SECRET: z.string().min(32).optional(),
 
   // --- Storage / Media uploads ---------------------------------------------
   // STORAGE_DRIVER=local (default) → LocalDiskStorageAdapter writes to
