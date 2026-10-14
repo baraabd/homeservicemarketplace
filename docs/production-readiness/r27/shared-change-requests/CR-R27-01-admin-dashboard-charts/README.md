@@ -46,6 +46,59 @@ integrated candidate (see `../../ACCEPTANCE.md`).
 4. Re-run `bundle-report.mjs` on the integrated tree and `check-budgets.mjs`
    (`+admin` ≤ 110 KiB brotli, recharts only in `admin-dashboard-charts`).
 
+## Required adjustment to an existing test (observed)
+
+On 2026-10-14 the patch was applied transiently to the R27 worktree, never
+committed, and the admin and address suites were run:
+
+```bash
+vitest run src/app/components/admin src/app/components/profile/SavedAddressesPage.test.tsx
+```
+
+| Tree                                        | Run 1                                                        | Run 2                                                                |
+| ------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
+| patched                                     | 80/81 (`DashboardOverview` R17-D currency test failed, 51 s) | 78/81 (2× `DashboardOverview` R17-D, 1× `AdminUsersSection` Suspend) |
+| `DashboardOverview.test.tsx` alone, patched | 6/6                                                          | —                                                                    |
+| unpatched baseline                          | 80/81 (`AdminUsersSection` self-suspend failed, 14 s)        | —                                                                    |
+
+The host had about 0.8 GB free and four other lanes running.
+`AdminUsersSection` fails with or without the patch, so it is host
+flakiness. The `DashboardOverview` failures appeared only with the patch.
+That test renders the whole `AdminDashboard` and waits with `findByTestId`
+(1 s default). With the lazy boundary, Vitest transforms the recharts-heavy
+`DashboardOverview` module graph **inside** that wait rather than when the
+test file is imported.
+
+The patch must therefore ship with a test change that keeps every
+assertion.
+
+**Tried and rejected:** a `beforeAll(async () => { await
+import('./DashboardOverview'); })` preload, applied transiently with the
+patch. On the same host it ran twice:
+
+- Run 1 still failed 3 tests: 1 in `DashboardOverview`, plus
+  `AdminUsersSection` and `AuditLogsSection`, which are unrelated.
+- In run 2 the hook itself timed out, and that file's 5 tests were
+  **skipped** (76 passed, 5 skipped).
+
+A hook that can skip tests under load is not acceptable.
+
+**Proposed:** a static side-effect import at the top of
+`DashboardOverview.test.tsx`. It loads the module when the test file is
+imported, exactly as the static import in `AdminRouteContent` did before
+the patch. `React.lazy`'s `import()` then resolves from the module cache,
+outside every `findBy` wait:
+
+```ts
+// Load the lazily rendered overview with the test file, as the route did
+// before CR-R27-01, so no test waits on its first module transform.
+import './DashboardOverview';
+```
+
+This form was **not verified locally**, because the host was starved. Verify
+it on hosted CI three consecutive times before accepting. Do not raise
+global `findBy` or hook timeouts.
+
 ## Rollback
 
 Revert the commit; no data, contract or flag involved.
