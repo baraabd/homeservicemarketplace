@@ -20,8 +20,6 @@ services:
       - ./prometheus/rules:/etc/prometheus/rules:ro
     ports:
       - 127.0.0.1:19090:9090
-    extra_hosts:
-      - host.docker.internal:host-gateway
 
   alertmanager:
     image: prom/alertmanager:v0.28.1
@@ -32,5 +30,36 @@ services:
       - ./alertmanager/alertmanager.test.yml:/etc/alertmanager/alertmanager.yml:ro
     ports:
       - 127.0.0.1:19093:9093
-    extra_hosts:
-      - host.docker.internal:host-gateway
+
+  target:
+    build:
+      context: ../../..
+      dockerfile: apps/api/Dockerfile
+      target: runner
+    environment:
+      HSM_R23_API_ROOT: /app
+    command: [node, /helpers/synthetic-target.cjs, '19100', '-', '0.0.0.0']
+    volumes:
+      - ../../../scripts/production/observability/synthetic-target.cjs:/helpers/synthetic-target.cjs:ro
+    ports:
+      - 127.0.0.1:19100:19100
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  receiver:
+    image: node:24.21.0-alpine
+    user: node
+    command: [node, /helpers/test-receiver.cjs, '19095', '0.0.0.0']
+    volumes:
+      - ../../../scripts/production/observability/test-receiver.cjs:/helpers/test-receiver.cjs:ro
+    ports:
+      - 127.0.0.1:19095:19095
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+networks:
+  default:
+    internal: true

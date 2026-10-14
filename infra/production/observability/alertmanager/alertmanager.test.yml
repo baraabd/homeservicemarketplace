@@ -43,11 +43,11 @@ inhibit_rules:
 receivers:
   - name: test-page
     webhook_configs:
-      - url: http://host.docker.internal:19095/alerts/page
+      - url: http://receiver:19095/alerts/page
         send_resolved: true
         max_alerts: 20
   - name: test-ticket
     webhook_configs:
-      - url: http://host.docker.internal:19095/alerts/ticket
+      - url: http://receiver:19095/alerts/ticket
         send_resolved: true
         max_alerts: 20

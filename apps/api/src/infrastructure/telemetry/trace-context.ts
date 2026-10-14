@@ -71,7 +71,8 @@ export function newSpanId(): string {
 /**
  * Deterministic ratio sampler: the decision is a function of the trace id, so
  * every process that sees the same trace makes the same choice without
- * coordinating. Uses the low 32 bits of the id (randomly generated).
+ * coordinating. Uses the low 32 bits of a server-generated id. Never pass
+ * an untrusted inbound trace id: its sender can choose those bits.
  */
 export function isSampledByRatio(traceId: string, ratio: number): boolean {
   if (!(ratio > 0)) return false;
@@ -92,13 +93,14 @@ export interface StartTraceOptions {
 export function startTraceContext(opts: StartTraceOptions): TraceContext {
   const parent = parseTraceparent(opts.traceparent);
   const traceId = parent?.traceId ?? newTraceId();
+  const spanId = newSpanId();
   const sampled =
     parent && opts.trustInboundSampling
       ? parent.sampled
-      : isSampledByRatio(traceId, opts.sampleRatio);
+      : isSampledByRatio(parent ? spanId : traceId, opts.sampleRatio);
   return {
     traceId,
-    spanId: newSpanId(),
+    spanId,
     parentSpanId: parent?.parentSpanId ?? null,
     sampled,
     kind: opts.kind,

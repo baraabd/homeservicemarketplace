@@ -113,3 +113,31 @@ request.
 No hosted runtime or alerting evidence (PR CI is build and test evidence only). No production receiver. No approved objectives. Database-gated
 suites not run locally. Integration with R19–R22, now on develop, has not been
 tested. No claim of zero defects or production readiness.
+
+
+## PR review repair verification (2026-10-14)
+
+The earlier results above retain their original source identity. These
+repairs are additive and do not turn the incomplete historical run into PASS:
+
+- Untrusted inbound trace ids no longer determine the sampling decision.
+  A server-generated span id supplies entropy; trusted parents and child
+  spans retain their existing propagation behavior. Deterministic regression
+  cases cover chosen low/high inbound ids.
+- The synthetic target and receiver run inside the internal Compose network.
+  Prometheus and Alertmanager use service DNS on Linux and Docker Desktop;
+  all published ports remain bound to host loopback. The target uses the
+  existing production API runner image, built from this source checkout.
+- The test receiver keeps a bounded, validated evidence projection in memory.
+  It writes no network input to disk. The runner fetches its notifications
+  and includes firing/recovery evidence in `synthetic-alert-result.json`.
+- `.github/workflows/observability.yml` adds native Linux execution of the
+  receiver regressions, promtool/amtool validation and the complete synthetic
+  alert path. It is separate from hosted-production acceptance.
+- Local Node 24.21.0 / pnpm 10.32.1: frozen install PASS; trace-context suite
+  21/21 PASS; the complete logger/telemetry selection 182/182 PASS across
+  11 suites; API typecheck and build PASS; changed-code ESLint PASS;
+  receiver regression tests 3/3 PASS (valid firing/recovery,
+  malformed/oversized requests, capacity bound). This workspace has no Docker
+  daemon, so container execution is delegated to the final-head Linux CI job;
+  its result must be checked rather than inferred from these unit tests.

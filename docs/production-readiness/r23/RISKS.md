@@ -49,9 +49,10 @@ producer and stay silent. They do not page falsely; they also do not protect.
 6. **Route cardinality cap (400)** collapses later routes into `other` if the
    API ever exceeds it. `telemetry_label_overflow_total` and its alert make
    that visible.
-7. **Synthetic alert test uses Docker Desktop's `host.docker.internal`** to
-   reach host-loopback processes. On a Linux CI runner the test needs the
-   `host-gateway` mapping already present in the Compose file.
+7. **Synthetic test network corrected during PR review.** Both helpers now
+   run inside the internal Compose network and use service DNS. Host ports
+   stay on loopback. The new Linux workflow must demonstrate scrape plus
+   firing and resolved notification delivery before its run is accepted.
 8. **Pre-existing failure outside R23**: `storage/restricted-erasure.spec.ts`
    fails 1 of 7 on this Windows host at base and with R23 (storage code
    identical). Not caused or masked by R23; reported for the owning lane.
@@ -60,8 +61,8 @@ producer and stay silent. They do not page falsely; they also do not protect.
    was killed for host memory after its healthy phase (ACCEPTANCE.md § 4).
    Rules, routing and recovery are proven by promtool and amtool only, not by
    a delivered notification.
-10. **Not rebased onto the post-G0 develop.** R19–R22 merged after G0; any
-    conflict or behavioural interaction is found at the wave gate.
+10. **Current develop integrated.** Merge `4b9aa66` includes develop
+    `f52d7b0`; final-head CI remains the integration check after review fixes.
 
 ## Not claimed
 

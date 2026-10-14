@@ -18,7 +18,7 @@
 //
 // Usage: node run-synthetic-alert.cjs <evidence-dir>
 
-const { spawn, execFileSync } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const net = require('node:net');
@@ -40,9 +40,6 @@ if (!process.argv[2]) {
   process.exit(2);
 }
 fs.mkdirSync(evidenceDir, { recursive: true });
-const receiverFile = path.join(evidenceDir, 'receiver-notifications.jsonl');
-const targetLog = path.join(evidenceDir, 'synthetic-target.log.jsonl');
-for (const f of [receiverFile, targetLog]) fs.rmSync(f, { force: true });
 
 const timeline = [];
 const mark = (event, extra = {}) => {
@@ -105,17 +102,12 @@ async function waitFor(label, fn, timeoutMs, everyMs = 2_000) {
   }
 }
 
-function notifications() {
-  if (!fs.existsSync(receiverFile)) return [];
-  return fs
-    .readFileSync(receiverFile, 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
+async function notifications() {
+  return getJson(`http://127.0.0.1:${PORTS.receiver}/notifications`);
 }
 
-function delivered(status) {
-  return notifications().find(
+async function delivered(status) {
+  return (await notifications()).find(
     (n) => n.status === status && n.alerts.some((a) => a.labels.alertname === ALERT),
   );
 }
@@ -146,17 +138,6 @@ function traffic(failRatio) {
   };
 }
 
-const children = [];
-function start(script, args, name) {
-  const child = spawn(process.execPath, [path.join(__dirname, script), ...args], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  child.stdout.on('data', (d) => process.stdout.write(`[${name}] ${d}`));
-  child.stderr.on('data', (d) => process.stderr.write(`[${name}] ${d}`));
-  children.push(child);
-  return child;
-}
-
 async function main() {
   const result = {
     test: 'r23-synthetic-alert-path',
@@ -179,28 +160,30 @@ async function main() {
       throw new Error(`port ${port} (${name}) is in use; refusing to guess`);
   }
 
-  start('test-receiver.cjs', [String(PORTS.receiver), receiverFile], 'receiver');
-  start('synthetic-target.cjs', [String(PORTS.target), targetLog], 'target');
-  await waitFor(
-    'synthetic target',
-    async () => (await fetch(`http://127.0.0.1:${PORTS.target}/v1/synthetic/ok`)).ok,
-    30_000,
-    500,
-  );
-  mark('target-and-receiver-up');
-
-  compose('up', '-d');
+  // Both helpers run beside Prometheus/Alertmanager. Service DNS works on
+  // Linux and Docker Desktop without exposing a host wildcard listener.
+  compose('up', '-d', '--build');
   mark('compose-up', { project: PROJECT });
-  for (const svc of ['prometheus', 'alertmanager']) {
+  for (const svc of ['prometheus', 'alertmanager', 'receiver', 'target']) {
     const id = compose('ps', '-q', svc).trim();
     result.images[svc] = execFileSync(
       'docker',
       ['inspect', '--format', '{{.Image}} {{.Config.Image}}', id],
-      {
-        encoding: 'utf8',
-      },
+      { encoding: 'utf8' },
     ).trim();
   }
+  await waitFor('test receiver', async () => Array.isArray(await notifications()), 60_000);
+  await waitFor(
+    'synthetic target',
+    async () =>
+      (
+        await fetch(`http://127.0.0.1:${PORTS.target}/v1/synthetic/ok`, {
+          signal: AbortSignal.timeout(5_000),
+        })
+      ).ok,
+    60_000,
+  );
+  mark('target-and-receiver-up');
 
   await waitFor(
     'prometheus ready',
@@ -303,7 +286,7 @@ async function main() {
     httpSeries: exposition.split('\n').filter((l) => l.startsWith('http_requests_total{')),
   };
 
-  result.notifications = notifications().map((n) => ({
+  result.notifications = (await notifications()).map((n) => ({
     receivedAt: n.receivedAt,
     path: n.path,
     status: n.status,
@@ -325,7 +308,6 @@ async function main() {
 }
 
 async function teardown() {
-  for (const c of children) c.kill();
   try {
     compose('down', '-v', '--remove-orphans');
     mark('compose-down', { project: PROJECT });

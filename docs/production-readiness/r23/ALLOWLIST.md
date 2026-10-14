@@ -39,7 +39,7 @@ Added:
 - `apps/api/src/infrastructure/telemetry/dependency-diagnostics.ts` (+ `.spec.ts`)
 - `infra/production/observability/**` (rules, rule tests, Alertmanager test
   config, Prometheus test config, Compose test stack, dashboards, runbook)
-- `scripts/production/observability/*.cjs`
+- `scripts/production/observability/*.cjs` (including receiver regression tests)
 - `docs/production-readiness/r23/**`
 
 Tests live beside the owned modules (`*.spec.ts`) and in
@@ -78,3 +78,11 @@ end-of-file conflict whose resolution is to keep every entry.
 mail/storage/outbox/scanner modules, root manifests and lockfile, CI
 workflows, Docker/Compose outside `infra/production/observability/`. See
 `shared-change-requests/`.
+
+## PR repair scope (2026-10-14)
+
+The owner's request to repair the open PR also covers
+`.github/workflows/observability.yml`, a new isolated Linux validation job.
+It exercises the actual Compose topology and firing/recovery receiver path;
+existing CI/security gates are unchanged. It contacts only the disposable
+local test receiver. No production receivers or hosted acceptance are added.

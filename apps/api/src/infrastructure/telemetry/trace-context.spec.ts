@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+
 import {
   childTraceContext,
   currentTraceContext,
@@ -10,6 +12,11 @@ import {
 } from './trace-context';
 
 const VALID = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
+
+jest.mock('node:crypto', () => ({
+  ...jest.requireActual('node:crypto'),
+  randomBytes: jest.fn(jest.requireActual('node:crypto').randomBytes),
+}));
 
 describe('W3C traceparent', () => {
   it('parses a valid version-00 header', () => {
@@ -43,6 +50,24 @@ describe('W3C traceparent', () => {
 });
 
 describe('startTraceContext', () => {
+  it.each([
+    ['0'.repeat(31) + '1', 'ffffffffffffffff', false],
+    ['f'.repeat(32), '0000000000000001', true],
+  ])('samples untrusted trace %s using server entropy', (traceId, spanId, sampled) => {
+    // A chosen low/high inbound id must neither force nor suppress sampling.
+    // Only one server span id is minted when a valid parent is continued.
+    jest.mocked(randomBytes).mockImplementationOnce(() => Buffer.from(spanId, 'hex'));
+    const ctx = startTraceContext({
+      kind: 'server',
+      traceparent: `00-${traceId}-00f067aa0ba902b7-01`,
+      sampleRatio: 0.5,
+    });
+    expect(ctx.traceId).toBe(traceId);
+    expect(ctx.spanId).toBe(spanId);
+    expect(ctx.sampled).toBe(sampled);
+    expect(childTraceContext(ctx, 'client').sampled).toBe(sampled);
+  });
+
   it('continues an inbound trace id but mints its own span id', () => {
     const ctx = startTraceContext({ kind: 'server', traceparent: VALID, sampleRatio: 0 });
     expect(ctx.traceId).toBe('4bf92f3577b34da6a3ce929d0e0e4736');
