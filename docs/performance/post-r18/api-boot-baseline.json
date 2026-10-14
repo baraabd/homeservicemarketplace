@@ -1,0 +1,329 @@
+{
+  "schemaVersion": 1,
+  "kind": "r27-api-boot",
+  "measuredAt": "2026-10-14T06:23:38.176Z",
+  "source": {
+    "commit": "059c018576a75837d4dfb262ee49168d9217d881",
+    "tree": "2bb84da84ab42f4f8da2776b4916e242e2355f21",
+    "branch": "feat/r27-performance-capacity",
+    "dirtyPaths": ["docs/performance/", "docs/production-readiness/r27/", "scripts/perf/post-r18/"],
+    "lockfileSha256": "724b826ea09da6e070f4721a30f5dd9145a333606fac124e0249b5ef7fe18222"
+  },
+  "host": {
+    "platform": "win32 10.0.26300",
+    "arch": "x64",
+    "cpuModel": "12th Gen Intel(R) Core(TM) i5-12450H",
+    "logicalCpus": 12,
+    "totalMemoryGiB": 15.8,
+    "freeMemoryGiBAtStart": 1.2,
+    "loadAverage": null,
+    "node": "v24.21.0",
+    "ci": "local"
+  },
+  "build": {
+    "artifact": "apps/api/dist/main.js",
+    "sha256": "0207db041e61e67afab9925df523683cf1d813362bba766d9a85680ef47032cc",
+    "modifiedAt": "2026-10-14T06:19:05.498Z"
+  },
+  "environment": {
+    "profile": "production (NODE_ENV=production, production env policy, secure cookies)",
+    "deviations": [
+      "VERIFICATION_ENFORCED=false: production policy needs ClamAV, which the lane does not run",
+      "CORS_ORIGINS is an https placeholder; no browser is served"
+    ],
+    "APP_ENV": "test",
+    "LOG_LEVEL": "info (stdout to a temporary file)",
+    "workers": "all background workers disabled",
+    "database": "hsm-r27-perf-postgres (postgres:16-alpine, loopback, seeded catalogue)",
+    "redis": "hsm-r27-perf-redis (redis:7-alpine, no persistence)",
+    "betweenRuns": "lane Redis FLUSHDB (throttle counters); database untouched",
+    "concurrentLoad": "none from this harness; other lanes may run on the host"
+  },
+  "runs": [
+    {
+      "run": 0,
+      "cache": "first-boot-in-session",
+      "liveMs": 5096,
+      "readyMs": 5177,
+      "rssMiBAtReady": 185.9,
+      "rssMiBAfterProbes": 192.3,
+      "probes": {
+        "catalogue": {
+          "firstMs": 24,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 6.12,
+            "p50": 8.46,
+            "p95": 17.3,
+            "p99": null,
+            "max": 19.94,
+            "mean": 9.73,
+            "confidence": "p95-reportable"
+          }
+        },
+        "session-anonymous": {
+          "firstMs": 19.6,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 3.77,
+            "p50": 5.95,
+            "p95": 16.02,
+            "p99": null,
+            "max": 23.34,
+            "mean": 7.71,
+            "confidence": "p95-reportable"
+          }
+        }
+      }
+    },
+    {
+      "run": 1,
+      "cache": "warm-os-cache",
+      "liveMs": 3997,
+      "readyMs": 4014,
+      "rssMiBAtReady": 190.3,
+      "rssMiBAfterProbes": 193.2,
+      "probes": {
+        "catalogue": {
+          "firstMs": 25,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 5.81,
+            "p50": 7.22,
+            "p95": 16.23,
+            "p99": null,
+            "max": 18.62,
+            "mean": 8.3,
+            "confidence": "p95-reportable"
+          }
+        },
+        "session-anonymous": {
+          "firstMs": 6,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 3.84,
+            "p50": 4.73,
+            "p95": 12.87,
+            "p99": null,
+            "max": 22.34,
+            "mean": 6.39,
+            "confidence": "p95-reportable"
+          }
+        }
+      }
+    },
+    {
+      "run": 2,
+      "cache": "warm-os-cache",
+      "liveMs": 4257,
+      "readyMs": 4282,
+      "rssMiBAtReady": 189.6,
+      "rssMiBAfterProbes": 192.5,
+      "probes": {
+        "catalogue": {
+          "firstMs": 36.2,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 5.86,
+            "p50": 10.67,
+            "p95": 20.99,
+            "p99": null,
+            "max": 30.77,
+            "mean": 11.87,
+            "confidence": "p95-reportable"
+          }
+        },
+        "session-anonymous": {
+          "firstMs": 5,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 3.31,
+            "p50": 5.25,
+            "p95": 9.53,
+            "p99": null,
+            "max": 13.67,
+            "mean": 5.61,
+            "confidence": "p95-reportable"
+          }
+        }
+      }
+    },
+    {
+      "run": 3,
+      "cache": "warm-os-cache",
+      "liveMs": 4345,
+      "readyMs": 4359,
+      "rssMiBAtReady": 185.9,
+      "rssMiBAfterProbes": 189.2,
+      "probes": {
+        "catalogue": {
+          "firstMs": 30.6,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 6.26,
+            "p50": 9.55,
+            "p95": 19.69,
+            "p99": null,
+            "max": 20.67,
+            "mean": 11.36,
+            "confidence": "p95-reportable"
+          }
+        },
+        "session-anonymous": {
+          "firstMs": 7.5,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 3.17,
+            "p50": 4.23,
+            "p95": 9.47,
+            "p99": null,
+            "max": 10.63,
+            "mean": 5.15,
+            "confidence": "p95-reportable"
+          }
+        }
+      }
+    },
+    {
+      "run": 4,
+      "cache": "warm-os-cache",
+      "liveMs": 3937,
+      "readyMs": 3953,
+      "rssMiBAtReady": 189.3,
+      "rssMiBAfterProbes": 192.3,
+      "probes": {
+        "catalogue": {
+          "firstMs": 35.4,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 7.11,
+            "p50": 8.19,
+            "p95": 14.71,
+            "p99": null,
+            "max": 52.01,
+            "mean": 10.68,
+            "confidence": "p95-reportable"
+          }
+        },
+        "session-anonymous": {
+          "firstMs": 8.1,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 4.04,
+            "p50": 4.45,
+            "p95": 11.15,
+            "p99": null,
+            "max": 12.84,
+            "mean": 5.27,
+            "confidence": "p95-reportable"
+          }
+        }
+      }
+    },
+    {
+      "run": 5,
+      "cache": "warm-os-cache",
+      "liveMs": 4118,
+      "readyMs": 4128,
+      "rssMiBAtReady": 185,
+      "rssMiBAfterProbes": 191.8,
+      "probes": {
+        "catalogue": {
+          "firstMs": 14.7,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 5.41,
+            "p50": 6.78,
+            "p95": 11.21,
+            "p99": null,
+            "max": 12.43,
+            "mean": 7.23,
+            "confidence": "p95-reportable"
+          }
+        },
+        "session-anonymous": {
+          "firstMs": 4.7,
+          "subsequent": {
+            "n": 30,
+            "invalid": 0,
+            "min": 2.84,
+            "p50": 3.53,
+            "p95": 4.75,
+            "p99": null,
+            "max": 4.83,
+            "mean": 3.54,
+            "confidence": "p95-reportable"
+          }
+        }
+      }
+    }
+  ],
+  "summary": {
+    "liveMs": {
+      "n": 6,
+      "invalid": 0,
+      "min": 3937,
+      "p50": 4118,
+      "p95": null,
+      "p99": null,
+      "max": 5096,
+      "mean": 4291.67,
+      "confidence": "median-only"
+    },
+    "readyMs": {
+      "n": 6,
+      "invalid": 0,
+      "min": 3953,
+      "p50": 4128,
+      "p95": null,
+      "p99": null,
+      "max": 5177,
+      "mean": 4318.83,
+      "confidence": "median-only"
+    },
+    "warmReadyMs": {
+      "n": 5,
+      "invalid": 0,
+      "min": 3953,
+      "p50": 4128,
+      "p95": null,
+      "p99": null,
+      "max": 4359,
+      "mean": 4147.2,
+      "confidence": "median-only"
+    },
+    "catalogueFirstMs": {
+      "n": 6,
+      "invalid": 0,
+      "min": 14.7,
+      "p50": 25,
+      "p95": null,
+      "p99": null,
+      "max": 36.2,
+      "mean": 27.65,
+      "confidence": "median-only"
+    },
+    "rssMiBAtReady": {
+      "n": 6,
+      "invalid": 0,
+      "min": 185,
+      "p50": 185.9,
+      "p95": null,
+      "p99": null,
+      "max": 190.3,
+      "mean": 187.67,
+      "confidence": "median-only"
+    }
+  }
+}

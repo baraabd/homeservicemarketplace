@@ -1,0 +1,49 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicMediaObjects",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": [
+        "arn:aws:s3:::${PUBLIC_BUCKET}/requests/*",
+        "arn:aws:s3:::${PUBLIC_BUCKET}/avatars/*",
+        "arn:aws:s3:::${PUBLIC_BUCKET}/portfolio/*"
+      ]
+    },
+    {
+      "Sid": "PortfolioStagingObjects",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": ["arn:aws:s3:::${PORTFOLIO_STAGING_BUCKET}/portfolio-staging/*"]
+    },
+    {
+      "Sid": "PortfolioStagingPrivacyChecks",
+      "Effect": "Allow",
+      "Action": ["s3:GetBucketPublicAccessBlock", "s3:GetBucketPolicyStatus"],
+      "Resource": ["arn:aws:s3:::${PORTFOLIO_STAGING_BUCKET}"]
+    },
+    {
+      "Sid": "RestrictedEvidenceObjects",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": ["arn:aws:s3:::${RESTRICTED_BUCKET}/verification/*"]
+    },
+    {
+      "Sid": "StorageRootMarkers",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": [
+        "arn:aws:s3:::${PUBLIC_BUCKET}/.hsm-storage-root.json",
+        "arn:aws:s3:::${PORTFOLIO_STAGING_BUCKET}/.hsm-storage-root.json",
+        "arn:aws:s3:::${RESTRICTED_BUCKET}/.hsm-storage-root.json"
+      ]
+    },
+    {
+      "Sid": "PrivateBucketKms",
+      "Effect": "Allow",
+      "Action": ["kms:GenerateDataKey", "kms:Decrypt"],
+      "Resource": ["${PRIVATE_KMS_KEY_ARN}"]
+    }
+  ]
+}

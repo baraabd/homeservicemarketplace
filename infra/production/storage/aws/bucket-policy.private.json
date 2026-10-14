@@ -1,0 +1,30 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyInsecureTransport",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::${BUCKET}", "arn:aws:s3:::${BUCKET}/*"],
+      "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+    },
+    {
+      "Sid": "DenyEveryOtherPrincipal",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::${BUCKET}", "arn:aws:s3:::${BUCKET}/*"],
+      "Condition": {
+        "ArnNotEquals": {
+          "aws:PrincipalArn": [
+            "${API_ROLE_ARN}",
+            "${WORKER_ROLE_ARN}",
+            "${INVENTORY_ROLE_ARN}",
+            "${BREAK_GLASS_ROLE_ARN}"
+          ]
+        }
+      }
+    }
+  ]
+}

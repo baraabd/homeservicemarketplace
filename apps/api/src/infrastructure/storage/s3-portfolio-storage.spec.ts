@@ -6,6 +6,8 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'node:stream';
 import { S3StorageAdapter } from './s3-storage.adapter';
+import { StorageFaultError } from './storage-diagnostics';
+import { STORAGE_ROOT_MARKER_KEY } from './storage-root';
 import type { AppConfigService } from '../../config/app-config.service';
 
 jest.mock('@aws-sdk/s3-request-presigner', () => ({
@@ -51,13 +53,18 @@ describe('private S3 portfolio staging', () => {
   );
   it('refuses a bucket with any public-access control disabled before minting a URL', async () => {
     const f = fixture();
-    f.send.mockResolvedValueOnce({
-      PublicAccessBlockConfiguration: {
-        BlockPublicAcls: true,
-        IgnorePublicAcls: true,
-        BlockPublicPolicy: false,
-        RestrictPublicBuckets: true,
-      },
+    f.send.mockImplementation(async (command) => {
+      if (command instanceof GetObjectCommand) throw { name: 'NoSuchKey' };
+      if (command instanceof GetPublicAccessBlockCommand)
+        return {
+          PublicAccessBlockConfiguration: {
+            BlockPublicAcls: true,
+            IgnorePublicAcls: true,
+            BlockPublicPolicy: false,
+            RestrictPublicBuckets: true,
+          },
+        };
+      throw new Error('unexpected storage operation');
     });
     await expect(f.adapter.presignUpload(upload)).rejects.toThrow('block all public access');
     expect(getSignedUrl).not.toHaveBeenCalled();
@@ -85,7 +92,10 @@ describe('private S3 portfolio staging', () => {
       expect.objectContaining({
         input: expect.objectContaining({ Bucket: 'private-portfolio', IfNoneMatch: '*' }),
       }),
-      { expiresIn: 300 },
+      // R20 — content-type is a SIGNED header; without it the browser could
+      // store any Content-Type on the object (real-storage proof:
+      // test/integration/r20-storage, "refuses a different MIME type").
+      { expiresIn: 300, signableHeaders: new Set(['content-type']) },
     );
   });
 
@@ -99,19 +109,36 @@ describe('private S3 portfolio staging', () => {
     await expect(f.adapter.readObjectStream(upload.key)).resolves.toBeNull();
   });
 
+  // R20 — still a dependency failure and never absence, but now CLASSIFIED and
+  // stripped: the raw SDK error (which names the bucket) no longer escapes.
   it.each([
-    ['missing bucket', { name: 'NoSuchBucket', $metadata: { httpStatusCode: 404 } }],
-    ['access denied', { name: 'AccessDenied', $metadata: { httpStatusCode: 403 } }],
+    [
+      'missing bucket',
+      { name: 'NoSuchBucket', message: 'private-portfolio', $metadata: { httpStatusCode: 404 } },
+      'misconfigured',
+    ],
+    [
+      'access denied',
+      { name: 'AccessDenied', message: 'private-portfolio', $metadata: { httpStatusCode: 403 } },
+      'denied',
+    ],
     [
       'connection reset',
       Object.assign(new Error('backend connection lost'), { code: 'ECONNRESET' }),
+      'unavailable',
     ],
   ])(
     'preserves %s as a dependency failure without claiming object absence',
-    async (_label, failure) => {
+    async (_label, failure, outcome) => {
       const f = fixture();
       f.send.mockRejectedValueOnce(failure);
-      await expect(f.adapter.readObjectStream(upload.key)).rejects.toBe(failure);
+      const error = await f.adapter.readObjectStream(upload.key).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(StorageFaultError);
+      expect((error as StorageFaultError).outcome).toBe(outcome);
+      expect(String((error as Error).message)).not.toContain('private-portfolio');
     },
   );
 
@@ -121,8 +148,34 @@ describe('private S3 portfolio staging', () => {
   ])('refuses a malformed successful GET response (%s)', async (_label, result) => {
     const f = fixture();
     f.send.mockResolvedValueOnce(result);
-    await expect(f.adapter.readObjectStream(upload.key)).rejects.toThrow('no readable body');
+    await expect(f.adapter.readObjectStream(upload.key)).rejects.toThrow(StorageFaultError);
   });
+
+  // R20 — a bucket provisioned for ANOTHER namespace is refused before any URL
+  // is minted; an unmarked (pre-R20) bucket is still accepted.
+  it.each(['restricted', 'public'])(
+    'refuses to presign into a bucket marked %s for portfolio staging',
+    async (namespace) => {
+      const f = fixture();
+      f.send.mockImplementation(async (command) => {
+        if (command instanceof GetObjectCommand) {
+          expect((command as GetObjectCommand).input.Key).toBe(STORAGE_ROOT_MARKER_KEY);
+          const marker = JSON.stringify({
+            schema: 'hsm.storage-root/v1',
+            namespace,
+            rootId: '00000000-0000-4000-8000-000000000000',
+            createdAt: '2026-10-13T00:00:00.000Z',
+          });
+          return { Body: { transformToString: async () => marker } };
+        }
+        throw new Error('unexpected storage operation');
+      });
+      await expect(f.adapter.presignUpload(upload)).rejects.toThrow(
+        'storage-root-namespace-mismatch',
+      );
+      expect(getSignedUrl).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns the successful private object stream with its ownership intact', async () => {
     const f = fixture();

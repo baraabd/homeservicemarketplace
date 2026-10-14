@@ -159,14 +159,14 @@ The built API was started with a per-run signing secret, and a registration
 produced an ACCEPTED delivery. Requests to the real `POST /v1/mail/feedback`:
 
 | Request                                                          | Observed                                                                                                         |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------- |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Correctly signed permanent bounce for that delivery's Message-ID | 200 `applied: 1`                                                                                                 |
 | Same request replayed                                            | 200 `duplicate: 1`                                                                                               |
 | Correctly signed but dated 600 s in the past                     | 401                                                                                                              |
 | Signed complaint for a Message-ID never minted                   | 200 `unmatched: 1` (no change)                                                                                   |
 | Unsigned                                                         | 401                                                                                                              |
 | Database afterwards                                              | delivery `BOUNCED`, 1 active suppression, 1 feedback event; the user's status unchanged (`PENDING_VERIFICATION`) |
-| `/metrics`                                                       | `mail_feedback_events_total` by `{kind,result}`; `mail_feedback_rejected_total{reason="stale"                    | "signature"}` |
+| `/metrics`                                                       | `mail_feedback_events_total` by `{kind,result}`; `mail_feedback_rejected_total{reason="stale"\|"signature"}` |
 
 The signature contract is provider-neutral (`generic-hmac-v1`). No vendor
 adapter exists yet (P-1), so no real provider sends feedback.
