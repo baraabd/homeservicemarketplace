@@ -50,7 +50,7 @@ producer and stay silent. They do not page falsely; they also do not protect.
    API ever exceeds it. `telemetry_label_overflow_total` and its alert make
    that visible.
 7. **Synthetic test network corrected during PR review.** Both helpers now
-   run inside the internal Compose network and use service DNS. Host ports
+   run inside the project Compose bridge and use service DNS. Host ports
    stay on loopback. The new Linux workflow must demonstrate scrape plus
    firing and resolved notification delivery before its run is accepted.
 8. **Pre-existing failure outside R23**: `storage/restricted-erasure.spec.ts`

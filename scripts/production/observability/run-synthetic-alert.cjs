@@ -316,6 +316,22 @@ async function teardown() {
   }
 }
 
+function captureFailureDiagnostics() {
+  // This stack contains only synthetic traffic and no deployment secrets.
+  // Keep process state and bounded logs before teardown, so a networking or
+  // startup failure can be diagnosed from the retained CI artifact.
+  for (const [file, args] of [
+    ['compose-state.txt', ['ps', '--all']],
+    ['compose-logs.txt', ['logs', '--no-color', '--tail', '100']],
+  ]) {
+    try {
+      fs.writeFileSync(path.join(evidenceDir, file), compose(...args));
+    } catch (error) {
+      mark('diagnostic-capture-failed', { file, error: error.name });
+    }
+  }
+}
+
 main()
   .then(async (result) => {
     await teardown();
@@ -328,6 +344,7 @@ main()
   })
   .catch(async (err) => {
     mark('failed', { error: String(err && err.message) });
+    captureFailureDiagnostics();
     await teardown();
     fs.writeFileSync(
       path.join(evidenceDir, 'synthetic-alert-result.json'),

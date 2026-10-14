@@ -4,7 +4,7 @@
 // R23 — local TEST receiver, never a production pager. Notifications stay in
 // bounded memory and are fetched by the test runner; network input is never
 // written to a host file by this service. The default bind stays loopback;
-// Compose explicitly selects 0.0.0.0 inside its isolated internal network.
+// Compose explicitly selects 0.0.0.0 inside its project bridge network.
 // Usage: node test-receiver.cjs <port> [bind-address]
 
 const http = require('node:http');

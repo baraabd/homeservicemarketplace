@@ -62,4 +62,10 @@ services:
 
 networks:
   default:
-    internal: true
+    # A normal project bridge is required for the runner's published-port
+    # access. An externally isolated (--internal) network does not provide
+    # the host NAT path on native Linux. All published ports above explicitly
+    # bind loopback; the default binding below also protects future additions.
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: '127.0.0.1'

@@ -124,7 +124,7 @@ repairs are additive and do not turn the incomplete historical run into PASS:
   A server-generated span id supplies entropy; trusted parents and child
   spans retain their existing propagation behavior. Deterministic regression
   cases cover chosen low/high inbound ids.
-- The synthetic target and receiver run inside the internal Compose network.
+- The synthetic target and receiver run inside the project Compose bridge.
   Prometheus and Alertmanager use service DNS on Linux and Docker Desktop;
   all published ports remain bound to host loopback. The target uses the
   existing production API runner image, built from this source checkout.
