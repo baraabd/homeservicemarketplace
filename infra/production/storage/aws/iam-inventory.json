@@ -1,0 +1,31 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadOnlyVersionInventory",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucketVersions", "s3:GetBucketVersioning"],
+      "Resource": [
+        "arn:aws:s3:::${PUBLIC_BUCKET}",
+        "arn:aws:s3:::${PORTFOLIO_STAGING_BUCKET}",
+        "arn:aws:s3:::${RESTRICTED_BUCKET}"
+      ]
+    },
+    {
+      "Sid": "ReadOnlyObjectsForChecksums",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:GetObjectVersion"],
+      "Resource": [
+        "arn:aws:s3:::${PUBLIC_BUCKET}/*",
+        "arn:aws:s3:::${PORTFOLIO_STAGING_BUCKET}/*",
+        "arn:aws:s3:::${RESTRICTED_BUCKET}/*"
+      ]
+    },
+    {
+      "Sid": "PrivateBucketKms",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt"],
+      "Resource": ["${PRIVATE_KMS_KEY_ARN}"]
+    }
+  ]
+}

@@ -3,11 +3,11 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdir, open, rm, stat, writeFile } from 'node:fs/promises';
 import { join, normalize, sep } from 'node:path';
 import type { Readable } from 'node:stream';
-import { isPortfolioStorageKey } from './portfolio-storage-policy';
-import { isRequestAttachmentKey } from './request-attachment-storage-policy';
 
 import { AppConfigService } from '../../config/app-config.service';
 import { PresignUploadInput, PresignedUpload, StoragePort } from './storage.port';
+import { keyFingerprint, storageFaultEvent } from './storage-diagnostics';
+import { ensureLocalRootMarker, resolveLocalRoot } from './storage-root';
 
 // Local-disk dev backend. Used when STORAGE_DRIVER=local (the default).
 // Issues a tamper-resistant presigned PUT URL pointing at the API's own
@@ -136,14 +136,23 @@ export class LocalDiskStorageAdapter extends StoragePort {
     }
     const abs = this.absolutePathForKey(args.key);
     await mkdir(dirname(abs), { recursive: true });
+    // R20 — mark the root for the namespace it serves. Refuses a root already
+    // marked RESTRICTED (a copied RESTRICTED_STORAGE_DIR), so public uploads
+    // can never interleave with identity evidence.
+    await ensureLocalRootMarker(this.rootDir(), 'public');
     // A signed PUT is reusable until expiry. Exclusive creation prevents a
     // replay replacing bytes after they were attached or approved.
-    // R06 — request attachments are write-once, like portfolio media. The
-    // signed URL outlives finalization, so without this a client could replace
-    // the bytes after they were verified.
-    const writeOnce = isPortfolioStorageKey(args.key) || isRequestAttachmentKey(args.key);
-    await writeFile(abs, args.body, { flag: writeOnce ? 'wx' : 'w' });
-    this.log.log({ msg: 'storage.local.write', key: args.key, bytes: args.body.byteLength });
+    // R06 made request attachments write-once, like portfolio media. R20
+    // extends that to EVERY key: avatars are finalized by inspecting their
+    // leading bytes, and a replay inside the signed window must not swap them
+    // afterwards. Every server-minted key embeds a fresh UUID, so no
+    // legitimate flow writes the same key twice.
+    await writeFile(abs, args.body, { flag: 'wx' });
+    this.log.log({
+      msg: 'storage.local.write',
+      keyFp: keyFingerprint(args.key),
+      bytes: args.body.byteLength,
+    });
   }
 
   /** Resolve a key to its on-disk absolute path. Validates the key
@@ -203,7 +212,11 @@ export class LocalDiskStorageAdapter extends StoragePort {
       const buffer = Buffer.alloc(Math.max(0, byteCount));
       const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, 0);
       return { sizeBytes: stats.size, head: new Uint8Array(buffer.subarray(0, bytesRead)) };
-    } catch {
+    } catch (err) {
+      // Still null for every failure — finalize refuses either way — but an
+      // operator can now tell a dropped PUT from a permissions fault.
+      const event = storageFaultEvent({ operation: 'head', namespace: 'public', key, err });
+      if (event.outcome !== 'missing') this.log.warn(event);
       return null;
     } finally {
       await handle?.close().catch(() => undefined);
@@ -242,10 +255,11 @@ export class LocalDiskStorageAdapter extends StoragePort {
   async deleteObject(key: string): Promise<void> {
     const abs = this.absolutePathForKey(key);
     await rm(abs, { force: true });
-    // The KEY only. Never the signed URL and never the public URL: this line
-    // is written on every cleanup pass and both of those are credentials or
-    // personal media locations.
-    this.log.log({ msg: 'storage.local.delete', key });
+    // A key FINGERPRINT only. Never the signed URL, the public URL or (since
+    // R20) the key itself: this line is written on every cleanup pass, and a
+    // staged portfolio key is not public. The inventory script emits the same
+    // fingerprint, so the line stays correlatable.
+    this.log.log({ msg: 'storage.local.delete', keyFp: keyFingerprint(key) });
   }
 
   // ─── Internals ─────────────────────────────────────────────────────────
@@ -267,10 +281,10 @@ export class LocalDiskStorageAdapter extends StoragePort {
   }
 
   private rootDir(): string {
-    const configured = this.config.get('LOCAL_STORAGE_DIR');
-    if (configured && configured.length > 0) return normalize(configured);
-    // Default: <repo>/.media-uploads — gitignored, recreated on demand.
-    return normalize(join(process.cwd(), '.media-uploads'));
+    // Default: <cwd>/.media-uploads — gitignored, recreated on demand. It is
+    // cwd-relative, so processes started from different directories disagree;
+    // the R20 root marker is what makes that disagreement detectable.
+    return resolveLocalRoot(this.config.get('LOCAL_STORAGE_DIR'), '.media-uploads').path;
   }
 }
 
@@ -313,6 +327,10 @@ export function validateKey(key: string): void {
   const parts = key.split(/[\\/]/);
   for (const p of parts) {
     if (p === '..' || p === '.') throw new Error('invalid-key');
+    // R20 — no dot-leading segment. Server-minted keys never have one, and
+    // refusing them keeps storage-internal files (the root marker, evidence
+    // staging directories) unaddressable from every route and adapter.
+    if (p.startsWith('.')) throw new Error('invalid-key');
   }
   // Restrict charset to a portable subset: alnum, dash, underscore,
   // dot, slash. Stricter than POSIX filename rules and avoids cross-
