@@ -2,9 +2,12 @@
 
 Sprint R21 (legacy P46) · wave 1, lane 3 · branch `feat/r21-email-production`
 Base `059c018576a75837d4dfb262ee49168d9217d881` (see `OWNERSHIP.md` for the
-Source commit `9dba54f539c558c18ea8fa418a2e891504576021` (tree `231ca790f73fe2363f05dc2f367ed9819f90723c`); evidence is committed on top of it.
 base approval and leases). Delivery mode: **A (integration)**: backend only,
 no UI surface changed.
+
+Source commit `9dba54f539c558c18ea8fa418a2e891504576021` (tree
+`231ca790f73fe2363f05dc2f367ed9819f90723c`); the evidence is committed on top
+of it.
 
 Status vocabulary used in this directory: IMPLEMENTED, SOURCE_VERIFIED,
 INTEGRATION_PENDING, POLICY_BLOCKED, EXTERNAL_BLOCKED / HOSTED_ENVIRONMENT_BLOCKED.
