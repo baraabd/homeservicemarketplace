@@ -8,7 +8,7 @@ import { MailEnvelopeCipher, recipientHash } from './mail-envelope.cipher';
 const KEY = randomBytes(32).toString('base64');
 const env = {
   to: 'ada@example.test',
-  vars: { token: 'secret-reset-token-value-0123456789abcdef' },
+  vars: { token: 'secret-reset-token-'.padEnd(43, 'q') },
 };
 
 describe('MailEnvelopeCipher', () => {

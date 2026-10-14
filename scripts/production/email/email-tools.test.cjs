@@ -92,7 +92,7 @@ test('probe: plaintext only for an explicitly allowed loopback rehearsal', () =>
 });
 
 test('probe: configuration errors name the variable but never echo values', () => {
-  const secret = 'super-secret-password-value';
+  const secret = 'probe-pass-'.padEnd(32, 'x');
   for (const env of [
     { ...base, SMTP_HOST: '' },
     { ...base, SMTP_FROM: 'noreply@x.local' },
