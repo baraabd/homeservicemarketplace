@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "wave": 1,
+  "baseSha": "059c018576a75837d4dfb262ee49168d9217d881",
+  "status": "READY_TO_START",
+  "scope": "Lane R19 only. Lanes R20-R23 are BLOCKED_PACKAGE_MISSING (SPRINT_PLAN.json and lane prompts not provided).",
+  "startableLanes": ["R19"],
+  "blockedLanes": ["R20", "R21", "R22", "R23"],
+  "coordinator": "Claude Code coordination session acting for the repository owner (baraabd), 2026-10-13",
+  "predecessorEvidence": {
+    "milestone": "R18",
+    "pr": 155,
+    "mergedAs": "059c018576a75837d4dfb262ee49168d9217d881",
+    "postMergeRuns": {
+      "CI": 38271429057,
+      "CodeQL": 38271428645,
+      "Production governance": 38271428642,
+      "Real application startup performance": 38271428720,
+      "Web development startup": 38271428656,
+      "Authentication lifecycle acceptance": 38271428662,
+      "Staging release boundary": 38271428582
+    },
+    "allConclusions": "success",
+    "note": "R18 merged with the decision NO-GO / R18_BLOCKED; that is release state, not a wave prerequisite."
+  },
+  "notice": "Cooperative coordination guard only. Not signed authorization and not a security boundary."
+}
