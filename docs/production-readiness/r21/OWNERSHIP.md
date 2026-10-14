@@ -67,3 +67,18 @@ unmerged peers.
   `20261014090000_r19_subscription_money_foundation`. The SQL is unchanged.
   Neither name had been applied to any shared or hosted database. This
   carries out CR-R21-04's ordering request inside R21's own lease.
+
+### Competing remote merge (945bbaa)
+
+While the R21 session was re-verifying its own merge, a second merge of
+`develop` was pushed to the branch as `945bbaa` (09:52 +03:00), under the
+owner's identity. It resolved `schema.prisma` by dropping all 11 R19
+money models and their enums while keeping R19's relation fields. The
+schema was therefore invalid: `prisma validate` reported 7 errors, and 12
+hosted checks failed on that commit, including Verify Database, the CI gate
+and Production governance. It also kept the old R21 migration name.
+
+With the owner's approval (2026-10-14), R21 merged `945bbaa` into its own
+verified resolution `57c2597`, keeping that resolution's tree unchanged
+(`git diff --quiet 57c2597`: exit 0). The push was an ordinary
+fast-forward; nothing was force-pushed and both histories remain.
