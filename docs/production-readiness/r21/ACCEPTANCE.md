@@ -145,3 +145,28 @@ Correction: the first attempt at the second boot hit `EADDRINUSE` because
 the first API process had not exited, so its response came from the old
 process and was discarded. The table shows the repeated run on a
 verified-free port. Both lane API processes were stopped afterwards.
+
+### 5b. After CR-R21-01/02 were wired (67e2d35, 2026-10-14)
+
+The owner applied CR-R21-01 (`express.raw` for `/v1/mail/feedback` in
+`main.ts`) and CR-R21-02 (`ProviderStatusEmailHandler` in AppModule)
+in `67e2d35`. Local re-verification of that commit: `tsc --noEmit` exit 0;
+API build exit 0; mail unit tests plus R21 real-service suites 10/10 suites,
+105/105 tests. After the gitleaks placeholder change,
+`r21-durable-mail` passed 13/13.
+
+The built API was started with a per-run signing secret, and a registration
+produced an ACCEPTED delivery. Requests to the real `POST /v1/mail/feedback`:
+
+| Request                                                          | Observed                                                                                                         |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------- |
+| Correctly signed permanent bounce for that delivery's Message-ID | 200 `applied: 1`                                                                                                 |
+| Same request replayed                                            | 200 `duplicate: 1`                                                                                               |
+| Correctly signed but dated 600 s in the past                     | 401                                                                                                              |
+| Signed complaint for a Message-ID never minted                   | 200 `unmatched: 1` (no change)                                                                                   |
+| Unsigned                                                         | 401                                                                                                              |
+| Database afterwards                                              | delivery `BOUNCED`, 1 active suppression, 1 feedback event; the user's status unchanged (`PENDING_VERIFICATION`) |
+| `/metrics`                                                       | `mail_feedback_events_total` by `{kind,result}`; `mail_feedback_rejected_total{reason="stale"                    | "signature"}` |
+
+The signature contract is provider-neutral (`generic-hmac-v1`). No vendor
+adapter exists yet (P-1), so no real provider sends feedback.
