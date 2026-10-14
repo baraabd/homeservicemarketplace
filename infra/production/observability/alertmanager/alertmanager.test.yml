@@ -1,0 +1,53 @@
+# R23 — Alertmanager routing, TEST RECEIVERS ONLY.
+#
+# No production contact (pager, phone, chat or mail) is configured or implied.
+# Production receivers require an authorized contact list and a secret store;
+# see docs/production-readiness/r23/RISKS.md (R23-EXT-1). Replacing the
+# receiver URLs below is the only change a production copy needs: routing,
+# grouping, inhibition and repeat intervals are the reviewed design.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: test-ticket
+  # One notification per alert name and service, not one per instance or
+  # route: a fleet-wide outage pages once.
+  group_by: [alertname, service, slo]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="page"]
+      receiver: test-page
+      group_wait: 10s
+      repeat_interval: 1h
+      continue: false
+    - matchers: [severity="ticket"]
+      receiver: test-ticket
+      repeat_interval: 24h
+
+inhibit_rules:
+  # A slow burn is implied by a fast burn of the same SLO.
+  - source_matchers: [alertname=~"ApiAvailabilityFastBurn|ApiLatencyFastBurn"]
+    target_matchers:
+      [alertname=~"ApiAvailabilitySlowBurn|ApiLatencySlowBurn|ApiAvailabilityBudgetTicket"]
+    equal: [slo]
+  # A target that cannot be scraped produces no SLI; do not also page on it.
+  - source_matchers: [alertname="ApiScrapeTargetDown"]
+    target_matchers: [service="hsm-api", severity="ticket"]
+  # Mail failing outright makes the diagnostic ticket redundant.
+  - source_matchers: [alertname="MailSendFailureRatioHigh"]
+    target_matchers: [alertname="DependencyDiagnosticDown", service="smtp"]
+
+receivers:
+  - name: test-page
+    webhook_configs:
+      - url: http://host.docker.internal:19095/alerts/page
+        send_resolved: true
+        max_alerts: 20
+  - name: test-ticket
+    webhook_configs:
+      - url: http://host.docker.internal:19095/alerts/ticket
+        send_resolved: true
+        max_alerts: 20

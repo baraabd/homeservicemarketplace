@@ -1,0 +1,36 @@
+# R23 — disposable Prometheus + Alertmanager for the synthetic alert test.
+#
+# Isolation: run with an explicit project name (`-p hsm-r23-obs`). No fixed
+# container_name, no named volumes, no external networks; host ports bind to
+# loopback only and avoid this host's excluded range (55249–56148). Nothing
+# here touches the developer stack, its database or its Redis.
+#
+# Images are pinned by version tag. Pin by digest before using this file
+# outside a local test.
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2h
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.test.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+    ports:
+      - 127.0.0.1:19090:9090
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./alertmanager/alertmanager.test.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - 127.0.0.1:19093:9093
+    extra_hosts:
+      - host.docker.internal:host-gateway

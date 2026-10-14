@@ -1,0 +1,94 @@
+# promtool unit tests for platform.rules.yml (synthetic series; rule logic only).
+
+rule_files:
+  - ../rules/platform.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: outbox lag pages only when sustained for ten minutes
+    interval: 1m
+    input_series:
+      # A 4-minute spike to 400 s, then a sustained climb from minute 10.
+      - series: 'outbox_oldest_pending_age_seconds{job="hsm-api",instance="api-1"}'
+        values: '0 0 400 400 400 400 0 0 0 0 310+10x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname="OutboxLagHigh"}
+        eval_time: 7m
+        exp_samples: []
+      - expr: ALERTS{alertname="OutboxLagHigh",alertstate="firing"}
+        eval_time: 22m
+        exp_samples:
+          - labels: 'ALERTS{alertname="OutboxLagHigh",alertstate="firing",severity="page",owner="platform-oncall",service="outbox",slo="outbox-lag",slo_status="proposed"}'
+            value: 1
+
+  - name: mail failure ratio needs both ratio and volume
+    interval: 1m
+    input_series:
+      - series: 'dependency_call_duration_seconds_count{job="hsm-api",dependency="smtp",operation="send",outcome="success"}'
+        values: '0+10x40'
+      - series: 'dependency_call_duration_seconds_count{job="hsm-api",dependency="smtp",operation="send",outcome="error"}'
+        values: '0+2x40'
+    promql_expr_test:
+      - expr: ALERTS{alertname="MailSendFailureRatioHigh",alertstate="firing"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'ALERTS{alertname="MailSendFailureRatioHigh",alertstate="firing",severity="page",owner="platform-oncall",service="mail",slo="mail-delivery",slo_status="proposed"}'
+            value: 1
+
+  - name: one failed send in a quiet period does not page
+    interval: 5m
+    input_series:
+      - series: 'dependency_call_duration_seconds_count{job="hsm-api",dependency="smtp",operation="send",outcome="error"}'
+        values: '0 1 1 1 1 1 1 1'
+    promql_expr_test:
+      - expr: ALERTS{alertname="MailSendFailureRatioHigh"}
+        eval_time: 35m
+        exp_samples: []
+
+  - name: diagnostic down is a ticket labelled with the dependency
+    interval: 1m
+    input_series:
+      - series: 'dependency_up{job="hsm-api",dependency="scanner"}'
+        values: '0x20'
+    promql_expr_test:
+      - expr: ALERTS{alertname="DependencyDiagnosticDown",alertstate="firing"}
+        eval_time: 15m
+        exp_samples:
+          - labels: 'ALERTS{alertname="DependencyDiagnosticDown",alertstate="firing",severity="ticket",owner="platform-oncall",service="scanner",dependency="scanner",job="hsm-api"}'
+            value: 1
+
+  - name: pending-instrumentation rules stay silent without their metric
+    interval: 1m
+    input_series:
+      - series: 'up{job="hsm-api"}'
+        values: '1x60'
+    promql_expr_test:
+      - expr: ALERTS{alertname=~"PaymentOutcomeUnknown|ScanBacklogStale|NotificationDeliveryDelayHigh"}
+        eval_time: 60m
+        exp_samples: []
+
+  - name: stale background job
+    interval: 1m
+    input_series:
+      # Last success at unix time 0, evaluated ~40 minutes later.
+      - series: 'background_job_last_success_unixtime{job="hsm-api",job_name="outbox.tick"}'
+        values: '0x45'
+    promql_expr_test:
+      - expr: ALERTS{alertname="BackgroundJobStale",alertstate="firing"}
+        eval_time: 40m
+        exp_samples:
+          - labels: 'ALERTS{alertname="BackgroundJobStale",alertstate="firing",severity="ticket",owner="platform-oncall",service="background-jobs",job_name="outbox.tick"}'
+            value: 1
+
+  - name: telemetry label overflow
+    interval: 1m
+    input_series:
+      - series: 'telemetry_label_overflow_total{job="hsm-api",metric="http_requests_total"}'
+        values: '0+10x60'
+    promql_expr_test:
+      - expr: ALERTS{alertname="TelemetryLabelOverflow",alertstate="firing"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'ALERTS{alertname="TelemetryLabelOverflow",alertstate="firing",severity="ticket",owner="platform-oncall",service="telemetry",metric="http_requests_total"}'
+            value: 1

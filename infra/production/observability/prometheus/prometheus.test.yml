@@ -1,0 +1,28 @@
+# R23 — Prometheus configuration for the local synthetic alert test ONLY.
+#
+# Short scrape and evaluation intervals make the test finish in minutes; the
+# rule files are the production rule files, unmodified. A hosted deployment
+# keeps its own scrape configuration (target discovery, TLS, bearer token from
+# a secret file) — that integration is coordinator-owned (CR-05).
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    environment: r23-synthetic-test
+
+rule_files:
+  - /etc/prometheus/rules/*.rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  - job_name: hsm-api
+    metrics_path: /metrics
+    static_configs:
+      # The synthetic target (scripts/production/observability/synthetic-target.cjs)
+      # runs on the host; its port is fixed by the test script.
+      - targets: ['host.docker.internal:19100']
