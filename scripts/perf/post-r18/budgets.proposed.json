@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "status": "PROPOSED_AWAITING_OWNER_APPROVAL",
+  "note": "Nothing here is enforced in CI. Byte, statement and plan budgets come from R27 measurements on 059c018 and are host-independent; time budgets restate the R18 OWNER_DECISIONS proposal and are evaluated only on hosted runners. A failing check is a finding, not a release decision.",
+  "bundle": {
+    "compression": "brotli quality 11 (lower bound), KiB",
+    "shellJsBrotliKiBMax": 185,
+    "journeyIncrementJsBrotliKiBMax": {
+      "auth": 20,
+      "seeker-home": 60,
+      "provider-workspace": 40,
+      "provider-onboarding": 75,
+      "admin": 110,
+      "disputes": 45,
+      "job-wizard": 65
+    },
+    "librariesForbiddenOutsideJourneys": {
+      "recharts": ["admin-dashboard-charts"],
+      "leaflet": ["job-wizard", "address-map"]
+    },
+    "dependsOn": ["CR-R27-01", "CR-R27-02"]
+  },
+  "queries": {
+    "pageSizeInvariance": "every paged list must report 'bounded'",
+    "seqScanOnLargeTables": {
+      "tables": ["ServiceRequest", "Bid", "Booking"],
+      "minRowsInDataset": 5000,
+      "allowed": []
+    },
+    "statementsPerRequestMax": {
+      "auth/me (seeker)": 5,
+      "seeker requests": 5,
+      "seeker request detail": 5,
+      "seeker bids on a request": 7,
+      "seeker bookings": 7,
+      "seeker notifications": 3,
+      "seeker conversations": 3,
+      "provider available requests": 10,
+      "provider bids": 11,
+      "provider bookings": 7,
+      "provider portfolio": 9,
+      "admin users": 12,
+      "admin providers": 8,
+      "admin category applications": 3,
+      "admin disputes": 3,
+      "admin financial bookings": 3,
+      "admin audit logs": 3
+    }
+  },
+  "hostedOnly": {
+    "browserColdMobileContentReadyMsMax": 5500,
+    "browserWarmMobileContentReadyMsMax": 3000,
+    "browserRegressionVsPreviousMedianMaxPct": 10,
+    "apiReadP95MsMax": 500,
+    "apiWriteP95MsMax": 1000,
+    "apiErrorRatePctMax": 0.5,
+    "apiReadyMsMax": 15000,
+    "source": "docs/production-readiness/r18/OWNER_DECISIONS.md (Hosting, registry and budgets); apiReadyMsMax is new in R27"
+  }
+}

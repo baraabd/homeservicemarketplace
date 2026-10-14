@@ -1,0 +1,2950 @@
+{
+  "schemaVersion": 1,
+  "kind": "r27-query-profile",
+  "measuredAt": "2026-10-14T06:45:58.141Z",
+  "source": {
+    "commit": "059c018576a75837d4dfb262ee49168d9217d881",
+    "tree": "2bb84da84ab42f4f8da2776b4916e242e2355f21",
+    "branch": "feat/r27-performance-capacity",
+    "dirtyPaths": ["docs/performance/", "docs/production-readiness/r27/", "scripts/perf/post-r18/"],
+    "lockfileSha256": "724b826ea09da6e070f4721a30f5dd9145a333606fac124e0249b5ef7fe18222"
+  },
+  "host": {
+    "platform": "win32 10.0.26300",
+    "arch": "x64",
+    "cpuModel": "12th Gen Intel(R) Core(TM) i5-12450H",
+    "logicalCpus": 12,
+    "totalMemoryGiB": 15.8,
+    "freeMemoryGiBAtStart": 0.4,
+    "loadAverage": null,
+    "node": "v24.21.0",
+    "ci": "local"
+  },
+  "dataset": {
+    "realApi": {
+      "seekers": 6,
+      "providers": 4,
+      "requestsPerSeeker": 6,
+      "bookings": 18
+    },
+    "amplification": {
+      "copies": 300,
+      "tables": ["ServiceRequest", "Bid", "Booking"],
+      "rowCountsAfter": {
+        "User": 15,
+        "ProviderProfile": 11,
+        "ServiceRequest": 10836,
+        "Bid": 43344,
+        "Booking": 5418,
+        "Notification": 180,
+        "AuditLog": null
+      }
+    },
+    "limits": "clones share the real users: per-user histories are heavy; user/notification/audit tables stay small"
+  },
+  "environment": {
+    "profile": "fixture (NODE_ENV=development, APP_ENV=test), background workers off",
+    "database": "postgres:16-alpine with pg_stat_statements and auto_explain, loopback, lane-only",
+    "repeatsPerScenario": 5
+  },
+  "comparison": [
+    {
+      "name": "auth/me (seeker)",
+      "path": "/v1/auth/me",
+      "status": [200, 200],
+      "items": [null, null],
+      "statements": [5, 5],
+      "bounded": true,
+      "p50Ms": [190.58, 167.21],
+      "dbTimeMs": [0.3, 2.67]
+    },
+    {
+      "name": "seeker requests",
+      "path": "/v1/me/requests",
+      "status": [200, 200],
+      "items": [6, 50],
+      "statements": [5, 5],
+      "bounded": true,
+      "p50Ms": [182.82, 275.16],
+      "dbTimeMs": [3.89, 77.65]
+    },
+    {
+      "name": "seeker request detail",
+      "path": "/v1/me/requests/:id",
+      "status": [200, 200],
+      "items": [null, null],
+      "statements": [5, 5],
+      "bounded": true,
+      "p50Ms": [174.7, 263.24],
+      "dbTimeMs": [0.71, 42.8]
+    },
+    {
+      "name": "seeker bids on a request",
+      "path": "/v1/me/requests/:id/bids",
+      "status": [200, 200],
+      "items": [4, 4],
+      "statements": [7, 7],
+      "bounded": true,
+      "p50Ms": [176.25, 320.32],
+      "dbTimeMs": [1.26, 27.19]
+    },
+    {
+      "name": "seeker bookings",
+      "path": "/v1/me/bookings",
+      "status": [200, 200],
+      "items": [3, 50],
+      "statements": [7, 7],
+      "bounded": true,
+      "p50Ms": [101.28, 442.71],
+      "dbTimeMs": [0.51, 4.78]
+    },
+    {
+      "name": "seeker notifications",
+      "path": "/v1/me/notifications",
+      "status": [200, 200],
+      "items": [24, 24],
+      "statements": [3, 3],
+      "bounded": true,
+      "p50Ms": [41.16, 110.93],
+      "dbTimeMs": [1.76, 0.57]
+    },
+    {
+      "name": "seeker conversations",
+      "path": "/v1/me/conversations",
+      "status": [200, 200],
+      "items": [0, 0],
+      "statements": [3, 3],
+      "bounded": true,
+      "p50Ms": [260.21, 306.75],
+      "dbTimeMs": [0.18, 0.17]
+    },
+    {
+      "name": "provider available requests",
+      "path": "/v1/provider/available-requests",
+      "status": [200, 200],
+      "items": [0, 0],
+      "statements": [10, 10],
+      "bounded": true,
+      "p50Ms": [492.51, 1106.47],
+      "dbTimeMs": [0.69, 28.56]
+    },
+    {
+      "name": "provider bids",
+      "path": "/v1/provider/bids",
+      "status": [200, 200],
+      "items": [20, 20],
+      "statements": [11, 11],
+      "bounded": true,
+      "p50Ms": [819.28, 833.05],
+      "dbTimeMs": [0.73, 0.85]
+    },
+    {
+      "name": "provider bookings",
+      "path": "/v1/provider/bookings",
+      "status": [200, 200],
+      "items": [0, 0],
+      "statements": [7, 7],
+      "bounded": true,
+      "p50Ms": [428.62, 571.24],
+      "dbTimeMs": [0.52, 0.43]
+    },
+    {
+      "name": "provider portfolio",
+      "path": "/v1/me/provider/portfolio",
+      "status": [200, 200],
+      "items": [0, 0],
+      "statements": [9, 9],
+      "bounded": true,
+      "p50Ms": [446.63, 207.55],
+      "dbTimeMs": [1.01, 0.51]
+    },
+    {
+      "name": "admin users",
+      "path": "/v1/admin/users",
+      "status": [200, 200],
+      "items": [15, 15],
+      "statements": [52, 52],
+      "bounded": true,
+      "p50Ms": [823.55, 560.12],
+      "dbTimeMs": [9.13, 8.3]
+    },
+    {
+      "name": "admin providers",
+      "path": "/v1/admin/providers",
+      "status": [200, 200],
+      "items": [0, 0],
+      "statements": [8, 8],
+      "bounded": true,
+      "p50Ms": [415.32, 490.23],
+      "dbTimeMs": [2.67, 0.98]
+    },
+    {
+      "name": "admin category applications",
+      "path": "/v1/admin/category-applications?status=PENDING",
+      "status": [200, 200],
+      "items": [0, 0],
+      "statements": [3, 3],
+      "bounded": true,
+      "p50Ms": [149.5, 367.94],
+      "dbTimeMs": [0.15, 0.17]
+    },
+    {
+      "name": "admin disputes",
+      "path": "/v1/admin/disputes",
+      "status": [200, 200],
+      "items": [0, 0],
+      "statements": [3, 3],
+      "bounded": true,
+      "p50Ms": [162.96, 77.94],
+      "dbTimeMs": [0.14, 0.21]
+    },
+    {
+      "name": "admin financial bookings",
+      "path": "/v1/admin/financials/bookings",
+      "status": [200, 200],
+      "items": [0, 0],
+      "statements": [3, 3],
+      "bounded": true,
+      "p50Ms": [141.21, 173.89],
+      "dbTimeMs": [0.47, 0.21]
+    },
+    {
+      "name": "admin audit logs",
+      "path": "/v1/admin/audit-logs",
+      "status": [200, 200],
+      "items": [40, 40],
+      "statements": [3, 3],
+      "bounded": true,
+      "p50Ms": [225.08, 89.28],
+      "dbTimeMs": [1.8, 0.49]
+    }
+  ],
+  "phases": {
+    "base": {
+      "rowCounts": {
+        "User": 15,
+        "ProviderProfile": 11,
+        "ServiceRequest": 36,
+        "Bid": 144,
+        "Booking": 18,
+        "Notification": 180,
+        "AuditLog": null
+      },
+      "scenarios": {
+        "auth/me (seeker)": {
+          "path": "/v1/auth/me",
+          "status": 200,
+          "items": null,
+          "responseBytes": 228,
+          "statements": 5,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Role x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1",
+            "SELECT UserRole x1"
+          ],
+          "dbTimeMs": 0.3,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 157.11,
+            "p50": 190.58,
+            "p95": null,
+            "p99": null,
+            "max": 270.94,
+            "mean": 201.08,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker requests": {
+          "path": "/v1/me/requests",
+          "status": 200,
+          "items": 6,
+          "responseBytes": 3800,
+          "statements": 5,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Booking x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest,Bid,BidStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 3.89,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 163.03,
+            "p50": 182.82,
+            "p95": null,
+            "p99": null,
+            "max": 236.79,
+            "mean": 189.62,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker request detail": {
+          "path": "/v1/me/requests/:id",
+          "status": 200,
+          "items": null,
+          "responseBytes": 602,
+          "statements": 5,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Booking x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest,Bid,BidStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.71,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 135.15,
+            "p50": 174.7,
+            "p95": null,
+            "p99": null,
+            "max": 266.29,
+            "mean": 183.42,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker bids on a request": {
+          "path": "/v1/me/requests/:id/bids",
+          "status": 200,
+          "items": 4,
+          "responseBytes": 1737,
+          "statements": 7,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Bid,ProviderProfile,BidStatus x1",
+            "SELECT Booking x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest,Bid,BidStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 1.26,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 144.6,
+            "p50": 176.25,
+            "p95": null,
+            "p99": null,
+            "max": 353.65,
+            "mean": 229.31,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker bookings": {
+          "path": "/v1/me/bookings",
+          "status": 200,
+          "items": 3,
+          "responseBytes": 2129,
+          "statements": 7,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Bid x1",
+            "SELECT Booking x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.51,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 62.31,
+            "p50": 101.28,
+            "p95": null,
+            "p99": null,
+            "max": 254.03,
+            "mean": 133.38,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker notifications": {
+          "path": "/v1/me/notifications",
+          "status": 200,
+          "items": 24,
+          "responseBytes": 10157,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": ["SELECT Notification x1", "SELECT Session x1", "SELECT User x1"],
+          "dbTimeMs": 1.76,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 34.8,
+            "p50": 41.16,
+            "p95": null,
+            "p99": null,
+            "max": 57.22,
+            "mean": 44.32,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": "no-store",
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker conversations": {
+          "path": "/v1/me/conversations",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Conversation,ConversationParticipant,ConversationParticipantRole x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.18,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 186,
+            "p50": 260.21,
+            "p95": null,
+            "p99": null,
+            "max": 525.58,
+            "mean": 287.7,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "provider available requests": {
+          "path": "/v1/provider/available-requests",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 10,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT ProviderCategoryApplication,ProviderCategoryApplicationStatus x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfileServiceCategory x1",
+            "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest,ServiceRequestStatus,Bid,BidStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.69,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 244.72,
+            "p50": 492.51,
+            "p95": null,
+            "p99": null,
+            "max": 1215.82,
+            "mean": 600.69,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": "no-store",
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "provider bids": {
+          "path": "/v1/provider/bids",
+          "status": 200,
+          "items": 20,
+          "responseBytes": 9121,
+          "statements": 11,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Bid x1",
+            "SELECT Booking x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.73,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 494.33,
+            "p50": 819.28,
+            "p95": null,
+            "p99": null,
+            "max": 863.92,
+            "mean": 728.3,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "provider bookings": {
+          "path": "/v1/provider/bookings",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 7,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Booking x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.52,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 243.23,
+            "p50": 428.62,
+            "p95": null,
+            "p99": null,
+            "max": 548.11,
+            "mean": 401.1,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "provider portfolio": {
+          "path": "/v1/me/provider/portfolio",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 46,
+          "statements": 9,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT PlatformSetting x2",
+            "SELECT ProviderPortfolioItem x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 1.01,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 389.07,
+            "p50": 446.63,
+            "p95": null,
+            "p99": null,
+            "max": 639.83,
+            "mean": 478.73,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin users": {
+          "path": "/v1/admin/users",
+          "status": 200,
+          "items": 15,
+          "responseBytes": 5374,
+          "statements": 52,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT AdminAccessRequest x15",
+            "SELECT Permission x1",
+            "SELECT Role x1",
+            "SELECT Role x1",
+            "SELECT Role x7",
+            "SELECT Role x7",
+            "SELECT RolePermission x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1",
+            "SELECT UserRole x15",
+            "SELECT UserRole,User,Role,AccountStatus x1"
+          ],
+          "dbTimeMs": 9.13,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 522.45,
+            "p50": 823.55,
+            "p95": null,
+            "p99": null,
+            "max": 1752.93,
+            "mean": 952.99,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin providers": {
+          "path": "/v1/admin/providers",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 127,
+          "statements": 8,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Permission x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile,ProviderProfileStatus x1",
+            "SELECT Role x1",
+            "SELECT RolePermission x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT UserRole,User,Role,AccountStatus x1"
+          ],
+          "dbTimeMs": 2.67,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 209.86,
+            "p50": 415.32,
+            "p95": null,
+            "p99": null,
+            "max": 722.96,
+            "mean": 448.86,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin category applications": {
+          "path": "/v1/admin/category-applications?status=PENDING",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT ProviderCategoryApplication,ProviderCategoryApplicationStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.15,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 144.04,
+            "p50": 149.5,
+            "p95": null,
+            "p99": null,
+            "max": 264.09,
+            "mean": 184.94,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin disputes": {
+          "path": "/v1/admin/disputes",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Dispute,DisputeWorkspace x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.14,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 129.08,
+            "p50": 162.96,
+            "p95": null,
+            "p99": null,
+            "max": 359.12,
+            "mean": 193.49,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin financial bookings": {
+          "path": "/v1/admin/financials/bookings",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Booking,BookingStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.47,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 91.99,
+            "p50": 141.21,
+            "p95": null,
+            "p99": null,
+            "max": 210.06,
+            "mean": 156.08,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin audit logs": {
+          "path": "/v1/admin/audit-logs",
+          "status": 200,
+          "items": 40,
+          "responseBytes": 11124,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": ["SELECT AuditEvent x1", "SELECT Session x1", "SELECT User x1"],
+          "dbTimeMs": 1.8,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 188.34,
+            "p50": 225.08,
+            "p95": null,
+            "p99": null,
+            "max": 308.93,
+            "mean": 233,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        }
+      }
+    },
+    "amplified": {
+      "rowCounts": {
+        "User": 15,
+        "ProviderProfile": 11,
+        "ServiceRequest": 10836,
+        "Bid": 43344,
+        "Booking": 5418,
+        "Notification": 180,
+        "AuditLog": null
+      },
+      "scenarios": {
+        "auth/me (seeker)": {
+          "path": "/v1/auth/me",
+          "status": 200,
+          "items": null,
+          "responseBytes": 228,
+          "statements": 5,
+          "txControl": 1,
+          "statementLabels": [
+            "SELECT Role x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1",
+            "SELECT UserRole x1"
+          ],
+          "dbTimeMs": 2.67,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 117.53,
+            "p50": 167.21,
+            "p95": null,
+            "p99": null,
+            "max": 181.72,
+            "mean": 151.6,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker requests": {
+          "path": "/v1/me/requests",
+          "status": 200,
+          "items": 50,
+          "responseBytes": 31996,
+          "statements": 5,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Booking x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest,Bid,BidStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 77.65,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 188.06,
+            "p50": 275.16,
+            "p95": null,
+            "p99": null,
+            "max": 428.13,
+            "mean": 285.87,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker request detail": {
+          "path": "/v1/me/requests/:id",
+          "status": 200,
+          "items": null,
+          "responseBytes": 602,
+          "statements": 5,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Booking x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest,Bid,BidStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 42.8,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 216.96,
+            "p50": 263.24,
+            "p95": null,
+            "p99": null,
+            "max": 580.84,
+            "mean": 335.53,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker bids on a request": {
+          "path": "/v1/me/requests/:id/bids",
+          "status": 200,
+          "items": 4,
+          "responseBytes": 1737,
+          "statements": 7,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Bid,ProviderProfile,BidStatus x1",
+            "SELECT Booking x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest,Bid,BidStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 27.19,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 119.53,
+            "p50": 320.32,
+            "p95": null,
+            "p99": null,
+            "max": 668.29,
+            "mean": 326.54,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker bookings": {
+          "path": "/v1/me/bookings",
+          "status": 200,
+          "items": 50,
+          "responseBytes": 36152,
+          "statements": 7,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Bid x1",
+            "SELECT Booking x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 4.78,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 302.99,
+            "p50": 442.71,
+            "p95": null,
+            "p99": null,
+            "max": 816.94,
+            "mean": 477.47,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker notifications": {
+          "path": "/v1/me/notifications",
+          "status": 200,
+          "items": 24,
+          "responseBytes": 10157,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": ["SELECT Notification x1", "SELECT Session x1", "SELECT User x1"],
+          "dbTimeMs": 0.57,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 80.5,
+            "p50": 110.93,
+            "p95": null,
+            "p99": null,
+            "max": 160.53,
+            "mean": 117.85,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": "no-store",
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "seeker conversations": {
+          "path": "/v1/me/conversations",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Conversation,ConversationParticipant,ConversationParticipantRole x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.17,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 141.09,
+            "p50": 306.75,
+            "p95": null,
+            "p99": null,
+            "max": 455.13,
+            "mean": 273.97,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "provider available requests": {
+          "path": "/v1/provider/available-requests",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 10,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT ProviderCategoryApplication,ProviderCategoryApplicationStatus x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfileServiceCategory x1",
+            "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest,ServiceRequestStatus,Bid,BidStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 28.56,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 677.67,
+            "p50": 1106.47,
+            "p95": null,
+            "p99": null,
+            "max": 1354.43,
+            "mean": 1018.02,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": "no-store",
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "provider bids": {
+          "path": "/v1/provider/bids",
+          "status": 200,
+          "items": 20,
+          "responseBytes": 9121,
+          "statements": 11,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Bid x1",
+            "SELECT Booking x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus x1",
+            "SELECT ServiceCategory x1",
+            "SELECT ServiceRequest x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.85,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 798.72,
+            "p50": 833.05,
+            "p95": null,
+            "p99": null,
+            "max": 1337.76,
+            "mean": 952.72,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "provider bookings": {
+          "path": "/v1/provider/bookings",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 7,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Booking x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.43,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 402.4,
+            "p50": 571.24,
+            "p95": null,
+            "p99": null,
+            "max": 621.44,
+            "mean": 547.62,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "provider portfolio": {
+          "path": "/v1/me/provider/portfolio",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 46,
+          "statements": 9,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT PlatformSetting x2",
+            "SELECT ProviderPortfolioItem x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.51,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 144.59,
+            "p50": 207.55,
+            "p95": null,
+            "p99": null,
+            "max": 370.66,
+            "mean": 225.89,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin users": {
+          "path": "/v1/admin/users",
+          "status": 200,
+          "items": 15,
+          "responseBytes": 5374,
+          "statements": 52,
+          "txControl": 16,
+          "statementLabels": [
+            "SELECT AdminAccessRequest x15",
+            "SELECT Permission x1",
+            "SELECT Role x1",
+            "SELECT Role x1",
+            "SELECT Role x7",
+            "SELECT Role x7",
+            "SELECT RolePermission x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT User x1",
+            "SELECT UserRole x15",
+            "SELECT UserRole,User,Role,AccountStatus x1"
+          ],
+          "dbTimeMs": 8.3,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 383.93,
+            "p50": 560.12,
+            "p95": null,
+            "p99": null,
+            "max": 641.58,
+            "mean": 538.74,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin providers": {
+          "path": "/v1/admin/providers",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 127,
+          "statements": 8,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Permission x1",
+            "SELECT ProviderProfile x1",
+            "SELECT ProviderProfile,ProviderProfileStatus x1",
+            "SELECT Role x1",
+            "SELECT RolePermission x1",
+            "SELECT Session x1",
+            "SELECT User x1",
+            "SELECT UserRole,User,Role,AccountStatus x1"
+          ],
+          "dbTimeMs": 0.98,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 200.18,
+            "p50": 490.23,
+            "p95": null,
+            "p99": null,
+            "max": 1461.24,
+            "mean": 714.49,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin category applications": {
+          "path": "/v1/admin/category-applications?status=PENDING",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT ProviderCategoryApplication,ProviderCategoryApplicationStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.17,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 280.12,
+            "p50": 367.94,
+            "p95": null,
+            "p99": null,
+            "max": 457.99,
+            "mean": 369.2,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin disputes": {
+          "path": "/v1/admin/disputes",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Dispute,DisputeWorkspace x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.21,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 54.09,
+            "p50": 77.94,
+            "p95": null,
+            "p99": null,
+            "max": 189.36,
+            "mean": 107.36,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin financial bookings": {
+          "path": "/v1/admin/financials/bookings",
+          "status": 200,
+          "items": 0,
+          "responseBytes": 30,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": [
+            "SELECT Booking,BookingStatus x1",
+            "SELECT Session x1",
+            "SELECT User x1"
+          ],
+          "dbTimeMs": 0.21,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 66.61,
+            "p50": 173.89,
+            "p95": null,
+            "p99": null,
+            "max": 248.16,
+            "mean": 167.62,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        },
+        "admin audit logs": {
+          "path": "/v1/admin/audit-logs",
+          "status": 200,
+          "items": 40,
+          "responseBytes": 11124,
+          "statements": 3,
+          "txControl": 0,
+          "statementLabels": ["SELECT AuditEvent x1", "SELECT Session x1", "SELECT User x1"],
+          "dbTimeMs": 0.49,
+          "latency": {
+            "n": 5,
+            "invalid": 0,
+            "min": 59.04,
+            "p50": 89.28,
+            "p95": null,
+            "p99": null,
+            "max": 195.55,
+            "mean": 103.47,
+            "confidence": "median-only"
+          },
+          "headers": {
+            "cacheControl": null,
+            "etag": "present",
+            "vary": "Origin",
+            "pragma": null
+          }
+        }
+      }
+    }
+  },
+  "plans": {
+    "auth/me (seeker)": [
+      {
+        "statement": "SELECT Role",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Role",
+            "index": "Role_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT UserRole",
+        "totalCost": 12.64,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "UserRole",
+            "index": null,
+            "estimatedRows": 4
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 16.19,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "seeker requests": [
+      {
+        "statement": "SELECT Booking",
+        "totalCost": 268.18,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Booking",
+            "index": null,
+            "estimatedRows": 51
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ServiceCategory",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ServiceCategory",
+            "index": "ServiceCategory_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ServiceRequest,Bid,BidStatus",
+        "totalCost": 2749.57,
+        "scans": [
+          {
+            "node": "Seq Scan",
+            "relation": "Bid",
+            "index": null,
+            "estimatedRows": 28896
+          },
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "ServiceRequest",
+            "index": null,
+            "estimatedRows": 1806
+          }
+        ],
+        "seqScansOnLargeTables": ["Bid (est. 28896 rows)"]
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "seeker request detail": [
+      {
+        "statement": "SELECT ServiceCategory",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ServiceCategory",
+            "index": "ServiceCategory_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Booking",
+        "totalCost": 8.33,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Booking",
+            "index": "Booking_requestId_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ServiceRequest,Bid,BidStatus",
+        "totalCost": 51.45,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ServiceRequest",
+            "index": "ServiceRequest_pkey",
+            "estimatedRows": 1
+          },
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Bid",
+            "index": null,
+            "estimatedRows": 3
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "seeker bids on a request": [
+      {
+        "statement": "SELECT ServiceCategory",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ServiceCategory",
+            "index": "ServiceCategory_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Booking",
+        "totalCost": 8.33,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Booking",
+            "index": "Booking_requestId_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Bid,ProviderProfile,BidStatus",
+        "totalCost": 31.36,
+        "scans": [
+          {
+            "node": "Seq Scan",
+            "relation": "ProviderProfile",
+            "index": null,
+            "estimatedRows": 90
+          },
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Bid",
+            "index": null,
+            "estimatedRows": 3
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 11.75,
+        "scans": [
+          {
+            "node": "Seq Scan",
+            "relation": "ProviderProfile",
+            "index": null,
+            "estimatedRows": 4
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ServiceRequest,Bid,BidStatus",
+        "totalCost": 51.45,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ServiceRequest",
+            "index": "ServiceRequest_pkey",
+            "estimatedRows": 1
+          },
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Bid",
+            "index": null,
+            "estimatedRows": 3
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "seeker bookings": [
+      {
+        "statement": "SELECT ServiceCategory",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ServiceCategory",
+            "index": "ServiceCategory_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 11.54,
+        "scans": [
+          {
+            "node": "Seq Scan",
+            "relation": "ProviderProfile",
+            "index": null,
+            "estimatedRows": 3
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ServiceRequest",
+        "totalCost": 340.86,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "ServiceRequest",
+            "index": null,
+            "estimatedRows": 51
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Booking",
+        "totalCost": 222.86,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Booking",
+            "index": null,
+            "estimatedRows": 903
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Bid",
+        "totalCost": 387.17,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Bid",
+            "index": null,
+            "estimatedRows": 51
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "seeker notifications": [
+      {
+        "statement": "SELECT Notification",
+        "totalCost": 8.01,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Notification",
+            "index": "Notification_userId_createdAt_idx",
+            "estimatedRows": 19
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "seeker conversations": [
+      {
+        "statement": "SELECT Conversation,ConversationParticipant,ConversationParticipantRole",
+        "totalCost": 20.85,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "ConversationParticipant",
+            "index": null,
+            "estimatedRows": 1
+          },
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Conversation",
+            "index": null,
+            "estimatedRows": 3
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "provider available requests": [
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 16.38,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderProfile",
+            "index": "ProviderProfile_userId_key",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ServiceCategory",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ServiceCategory",
+            "index": "ServiceCategory_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderCategoryApplication,ProviderCategoryApplicationStatus",
+        "totalCost": 8.19,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderCategoryApplication",
+            "index": "ProviderCategoryApplication_providerProfileId_status_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 16.19,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ServiceRequest,ServiceRequestStatus,Bid,BidStatus",
+        "totalCost": 1952.96,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ServiceRequest",
+            "index": "ServiceRequest_createdAt_idx",
+            "estimatedRows": 4515
+          },
+          {
+            "node": "Index Scan",
+            "relation": "Bid",
+            "index": "Bid_requestId_status_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus",
+        "totalCost": 16.2,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderWorkAccessGrant",
+            "index": "ProviderWorkAccessGrant_status_expiresAt_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 16.22,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderProfile",
+            "index": "ProviderProfile_userId_key",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderProfileServiceCategory",
+        "totalCost": 12.64,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "ProviderProfileServiceCategory",
+            "index": null,
+            "estimatedRows": 4
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "provider bids": [
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 16.38,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderProfile",
+            "index": "ProviderProfile_userId_key",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Bid",
+        "totalCost": 1162.06,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Bid",
+            "index": "Bid_submittedAt_idx",
+            "estimatedRows": 10836
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 8.26,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderProfile",
+            "index": "ProviderProfile_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Booking",
+        "totalCost": 136.83,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Booking",
+            "index": null,
+            "estimatedRows": 21
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 16.19,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus",
+        "totalCost": 16.2,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderWorkAccessGrant",
+            "index": "ProviderWorkAccessGrant_status_expiresAt_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ServiceCategory",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ServiceCategory",
+            "index": "ServiceCategory_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 16.22,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderProfile",
+            "index": "ProviderProfile_userId_key",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ServiceRequest",
+        "totalCost": 157.91,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "ServiceRequest",
+            "index": null,
+            "estimatedRows": 21
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "provider bookings": [
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 16.38,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderProfile",
+            "index": "ProviderProfile_userId_key",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Booking",
+        "totalCost": 303.48,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Booking",
+            "index": null,
+            "estimatedRows": 1806
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 16.19,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus",
+        "totalCost": 16.2,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderWorkAccessGrant",
+            "index": "ProviderWorkAccessGrant_status_expiresAt_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 16.22,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderProfile",
+            "index": "ProviderProfile_userId_key",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "provider portfolio": [
+      {
+        "statement": "SELECT ProviderPortfolioItem",
+        "totalCost": 8.19,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderPortfolioItem",
+            "index": "ProviderPortfolioItem_providerProfileId_deletedAt_position_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT PlatformSetting",
+        "totalCost": 16.19,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "PlatformSetting",
+            "index": "PlatformSetting_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 16.19,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderWorkAccessGrant,ProviderWorkAccessStatus",
+        "totalCost": 16.2,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderWorkAccessGrant",
+            "index": "ProviderWorkAccessGrant_status_expiresAt_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 16.22,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderProfile",
+            "index": "ProviderProfile_userId_key",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderProfile",
+            "index": "ProviderProfile_userId_key",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "admin users": [
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.19,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_deletedAt_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Role",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Role",
+            "index": "Role_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT UserRole,User,Role,AccountStatus",
+        "totalCost": 32.29,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "UserRole",
+            "index": null,
+            "estimatedRows": 4
+          },
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Role",
+            "index": null,
+            "estimatedRows": 3
+          },
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_deletedAt_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT RolePermission",
+        "totalCost": 18.9,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "RolePermission",
+            "index": null,
+            "estimatedRows": 9
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT AdminAccessRequest",
+        "totalCost": 9.53,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "AdminAccessRequest",
+            "index": null,
+            "estimatedRows": 2
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Role",
+        "totalCost": 13.66,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Role",
+            "index": null,
+            "estimatedRows": 2
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT UserRole",
+        "totalCost": 12.64,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "UserRole",
+            "index": null,
+            "estimatedRows": 4
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Role",
+        "totalCost": 13.66,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Role",
+            "index": null,
+            "estimatedRows": 2
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Permission",
+        "totalCost": 21.42,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Permission",
+            "index": null,
+            "estimatedRows": 18
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Role",
+        "totalCost": 15.58,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Role",
+            "index": null,
+            "estimatedRows": 3
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "admin providers": [
+      {
+        "statement": "SELECT UserRole,User,Role,AccountStatus",
+        "totalCost": 32.29,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "UserRole",
+            "index": null,
+            "estimatedRows": 4
+          },
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Role",
+            "index": null,
+            "estimatedRows": 3
+          },
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_deletedAt_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT RolePermission",
+        "totalCost": 18.9,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "RolePermission",
+            "index": null,
+            "estimatedRows": 9
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderProfile",
+        "totalCost": 8.2,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderProfile",
+            "index": "ProviderProfile_deletedAt_standingState_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT ProviderProfile,ProviderProfileStatus",
+        "totalCost": 8.45,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "ProviderProfile",
+            "index": "ProviderProfile_deletedAt_standingState_idx",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Role",
+        "totalCost": 13.66,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Role",
+            "index": null,
+            "estimatedRows": 2
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Permission",
+        "totalCost": 21.42,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "Permission",
+            "index": null,
+            "estimatedRows": 18
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "admin category applications": [
+      {
+        "statement": "SELECT ProviderCategoryApplication,ProviderCategoryApplicationStatus",
+        "totalCost": 9.54,
+        "scans": [
+          {
+            "node": "Bitmap Heap Scan",
+            "relation": "ProviderCategoryApplication",
+            "index": null,
+            "estimatedRows": 2
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "admin disputes": [
+      {
+        "statement": "SELECT Dispute,DisputeWorkspace",
+        "totalCost": 16.37,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Dispute",
+            "index": "Dispute_deletedAt_idx",
+            "estimatedRows": 1
+          },
+          {
+            "node": "Index Only Scan",
+            "relation": "DisputeWorkspace",
+            "index": "DisputeWorkspace_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "admin financial bookings": [
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Booking,BookingStatus",
+        "totalCost": 607.63,
+        "scans": [
+          {
+            "node": "Seq Scan",
+            "relation": "Booking",
+            "index": null,
+            "estimatedRows": 5418
+          }
+        ],
+        "seqScansOnLargeTables": ["Booking (est. 5418 rows)"]
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ],
+    "admin audit logs": [
+      {
+        "statement": "SELECT AuditEvent",
+        "totalCost": 30.22,
+        "scans": [
+          {
+            "node": "Seq Scan",
+            "relation": "AuditEvent",
+            "index": null,
+            "estimatedRows": 350
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT Session",
+        "totalCost": 16.18,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "Session",
+            "index": "Session_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      },
+      {
+        "statement": "SELECT User",
+        "totalCost": 8.17,
+        "scans": [
+          {
+            "node": "Index Scan",
+            "relation": "User",
+            "index": "User_pkey",
+            "estimatedRows": 1
+          }
+        ],
+        "seqScansOnLargeTables": []
+      }
+    ]
+  },
+  "pagination": {
+    "provider bids": {
+      "pages": 60,
+      "distinctItems": 1200,
+      "duplicates": 0,
+      "terminated": false,
+      "responseKeys": "items,nextCursor"
+    },
+    "seeker requests": {
+      "pages": 60,
+      "distinctItems": 1200,
+      "duplicates": 0,
+      "terminated": false,
+      "responseKeys": "items,nextCursor"
+    },
+    "seeker bookings": {
+      "pages": 46,
+      "distinctItems": 903,
+      "duplicates": 0,
+      "terminated": true,
+      "responseKeys": "items,nextCursor"
+    },
+    "provider bookings": {
+      "pages": 1,
+      "distinctItems": 0,
+      "duplicates": 0,
+      "terminated": true,
+      "responseKeys": "items,nextCursor"
+    },
+    "provider available requests": {
+      "pages": 1,
+      "distinctItems": 0,
+      "duplicates": 0,
+      "terminated": true,
+      "responseKeys": "items,nextCursor"
+    }
+  },
+  "cacheAuthorization": [
+    {
+      "name": "anonymous cannot read a seeker list",
+      "path": "/v1/me/requests",
+      "status": 401,
+      "pass": true
+    },
+    {
+      "name": "seeker B cannot read seeker A's request",
+      "path": "/v1/me/requests/:id",
+      "status": 404,
+      "pass": true
+    },
+    {
+      "name": "seeker B cannot read bids on A's request",
+      "path": "/v1/me/requests/:id/bids",
+      "status": 404,
+      "pass": true
+    },
+    {
+      "name": "seeker cannot read the admin user list",
+      "path": "/v1/admin/users",
+      "status": 403,
+      "pass": true
+    },
+    {
+      "name": "provider cannot read the admin user list",
+      "path": "/v1/admin/users",
+      "status": 403,
+      "pass": true
+    },
+    {
+      "name": "seeker cannot read provider bids",
+      "path": "/v1/provider/bids",
+      "status": 403,
+      "pass": true
+    },
+    {
+      "name": "A's ETag replayed by B on /v1/auth/me is not 304",
+      "path": "/v1/auth/me",
+      "status": 200,
+      "pass": true
+    },
+    {
+      "name": "A's own ETag on /v1/auth/me (revalidation behaviour, informational)",
+      "path": "/v1/auth/me",
+      "status": 200,
+      "pass": true
+    },
+    {
+      "name": "A's ETag replayed by B on /v1/me/requests is not 304",
+      "path": "/v1/me/requests",
+      "status": 200,
+      "pass": true
+    },
+    {
+      "name": "A's own ETag on /v1/me/requests (revalidation behaviour, informational)",
+      "path": "/v1/me/requests",
+      "status": 200,
+      "pass": true
+    },
+    {
+      "name": "A's ETag replayed by B on /v1/me/bookings is not 304",
+      "path": "/v1/me/bookings",
+      "status": 200,
+      "pass": true
+    },
+    {
+      "name": "A's own ETag on /v1/me/bookings (revalidation behaviour, informational)",
+      "path": "/v1/me/bookings",
+      "status": 200,
+      "pass": true
+    },
+    {
+      "name": "session cookies replayed after logout are refused",
+      "path": "/v1/me/requests",
+      "status": 401,
+      "pass": true
+    }
+  ]
+}

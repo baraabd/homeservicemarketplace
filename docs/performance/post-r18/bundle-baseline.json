@@ -1,0 +1,2587 @@
+{
+  "schemaVersion": 1,
+  "kind": "r27-bundle-report",
+  "label": "baseline-059c018",
+  "measuredAt": "2026-10-14T06:11:52.827Z",
+  "source": {
+    "commit": "059c018576a75837d4dfb262ee49168d9217d881",
+    "tree": "2bb84da84ab42f4f8da2776b4916e242e2355f21",
+    "branch": "feat/r27-performance-capacity",
+    "dirtyPaths": ["docs/performance/", "docs/production-readiness/r27/", "scripts/perf/post-r18/"],
+    "lockfileSha256": "724b826ea09da6e070f4721a30f5dd9145a333606fac124e0249b5ef7fe18222"
+  },
+  "host": {
+    "platform": "win32 10.0.26300",
+    "arch": "x64",
+    "cpuModel": "12th Gen Intel(R) Core(TM) i5-12450H",
+    "logicalCpus": 12,
+    "totalMemoryGiB": 15.8,
+    "freeMemoryGiBAtStart": 0.8,
+    "loadAverage": null,
+    "node": "v24.21.0",
+    "ci": "local"
+  },
+  "toolchain": {
+    "vite": "6.4.3"
+  },
+  "buildFlags": {
+    "VITE_API_URL": "http://127.0.0.1:4010"
+  },
+  "overlays": [],
+  "compression": {
+    "gzip": "zlib level 1 (nginx.conf default)",
+    "brotli": "quality 11 (lower bound)"
+  },
+  "buildWallClockMs": {
+    "value": 169249,
+    "note": "build time only; not a page-load metric"
+  },
+  "entries": ["assets/index-B8EnQzmp.js"],
+  "initial": {
+    "js": {
+      "raw": 2499,
+      "gzip": 1238,
+      "brotli": 1049
+    },
+    "css": {
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+    },
+    "files": 1,
+    "chunks": ["assets/index-B8EnQzmp.js"]
+  },
+  "shell": {
+    "root": "src/bootstrap.tsx",
+    "js": {
+      "raw": 650349,
+      "gzip": 237967,
+      "brotli": 182381
+    },
+    "css": {
+      "raw": 166891,
+      "gzip": 31557,
+      "brotli": 20537
+    },
+    "files": 3,
+    "chunks": ["assets/bootstrap-BZgvWd7R.js", "assets/index-B8EnQzmp.js"],
+    "topOwners": [
+      {
+        "owner": "motion-dom",
+        "renderedBytes": 287077
+      },
+      {
+        "owner": "react-router",
+        "renderedBytes": 230364
+      },
+      {
+        "owner": "axios",
+        "renderedBytes": 161711
+      },
+      {
+        "owner": "react-dom",
+        "renderedBytes": 134830
+      },
+      {
+        "owner": "framer-motion",
+        "renderedBytes": 99723
+      },
+      {
+        "owner": "tailwind-merge",
+        "renderedBytes": 90215
+      },
+      {
+        "owner": "@tanstack/query-core",
+        "renderedBytes": 71525
+      },
+      {
+        "owner": "sonner",
+        "renderedBytes": 63788
+      },
+      {
+        "owner": "engine.io-client",
+        "renderedBytes": 52629
+      },
+      {
+        "owner": "socket.io-client",
+        "renderedBytes": 39927
+      },
+      {
+        "owner": "web:lib/realtime",
+        "renderedBytes": 30893
+      },
+      {
+        "owner": "web:lib",
+        "renderedBytes": 23112
+      },
+      {
+        "owner": "web:app/i18n",
+        "renderedBytes": 19345
+      },
+      {
+        "owner": "web:app",
+        "renderedBytes": 18657
+      },
+      {
+        "owner": "socket.io-parser",
+        "renderedBytes": 14629
+      },
+      {
+        "owner": "engine.io-parser",
+        "renderedBytes": 11872
+      },
+      {
+        "owner": "web:app/pages",
+        "renderedBytes": 10609
+      },
+      {
+        "owner": "react",
+        "renderedBytes": 9585
+      },
+      {
+        "owner": "web:app/context",
+        "renderedBytes": 8019
+      },
+      {
+        "owner": "motion-utils",
+        "renderedBytes": 7333
+      }
+    ]
+  },
+  "journeys": [
+    {
+      "name": "public-selector",
+      "page": null,
+      "increment": null,
+      "total": {
+        "js": {
+          "raw": 650349,
+          "gzip": 237967,
+          "brotli": 182381
+        },
+        "css": {
+          "raw": 166891,
+          "gzip": 31557,
+          "brotli": 20537
+        },
+        "files": 3
+      }
+    },
+    {
+      "parent": null,
+      "name": "auth",
+      "page": "src/app/pages/AuthPages.tsx",
+      "lazyRoot": "assets/AuthPages-CXGxCa19.js",
+      "addedChunks": [
+        "assets/AuthPages-CXGxCa19.js",
+        "assets/Button-WP0--UJ2.js",
+        "assets/TextField-1F81-BLk.js",
+        "assets/auth-errors-D2bVFdZZ.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/eye-off-lP3lMUUr.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/mail-KGdcobEi.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/phone-C_dETp6C.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/useSwipe-GajXm2lM.js",
+        "assets/user-BngJ6zC7.js"
+      ],
+      "increment": {
+        "js": {
+          "raw": 52978,
+          "gzip": 19938,
+          "brotli": 15899
+        },
+        "css": {
+          "raw": 0,
+          "gzip": 0,
+          "brotli": 0
+        },
+        "files": 16,
+        "topOwners": [
+          {
+            "owner": "web:app/components/auth",
+            "renderedBytes": 41913
+          },
+          {
+            "owner": "web:app/pages",
+            "renderedBytes": 19722
+          },
+          {
+            "owner": "web:app/components/ds",
+            "renderedBytes": 14625
+          },
+          {
+            "owner": "web:lib",
+            "renderedBytes": 8041
+          },
+          {
+            "owner": "lucide-react",
+            "renderedBytes": 6701
+          },
+          {
+            "owner": "web:app/hooks",
+            "renderedBytes": 2216
+          }
+        ]
+      },
+      "total": {
+        "js": {
+          "raw": 703327,
+          "gzip": 257905,
+          "brotli": 198280
+        },
+        "css": {
+          "raw": 166891,
+          "gzip": 31557,
+          "brotli": 20537
+        },
+        "files": 19
+      }
+    },
+    {
+      "parent": null,
+      "name": "seeker-home",
+      "page": "src/app/pages/HomePage.tsx",
+      "lazyRoot": "assets/HomePage-vjyGJkF7.js",
+      "addedChunks": [
+        "assets/Button-WP0--UJ2.js",
+        "assets/DisputeEntry-BjPx9VYs.js",
+        "assets/EditProfilePage-BbW5oGt6.js",
+        "assets/HomePage-vjyGJkF7.js",
+        "assets/RequestMediaGallery-BVySU9Rs.js",
+        "assets/TextField-1F81-BLk.js",
+        "assets/address-display--ZyoobGP.js",
+        "assets/booking-copy-BCG5X2ZX.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/crosshair-DqkCsJ-u.js",
+        "assets/eye-off-lP3lMUUr.js",
+        "assets/leaflet-CD5WShFm.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/mail-KGdcobEi.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/media-url-B3nMmVya.js",
+        "assets/phone-C_dETp6C.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/reverse-geocode-DqSbDvVe.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/send-attempt-InhBKyti.js",
+        "assets/settings-CDqglht7.js",
+        "assets/star-C9bEyA0x.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/use-auth-identity-vhfqYF87.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/useOpenBookingConversation--Tzmm5dW.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/useSwipe-GajXm2lM.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/x-o-VGppo7.js"
+      ],
+      "increment": {
+        "js": {
+          "raw": 381843,
+          "gzip": 131961,
+          "brotli": 97603
+        },
+        "css": {
+          "raw": 21577,
+          "gzip": 8858,
+          "brotli": 7194
+        },
+        "files": 36,
+        "topOwners": [
+          {
+            "owner": "leaflet",
+            "renderedBytes": 480463
+          },
+          {
+            "owner": "web:app/components/home",
+            "renderedBytes": 159464
+          },
+          {
+            "owner": "web:app/components/profile",
+            "renderedBytes": 105013
+          },
+          {
+            "owner": "web:app/components/ds",
+            "renderedBytes": 31721
+          },
+          {
+            "owner": "lucide-react",
+            "renderedBytes": 22800
+          },
+          {
+            "owner": "web:app/components/chat",
+            "renderedBytes": 16521
+          },
+          {
+            "owner": "web:app/components/notifications",
+            "renderedBytes": 14324
+          },
+          {
+            "owner": "web:app/hooks/seeker",
+            "renderedBytes": 13360
+          },
+          {
+            "owner": "web:lib",
+            "renderedBytes": 9264
+          },
+          {
+            "owner": "@react-leaflet/core",
+            "renderedBytes": 8104
+          },
+          {
+            "owner": "web:lib/seeker",
+            "renderedBytes": 6565
+          },
+          {
+            "owner": "web:app/components/ui",
+            "renderedBytes": 5968
+          }
+        ]
+      },
+      "total": {
+        "js": {
+          "raw": 1032192,
+          "gzip": 369928,
+          "brotli": 279984
+        },
+        "css": {
+          "raw": 188468,
+          "gzip": 40415,
+          "brotli": 27731
+        },
+        "files": 39
+      }
+    },
+    {
+      "parent": null,
+      "name": "provider-workspace",
+      "page": "src/app/pages/ProviderPage.tsx",
+      "lazyRoot": "assets/ProviderPage-Cj0rn1V-.js",
+      "addedChunks": [
+        "assets/DisputeEntry-BjPx9VYs.js",
+        "assets/ProviderPage-Cj0rn1V-.js",
+        "assets/available-jobs-adapter-DVdZ--l0.js",
+        "assets/badge-check-CaNzKZuT.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/use-auth-identity-vhfqYF87.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/x-o-VGppo7.js"
+      ],
+      "increment": {
+        "js": {
+          "raw": 128663,
+          "gzip": 47194,
+          "brotli": 36354
+        },
+        "css": {
+          "raw": 5970,
+          "gzip": 1966,
+          "brotli": 1471
+        },
+        "files": 20,
+        "topOwners": [
+          {
+            "owner": "web:app/components/provider",
+            "renderedBytes": 100662
+          },
+          {
+            "owner": "web:app/features/provider-onboarding-v2",
+            "renderedBytes": 48973
+          },
+          {
+            "owner": "web:app/hooks/provider",
+            "renderedBytes": 16139
+          },
+          {
+            "owner": "lucide-react",
+            "renderedBytes": 12423
+          },
+          {
+            "owner": "web:app/features/provider-ui",
+            "renderedBytes": 11262
+          },
+          {
+            "owner": "web:lib/provider",
+            "renderedBytes": 8151
+          },
+          {
+            "owner": "@tanstack/query-core",
+            "renderedBytes": 3782
+          },
+          {
+            "owner": "web:lib",
+            "renderedBytes": 2632
+          },
+          {
+            "owner": "@tanstack/react-query",
+            "renderedBytes": 908
+          },
+          {
+            "owner": "web:app/pages",
+            "renderedBytes": 321
+          },
+          {
+            "owner": "framer-motion",
+            "renderedBytes": 211
+          },
+          {
+            "owner": "web:app/features/disputes",
+            "renderedBytes": 72
+          }
+        ]
+      },
+      "total": {
+        "js": {
+          "raw": 779012,
+          "gzip": 285161,
+          "brotli": 218735
+        },
+        "css": {
+          "raw": 172861,
+          "gzip": 33523,
+          "brotli": 22008
+        },
+        "files": 23
+      }
+    },
+    {
+      "parent": null,
+      "name": "provider-onboarding",
+      "page": "src/app/pages/ProviderOnboardingPage.tsx",
+      "lazyRoot": "assets/ProviderOnboardingPage-PgG-d8-B.js",
+      "addedChunks": [
+        "assets/Button-WP0--UJ2.js",
+        "assets/ProviderOnboardingPage-PgG-d8-B.js",
+        "assets/ProviderVerificationScreen-BJyMq0Sk.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/image-CKpXag9T.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/locate-fixed-BlRsip1G.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/media-url-B3nMmVya.js",
+        "assets/reverse-geocode-DqSbDvVe.js",
+        "assets/review-correction-fields-CHQzzsXd.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/star-C9bEyA0x.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/upload-CXN3-xSY.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/verification-copy-F8Y3Iqku.js",
+        "assets/x-o-VGppo7.js"
+      ],
+      "increment": {
+        "js": {
+          "raw": 245287,
+          "gzip": 93633,
+          "brotli": 69710
+        },
+        "css": {
+          "raw": 0,
+          "gzip": 0,
+          "brotli": 0
+        },
+        "files": 25,
+        "topOwners": [
+          {
+            "owner": "web:app/features/provider-onboarding-v2",
+            "renderedBytes": 251216
+          },
+          {
+            "owner": "web:app/features/provider-verification",
+            "renderedBytes": 25265
+          },
+          {
+            "owner": "web:app/features/provider-ui",
+            "renderedBytes": 20146
+          },
+          {
+            "owner": "web:app/hooks/provider",
+            "renderedBytes": 16563
+          },
+          {
+            "owner": "lucide-react",
+            "renderedBytes": 15850
+          },
+          {
+            "owner": "web:app/features/admin-verification",
+            "renderedBytes": 10380
+          },
+          {
+            "owner": "web:lib/provider",
+            "renderedBytes": 8553
+          },
+          {
+            "owner": "web:app/components/ds",
+            "renderedBytes": 5900
+          },
+          {
+            "owner": "web:lib",
+            "renderedBytes": 5870
+          },
+          {
+            "owner": "@tanstack/query-core",
+            "renderedBytes": 3782
+          },
+          {
+            "owner": "@radix-ui/react-progress",
+            "renderedBytes": 3315
+          },
+          {
+            "owner": "@radix-ui/react-context",
+            "renderedBytes": 3268
+          }
+        ]
+      },
+      "total": {
+        "js": {
+          "raw": 895636,
+          "gzip": 331600,
+          "brotli": 252091
+        },
+        "css": {
+          "raw": 166891,
+          "gzip": 31557,
+          "brotli": 20537
+        },
+        "files": 28
+      }
+    },
+    {
+      "parent": null,
+      "name": "admin",
+      "page": "src/app/pages/AdminPage.tsx",
+      "lazyRoot": "assets/AdminPage-CjK3V3wa.js",
+      "addedChunks": [
+        "assets/AdminPage-CjK3V3wa.js",
+        "assets/AreaChart-F-U5gZJk.js",
+        "assets/WorkspacePanel-BbK3Jz2s.js",
+        "assets/auth-errors-D2bVFdZZ.js",
+        "assets/badge-check-CaNzKZuT.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/dollar-sign-BMqdsPC1.js",
+        "assets/file-text-Duv_rFdj.js",
+        "assets/image-CKpXag9T.js",
+        "assets/index-CtT2zeii.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/mail-KGdcobEi.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/review-correction-fields-CHQzzsXd.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/settings-CDqglht7.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/upload-CXN3-xSY.js",
+        "assets/use-auth-identity-vhfqYF87.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/useInfiniteQuery-ErfexTlz.js",
+        "assets/verification-copy-F8Y3Iqku.js",
+        "assets/x-o-VGppo7.js"
+      ],
+      "increment": {
+        "js": {
+          "raw": 813237,
+          "gzip": 267887,
+          "brotli": 192030
+        },
+        "css": {
+          "raw": 42381,
+          "gzip": 11728,
+          "brotli": 8364
+        },
+        "files": 32,
+        "topOwners": [
+          {
+            "owner": "recharts",
+            "renderedBytes": 521081
+          },
+          {
+            "owner": "lodash",
+            "renderedBytes": 191339
+          },
+          {
+            "owner": "web:app/features/admin-provider-review",
+            "renderedBytes": 173299
+          },
+          {
+            "owner": "web:app/features/disputes",
+            "renderedBytes": 113243
+          },
+          {
+            "owner": "web:app/components/admin",
+            "renderedBytes": 104406
+          },
+          {
+            "owner": "web:app/features/admin-verification",
+            "renderedBytes": 82236
+          },
+          {
+            "owner": "web:app/features/admin-directory",
+            "renderedBytes": 63180
+          },
+          {
+            "owner": "decimal.js-light",
+            "renderedBytes": 49577
+          },
+          {
+            "owner": "react-smooth",
+            "renderedBytes": 38616
+          },
+          {
+            "owner": "d3-scale",
+            "renderedBytes": 28712
+          },
+          {
+            "owner": "lucide-react",
+            "renderedBytes": 27262
+          },
+          {
+            "owner": "d3-shape",
+            "renderedBytes": 24430
+          }
+        ]
+      },
+      "total": {
+        "js": {
+          "raw": 1463586,
+          "gzip": 505854,
+          "brotli": 374411
+        },
+        "css": {
+          "raw": 209272,
+          "gzip": 43285,
+          "brotli": 28901
+        },
+        "files": 35
+      }
+    },
+    {
+      "parent": null,
+      "name": "disputes",
+      "page": "src/app/pages/DisputesPage.tsx",
+      "lazyRoot": "assets/DisputesPage-BR7-Prke.js",
+      "addedChunks": [
+        "assets/DisputesPage-BR7-Prke.js",
+        "assets/WorkspacePanel-BbK3Jz2s.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/file-text-Duv_rFdj.js",
+        "assets/index-CtT2zeii.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/upload-CXN3-xSY.js",
+        "assets/useInfiniteQuery-ErfexTlz.js",
+        "assets/x-o-VGppo7.js"
+      ],
+      "increment": {
+        "js": {
+          "raw": 147556,
+          "gzip": 55145,
+          "brotli": 42916
+        },
+        "css": {
+          "raw": 25076,
+          "gzip": 7259,
+          "brotli": 5233
+        },
+        "files": 14,
+        "topOwners": [
+          {
+            "owner": "web:app/features/disputes",
+            "renderedBytes": 149225
+          },
+          {
+            "owner": "react-remove-scroll",
+            "renderedBytes": 15115
+          },
+          {
+            "owner": "@radix-ui/react-dialog",
+            "renderedBytes": 12246
+          },
+          {
+            "owner": "@radix-ui/react-roving-focus",
+            "renderedBytes": 8525
+          },
+          {
+            "owner": "@radix-ui/react-dismissable-layer",
+            "renderedBytes": 8461
+          },
+          {
+            "owner": "@radix-ui/react-focus-scope",
+            "renderedBytes": 7747
+          },
+          {
+            "owner": "lucide-react",
+            "renderedBytes": 7036
+          },
+          {
+            "owner": "@tanstack/query-core",
+            "renderedBytes": 5800
+          },
+          {
+            "owner": "@radix-ui/react-tabs",
+            "renderedBytes": 5710
+          },
+          {
+            "owner": "aria-hidden",
+            "renderedBytes": 5359
+          },
+          {
+            "owner": "web:app/features/case-ui",
+            "renderedBytes": 5134
+          },
+          {
+            "owner": "@radix-ui/react-presence",
+            "renderedBytes": 4647
+          }
+        ]
+      },
+      "total": {
+        "js": {
+          "raw": 797905,
+          "gzip": 293112,
+          "brotli": 225297
+        },
+        "css": {
+          "raw": 191967,
+          "gzip": 38816,
+          "brotli": 25770
+        },
+        "files": 17
+      }
+    },
+    {
+      "parent": null,
+      "name": "job-wizard",
+      "page": "src/app/components/wizard/JobWizardModal.tsx",
+      "lazyRoot": "assets/JobWizardModal-B7s72ST2.js",
+      "addedChunks": [
+        "assets/Button-WP0--UJ2.js",
+        "assets/JobWizardModal-B7s72ST2.js",
+        "assets/TextField-1F81-BLk.js",
+        "assets/address-display--ZyoobGP.js",
+        "assets/available-jobs-adapter-DVdZ--l0.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/file-text-Duv_rFdj.js",
+        "assets/image-CKpXag9T.js",
+        "assets/leaflet-CD5WShFm.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/locate-fixed-BlRsip1G.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/reverse-geocode-DqSbDvVe.js",
+        "assets/upload-CXN3-xSY.js",
+        "assets/useSwipe-GajXm2lM.js",
+        "assets/x-o-VGppo7.js"
+      ],
+      "increment": {
+        "js": {
+          "raw": 217169,
+          "gzip": 81012,
+          "brotli": 63040
+        },
+        "css": {
+          "raw": 15607,
+          "gzip": 6892,
+          "brotli": 5723
+        },
+        "files": 19,
+        "topOwners": [
+          {
+            "owner": "leaflet",
+            "renderedBytes": 480463
+          },
+          {
+            "owner": "web:app/components/wizard",
+            "renderedBytes": 45856
+          },
+          {
+            "owner": "web:app/components/ds",
+            "renderedBytes": 21431
+          },
+          {
+            "owner": "lucide-react",
+            "renderedBytes": 8833
+          },
+          {
+            "owner": "web:lib",
+            "renderedBytes": 8705
+          },
+          {
+            "owner": "@react-leaflet/core",
+            "renderedBytes": 8104
+          },
+          {
+            "owner": "@tanstack/query-core",
+            "renderedBytes": 3782
+          },
+          {
+            "owner": "react-leaflet",
+            "renderedBytes": 3760
+          },
+          {
+            "owner": "web:lib/provider",
+            "renderedBytes": 3592
+          },
+          {
+            "owner": "web:app/hooks/seeker",
+            "renderedBytes": 2700
+          },
+          {
+            "owner": "web:lib/request-media",
+            "renderedBytes": 2371
+          },
+          {
+            "owner": "web:app/hooks",
+            "renderedBytes": 2216
+          }
+        ]
+      },
+      "total": {
+        "js": {
+          "raw": 867518,
+          "gzip": 318979,
+          "brotli": 245421
+        },
+        "css": {
+          "raw": 182498,
+          "gzip": 38449,
+          "brotli": 26260
+        },
+        "files": 22
+      }
+    },
+    {
+      "parent": "admin",
+      "name": "admin-dashboard-charts",
+      "page": "src/app/components/admin/DashboardOverview.tsx",
+      "lazyRoot": "assets/AdminPage-CjK3V3wa.js",
+      "addedChunks": [],
+      "increment": {
+        "js": {
+          "raw": 0,
+          "gzip": 0,
+          "brotli": 0
+        },
+        "css": {
+          "raw": 0,
+          "gzip": 0,
+          "brotli": 0
+        },
+        "files": 0,
+        "topOwners": []
+      },
+      "total": {
+        "js": {
+          "raw": 1463586,
+          "gzip": 505854,
+          "brotli": 374411
+        },
+        "css": {
+          "raw": 209272,
+          "gzip": 43285,
+          "brotli": 28901
+        },
+        "files": 35
+      }
+    },
+    {
+      "name": "address-map",
+      "page": "src/app/components/ds/LocationMap.tsx",
+      "lazyRoot": null,
+      "increment": null,
+      "total": null
+    }
+  ],
+  "heavyLibraries": {
+    "recharts": {
+      "chunks": ["assets/AreaChart-F-U5gZJk.js"],
+      "renderedBytesInShell": 0,
+      "renderedBytesByJourney": {
+        "admin": 521081
+      }
+    },
+    "pdfjs-dist": {
+      "chunks": ["assets/AdminPage-CjK3V3wa.js", "assets/pdf-CE_K4jFx.js"],
+      "renderedBytesInShell": 0,
+      "renderedBytesByJourney": {
+        "admin": 45
+      }
+    },
+    "leaflet": {
+      "chunks": [
+        "assets/LiveJobsScreen-CIuTJeI0.js",
+        "assets/ServiceAreaMap-CK9bEI0g.js",
+        "assets/address-display--ZyoobGP.js",
+        "assets/leaflet-CD5WShFm.js"
+      ],
+      "renderedBytesInShell": 0,
+      "renderedBytesByJourney": {
+        "seeker-home": 484223,
+        "job-wizard": 484223
+      }
+    },
+    "@mui/material": {
+      "chunks": [],
+      "renderedBytesInShell": 0,
+      "renderedBytesByJourney": {}
+    },
+    "@mui/icons-material": {
+      "chunks": [],
+      "renderedBytesInShell": 0,
+      "renderedBytesByJourney": {}
+    },
+    "motion/framer-motion": {
+      "chunks": ["assets/ProviderPage-Cj0rn1V-.js", "assets/bootstrap-BZgvWd7R.js"],
+      "renderedBytesInShell": 386800,
+      "renderedBytesByJourney": {
+        "provider-workspace": 211
+      }
+    },
+    "socket.io-client": {
+      "chunks": ["assets/bootstrap-BZgvWd7R.js"],
+      "renderedBytesInShell": 92556,
+      "renderedBytesByJourney": {}
+    },
+    "lucide-react": {
+      "chunks": [
+        "assets/AdminPage-CjK3V3wa.js",
+        "assets/AreaChart-F-U5gZJk.js",
+        "assets/AuthPages-CXGxCa19.js",
+        "assets/BookingMessageButton-BjU7IVlP.js",
+        "assets/DisputeEntry-BjPx9VYs.js",
+        "assets/HomePage-vjyGJkF7.js",
+        "assets/JobWizardModal-B7s72ST2.js",
+        "assets/LiveJobsScreen-CIuTJeI0.js",
+        "assets/ProviderOnboardingPage-PgG-d8-B.js",
+        "assets/ProviderPage-Cj0rn1V-.js",
+        "assets/ProviderProfileScreen-CgLbPtY1.js",
+        "assets/RequestMediaGallery-BVySU9Rs.js",
+        "assets/ServiceAreaMap-CK9bEI0g.js",
+        "assets/WorkspacePanel-BbK3Jz2s.js",
+        "assets/address-display--ZyoobGP.js",
+        "assets/badge-check-CaNzKZuT.js",
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/crosshair-DqkCsJ-u.js",
+        "assets/dollar-sign-BMqdsPC1.js",
+        "assets/eye-off-lP3lMUUr.js",
+        "assets/file-text-Duv_rFdj.js",
+        "assets/image-CKpXag9T.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/locate-fixed-BlRsip1G.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/mail-KGdcobEi.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/phone-C_dETp6C.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/review-correction-fields-CHQzzsXd.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/settings-CDqglht7.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/star-C9bEyA0x.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/upload-CXN3-xSY.js",
+        "assets/use-auth-identity-vhfqYF87.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/x-o-VGppo7.js"
+      ],
+      "renderedBytesInShell": 6718,
+      "renderedBytesByJourney": {
+        "auth": 6701,
+        "seeker-home": 22800,
+        "provider-workspace": 12423,
+        "provider-onboarding": 15850,
+        "admin": 27262,
+        "disputes": 7036,
+        "job-wizard": 8833
+      }
+    }
+  },
+  "chunks": {
+    "assets/address-display--ZyoobGP.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/leaflet-CD5WShFm.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/x-o-VGppo7.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 13690,
+        "gzip": 8070,
+        "brotli": 7227
+      },
+      "moduleCount": 14
+    },
+    "assets/AdminPage-CjK3V3wa.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/pages/AdminPage.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/index-CtT2zeii.js",
+        "assets/use-auth-identity-vhfqYF87.js",
+        "assets/auth-errors-D2bVFdZZ.js",
+        "assets/x-o-VGppo7.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/review-correction-fields-CHQzzsXd.js",
+        "assets/WorkspacePanel-BbK3Jz2s.js",
+        "assets/settings-CDqglht7.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/badge-check-CaNzKZuT.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/useInfiniteQuery-ErfexTlz.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/verification-copy-F8Y3Iqku.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/file-text-Duv_rFdj.js",
+        "assets/image-CKpXag9T.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/mail-KGdcobEi.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/dollar-sign-BMqdsPC1.js",
+        "assets/AreaChart-F-U5gZJk.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/upload-CXN3-xSY.js"
+      ],
+      "dynamicImports": ["assets/pdf-CE_K4jFx.js"],
+      "css": ["assets/AdminPage-Jf2GgEBO.css", "assets/case-ui-CDJEaR__.css"],
+      "sizes": {
+        "raw": 278843,
+        "gzip": 89583,
+        "brotli": 60106
+      },
+      "moduleCount": 112
+    },
+    "assets/AreaChart-F-U5gZJk.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 392810,
+        "gzip": 122430,
+        "brotli": 88116
+      },
+      "moduleCount": 417
+    },
+    "assets/auth-errors-D2bVFdZZ.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 2481,
+        "gzip": 981,
+        "brotli": 729
+      },
+      "moduleCount": 1
+    },
+    "assets/AuthPages-CXGxCa19.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/pages/AuthPages.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/auth-errors-D2bVFdZZ.js",
+        "assets/Button-WP0--UJ2.js",
+        "assets/TextField-1F81-BLk.js",
+        "assets/useSwipe-GajXm2lM.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/mail-KGdcobEi.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/eye-off-lP3lMUUr.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/phone-C_dETp6C.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/index-B8EnQzmp.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 36042,
+        "gzip": 11939,
+        "brotli": 9051
+      },
+      "moduleCount": 6
+    },
+    "assets/available-jobs-adapter-DVdZ--l0.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 2085,
+        "gzip": 1121,
+        "brotli": 933
+      },
+      "moduleCount": 1
+    },
+    "assets/badge-check-CaNzKZuT.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 493,
+        "gzip": 325,
+        "brotli": 275
+      },
+      "moduleCount": 1
+    },
+    "assets/booking-copy-BCG5X2ZX.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 4084,
+        "gzip": 1894,
+        "brotli": 1434
+      },
+      "moduleCount": 1
+    },
+    "assets/BookingMessageButton-BjU7IVlP.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/useProviderBookings-453wuQvD.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/index-CeIRT-7i.js",
+        "assets/booking-copy-BCG5X2ZX.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/x-o-VGppo7.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/useOpenBookingConversation--Tzmm5dW.js",
+        "assets/provider-chat-api-CO9KNUBx.js",
+        "assets/DisputeEntry-BjPx9VYs.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 5848,
+        "gzip": 2686,
+        "brotli": 2209
+      },
+      "moduleCount": 4
+    },
+    "assets/bootstrap-BZgvWd7R.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": null,
+      "imports": ["assets/index-B8EnQzmp.js"],
+      "dynamicImports": [
+        "assets/JobWizardModal-B7s72ST2.js",
+        "assets/DisputesPage-BR7-Prke.js",
+        "assets/HomePage-vjyGJkF7.js",
+        "assets/ProviderPage-Cj0rn1V-.js",
+        "assets/AdminPage-CjK3V3wa.js",
+        "assets/AuthPages-CXGxCa19.js",
+        "assets/AuthPages-CXGxCa19.js",
+        "assets/AuthPages-CXGxCa19.js",
+        "assets/AuthPages-CXGxCa19.js",
+        "assets/AuthPages-CXGxCa19.js",
+        "assets/AuthPages-CXGxCa19.js",
+        "assets/ProviderOnboardingPage-PgG-d8-B.js",
+        "assets/ProviderOnboardingPage-PgG-d8-B.js",
+        "assets/ProviderOnboardingPage-PgG-d8-B.js",
+        "assets/ProviderOnboardingPage-PgG-d8-B.js"
+      ],
+      "css": ["assets/bootstrap-CzrnSEUt.css"],
+      "sizes": {
+        "raw": 647850,
+        "gzip": 236729,
+        "brotli": 181332
+      },
+      "moduleCount": 456
+    },
+    "assets/Button-WP0--UJ2.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 4272,
+        "gzip": 1316,
+        "brotli": 1061
+      },
+      "moduleCount": 1
+    },
+    "assets/chevron-left-DSPFvUi8.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 307,
+        "gzip": 255,
+        "brotli": 245
+      },
+      "moduleCount": 1
+    },
+    "assets/circle-alert-CIEibI5R.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 427,
+        "gzip": 298,
+        "brotli": 286
+      },
+      "moduleCount": 1
+    },
+    "assets/circle-check-Be8bq0zR.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 355,
+        "gzip": 278,
+        "brotli": 231
+      },
+      "moduleCount": 1
+    },
+    "assets/clock-CJoPnW53.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 360,
+        "gzip": 280,
+        "brotli": 229
+      },
+      "moduleCount": 1
+    },
+    "assets/crosshair-DqkCsJ-u.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 530,
+        "gzip": 334,
+        "brotli": 269
+      },
+      "moduleCount": 1
+    },
+    "assets/DisputeEntry-BjPx9VYs.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": ["assets/case-ui-CDJEaR__.css"],
+      "sizes": {
+        "raw": 1340,
+        "gzip": 595,
+        "brotli": 524
+      },
+      "moduleCount": 4
+    },
+    "assets/DisputesPage-BR7-Prke.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/pages/DisputesPage.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/WorkspacePanel-BbK3Jz2s.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/x-o-VGppo7.js",
+        "assets/useInfiniteQuery-ErfexTlz.js",
+        "assets/upload-CXN3-xSY.js",
+        "assets/index-CtT2zeii.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/file-text-Duv_rFdj.js"
+      ],
+      "dynamicImports": [],
+      "css": ["assets/case-ui-CDJEaR__.css"],
+      "sizes": {
+        "raw": 29538,
+        "gzip": 10782,
+        "brotli": 8221
+      },
+      "moduleCount": 6
+    },
+    "assets/dollar-sign-BMqdsPC1.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 396,
+        "gzip": 306,
+        "brotli": 257
+      },
+      "moduleCount": 1
+    },
+    "assets/EditProfilePage-BbW5oGt6.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/TextField-1F81-BLk.js",
+        "assets/Button-WP0--UJ2.js",
+        "assets/x-o-VGppo7.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/reverse-geocode-DqSbDvVe.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/phone-C_dETp6C.js",
+        "assets/mail-KGdcobEi.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/crosshair-DqkCsJ-u.js",
+        "assets/circle-check-Be8bq0zR.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 13255,
+        "gzip": 5280,
+        "brotli": 4327
+      },
+      "moduleCount": 3
+    },
+    "assets/eye-off-lP3lMUUr.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 607,
+        "gzip": 390,
+        "brotli": 357
+      },
+      "moduleCount": 1
+    },
+    "assets/file-text-Duv_rFdj.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 510,
+        "gzip": 329,
+        "brotli": 283
+      },
+      "moduleCount": 1
+    },
+    "assets/HomePage-vjyGJkF7.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/pages/HomePage.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/DisputeEntry-BjPx9VYs.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/address-display--ZyoobGP.js",
+        "assets/booking-copy-BCG5X2ZX.js",
+        "assets/useSwipe-GajXm2lM.js",
+        "assets/x-o-VGppo7.js",
+        "assets/send-attempt-InhBKyti.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/star-C9bEyA0x.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/RequestMediaGallery-BVySU9Rs.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/eye-off-lP3lMUUr.js",
+        "assets/useOpenBookingConversation--Tzmm5dW.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/use-auth-identity-vhfqYF87.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/EditProfilePage-BbW5oGt6.js",
+        "assets/Button-WP0--UJ2.js",
+        "assets/reverse-geocode-DqSbDvVe.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/settings-CDqglht7.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/leaflet-CD5WShFm.js",
+        "assets/media-url-B3nMmVya.js",
+        "assets/TextField-1F81-BLk.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/phone-C_dETp6C.js",
+        "assets/mail-KGdcobEi.js",
+        "assets/crosshair-DqkCsJ-u.js"
+      ],
+      "dynamicImports": [],
+      "css": ["assets/case-ui-CDJEaR__.css"],
+      "sizes": {
+        "raw": 163430,
+        "gzip": 47740,
+        "brotli": 31352
+      },
+      "moduleCount": 43
+    },
+    "assets/image-CKpXag9T.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 446,
+        "gzip": 333,
+        "brotli": 276
+      },
+      "moduleCount": 1
+    },
+    "assets/index-B8EnQzmp.js": {
+      "isEntry": true,
+      "isDynamicEntry": false,
+      "facadeModuleId": "index.html",
+      "imports": [],
+      "dynamicImports": ["assets/bootstrap-BZgvWd7R.js"],
+      "css": [],
+      "sizes": {
+        "raw": 2499,
+        "gzip": 1238,
+        "brotli": 1049
+      },
+      "moduleCount": 4
+    },
+    "assets/index-CeIRT-7i.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/index-CtT2zeii.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 2940,
+        "gzip": 1248,
+        "brotli": 1022
+      },
+      "moduleCount": 1
+    },
+    "assets/index-CtT2zeii.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js", "assets/index-NdzDSb5f.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 28665,
+        "gzip": 10888,
+        "brotli": 8950
+      },
+      "moduleCount": 33
+    },
+    "assets/index-NdzDSb5f.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 1852,
+        "gzip": 899,
+        "brotli": 796
+      },
+      "moduleCount": 2
+    },
+    "assets/JobWizardModal-B7s72ST2.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/components/wizard/JobWizardModal.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/leaflet-CD5WShFm.js",
+        "assets/Button-WP0--UJ2.js",
+        "assets/address-display--ZyoobGP.js",
+        "assets/available-jobs-adapter-DVdZ--l0.js",
+        "assets/TextField-1F81-BLk.js",
+        "assets/useSwipe-GajXm2lM.js",
+        "assets/reverse-geocode-DqSbDvVe.js",
+        "assets/x-o-VGppo7.js",
+        "assets/locate-fixed-BlRsip1G.js",
+        "assets/upload-CXN3-xSY.js",
+        "assets/image-CKpXag9T.js",
+        "assets/file-text-Duv_rFdj.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/index-B8EnQzmp.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 27904,
+        "gzip": 10244,
+        "brotli": 8158
+      },
+      "moduleCount": 7
+    },
+    "assets/leaflet-CD5WShFm.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": ["assets/leaflet-CIGW-MKW.css"],
+      "sizes": {
+        "raw": 154343,
+        "gzip": 52662,
+        "brotli": 39094
+      },
+      "moduleCount": 19
+    },
+    "assets/LiveJobsScreen-CIuTJeI0.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/components/provider/screens/LiveJobsScreen.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/useMyBids-CKMbV83g.js",
+        "assets/available-jobs-adapter-DVdZ--l0.js",
+        "assets/RequestMediaGallery-BVySU9Rs.js",
+        "assets/media-url-B3nMmVya.js",
+        "assets/leaflet-CD5WShFm.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/star-C9bEyA0x.js",
+        "assets/x-o-VGppo7.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/dollar-sign-BMqdsPC1.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/useInfiniteQuery-ErfexTlz.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 24635,
+        "gzip": 8778,
+        "brotli": 6827
+      },
+      "moduleCount": 5
+    },
+    "assets/loader-circle-DRSYpo9p.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 321,
+        "gzip": 265,
+        "brotli": 225
+      },
+      "moduleCount": 1
+    },
+    "assets/locate-fixed-BlRsip1G.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 952,
+        "gzip": 449,
+        "brotli": 385
+      },
+      "moduleCount": 2
+    },
+    "assets/lock-D2mmiKSK.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 383,
+        "gzip": 303,
+        "brotli": 250
+      },
+      "moduleCount": 1
+    },
+    "assets/mail-KGdcobEi.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 392,
+        "gzip": 310,
+        "brotli": 265
+      },
+      "moduleCount": 1
+    },
+    "assets/map-pin-VpOreZ1-.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 690,
+        "gzip": 385,
+        "brotli": 340
+      },
+      "moduleCount": 2
+    },
+    "assets/media-url-B3nMmVya.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 345,
+        "gzip": 255,
+        "brotli": 217
+      },
+      "moduleCount": 1
+    },
+    "assets/MyBidsScreen-D1Mg6HDY.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/components/provider/screens/MyBidsScreen.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/useMyBids-CKMbV83g.js",
+        "assets/available-jobs-adapter-DVdZ--l0.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/BookingMessageButton-BjU7IVlP.js",
+        "assets/booking-copy-BCG5X2ZX.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/DisputeEntry-BjPx9VYs.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/ProviderPage-Cj0rn1V-.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/x-o-VGppo7.js",
+        "assets/useInfiniteQuery-ErfexTlz.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/useProviderBookings-453wuQvD.js",
+        "assets/index-CeIRT-7i.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/index-CtT2zeii.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/useOpenBookingConversation--Tzmm5dW.js",
+        "assets/provider-chat-api-CO9KNUBx.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/use-auth-identity-vhfqYF87.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/badge-check-CaNzKZuT.js"
+      ],
+      "dynamicImports": [],
+      "css": ["assets/case-ui-CDJEaR__.css"],
+      "sizes": {
+        "raw": 12531,
+        "gzip": 4736,
+        "brotli": 3833
+      },
+      "moduleCount": 1
+    },
+    "assets/pdf-CE_K4jFx.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "../../node_modules/.pnpm/pdfjs-dist@5.4.624/node_modules/pdfjs-dist/build/pdf.mjs",
+      "imports": [],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 445494,
+        "gzip": 151365,
+        "brotli": 109627
+      },
+      "moduleCount": 1
+    },
+    "assets/phone-C_dETp6C.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 571,
+        "gzip": 372,
+        "brotli": 340
+      },
+      "moduleCount": 1
+    },
+    "assets/plus-CkXUTLK-.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 330,
+        "gzip": 261,
+        "brotli": 223
+      },
+      "moduleCount": 1
+    },
+    "assets/provider-chat-api-CO9KNUBx.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 570,
+        "gzip": 278,
+        "brotli": 216
+      },
+      "moduleCount": 1
+    },
+    "assets/ProviderBookingDetailScreen-EcqDj4_Y.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/components/provider/screens/ProviderBookingDetailScreen.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/useProviderBookings-453wuQvD.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/BookingMessageButton-BjU7IVlP.js",
+        "assets/booking-copy-BCG5X2ZX.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/x-o-VGppo7.js",
+        "assets/useInfiniteQuery-ErfexTlz.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/index-CeIRT-7i.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/index-CtT2zeii.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/useOpenBookingConversation--Tzmm5dW.js",
+        "assets/provider-chat-api-CO9KNUBx.js",
+        "assets/DisputeEntry-BjPx9VYs.js"
+      ],
+      "dynamicImports": [],
+      "css": ["assets/case-ui-CDJEaR__.css"],
+      "sizes": {
+        "raw": 6054,
+        "gzip": 2630,
+        "brotli": 2200
+      },
+      "moduleCount": 1
+    },
+    "assets/ProviderBookingsScreen-DtCqO2uE.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/components/provider/screens/ProviderBookingsScreen.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/useProviderBookings-453wuQvD.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/booking-copy-BCG5X2ZX.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/x-o-VGppo7.js",
+        "assets/useInfiniteQuery-ErfexTlz.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/use-service-categories-Dm58EUpv.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 5906,
+        "gzip": 2706,
+        "brotli": 2223
+      },
+      "moduleCount": 1
+    },
+    "assets/ProviderChatScreen-BJsL_XKs.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/components/provider/screens/ProviderChatScreen.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/x-o-VGppo7.js",
+        "assets/provider-chat-api-CO9KNUBx.js",
+        "assets/available-jobs-adapter-DVdZ--l0.js",
+        "assets/send-attempt-InhBKyti.js",
+        "assets/DisputeEntry-BjPx9VYs.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/index-B8EnQzmp.js"
+      ],
+      "dynamicImports": [],
+      "css": ["assets/case-ui-CDJEaR__.css"],
+      "sizes": {
+        "raw": 7595,
+        "gzip": 2996,
+        "brotli": 2439
+      },
+      "moduleCount": 2
+    },
+    "assets/ProviderOnboardingPage-PgG-d8-B.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": null,
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/x-o-VGppo7.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/ProviderVerificationScreen-BJyMq0Sk.js",
+        "assets/image-CKpXag9T.js",
+        "assets/review-correction-fields-CHQzzsXd.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/verification-copy-F8Y3Iqku.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/Button-WP0--UJ2.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/locate-fixed-BlRsip1G.js",
+        "assets/upload-CXN3-xSY.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/reverse-geocode-DqSbDvVe.js",
+        "assets/star-C9bEyA0x.js",
+        "assets/send-CfY_NGBI.js"
+      ],
+      "dynamicImports": ["assets/ServiceAreaMap-CK9bEI0g.js"],
+      "css": [],
+      "sizes": {
+        "raw": 156581,
+        "gzip": 56530,
+        "brotli": 40188
+      },
+      "moduleCount": 54
+    },
+    "assets/ProviderPage-Cj0rn1V-.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": null,
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/DisputeEntry-BjPx9VYs.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/use-auth-identity-vhfqYF87.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/badge-check-CaNzKZuT.js",
+        "assets/x-o-VGppo7.js",
+        "assets/available-jobs-adapter-DVdZ--l0.js",
+        "assets/user-BngJ6zC7.js"
+      ],
+      "dynamicImports": [
+        "assets/LiveJobsScreen-CIuTJeI0.js",
+        "assets/MyBidsScreen-D1Mg6HDY.js",
+        "assets/WalletScreen-C_tbq0qf.js",
+        "assets/ProviderProfileScreen-CgLbPtY1.js",
+        "assets/ProviderChatScreen-BJsL_XKs.js",
+        "assets/ProviderBookingsScreen-DtCqO2uE.js",
+        "assets/ProviderBookingDetailScreen-EcqDj4_Y.js"
+      ],
+      "css": [],
+      "sizes": {
+        "raw": 83737,
+        "gzip": 27768,
+        "brotli": 20506
+      },
+      "moduleCount": 22
+    },
+    "assets/ProviderProfileScreen-CgLbPtY1.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/components/provider/screens/ProviderProfileScreen.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/ProviderVerificationScreen-BJyMq0Sk.js",
+        "assets/verification-copy-F8Y3Iqku.js",
+        "assets/Button-WP0--UJ2.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/index-CeIRT-7i.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/EditProfilePage-BbW5oGt6.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/DisputeEntry-BjPx9VYs.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/x-o-VGppo7.js",
+        "assets/media-url-B3nMmVya.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/index-CtT2zeii.js",
+        "assets/TextField-1F81-BLk.js",
+        "assets/reverse-geocode-DqSbDvVe.js",
+        "assets/chevron-left-DSPFvUi8.js",
+        "assets/phone-C_dETp6C.js",
+        "assets/mail-KGdcobEi.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/crosshair-DqkCsJ-u.js"
+      ],
+      "dynamicImports": [],
+      "css": ["assets/case-ui-CDJEaR__.css"],
+      "sizes": {
+        "raw": 26695,
+        "gzip": 9514,
+        "brotli": 7378
+      },
+      "moduleCount": 9
+    },
+    "assets/ProviderVerificationScreen-BJyMq0Sk.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/x-o-VGppo7.js",
+        "assets/media-url-B3nMmVya.js",
+        "assets/Button-WP0--UJ2.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/verification-copy-F8Y3Iqku.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 24958,
+        "gzip": 9930,
+        "brotli": 7777
+      },
+      "moduleCount": 13
+    },
+    "assets/RequestMediaGallery-BVySU9Rs.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js", "assets/media-url-B3nMmVya.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 1976,
+        "gzip": 1021,
+        "brotli": 893
+      },
+      "moduleCount": 3
+    },
+    "assets/reverse-geocode-DqSbDvVe.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 2148,
+        "gzip": 1023,
+        "brotli": 861
+      },
+      "moduleCount": 2
+    },
+    "assets/review-correction-fields-CHQzzsXd.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 3019,
+        "gzip": 1406,
+        "brotli": 1095
+      },
+      "moduleCount": 4
+    },
+    "assets/review-feedback-copy-CfiDhA-Y.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/x-o-VGppo7.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 28136,
+        "gzip": 10562,
+        "brotli": 8143
+      },
+      "moduleCount": 16
+    },
+    "assets/send-attempt-InhBKyti.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 625,
+        "gzip": 379,
+        "brotli": 345
+      },
+      "moduleCount": 2
+    },
+    "assets/send-CfY_NGBI.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 467,
+        "gzip": 341,
+        "brotli": 314
+      },
+      "moduleCount": 1
+    },
+    "assets/ServiceAreaMap-CK9bEI0g.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/features/provider-onboarding-v2/components/ServiceAreaMap.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/leaflet-CD5WShFm.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/ProviderOnboardingPage-PgG-d8-B.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/crosshair-DqkCsJ-u.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/x-o-VGppo7.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/ProviderVerificationScreen-BJyMq0Sk.js",
+        "assets/media-url-B3nMmVya.js",
+        "assets/Button-WP0--UJ2.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/verification-copy-F8Y3Iqku.js",
+        "assets/image-CKpXag9T.js",
+        "assets/review-correction-fields-CHQzzsXd.js",
+        "assets/circle-check-Be8bq0zR.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/locate-fixed-BlRsip1G.js",
+        "assets/upload-CXN3-xSY.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/reverse-geocode-DqSbDvVe.js",
+        "assets/star-C9bEyA0x.js",
+        "assets/send-CfY_NGBI.js"
+      ],
+      "dynamicImports": [],
+      "css": ["assets/ServiceAreaMap-DCIbqZVK.css"],
+      "sizes": {
+        "raw": 4650,
+        "gzip": 2314,
+        "brotli": 2009
+      },
+      "moduleCount": 5
+    },
+    "assets/settings-CDqglht7.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 1330,
+        "gzip": 595,
+        "brotli": 511
+      },
+      "moduleCount": 2
+    },
+    "assets/shield-check-CrLun2HR.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 942,
+        "gzip": 476,
+        "brotli": 429
+      },
+      "moduleCount": 2
+    },
+    "assets/star-C9bEyA0x.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 649,
+        "gzip": 417,
+        "brotli": 358
+      },
+      "moduleCount": 1
+    },
+    "assets/TextField-1F81-BLk.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 3887,
+        "gzip": 1588,
+        "brotli": 1401
+      },
+      "moduleCount": 1
+    },
+    "assets/trash-2-DHUKgBgz.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 535,
+        "gzip": 363,
+        "brotli": 333
+      },
+      "moduleCount": 1
+    },
+    "assets/upload-CXN3-xSY.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 434,
+        "gzip": 326,
+        "brotli": 297
+      },
+      "moduleCount": 1
+    },
+    "assets/use-auth-identity-vhfqYF87.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 1185,
+        "gzip": 629,
+        "brotli": 552
+      },
+      "moduleCount": 2
+    },
+    "assets/use-service-categories-Dm58EUpv.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 1052,
+        "gzip": 510,
+        "brotli": 431
+      },
+      "moduleCount": 4
+    },
+    "assets/useInfiniteQuery-ErfexTlz.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 1171,
+        "gzip": 516,
+        "brotli": 454
+      },
+      "moduleCount": 2
+    },
+    "assets/useMyBids-CKMbV83g.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/x-o-VGppo7.js",
+        "assets/useInfiniteQuery-ErfexTlz.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 1488,
+        "gzip": 686,
+        "brotli": 588
+      },
+      "moduleCount": 2
+    },
+    "assets/useOpenBookingConversation--Tzmm5dW.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 1088,
+        "gzip": 586,
+        "brotli": 509
+      },
+      "moduleCount": 1
+    },
+    "assets/useProviderBookings-453wuQvD.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/x-o-VGppo7.js",
+        "assets/useInfiniteQuery-ErfexTlz.js"
+      ],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 1959,
+        "gzip": 806,
+        "brotli": 690
+      },
+      "moduleCount": 2
+    },
+    "assets/useProviderProfile-BOjLNdXo.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js", "assets/x-o-VGppo7.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 2083,
+        "gzip": 821,
+        "brotli": 739
+      },
+      "moduleCount": 3
+    },
+    "assets/user-BngJ6zC7.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 704,
+        "gzip": 360,
+        "brotli": 316
+      },
+      "moduleCount": 2
+    },
+    "assets/useSwipe-GajXm2lM.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 1072,
+        "gzip": 557,
+        "brotli": 488
+      },
+      "moduleCount": 1
+    },
+    "assets/verification-copy-F8Y3Iqku.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 10210,
+        "gzip": 4274,
+        "brotli": 3113
+      },
+      "moduleCount": 2
+    },
+    "assets/WalletScreen-C_tbq0qf.js": {
+      "isEntry": false,
+      "isDynamicEntry": true,
+      "facadeModuleId": "src/app/components/provider/screens/WalletScreen.tsx",
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/available-jobs-adapter-DVdZ--l0.js",
+        "assets/AreaChart-F-U5gZJk.js",
+        "assets/ProviderPage-Cj0rn1V-.js",
+        "assets/index-B8EnQzmp.js",
+        "assets/DisputeEntry-BjPx9VYs.js",
+        "assets/review-feedback-copy-CfiDhA-Y.js",
+        "assets/map-pin-VpOreZ1-.js",
+        "assets/user-BngJ6zC7.js",
+        "assets/clock-CJoPnW53.js",
+        "assets/lock-D2mmiKSK.js",
+        "assets/use-service-categories-Dm58EUpv.js",
+        "assets/x-o-VGppo7.js",
+        "assets/useProviderProfile-BOjLNdXo.js",
+        "assets/use-auth-identity-vhfqYF87.js",
+        "assets/shield-check-CrLun2HR.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/loader-circle-DRSYpo9p.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/send-CfY_NGBI.js",
+        "assets/badge-check-CaNzKZuT.js"
+      ],
+      "dynamicImports": [],
+      "css": ["assets/case-ui-CDJEaR__.css"],
+      "sizes": {
+        "raw": 9146,
+        "gzip": 3822,
+        "brotli": 3117
+      },
+      "moduleCount": 3
+    },
+    "assets/WorkspacePanel-BbK3Jz2s.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": [
+        "assets/bootstrap-BZgvWd7R.js",
+        "assets/circle-alert-CIEibI5R.js",
+        "assets/x-o-VGppo7.js",
+        "assets/useInfiniteQuery-ErfexTlz.js",
+        "assets/upload-CXN3-xSY.js",
+        "assets/index-CtT2zeii.js",
+        "assets/trash-2-DHUKgBgz.js",
+        "assets/plus-CkXUTLK-.js",
+        "assets/index-NdzDSb5f.js",
+        "assets/file-text-Duv_rFdj.js",
+        "assets/shield-check-CrLun2HR.js"
+      ],
+      "dynamicImports": [],
+      "css": ["assets/WorkspacePanel-vSQ2WJDW.css", "assets/case-ui-CDJEaR__.css"],
+      "sizes": {
+        "raw": 79759,
+        "gzip": 28476,
+        "brotli": 21338
+      },
+      "moduleCount": 37
+    },
+    "assets/x-o-VGppo7.js": {
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "facadeModuleId": null,
+      "imports": ["assets/bootstrap-BZgvWd7R.js"],
+      "dynamicImports": [],
+      "css": [],
+      "sizes": {
+        "raw": 3393,
+        "gzip": 1531,
+        "brotli": 1306
+      },
+      "moduleCount": 3
+    }
+  },
+  "assets": {
+    "index.html": {
+      "sizes": {
+        "raw": 1382,
+        "gzip": 749,
+        "brotli": 488
+      }
+    },
+    "assets/AdminPage-Jf2GgEBO.css": {
+      "sizes": {
+        "raw": 17305,
+        "gzip": 4469,
+        "brotli": 3131
+      }
+    },
+    "assets/bootstrap-CzrnSEUt.css": {
+      "sizes": {
+        "raw": 166891,
+        "gzip": 31557,
+        "brotli": 20537
+      }
+    },
+    "assets/case-ui-CDJEaR__.css": {
+      "sizes": {
+        "raw": 5970,
+        "gzip": 1966,
+        "brotli": 1471
+      }
+    },
+    "assets/leaflet-CIGW-MKW.css": {
+      "sizes": {
+        "raw": 15607,
+        "gzip": 6892,
+        "brotli": 5723
+      }
+    },
+    "assets/pdf.worker.min-wgc6bjNh.mjs": {
+      "sizes": {
+        "raw": 1078612,
+        "gzip": 344728,
+        "brotli": 238652
+      }
+    },
+    "assets/ServiceAreaMap-DCIbqZVK.css": {
+      "sizes": {
+        "raw": 1027,
+        "gzip": 464,
+        "brotli": 342
+      }
+    },
+    "assets/WorkspacePanel-vSQ2WJDW.css": {
+      "sizes": {
+        "raw": 19106,
+        "gzip": 5293,
+        "brotli": 3762
+      }
+    }
+  }
+}
