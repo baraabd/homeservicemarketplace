@@ -299,3 +299,43 @@ updated `.gitleaksignore`, a runtime-generated `generic-api-key` canary was
 committed and detected (exit 2). The canary value was neither printed nor
 committed here. Maintain this entry only while `d316a2f` remains reachable, and
 review it with §5's procedure at release review.
+
+## 9. R19 delta — synthetic contract-fixture idempotency key (2026-10-14)
+
+CI security job `115556387596` on PR #159 head
+`f3a7c6b5f87c8ed330e4775d258a2de89b214715` stopped on exactly one
+`generic-api-key` finding. The fingerprint is copied from that job's log, and
+a local gitleaks 8.24.3 scan of the same range (`--no-merges --first-parent
+cf1e321^..HEAD`) found the same single finding.
+
+| Origin commit                              | File                                                                                   | Line | Classification                                                            |
+| ------------------------------------------ | -------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------- |
+| `f3a7c6b5f87c8ed330e4775d258a2de89b214715` | `docs/production-readiness/r19/contract-fixtures/hsm.money.v1/refund-reservation.json` | 4    | A readable synthetic idempotency key in a NON_PRODUCTION contract fixture |
+
+Read at its commit: a 24-character readable placeholder (a fixed word, a
+noun and a counter) as the `idempotencyKey` of a synthetic refund-reservation
+fixture. Its siblings in the same directory are equally synthetic and were
+not flagged. An idempotency key is a replay identifier, not an authorization
+token, and the fixture is documentation read only by a unit test.
+
+`git log --all -S<value>` finds the value only in `f3a7c6b`. It appears in no
+environment, workflow, deployment or application source file, and it carries
+no provider prefix. No value is recorded here.
+
+**Verdict: synthetic fixture value. No rotation is required.**
+
+The source is fixed in the same change: every fixture idempotency key is now
+a low-entropy placeholder (`fixture-000…`), and the current tree scans clean.
+Only this one exact fingerprint is appended to `.gitleaksignore`; the existing
+entries are unchanged. No path pattern, rule, tolerance, scan range, workflow
+or blocking exit status is changed, and history is not rewritten.
+
+Proof the gate still blocks:
+
+- In an isolated temporary repository carrying the updated
+  `.gitleaksignore`, a runtime-generated `idempotencyKey` canary was committed
+  and detected (exit 2). The canary was neither printed nor committed here.
+- The PR's range with the new entry scans clean (exit 0).
+
+Maintain this entry only while `f3a7c6b` remains reachable, and review it
+with §5's procedure at release review.

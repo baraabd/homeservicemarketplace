@@ -7,8 +7,34 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MetricsService } from '../telemetry/metrics.service';
 import { OUTBOX_HANDLERS } from './outbox.tokens';
 import { OutboxRepository } from './outbox.repository';
-import { nextAttemptAt, type RetryPolicy } from './outbox.retry';
-import type { OutboxHandler, OutboxHandlerResult } from './outbox.handler';
+import { nextAttemptDelayMs, type RetryPolicy } from './outbox.retry';
+import {
+  classifyOutboxFailure,
+  OutboxDeadlineExceededError,
+  OutboxLeaseLostError,
+  retryAfterHintMs,
+} from './outbox.errors';
+import {
+  validateHandlerRegistry,
+  type OutboxHandler,
+  type OutboxHandlerResult,
+} from './outbox.handler';
+
+/** R22 — delivery timing defaults. Each can be overridden by the environment
+ *  variable of the same name once the coordinator adds it to env.schema.ts
+ *  (docs/production-readiness/r22/shared-change-requests/CR-02-env-keys.md);
+ *  until then an unset or invalid value falls back to these.
+ *
+ *  Transaction timeout: Prisma's interactive-transaction default is 5 s, which
+ *  was the de facto handler limit before R22 without anyone having chosen it.
+ *  The deadline sits a little above it so Prisma's own timeout normally fires
+ *  first and the worker deadline only catches a callback stuck on a non-DB
+ *  await (a hung HTTP call), which Prisma's timer cannot interrupt. */
+export const OUTBOX_DELIVERY_TX_TIMEOUT_MS = 15_000;
+export const OUTBOX_DELIVERY_DEADLINE_MS = 20_000;
+/** How long shutdown waits for the in-flight delivery before releasing this
+ *  worker's claims. Below the usual 30 s container stop grace period. */
+export const OUTBOX_SHUTDOWN_GRACE_MS = 20_000;
 
 // Sprint 6 — the outbox worker. See docs/adr/0004-transactional-outbox.md.
 //
@@ -23,6 +49,13 @@ import type { OutboxHandler, OutboxHandlerResult } from './outbox.handler';
 //
 // Every replica runs one of these. They coordinate solely through the claim
 // statement; there is no leader election, and none is needed.
+//
+// R22 — a claim is a LEASE (status PROCESSING + claimedBy). The worker renews
+// its leases with a heartbeat while it holds them, commits PROCESSED inside the
+// delivery transaction only while it still holds the lease, records failures
+// only on its own lease, bounds each delivery with a deadline, and hands its
+// unprocessed claims back on shutdown. Delivery stays at-least-once; exactly-
+// once EFFECTS come from the handler-run marker and domain unique keys.
 @Injectable()
 export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(OutboxWorker.name);
@@ -38,6 +71,11 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
   /** Resolves when an in-flight tick finishes — shutdown awaits it so a
    *  SIGTERM cannot tear down the process mid-handler and orphan a claim. */
   private inFlight: Promise<void> | null = null;
+  /** Whether this worker ever claimed a row. A worker that never did — the
+   *  disabled worker in every test AppModule, an idle replica — has nothing
+   *  to release and must not touch the database during shutdown, when the
+   *  Prisma client may already be disconnecting. */
+  private hasClaimed = false;
 
   private readonly byEventType = new Map<string, OutboxHandler[]>();
 
@@ -48,6 +86,12 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
     private readonly metrics: MetricsService,
     @Inject(OUTBOX_HANDLERS) private readonly handlers: OutboxHandler[],
   ) {
+    // R22 — fail the boot on a registration that would silently lose work
+    // (duplicate marker names, a handler that consumes nothing).
+    const problems = validateHandlerRegistry(this.handlers);
+    if (problems.length > 0) {
+      throw new Error(`Invalid outbox handler registry: ${problems.join('; ')}`);
+    }
     for (const handler of this.handlers) {
       for (const type of handler.eventTypes) {
         const list = this.byEventType.get(type) ?? [];
@@ -55,6 +99,11 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
         this.byEventType.set(type, list);
       }
     }
+  }
+
+  /** This worker's lease identity. Exposed for operational tooling and tests. */
+  get id(): string {
+    return this.workerId;
   }
 
   onModuleInit(): void {
@@ -74,12 +123,49 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
     this.scheduleNext(0);
   }
 
+  /** Graceful shutdown (R22):
+   *
+   *    1. stop claiming — no new tick is scheduled and the batch loop exits
+   *       before its next event;
+   *    2. give the in-flight delivery a BOUNDED grace period to finish, so a
+   *       hung handler cannot hold the process past its stop timeout;
+   *    3. release every claim still leased to THIS worker, so the rest of the
+   *       batch is immediately claimable by the surviving replicas instead of
+   *       waiting out the visibility timeout. Another worker's leases are never
+   *       touched. If the in-flight delivery is still running when its claim is
+   *       released, its lease-fenced completion fails and it rolls back. */
   async onModuleDestroy(): Promise<void> {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
-    // Let the current tick finish. Its events are already claimed; abandoning
-    // them means waiting out the visibility timeout before anyone retries.
-    if (this.inFlight) await this.inFlight.catch(() => undefined);
+    if (this.inFlight) {
+      const graceMs = this.setting('OUTBOX_SHUTDOWN_GRACE_MS', OUTBOX_SHUTDOWN_GRACE_MS);
+      let graceTimer: NodeJS.Timeout | undefined;
+      const finished = await Promise.race([
+        this.inFlight.then(
+          () => true,
+          () => true,
+        ),
+        new Promise<false>((resolve) => {
+          graceTimer = setTimeout(() => resolve(false), graceMs);
+          graceTimer.unref?.();
+        }),
+      ]);
+      if (graceTimer) clearTimeout(graceTimer);
+      if (!finished) {
+        this.log.warn({ msg: 'outbox.shutdown.grace_exceeded', workerId: this.workerId, graceMs });
+      }
+    }
+    if (!this.hasClaimed) return;
+    try {
+      const released = await this.repo.releaseClaims(this.workerId);
+      if (released > 0) {
+        this.log.log({ msg: 'outbox.shutdown.released', workerId: this.workerId, released });
+      }
+    } catch (err) {
+      // The database may already be gone. The claims then expire through the
+      // visibility timeout, which is the durable fallback.
+      this.log.warn({ msg: 'outbox.shutdown.release_failed', err: String(err) });
+    }
   }
 
   private scheduleNext(delayMs: number): void {
@@ -125,15 +211,24 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
     const batchSize = this.config.get('OUTBOX_BATCH_SIZE');
     const events = await this.repo.claimBatch(this.workerId, batchSize);
     if (events.length > 0) {
+      this.hasClaimed = true;
       this.metrics.outboxClaimedTotal.inc(events.length);
-      // Sequential, not Promise.all. These handlers fan out to hundreds of
-      // recipients each; running a whole batch concurrently multiplies the
-      // connection-pool demand by the batch size and starves the HTTP path
-      // sharing that pool. Throughput comes from more REPLICAS, which the
-      // claim statement already supports safely.
-      for (const event of events) {
-        if (this.stopped) break;
-        await this.processEvent(event);
+      // R22 — the batch is processed sequentially, so the LAST event in it
+      // waits for every earlier one. Without renewal its claim could expire
+      // while it is still queued here and a second worker would take it.
+      const stopHeartbeat = this.startHeartbeat();
+      try {
+        // Sequential, not Promise.all. These handlers fan out to hundreds of
+        // recipients each; running a whole batch concurrently multiplies the
+        // connection-pool demand by the batch size and starves the HTTP path
+        // sharing that pool. Throughput comes from more REPLICAS, which the
+        // claim statement already supports safely.
+        for (const event of events) {
+          if (this.stopped) break;
+          await this.processEvent(event);
+        }
+      } finally {
+        stopHeartbeat();
       }
     }
 
@@ -141,9 +236,29 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
     return events.length;
   }
 
+  private startHeartbeat(): () => void {
+    const timeoutMs = this.config.get('OUTBOX_CLAIM_TIMEOUT_MS');
+    // A quarter of the visibility timeout: three consecutive heartbeats can be
+    // lost (a DB blip) before a live claim becomes reclaimable.
+    const everyMs = Math.min(30_000, Math.max(250, Math.floor(timeoutMs / 4)));
+    const timer = setInterval(() => {
+      this.repo.heartbeat(this.workerId).catch((err: unknown) => {
+        this.log.warn({
+          msg: 'outbox.heartbeat_failed',
+          workerId: this.workerId,
+          err: String(err),
+        });
+      });
+    }, everyMs);
+    timer.unref?.();
+    return () => clearInterval(timer);
+  }
+
   private async reclaimOrphans(): Promise<void> {
     const timeoutMs = this.config.get('OUTBOX_CLAIM_TIMEOUT_MS');
-    const count = await this.repo.reclaimStale(new Date(Date.now() - timeoutMs));
+    // R22 — judged on the database clock, the same clock that stamped the
+    // claim; see OutboxRepository.reclaimExpired.
+    const count = await this.repo.reclaimExpired(timeoutMs);
     if (count > 0) {
       this.metrics.outboxReclaimedTotal.inc(count);
       // Worth a warning, not an info: reclaims mean a worker died mid-flight,
@@ -161,16 +276,14 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
     // event was produced with no consumer.
     if (handlers.length === 0) {
       this.log.error({ msg: 'outbox.no_handler', eventId: event.id, eventType: event.eventType });
-      await this.repo.markFailed(
+      const recorded = await this.repo.failLeased(
         event.id,
+        this.workerId,
         event.attempts + 1,
         `No handler registered for event type "${event.eventType}"`,
         null,
       );
-      this.metrics.outboxEventsProcessedTotal.inc({
-        event_type: event.eventType,
-        outcome: 'dead',
-      });
+      this.count(event, recorded ? 'dead' : 'lease-lost');
       return;
     }
 
@@ -187,22 +300,36 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
       // delivered atomically or not at all. A partial delivery — handler A
       // committed, handler B rolled back — would be redelivered and A's
       // marker would then skip it, leaving the event permanently half-applied.
-      await this.prisma.client.$transaction(async (tx) => {
-        for (const handler of handlers) {
-          const first = await this.repo.claimHandlerRun(event.id, handler.name, tx);
-          if (!first) {
-            // Already ran to completion in an earlier delivery. This is the
-            // duplicate-delivery guard doing its job, not an error.
-            skipped += 1;
-            continue;
+      //
+      // R22 — the PROCESSED transition is the last statement of that same
+      // transaction and is fenced on this worker's lease. Effects and the
+      // terminal state commit together or not at all, and a worker whose lease
+      // was reclaimed rolls its effects back instead of racing the new owner.
+      const txTimeoutMs = this.setting(
+        'OUTBOX_DELIVERY_TX_TIMEOUT_MS',
+        OUTBOX_DELIVERY_TX_TIMEOUT_MS,
+      );
+      const delivery = this.prisma.client.$transaction(
+        async (tx) => {
+          for (const handler of handlers) {
+            const first = await this.repo.claimHandlerRun(event.id, handler.name, tx);
+            if (!first) {
+              // Already ran to completion in an earlier delivery. This is the
+              // duplicate-delivery guard doing its job, not an error.
+              skipped += 1;
+              continue;
+            }
+            const result = (await handler.handle(event, tx)) as OutboxHandlerResult | undefined;
+            if (result?.afterCommit) afterCommit.push(result.afterCommit);
+            Object.assign(stats, result?.stats ?? {});
           }
-          const result = (await handler.handle(event, tx)) as OutboxHandlerResult | undefined;
-          if (result?.afterCommit) afterCommit.push(result.afterCommit);
-          Object.assign(stats, result?.stats ?? {});
-        }
-      });
-
-      await this.repo.markProcessed(event.id);
+          if (!(await this.repo.completeLeased(event.id, this.workerId, tx))) {
+            throw new OutboxLeaseLostError(event.id);
+          }
+        },
+        { timeout: txTimeoutMs, maxWait: Math.min(txTimeoutMs, 5_000) },
+      );
+      await this.withDeadline(delivery);
 
       // Outside the transaction, by contract: realtime publishes and mail.
       // Failures are logged, never rethrown — the durable work is already
@@ -221,10 +348,7 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
         }
       }
 
-      this.metrics.outboxEventsProcessedTotal.inc({
-        event_type: event.eventType,
-        outcome: skipped === handlers.length ? 'skipped-duplicate' : 'processed',
-      });
+      this.count(event, skipped === handlers.length ? 'skipped-duplicate' : 'processed');
       this.log.log({
         msg: 'outbox.processed',
         eventId: event.id,
@@ -240,14 +364,78 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Bound one delivery. On expiry the caller records a transient failure on
+   *  its lease; the abandoned transaction can no longer commit a result,
+   *  because either Prisma's timeout rolls it back or its fenced completion
+   *  finds the lease gone. */
+  private async withDeadline(work: Promise<unknown>): Promise<void> {
+    const deadlineMs = this.setting('OUTBOX_DELIVERY_DEADLINE_MS', OUTBOX_DELIVERY_DEADLINE_MS);
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        work,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new OutboxDeadlineExceededError(deadlineMs)), deadlineMs);
+          timer.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      // An abandoned delivery that later rejects must not surface as an
+      // unhandled rejection and crash the process.
+      work.catch(() => undefined);
+    }
+  }
+
   private async handleFailure(event: OutboxEvent, err: unknown): Promise<void> {
-    const attempts = event.attempts + 1;
-    const when = nextAttemptAt(attempts, event.maxAttempts, new Date(), this.retryPolicy());
+    const kind = classifyOutboxFailure(err);
     const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
 
-    await this.repo.markFailed(event.id, attempts, message, when);
+    if (kind === 'lease-lost') {
+      // Not this worker's event any more. Recording anything would overwrite
+      // the new owner's state, so the only correct action is to step aside.
+      this.log.warn({
+        msg: 'outbox.lease_lost',
+        eventId: event.id,
+        eventType: event.eventType,
+        workerId: this.workerId,
+      });
+      this.count(event, 'lease-lost');
+      return;
+    }
 
-    if (when === null) {
+    const attempts = event.attempts + 1;
+    const delayMs =
+      kind === 'permanent'
+        ? null
+        : nextAttemptDelayMs(
+            attempts,
+            event.maxAttempts,
+            this.retryPolicy(),
+            Math.random,
+            retryAfterHintMs(err),
+          );
+
+    const recorded = await this.repo.failLeased(
+      event.id,
+      this.workerId,
+      attempts,
+      message,
+      delayMs,
+    );
+    if (!recorded) {
+      this.log.warn({
+        msg: 'outbox.lease_lost',
+        eventId: event.id,
+        eventType: event.eventType,
+        workerId: this.workerId,
+        during: 'failure',
+      });
+      this.count(event, 'lease-lost');
+      return;
+    }
+
+    if (delayMs === null) {
       // Terminal. ERROR, not warn: a dead letter is an event the system
       // promised to deliver and never will, and it needs a human.
       this.log.error({
@@ -257,12 +445,10 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
         aggregateType: event.aggregateType,
         aggregateId: event.aggregateId,
         attempts,
+        reason: kind === 'permanent' ? 'permanent-error' : 'retry-budget-exhausted',
         err: message,
       });
-      this.metrics.outboxEventsProcessedTotal.inc({
-        event_type: event.eventType,
-        outcome: 'dead',
-      });
+      this.count(event, 'dead');
       return;
     }
 
@@ -272,13 +458,16 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
       eventType: event.eventType,
       attempts,
       maxAttempts: event.maxAttempts,
-      nextAttemptAt: when.toISOString(),
+      retryInMs: delayMs,
       err: message.slice(0, 500),
     });
-    this.metrics.outboxEventsProcessedTotal.inc({
-      event_type: event.eventType,
-      outcome: 'retried',
-    });
+    this.count(event, 'retried');
+  }
+
+  /** `outcome` values are a closed, low-cardinality set:
+   *  processed / skipped-duplicate / retried / dead / lease-lost. */
+  private count(event: OutboxEvent, outcome: string): void {
+    this.metrics.outboxEventsProcessedTotal.inc({ event_type: event.eventType, outcome });
   }
 
   private retryPolicy(): RetryPolicy {
@@ -287,6 +476,16 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
       capMs: this.config.get('OUTBOX_RETRY_CAP_MS'),
       jitter: 0.2,
     };
+  }
+
+  /** An R22 timing setting not yet declared in env.schema.ts (CR-02). Accepts
+   *  only a positive integer up to ten minutes; anything else — unset, a typo,
+   *  a negative — falls back to the code default rather than disabling the
+   *  bound it configures. */
+  private setting(key: string, fallback: number): number {
+    const raw = (this.config as unknown as { get(k: string): unknown }).get(key);
+    const value = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN;
+    return Number.isInteger(value) && value > 0 && value <= 600_000 ? value : fallback;
   }
 
   private async publishGauges(): Promise<void> {

@@ -2,32 +2,43 @@
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { createHash } = require('node:crypto');
 const { createRequire } = require('node:module');
+const {
+  schemaFingerprint,
+  generationProblems,
+} = require('../../packages/database/scripts/prisma-generation.cjs');
 
 const ROOT = path.resolve(__dirname, '../..');
 const INSTALL = 'pnpm install --frozen-lockfile';
 const GENERATE = 'pnpm --filter @homeservicemarketplace/database generate';
 const TYPECHECK = 'pnpm --filter @homeservicemarketplace/api typecheck';
 const GENERATED_OUTPUTS = ['index.js', 'index.d.ts', 'schema.prisma', 'package.json'];
+const RELEASE =
+  'Stop the API dev server, Prisma Studio and test runs that use this checkout (they keep the query engine loaded)';
+
+// Controlled text for each code from prisma-generation.cjs. Never a path
+// outside the repository, file contents or an environment value.
+const GENERATION_MESSAGES = {
+  'generation-in-progress-or-interrupted': `A Prisma generation is running for this checkout, or the last one was interrupted. Wait for a running generation to finish; otherwise run ${GENERATE}, then ${TYPECHECK}.`,
+  'outputs-incomplete': `Generated Prisma client is incomplete. ${RELEASE}, run ${GENERATE}, then ${TYPECHECK}.`,
+  'record-missing': `Generated Prisma client has no completion record: the last generation failed or was interrupted (for example EPERM on the query engine), or it predates this check. ${RELEASE}, run ${GENERATE}, then ${TYPECHECK}.`,
+  'record-invalid': `Generated Prisma client completion record is not valid. ${RELEASE}, run ${GENERATE}, then ${TYPECHECK}.`,
+  'record-schema-stale': `Generated Prisma client was completed for a different schema. ${RELEASE}, run ${GENERATE}, then ${TYPECHECK}.`,
+  'record-version-stale': `Generated Prisma client was completed for a different Prisma version. Run ${INSTALL}, then ${GENERATE} and ${TYPECHECK}.`,
+  'record-platform-differs': `Generated Prisma client was completed on a different platform or architecture. Run ${GENERATE} on this machine, then ${TYPECHECK}.`,
+  'client-unreadable': `Generated Prisma client is unreadable. ${RELEASE}, run ${GENERATE}, then ${TYPECHECK}.`,
+  'client-differs-from-record': `Generated Prisma client was rewritten by a generation that did not complete; its engine may be older than the client. ${RELEASE}, run ${GENERATE}, then ${TYPECHECK}.`,
+  'native-engine-unrecorded': `Generated Prisma client records no engine for this platform. ${RELEASE}, run ${GENERATE}, then ${TYPECHECK}.`,
+  'engine-missing': `The generated Prisma query engine is missing. ${RELEASE}, run ${GENERATE}, then ${TYPECHECK}.`,
+  'engine-differs-from-record': `The generated Prisma query engine is not the one its completion record names. ${RELEASE}, run ${GENERATE}, then ${TYPECHECK}.`,
+  'schema-unreadable':
+    'Prisma source schema is missing or unreadable. Restore packages/database/prisma/schema.prisma from the selected revision before generating the client.',
+  'generator-output-unknown':
+    'The Prisma schema does not name the generated client output. Restore packages/database/prisma/schema.prisma from the selected revision.',
+};
 
 async function json(file) {
   return JSON.parse(await fs.readFile(file, 'utf8'));
-}
-
-function schemaFingerprint(schema) {
-  // Prisma formats field-column whitespace in the generated schema copy.
-  // Compare lexical tokens, preserving quoted values and comments exactly;
-  // blindly stripping whitespace would miss changes such as "a b" -> "ab".
-  // Normalize CRLF because Windows checkouts can differ from generated LF.
-  const tokens = schema
-    .replace(/\r\n/gu, '\n')
-    .match(
-      /"(?:\\[\s\S]|[^"\\])*"|\/\/[^\n]*|\/\*[\s\S]*?\*\/|[A-Za-z_][A-Za-z_0-9]*|[0-9]+(?:\.[0-9]+)?|[^\s]/gu,
-    );
-  return createHash('sha256')
-    .update(JSON.stringify(tokens ?? []))
-    .digest('hex');
 }
 
 async function readableFile(file) {
@@ -136,7 +147,18 @@ async function prismaProblems(root) {
       `Generated Prisma client metadata is unreadable. Stop the API watcher, run ${GENERATE}, then ${TYPECHECK}.`,
     );
   }
-  return problems;
+  if (problems.length) return problems;
+  // The files above are written before Prisma installs the query engine, so
+  // they are not evidence that generation finished (see prisma-generation.cjs).
+  const codes = await generationProblems({
+    schemaPath: path.join(database, 'prisma/schema.prisma'),
+    expectedClientVersion: installedVersion ?? declaredVersion,
+  });
+  return [
+    ...new Set(
+      codes.map((code) => GENERATION_MESSAGES[code] ?? GENERATION_MESSAGES['record-invalid']),
+    ),
+  ];
 }
 
 async function sharpProblems(root) {

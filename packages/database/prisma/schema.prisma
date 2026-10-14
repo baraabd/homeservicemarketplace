@@ -66,10 +66,13 @@ model User {
   verificationDecisions      VerificationDecision[]         @relation("VerificationDecisionReviewer")
   /// Sprint 9B.20 — service-area ceilings this admin granted by hand.
   serviceAreaOverrides       ProviderServiceAreaExpansion[] @relation("ServiceAreaOverrideBy")
-  supportTicketsRequested    SupportTicket[]                 @relation("SupportTicketRequester")
-  supportTicketsClosed       SupportTicket[]                 @relation("SupportTicketCloser")
+  supportTicketsRequested    SupportTicket[]                @relation("SupportTicketRequester")
+  supportTicketsClosed       SupportTicket[]                @relation("SupportTicketCloser")
   supportMessages            SupportMessage[]
   ledgerAccounts             LedgerAccount[]                @relation("LedgerAccountOwner")
+
+  // R19 — subscription money foundation (back-relations only; no column change).
+  moneyConfirmationsReviewed MoneyPaymentConfirmation[] @relation("MoneyConfirmationReviewer")
 
   @@index([deletedAt])
   @@index([status])
@@ -392,9 +395,9 @@ model SupportTicket {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
-  requester User  @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
-  closedBy   User? @relation("SupportTicketCloser", fields: [closedByUserId], references: [id], onDelete: SetNull)
-  messages   SupportMessage[]
+  requester User             @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
+  closedBy  User?            @relation("SupportTicketCloser", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  messages  SupportMessage[]
 
   @@unique([requesterUserId, creationKey])
   @@index([requesterUserId, createdAt, id])
@@ -671,6 +674,11 @@ model ProviderProfile {
   onboardingDraft       ProviderOnboardingDraft?
   /// Sprint 9B.20 — earned service-area ceiling and any manual override.
   serviceAreaExpansion  ProviderServiceAreaExpansion?
+
+  // R19 — subscription money foundation (back-relations only; no column change).
+  moneyPaymentIntents    MoneyPaymentIntent[]
+  providerSubscriptions  ProviderSubscription[]
+  moneyCouponRedemptions MoneyCouponRedemption[]
 
   @@index([primaryServiceCategoryId])
   @@index([serviceAreaCountryCode])
@@ -2129,6 +2137,10 @@ model MediaAsset {
   serviceRequest       ServiceRequest?         @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)
 
   /// R06 — one asset per (request, position); also the request -> assets read.
+
+  // R19 — subscription money foundation (back-relations only; no column change).
+  moneyReceiptConfirmations MoneyPaymentConfirmation[] @relation("MoneyConfirmationReceipt")
+
   @@unique([serviceRequestId, requestAttachmentPosition])
   /// The retention sweep: what is due for deletion and not yet deleted.
   @@index([deletedAt, retainUntil])
@@ -2853,6 +2865,11 @@ model LedgerTransaction {
   entries    LedgerEntry[]
 
   // Target of LedgerEntry's (transactionId, currency) foreign key.
+
+  // R19 — subscription money foundation (back-relations only; no column change).
+  moneyConfirmation       MoneyPaymentConfirmation?
+  moneyRefundCompensation MoneyRefund?
+
   @@unique([id, currency])
   @@index([bookingId])
   @@index([externalReference])
