@@ -295,9 +295,9 @@ suite('R21 durable mail (real Postgres)', () => {
       expect(reset.HTML).toContain(
         `href="https://app.example.test/reset-password?token=${link![1]}"`,
       );
-      await s.auth.resetPassword(link![1], 'r21-synthetic-new-passphrase', ctx);
+      await s.auth.resetPassword(link![1], 'reset password reset', ctx);
       await expect(
-        s.auth.resetPassword(link![1], 'r21-synthetic-third-passphrase', ctx),
+        s.auth.resetPassword(link![1], 'reset password again', ctx),
       ).rejects.toBeDefined();
 
       await s.auth.forgotPassword(f.address, ctx);
@@ -311,9 +311,7 @@ suite('R21 durable mail (real Postgres)', () => {
         where: { userId: f.user.id, purpose: 'PASSWORD_RESET', usedAt: null },
         data: { expiresAt: new Date(Date.now() - 1_000) },
       });
-      await expect(
-        s.auth.resetPassword(token2, 'r21-synthetic-late-passphrase', ctx),
-      ).rejects.toBeDefined();
+      await expect(s.auth.resetPassword(token2, 'reset password late', ctx)).rejects.toBeDefined();
     },
   );
 

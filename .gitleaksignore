@@ -64,3 +64,8 @@ d316a2f46270024b301c78bfa86d15e94e2350c9:.github/workflows/r13-validation.yml:ge
 # R19 — one synthetic contract-fixture idempotency key, individually reviewed
 # in §9. Not a credential. The fixture now uses a low-entropy placeholder.
 f3a7c6b5f87c8ed330e4775d258a2de89b214715:docs/production-readiness/r19/contract-fixtures/hsm.money.v1/refund-reservation.json:generic-api-key:4
+
+# R21 — one synthetic expired-password-reset placeholder, individually
+# reviewed in §10. Not a credential. The current spec now uses lower-entropy
+# placeholder passwords.
+9dba54f539c558c18ea8fa418a2e891504576021:apps/api/test/integration/r21-durable-mail.integration.spec.ts:generic-api-key:315
