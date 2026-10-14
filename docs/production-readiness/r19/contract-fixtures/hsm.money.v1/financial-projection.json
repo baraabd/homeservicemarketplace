@@ -1,0 +1,18 @@
+{
+  "_fixture": "NON_PRODUCTION synthetic; two currencies are never summed",
+  "contractVersion": "hsm.money.v1",
+  "source": "LEDGER",
+  "totals": [
+    {
+      "currency": "XTS",
+      "captured": { "amountMinor": "9007199254740993", "currency": "XTS" },
+      "refunded": { "amountMinor": "300", "currency": "XTS" }
+    },
+    {
+      "currency": "XXX",
+      "captured": { "amountMinor": "1", "currency": "XXX" },
+      "refunded": { "amountMinor": "0", "currency": "XXX" }
+    }
+  ],
+  "asOf": "2026-10-14T12:00:00.000Z"
+}

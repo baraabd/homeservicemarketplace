@@ -1,0 +1,12 @@
+{
+  "_fixture": "NON_PRODUCTION synthetic",
+  "contractVersion": "hsm.money.v1",
+  "paymentConfirmationId": "fixture-confirmation",
+  "subscriptionId": "fixture-subscription",
+  "subscriptionPeriodId": "fixture-period",
+  "ledgerTransactionId": "fixture-ledger-tx",
+  "periodStartsAt": "2026-10-14T11:05:00.000Z",
+  "periodEndsAt": "2026-11-14T11:05:00.000Z",
+  "status": "ACTIVE",
+  "replayed": false
+}

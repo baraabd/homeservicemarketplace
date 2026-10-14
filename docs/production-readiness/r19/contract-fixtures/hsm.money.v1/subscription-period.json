@@ -1,0 +1,10 @@
+{
+  "_fixture": "NON_PRODUCTION synthetic",
+  "contractVersion": "hsm.money.v1",
+  "id": "fixture-period",
+  "subscriptionId": "fixture-subscription",
+  "paymentConfirmationId": "fixture-confirmation",
+  "billingInterval": "MONTHLY",
+  "startsAt": "2026-10-14T11:05:00.000Z",
+  "endsAt": "2026-11-14T11:05:00.000Z"
+}
