@@ -8,6 +8,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { test } = require('node:test');
 const { workspaceStateProblems } = require('./workspace-state.cjs');
+const { writeGeneratedClient } = require('../../packages/database/scripts/generation-fixture.cjs');
 
 const SCHEMA =
   'generator client {\n  provider = "prisma-client-js"\n  output = "../generated/prisma"\n}\n';
@@ -41,10 +42,11 @@ async function fixture(t) {
   await dependency(root, 'packages/database', '@prisma/client', '6.12.0');
   await dependency(root, 'apps/api', 'sharp', '0.35.5');
   await write(root, 'packages/database/prisma/schema.prisma', SCHEMA);
-  await write(root, `${GENERATED}/schema.prisma`, SCHEMA);
-  await write(root, `${GENERATED}/index.js`, `throw new Error('${PRIVATE}');\n`);
-  await write(root, `${GENERATED}/index.d.ts`, 'export declare class PrismaClient {}\n');
-  await writeJson(root, `${GENERATED}/package.json`, { version: '6.12.0' });
+  // A complete client as the guarded generator leaves it. index.js would
+  // throw if it were ever evaluated; the checker only reads it as text.
+  writeGeneratedClient(path.join(root, GENERATED), SCHEMA, {
+    indexPrefix: `throw new Error('${PRIVATE}');\n`,
+  });
   return root;
 }
 
@@ -80,11 +82,11 @@ test('Windows CRLF source and LF generated schema have the same fingerprint', as
 
 test('Prisma column alignment and indentation changes do not mark a fresh client stale', async (t) => {
   const root = await fixture(t);
-  await write(
-    root,
-    'packages/database/prisma/schema.prisma',
-    `${SCHEMA}\nmodel Example {\n  id   String   @id\n  label   String @default("two words")\n}\n`,
-  );
+  const source = `${SCHEMA}\nmodel Example {\n  id   String   @id\n  label   String @default("two words")\n}\n`;
+  await write(root, 'packages/database/prisma/schema.prisma', source);
+  // Completed by the guarded generator for this source schema...
+  writeGeneratedClient(path.join(root, GENERATED), source);
+  // ...which Prisma copies with its own column alignment.
   await write(
     root,
     `${GENERATED}/schema.prisma`,
@@ -190,6 +192,12 @@ async function preflightFixture(t) {
   for (const name of ['preflight.cjs', 'workspace-state.cjs']) {
     await write(root, `scripts/dev/${name}`, await fs.readFile(path.join(__dirname, name), 'utf8'));
   }
+  const generation = 'packages/database/scripts/prisma-generation.cjs';
+  await write(
+    root,
+    generation,
+    await fs.readFile(path.join(__dirname, '../..', generation), 'utf8'),
+  );
   // Runtime validation has its own suite. This CLI fixture isolates the real
   // preflight's ordering and read-only behavior without copying all CI files.
   await write(
@@ -263,4 +271,121 @@ test('successful check-only preflight leaves incomplete API outputs and every fi
   assert.match(result.stdout, /PASS dev preflight/u);
   assert.ok(!(result.stdout + result.stderr).includes(PRIVATE));
   assert.deepEqual(await snapshot(root), before);
+});
+
+// ── R19 hotfix: a failed or interrupted generation is never "complete" ──────
+//
+// Reported on Windows: `prisma generate` rewrote index.js, schema.prisma and
+// package.json, then failed with EPERM renaming
+// query_engine-windows.dll.node.tmp<N> over the engine an API process had
+// loaded. Those three files and matching versions were all the previous
+// check required, so dev preflight passed with an engine older than the
+// client. The cases below use fixture engines (bytes, not a real library).
+
+const generation = require('../../packages/database/scripts/prisma-generation.cjs');
+const {
+  clientIndex,
+  nativeTargetFor,
+} = require('../../packages/database/scripts/generation-fixture.cjs');
+
+function generatedPath(root, file) {
+  return path.join(root, GENERATED, file);
+}
+
+test('generation that rewrote the client but failed on the engine leaves no valid record', async (t) => {
+  const root = await fixture(t);
+  // What the guarded generator does first, before Prisma writes anything...
+  await fs.rm(generatedPath(root, generation.RECORD_FILE));
+  // ...then Prisma rewrites the JS client for a newer engine and fails on the
+  // rename, leaving the old engine and its temporary copy beside it.
+  const target = nativeTargetFor(process.platform);
+  await write(
+    root,
+    `${GENERATED}/index.js`,
+    clientIndex({ clientVersion: '6.12.0', engineVersion: 'b'.repeat(40), nativeTarget: target }),
+  );
+  await write(
+    root,
+    `${GENERATED}/${generation.libraryEngineFile(target)}.tmp35664`,
+    'newer engine',
+  );
+  const problems = await workspaceStateProblems(root);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /no completion record/u);
+  assert.match(problems[0], /EPERM/u);
+  assert.match(problems[0], /pnpm --filter @homeservicemarketplace\/database generate/u);
+});
+
+test('an unguarded generation that rewrote the client after the record is rejected', async (t) => {
+  const root = await fixture(t);
+  const target = nativeTargetFor(process.platform);
+  await write(
+    root,
+    `${GENERATED}/index.js`,
+    clientIndex({ clientVersion: '6.12.0', engineVersion: 'c'.repeat(40), nativeTarget: target }),
+  );
+  const problems = await workspaceStateProblems(root);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /did not complete; its engine may be older than the client/u);
+});
+
+test('an engine that differs from the recorded one is rejected', async (t) => {
+  const root = await fixture(t);
+  const engine = generation.libraryEngineFile(nativeTargetFor(process.platform));
+  await write(root, `${GENERATED}/${engine}`, 'an older engine left in place');
+  const problems = await workspaceStateProblems(root);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /query engine is not the one its completion record names/u);
+});
+
+test('a missing engine is rejected even when every JavaScript output is present', async (t) => {
+  const root = await fixture(t);
+  await fs.rm(generatedPath(root, generation.libraryEngineFile(nativeTargetFor(process.platform))));
+  const problems = await workspaceStateProblems(root);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /query engine is missing/u);
+});
+
+test('an interrupted generation (its lock left behind) is reported, not accepted', async (t) => {
+  const root = await fixture(t);
+  await fs.mkdir(path.join(root, `${GENERATED}${generation.LOCK_SUFFIX}`));
+  const problems = await workspaceStateProblems(root);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /running for this checkout, or the last one was interrupted/u);
+});
+
+test('a corrupt or foreign completion record is not trusted', async (t) => {
+  const root = await fixture(t);
+  for (const contents of [PRIVATE, JSON.stringify({ schemaVersion: 1, state: 'pending' })]) {
+    await write(root, `${GENERATED}/${generation.RECORD_FILE}`, contents);
+    const diagnostic = (await workspaceStateProblems(root)).join('\n');
+    assert.match(diagnostic, /completion record|no completion record/u);
+    assert.ok(!diagnostic.includes(PRIVATE));
+  }
+});
+
+test('a client completed on another platform is not accepted here', async (t) => {
+  const root = await fixture(t);
+  const other = process.platform === 'win32' ? 'linux' : 'win32';
+  writeGeneratedClient(path.join(root, GENERATED), SCHEMA, { platform: other });
+  const problems = await workspaceStateProblems(root);
+  assert.ok(
+    problems.some((problem) => /different platform/u.test(problem)),
+    problems.join('\n'),
+  );
+});
+
+test('a Linux client needs its own engine and never the Windows DLL', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hsm generation linux-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const schemaPath = path.join(root, 'prisma/schema.prisma');
+  await write(root, 'prisma/schema.prisma', SCHEMA);
+  const output = path.join(root, 'generated/prisma');
+  const { engine } = writeGeneratedClient(output, SCHEMA, { platform: 'linux', arch: 'x64' });
+  assert.equal(engine, 'libquery_engine-debian-openssl-3.0.x.so.node');
+  await assert.rejects(fs.access(path.join(output, 'query_engine-windows.dll.node')));
+  assert.deepEqual(
+    await generation.generationProblems({ schemaPath, platform: 'linux', arch: 'x64' }),
+    [],
+  );
 });
