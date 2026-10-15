@@ -47,6 +47,21 @@ export class RestrictedObjectAlreadyExistsError extends Error {
   }
 }
 
+/** R20 — the stored object does not match what the database recorded about
+ * it (a modified, truncated or substituted object). Carries no coordinates. */
+export class RestrictedObjectIntegrityError extends Error {
+  constructor() {
+    super('restricted-object-integrity');
+    this.name = 'RestrictedObjectIntegrityError';
+  }
+}
+
+/** What the caller's database row says the object must be. Optional so every
+ * existing caller keeps working; a caller holding the row should pass it. */
+export interface RestrictedReadExpectation {
+  sizeBytes: number;
+}
+
 /**
  * Server-side object operations for restricted evidence.
  *
@@ -93,8 +108,14 @@ export abstract class RestrictedObjectStoragePort {
    * audited it. This method does no authorisation of its own — it is the
    * transport, not the policy — which is why it is not reachable from any
    * public route.
+   *
+   * R20 — with `expected`, the backend-counted length must equal the recorded
+   * one before any stream is returned; otherwise RestrictedObjectIntegrityError
+   * is thrown and nothing is streamed. Immutable writes make a mismatch
+   * impossible through this API; the check is for an object changed underneath
+   * it by an operator, a bad restore or a compromised credential.
    */
-  abstract openReadStream(key: string): Promise<Readable>;
+  abstract openReadStream(key: string, expected?: RestrictedReadExpectation): Promise<Readable>;
 
   /** Trusted metadata, or null when the object does not exist. Never throws
    *  for absence: "missing" is an ordinary answer during finalize. */

@@ -61,6 +61,9 @@ b876db762045bf70ee7d1fb3eea9eb00ac4bbb97:apps/api/src/modules/disputes/dispute-i
 # diagnostic workflow that was deleted on the same branch.
 d316a2f46270024b301c78bfa86d15e94e2350c9:.github/workflows/r13-validation.yml:generic-api-key:39
 
-# R19 — one synthetic contract-fixture idempotency key, individually reviewed
-# in §9. Not a credential. The fixture now uses a low-entropy placeholder.
-f3a7c6b5f87c8ed330e4775d258a2de89b214715:docs/production-readiness/r19/contract-fixtures/hsm.money.v1/refund-reservation.json:generic-api-key:4
+# R23 — three synthetic redaction-test values, individually reviewed in §11.
+# Not credentials: values the privacy spec plants to prove they never reach
+# logs, spans or metrics. The spec now assembles them at runtime.
+4c438f05f262cd05eef9746027e34dbefa58d6e6:apps/api/src/infrastructure/logger/logger.privacy.spec.ts:generic-api-key:46
+4c438f05f262cd05eef9746027e34dbefa58d6e6:apps/api/src/infrastructure/logger/logger.privacy.spec.ts:generic-api-key:50
+4c438f05f262cd05eef9746027e34dbefa58d6e6:apps/api/src/infrastructure/logger/logger.privacy.spec.ts:jwt:59

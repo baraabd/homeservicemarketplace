@@ -105,6 +105,9 @@ async function main() {
   const workspaceProblems = await workspaceStateProblems(ROOT);
   if (workspaceProblems.length) {
     for (const problem of workspaceProblems) console.error(`FAIL ${problem}`);
+    console.error(
+      'Recovery: stop the API and web watchers, then run pnpm dev:repair from the repository root. See docs/development/workspace-recovery.md.',
+    );
     process.exitCode = 1;
     return;
   }

@@ -1,0 +1,86 @@
+diff --git a/apps/web/src/app/components/profile/SavedAddressesPage.tsx b/apps/web/src/app/components/profile/SavedAddressesPage.tsx
+index 2393cdb..d49b44c 100644
+--- a/apps/web/src/app/components/profile/SavedAddressesPage.tsx
++++ b/apps/web/src/app/components/profile/SavedAddressesPage.tsx
+@@ -1,4 +1,4 @@
+-import { useMemo, useState } from 'react';
++import { lazy, useMemo, useState } from 'react';
+ import { motion, AnimatePresence } from 'motion/react';
+ import {
+   ChevronLeft,
+@@ -18,7 +18,7 @@ import { toast } from 'sonner';
+ import type { AddressSummary, AddressType } from '@homeservicemarketplace/contracts';
+ import { useLang } from '../../i18n/LanguageContext';
+ import { Button } from '../ds/Button';
+-import { LocationMap } from '../ds/LocationMap';
++import { AsyncBoundary } from '../../AsyncBoundary';
+ import {
+   useAddresses,
+   useCreateAddress,
+@@ -28,6 +28,29 @@ import {
+ } from '../../hooks/seeker/useAddresses';
+ import { getCurrentLocationAddress } from '../../../lib/reverse-geocode';
+ 
++// R27 — leaflet (about 470 KiB before minification) is needed only after the
++// seeker asks for their current location. Loading it with the address list
++// made every seeker home visit download it. The pin preview is optional: if
++// the map cannot load, the typed address still saves, so the fallback is a
++// same-height placeholder rather than a page error.
++const LocationMap = lazy(() =>
++  import('../ds/LocationMap').then((module) => ({ default: module.LocationMap })),
++);
++
++function MapPreviewFallback({ label }: { label: string }) {
++  return (
++    <div
++      className="w-full rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center gap-2 text-slate-400"
++      style={{ height: 200, fontSize: '12px', fontWeight: 600 }}
++      role="img"
++      aria-label={label}
++    >
++      <MapPin size={14} className="text-slate-400" />
++      {label}
++    </div>
++  );
++}
++
+ // Visual map keyed on the persisted AddressType (HOME / WORK / CUSTOM).
+ // Same icon + colour palette as the original mock-state version — just
+ // wired to the enum the API returns instead of a local 'home' | 'work' |
+@@ -225,9 +248,7 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
+     setNewFull(formatAddress(a));
+     // Rehydrate the persisted pin so an unrelated label/text edit cannot
+     // silently discard coordinates the server already owns.
+-    setPinCoords(
+-      a.lat !== null && a.lng !== null ? { lat: a.lat, lng: a.lng } : null,
+-    );
++    setPinCoords(a.lat !== null && a.lng !== null ? { lat: a.lat, lng: a.lng } : null);
+     setFormError(null);
+     setShowForm(true);
+   };
+@@ -606,13 +627,18 @@ export function SavedAddressesPage({ onBack }: SavedAddressesPageProps) {
+                     LocationMap silently falls back to a placeholder
+                     when VITE_GOOGLE_MAPS_API_KEY is unset. */}
+                 {pinCoords && (
+-                  <LocationMap
+-                    lat={pinCoords.lat}
+-                    lng={pinCoords.lng}
+-                    onCoordsChange={(next) => setPinCoords(next)}
+-                    ariaLabel={L.getLocation}
+-                    placeholderLabel={L.getLocation}
+-                  />
++                  <AsyncBoundary
++                    loading={<MapPreviewFallback label={L.getLocation} />}
++                    error={<MapPreviewFallback label={L.getLocation} />}
++                  >
++                    <LocationMap
++                      lat={pinCoords.lat}
++                      lng={pinCoords.lng}
++                      onCoordsChange={(next) => setPinCoords(next)}
++                      ariaLabel={L.getLocation}
++                      placeholderLabel={L.getLocation}
++                    />
++                  </AsyncBoundary>
+                 )}
+               </div>
+ 

@@ -1,0 +1,71 @@
+# R23 — disposable Prometheus + Alertmanager for the synthetic alert test.
+#
+# Isolation: run with an explicit project name (`-p hsm-r23-obs`). No fixed
+# container_name, no named volumes, no external networks; host ports bind to
+# loopback only and avoid this host's excluded range (55249–56148). Nothing
+# here touches the developer stack, its database or its Redis.
+#
+# Images are pinned by version tag. Pin by digest before using this file
+# outside a local test.
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2h
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.test.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+    ports:
+      - 127.0.0.1:19090:9090
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./alertmanager/alertmanager.test.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - 127.0.0.1:19093:9093
+
+  target:
+    build:
+      context: ../../..
+      dockerfile: apps/api/Dockerfile
+      target: runner
+    environment:
+      HSM_R23_API_ROOT: /app
+    command: [node, /helpers/synthetic-target.cjs, '19100', '-', '0.0.0.0']
+    volumes:
+      - ../../../scripts/production/observability/synthetic-target.cjs:/helpers/synthetic-target.cjs:ro
+    ports:
+      - 127.0.0.1:19100:19100
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  receiver:
+    image: node:24.21.0-alpine
+    user: node
+    command: [node, /helpers/test-receiver.cjs, '19095', '0.0.0.0']
+    volumes:
+      - ../../../scripts/production/observability/test-receiver.cjs:/helpers/test-receiver.cjs:ro
+    ports:
+      - 127.0.0.1:19095:19095
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+networks:
+  default:
+    # A normal project bridge is required for the runner's published-port
+    # access. An externally isolated (--internal) network does not provide
+    # the host NAT path on native Linux. All published ports above explicitly
+    # bind loopback; the default binding below also protects future additions.
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: '127.0.0.1'

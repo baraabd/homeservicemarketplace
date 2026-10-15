@@ -1,6 +1,16 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Registry, collectDefaultMetrics, Counter, Gauge, Histogram } from 'prom-client';
 
+import {
+  defineDomainCounter,
+  defineDomainGauge,
+  defineDomainHistogram,
+  type DomainCounter,
+  type DomainGauge,
+  type DomainHistogram,
+  type DomainMetricSpec,
+} from './domain-metrics';
+
 @Injectable()
 export class MetricsService implements OnModuleInit {
   readonly registry = new Registry();
@@ -109,6 +119,107 @@ export class MetricsService implements OnModuleInit {
     labelNames: ['route', 'canonical', 'method'] as const,
     registers: [this.registry],
   });
+
+  // ── R23: dependency calls, background jobs, diagnostics ───────────────────
+  //
+  // Labels are bounded by construction: `dependency` is an enum, `operation`
+  // and `job_name` are identifier tokens admitted through a cardinality limiter
+  // (see telemetry.service.ts). None carries an id, a URL or an error message.
+
+  readonly dependencyCallDurationSeconds = new Histogram({
+    name: 'dependency_call_duration_seconds',
+    help: 'Duration of calls to an external dependency, by outcome',
+    labelNames: ['dependency', 'operation', 'outcome'] as const,
+    buckets: [0.005, 0.025, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30],
+    registers: [this.registry],
+  });
+
+  readonly backgroundJobRunsTotal = new Counter({
+    name: 'background_job_runs_total',
+    help: 'Background job runs, by job and outcome',
+    labelNames: ['job_name', 'outcome'] as const,
+    registers: [this.registry],
+  });
+
+  readonly backgroundJobDurationSeconds = new Histogram({
+    name: 'background_job_duration_seconds',
+    help: 'Wall-clock duration of a background job run',
+    labelNames: ['job_name'] as const,
+    buckets: [0.01, 0.05, 0.25, 1, 5, 15, 60, 300],
+    registers: [this.registry],
+  });
+
+  readonly backgroundJobLastSuccessUnixtime = new Gauge({
+    name: 'background_job_last_success_unixtime',
+    help: 'Unix time of the last successful run of a background job',
+    labelNames: ['job_name'] as const,
+    registers: [this.registry],
+  });
+
+  /** Deep diagnostics (SMTP, storage, scanner, payment). 1 = reachable.
+   *  Deliberately separate from /health/ready: a vendor outage is an alert,
+   *  not a reason for an orchestrator to restart or unroute the API. */
+  readonly dependencyUp = new Gauge({
+    name: 'dependency_up',
+    help: 'Result of the last deep diagnostic probe (1 up, 0 down)',
+    labelNames: ['dependency'] as const,
+    registers: [this.registry],
+  });
+
+  // ── R23: telemetry self-observation ───────────────────────────────────────
+
+  readonly telemetrySpansDroppedTotal = new Counter({
+    name: 'telemetry_spans_dropped_total',
+    help: 'Spans dropped before export, by reason',
+    labelNames: ['reason'] as const,
+    registers: [this.registry],
+  });
+
+  readonly telemetrySpansExportedTotal = new Counter({
+    name: 'telemetry_spans_exported_total',
+    help: 'Spans accepted by the trace exporter',
+    registers: [this.registry],
+  });
+
+  readonly telemetryExportFailuresTotal = new Counter({
+    name: 'telemetry_export_failures_total',
+    help: 'Failed trace export attempts, by reason',
+    labelNames: ['reason'] as const,
+    registers: [this.registry],
+  });
+
+  readonly telemetryLabelOverflowTotal = new Counter({
+    name: 'telemetry_label_overflow_total',
+    help: 'Label values collapsed into "other" by a cardinality bound',
+    labelNames: ['metric'] as const,
+    registers: [this.registry],
+  });
+
+  readonly telemetryInstrumentationErrorsTotal = new Counter({
+    name: 'telemetry_instrumentation_errors_total',
+    help: 'Errors raised inside instrumentation code and contained there',
+    registers: [this.registry],
+  });
+
+  // ── R23: stable extension interface for domain metrics ────────────────────
+  //
+  // R29–R34 instrument their own domains through these three methods instead
+  // of editing this file. See domain-metrics.ts for the naming rules; the
+  // returned handles never throw into the caller.
+
+  domainCounter<L extends string>(spec: DomainMetricSpec<L>): DomainCounter<L> {
+    return defineDomainCounter(this.registry, spec, this.telemetryLabelOverflowTotal);
+  }
+
+  domainGauge<L extends string>(spec: DomainMetricSpec<L>): DomainGauge<L> {
+    return defineDomainGauge(this.registry, spec, this.telemetryLabelOverflowTotal);
+  }
+
+  domainHistogram<L extends string>(
+    spec: DomainMetricSpec<L> & { buckets: readonly number[] },
+  ): DomainHistogram<L> {
+    return defineDomainHistogram(this.registry, spec, this.telemetryLabelOverflowTotal);
+  }
 
   onModuleInit(): void {
     collectDefaultMetrics({ register: this.registry });

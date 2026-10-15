@@ -74,6 +74,8 @@ Thumbs.db
 # `output` in packages/database/prisma/schema.prisma). Build output, not
 # source: regenerate with `pnpm --filter @homeservicemarketplace/database generate`.
 packages/database/generated/
+# Real-Prisma test fixtures of the guarded generator (removed by each test).
+packages/database/.test-fixtures/
 
 # Playwright (Phase 12 browser suite)
 apps/web/playwright-report/

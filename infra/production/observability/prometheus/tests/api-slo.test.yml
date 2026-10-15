@@ -1,0 +1,116 @@
+# promtool unit tests for api-slo.rules.yml. Run by
+# scripts/production/observability/run-rule-tests.sh inside the pinned
+# prom/prometheus image. Series values are synthetic and test the rule logic
+# only; they are not measurements of the platform.
+
+rule_files:
+  - ../rules/api-slo.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 1. A sustained 50 % failure rate pages, and the page resolves after recovery.
+  - name: fast burn fires, then resolves when errors stop
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="hsm-api",route="/v1/bookings/:id",status="200"}'
+        values: '0+60x60'
+      - series: 'http_requests_total{job="hsm-api",route="/v1/bookings/:id",status="500"}'
+        values: '0+60x20 1200x40'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ApiAvailabilityFastBurn",alertstate="firing"}
+        eval_time: 15m
+        exp_samples:
+          - labels: 'ALERTS{alertname="ApiAvailabilityFastBurn",alertstate="firing",severity="page",owner="platform-oncall",service="hsm-api",slo="api-availability",slo_status="proposed"}'
+            value: 1
+      # Errors stopped at minute 20; the 5-minute window clears by ~26m.
+      - expr: ALERTS{alertname="ApiAvailabilityFastBurn"}
+        eval_time: 30m
+        exp_samples: []
+
+  # 2. Noise control: a one-minute burst after two healthy hours does not page.
+  - name: short burst on a healthy service does not page
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="hsm-api",route="/v1/x",status="200"}'
+        values: '0+60x180'
+      - series: 'http_requests_total{job="hsm-api",route="/v1/x",status="500"}'
+        values: '0x120 30x60'
+    promql_expr_test:
+      # The short window alone exceeds the threshold...
+      - expr: hsm:api_error_ratio:rate5m > 0.072
+        eval_time: 124m
+        exp_samples:
+          - labels: 'hsm:api_error_ratio:rate5m'
+            value: 0.09090909090909091
+      # ...but the long window does not, so nothing is pending or firing.
+      - expr: ALERTS{alertname=~"ApiAvailability.*"}
+        eval_time: 124m
+        exp_samples: []
+      - expr: ALERTS{alertname=~"ApiAvailability.*"}
+        eval_time: 140m
+        exp_samples: []
+
+  # 3. Low traffic: three failing requests in an hour are not a page.
+  - name: low request volume does not page
+    interval: 10m
+    input_series:
+      - series: 'http_requests_total{job="hsm-api",route="/v1/x",status="500"}'
+        values: '0+1x6'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ApiAvailabilityFastBurn"}
+        eval_time: 60m
+        exp_samples: []
+
+  # 4. Probes and client aborts never count against availability.
+  - name: health probes and 499s are excluded
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="hsm-api",route="/health/ready",status="503"}'
+        values: '0+600x30'
+      - series: 'http_requests_total{job="hsm-api",route="/v1/x",status="499"}'
+        values: '0+600x30'
+      - series: 'http_requests_total{job="hsm-api",route="/v1/x",status="200"}'
+        values: '0+60x30'
+    promql_expr_test:
+      - expr: hsm:api_error_ratio:rate5m
+        eval_time: 20m
+        exp_samples:
+          - labels: 'hsm:api_error_ratio:rate5m'
+            value: 0
+      - expr: ALERTS{alertname="ApiAvailabilityFastBurn"}
+        eval_time: 20m
+        exp_samples: []
+
+  # 5. Latency: half the requests slower than 1 s pages.
+  - name: latency fast burn fires
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="hsm-api",route="/v1/x",status="200",le="1"}'
+        values: '0+30x30'
+      - series: 'http_request_duration_seconds_count{job="hsm-api",route="/v1/x",status="200"}'
+        values: '0+60x30'
+      - series: 'http_requests_total{job="hsm-api",route="/v1/x",status="200"}'
+        values: '0+60x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ApiLatencyFastBurn",alertstate="firing"}
+        eval_time: 15m
+        exp_samples:
+          - labels: 'ALERTS{alertname="ApiLatencyFastBurn",alertstate="firing",severity="page",owner="platform-oncall",service="hsm-api",slo="api-latency",slo_status="proposed"}'
+            value: 1
+
+  # 6. Scrape target down pages after two minutes, not on one missed scrape.
+  - name: scrape target down
+    interval: 1m
+    input_series:
+      - series: 'up{job="hsm-api",instance="api-1"}'
+        values: '1 1 0 1 1 0 0 0 0 0'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ApiScrapeTargetDown",alertstate="firing"}
+        eval_time: 3m
+        exp_samples: []
+      - expr: ALERTS{alertname="ApiScrapeTargetDown",alertstate="firing"}
+        eval_time: 8m
+        exp_samples:
+          - labels: 'ALERTS{alertname="ApiScrapeTargetDown",alertstate="firing",severity="page",owner="platform-oncall",service="hsm-api",instance="api-1",job="hsm-api"}'
+            value: 1
