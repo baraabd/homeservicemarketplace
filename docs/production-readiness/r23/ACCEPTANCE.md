@@ -1,5 +1,47 @@
 # R23 — acceptance evidence
 
+## Ordered CI repair (2026-10-15; hosted verification pending)
+
+Inspected source: `1842eb4757f1b0e36e8610c25b1576d0d41bad0f`.
+Main CI run `38780601800`, integration job `116582166338`, failed with
+6,016 passed / 4 failed / 88 skipped. The R18 and CI aggregate failures were
+consequences of that failed job, not separate runtime defects.
+
+Observed failures and source-level isolation gaps:
+
+- `r18-admin-floor`: its platform-wide `User.updateMany` expired after
+  110,199 ms inside a 60-second transaction. Rollback conceals the writes but
+  still takes locks on other suites' administrator rows.
+- `r18-work-access-readiness`: the global backfill's profile-locking query
+  expired after 110,604 ms. Rollback does not isolate its row locks or global
+  counts from other suites' providers.
+- `password-reset`: setup waited 59,715 ms for the shared seed resource and
+  exhausted its unchanged 60-second hook budget. Seeding the global catalog
+  is unnecessary coupling for a self-contained authentication round trip.
+
+Each suite now owns a freshly created database using the existing real
+migrations. The admin suite retains a committed baseline administrator;
+the password suite seeds its private database using the real seed transaction.
+The helper does not mutate DATABASE_URL or the shared Prisma singleton. It
+uses a generated, validated database identifier, bounded connections and an
+asynchronous pinned Prisma CLI; cleanup drops only a database this invocation
+successfully created, including migration/setup failure. Cleanup failures
+remain visible. Test assertions, test/hook/transaction budgets, worker count,
+workflow gates and production behavior are unchanged.
+
+Local validation: pinned Node 24.21.0 / pnpm 10.32.1, Prisma 6.12.0 generation,
+database/contracts builds and API typecheck passed. Changed TypeScript ESLint
+and formatting passed after correcting a missing AggregateError cause and
+removing an unused lint directive. No local PostgreSQL/Docker is available;
+the three real-database suites must pass in final-head CI before acceptance.
+This section does not claim a hosted PASS. The PR will record the final SHA
+and run results after publication.
+
+Rollback: revert only this isolation follow-up to restore the prior test
+harness. No application schema/data or runtime policy needs rollback; that
+revert reintroduces shared-row contention. Historical evidence below retains
+its original source identity.
+
 ## Corrective verification (2026-10-15)
 
 Scope: CR-01 request correlation and exception-path privacy, plus evidence

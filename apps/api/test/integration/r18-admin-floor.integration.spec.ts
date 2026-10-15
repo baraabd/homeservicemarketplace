@@ -1,8 +1,8 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- Database dependencies load only inside the integration gate. */
 import type { PrismaClient, PrismaTx } from '@homeservicemarketplace/database';
 
 import { AdminUsersService } from '../../src/modules/admin/users/admin-users.service';
-import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { fixturePrefix } from '../support/db-isolation';
+import { createIsolatedDatabase, type IsolatedDatabase } from '../support/isolated-database';
 
 const dbDescribe = process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
 jest.setTimeout(120_000);
@@ -10,7 +10,8 @@ jest.setTimeout(120_000);
 // R18 (D-8 safety floor) — the last-active-admin refusal and its platform-wide
 // lock, against real PostgreSQL. Taking every other administrator out of good
 // standing is only safe inside a transaction that is never committed, so each
-// case runs in one and rolls it back: no other suite ever sees the change.
+// case runs in one and rolls it back. A private database also keeps its row
+// locks off other suites' administrators; rollback alone does not do that.
 // The HTTP route, guards and audit are covered by the R17-D suites; the
 // refusal itself is pinned in admin-users.service.spec.ts.
 class Rollback extends Error {}
@@ -23,20 +24,30 @@ type FloorInternals = {
 dbDescribe('R18 last active administrator floor (real PostgreSQL)', () => {
   const prefix = fixturePrefix('r18-admin-floor');
   let prisma: PrismaClient;
-  let lock: HeldLock | undefined;
+  let database: IsolatedDatabase | undefined;
   let adminRoleId: string;
   // Only the two floor methods are exercised; they use nothing but the tx.
   const floor = new (AdminUsersService as unknown as new (...args: unknown[]) => FloorInternals)();
 
   beforeAll(async () => {
-    lock = await acquireAdvisoryLocks([{ resource: 'seed', mode: 'shared' }]);
-    prisma = (
-      require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database')
-    ).prisma;
-    adminRoleId = (await prisma.role.findUniqueOrThrow({ where: { name: 'admin' } })).id;
+    database = await createIsolatedDatabase('r18_admin_floor');
+    prisma = database.prisma;
+    adminRoleId = (await prisma.role.create({ data: { name: 'admin' } })).id;
+    // Keep a committed administrator outside each rollback transaction, so
+    // onlyAdmin still exercises the platform-wide update of existing rows.
+    await prisma.user.create({
+      data: {
+        id: `${prefix}baseline`,
+        email: `${prefix}baseline@example.test`,
+        firstName: 'Baseline',
+        lastName: 'Admin',
+        status: 'ACTIVE',
+        userRoles: { create: { roleId: adminRoleId } },
+      },
+    });
   });
   afterAll(async () => {
-    await lock?.release();
+    await database?.dispose();
   });
 
   // Runs `work` and always rolls back. A failure inside is rethrown as

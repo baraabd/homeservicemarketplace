@@ -1,5 +1,22 @@
 # R23 — exact write allowlist
 
+## Ordered CI repair (2026-10-15)
+
+The owner's current request explicitly asks to repair the R19, R22 and R23
+PR failures, in that order. This follow-up addresses the three failed database
+suites reported by R23's main CI, in addition to the original correction:
+
+- `apps/api/test/support/isolated-database.ts` (new test-only lifecycle helper)
+- `apps/api/test/integration/r18-admin-floor.integration.spec.ts`
+- `apps/api/test/integration/r18-work-access-readiness.integration.spec.ts`
+- `apps/api/test/e2e/password-reset.e2e.spec.ts`
+- This allowlist and `ACCEPTANCE.md`.
+
+The scope is database-test isolation. It grants no runtime policy, schema,
+migration, CI-gate, production activation or release acceptance change.
+R19 and R22 were first synchronized with already-merged develop on their
+existing corrective branches; no unmerged peer source is imported here.
+
 ## Approved corrective follow-up (2026-10-15)
 
 The repository owner approved the concrete 11-file corrective scope proposed
