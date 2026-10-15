@@ -1,5 +1,41 @@
 # R23 — observability, privacy-safe diagnostics and incident detection
 
+## Corrective follow-up — CR-01 (2026-10-15)
+
+Mode A. The owner approved the exact 11-file scope and four shared HTTP-file
+leases in `ALLOWLIST.md`. This correction resumes from the already-merged
+`develop@af662586a640e41d8438d0cb2dd69e8cbb0e172a` on the original
+`feat/r23-observability-incidents` branch. PR #163 remains the historical
+implementation PR; a successor PR carries only this correction.
+
+Two reproduced defects are corrected:
+
+1. `RequestIdMiddleware` now reuses a valid request id already assigned by
+   the logger. Without it, missing/invalid inbound ids produced separate ids
+   in log bindings versus response headers/error envelopes. The fallback
+   still validates the incoming header and generates a UUID when necessary;
+   array values cannot pass validation by string coercion.
+2. `AllExceptionsFilter` uses the existing `pathOnly` helper for both handled
+   and unhandled exceptions, preferring `originalUrl` over a rewritten URL.
+   Ordinary query values and fragments no longer enter its structured path
+   field. Redaction remains enabled and responses retain their existing
+   status, code and message contract.
+
+The HTTP unit regressions cover id precedence/type/length and both exception
+severities, rewritten URLs, queries, fragments and plain paths. The privacy
+suite mounts the actual request-id middleware alongside the logger,
+exception filter and telemetry middleware. It uses one ephemeral loopback
+listener, sends synthetic private query values and verifies headers, error
+envelopes, completion logs and exception logs, including 12 concurrent
+invalid-id requests. Its span sink remains explicitly a contract double.
+
+No schema, migration, package, lockfile, environment key, route, flag, health
+probe, production receiver or public contract changes. CR-02–CR-05 remain
+coordinator/domain-owner work. Exact verification and source identity are
+recorded in `ACCEPTANCE.md` and the corrective PR.
+
+## Historical initial implementation
+
 Sprint: R23 (Wave 1, lane 5 of 5; legacy coverage P48). Branch:
 `feat/r23-observability-incidents`. Delivery mode: A (integration and
 reliability; no UI change).

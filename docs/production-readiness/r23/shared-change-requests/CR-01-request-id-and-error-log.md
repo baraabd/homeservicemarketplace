@@ -1,5 +1,23 @@
 # CR-01 — request-id agreement and path-only error logging
 
+## Corrective disposition (2026-10-15)
+
+The repository owner explicitly approved this change and the exact files in
+`../ALLOWLIST.md`, including the two HTTP implementation files and their
+adjacent tests. The correction is implemented on
+`feat/r23-observability-incidents`, resumed from merged
+`develop@af662586a640e41d8438d0cb2dd69e8cbb0e172a`. Acceptance follows actual
+local and final-head CI results in `../ACCEPTANCE.md` and the successor PR.
+
+The implementation also requires a string before validating a header, so a
+repeated-header array cannot be accepted through RegExp string coercion.
+Tests cover safe existing-id precedence, invalid existing values, absent or
+unsafe headers, the 128-character boundary, handled/unhandled exception
+paths, and real concurrent HTTP/log correlation with synthetic query data.
+The optional global middleware relocation below was not performed.
+
+## Original request
+
 Owner of the files: coordinator. Requested by: R23. Dependency or migration
 consequences: none.
 

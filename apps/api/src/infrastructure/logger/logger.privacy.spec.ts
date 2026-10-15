@@ -12,6 +12,7 @@
 // covered by span-pipeline.spec.ts.
 
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -32,6 +33,7 @@ import request from 'supertest';
 
 import { AppConfigService } from '../../config/app-config.service';
 import { AllExceptionsFilter } from '../http/all-exceptions.filter';
+import { RequestIdMiddleware } from '../http/request-id.middleware';
 import { HttpTelemetryMiddleware } from '../telemetry/http-telemetry.middleware';
 import { MetricsService } from '../telemetry/metrics.service';
 import type { FinishedSpan, SpanExporter } from '../telemetry/span-pipeline';
@@ -63,6 +65,9 @@ const SECRETS = {
   email: 'synthetic.person@example.test',
   // Invalid correlation id (spaces): must be replaced, never logged raw.
   badRequestId: 'bad id SYNTHreqid77',
+  // Ordinary search/name query values have no secret-shaped key to redact.
+  search: 'SYNTHprivateSearch67',
+  name: 'SYNTHprivateName54',
   jwt: [
     base64url('{"alg":"HS256"}'),
     base64url('{"sub":"SYNTHjwt"}'),
@@ -125,12 +130,19 @@ class ProbeController {
       `bad key -----BEGIN PRIVATE KEY-----\n${SECRETS.privateKeyBody}\n-----END PRIVATE KEY-----`,
     );
   }
+
+  @Get('fail/validation')
+  failValidation() {
+    throw new BadRequestException('Invalid request');
+  }
 }
 
 interface LogLine {
   msg?: string;
   traceId?: string;
-  req?: { method?: string; url?: string; headers: Record<string, string> };
+  requestId?: string;
+  path?: string;
+  req?: { id?: string; method?: string; url?: string; headers: Record<string, string> };
 }
 
 class MemoryExporter implements SpanExporter {
@@ -146,6 +158,8 @@ describe('R23 privacy: logs, spans and metrics carry no synthetic secret', () =>
   let metricsText = '';
   const exporter = new MemoryExporter();
   const responses: string[] = [];
+  const correlations: Array<{ id: string; bodyId: string }> = [];
+  const concurrentIds: string[] = [];
 
   beforeAll(async () => {
     const sink = new Writable({
@@ -168,7 +182,7 @@ describe('R23 privacy: logs, spans and metrics carry no synthetic secret', () =>
     })
     class ProbeModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {
-        consumer.apply(HttpTelemetryMiddleware).forRoutes('*');
+        consumer.apply(RequestIdMiddleware, HttpTelemetryMiddleware).forRoutes('*');
       }
     }
 
@@ -178,6 +192,9 @@ describe('R23 privacy: logs, spans and metrics carry no synthetic secret', () =>
     app.useLogger(app.get(PinoNestLogger));
     app.get(TelemetryService).enableSpanExport(exporter, { scheduleDelayMs: 1 });
     await app.init();
+    // Keep one ephemeral loopback listener alive for concurrent requests;
+    // supertest's per-request auto-listen/close would otherwise race.
+    await app.listen(0, '127.0.0.1');
 
     const server = app.getHttpServer();
     const headers = {
@@ -204,9 +221,38 @@ describe('R23 privacy: logs, spans and metrics carry no synthetic secret', () =>
     expect(r1.status).toBe(200);
     responses.push(JSON.stringify(r1.body));
 
-    for (const path of ['db', 'cause', 'sdk', 'pem']) {
-      const r = await request(server).get(`/v1/things/fail/${path}`).set(headers);
+    const privateQuery = `?q=${SECRETS.search}&name=${SECRETS.name}`;
+    for (const path of ['db', 'cause', 'sdk', 'pem', 'validation']) {
+      const r = await request(server).get(`/v1/things/fail/${path}${privateQuery}`).set(headers);
+      expect(r.status).toBe(path === 'validation' ? 400 : 500);
+      responses.push(JSON.stringify(r.body));
+      correlations.push({ id: r.headers['x-request-id'], bodyId: r.body.error.requestId });
+    }
+
+    // Exercise missing, repeated, overlong and caller-supplied safe ids over
+    // real HTTP, followed by concurrent invalid requests. Each request must
+    // keep its own generated id through logging, middleware and the filter.
+    for (const incoming of [undefined, ['first', 'second'], 'x'.repeat(129), 'safe-r23-id']) {
+      const call = request(server).get(`/v1/things/fail/db${privateQuery}`);
+      if (incoming !== undefined) call.set({ 'x-request-id': incoming });
+      const r = await call;
       expect(r.status).toBe(500);
+      if (incoming === 'safe-r23-id') expect(r.headers['x-request-id']).toBe(incoming);
+      correlations.push({ id: r.headers['x-request-id'], bodyId: r.body.error.requestId });
+      responses.push(JSON.stringify(r.body));
+    }
+
+    const concurrent = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        request(server)
+          .get(`/v1/things/fail/db${privateQuery}`)
+          .set('x-request-id', SECRETS.badRequestId),
+      ),
+    );
+    for (const r of concurrent) {
+      expect(r.status).toBe(500);
+      concurrentIds.push(r.headers['x-request-id']);
+      correlations.push({ id: r.headers['x-request-id'], bodyId: r.body.error.requestId });
       responses.push(JSON.stringify(r.body));
     }
 
@@ -291,7 +337,7 @@ describe('R23 privacy: logs, spans and metrics carry no synthetic secret', () =>
       .filter(Boolean)
       .map((l) => JSON.parse(l) as LogLine)
       .filter((l) => l.msg === 'request completed' || l.msg === 'request errored');
-    expect(lines.length).toBe(5);
+    expect(lines.length).toBe(1 + correlations.length);
     for (const l of lines) expect(l.traceId).toMatch(/^[0-9a-f]{32}$/);
   });
 
@@ -300,5 +346,48 @@ describe('R23 privacy: logs, spans and metrics carry no synthetic secret', () =>
       /http_requests_total\{[^}]*route="\/v1\/things\/:id"[^}]*status="200"[^}]*\} 1/,
     );
     expect(metricsText).not.toContain('abc123');
+  });
+
+  it('omits ordinary query values from both handled and unhandled exception paths', () => {
+    const exceptions = logs
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as LogLine)
+      .filter((line) => line.msg === 'Handled exception' || line.msg === 'Unhandled exception');
+    expect(exceptions).toHaveLength(correlations.length);
+    expect(exceptions.some((line) => line.msg === 'Handled exception')).toBe(true);
+    for (const line of exceptions) {
+      expect(line.path).toMatch(/^\/v1\/things\/fail\/(db|cause|sdk|pem|validation)$/u);
+    }
+  });
+
+  it('uses one request id in response headers, error envelopes and both log streams', () => {
+    const lines = logs
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as LogLine);
+    for (const { id, bodyId } of correlations) {
+      expect(bodyId).toBe(id);
+      const completion = lines.filter(
+        (line) =>
+          line.req?.id === id && ['request completed', 'request errored'].includes(line.msg ?? ''),
+      );
+      expect(completion).toHaveLength(1);
+      expect(completion[0].requestId).toBe(id);
+      const exception = lines.filter(
+        (line) =>
+          line.requestId === id &&
+          ['Handled exception', 'Unhandled exception'].includes(line.msg ?? ''),
+      );
+      expect(exception).toHaveLength(1);
+      expect(exception[0].traceId).toBe(completion[0].traceId);
+    }
+  });
+
+  it('isolates generated correlation ids across concurrent requests', () => {
+    expect(new Set(concurrentIds).size).toBe(12);
+    for (const id of concurrentIds) {
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u);
+    }
   });
 });
