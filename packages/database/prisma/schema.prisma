@@ -66,10 +66,13 @@ model User {
   verificationDecisions      VerificationDecision[]         @relation("VerificationDecisionReviewer")
   /// Sprint 9B.20 — service-area ceilings this admin granted by hand.
   serviceAreaOverrides       ProviderServiceAreaExpansion[] @relation("ServiceAreaOverrideBy")
-  supportTicketsRequested    SupportTicket[]                 @relation("SupportTicketRequester")
-  supportTicketsClosed       SupportTicket[]                 @relation("SupportTicketCloser")
+  supportTicketsRequested    SupportTicket[]                @relation("SupportTicketRequester")
+  supportTicketsClosed       SupportTicket[]                @relation("SupportTicketCloser")
   supportMessages            SupportMessage[]
   ledgerAccounts             LedgerAccount[]                @relation("LedgerAccountOwner")
+
+  // R19 — subscription money foundation (back-relations only; no column change).
+  moneyConfirmationsReviewed MoneyPaymentConfirmation[] @relation("MoneyConfirmationReviewer")
 
   @@index([deletedAt])
   @@index([status])
@@ -392,9 +395,9 @@ model SupportTicket {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
-  requester User  @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
-  closedBy   User? @relation("SupportTicketCloser", fields: [closedByUserId], references: [id], onDelete: SetNull)
-  messages   SupportMessage[]
+  requester User             @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
+  closedBy  User?            @relation("SupportTicketCloser", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  messages  SupportMessage[]
 
   @@unique([requesterUserId, creationKey])
   @@index([requesterUserId, createdAt, id])
@@ -671,6 +674,11 @@ model ProviderProfile {
   onboardingDraft       ProviderOnboardingDraft?
   /// Sprint 9B.20 — earned service-area ceiling and any manual override.
   serviceAreaExpansion  ProviderServiceAreaExpansion?
+
+  // R19 — subscription money foundation (back-relations only; no column change).
+  moneyPaymentIntents    MoneyPaymentIntent[]
+  providerSubscriptions  ProviderSubscription[]
+  moneyCouponRedemptions MoneyCouponRedemption[]
 
   @@index([primaryServiceCategoryId])
   @@index([serviceAreaCountryCode])
@@ -2129,6 +2137,10 @@ model MediaAsset {
   serviceRequest       ServiceRequest?         @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)
 
   /// R06 — one asset per (request, position); also the request -> assets read.
+
+  // R19 — subscription money foundation (back-relations only; no column change).
+  moneyReceiptConfirmations MoneyPaymentConfirmation[] @relation("MoneyConfirmationReceipt")
+
   @@unique([serviceRequestId, requestAttachmentPosition])
   /// The retention sweep: what is due for deletion and not yet deleted.
   @@index([deletedAt, retainUntil])
@@ -2853,6 +2865,11 @@ model LedgerTransaction {
   entries    LedgerEntry[]
 
   // Target of LedgerEntry's (transactionId, currency) foreign key.
+
+  // R19 — subscription money foundation (back-relations only; no column change).
+  moneyConfirmation       MoneyPaymentConfirmation?
+  moneyRefundCompensation MoneyRefund?
+
   @@unique([id, currency])
   @@index([bookingId])
   @@index([externalReference])
@@ -2874,4 +2891,397 @@ model LedgerEntry {
 
   @@unique([transactionId, lineNo])
   @@index([accountId, createdAt, id])
+}
+
+// -----------------------------------------------------------------------------
+// R19 — subscription money foundation (dark). Provider subscriptions paid TO
+// HSM only. No migration or seed creates a row: no plan, price, currency,
+// coupon or account purpose is chosen here. Contracts: hsm.money.v1 in
+// packages/contracts/src/money. Database-enforced rules are listed in
+// docs/production-readiness/r19/IMPLEMENTATION.md.
+// -----------------------------------------------------------------------------
+
+enum MoneyBillingInterval {
+  MONTHLY
+  ANNUAL
+}
+
+enum MoneyPaymentMethod {
+  STRIPE
+  SHAM_CASH
+  SYRIATEL_CASH
+  CASH_OFFICE
+}
+
+enum MoneyPaymentIntentStatus {
+  CREATED
+  AWAITING_PAYMENT
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum MoneyPaymentAttemptStatus {
+  STARTED
+  FAILED
+  SUCCEEDED
+  CANCELLED
+}
+
+enum MoneyConfirmationSource {
+  PROVIDER_WEBHOOK
+  MANUAL_REVIEW
+}
+
+enum MoneySubscriptionStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  CANCELLED
+}
+
+enum MoneyRefundStatus {
+  RESERVED
+  DISPATCHED
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum MoneyCouponKind {
+  PERCENTAGE
+  FIXED
+}
+
+enum MoneyReconciliationKind {
+  CONFIRMATION_WITHOUT_POSTING
+  POSTING_WITHOUT_CONFIRMATION
+  AMOUNT_MISMATCH
+  CURRENCY_MISMATCH
+  DUPLICATE_EXTERNAL_CONFIRMATION
+  REFUND_WITHOUT_COMPENSATION
+  PERIOD_WITHOUT_CONFIRMATION
+}
+
+/// An immutable commercial snapshot (ADR 0014 decision 3). Only retiredAt may
+/// be set, once.
+model SubscriptionPlanVersion {
+  id              String               @id @default(cuid())
+  planKey         String
+  version         Int
+  billingInterval MoneyBillingInterval
+  priceMinor      BigInt
+  currency        String               @db.Char(3)
+  entitlements    Json
+  publishedAt     DateTime
+  retiredAt       DateTime?
+  createdAt       DateTime             @default(now())
+
+  paymentIntents MoneyPaymentIntent[]
+  subscriptions  ProviderSubscription[]
+
+  @@unique([planKey, version])
+  @@unique([id, currency])
+}
+
+/// One provider purchase of one plan version, priced by the server.
+model MoneyPaymentIntent {
+  id                String                   @id @default(cuid())
+  providerProfileId String
+  planVersionId     String
+  method            MoneyPaymentMethod
+  status            MoneyPaymentIntentStatus @default(CREATED)
+  currency          String                   @db.Char(3)
+  subtotalMinor     BigInt
+  discountMinor     BigInt
+  totalMinor        BigInt
+  couponId          String?
+  idempotencyKey    String                   @unique
+  requestDigest     String                   @db.Char(64)
+  expiresAt         DateTime
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  providerProfile ProviderProfile           @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+  planVersion     SubscriptionPlanVersion   @relation(fields: [planVersionId, currency], references: [id, currency], onDelete: Restrict)
+  coupon          MoneyCoupon?              @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  attempts        MoneyPaymentAttempt[]
+  confirmation    MoneyPaymentConfirmation?
+  redemption      MoneyCouponRedemption?
+
+  @@unique([id, currency])
+  @@index([providerProfileId, createdAt])
+  @@index([status, expiresAt])
+}
+
+model MoneyPaymentAttempt {
+  id                String                    @id @default(cuid())
+  paymentIntentId   String
+  attemptNo         Int
+  status            MoneyPaymentAttemptStatus @default(STARTED)
+  externalAttemptId String?                   @unique
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  paymentIntent MoneyPaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentIntentId, attemptNo])
+}
+
+/// The authoritative confirmation (ADR 0014 decision 6): one per intent, one
+/// ledger posting, never updated or deleted.
+model MoneyPaymentConfirmation {
+  id                     String                  @id @default(cuid())
+  paymentIntentId        String                  @unique
+  source                 MoneyConfirmationSource
+  externalConfirmationId String
+  amountMinor            BigInt
+  currency               String                  @db.Char(3)
+  confirmedAt            DateTime
+  receiptMediaAssetId    String?
+  reviewerUserId         String?
+  idempotencyKey         String                  @unique
+  requestDigest          String                  @db.Char(64)
+  ledgerTransactionId    String                  @unique
+  createdAt              DateTime                @default(now())
+
+  paymentIntent     MoneyPaymentIntent  @relation(fields: [paymentIntentId, currency], references: [id, currency], onDelete: Restrict)
+  ledgerTransaction LedgerTransaction   @relation(fields: [ledgerTransactionId, currency], references: [id, currency], onDelete: Restrict)
+  receiptMediaAsset MediaAsset?         @relation("MoneyConfirmationReceipt", fields: [receiptMediaAssetId], references: [id], onDelete: Restrict)
+  reviewer          User?               @relation("MoneyConfirmationReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  period            SubscriptionPeriod?
+  refunds           MoneyRefund[]
+
+  @@unique([source, externalConfirmationId])
+  @@unique([id, currency])
+  // Required for the composite one-to-one relations above; implied by the
+  // single-column uniques.
+  @@unique([paymentIntentId, currency])
+  @@unique([ledgerTransactionId, currency])
+}
+
+model ProviderSubscription {
+  id                String                  @id @default(cuid())
+  providerProfileId String
+  planVersionId     String
+  status            MoneySubscriptionStatus @default(PENDING_PAYMENT)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  providerProfile ProviderProfile         @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+  planVersion     SubscriptionPlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
+  periods         SubscriptionPeriod[]
+  usage           MoneyEntitlementUsage[]
+
+  @@index([providerProfileId, status])
+}
+
+/// One period per confirmed obligation; immutable; periods of one
+/// subscription never overlap.
+model SubscriptionPeriod {
+  id                    String   @id @default(cuid())
+  subscriptionId        String
+  paymentConfirmationId String   @unique
+  startsAt              DateTime
+  endsAt                DateTime
+  createdAt             DateTime @default(now())
+
+  subscription        ProviderSubscription     @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  paymentConfirmation MoneyPaymentConfirmation @relation(fields: [paymentConfirmationId], references: [id], onDelete: Restrict)
+
+  @@index([subscriptionId, startsAt])
+}
+
+/// A refund of a subscription payment (not a booking refund). Open and
+/// succeeded refunds never exceed the confirmed amount.
+model MoneyRefund {
+  id                              String            @id @default(cuid())
+  paymentConfirmationId           String
+  amountMinor                     BigInt
+  currency                        String            @db.Char(3)
+  status                          MoneyRefundStatus @default(RESERVED)
+  reasonCode                      String
+  idempotencyKey                  String            @unique
+  requestDigest                   String            @db.Char(64)
+  externalRefundId                String?           @unique
+  compensatingLedgerTransactionId String?           @unique
+  createdAt                       DateTime          @default(now())
+  updatedAt                       DateTime          @updatedAt
+
+  paymentConfirmation   MoneyPaymentConfirmation @relation(fields: [paymentConfirmationId, currency], references: [id, currency], onDelete: Restrict)
+  compensatingLedgerTxn LedgerTransaction?       @relation(fields: [compensatingLedgerTransactionId], references: [id], onDelete: Restrict)
+
+  @@index([paymentConfirmationId, status])
+}
+
+model MoneyCoupon {
+  id                        String          @id @default(cuid())
+  code                      String          @unique
+  kind                      MoneyCouponKind
+  value                     BigInt
+  currency                  String?         @db.Char(3)
+  startsAt                  DateTime?
+  endsAt                    DateTime?
+  active                    Boolean         @default(false)
+  maxRedemptions            Int?
+  maxRedemptionsPerProvider Int?
+  createdAt                 DateTime        @default(now())
+
+  paymentIntents MoneyPaymentIntent[]
+  redemptions    MoneyCouponRedemption[]
+}
+
+/// One redemption per intent; a replayed intent cannot redeem twice.
+model MoneyCouponRedemption {
+  id                String   @id @default(cuid())
+  couponId          String
+  paymentIntentId   String   @unique
+  providerProfileId String
+  createdAt         DateTime @default(now())
+
+  coupon          MoneyCoupon        @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  paymentIntent   MoneyPaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+  providerProfile ProviderProfile    @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+
+  @@index([couponId, providerProfileId])
+}
+
+/// Usage counted by distinct usage key, so a replayed event never consumes
+/// twice (ADR 0014 invariant).
+model MoneyEntitlementUsage {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  entitlementKey String
+  usageKey       String
+  createdAt      DateTime @default(now())
+
+  subscription ProviderSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
+  @@unique([subscriptionId, entitlementKey, usageKey])
+}
+
+model MoneyReconciliationException {
+  id             String                  @id @default(cuid())
+  kind           MoneyReconciliationKind
+  subjectType    String
+  subjectId      String
+  detectedAt     DateTime                @default(now())
+  resolvedAt     DateTime?
+  resolutionCode String?
+
+  @@unique([kind, subjectType, subjectId])
+  @@index([resolvedAt, detectedAt])
+}
+
+// R21 — durable outbound email.
+//
+// The business transaction records an EmailDelivery row (the intent) together
+// with the state change it describes, so a rolled-back transaction produces no
+// message. Delivery happens afterwards, outside any transaction, and is retried
+// against this row until the provider accepts it, the attempt budget is spent
+// or the message's own validity window closes. Provider ACCEPTANCE is not
+// DELIVERY: DELIVERED / BOUNCED / COMPLAINED only come from signed provider
+// feedback (EmailFeedbackEvent).
+//
+// No foreign key to User on purpose: this is an operational delivery log that
+// is purged on a bounded schedule, and the recipient is addressed by a hash.
+enum EmailDeliveryStatus {
+  QUEUED
+  SENDING
+  ACCEPTED
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+  SUPPRESSED
+  FAILED
+  EXPIRED
+}
+
+enum EmailCategory {
+  // Requested by the recipient and needed to reach their account (OTP,
+  // verification link, password reset). Never suppressed by feedback.
+  AUTH
+  // Account/status notices the recipient did not just ask for.
+  NOTIFICATION
+}
+
+enum EmailSuppressionReason {
+  HARD_BOUNCE
+  COMPLAINT
+}
+
+enum EmailFeedbackKind {
+  DELIVERED
+  BOUNCE_PERMANENT
+  BOUNCE_TRANSIENT
+  COMPLAINT
+}
+
+model EmailDelivery {
+  id             String              @id @default(cuid())
+  // Stable message key: the producer's idempotency key and the Message-ID
+  // local part, so retries of one intent are one logical message.
+  messageKey     String              @unique
+  category       EmailCategory
+  // Template id, e.g. "auth.password_reset". A database value: add, never rename.
+  template       String
+  userId         String?
+  // SHA-256 of the normalised address. Suppression and feedback join on this.
+  recipientHash  String
+  // AES-256-GCM sealed {to, vars}. Holds one-time secrets for AUTH mail, so it
+  // is cleared on every terminal transition and at expiry.
+  envelope       Bytes?
+  status         EmailDeliveryStatus @default(QUEUED)
+  attempts       Int                 @default(0)
+  maxAttempts    Int                 @default(6)
+  nextAttemptAt  DateTime            @default(now())
+  leaseUntil     DateTime?
+  leasedBy       String?
+  // Low-cardinality class, never a driver message: transient | permanent |
+  // config | suppressed | expired | undecryptable.
+  lastErrorClass String?
+  lastSmtpCode   Int?
+  acceptedAt     DateTime?
+  outcomeAt      DateTime?
+  expiresAt      DateTime
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  feedback EmailFeedbackEvent[]
+
+  @@index([status, nextAttemptAt])
+  @@index([status, leaseUntil])
+  @@index([recipientHash, template, createdAt])
+  @@index([createdAt])
+}
+
+model EmailSuppression {
+  id            String                 @id @default(cuid())
+  recipientHash String
+  reason        EmailSuppressionReason
+  feedbackId    String?
+  createdAt     DateTime               @default(now())
+  liftedAt      DateTime?
+
+  @@unique([recipientHash, reason])
+}
+
+model EmailFeedbackEvent {
+  id         String            @id @default(cuid())
+  // Feedback channel id (e.g. "generic-hmac-v1"); with externalId, the replay key.
+  source     String
+  externalId String
+  kind       EmailFeedbackKind
+  deliveryId String
+  occurredAt DateTime
+  receivedAt DateTime          @default(now())
+
+  delivery EmailDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@unique([source, externalId])
+  @@index([receivedAt])
+  @@index([deliveryId])
 }

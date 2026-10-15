@@ -1,0 +1,203 @@
+# R23 — platform alerts: outbox, notifications, mail, scanning, payments,
+# background jobs, deep diagnostics and the telemetry pipeline itself.
+#
+# STATUS: PROPOSED thresholds (docs/production-readiness/r23/SLO.md).
+#
+# Rules marked INSTRUMENTATION_PENDING reference metric names reserved in
+# docs/production-readiness/r23/METRICS_CATALOG.md for the domain lanes
+# (R29–R34). Until those lanes publish the metric the rule matches no series
+# and stays silent; it is never an `absent()` rule, so a missing producer
+# cannot page anyone. The payment rule additionally stays inert while no
+# payment rail exists (R16 / R18 D-1, POLICY_BLOCKED).
+
+groups:
+  - name: hsm-platform-alerts
+    rules:
+      # ── outbox ────────────────────────────────────────────────────────────
+      - alert: OutboxLagHigh
+        expr: max(outbox_oldest_pending_age_seconds{job="hsm-api"}) > 300
+        for: 10m
+        labels:
+          severity: page
+          owner: platform-oncall
+          service: outbox
+          slo: outbox-lag
+          slo_status: proposed
+        annotations:
+          summary: The oldest claimable outbox event is more than 5 minutes old
+          description: 'Oldest pending event age {{ $value | humanizeDuration }}.'
+          runbook_url: infra/production/observability/RUNBOOK.md#outboxlaghigh
+          first_checks: >-
+            outbox_queue_depth by status; worker readiness and OUTBOX_WORKER_ENABLED on every
+            replica; outbox_reclaimed_total (crash loops); retried outcomes by event type.
+          escalation: Page the platform on-call. Notifications and verification side effects are delayed.
+          recovery: Resolves when the oldest pending age is at or below 5 minutes.
+
+      - alert: OutboxDeadEvents
+        expr: sum by (event_type) (increase(outbox_events_processed_total{job="hsm-api",outcome="dead"}[15m])) > 0
+        for: 0m
+        labels:
+          severity: ticket
+          owner: platform-oncall
+          service: outbox
+        annotations:
+          summary: 'Outbox events of type {{ $labels.event_type }} exhausted their retries'
+          description: Dead events will not be delivered without operator action.
+          runbook_url: infra/production/observability/RUNBOOK.md#outboxdeadevents
+          first_checks: Handler error logs by traceId for the event type; whether a dependency was down.
+          escalation: Ticket to the owning domain team named in the runbook.
+          recovery: Resolves 15 minutes after the last dead event.
+
+      # ── notifications (INSTRUMENTATION_PENDING: R29+) ─────────────────────
+      - alert: NotificationDeliveryDelayHigh
+        expr: >-
+          histogram_quantile(0.99,
+            sum by (le) (rate(notification_delivery_delay_seconds_bucket{job="hsm-api"}[15m]))) > 120
+        for: 15m
+        labels:
+          severity: ticket
+          owner: notifications-owner-unassigned
+          service: notifications
+          slo: notification-delay
+          slo_status: proposed
+          instrumentation: pending
+        annotations:
+          summary: p99 notification delivery delay is above 2 minutes
+          description: '{{ $value | humanizeDuration }} p99 over 15 m.'
+          runbook_url: infra/production/observability/RUNBOOK.md#notificationdeliverydelayhigh
+          first_checks: OutboxLagHigh state; push/SMTP dependency call errors.
+          escalation: Ticket to the notifications owner (to be named by the product owner).
+          recovery: Resolves when p99 is at or below 2 minutes.
+
+      # ── mail ──────────────────────────────────────────────────────────────
+      # Source: dependency_call_duration_seconds{dependency="smtp"} once the
+      # mail adapter adopts TelemetryService.callDependency (CR-04).
+      - alert: MailSendFailureRatioHigh
+        expr: >-
+          (
+            sum(rate(dependency_call_duration_seconds_count{job="hsm-api",dependency="smtp",outcome!="success"}[15m]))
+            / sum(rate(dependency_call_duration_seconds_count{job="hsm-api",dependency="smtp"}[15m]))
+          ) > 0.05
+          and sum(increase(dependency_call_duration_seconds_count{job="hsm-api",dependency="smtp"}[15m])) >= 5
+        for: 10m
+        labels:
+          severity: page
+          owner: platform-oncall
+          service: mail
+          slo: mail-delivery
+          slo_status: proposed
+        annotations:
+          summary: More than 5 % of SMTP sends are failing
+          description: >-
+            {{ $value | humanizePercentage }} of SMTP calls failed over 15 m. OTP and recovery mail
+            cannot complete sign-in.
+          runbook_url: infra/production/observability/RUNBOOK.md#mailsendfailureratiohigh
+          first_checks: dependency_up{dependency="smtp"}; outcome split timeout vs error; sender verification.
+          escalation: Page the platform on-call. Do not enable an OTP bypass or a test mailbox in production.
+          recovery: Resolves when the 15-minute failure ratio is at or below 5 %.
+
+      # ── deep diagnostics: never part of liveness or readiness ─────────────
+      - alert: DependencyDiagnosticDown
+        expr: dependency_up{job="hsm-api"} == 0
+        for: 10m
+        labels:
+          severity: ticket
+          owner: platform-oncall
+          service: '{{ $labels.dependency }}'
+        annotations:
+          summary: 'Deep diagnostic for {{ $labels.dependency }} has failed for 10 minutes'
+          description: >-
+            The API stays live and ready; features that depend on {{ $labels.dependency }} are
+            degraded.
+          runbook_url: infra/production/observability/RUNBOOK.md#dependencydiagnosticdown
+          first_checks: Vendor status page; credentials rotation; network egress from the API host.
+          escalation: Ticket; escalate to a page if MailSendFailureRatioHigh or ScanBacklogStale also fire.
+          recovery: Resolves on the first successful probe.
+
+      # ── scanning (INSTRUMENTATION_PENDING: R31/R32) ───────────────────────
+      - alert: ScanBacklogStale
+        expr: max(scan_oldest_pending_age_seconds{job="hsm-api"}) > 900
+        for: 10m
+        labels:
+          severity: page
+          owner: platform-oncall
+          service: scanner
+          slo: scan-age
+          slo_status: proposed
+          instrumentation: pending
+        annotations:
+          summary: An upload has waited more than 15 minutes for a malware scan
+          description: 'Oldest pending scan {{ $value | humanizeDuration }}.'
+          runbook_url: infra/production/observability/RUNBOOK.md#scanbacklogstale
+          first_checks: dependency_up{dependency="scanner"}; evidence_scan_outcomes_total by state.
+          escalation: Page the platform on-call. Never bypass scanning to clear the backlog.
+          recovery: Resolves when the oldest pending scan is at or below 15 minutes.
+
+      # ── payments (INSTRUMENTATION_PENDING, POLICY_BLOCKED) ────────────────
+      - alert: PaymentOutcomeUnknown
+        expr: max(payment_unknown_outcomes_open{job="hsm-api"}) > 0
+        for: 15m
+        labels:
+          severity: page
+          owner: payments-owner-unassigned
+          service: payments
+          slo: payment-unknown-outcomes
+          slo_status: proposed
+          instrumentation: pending
+        annotations:
+          summary: A payment attempt has had an unknown outcome for more than 15 minutes
+          description: >-
+            {{ $value }} attempts await reconciliation. No payment rail is enabled today (R16 / R18
+            D-1); this rule is inert until one is approved.
+          runbook_url: infra/production/observability/RUNBOOK.md#paymentoutcomeunknown
+          first_checks: Provider dashboard for the attempt; idempotency key; webhook delivery log.
+          escalation: Page the payments owner. Never retry a charge or edit the ledger by hand.
+          recovery: Resolves when no unknown outcome has been open for 15 minutes.
+
+      # ── background jobs ───────────────────────────────────────────────────
+      - alert: BackgroundJobStale
+        expr: time() - max by (job_name) (background_job_last_success_unixtime{job="hsm-api"}) > 1800
+        for: 5m
+        labels:
+          severity: ticket
+          owner: platform-oncall
+          service: background-jobs
+        annotations:
+          summary: 'Background job {{ $labels.job_name }} has not succeeded for 30 minutes'
+          description: Last success {{ $value | humanizeDuration }} ago.
+          runbook_url: infra/production/observability/RUNBOOK.md#backgroundjobstale
+          first_checks: background_job_runs_total by outcome; job logs by traceId.
+          escalation: Ticket; page if the job is the outbox tick and OutboxLagHigh is firing.
+          recovery: Resolves on the next successful run.
+
+  - name: hsm-telemetry-alerts
+    rules:
+      - alert: TelemetrySpanExportFailing
+        expr: sum(increase(telemetry_export_failures_total{job="hsm-api"}[15m])) > 0
+        for: 15m
+        labels:
+          severity: ticket
+          owner: platform-oncall
+          service: telemetry
+        annotations:
+          summary: Trace export has been failing for 15 minutes
+          description: Spans are being dropped; the API itself is unaffected by design.
+          runbook_url: infra/production/observability/RUNBOOK.md#telemetryspanexportfailing
+          first_checks: Collector health; telemetry_spans_dropped_total by reason.
+          escalation: Ticket to the platform backlog.
+          recovery: Resolves 15 minutes after the last failed export.
+
+      - alert: TelemetryLabelOverflow
+        expr: sum by (metric) (increase(telemetry_label_overflow_total{job="hsm-api"}[1h])) > 100
+        for: 0m
+        labels:
+          severity: ticket
+          owner: platform-oncall
+          service: telemetry
+        annotations:
+          summary: 'Metric {{ $labels.metric }} is receiving undeclared label values'
+          description: Values were collapsed into "other". Usually a caller passing an id or free text.
+          runbook_url: infra/production/observability/RUNBOOK.md#telemetrylabeloverflow
+          first_checks: Recent changes to the code recording that metric.
+          escalation: Ticket to the team that owns the metric (METRICS_CATALOG.md).
+          recovery: Resolves an hour after the overflow stops.

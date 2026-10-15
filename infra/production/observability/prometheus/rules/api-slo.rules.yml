@@ -1,0 +1,202 @@
+# R23 — API service-level indicators and burn-rate alerts.
+#
+# STATUS: PROPOSED. Objectives below are drafts awaiting owner and capacity
+# approval (docs/production-readiness/r23/SLO.md). They are not an SLA and no
+# measurement from a hosted environment exists yet.
+#
+#   availability  99.5 % of API requests answer without a 5xx      (28 days)
+#   latency       99 % of API requests complete within 1 second    (28 days)
+#
+# Excluded from both: orchestrator probes (/health/*) and client aborts (499).
+# The /metrics scrape is never recorded by the middleware.
+#
+# Alerting uses multi-window, multi-burn-rate rules (Google SRE workbook,
+# ch. 5): a long window proves the burn is sustained, a short window makes the
+# alert resolve soon after recovery. A minimum request volume suppresses pages
+# caused by a single failing request on an idle instance.
+
+groups:
+  - name: hsm-api-sli
+    interval: 30s
+    rules:
+      # ── availability: bad = 5xx ───────────────────────────────────────────
+      - record: hsm:api_requests:rate5m
+        expr: sum(rate(http_requests_total{job="hsm-api",route!~"/health/.*",status!="499"}[5m]))
+      - record: hsm:api_errors:rate5m
+        expr: (sum(rate(http_requests_total{job="hsm-api",route!~"/health/.*",status=~"5.."}[5m])) or vector(0))
+      - record: hsm:api_error_ratio:rate5m
+        expr: hsm:api_errors:rate5m / hsm:api_requests:rate5m
+      - record: hsm:api_error_ratio:rate30m
+        expr: >-
+          (sum(rate(http_requests_total{job="hsm-api",route!~"/health/.*",status=~"5.."}[30m])) or vector(0))
+          / sum(rate(http_requests_total{job="hsm-api",route!~"/health/.*",status!="499"}[30m]))
+      - record: hsm:api_error_ratio:rate1h
+        expr: >-
+          (sum(rate(http_requests_total{job="hsm-api",route!~"/health/.*",status=~"5.."}[1h])) or vector(0))
+          / sum(rate(http_requests_total{job="hsm-api",route!~"/health/.*",status!="499"}[1h]))
+      - record: hsm:api_error_ratio:rate6h
+        expr: >-
+          (sum(rate(http_requests_total{job="hsm-api",route!~"/health/.*",status=~"5.."}[6h])) or vector(0))
+          / sum(rate(http_requests_total{job="hsm-api",route!~"/health/.*",status!="499"}[6h]))
+      - record: hsm:api_error_ratio:rate3d
+        expr: >-
+          (sum(rate(http_requests_total{job="hsm-api",route!~"/health/.*",status=~"5.."}[3d])) or vector(0))
+          / sum(rate(http_requests_total{job="hsm-api",route!~"/health/.*",status!="499"}[3d]))
+      - record: hsm:api_requests:increase1h
+        expr: sum(increase(http_requests_total{job="hsm-api",route!~"/health/.*",status!="499"}[1h]))
+
+      # ── latency: bad = slower than 1 s ────────────────────────────────────
+      - record: hsm:api_slow_ratio:rate5m
+        expr: >-
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{job="hsm-api",route!~"/health/.*",status!="499",le="1"}[5m]))
+            / sum(rate(http_request_duration_seconds_count{job="hsm-api",route!~"/health/.*",status!="499"}[5m]))
+          )
+      - record: hsm:api_slow_ratio:rate30m
+        expr: >-
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{job="hsm-api",route!~"/health/.*",status!="499",le="1"}[30m]))
+            / sum(rate(http_request_duration_seconds_count{job="hsm-api",route!~"/health/.*",status!="499"}[30m]))
+          )
+      - record: hsm:api_slow_ratio:rate1h
+        expr: >-
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{job="hsm-api",route!~"/health/.*",status!="499",le="1"}[1h]))
+            / sum(rate(http_request_duration_seconds_count{job="hsm-api",route!~"/health/.*",status!="499"}[1h]))
+          )
+      - record: hsm:api_slow_ratio:rate6h
+        expr: >-
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{job="hsm-api",route!~"/health/.*",status!="499",le="1"}[6h]))
+            / sum(rate(http_request_duration_seconds_count{job="hsm-api",route!~"/health/.*",status!="499"}[6h]))
+          )
+      - record: hsm:api_latency_p95:rate5m
+        expr: >-
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{job="hsm-api",route!~"/health/.*",status!="499"}[5m])))
+
+  - name: hsm-api-slo-alerts
+    rules:
+      # Budget 0.5 %. 14.4x burns 2 % of a 28-day budget in one hour.
+      - alert: ApiAvailabilityFastBurn
+        expr: >-
+          hsm:api_error_ratio:rate5m > (14.4 * 0.005)
+          and hsm:api_error_ratio:rate1h > (14.4 * 0.005)
+          and hsm:api_requests:increase1h >= 20
+        for: 2m
+        labels:
+          severity: page
+          owner: platform-oncall
+          service: hsm-api
+          slo: api-availability
+          slo_status: proposed
+        annotations:
+          summary: API is failing fast enough to exhaust the 28-day error budget in about two days
+          description: >-
+            {{ $value | humanizePercentage }} of API requests answered 5xx over the last 5 minutes
+            (threshold 7.2 % over both 1 h and 5 m).
+          runbook_url: infra/production/observability/RUNBOOK.md#apiavailabilityfastburn
+          first_checks: >-
+            Errors by route on the API overview dashboard; /health/ready per instance; whether
+            the start matches a deployment (sourceSha on /health/live).
+          escalation: >-
+            Page the platform on-call. No acknowledgement in 15 min -> platform lead. Data loss or
+            security suspicion -> follow the security incident path immediately.
+          recovery: Resolves when the 5-minute error ratio stays below 7.2 % for one evaluation.
+
+      - alert: ApiAvailabilitySlowBurn
+        expr: >-
+          hsm:api_error_ratio:rate30m > (6 * 0.005)
+          and hsm:api_error_ratio:rate6h > (6 * 0.005)
+          and hsm:api_requests:increase1h >= 20
+        for: 15m
+        labels:
+          severity: page
+          owner: platform-oncall
+          service: hsm-api
+          slo: api-availability
+          slo_status: proposed
+        annotations:
+          summary: API errors are steadily consuming the error budget (6x burn)
+          description: '{{ $value | humanizePercentage }} 5xx over 30 m; threshold 3 % over 6 h and 30 m.'
+          runbook_url: infra/production/observability/RUNBOOK.md#apiavailabilityslowburn
+          first_checks: Top failing routes over 6 h; dependency diagnostics; recent deployments.
+          escalation: Platform on-call within business hours; after hours only if the 30 m ratio keeps rising.
+          recovery: Resolves when the 30-minute error ratio falls below 3 %.
+
+      - alert: ApiAvailabilityBudgetTicket
+        expr: >-
+          hsm:api_error_ratio:rate6h > 0.005
+          and hsm:api_error_ratio:rate3d > 0.005
+        for: 1h
+        labels:
+          severity: ticket
+          owner: platform-oncall
+          service: hsm-api
+          slo: api-availability
+          slo_status: proposed
+        annotations:
+          summary: API error rate is above the proposed objective over three days
+          description: 5xx ratio above 0.5 % over 3 d and 6 h.
+          runbook_url: infra/production/observability/RUNBOOK.md#apiavailabilitybudgetticket
+          first_checks: Error-budget panel; recurring failing routes.
+          escalation: Ticket to the platform backlog; review at the next reliability review.
+          recovery: Resolves when the 6-hour ratio falls below 0.5 %.
+
+      # Budget 1 % slow requests.
+      - alert: ApiLatencyFastBurn
+        expr: >-
+          hsm:api_slow_ratio:rate5m > (14.4 * 0.01)
+          and hsm:api_slow_ratio:rate1h > (14.4 * 0.01)
+          and hsm:api_requests:increase1h >= 20
+        for: 2m
+        labels:
+          severity: page
+          owner: platform-oncall
+          service: hsm-api
+          slo: api-latency
+          slo_status: proposed
+        annotations:
+          summary: Over 14 % of API requests take longer than 1 second
+          description: '{{ $value | humanizePercentage }} of requests slower than 1 s over 5 m.'
+          runbook_url: infra/production/observability/RUNBOOK.md#apilatencyfastburn
+          first_checks: p95 by route; database pool saturation and slow queries; Redis latency.
+          escalation: Page the platform on-call; database owner if pool saturation is confirmed.
+          recovery: Resolves when the 5-minute slow ratio falls below 14.4 %.
+
+      - alert: ApiLatencySlowBurn
+        expr: >-
+          hsm:api_slow_ratio:rate30m > (6 * 0.01)
+          and hsm:api_slow_ratio:rate6h > (6 * 0.01)
+          and hsm:api_requests:increase1h >= 20
+        for: 15m
+        labels:
+          severity: ticket
+          owner: platform-oncall
+          service: hsm-api
+          slo: api-latency
+          slo_status: proposed
+        annotations:
+          summary: API latency is steadily above the proposed objective
+          description: '{{ $value | humanizePercentage }} slower than 1 s over 30 m (threshold 6 %).'
+          runbook_url: infra/production/observability/RUNBOOK.md#apilatencyslowburn
+          first_checks: Slowest routes over 6 h; query plans of the top route.
+          escalation: Ticket to the platform backlog.
+          recovery: Resolves when the 30-minute slow ratio falls below 6 %.
+
+      - alert: ApiScrapeTargetDown
+        expr: up{job="hsm-api"} == 0
+        for: 2m
+        labels:
+          severity: page
+          owner: platform-oncall
+          service: hsm-api
+        annotations:
+          summary: Prometheus cannot scrape an API instance
+          description: '{{ $labels.instance }} has not answered /metrics for 2 minutes.'
+          runbook_url: infra/production/observability/RUNBOOK.md#apiscrapetargetdown
+          first_checks: >-
+            /health/live on the instance; container state and restarts; METRICS_TOKEN rotation
+            (a wrong token returns 404 and looks identical to a missing endpoint).
+          escalation: Page the platform on-call. Several instances down -> platform lead.
+          recovery: Resolves on the first successful scrape.

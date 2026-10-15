@@ -60,3 +60,10 @@ b876db762045bf70ee7d1fb3eea9eb00ac4bbb97:apps/api/src/modules/disputes/dispute-i
 # credential: a readable JWT_ACCESS_SECRET for a disposable CI job, in a
 # diagnostic workflow that was deleted on the same branch.
 d316a2f46270024b301c78bfa86d15e94e2350c9:.github/workflows/r13-validation.yml:generic-api-key:39
+
+# R23 — three synthetic redaction-test values, individually reviewed in §11.
+# Not credentials: values the privacy spec plants to prove they never reach
+# logs, spans or metrics. The spec now assembles them at runtime.
+4c438f05f262cd05eef9746027e34dbefa58d6e6:apps/api/src/infrastructure/logger/logger.privacy.spec.ts:generic-api-key:46
+4c438f05f262cd05eef9746027e34dbefa58d6e6:apps/api/src/infrastructure/logger/logger.privacy.spec.ts:generic-api-key:50
+4c438f05f262cd05eef9746027e34dbefa58d6e6:apps/api/src/infrastructure/logger/logger.privacy.spec.ts:jwt:59

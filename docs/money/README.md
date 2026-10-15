@@ -1,5 +1,7 @@
 # Milestone M5 — money implementation
 
+> **Numbering note (2026-10-13).** "Sprint 13" here is the earlier money-plan numbering, not R13 (help and support). The current sequence and its status live in [`docs/production-readiness/post-r18/`](../production-readiness/post-r18/ACTIVE_STATUS.md); this file is kept unchanged as history.
+
 Sprint 13 establishes the dark money authority: ADR, shared contracts, domain invariants, persistence foundation, plan/version/entitlement semantics and security/UX contracts. It intentionally does not execute live payments.
 
 Sprint 14 will add payment adapters and authoritative confirmation: Stripe sandbox + signed idempotent webhooks; Sham Cash/Syriatel Cash/cash-office instructions; restricted receipt ingestion, scan/fingerprint/review; atomic manual approval; refunds and event reconciliation.

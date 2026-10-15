@@ -1,0 +1,10 @@
+{
+  "_fixture": "NON_PRODUCTION synthetic",
+  "contractVersion": "hsm.money.v1",
+  "id": "fixture-exception",
+  "kind": "AMOUNT_MISMATCH",
+  "subjectType": "PaymentConfirmation",
+  "subjectId": "fixture-confirmation",
+  "detectedAt": "2026-10-14T12:00:00.000Z",
+  "resolvedAt": null
+}
