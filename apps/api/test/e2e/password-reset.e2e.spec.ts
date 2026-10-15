@@ -13,8 +13,8 @@ export {}; // module marker.
 //   → login (real OTP) with the new password succeeds
 //   → replaying the used link → 400 (generic)
 //
-// Gated by RUN_DB_INTEGRATION=1. Talks to the shared dev DB but NEVER
-// truncates: it uses @itest.local emails and deletes only its own rows.
+// Gated by RUN_DB_INTEGRATION=1. Uses its own migrated database and real
+// seed transaction, so setup never waits for another suite's seed lock.
 
 import { INestApplication, Module, ValidationPipe, VersioningType } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
@@ -22,7 +22,7 @@ import { Test } from '@nestjs/testing';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 
-import { withAdvisoryLock } from '../support/db-isolation';
+import { createIsolatedDatabase, type IsolatedDatabase } from '../support/isolated-database';
 import { makeTestSecret } from '../support/test-secrets';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
@@ -35,6 +35,7 @@ const TEST_DOMAIN = 'itest.local';
 d('Password reset — real HTTP round trip', () => {
   let app: INestApplication;
   let prisma: any;
+  let database: IsolatedDatabase | undefined;
   let mail: any;
   let http: any;
   let passwords: any;
@@ -53,11 +54,10 @@ d('Password reset — real HTTP round trip', () => {
   beforeAll(async () => {
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
-    prisma = db.prisma;
-    // Serialised against the other seeders and against the idempotency spec:
-    // seed() upserts a fixed set of shared rows, and two concurrent upserts of
-    // the same row race. The hold is only as long as the seed itself.
-    await withAdvisoryLock('seed', 'exclusive', () => db.seed());
+    database = await createIsolatedDatabase('password_reset');
+    prisma = database.prisma;
+    db.assertSeedProductionSafe();
+    await database.prisma.$transaction(db.seedWithTx, { maxWait: 30_000, timeout: 120_000 });
 
     const { JwtService } = require('@nestjs/jwt');
     const { TransactionRunner } = require('../../src/infrastructure/prisma/transaction.runner');
@@ -204,9 +204,15 @@ d('Password reset — real HTTP round trip', () => {
   });
 
   afterAll(async () => {
-    for (const email of createdEmails) await cleanupByEmail(email);
-    await app?.close();
-    await prisma.$disconnect();
+    try {
+      for (const email of createdEmails) await cleanupByEmail(email);
+    } finally {
+      try {
+        await app?.close();
+      } finally {
+        await database?.dispose();
+      }
+    }
   });
 
   it('forgot(202) → committed token → reset(200) → OTP login with new password → replay(400)', async () => {

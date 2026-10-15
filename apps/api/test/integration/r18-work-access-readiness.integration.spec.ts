@@ -2,25 +2,31 @@
 import type { PrismaClient, PrismaTx } from '@homeservicemarketplace/database';
 
 import { fixturePrefix } from '../support/db-isolation';
+import { createIsolatedDatabase, type IsolatedDatabase } from '../support/isolated-database';
 
 const dbDescribe = process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
 jest.setTimeout(120_000);
 
 // R18 (D-19) — the ADR 0013 live-grant count and the bounded backfill, against
 // real PostgreSQL. The backfill is platform-wide, so every case runs in a
-// transaction that is rolled back: other suites' providers never receive a
-// grant they did not ask for.
+// transaction that is rolled back, in its own migrated database. Rollback
+// alone still locks other suites' profiles and observes their changing totals.
 class Rollback extends Error {}
 
 dbDescribe('R18 work-access readiness and backfill (real PostgreSQL)', () => {
   const prefix = fixturePrefix('r18-work-access');
   let prisma: PrismaClient;
+  let database: IsolatedDatabase | undefined;
   let db: typeof import('@homeservicemarketplace/database');
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
-    prisma = db.prisma;
+    database = await createIsolatedDatabase('r18_work_access');
+    prisma = database.prisma;
+  });
+  afterAll(async () => {
+    await database?.dispose();
   });
 
   // Runs `work` and always rolls back. A failure inside is rethrown as

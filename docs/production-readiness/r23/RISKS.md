@@ -1,5 +1,36 @@
 # R23 — risks, blockers and known deviations
 
+## Corrective disposition (2026-10-15)
+
+This section supersedes conflicting historical states below while preserving
+their original record.
+
+- CR-01 is implemented under the owner's explicit four-file HTTP lease:
+  log/response correlation agreement and query-free exception paths. Current
+  verification is in `ACCEPTANCE.md`; final-head CI must validate the new PR.
+- The earlier incomplete synthetic alert run was superseded by successful
+  firing and recovery in Linux CI on `66603ffb4521faf9b4c39bc21224dddd060a15dd`
+  (run `38546338227`, artifact `11884698755`). It is disposable CI evidence,
+  not production incident acceptance and not proof of the corrective head.
+- The owner authorized this bounded correction and its exact allowlist.
+  The historical wave manifest still lists R23 as blocked. Reconciliation of
+  G0/G1 records and past security-file leases remains the coordinator's job;
+  this session does not retroactively approve or modify those shared records.
+- CR-02 export configuration, CR-03 diagnostics scheduling, CR-04 boundary
+  adoption and the hosted part of CR-05 remain pending. Production receivers,
+  retention/region/backend selection and approval of PROPOSED objectives
+  remain external/policy blockers. A merged PR or green CI does not resolve
+  them.
+- The focused parallel test run reports an existing worker-exit warning.
+  `--detectOpenHandles` identifies the intentionally slow exporter's 5-second
+  timer in unchanged `telemetry/span-pipeline.spec.ts:119`. No timeout,
+  assertion, worker policy or test was weakened to suppress the warning.
+- Node 24.21.0 and pnpm 10.32.1 are now available task-locally, superseding
+  the earlier verification session's toolchain mismatch. No shared service
+  or user database was used.
+
+## Historical initial risks
+
 ## External and policy blockers
 
 | ID        | Blocker                                                                              | Class            | Owner         | Effect                                                                                                                                       |

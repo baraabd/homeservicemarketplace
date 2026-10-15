@@ -1,5 +1,22 @@
 # R23 — rollback
 
+## CR-01 corrective follow-up
+
+The 2026-10-15 corrective PR changes only request-id reuse, exception-path
+logging, regression tests and R23 documentation. It introduces no migration,
+data repair, dependency, flag or deployment configuration.
+
+If a separately authorized rollback is needed, revert the corrective PR's
+commits through review. The original R23 telemetry, metrics and redaction
+remain. Reverting the correction reintroduces query-bearing exception paths
+and inconsistent generated ids; retain the correction unless a reproduced
+regression justifies that privacy/correlation tradeoff. Do not disable the
+scrubber as a workaround. Run the HTTP/logger/telemetry suites and required
+CI on the rollback candidate before deployment.
+
+The procedure below concerns rollback of the original R23 implementation,
+not the bounded corrective follow-up.
+
 R23 adds no migration, no schema change, no dependency, no environment key and
 no feature flag. Rollback is a code revert; no data needs repair.
 

@@ -1,5 +1,171 @@
 # R23 — acceptance evidence
 
+## Ordered CI repair (2026-10-15; hosted verification pending)
+
+Inspected source: `1842eb4757f1b0e36e8610c25b1576d0d41bad0f`.
+Main CI run `38780601800`, integration job `116582166338`, failed with
+6,016 passed / 4 failed / 88 skipped. The R18 and CI aggregate failures were
+consequences of that failed job, not separate runtime defects.
+
+Observed failures and source-level isolation gaps:
+
+- `r18-admin-floor`: its platform-wide `User.updateMany` expired after
+  110,199 ms inside a 60-second transaction. Rollback conceals the writes but
+  still takes locks on other suites' administrator rows.
+- `r18-work-access-readiness`: the global backfill's profile-locking query
+  expired after 110,604 ms. Rollback does not isolate its row locks or global
+  counts from other suites' providers.
+- `password-reset`: setup waited 59,715 ms for the shared seed resource and
+  exhausted its unchanged 60-second hook budget. Seeding the global catalog
+  is unnecessary coupling for a self-contained authentication round trip.
+
+Each suite now owns a freshly created database using the existing real
+migrations. The admin suite retains a committed baseline administrator;
+the password suite seeds its private database using the real seed transaction.
+The helper does not mutate DATABASE_URL or the shared Prisma singleton. It
+uses a generated, validated database identifier, bounded connections and an
+asynchronous pinned Prisma CLI; cleanup drops only a database this invocation
+successfully created, including migration/setup failure. Cleanup failures
+remain visible. Test assertions, test/hook/transaction budgets, worker count,
+workflow gates and production behavior are unchanged.
+
+Local validation: pinned Node 24.21.0 / pnpm 10.32.1, Prisma 6.12.0 generation,
+database/contracts builds and API typecheck passed. Changed TypeScript ESLint
+and formatting passed after correcting a missing AggregateError cause and
+removing an unused lint directive. No local PostgreSQL/Docker is available;
+the three real-database suites must pass in final-head CI before acceptance.
+This section does not claim a hosted PASS. The PR will record the final SHA
+and run results after publication.
+
+Rollback: revert only this isolation follow-up to restore the prior test
+harness. No application schema/data or runtime policy needs rollback; that
+revert reintroduces shared-row contention. Historical evidence below retains
+its original source identity.
+
+## Corrective verification (2026-10-15)
+
+Scope: CR-01 request correlation and exception-path privacy, plus evidence
+reconciliation. Authorization and exact changed-path boundaries are in
+`ALLOWLIST.md`. No G1, hosted or release acceptance is inferred.
+
+- Original frozen base: `059c018576a75837d4dfb262ee49168d9217d881`.
+- Corrective execution base: `af662586a640e41d8438d0cb2dd69e8cbb0e172a`.
+- Base tree: `2d951c7a2c8c6788c0ed6f03db35ea6e6f9071c9`.
+- Branch: `feat/r23-observability-incidents`; isolated checkout with its own
+  dependencies, generated Prisma output, build output and test caches.
+- Toolchain: task-local Node 24.21.0 and pnpm 10.32.1; no global changes.
+- Environment: Linux; no `.env` copied or created; dummy validation values
+  only, database endpoint `127.0.0.1:1` (unreachable); DB integration disabled
+  locally. Real HTTP tests use an ephemeral loopback port and synthetic data.
+- No Docker, Postgres, Redis or gitleaks executable was initially installed.
+  Hosted runtime acceptance is separate from disposable GitHub CI services.
+
+Corrective local status: **IMPLEMENTED, SOURCE_VERIFIED**. Final corrective
+PR CI is required before integration; the broader R23 handoffs remain
+INTEGRATION_PENDING, EXTERNAL_BLOCKED and POLICY_BLOCKED. No SANDBOX_ACCEPTED,
+HOSTED_ACCEPTED or RELEASE_ACCEPTED declaration is made here.
+
+### Corrective commands and results
+
+Locally validated corrective source commit:
+`b0c52d6f0f0ab0362eccf6a5fa9b46a5a1b6048d`; source tree:
+`12b5afb378b6c8083b89c3e9c60ec70b3be06f1e`. Its GitHub-published counterpart
+is `12192d94b5d46a6f7136a6fa5bb064302ca29c09`, with the identical full tree.
+The CLI could not authenticate a push, so publication used the authorized
+GitHub connection after normal local commit hooks, checking exact tree
+equality. Commit identities differ; tested file bytes do not. The follow-up
+evidence commit changes only this document. The exact final PR-head SHA belongs in the PR
+body, per `.github/pull_request_template.md`, avoiding a self-referential
+commit. Final CI must target that final head.
+
+Security verification of the source commit (exit 0):
+
+- `node scripts/security/secret-scan-tree.cjs --gitleaks <task-local-gitleaks> --work-dir <isolated-scan-dir>`:
+  gitleaks 8.24.3, 2,459 tracked files and 20,038,798 bytes scanned, zero
+  findings. The archive matched the repository-pinned SHA-256
+  `9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c`.
+- `gitleaks git --redact --no-banner --log-opts='af662586a640e41d8438d0cb2dd69e8cbb0e172a..HEAD'`:
+  one corrective commit scanned, zero findings. No baseline or scanner
+  configuration was changed.
+- Pre-commit hooks ran normally: lint-staged ESLint and Prettier passed for
+  all 11 staged files; their temporary backup was cleaned up. No bypass.
+
+All commands used the task-local pinned toolchain. API commands requiring
+configuration received only dummy database/JWT validation inputs; no live
+connection or real credential was supplied. The API test command retains
+the existing environment-gated suites; no skip was added by this change.
+
+| Command                                                                                                                                                                                                                                                     | Exit | Observed result                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile`                                                                                                                                                                                                                            | 0    | Independent dependencies installed; lockfile unchanged; runtime guard passed                        |
+| `pnpm --filter @homeservicemarketplace/database generate`                                                                                                                                                                                                   | 0    | Prisma 6.12.0 generated locally; native engine loaded; no database connection                       |
+| `pnpm --filter @homeservicemarketplace/api exec jest src/infrastructure/http/request-id.middleware.spec.ts src/infrastructure/http/all-exceptions.filter.spec.ts src/infrastructure/logger/logger.privacy.spec.ts --maxWorkers=50%` (before implementation) | 1    | 16 regression failures / 122 passed, 3 suites failed; reproduced correlation and query privacy gaps |
+| `pnpm --filter @homeservicemarketplace/api test --maxWorkers=50% src/infrastructure/http src/infrastructure/logger src/infrastructure/telemetry test/e2e/request-id.e2e.spec.ts`                                                                            | 0    | 289 tests / 16 suites passed, zero skipped                                                          |
+| `pnpm --filter @homeservicemarketplace/api exec jest src/infrastructure/http src/infrastructure/logger src/infrastructure/telemetry test/e2e/request-id.e2e.spec.ts --maxWorkers=50%`                                                                       | 0    | Independent repeat: 289 tests / 16 suites passed                                                    |
+| Same focused `exec jest` selection with `--detectOpenHandles`                                                                                                                                                                                               | 0    | 289 passed; identifies unchanged 5-second slow-exporter test timer (RISKS.md)                       |
+| `pnpm --filter @homeservicemarketplace/api lint`                                                                                                                                                                                                            | 0    | API source/spec lint passed                                                                         |
+| `pnpm --filter @homeservicemarketplace/api typecheck`                                                                                                                                                                                                       | 0    | Source and test types passed after fixing the new supertest header overload                         |
+| `pnpm --filter @homeservicemarketplace/api test --maxWorkers=50%`                                                                                                                                                                                           | 0    | 4,478 passed / 1,630 skipped; 249 suites passed / 88 skipped; no failures                           |
+| `pnpm --filter @homeservicemarketplace/api build`                                                                                                                                                                                                           | 0    | Dependency builds and production Nest build passed                                                  |
+| `node --test scripts/production/observability/test-receiver.test.cjs`                                                                                                                                                                                       | 0    | 3 passed / zero failed or skipped                                                                   |
+| `pnpm exec prettier --write` on the exact 11-file allowlist; `git diff --check`                                                                                                                                                                             | 0    | Formatting applied; whitespace check passed                                                         |
+| `git diff --exit-code -- pnpm-lock.yaml package.json`                                                                                                                                                                                                       | 0    | Root package and lockfile unchanged                                                                 |
+
+The initial concurrency harness used supertest's automatic server lifecycle
+and hit ECONNRESET; one explicit ephemeral loopback listener fixed the test
+lifecycle before the reported 16-failure reproduction. An initial typecheck
+also caught the new repeated-header call's overload mismatch; the supported
+object-header overload corrected it. Neither failure was hidden or counted
+as a pass. The existing slow-exporter timer warning remains documented.
+
+Sanitized environment fingerprint SHA-256:
+`4f6423ce854c0854e5cff9a6773f12abadc0d2eb136b76ad57f126b6fb14bda4`.
+It hashes sorted-key compact JSON (no secrets):
+
+```json
+{
+  "RUN_DB_INTEGRATION": false,
+  "database": "unreachable-loopback:1",
+  "envFile": false,
+  "externalReceivers": false,
+  "http": "ephemeral-loopback",
+  "node": "24.21.0",
+  "platform": "linux-x64",
+  "pnpm": "10.32.1",
+  "prisma": "6.12.0",
+  "sampling": 1,
+  "spanExporter": "in-memory-contract-double"
+}
+```
+
+No new UI surface exists and no browser screenshot was captured or visually
+accepted locally. Docker/Postgres/Redis/storage and real-route browser
+acceptance are delegated to the existing final-PR CI, without claiming the
+older successful runs validate the new source. No production resources were
+contacted. Local security scans and the exact corrective commit identities
+are recorded in the source-identity follow-up below and the PR.
+
+### Verified historical evidence that supersedes the incomplete alert run
+
+PR #163 was merged on 2026-10-14 as the corrective base above. Rechecked via
+GitHub on 2026-10-15: 32/32 latest distinct named checks succeeded on
+`66603ffb4521faf9b4c39bc21224dddd060a15dd` (source tree
+`a7f0814d60fa91a32e5426130a06fd6b88c463f5`); 28/28 checks succeeded on the
+merged base. Those results validate those exact commits, not this correction.
+
+[Linux synthetic alert job](https://github.com/baraabd/homeservicemarketplace/actions/runs/38546338227/job/115793217945):
+300 healthy requests, 16 alert definitions with zero quality problems,
+27 dashboard queries with zero failures. Firing reached the test receiver at
+2026-10-14T10:05:01.082Z and recovery at 2026-10-14T10:10:01.084Z;
+`passed=true`. Artifact `11884698755` belongs to the exact R23 head and was
+unexpired when checked (retention expires 2026-10-21).
+
+The base real Postgres/Redis job (run `38549121757`, job `115806369405`)
+passed 5,983 tests, skipped 88; 323 suites passed, 13 skipped. These are
+existing CI results independently read, not newly executed local results.
+
+### Historical initial evidence
+
 Status: **IMPLEMENTED, SOURCE_VERIFIED (partial), INTEGRATION_PENDING.**
 Not SANDBOX_ACCEPTED, not HOSTED_ACCEPTED, not RELEASE_ACCEPTED. Some parts
 are EXTERNAL_BLOCKED or POLICY_BLOCKED (see RISKS.md). The end-to-end
@@ -113,7 +279,6 @@ request.
 No hosted runtime or alerting evidence (PR CI is build and test evidence only). No production receiver. No approved objectives. Database-gated
 suites not run locally. Integration with R19–R22, now on develop, has not been
 tested. No claim of zero defects or production readiness.
-
 
 ## PR review repair verification (2026-10-14)
 

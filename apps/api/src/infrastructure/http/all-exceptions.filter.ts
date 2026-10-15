@@ -10,6 +10,7 @@ import type { Request, Response } from 'express';
 
 import { AppConfigService } from '../../config/app-config.service';
 import { AppError, type AppErrorCode } from '../../shared/errors/app-error';
+import { pathOnly } from '../logger/redaction';
 import { REQUEST_ID_HEADER } from './request-id.middleware';
 
 interface ErrorBody {
@@ -73,11 +74,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
         status,
         code,
         requestId,
-        path: req.url,
+        path: pathOnly(req.originalUrl ?? req.url),
         err: this.serializeError(exception),
       });
     } else {
-      this.logger.debug({ msg: 'Handled exception', status, code, requestId, path: req.url });
+      this.logger.debug({
+        msg: 'Handled exception',
+        status,
+        code,
+        requestId,
+        path: pathOnly(req.originalUrl ?? req.url),
+      });
     }
 
     res.status(status).json(body);

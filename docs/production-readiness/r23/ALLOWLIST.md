@@ -1,5 +1,58 @@
 # R23 — exact write allowlist
 
+## Ordered CI repair (2026-10-15)
+
+The owner's current request explicitly asks to repair the R19, R22 and R23
+PR failures, in that order. This follow-up addresses the three failed database
+suites reported by R23's main CI, in addition to the original correction:
+
+- `apps/api/test/support/isolated-database.ts` (new test-only lifecycle helper)
+- `apps/api/test/integration/r18-admin-floor.integration.spec.ts`
+- `apps/api/test/integration/r18-work-access-readiness.integration.spec.ts`
+- `apps/api/test/e2e/password-reset.e2e.spec.ts`
+- This allowlist and `ACCEPTANCE.md`.
+
+The scope is database-test isolation. It grants no runtime policy, schema,
+migration, CI-gate, production activation or release acceptance change.
+R19 and R22 were first synchronized with already-merged develop on their
+existing corrective branches; no unmerged peer source is imported here.
+
+## Approved corrective follow-up (2026-10-15)
+
+The repository owner approved the concrete 11-file corrective scope proposed
+in PR #163 by replying "نعم" in the implementation session on 2026-10-15.
+That approval authorizes this R23 correction and a successor PR because #163
+is already merged. It does not retroactively approve the historical wave
+records, accept G1, authorize CR-02–CR-05, or permit merge/deployment.
+
+Resumed base: `develop@af662586a640e41d8438d0cb2dd69e8cbb0e172a`, tree
+`2d951c7a2c8c6788c0ed6f03db35ea6e6f9071c9`. The isolated R23 worktree was
+clean and the assigned branch was advanced to this already-merged base by
+fast-forward only. No unmerged peer branch was imported.
+
+Exact approved files (one writer: this R23 correction session):
+
+| Path                                                                                     | Authority                                       |
+| ---------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `apps/api/src/infrastructure/http/request-id.middleware.ts`                              | Explicit shared-file corrective lease           |
+| `apps/api/src/infrastructure/http/request-id.middleware.spec.ts`                         | Explicit shared-file corrective lease; new test |
+| `apps/api/src/infrastructure/http/all-exceptions.filter.ts`                              | Explicit shared-file corrective lease           |
+| `apps/api/src/infrastructure/http/all-exceptions.filter.spec.ts`                         | Explicit shared-file corrective lease           |
+| `apps/api/src/infrastructure/logger/logger.privacy.spec.ts`                              | R23 lane                                        |
+| `docs/production-readiness/r23/ALLOWLIST.md`                                             | R23 lane                                        |
+| `docs/production-readiness/r23/IMPLEMENTATION.md`                                        | R23 lane                                        |
+| `docs/production-readiness/r23/ACCEPTANCE.md`                                            | R23 lane                                        |
+| `docs/production-readiness/r23/RISKS.md`                                                 | R23 lane                                        |
+| `docs/production-readiness/r23/ROLLBACK.md`                                              | R23 lane                                        |
+| `docs/production-readiness/r23/shared-change-requests/CR-01-request-id-and-error-log.md` | R23 lane                                        |
+
+The lease lasts for this corrective PR only. Root manifests, lockfiles,
+schema/migrations, CI, health wiring, export configuration and domain
+instrumentation remain outside this approval. Historical status below is
+retained as recorded and is not the authority for the corrective work.
+
+## Historical initial implementation
+
 Status: **PROPOSED, awaiting coordinator approval.** No coordinator wave
 manifest or G0 acceptance record was available in this worktree or on
 `origin` when work started (see `IMPLEMENTATION.md` § Baseline), so the

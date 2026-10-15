@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   HttpException,
   HttpStatus,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -13,13 +14,19 @@ import { AppError } from '../../shared/errors/app-error';
 import type { AppConfigService } from '../../config/app-config.service';
 
 function mkHost(
-  req: Partial<{ id: string; url: string; header: (k: string) => string | undefined }> = {},
+  req: Partial<{
+    id: string;
+    url: string;
+    originalUrl: string;
+    header: (k: string) => string | undefined;
+  }> = {},
 ) {
   const json = jest.fn();
   const status = jest.fn().mockReturnValue({ json });
   const res = { status, json };
   const request = {
     url: req.url ?? '/whatever',
+    originalUrl: req.originalUrl,
     id: req.id,
     header: req.header ?? (() => undefined),
   };
@@ -38,6 +45,39 @@ function mkConfig(isProduction = false): AppConfigService {
 }
 
 describe('AllExceptionsFilter', () => {
+  describe.each([
+    ['debug', () => new BadRequestException('Invalid request'), 400],
+    ['error', () => new Error('Synthetic failure'), 500],
+  ] as const)('private exception paths (%s)', (level, exception, statusCode) => {
+    it.each([
+      ['/v1/example?q=SYNTHsearchValue', undefined, '/v1/example'],
+      [
+        '/rewritten?q=SYNTHsearchValue',
+        '/v1/example?q=SYNTHsearchValue#SYNTHfragment',
+        '/v1/example',
+      ],
+      ['/v1/example#SYNTHfragment', undefined, '/v1/example'],
+      ['/v1/example', undefined, '/v1/example'],
+    ])('logs only the path for input %#', (url, originalUrl, expectedPath) => {
+      const log = jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined);
+      try {
+        const { host, status } = mkHost({ url, originalUrl, id: 'correlation_123' });
+        new AllExceptionsFilter(mkConfig(true)).catch(exception(), host);
+        expect(status).toHaveBeenCalledWith(statusCode);
+        expect(log).toHaveBeenCalledTimes(1);
+        expect(log.mock.calls[0][0]).toMatchObject({
+          path: expectedPath,
+          requestId: 'correlation_123',
+          status: statusCode,
+        });
+        expect(JSON.stringify(log.mock.calls)).not.toContain('SYNTHsearchValue');
+        expect(JSON.stringify(log.mock.calls)).not.toContain('SYNTHfragment');
+      } finally {
+        log.mockRestore();
+      }
+    });
+  });
+
   it('maps AppError through with its own status and code', () => {
     const filter = new AllExceptionsFilter(mkConfig());
     const { host, status, json } = mkHost();
