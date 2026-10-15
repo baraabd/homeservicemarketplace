@@ -1,5 +1,10 @@
 # R22 — Outbox and worker execution reliability: implementation
 
+**2026-10-15 follow-up:** the original implementation below is historical.
+PR #158 was merged at `3e9fd3ad106639aa87780af8d3927d1d391cb355`.
+The current bounded-publication correction is described in §8 and has separate
+evidence in ACCEPTANCE §5; the original local results are not a rerun.
+
 | Field            | Value                                                                                                                                                                                                    |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Sprint           | R22 (wave 1 of 4, lane 4 of 5; legacy coverage P47)                                                                                                                                                      |
@@ -133,3 +138,45 @@ The four outbox handlers publish only inside the returned `afterCommit`:
 | CR-03 | `packages/database/src/seed.ts`                               | seed `outbox:replay` permission, no role grant               | real replay                       |
 | CR-04 | `.github/workflows/ci.yml`                                    | run process suite + CLI tests in CI                          | hosted evidence for process suite |
 | CR-05 | `metrics.service.ts`, `apps/api/Dockerfile`                   | R23 worker-health series; ship CLIs in image                 | none                              |
+
+## 8. Corrective follow-up: bounded post-commit publication (2026-10-15)
+
+The owner requested execution of R22 again after #158 merged. Inspection of
+the assigned branch at `79617ff051efa69e49a4c7b8f4c446e9b04f3510` and develop
+at `af662586a640e41d8438d0cb2dd69e8cbb0e172a` found identical owned implementation.
+No peer branch was imported and the frozen G0 remains
+`059c018576a75837d4dfb262ee49168d9217d881`. The exact correction allowlist is
+in OWNERSHIP.md, derived from the existing approval in §1. No shared lease
+was used. The code commit is `eec7488c9d2ee506f3b430895d081973a1a74d21`;
+its source tree is `6f4a5fe854318357a0fcc9b0caaa2e72f44f8dbb`.
+
+**F13, reproduced:** the transaction deadline did not cover `afterCommit`.
+A never-settling external publish left `runOnce` waiting forever while it
+heartbeated every later claim in the batch. Six isolated regression tests
+against the unchanged source produced four failures and two passes (exit 1).
+
+The worker now gives the whole post-commit callback list one separate
+`OUTBOX_DELIVERY_DEADLINE_MS` budget (existing default: 20 seconds). On expiry
+it logs `outbox.after_commit_failed` and continues the batch. `PROCESSED`,
+handler markers and durable effects remain committed; this failure never
+increments attempts or requeues the event. A late settlement cannot start
+later callbacks, and a late rejection is observed. Immediate callback failures
+continue to allow other callbacks within the same budget.
+
+There is no new publisher, dependency, environment key, schema change or
+handler signature. The handler comments and registration contract clarify
+that post-commit pushes are best-effort accelerators, not durable delivery.
+A Promise deadline does not cancel arbitrary I/O: transports retain their
+own timeout/cancellation responsibilities. Durable obligations still belong
+in the transaction and need their own delivery protocol.
+
+The correction adds six contract-double unit regressions and two real-Postgres
+regressions beside the approved R22 tests. The latter inspect real Notification
+and OutboxHandlerRun rows, unchanged attempts, cleared ownership and terminal
+state while a callback is blocked and after it settles late. Existing failure,
+lease, replay, scan, retention and two-process tests remain active under their
+original gates. No production, domain or live-money policy is changed.
+
+CR-01 through CR-05 remain unapplied in the inspected develop source. They
+remain concrete coordinator requests under shared-change-requests/, with
+the same migration, permission, configuration, CI and telemetry ownership.

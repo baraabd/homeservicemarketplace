@@ -1,5 +1,9 @@
 # R22 — acceptance evidence
 
+Sections 1–4 preserve the original implementation evidence. The 2026-10-15
+corrective execution is recorded separately in §5. Old passing results do
+not establish acceptance of the correction.
+
 **Lane status: IMPLEMENTED · SOURCE_VERIFIED · INTEGRATION_PENDING.**
 SANDBOX_ACCEPTED, HOSTED_ACCEPTED and RELEASE_ACCEPTED are **not** claimed.
 Only the coordinator marks the wave accepted after integrated candidate tests.
@@ -100,3 +104,83 @@ suite. Under heavy parallel load this adds to queueing for suites that take
 | Evidence-scan and privacy/retention tests stay active                                            | No scan or retention test was skipped or modified; nothing was marked CLEAN                                                                                                                                                                                                                | preserved                                                    |
 | Browser / RTL / mobile                                                                           | No UI change                                                                                                                                                                                                                                                                               | NOT APPLICABLE                                               |
 | Hosted CI / CodeQL on final SHA                                                                  | PR Draft; see PR body                                                                                                                                                                                                                                                                      | PENDING                                                      |
+
+## 5. Corrective execution, 2026-10-15 (separate from historical results)
+
+Status at source publication: **IMPLEMENTED, SOURCE_VERIFIED (local unit,
+lint, typecheck, build), INTEGRATION_PENDING, EXTERNAL_BLOCKED (local real
+services)**. This is not SANDBOX_ACCEPTED, HOSTED_ACCEPTED or RELEASE_ACCEPTED.
+The final-head CI record belongs in the corrective Draft PR, together with
+run/artifact IDs and final SHA; that avoids a self-referential evidence commit
+and never substitutes an earlier head's checks for the final head.
+
+| Identity                     | Value                                                                                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frozen G0                    | `059c018576a75837d4dfb262ee49168d9217d881` (existing owner approval, IMPLEMENTATION §1)                                                        |
+| Original branch head         | `79617ff051efa69e49a4c7b8f4c446e9b04f3510`                                                                                                     |
+| Original PR                  | #158, merged as `3e9fd3ad106639aa87780af8d3927d1d391cb355`; not merged by this execution                                                       |
+| Correction source commit     | `eec7488c9d2ee506f3b430895d081973a1a74d21`                                                                                                     |
+| Correction source tree       | `6f4a5fe854318357a0fcc9b0caaa2e72f44f8dbb`                                                                                                     |
+| Final evidence commit / tree | recorded in the corrective PR's Final SHA / source-tree fields after commit                                                                    |
+| Comparison develop           | `af662586a640e41d8438d0cb2dd69e8cbb0e172a`                                                                                                     |
+| Branch                       | `feat/r22-worker-outbox-reliability`; independent clean clone before edits                                                                     |
+| Changed paths and leases     | exact ten paths in OWNERSHIP.md; no shared lease                                                                                               |
+| Contract / schema            | existing published workspace contracts and Prisma 6.12.0 unchanged; clarified best-effort callback semantics; no signature change or migration |
+
+### Local commands and outcomes
+
+Commands run from repository root unless a working directory is shown. Each
+exit code was checked; no hook, test gate, timeout budget or assertion was
+weakened. The expected red run preceded the runtime fix.
+
+| Command                                                                                                                                                                                                                                                                    | Result                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile`                                                                                                                                                                                                                                           | exit 0; lockfile unchanged                                                                                 |
+| `pnpm --filter @homeservicemarketplace/database generate`                                                                                                                                                                                                                  | exit 0; Prisma 6.12.0                                                                                      |
+| `pnpm exec jest --runInBand src/infrastructure/outbox/outbox.worker.spec.ts` (apps/api, before fix)                                                                                                                                                                        | exit 1; 4 failed, 2 passed, 0 skipped; reproduced callback stalls                                          |
+| `pnpm exec jest --runInBand src/infrastructure/outbox` (apps/api, after fix)                                                                                                                                                                                               | exit 0; 4 suites, 26 passed, 0 failed, 0 skipped; includes all 6 new regressions                           |
+| `node --test scripts/production/workers/outbox-replay.test.cjs`                                                                                                                                                                                                            | exit 0; 6 passed, 0 failed, 0 skipped                                                                      |
+| `pnpm --filter @homeservicemarketplace/api typecheck`                                                                                                                                                                                                                      | exit 0                                                                                                     |
+| `pnpm --filter @homeservicemarketplace/api lint`                                                                                                                                                                                                                           | exit 0                                                                                                     |
+| `pnpm exec eslint apps/api/src/infrastructure/outbox/outbox.worker.ts apps/api/src/infrastructure/outbox/outbox.worker.spec.ts apps/api/src/infrastructure/outbox/outbox.handler.ts apps/api/test/integration/r22-outbox-reliability.integration.spec.ts --max-warnings 0` | exit 0                                                                                                     |
+| `pnpm --filter @homeservicemarketplace/api build`                                                                                                                                                                                                                          | exit 0; baseline and corrected source both built                                                           |
+| `pnpm exec prettier --check apps/api/src/infrastructure/outbox/outbox.worker.ts apps/api/src/infrastructure/outbox/outbox.worker.spec.ts apps/api/src/infrastructure/outbox/outbox.handler.ts apps/api/test/integration/r22-outbox-reliability.integration.spec.ts`        | exit 0                                                                                                     |
+| `pnpm security:audit`                                                                                                                                                                                                                                                      | exit 0; 0 info/low/moderate/high/critical findings                                                         |
+| `pnpm security:audit:prod`                                                                                                                                                                                                                                                 | exit 0; 0 info/low/moderate/high/critical findings                                                         |
+| `git diff --check`                                                                                                                                                                                                                                                         | exit 0                                                                                                     |
+| `git merge-tree --write-tree origin/develop HEAD` (source commit)                                                                                                                                                                                                          | exit 0; conflict-free candidate tree `7e335b7c1d8bb909729ef4f45f824c29c0ac3075`; no branch update or merge |
+| Normal pre-commit hook                                                                                                                                                                                                                                                     | exit 0; scoped ESLint and Prettier; no bypass                                                              |
+
+### Environment fingerprint and missing evidence
+
+- Linux 6.18.44 x86_64; task-scoped Node **24.21.0**, pnpm **10.32.1**.
+  No machine-wide version change; this worktree owns its node_modules and
+  generated output. Lockfile SHA-256:
+  `724b826ea09da6e070f4721a30f5dd9145a333606fac124e0249b5ef7fe18222`.
+- No user `.env`, database, Redis instance, external bucket or session was
+  copied or reused. No services, containers, volumes or other processes were
+  reset, flushed or terminated.
+- Local PostgreSQL/Redis/Docker executables were unavailable. A task-local
+  package-index attempt exited 100 because the execution environment denied
+  `setgroups`/`seteuid`; no sandbox protection was bypassed. Therefore the
+  two new real-Postgres regressions and independent process suite were **not
+  run locally**. Unit contract doubles establish scheduling only, not durable
+  atomicity. Owner: CI/integration coordinator for isolated service evidence.
+- Existing CI enables PostgreSQL/Redis API integration, including the new
+  real-Postgres cases. It still does not set `RUN_R22_WORKER_PROCESS=1`:
+  Linux two-process SIGTERM evidence remains blocked on CR-04. Audit replay
+  execution cases remain conditionally gated by CR-01; no tests were newly
+  skipped to get green. Preserve scanner and retention tests at the gate.
+- Local secret/container scanning and final-head CodeQL are supplied by
+  hosted CI, not claimed from the dependency audit. No UI changed: real-route
+  screenshots, AR/EN/RTL/mobile/keyboard checks are not applicable to this
+  infrastructure-only correction; none were fabricated or inspected locally.
+- Existing ts-jest `isolatedModules` deprecation and the frozen-install
+  optional build-script warnings did not fail the checks. Pins and lockfile
+  were not changed to suppress them.
+
+CR-01…CR-05 remain serial coordinator integration requests. R16/R18 policy
+decisions and live-rail authorization remain unchanged. The corrective PR
+must remain Draft while required integration evidence or acceptance is
+missing; only the coordinator can accept the wave and the owner authorize
+merge/deployment. No deployment or live activation was attempted.

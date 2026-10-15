@@ -16,3 +16,32 @@
 
 Unresolved owner decisions from R16 and R18 (payout policy, D-2/D-3 dispute
 worker mode, live money) are untouched and remain open.
+
+## 2026-10-15 corrective follow-up
+
+The table above preserves original risks and original evidence status.
+Current verification and limitations are in ACCEPTANCE §5 and the corrective
+PR's final-head CI record. Merging #158 did not integrate CR-01 through CR-05
+in the inspected develop source.
+
+- **Bounded scheduling does not cancel transport I/O.** A timed-out callback
+  can settle later and may retain resources until its transport ends. The
+  worker observes late rejection and never starts the remaining callbacks.
+  Transport owners must use real request timeouts/cancellation. A blocked
+  JavaScript event loop also cannot execute a timer until it yields.
+- **A callback may be dropped.** The shared publication budget starts after
+  the transaction commits. Expiry preserves PROCESSED and durable effects;
+  it does not retry accelerators or provide durable email/payment delivery.
+  Required external work needs an existing durable domain intent. Never
+  replay committed financial effects to compensate for a missed push.
+- **Two separate time budgets.** The transaction and post-commit phase each
+  use the existing delivery deadline (20 s default). Shutdown retains its
+  own independent grace/fencing behavior. Existing transport slowness can
+  now produce an explicit warning and an omitted later accelerator.
+- **Acceptance remains incomplete.** Local service executables were missing;
+  the added real-Postgres cases require hosted evidence. CR-04 is still needed
+  for Linux independent-process crash/SIGTERM coverage. CR-01/03 still block
+  authorized audited replay execution, while replay continues to fail closed.
+- **Rollback is scoped.** Reverting this callback correction preserves R22's
+  lease protections but restores the callback starvation bug. Reverting the
+  entire original sprint also reintroduces stale-writer defects; see ROLLBACK.

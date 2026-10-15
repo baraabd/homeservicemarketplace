@@ -331,22 +331,10 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
       );
       await this.withDeadline(delivery);
 
-      // Outside the transaction, by contract: realtime publishes and mail.
-      // Failures are logged, never rethrown — the durable work is already
-      // committed, and failing the event here would redeliver it only for
-      // every handler to be skipped by its marker, achieving nothing.
-      for (const effect of afterCommit) {
-        try {
-          await effect();
-        } catch (err) {
-          this.log.warn({
-            msg: 'outbox.after_commit_failed',
-            eventId: event.id,
-            eventType: event.eventType,
-            err: String(err),
-          });
-        }
-      }
+      // A stalled best-effort transport must not keep heartbeating the rest
+      // of this batch forever. This phase has its own bounded deadline;
+      // failure here cannot retry the already committed database effects.
+      await this.publishAfterCommit(event, afterCommit);
 
       this.count(event, skipped === handlers.length ? 'skipped-duplicate' : 'processed');
       this.log.log({
@@ -364,10 +352,49 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Bound one delivery. On expiry the caller records a transient failure on
-   *  its lease; the abandoned transaction can no longer commit a result,
-   *  because either Prisma's timeout rolls it back or its fenced completion
-   *  finds the lease gone. */
+  private async publishAfterCommit(
+    event: OutboxEvent,
+    effects: ReadonlyArray<() => Promise<void>>,
+  ): Promise<void> {
+    if (effects.length === 0) return;
+    let closed = false;
+    const warn = (err: unknown) => {
+      this.log.warn({
+        msg: 'outbox.after_commit_failed',
+        eventId: event.id,
+        eventType: event.eventType,
+        err: String(err),
+      });
+    };
+    const publication = (async () => {
+      for (const effect of effects) {
+        // Promise timeouts cannot cancel arbitrary transport work. If a late
+        // callback settles, it must not launch the remaining callbacks after
+        // the worker has already moved on to another event.
+        if (closed) break;
+        try {
+          await effect();
+        } catch (err) {
+          warn(err);
+        }
+      }
+    })();
+    try {
+      // One budget for the whole callback list, not one budget per callback.
+      await this.withDeadline(publication);
+    } catch (err) {
+      // PROCESSED, markers and durable effects have committed. Never route a
+      // publication failure through handleFailure or requeue this event.
+      warn(err);
+    } finally {
+      closed = true;
+    }
+  }
+
+  /** Bound one asynchronous phase. The delivery caller records a transient
+   *  failure on its lease; Prisma's timeout or fenced completion prevents
+   *  the abandoned transaction from committing. The post-commit caller only
+   *  logs expiry, since its durable effects have already committed. */
   private async withDeadline(work: Promise<unknown>): Promise<void> {
     const deadlineMs = this.setting('OUTBOX_DELIVERY_DEADLINE_MS', OUTBOX_DELIVERY_DEADLINE_MS);
     let timer: NodeJS.Timeout | undefined;
