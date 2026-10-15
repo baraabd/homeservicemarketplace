@@ -110,6 +110,109 @@ d('R22 outbox reliability (real Postgres)', () => {
       expect(await effectsFor(prisma, eventId)).toBe(1);
     });
 
+    it('a hung post-commit callback cannot hold the claimed batch or retry committed effects', async () => {
+      const blocked = await enqueue(
+        prisma,
+        repo,
+        'r22.callback.blocked',
+        {},
+        {
+          availableAt: new Date(Date.now() - 10_000),
+        },
+      );
+      const healthy = await enqueue(prisma, repo, 'r22.callback.healthy');
+      const gate = deferred();
+      let entered = false;
+      const durable = effectHandler('r22.callback.blocked', 'r22.callback.blocked', userId);
+      const { w, metrics } = worker(
+        [
+          {
+            ...durable,
+            async handle(event: any, tx: any) {
+              await durable.handle(event, tx);
+              return {
+                afterCommit: async () => {
+                  entered = true;
+                  await gate.promise;
+                },
+              };
+            },
+          },
+          effectHandler('r22.callback.healthy', 'r22.callback.healthy', userId),
+        ],
+        { OUTBOX_DELIVERY_DEADLINE_MS: 500 },
+      );
+      let finished = false;
+      const running = w.runOnce().then(() => {
+        finished = true;
+      });
+      try {
+        await waitFor(async () => entered, 'post-commit callback never started', 5_000);
+        // The durable notification is already visible while its accelerator
+        // is stalled; the second event must finish before we release it.
+        expect((await row(blocked.id)).status).toBe('PROCESSED');
+        expect(await effectsFor(prisma, blocked.id)).toBe(1);
+        await waitFor(async () => finished, 'post-commit callback pinned the batch', 5_000);
+        for (const event of [blocked, healthy]) {
+          const saved = await row(event.id);
+          expect(saved.status).toBe('PROCESSED');
+          expect(saved.attempts).toBe(0);
+          expect(saved.claimedBy).toBeNull();
+          expect(await effectsFor(prisma, event.id)).toBe(1);
+          expect(await prisma.outboxHandlerRun.count({ where: { eventId: event.id } })).toBe(1);
+        }
+        expect(metrics.outcomes).toEqual(['processed', 'processed']);
+      } finally {
+        gate.resolve();
+        await running;
+      }
+    });
+
+    it('a late callback cannot launch subsequent callbacks or change committed notifications', async () => {
+      const event = await enqueue(prisma, repo, 'r22.callback.late');
+      const gate = deferred();
+      const later = jest.fn(async () => undefined);
+      const first = effectHandler('r22.callback.first', 'r22.callback.late', userId);
+      const second = effectHandler('r22.callback.second', 'r22.callback.late', userId);
+      const { w } = worker(
+        [
+          {
+            ...first,
+            async handle(e: any, tx: any) {
+              await first.handle(e, tx);
+              return { afterCommit: () => gate.promise };
+            },
+          },
+          {
+            ...second,
+            async handle(e: any, tx: any) {
+              await second.handle(e, tx);
+              return { afterCommit: later };
+            },
+          },
+        ],
+        { OUTBOX_DELIVERY_DEADLINE_MS: 500 },
+      );
+      let finished = false;
+      const running = w.runOnce().then(() => {
+        finished = true;
+      });
+      try {
+        await waitFor(async () => finished, 'publication deadline did not finish', 5_000);
+        expect(later).not.toHaveBeenCalled();
+      } finally {
+        gate.resolve();
+        await running;
+      }
+      // Allow the abandoned publication to observe its late settlement.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(later).not.toHaveBeenCalled();
+      expect((await row(event.id)).status).toBe('PROCESSED');
+      expect((await row(event.id)).attempts).toBe(0);
+      expect(await effectsFor(prisma, event.id)).toBe(2);
+      expect(await prisma.outboxHandlerRun.count({ where: { eventId: event.id } })).toBe(2);
+    });
+
     it('a rolled-back business transaction emits nothing', async () => {
       const before = await prisma.outboxEvent.count({ where: { aggregateType: R22_AGGREGATE } });
       await expect(
