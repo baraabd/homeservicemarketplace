@@ -15,9 +15,20 @@ validated by `apps/api/test/unit/r19-money-contract-fixtures.spec.ts`.
   supported codes and their minor-unit scales are undecided (R16 P8, R18 D-2),
   so no code divides by 100.
 - **Idempotency payloads** use `canonicalJson`: sorted keys, and bigint tagged
-  as `{"$bigint": "…"}`. It refuses `undefined`, non-finite numbers,
-  non-plain objects and cycles. A digest is the SHA-256 of that string,
-  covering the actor or operation.
+  as `{"$bigint": "…"}`. The `$bigint` key is reserved: caller-supplied
+  objects cannot impersonate the bigint encoding. Arrays must be dense and
+  carry no extra properties. Symbol keys, non-enumerable properties and
+  accessors are refused, without invoking getters. It also refuses
+  `undefined`, functions, symbols, non-finite numbers, non-plain objects and
+  cycles. Finite numbers retain standard JSON semantics (including `-0` as
+  `0`); financial amounts use bigint internally and decimal strings on the
+  wire. A digest is the SHA-256 of that string, covering the actor or operation.
+
+CR-004 hardens invalid-input handling without changing `hsm.money.v1` or the
+encoding of valid existing confirmation commands. It never rewrites stored
+digests. Previously accepted ambiguous objects now fail with `NOT_CANONICAL`;
+any adapter that persisted such a payload requires an explicit reconciliation
+decision, not a silent history repair.
 
 ## DTOs and ports
 
@@ -39,6 +50,13 @@ The internal port for activation is
 transaction, or its own. A missing adapter or configuration produces no
 confirmation: the unit only persists a confirmation that a verified adapter
 hands it.
+
+**Remaining freeze handoff:** this catalog supplies wire DTOs, the existing
+`MoneyCatalogPort` and the activation method; it does not yet supply explicit
+versioned callable ports for every later lifecycle, receipt-review,
+refund-dispatch/result and reconciliation/projection operation requested by
+the lane prompt. The coordinator and R19/R24 consumers must review those ports
+at G1. The bounded CR-004 correction does not invent their implementations.
 
 ## Approvals the contracts do not make
 
