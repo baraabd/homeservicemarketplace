@@ -3,6 +3,81 @@
 State: **SOURCE_VERIFIED (local) · INTEGRATION_PENDING · POLICY_BLOCKED for
 live use.** No hosted or sandbox evidence exists, and none is claimed.
 
+## CR-004 corrective verification (2026-10-15)
+
+The owner approved the eight-file continuation and corrective R19 PR after
+PR #159 had merged. The correction is now applied to the existing source;
+the tests below use the normal API Jest runner and published workspace
+contracts, not the earlier isolated candidate mapping.
+
+Source identity: original wave base
+`059c018576a75837d4dfb262ee49168d9217d881`; corrective parent and branch-start
+merge base `fcdf1deb1a34044b9253ebac8e0e308a69e7a667`; parent tree
+`809ffede1b03d3e53241aea2e3a6d01134c6fde0`. Final corrective SHA/tree and CI
+run/artifact IDs are recorded in the corrective PR, avoiding a self-referential
+commit. Inspected develop was `af662586a640e41d8438d0cb2dd69e8cbb0e172a`.
+
+Environment fingerprint (no secrets): Linux x64, Node 24.21.0, pnpm 10.32.1,
+Prisma 6.12.0; independent clone/node_modules/generated output. Node release
+SHA-256 and repository-pinned pnpm SHA-512 were verified before use. Tools are
+task-local; no machine-wide version changed. No user `.env`, payment credential
+or working database was copied/used. No local Docker/PostgreSQL/psql/Redis
+infrastructure is available. No database reset, migration or network payment
+was performed.
+
+Commands run from the repository root, each with its exit status checked:
+
+| Command                                                                                                                                                                                                       | Executed result                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `node scripts/runtime/toolchain.cjs`                                                                                                                                                                          | PASS, exit 0                                                                           |
+| `pnpm install --frozen-lockfile`                                                                                                                                                                              | PASS, exit 0; lockfile unchanged; hooks enabled                                        |
+| `pnpm --filter @homeservicemarketplace/api test --runInBand src/modules/money test/unit/r19-money-wire.spec.ts test/unit/r19-money-contract-fixtures.spec.ts test/unit/r19-canonical-json-regression.spec.ts` | PASS, 8 suites / 96 tests, 0 failed, 0 skipped                                         |
+| `pnpm --filter @homeservicemarketplace/api exec jest test/unit/r19-canonical-json-regression.spec.ts --runInBand`                                                                                             | PASS after the sparse-fixture lint correction: 1 suite / 15 tests, 0 failed, 0 skipped |
+| `pnpm exec eslint packages/contracts/src/money/wire.ts apps/api/test/unit/r19-canonical-json-regression.spec.ts`                                                                                              | PASS, exit 0                                                                           |
+| `pnpm --filter @homeservicemarketplace/api lint`                                                                                                                                                              | PASS, exit 0                                                                           |
+| `pnpm --filter @homeservicemarketplace/api typecheck`                                                                                                                                                         | PASS, exit 0; database/contracts builds included                                       |
+| `pnpm --filter @homeservicemarketplace/api build`                                                                                                                                                             | PASS, exit 0; database/contracts and Nest builds included                              |
+
+The 15 regressions cover reserved bigint tags, sparse/nested/extended arrays,
+symbol/hidden properties, getters without side effects, precision/key ordering,
+valid confirmation byte compatibility and repeated non-cyclic references.
+Existing tests were preserved. No timeouts, worker limits for real-service
+concurrency suites, assertions, security budgets or skips were changed.
+
+Initial local ESLint reported `no-sparse-arrays` for the deliberately sparse
+test literal. The fixture now constructs the same gap with `new Array` and
+`Object.assign`; the rule remains enabled and all 15 regressions pass.
+Retained existing warnings: pnpm's configured ignored build scripts for
+`@parcel/watcher`/`unrs-resolver`, and ts-jest's deprecated isolatedModules option.
+
+**Remote evidence gate:** CI/CodeQL/security and real R15/R19 PostgreSQL tests
+must be checked on the final corrective head after push. Prior green checks
+below do not validate new code. The PR stays Draft while required evidence or
+G1 integration closure is missing. No local real-DB/Redis, browser, migration
+rehearsal, sandbox or hosted run is claimed. No UI changed.
+
+## Prior-head CI independently verified on 2026-10-15
+
+This supersedes the historical "CI on the PR head not yet verified" note for
+the original PR #159 only. These runs were read, not rerun during verification.
+
+- R19 head `fcdf1deb1a34044b9253ebac8e0e308a69e7a667`: 31 successful check
+  records / 29 distinct named checks (repeated governance runs), including
+  CodeQL and dependency/secret/container scans.
+- [Real-service job 115567909627](https://github.com/baraabd/homeservicemarketplace/actions/runs/38475791098/job/115567909627):
+  301 suites passed / 9 skipped; 5,646 tests passed / 38 skipped. The log includes
+  R15 ledger, R19 subscription-money, wire and fixture suites as PASS.
+- Merged develop `af662586a640e41d8438d0cb2dd69e8cbb0e172a`: 28/28 successful
+  checks. [Real-service job 115806369405](https://github.com/baraabd/homeservicemarketplace/actions/runs/38549121757/job/115806369405):
+  323 suites passed / 13 skipped; 5,983 tests passed / 88 skipped.
+
+Those test totals describe the full API integration jobs, not R19 alone.
+The actual original R19-head Git tree is
+`809ffede1b03d3e53241aea2e3a6d01134c6fde0`; a historical PR-body tree value
+was stale. CR-003 is APPLIED in the coordinator registry. G1 remains pending.
+
+## Historical implementation-session evidence
+
 ## Local environment (2026-10-14)
 
 Windows 11 and Node 24.21.0; pnpm 10.32.1 from the frozen base.

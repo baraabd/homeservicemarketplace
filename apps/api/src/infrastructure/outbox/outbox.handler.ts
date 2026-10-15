@@ -61,11 +61,16 @@ export interface OutboxHandlerResult {
    *  email — unrecallable — and a slow SMTP server holds a database
    *  transaction open for its whole timeout.
    *
-   *  These run at-least-once and are NOT covered by the idempotency marker: a
-   *  crash between commit and this callback loses them. That is the deliberate
-   *  trade — a duplicate toast is cheap, a held transaction is not — and it is
-   *  why anything that must not be lost is written to the database inside
-   *  `handle` first, with the external push treated as an accelerator. */
+   *  These are best-effort accelerators, not durable delivery: a crash after
+   *  commit or a publication deadline can lose them. All callbacks for one
+   *  event share a separate OUTBOX_DELIVERY_DEADLINE_MS budget. A failure
+   *  never retries committed effects. On expiry, later callbacks are not
+   *  started, even if the stalled callback eventually settles.
+   *
+   *  A Promise timeout cannot cancel arbitrary I/O. Transports must bound
+   *  their own requests and tolerate late completion. Anything that must not
+   *  be lost belongs in durable state inside `handle`, with its own delivery
+   *  protocol; the callback alone is not a notification or payment guarantee. */
   afterCommit?: () => Promise<void>;
 
   /** Free-form counters for the worker log line, e.g. `{ recipients: 42 }`. */

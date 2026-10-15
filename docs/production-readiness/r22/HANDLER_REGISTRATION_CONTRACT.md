@@ -45,7 +45,14 @@ financial handlers need §3.
 7. Write every durable effect with the supplied `tx`. Return external effects
    (realtime, e-mail, vendor calls that are safe to lose or repeat) as
    `afterCommit`. They run after commit, at most once per successful delivery,
-   and are not retried.
+   and are not retried. All callbacks for an event share a separate
+   `OUTBOX_DELIVERY_DEADLINE_MS` publication budget (20 s default). Expiry logs
+   `outbox.after_commit_failed` and lets the worker continue without changing
+   `PROCESSED`, attempts, effects or markers. Remaining callbacks will not
+   start even if the stalled callback settles later. Transports must bound
+   their own I/O: the Promise deadline cannot cancel an in-flight request.
+   Anything requiring guaranteed delivery needs a durable domain intent and
+   its delivery protocol; the callback alone is best-effort.
 8. Add a real-Postgres test that delivers the event twice and asserts one
    effect.
 

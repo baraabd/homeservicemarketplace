@@ -97,12 +97,18 @@ export function fromMoneyWire(value: unknown): { amountMinor: bigint; currency: 
 /**
  * Canonical JSON for idempotency digests: object keys sorted, no
  * insignificant whitespace, bigint encoded as {"$bigint":"<decimal>"} so it
- * can never collide with a string or number. undefined, functions, symbols,
- * non-finite numbers, non-plain objects and cycles are refused, so two
- * commands that differ in any field never share a payload.
+ * can never collide with a string or number. The $bigint object key is
+ * reserved. Sparse/extended arrays, hidden/symbol properties and accessors
+ * are refused rather than silently dropping data or executing getters.
+ * undefined, functions, symbols, non-finite numbers, non-plain objects and
+ * cycles are also refused. Finite numbers keep JSON.stringify semantics
+ * (including -0 as 0); financial amounts use bigint or decimal strings.
  */
 export function canonicalJson(value: unknown): string {
   const seen = new Set<object>();
+  const fail = (message: string): never => {
+    throw new MoneyWireError('NOT_CANONICAL', message);
+  };
   const encode = (input: unknown): string => {
     if (input === null) return 'null';
     switch (typeof input) {
@@ -111,32 +117,55 @@ export function canonicalJson(value: unknown): string {
       case 'boolean':
         return input ? 'true' : 'false';
       case 'number':
-        if (!Number.isFinite(input)) throw new MoneyWireError('NOT_CANONICAL', 'Non-finite number');
+        if (!Number.isFinite(input)) return fail('Non-finite number');
         return JSON.stringify(input);
       case 'bigint':
         return `{"$bigint":${JSON.stringify(input.toString())}}`;
       case 'object': {
-        if (seen.has(input as object)) throw new MoneyWireError('NOT_CANONICAL', 'Cyclic value');
-        seen.add(input as object);
+        if (seen.has(input)) return fail('Cyclic value');
+        seen.add(input);
+        if (Object.getOwnPropertySymbols(input).length !== 0) {
+          return fail('Symbol keys are not canonical');
+        }
+        const descriptors = Object.getOwnPropertyDescriptors(input);
         let out: string;
         if (Array.isArray(input)) {
-          out = `[${input.map(encode).join(',')}]`;
+          if (Object.keys(descriptors).length !== input.length + 1) {
+            return fail('Arrays must be dense and have no extra properties');
+          }
+          const encoded: string[] = [];
+          for (let index = 0; index < input.length; index += 1) {
+            const descriptor = descriptors[String(index)];
+            if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) {
+              return fail('Arrays contain only enumerable data elements');
+            }
+            encoded.push(encode(descriptor.value));
+          }
+          out = `[${encoded.join(',')}]`;
         } else {
           const prototype = Object.getPrototypeOf(input);
           if (prototype !== Object.prototype && prototype !== null) {
-            throw new MoneyWireError('NOT_CANONICAL', 'Only plain objects are canonical');
+            return fail('Only plain objects are canonical');
           }
-          const record = input as Record<string, unknown>;
-          out = `{${Object.keys(record)
+          if (Object.hasOwn(descriptors, '$bigint')) {
+            return fail('The $bigint key is reserved for the bigint encoding');
+          }
+          out = `{${Object.keys(descriptors)
             .sort()
-            .map((key) => `${JSON.stringify(key)}:${encode(record[key])}`)
+            .map((key) => {
+              const descriptor = descriptors[key];
+              if (!descriptor.enumerable || !('value' in descriptor)) {
+                return fail('Objects contain only enumerable data properties');
+              }
+              return `${JSON.stringify(key)}:${encode(descriptor.value)}`;
+            })
             .join(',')}}`;
         }
-        seen.delete(input as object);
+        seen.delete(input);
         return out;
       }
       default:
-        throw new MoneyWireError('NOT_CANONICAL', `Unsupported value of type ${typeof input}`);
+        return fail(`Unsupported value of type ${typeof input}`);
     }
   };
   return encode(value);
