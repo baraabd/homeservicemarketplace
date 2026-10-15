@@ -25,6 +25,29 @@ HOSTED_ACCEPTED or RELEASE_ACCEPTED declaration is made here.
 
 ### Corrective commands and results
 
+Locally validated corrective source commit:
+`b0c52d6f0f0ab0362eccf6a5fa9b46a5a1b6048d`; source tree:
+`12b5afb378b6c8083b89c3e9c60ec70b3be06f1e`. Its GitHub-published counterpart
+is `12192d94b5d46a6f7136a6fa5bb064302ca29c09`, with the identical full tree.
+The CLI could not authenticate a push, so publication used the authorized
+GitHub connection after normal local commit hooks, checking exact tree
+equality. Commit identities differ; tested file bytes do not. The follow-up
+evidence commit changes only this document. The exact final PR-head SHA belongs in the PR
+body, per `.github/pull_request_template.md`, avoiding a self-referential
+commit. Final CI must target that final head.
+
+Security verification of the source commit (exit 0):
+
+- `node scripts/security/secret-scan-tree.cjs --gitleaks <task-local-gitleaks> --work-dir <isolated-scan-dir>`:
+  gitleaks 8.24.3, 2,459 tracked files and 20,038,798 bytes scanned, zero
+  findings. The archive matched the repository-pinned SHA-256
+  `9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c`.
+- `gitleaks git --redact --no-banner --log-opts='af662586a640e41d8438d0cb2dd69e8cbb0e172a..HEAD'`:
+  one corrective commit scanned, zero findings. No baseline or scanner
+  configuration was changed.
+- Pre-commit hooks ran normally: lint-staged ESLint and Prettier passed for
+  all 11 staged files; their temporary backup was cleaned up. No bypass.
+
 All commands used the task-local pinned toolchain. API commands requiring
 configuration received only dummy database/JWT validation inputs; no live
 connection or real credential was supplied. The API test command retains
